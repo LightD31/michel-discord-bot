@@ -1,0 +1,8 @@
+data
+del
+logs
+**/__pycache__/**
+.vscode
+discordbot
+.dockerignore
+config

@@ -1,0 +1,16 @@
+services:
+  discord_bot:
+    container_name: discord_bot
+    build:
+      context: ./
+      dockerfile: ./Dockerfile
+    volumes:
+      - ./logs:/app/logs
+      - ./data:/app/data
+      - ./config:/app/config
+      - "/etc/localtime:/etc/localtime:ro"
+    restart:
+      unless-stopped
+    labels:
+      - "com.centurylinklabs.watchtower.enable=false"
+
