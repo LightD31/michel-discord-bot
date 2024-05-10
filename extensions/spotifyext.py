@@ -1,4 +1,3 @@
-from ast import mod
 import json
 import os
 import random
@@ -10,7 +9,6 @@ import pymongo
 import pytz
 import requests
 import spotipy
-from dotenv import load_dotenv
 from interactions.api.events import Component
 from requests.exceptions import ReadTimeout
 
@@ -25,8 +23,6 @@ from src.spotify import (
     spotifymongoformat,
 )
 from src.utils import milliseconds_to_string, load_config
-
-load_dotenv()
 
 logger = logutil.init_logger(os.path.basename(__file__))
 
@@ -663,7 +659,7 @@ class Spotify(interactions.Extension):
                         ].get(str(user_id))
                         if vote is None:
                             await user.send(
-                                f"Hey {user.mention}, tu n'as pas voté aujourd'hui :pleading_face: \nhttps://discord.com/channels/136812800709361664/352980972800704513/{vote_infos.get('message_id')}\nÇa me ferait très plaisir si tu le faisais ! 😊"
+                                f"Hey {user.mention}, tu n'as pas voté aujourd'hui :pleading_face: \nhttps://discord.com/channels/136812800709361664/352980972800704513/{vote_infos.get('message_id')}"
                             )
                             logger.debug("Rappel envoyé à %s", user.display_name)
                         else:

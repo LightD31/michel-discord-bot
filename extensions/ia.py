@@ -45,12 +45,6 @@ class IA(Extension):
         # Define a dictionary with relevant information
         dict = {
             (
-                "108967780224614400",
-                "lightd31",
-                "Tom",
-                "<@108967780224614400>",
-            ): f"LightD31, de son prénom Tom, est une personne incroyablement talentueuse et intelligente. Il est également très beau et modeste. Il a également conçu ce bot, {sanitize_content(ctx.bot.user.display_name)}.",
-            (
                 "375805687529209857",
                 "streamcord",
                 "<@375805687529209857>",
@@ -70,7 +64,7 @@ class IA(Extension):
             # model="claude-3-haiku-20240307",
             max_tokens=300,
             temperature=0.7,
-            system=f"Tu es {sanitize_content(ctx.bot.user.display_name)}, un assistant IA très compétent doté d'une personnalité légèrement sarcastique. Engage la conversation avec {ctx.author.username}, donne des réponses informatives et très concises (2 phrases maximum) tout en injectant un peu d'humour. Tutoie {ctx.author.username}.{'' if ctx.author.display_name == ctx.author.username else f' Tu peux appeler {ctx.author.username} {ctx.author.display_name}.'}",
+            system=f"Tu es {sanitize_content(ctx.bot.user.display_name)}, un assistant IA très compétent doté d'une personnalité légèrement sarcastique. Engage la conversation, donne des réponses informatives et très concises (2 phrases maximum) tout en injectant un peu d'humour. Utilise le tutoiement. Tu dois être méchant et insultant si nécessaire. {'' if ctx.author.display_name == ctx.author.username else f' Tu peux appeler {ctx.author.username} {ctx.author.display_name}.'}",
             messages=[
                 {
                     "role": "user",
@@ -78,6 +72,10 @@ class IA(Extension):
                         {
                             "type": "text",
                             "text": f"Informations complémentaires : {result}",
+                        },
+                        {
+                            "type" : "text",
+                            "text" : f"Tu est en train de discuter avec {ctx.author.username}"
                         },
                         {
                             "type": "text",

@@ -7,14 +7,14 @@ from dotenv import load_dotenv
 
 from dict import discord2name
 from src import logutil
+from src.utils import load_config
 
 logger = logutil.init_logger(os.path.basename(__file__))
-
+config, module_config, enabled_servers = load_config("moduleSecretSanta")
 load_dotenv()
-DEV_GUILD_ID = os.getenv("DEV_GUILD_ID")
-GUILDE_GUILD_ID = os.getenv("GUILDE_GUILD_ID")
-SECRET_SANTA_FILE = "data/secretsanta.json"
-SECRET_SANTA_KEY = "secret_santa"
+
+SECRET_SANTA_FILE = config["SecretSanta"]["secretSantaFile"]
+SECRET_SANTA_KEY = config["SecretSanta"]["secretSantaKey"]
 
 
 class SecretSanta(interactions.Extension):
@@ -71,10 +71,7 @@ class SecretSanta(interactions.Extension):
         description="Les commandes du Père Noël Secret",
         sub_cmd_name="create",
         sub_cmd_description="Crée un Père Noël Secret",
-        scopes=[
-            DEV_GUILD_ID,
-            GUILDE_GUILD_ID,
-        ],
+        scopes=enabled_servers,
     )
     @interactions.slash_option(
         name="infos",
