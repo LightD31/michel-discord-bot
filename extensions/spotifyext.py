@@ -564,7 +564,7 @@ class Spotify(interactions.Extension):
         name="rappelvote",
         sub_cmd_name="set",
         description="Gère les rappels pour voter",
-        sub_cmd_description="Ajoute un rappel pour voter pour la chanon du jour",
+        sub_cmd_description="Ajoute un rappel pour voter pour la chanson du jour",
         scopes=enabled_servers,
     )
     @interactions.slash_option(
@@ -663,7 +663,7 @@ class Spotify(interactions.Extension):
                         ].get(str(user_id))
                         if vote is None:
                             await user.send(
-                                f"Tu n'as pas voté aujourd'hui !\nhttps://discord.com/channels/136812800709361664/352980972800704513/{vote_infos.get('message_id')}"
+                                f"Hey {user.mention}, tu n'as pas voté aujourd'hui :pleading_face: \nhttps://discord.com/channels/136812800709361664/352980972800704513/{vote_infos.get('message_id')}\nÇa me ferait très plaisir si tu le faisais ! 😊"
                             )
                             logger.debug("Rappel envoyé à %s", user.display_name)
                         else:

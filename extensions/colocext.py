@@ -72,7 +72,7 @@ class ColocClass(Extension):
         )
         paris_tz = pytz.timezone("Europe/Paris")
         message: Message = (await channel.history(limit=1).flatten())[0]
-        logger.info(
+        logger.debug(
             "Checking if message %s was posted today (message timestamp: %s today: %s",
             message.id,
             message.created_at.astimezone(paris_tz).strftime("%Y-%m-%d %H:%M:%S %Z"),
@@ -85,7 +85,7 @@ class ColocClass(Extension):
             == datetime.now(paris_tz).date()
         ):
             logger.info(
-                "Channel already posted today, skipping (message date: %s today: %s",
+                "Channel already posted today, skipping (message date: %s today: %s)",
                 message.created_at.astimezone(paris_tz).date(),
                 datetime.now(paris_tz).date(),
             )

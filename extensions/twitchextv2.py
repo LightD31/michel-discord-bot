@@ -589,7 +589,7 @@ class TwitchExt2(Extension):
                 # Send a embed for each emote deleted
                 embed = Embed(
                     title="Emote supprimé",
-                    description=f"L'emote {data[emote]} a été supprimé de la chaine de ZeratoR",
+                    description=f"L'emote {data[emote]} a été supprimé de la chaine de ZeratoR :wave:",
                     color=0x6441A5,
                     timestamp=datetime.now(),
                     footer=EmbedFooter(text=bot.display_name, icon_url=bot.avatar_url)

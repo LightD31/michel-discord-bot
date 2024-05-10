@@ -1,5 +1,8 @@
 import json
 import os
+import emoji
+import string
+import re
 from collections import defaultdict
 from io import BytesIO
 from typing import Tuple
@@ -58,12 +61,15 @@ def create_dynamic_image(
     # Create a drawing object
     draw = ImageDraw.Draw(Image.new("RGB", (0, 0)))
 
+    # Calculate the bounding box of the text
+    bbox = draw.textbbox((0, 0), text, font=font)
+
     # Calculate the width and height of the text
-    left, top, right, bottom = draw.multiline_textbbox((0, 0), text, font=font)
+    text_width, text_height = bbox[2] - bbox[0], bbox[3] - bbox[1]
 
     # Add padding to the image size
-    image_width = right - left + 2 * image_padding
-    image_height = bottom - top + 2 * image_padding
+    image_width = text_width + 2 * image_padding
+    image_height = text_height + 2 * image_padding
 
     # Create a new image with the calculated size and background color
     image = Image.new("RGB", (image_width, image_height), color=background_color)
@@ -72,11 +78,11 @@ def create_dynamic_image(
     draw = ImageDraw.Draw(image)
 
     # Calculate the position to center the text
-    x = (image_width - (right - left)) // 2
-    y = (image_height - (bottom - top)) // 2
+    x = image_width // 2
+    y = image_height // 2
 
     # Draw the text on the image
-    draw.multiline_text((x, y), text, font=font, fill=0xF2F3F5)
+    draw.text((x, y), text, font=font, fill=0xF2F3F5, anchor="mm")
 
     # Save the image as a PNG file and return the image object and a BytesIO object containing the image data
     imageIO = BytesIO()
@@ -228,3 +234,40 @@ def save_config(
         module_name,
         enabled_servers,
     )
+
+
+def sanitize_content(content):
+    # Remove custom emojis
+    content = re.sub(r"<:\w*:\d*>", "", content)
+    # Remove emojis
+    content = emoji.replace_emoji(content, " ")
+    # Remove mentions
+    content = re.sub(r"<@\d*>", "", content)
+    return content
+
+
+def remove_punctuation(input_string: str):
+    # Make a translator object that will replace all punctuation with None
+    translator = str.maketrans("", "", string.punctuation)
+
+    # Use the translator object to remove punctuation from the input string
+    return input_string.translate(translator).strip()
+
+
+def search_dict_by_sentence(my_dict, sentence):
+    # Create a set of lowercase words in the sentence for efficient lookup
+    words = set(sentence.lower().split())
+
+    # Iterate through dictionary keys
+    for key, value in my_dict.items():
+        # Convert keys to lowercase if they are tuples
+        if isinstance(key, tuple):
+            key_lower = tuple(k.lower() for k in key)
+            # Check if any word in the key matches any word in the sentence
+            if any(word in key_lower for word in words):
+                return value
+        # For non-tuple keys, check if the key directly matches any word in the sentence
+        else:
+            if key.lower() in words:
+                return value
+    return ""

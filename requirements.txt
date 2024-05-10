@@ -16,3 +16,5 @@ notion-client
 twitchAPI
 babel
 isodate
+nbtlib==1.12.1
+anthropic

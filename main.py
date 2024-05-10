@@ -34,7 +34,7 @@ client = interactions.Client(
     intents=interactions.Intents.ALL,
     send_not_ready_messages=True,
     delete_unused_application_cmds=True,
-    auto_defer=True,
+    # auto_defer=interactions.AutoDefer(enabled=True, time_until_defer=0),
     send_command_tracebacks=False,
 )
 
