@@ -3,7 +3,7 @@ from collections import defaultdict
 from datetime import datetime
 
 import interactions
-from notion_client import Client
+from notion_client import AsyncClient
 
 from src import logutil
 from src.utils import load_config
@@ -48,7 +48,7 @@ class ConfrerieClass(interactions.Extension):
     def __init__(self, bot: interactions.client):
         self.bot: interactions.Client = bot
         self.data = {}
-        self.notion = Client(auth=config["notion"]["notionSecret"])
+        self.notion = AsyncClient(auth=config["notion"]["notionSecret"])
         # Create liste of genres
 
     @interactions.listen()
@@ -63,10 +63,10 @@ class ConfrerieClass(interactions.Extension):
         message = await channel.fetch_message(module_config["confrerieRecapMessageId"])
         # Step 2: Notion API (using the Notion API)
 
-        results = self.notion.databases.query(
+        results = (await self.notion.databases.query(
             database_id=module_config["confrerieNotionDbOeuvresId"],
             filter={"property": "Défi", "select": {"is_not_empty": True}},
-        ).get("results")
+        )).get("results")
         # Initialize two empty dictionaries
         authors = defaultdict(int)
         defis = defaultdict(int)
@@ -124,7 +124,7 @@ class ConfrerieClass(interactions.Extension):
         Args:
             page_id (str): The ID of the Notion page to retrieve content from.
         """
-        content = self.notion.pages.retrieve(page_id=page_id)
+        content = await self.notion.pages.retrieve(page_id=page_id)
         bot = await self.bot.fetch_member(self.bot.user.id, enabled_servers[0])
         guild = await self.bot.fetch_guild(enabled_servers[0])
         logger.debug(content)
@@ -216,13 +216,13 @@ class ConfrerieClass(interactions.Extension):
     )
     async def autoupdate(self):
         logger.debug("Auto-update task started")
-        updated = self.notion.databases.query(
+        updated = (await self.notion.databases.query(
             database_id=module_config["confrerieNotionDbOeuvresId"],
             filter={"property": "Update", "checkbox": {"equals": True}},
-        ).get("results")
+        )).get("results")
         for update in updated:
             await self.update(update["id"])
-            self.notion.pages.update(
+            await self.notion.pages.update(
                 page_id=update["id"], properties={"Update": {"checkbox": False}}
             )
 
@@ -445,7 +445,7 @@ class ConfrerieClass(interactions.Extension):
         if self.data["date"] != "":
             properties["Date création"] = {"date": {"start": self.data["date"]}}
 
-        page = self.notion.pages.create(
+        page = await self.notion.pages.create(
             parent={"database_id": module_config["confrerieNotionDbIdEditorsId"]},
             properties=properties,
         )

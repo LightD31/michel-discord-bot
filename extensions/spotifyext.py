@@ -7,10 +7,9 @@ from datetime import datetime, timedelta
 import interactions
 import pymongo
 import pytz
-import requests
+import aiohttp
 import spotipy
 from interactions.api.events import Component
-from requests.exceptions import ReadTimeout
 
 from dict import discord2name, finishList, startList
 from src import logutil
@@ -21,6 +20,7 @@ from src.spotify import (
     embed_song,
     spotify_auth,
     spotifymongoformat,
+    embed_message_vote_add
 )
 from src.utils import milliseconds_to_string, load_config
 
@@ -63,6 +63,7 @@ snapshot = {}
 class Spotify(interactions.Extension):
     def __init__(self, bot: interactions.client):
         self.bot: interactions.Client = bot
+        self.vote_manager = VoteManager("data/addwithvotes.json")
 
     @interactions.listen()
     async def on_startup(self):
@@ -73,6 +74,7 @@ class Spotify(interactions.Extension):
         self.reminder_check.start()
         await self.load_voteinfos()
         await self.load_snapshot()
+        self.addwithvote = self.vote_manager.load_data()
 
     async def load_voteinfos(self):
         """
@@ -302,7 +304,7 @@ class Spotify(interactions.Extension):
         track = sp.track(song["_id"], market="FR")
         channel = await self.bot.fetch_channel(CHANNEL_ID)
         message = await channel.send(
-            content=f"Voulez-vous conserver cette chanson dans playlist ? (poke <@{song['added_by']}>)",
+            content=f"Voulez-vous **conserver** cette chanson dans playlist ? (poke <@{song['added_by']}>)",
             embeds=[
                 await embed_song(
                     song=song,
@@ -459,9 +461,6 @@ class Spotify(interactions.Extension):
         except ConnectionError as e:
             logger.error("ConnectionError : %s", e)
             return
-        except requests.exceptions.ReadTimeout as e:
-            logger.error("ReadTimeout : %s", e)
-            return
 
         if new_snap != snapshot["snapshot"]:
             # Retrieve the tracks of the playlist
@@ -543,16 +542,20 @@ class Spotify(interactions.Extension):
             # Send a message indicating that the playlist has been updated
         message = f"Dernière màj de la playlist {interactions.Timestamp.utcnow().format(interactions.TimestampStyles.RelativeTime)}, si c'était il y a plus d'**une minute**, il y a probablement un problème\n`/addsong Titre et artiste de la chanson` pour ajouter une chanson\nIl y a actuellement **{snapshot['length']}** chansons dans la playlist, pour un total de **{milliseconds_to_string(snapshot['duration'])}**\nStatus : https://status.drndvs.fr/status/guildeux\nDashboard : https://drndvs.link/StatsPlaylist"
         try:
-            message3 = requests.patch(
-                url=PATCH_MESSAGE_URL,
-                json={
-                    "content": message,
-                },
-                timeout=5,
-            )
-            message3.raise_for_status()
-        except ReadTimeout:
-            logger.error("ReadTimeout while trying to patch message")
+            async with aiohttp.ClientSession(
+                timeout=aiohttp.ClientTimeout(total=5)
+            ) as session:
+                async with session.patch(
+                    url=PATCH_MESSAGE_URL,
+                    json={
+                        "content": message,
+                    },
+                ) as response:
+                    response.raise_for_status()
+        except aiohttp.ClientError as e:
+            logger.error("Error while trying to patch message : %s", e)
+        except TimeoutError:
+            logger.error("TimeoutError while trying to patch message")
         # Set the bot's status to "Idle"
         await self.bot.change_presence(status=interactions.Status.IDLE)
 
@@ -588,7 +591,7 @@ class Spotify(interactions.Extension):
             heure (int): The hour of the reminder.
             minute (int): The minute of the reminder.
         """
-        if ctx.channel_id == CHANNEL_ID:
+        if str(ctx.channel_id) == str(CHANNEL_ID):
             logger.info(
                 "%s a ajouté un rappel à %s:%s", ctx.user.display_name, heure, minute
             )
@@ -916,3 +919,288 @@ class Spotify(interactions.Extension):
                 ]
                 logger.debug("choices : %s", choices)
         await ctx.send(choices=choices[0:25])
+
+    @interactions.slash_command(
+        name="addwithvote",
+        description="Si vous êtes pas sûr d'ajoouter une chanson, vous pouvez la mettre au vote",
+        scopes=enabled_servers,
+    )
+    @interactions.slash_option(
+        name="song",
+        description="Nom de la chanson",
+        opt_type=interactions.OptionType.STRING,
+        required=True,
+        autocomplete=True,
+    )
+    async def addwithvote(self, ctx: interactions.SlashContext, song):
+        if str(ctx.channel_id) == str(CHANNEL_ID):
+            # Get last track IDs from MongoDB
+            last_track_ids = playlistItemsFull.distinct("_id")
+            logger.info(
+                "/addwithvote '%s' utilisé par %s(id:%s)",
+                song,
+                ctx.author.username,
+                ctx.author_id,
+            )
+            try:
+                # Get track info from Spotify API
+                track = sp.track(song, market="FR")
+                song = spotifymongoformat(track, ctx.author_id)
+            except spotipy.exceptions.SpotifyException:
+                await ctx.send("Cette chanson n'existe pas.", ephemeral=True)
+                logger.info("Commande /addsong utilisée avec une chanson inexistante")
+            data = self.vote_manager.load_data()
+            # List all song_id in data
+            song_ids = list(data.keys())
+            if song["_id"] not in last_track_ids and song["_id"] not in song_ids:
+                logger.debug("song : %s", song)
+                # Create and send embed message
+                components = [
+                    interactions.ActionRow(
+                        interactions.Button(
+                            label="Oui",
+                            style=interactions.ButtonStyle.SUCCESS,
+                            emoji="✅",
+                            custom_id=f"addwithvote_{song['_id']}_yes",
+                        ),
+                        interactions.Button(
+                            label="Non",
+                            style=interactions.ButtonStyle.DANGER,
+                            emoji="🗑️",
+                            custom_id=f"addwithvote_{song['_id']}_no",
+                        ),
+                        interactions.Button(
+                            label="Annuler",
+                            style=interactions.ButtonStyle.SECONDARY,
+                            emoji="❌",
+                            custom_id=f"addwithvote_{song['_id']}_annuler",
+                        ),
+                    ),
+                ]
+                time = (datetime.now() + timedelta(days=1)).replace(
+                    minute=0, second=0, microsecond=0
+                )
+                if time < datetime.now() + timedelta(days=1):
+                    time += timedelta(hours=1)
+                embed = await embed_song(
+                    song=song,
+                    track=track,
+                    embedtype=EmbedType.VOTE_ADD,
+                    time=time,
+                    person=ctx.author.id,
+                    icon=ctx.author.avatar.url,
+                )
+                message = await ctx.send(
+                    content=f"Voulez-vous **ajouter** cette chanson à la playlist ? (Demandé par <@{ctx.author_id}>)",
+                    embeds=embed,
+                    components=components,
+                )
+                # Append the song, message ID and track ID to the votewithadd dictionary
+                data = self.vote_manager.load_data()
+                data[song["_id"]] = {
+                    "channel_id": ctx.channel.id,
+                    "message_id": message.id,
+                    "author_id": ctx.author.id,
+                    "votes": {
+                        str(ctx.author.id): "yes",
+                        },
+                }
+                self.vote_manager.save_data(data)
+                logger.info(
+                    "%s ajouté au vote par %s", track["name"], ctx.author.display_name
+                )
+            else:
+                await ctx.send(
+                    "Cette chanson est déjà dans la playlist", ephemeral=True
+                )
+                logger.info(
+                    "Commande /addwithvote utilisée avec une chanson déjà présente"
+                )
+        else:
+            await ctx.send(
+                "Vous ne pouvez pas utiliser cette commande dans ce salon.",
+                ephemeral=True,
+            )
+            logger.info(
+                "Commande /addwithvote utilisée dans un mauvais salon(%s)",
+                ctx.channel.name,
+            )
+
+    @interactions.listen(Component)
+    async def on_button2(self, event: Component):
+        if not event.ctx.custom_id.startswith("addwithvote"):
+            return
+        # extract the song_id and the vote from the custom_id
+        song_id = event.ctx.custom_id.split("_")[1]
+        vote = event.ctx.custom_id.split("_")[2]
+        # check if the user has voted recently
+        user_id = str(event.ctx.user.id)
+        if user_id in last_votes and time.time() - last_votes[user_id] < COOLDOWN_TIME:
+            await event.ctx.send(
+                "Tu ne peux voter que toutes les 5 secondes ⚠️", ephemeral=True
+            )
+            logger.warning(
+                "%s a essayé de voter trop rapidement", event.ctx.user.username
+            )
+            return
+        last_votes[user_id] = time.time()
+        # check if the user has already voted and update their vote if necessary
+        data = self.vote_manager.load_data()
+        if vote == "annuler":
+            data[song_id]["votes"].pop(user_id, None)
+            self.vote_manager.save_data(data)
+        else:
+            self.vote_manager.save_vote(user_id, vote, song_id)
+        # count the votes
+        data = self.vote_manager.load_data()
+        yes, no, users = self.vote_manager.count_votes(data, song_id)
+        # update the message with the vote counts
+        users = ", ".join(users)
+        embed_original = event.ctx.message.embeds[0]
+        embed_original.fields[4].value = (
+            f"{yes+no} vote{'s' if yes+no>1 else ''} ({users})"
+        )
+        await event.ctx.message.edit(embeds=[embed_original])
+        # send a message to the user informing them that their vote has been counted
+        if vote == "annuler":
+            await event.ctx.send(
+                "Ton vote a bien été annulé ! 🗳️",
+                ephemeral=True,
+            )
+        else:
+            await event.ctx.send(
+                f"Ton vote pour **{vote}** cette musique a bien été pris en compte ! 🗳️",
+                ephemeral=True,
+            )
+        logger.info("User %s voted %s", event.ctx.user.username, vote)
+
+    @addwithvote.autocomplete("song")
+    async def autocomplete_from_spotify(self, ctx: interactions.AutocompleteContext):
+        """
+        Autocomplete function for the 'addsong' command.
+        """
+        if not ctx.input_text:
+            choices = [
+                {
+                    "name": "Veuillez entrer un nom de chanson",
+                    "value": "error",
+                }
+            ]
+        else:
+            # Search for tracks on Spotify
+            items = sp.search(ctx.input_text, limit=10, type="track", market="FR")[
+                "tracks"
+            ]["items"]
+            if not items:
+                choices = [
+                    {
+                        "name": "Aucun résultat",
+                        "value": "error",
+                    }
+                ]
+            else:
+                # Format search results for autocomplete choices
+                choices = [
+                    {
+                        "name": f"{item['artists'][0]['name']} - {item['name']} (Album: {item['album']['name']})"[
+                            :100
+                        ],
+                        "value": item["uri"],
+                    }
+                    for item in items
+                ]
+        await ctx.send(choices=choices)
+
+    async def endvote(self, song_id: str):
+        """
+        End the vote for a given surname.
+
+        Args:
+            surname (str): The surname to end the vote for.
+        """
+        data = self.vote_manager.load_data()
+        yes_votes, no_votes, users = self.vote_manager.count_votes(data, song_id)
+        # Get the message
+        channel = await self.bot.fetch_channel(data[song_id]["channel_id"])
+        message = await channel.fetch_message(data[song_id]["message_id"])
+        if yes_votes > no_votes:
+            # Add to MongoDb and Spotify
+            try:
+                # Get track info from Spotify API
+                track = sp.track(song, market="FR")
+                song = spotifymongoformat(track, data[song_id]["author_id"])
+            except spotipy.exceptions.SpotifyException as e:
+                logger.error("Spotify API Error while using /addwithvote: %s", e)
+            # Add song to MongoDB and Spotify playlist
+            logger.debug("song : %s", song)
+            playlistItemsFull.insert_one(song)
+            sp.playlist_add_items(PLAYLIST_ID, [song["_id"]])
+            await message.edit(
+                content="La chanson a été ajoutée à la playlist.",
+                embeds=[
+                    message.embeds[0],
+                    await embed_message_vote_add(yes_votes, no_votes, users),
+                ],
+                components=[],
+            )
+            logger.info("La chanson a été ajoutée à la playlist.")
+        else:
+            await message.edit(
+                content="La chanson n'a pas été ajoutée à la playlist.",
+                embeds=[
+                    message.embeds[0],
+                    await embed_message_vote_add(yes_votes, no_votes, users),
+                ],
+                components=[],
+            )
+            logger.info("La chanson n'a pas été ajoutée à la playlist.")
+        # Remove the vote from the data dictionary
+        data.pop(song_id)
+        self.vote_manager.save_data(data)
+
+    @interactions.Task.create(
+        interactions.OrTrigger(
+            *[interactions.TimeTrigger(hour=hour) for hour in range(24)]
+        )
+    )
+    async def check_for_end(self):
+        """
+        Check if the vote has ended for each surname and end it if necessary.
+        """
+        data = self.vote_manager.load_data()
+        for song_id in data:
+            if self.vote_manager.check_deadline(song_id):
+                await self.endvote(song_id)
+                data.pop(song_id)
+        self.vote_manager.save_data(data)
+
+
+class VoteManager:
+    def __init__(self, file_path):
+        self.file_path = file_path
+
+    def load_data(self):
+        with open(self.file_path, "r", encoding="utf-8") as f:
+            return json.load(f)
+
+    def save_data(self, data):
+        with open(self.file_path, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=4)
+
+    def count_votes(self, data, song):
+        data = data[song]
+        yes_votes = len([v for v in data["votes"].values() if v == "yes"])
+        no_votes = len([v for v in data["votes"].values() if v == "no"])
+        # Get the list of users who voted
+        users = [f"<@{user_id}>" for user_id in data["votes"]]
+        return yes_votes, no_votes, users
+
+    def check_deadline(self, surname):
+        data = self.load_data()
+        return data[surname]["deadline"] <= datetime.now().timestamp()
+
+    def save_vote(self, author_id, vote, song):
+        data = self.load_data()
+        logger.info("%s voted %s to add %s", author_id, vote, song)
+        data[song]["votes"][str(author_id)] = vote
+        self.save_data(data)

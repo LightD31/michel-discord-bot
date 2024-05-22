@@ -270,4 +270,11 @@ def search_dict_by_sentence(my_dict, sentence):
         else:
             if key.lower() in words:
                 return value
-    return ""
+    return None
+def extract_answer(text):
+    pattern = r'<answer>(.*?)</answer>'
+    match = re.search(pattern, text, re.DOTALL)
+    if match:
+        return match.group(1)
+    else:
+        return None

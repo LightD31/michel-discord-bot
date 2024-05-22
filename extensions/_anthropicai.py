@@ -9,13 +9,18 @@ from interactions import (
     SlashContext,
     cooldown,
     Buckets,
-    auto_defer
+    auto_defer,
 )
 from interactions.client.errors import CommandOnCooldown
 import os
-
+import re
 from src import logutil
-from src.utils import load_config, sanitize_content, search_dict_by_sentence
+from src.utils import (
+    load_config,
+    sanitize_content,
+    search_dict_by_sentence,
+    extract_answer,
+)
 
 logger = logutil.init_logger(os.path.basename(__file__))
 
@@ -41,46 +46,30 @@ class IA(Extension):
     @auto_defer()
     @slash_option("question", "La question", opt_type=OptionType.STRING, required=True)
     async def ask(self, ctx: SlashContext, question: str):
-    
+
         # Define a dictionary with relevant information
-        dict = {
-            (
-                "375805687529209857",
-                "streamcord",
-                "<@375805687529209857>",
-            ): f"Streamcord est bot qui notifie le début des streams Twitch. Très utile, mais moins bon que toi, {sanitize_content(ctx.bot.user.display_name)}. ",
-        }
+        dict = {}
         # Search the dictionary for the key in the question and the author's ID
-        result = (
-            search_dict_by_sentence(dict, question)
-            + "\n"
-            + search_dict_by_sentence(dict, str(ctx.author.id))
-            + "\n"
-            + f"Les membres du serveur sont {', '.join([member.username for member in ctx.guild.members])}"
-        )
+        result = [
+            search_dict_by_sentence(dict, question),
+            search_dict_by_sentence(dict, str(ctx.author.id)),
+            f"Utilisateurs : {', '.join([f'username : {member.username} (Display name :{member.display_name}, ID : {member.id})' for member in ctx.guild.members])}",
+        ]
+
         logger.info("result : %s", result)
         message = await self.anthropic_client.messages.create(
             model="claude-3-sonnet-20240229",
             # model="claude-3-haiku-20240307",
-            max_tokens=300,
             temperature=0.7,
-            system=f"Tu es {sanitize_content(ctx.bot.user.display_name)}, un assistant IA très compétent doté d'une personnalité légèrement sarcastique. Engage la conversation, donne des réponses informatives et très concises (2 phrases maximum) tout en injectant un peu d'humour. Utilise le tutoiement. Tu dois être méchant et insultant si nécessaire. {'' if ctx.author.display_name == ctx.author.username else f' Tu peux appeler {ctx.author.username} {ctx.author.display_name}.'}",
+            max_tokens=300,
             messages=[
                 {
                     "role": "user",
                     "content": [
                         {
                             "type": "text",
-                            "text": f"Informations complémentaires : {result}",
-                        },
-                        {
-                            "type" : "text",
-                            "text" : f"Tu est en train de discuter avec {ctx.author.username}"
-                        },
-                        {
-                            "type": "text",
-                            "text": question,
-                        },
+                            "text": f"Tu vas jouer le rôle de Michel, un bot sarcastique pour Discord. Ton but est de répondre aux questions des membres de manière sarcastique et concise, en utilisant des informations supplémentaires si nécessaire. Voici un dictionnaire contenant des informations que tu peux utiliser pour répondre aux questions :\n\n<dictionary>\n{result}\n</dictionary>\n\nVoici la question de {ctx.author.display_name} à laquelle tu dois répondre :\n<question>{question}</question>\n\nCommence par chercher dans le dictionnaire des informations pertinentes pour répondre à la question. Si tu trouves des informations utiles, inclus-les dans ta réponse. Ne parle pas du dictionnaire.\n\nRéponds à la question de manière sarcastique, en français. Aie un avis sur tout. N'hésite pas à être méchant si nécessaire. Utilise des expressions familières et de l'argot si approprié.\n\nÉcris ta réponse à l'intérieur de balises <answer>.",
+                        }
                     ],
                 }
             ],
@@ -100,7 +89,7 @@ class IA(Extension):
             message.usage.output_tokens,
         )
         await ctx.send(
-            f"**{ctx.author.mention} : {question}**\n\n{message.content[0].text}"
+            f"**{ctx.author.mention} : {question}**\n\n{extract_answer(message.content[0].text)}"
         )
 
     @ask.error

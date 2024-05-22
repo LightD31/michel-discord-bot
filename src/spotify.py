@@ -66,41 +66,29 @@ def spotify_auth():
 
 
 class EmbedType(Enum):
-    """
-    An enumeration representing the different types of actions that can be performed on a Spotify playlist.
-
-    Attributes:
-        ADD (str): Represents adding a track to a playlist.
-        DELETE (str): Represents deleting a track from a playlist.
-        VOTE (str): Represents voting for a track in a playlist.
-        VOTE_WIN (str): Represents a track winning a vote in a playlist.
-        VOTE_LOSE (str): Represents a track losing a vote in a playlist.
-        INFOS (str): Represents displaying information about a track in a playlist.
-    """
-
     ADD = "add"
     DELETE = "delete"
     VOTE = "vote"
     VOTE_WIN = "vote_win"
     VOTE_LOSE = "vote_lose"
     INFOS = "infos"
-
+    VOTE_ADD = "vote_add"
 
 async def embed_song(
-    song,
-    track,
+    song: dict,
+    track: dict,
     embedtype: EmbedType,
-    time,
-    person=None,
-    icon="https://upload.wikimedia.org/wikipedia/commons/thumb/1/19/Spotify_logo_without_text.svg/200px-Spotify_logo_without_text.svg.png",
-):
+    time: datetime,
+    person: str = None,
+    icon: str = "https://upload.wikimedia.org/wikipedia/commons/thumb/1/19/Spotify_logo_without_text.svg/200px-Spotify_logo_without_text.svg.png",
+) -> interactions.Embed:
     """
     Creates an embed message for a Discord bot that displays information about a song.
 
     Args:
         song (dict): MongoDB infos
         track (dict): Spotify API info
-        type (Type): An enum value indicating the type of message to display.
+        embedtype (EmbedType): An enum value indicating the type of message to display.
         time (datetime): A datetime object indicating the time the message was created.
         person (str, optional): The person who added the song. Defaults to None.
         icon (str, optional): The URL of the icon to use in the footer. Defaults to the Spotify logo.
@@ -110,86 +98,117 @@ async def embed_song(
     """
     if not person:
         person = song.get("added_by", "")
-    if embedtype == EmbedType.ADD:
-        title = "Chanson ajoutée à la playlist"
-        footer = f"Ajoutée par {person}"
-        color = 0x1DB954
-    elif embedtype == EmbedType.DELETE:
-        title = "Chanson supprimée de la playlist"
-        footer = ""
-        color = interactions.MaterialColors.RED
-    elif embedtype == EmbedType.VOTE:
-        title = f"Vote ouvert jusqu'à {str(interactions.utils.timestamp_converter(time).format(interactions.TimestampStyles.RelativeTime))}"
-        color = interactions.MaterialColors.ORANGE
-        footer = "Nettoyeur de playlist"
-    elif embedtype == EmbedType.VOTE_WIN:
-        title = "Résultat du vote"
-        color = interactions.MaterialColors.LIME
-        footer = ""
-    elif embedtype == EmbedType.VOTE_LOSE:
-        title = "Résultat du vote"
-        color = interactions.MaterialColors.DEEP_ORANGE
-        footer = ""
-    elif embedtype == EmbedType.INFOS:
-        title = "Informations sur la chanson"
-        footer = ""
-        color = 0x1DB954
-    else:
-        raise ValueError("Invalid type")
-    embed = interactions.Embed(title=title, color=color)
+        
+    embed_settings = {
+        EmbedType.ADD: {
+            "title": "Chanson ajoutée à la playlist",
+            "footer": f"Ajoutée par {person}",
+            "color": 0x1DB954
+        },
+        EmbedType.DELETE: {
+            "title": "Chanson supprimée de la playlist",
+            "footer": "",
+            "color": interactions.MaterialColors.RED
+        },
+        EmbedType.VOTE: {
+            "title": f"Vote ouvert jusqu'à {interactions.utils.timestamp_converter(time).format(interactions.TimestampStyles.RelativeTime)}",
+            "footer": "Nettoyeur de playlist",
+            "color": interactions.MaterialColors.ORANGE
+        },
+        EmbedType.VOTE_WIN: {
+            "title": "Résultat du vote",
+            "footer": "",
+            "color": interactions.MaterialColors.LIME
+        },
+        EmbedType.VOTE_LOSE: {
+            "title": "Résultat du vote",
+            "footer": "",
+            "color": interactions.MaterialColors.DEEP_ORANGE
+        },
+        EmbedType.INFOS: {
+            "title": "Informations sur la chanson",
+            "footer": "",
+            "color": 0x1DB954
+        },
+        EmbedType.VOTE_ADD: {
+            "title": f"Vote ouvert jusqu'à {interactions.utils.timestamp_converter(time).format(interactions.TimestampStyles.RelativeTime)}",
+            "footer": "",
+            "color": interactions.MaterialColors.ORANGE
+        }
+    }
+
+    settings = embed_settings.get(embedtype, None)
+    if not settings:
+        raise ValueError("Invalid embed type")
+
+    embed = interactions.Embed(title=settings["title"], color=settings["color"])
     embed.set_thumbnail(url=track["album"]["images"][0]["url"])
+    
     embed.add_field(
         name="Titre",
         value=f"[{track['name']}]({track['external_urls']['spotify']})\n([Preview]({track['preview_url']}))",
-        inline=True,
+        inline=True
     )
+    
     embed.add_field(
         name="Artiste",
-        value=", ".join(
-            f"[{artist['name']}]({artist['external_urls']['spotify']})"
-            for artist in track["artists"]
-        ),
-        inline=True,
+        value=", ".join(f"[{artist['name']}]({artist['external_urls']['spotify']})" for artist in track["artists"]),
+        inline=True
     )
-
+    
     embed.add_field(
         name="Album",
         value=f"[{track['album']['name']}]({track['album']['external_urls']['spotify']})",
-        inline=True,
+        inline=True
     )
-    if embedtype != EmbedType.ADD:
+
+    if embedtype not in {EmbedType.ADD, EmbedType.VOTE_ADD}:
         embed.add_field(
             name="\u200b",
             value=f"Initialement ajoutée par <@{person}>{' (ou pas)' if person == '108967780224614400' else ''}",
-            inline=False,
+            inline=False
         )
+
+    if embedtype == EmbedType.VOTE_ADD:
+        embed.add_field(
+            name="\u200b",
+            value=f"Proposée par <@{person}>",
+            inline=False
+        )
+        embed.add_field(
+            name="Votes",
+            value=f"1 vote (<@{person}>)",
+            inline=False
+        )
+
     if embedtype == EmbedType.VOTE:
         embed.add_field(
             name="Votes",
             value="Pas encore de votes",
-            inline=False,
+            inline=False
         )
         embed.add_field(
-            name="\u200b", value="Dashboard votes: https://drndvs.link/StatsPlaylist"
+            name="\u200b", 
+            value="Dashboard votes: https://drndvs.link/StatsPlaylist",
+            inline=False
         )
+        
     if embedtype in {EmbedType.ADD, EmbedType.DELETE}:
         embed.add_field(
             name="\u200b",
             value="[Ecouter la playlist](https://link.drndvs.fr/LaPlaylistDeLaGuilde)",
-            inline=False,
+            inline=False
         )
         embed.add_field(
             name="\u200b",
             value="[Ecouter les récents](https://link.drndvs.fr/LesDecouvertesDeLaGuilde)",
-            inline=True,
+            inline=True
         )
-    embed.set_footer(
-        text=footer,
-        icon_url=icon,
-    )
-    embed.timestamp = time
-    return embed
 
+    embed.set_footer(text=settings["footer"], icon_url=icon)
+    embed.timestamp = time
+    
+    return embed
 
 async def embed_message_vote(
     keep=0,
@@ -238,7 +257,44 @@ async def embed_message_vote(
     )
     embed.timestamp = interactions.utils.timestamp_converter(datetime.now())
     return embed
+async def embed_message_vote_add(
+    yes=0,
+    no=0,
+    users="",
+    color=interactions.MaterialColors.ORANGE,
+    description="",
+):
+    """
+    Creates an embed message for voting.
 
+    Args:
+        keep (int): Number of votes for 'keep'.
+        remove (int): Number of votes for 'remove'.
+        menfou (int): Number of votes for 'menfou'.
+        users (str): List of users who voted.
+        color (interactions.MaterialColors): Color of the embed message.
+
+    Returns:
+        interactions.Embed: The embed message.
+    """
+    embed = interactions.Embed(color=color, description=description)
+    embed.add_field(
+        name="Ajouter",
+        value=f"{yes} vote{'s' if yes > 1 else ''}",
+        inline=True,
+    )
+    embed.add_field(
+        name="Ne pas ajouter",
+        value=f"{no} vote{'s' if no > 1 else ''}",
+        inline=True,
+    )
+    embed.add_field(name="\u200b", value=f"Votes de {', '.join(users)}")
+    embed.set_footer(
+        text="",
+        icon_url="https://upload.wikimedia.org/wikipedia/commons/thumb/1/19/Spotify_logo_without_text.svg/200px-Spotify_logo_without_text.svg.png",
+    )
+    embed.timestamp = interactions.utils.timestamp_converter(datetime.now())
+    return embed
 
 def count_votes(votes):
     """

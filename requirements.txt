@@ -3,7 +3,6 @@ python-dotenv
 spotipy
 pytz
 pandas
-requests
 python-dotenv
 prettytable
 Pillow
@@ -18,3 +17,6 @@ babel
 isodate
 nbtlib==1.12.1
 anthropic
+beautifulsoup4
+openai
+aiohttp

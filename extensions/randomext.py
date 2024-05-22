@@ -25,8 +25,14 @@ class RandomClass(Extension):
         opt_type=OptionType.STRING,
         required=True,
     )
-    async def pick(self, ctx: SlashContext, choix):
-        choices = [choice.strip() for choice in choix.split(";")]
+    @slash_option(
+        "séparateur",
+        "Séparateur des choix (Défaut: ;)",
+        opt_type=OptionType.STRING,
+        required=False,
+    )
+    async def pick(self, ctx: SlashContext, choix, séparateur=";"):
+        choices = [choice.strip() for choice in choix.split(séparateur)]
         if len(choices) <= 1:
             await ctx.send("Compliqué de faire un choix quand il n'y a pas le choix")
             return

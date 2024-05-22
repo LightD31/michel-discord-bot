@@ -70,20 +70,6 @@ class Utils(Extension):
         await ctx.send(f"Pong ! Latence : {round(ctx.bot.latency * 1000)}ms")
 
     @slash_command(
-        name="pong", description="Vérifier la latence du bot", scopes=enabled_servers
-    )
-    async def pong(self, ctx: SlashContext):
-        """
-        A slash command that checks the latency of the bot.
-
-        Parameters:
-        -----------
-        ctx : SlashContext
-            The context of the slash command.
-        """
-        await ctx.send(f"Ping ! Latence : {round(ctx.bot.latency * 1000)}ms")
-
-    @slash_command(
         name="delete", description="Supprimer des messages", scopes=enabled_servers
     )
     @slash_option(
@@ -111,9 +97,9 @@ class Utils(Extension):
         opt_type=OptionType.STRING,
         required=False,
     )
-    @slash_default_member_permission(
-        Permissions.ADMINISTRATOR | Permissions.MANAGE_MESSAGES
-    )
+    # @slash_default_member_permission(
+    #     Permissions.ADMINISTRATOR | Permissions.MANAGE_MESSAGES
+    # )
     async def delete(
         self,
         ctx: SlashContext,
