@@ -1,23 +1,21 @@
-FROM python:3.11.3
+# Use a specific Python image
+FROM python:3.12.3
 
-# we want stdout
-ENV PYTHONDONTWRITEBYTECODE=1
-ENV PYTHONUNBUFFERED=1
+# Set environment variables
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/app
 
-# add the path to pythonpath
-ENV PYTHONPATH "${PYTHONPATH}:/app"
+# Set the working directory
+WORKDIR /app
 
-# install uvloop for faster asyncio
-RUN pip3.11 install uvloop
-
-# install the requirements
+# Copy and install requirements separately to leverage caching
 COPY ./requirements.txt /app/requirements.txt
-RUN pip3.11 install --upgrade pip
-RUN pip3.11 install --upgrade -r /app/requirements.txt
+RUN pip install --upgrade pip \
+    && pip install --upgrade -r /app/requirements.txt
 
-# copy over the source files
+# Copy the rest of the application code
 COPY ./ /app/
 
-# start the bot
-WORKDIR /app
-CMD ["python3.11", "main.py"]
+# Start the bot
+CMD ["python", "main.py"]

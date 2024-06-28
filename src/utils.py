@@ -6,7 +6,8 @@ import re
 from collections import defaultdict
 from io import BytesIO
 from typing import Tuple
-
+import asyncio
+from aiohttp import ClientSession, ClientError
 from interactions.api.events import MessageReactionAdd, MessageReactionRemove
 from PIL import Image, ImageDraw, ImageFont
 
@@ -101,6 +102,9 @@ def format_number(num):
 
 name_cache = {}
 
+def escape_md(text):
+    """Escape markdown special characters in the given text."""
+    return re.sub(r"([_*\[\]()~`>#+\-=|{}.!])", r"\\\1", text)
 
 async def format_poll(event: MessageReactionAdd | MessageReactionRemove, config):
     """
@@ -278,3 +282,30 @@ def extract_answer(text):
         return match.group(1)
     else:
         return None
+    
+async def fetch(url, return_type="text", retries=3, pause=1):
+    for i in range(retries):
+        try:
+            async with ClientSession() as session:
+                async with session.get(url) as response:
+                    if response.status != 200:
+                        logger.error(
+                            f"Failed to fetch {url}: Status {response.status}"
+                        )
+                        raise Exception(
+                            f"Failed to fetch {url}: Status {response.status}"
+                        )
+                    if return_type == "text":
+                        return await response.text()
+                    elif return_type == "json":
+                        return await response.json()
+                    else:
+                        raise ValueError(
+                            "Invalid return_type. Expected 'text' or 'json'."
+                        )
+        except (ClientError, asyncio.TimeoutError) as e:
+            logger.error(f"Error fetching {url}: {e}")
+            if i == retries - 1:  # This was the last attempt
+                raise
+            else:
+                await asyncio.sleep(pause)

@@ -446,24 +446,24 @@ class Utils(Extension):
         logger.info("Poll edited")
         await ctx.send("Sondage modifié", ephemeral=True)
 
-    @listen()
-    async def on_message(self, event: MessageCreate):
-        """
-        This method is called when a message is received.
+    # @listen()
+    # async def on_message(self, event: MessageCreate):
+    #     """
+    #     This method is called when a message is received.
 
-        Args:
-            event (interactions.api.events.MessageCreate): The message event.
-        """
-        if (
-            event.message.channel.type == ChannelType.DM
-            or event.message.channel.type == ChannelType.GROUP_DM
-        ) and event.message.author.id != self.bot.user.id:
-            logger.info(
-                "Message from %s (ID: %s) in DMs : %s",
-                event.message.author.username,
-                event.message.author.id,
-                event.message.content,
-            )
+    #     Args:
+    #         event (interactions.api.events.MessageCreate): The message event.
+    #     """
+    #     if (
+    #         event.message.channel.type == ChannelType.DM
+    #         or event.message.channel.type == ChannelType.GROUP_DM
+    #     ) and event.message.author.id != self.bot.user.id:
+    #         logger.info(
+    #             "Message from %s (ID: %s) in DMs : %s",
+    #             event.message.author.username,
+    #             event.message.author.id,
+    #             event.message.content,
+    #         )
 
     # Create a set of commands to define daily tasks
     async def load_reminders(self):

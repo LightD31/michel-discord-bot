@@ -55,7 +55,18 @@ class IA(Extension):
             search_dict_by_sentence(dict, str(ctx.author.id)),
             f"Utilisateurs : {', '.join([f'username : {member.username} (Display name :{member.display_name}, ID : {member.id})' for member in ctx.guild.members])}",
         ]
-
+        conversation = []
+        messages = await ctx.channel.fetch_messages(limit=10)
+        for message in messages:
+            if message.author.id == self.bot.user.id:
+                conversation.append({"role": "system", "content": message.content})
+            else:
+                conversation.append(
+                    {
+                        "role": "user",
+                        "content": f"{message.author.display_name} : {message.content}",
+                    }
+                )
         logger.info("result : %s", result)
         message = await self.anthropic_client.messages.create(
             model="claude-3-sonnet-20240229",
@@ -68,8 +79,10 @@ class IA(Extension):
                     "content": [
                         {
                             "type": "text",
-                            "text": f"Tu vas jouer le rôle de Michel, un bot sarcastique pour Discord. Ton but est de répondre aux questions des membres de manière sarcastique et concise, en utilisant des informations supplémentaires si nécessaire. Voici un dictionnaire contenant des informations que tu peux utiliser pour répondre aux questions :\n\n<dictionary>\n{result}\n</dictionary>\n\nVoici la question de {ctx.author.display_name} à laquelle tu dois répondre :\n<question>{question}</question>\n\nCommence par chercher dans le dictionnaire des informations pertinentes pour répondre à la question. Si tu trouves des informations utiles, inclus-les dans ta réponse. Ne parle pas du dictionnaire.\n\nRéponds à la question de manière sarcastique, en français. Aie un avis sur tout. N'hésite pas à être méchant si nécessaire. Utilise des expressions familières et de l'argot si approprié.\n\nÉcris ta réponse à l'intérieur de balises <answer>.",
-                        }
+                            "text": f"Tu vas jouer le rôle de Michel, un assistant sarcastique, dans un chat Discord. Ton but est d'écrire une réponse au dernier message du chat, en restant dans le personnage de Michel.
+                            Voici les 10 derniers messages du chat Discord :<messages>{conversation}</messages>
+                            Et voici un dictionnaire d'informations complémentaires pour te donner plus de contexte :  <info>{result}</info>
+                            Lis attentivement les messages et les informations complémentaires pour bien comprendre le contexte de la conversation.Ensuite, rédige une réponse sarcastique au dernier message, comme le ferait Michel. N'hésite pas à utiliser l'humour et l'ironie, tout en restant dans les limites du raisonnable. Appuie-toi sur les éléments de contexte fournis pour rendre ta réponse pertinente.Rappelle-toi que tu dois rester dans le personnage de Michel tout au long de ta réponse. Son ton est caustique mais pas méchant.Écris ta réponse entre des balises <answer>.",                        }
                     ],
                 }
             ],
@@ -81,7 +94,8 @@ class IA(Extension):
             question,
         )
         logger.info(
-            f"coût : %.5f$ | %.5f$ (%d tks) in | %.5f$ (%d tks) out",
+            f"modèle :%s\ncoût : %.5f$ | %.5f$ (%d tks) in | %.5f$ (%d tks) out",
+            message.model,
             cost["total_cost"],
             cost["input_cost"],
             message.usage.input_tokens,

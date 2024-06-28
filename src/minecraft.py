@@ -3,6 +3,8 @@ import json
 import asyncssh
 import os
 from src import logutil
+import nbtlib
+import gzip
 
 logger = logutil.init_logger(os.path.basename(__file__))
 
@@ -18,11 +20,18 @@ async def get_users(sftp:asyncssh.SFTPClient, file):
         userdata = json.loads(data)
         return userdata
 
-async def get_player_stats(sftp:asyncssh.SFTPClient, file, nbtfile):
+async def get_player_stats(sftp:asyncssh.SFTPClient, file, nbtfile=None):
     async with sftp.open(file) as f:
+        logger.debug(f"Reading {file}")
         data = await f.read()
         playerdata = json.loads(data)
-    skills = nbtfile["data"]["xp_data"][str(file).removesuffix(".json").removeprefix("world/stats/")]
+    async with sftp.open(nbtfile, 'rb') as f:
+        logger.debug(f"Reading {nbtfile}")
+        data = await f.read()
+        nbt = nbtlib.File.parse(gzip.GzipFile(fileobj=BytesIO(data)))
+    # nbt = nbt[""]
+    level=str(int(nbt[""]["XpLevel"]))
+    logger.debug(f"Level: {str(level)}")
     deaths = (
         playerdata.get("stats", {})
         .get("minecraft:custom", {})
@@ -38,13 +47,6 @@ async def get_player_stats(sftp:asyncssh.SFTPClient, file, nbtfile):
         .get("minecraft:custom", {})
         .get("minecraft:walk_one_cm", 0)
     )
-    # quartz = (
-    #     playerdata.get("stats", {})
-    #     .get("minecraft:mined", {})
-    #     .get("minecraft:nether_quartz_ore", 0)
-    # )
-    # icePlaced = playerdata.get("stats", {}).get("minecraft:used", {}).get("minecraft:ice", 0)
-    # BlueIcePlaced = playerdata.get("stats", {}).get("minecraft:used", {}).get("minecraft:blue_ice", 0)
 
     walked = walked / 100000
     ratio = deaths / (playtime / 20 / 60 / 60)
@@ -52,15 +54,14 @@ async def get_player_stats(sftp:asyncssh.SFTPClient, file, nbtfile):
 
     player_data = {
         "Joueur": str(file).removesuffix(".json").removeprefix("world/stats/"),
+        "Niveau" : level,
         "Morts": deaths,
-        "Temps de jeu": playtime,
         "Morts/h": ratio,
         "Marche (km)": walked,
-        # "Quartz minés": quartz,
-        # "Glace posée": icePlaced+BlueIcePlaced,
+        "Temps de jeu": playtime,
     }
-    for skill in sorted(skills):
-        player_data[str(skill).capitalize()] = calculate_level(skills[skill])
+    # for skill in sorted(skills):
+    #     player_data[str(skill).capitalize()] = calculate_level(skills[skill])
     return player_data
         
 async def create_sftp_connection(host, port, username, password):

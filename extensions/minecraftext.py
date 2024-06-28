@@ -109,7 +109,7 @@ class Minecraft(Extension):
             # Create and format the status message
             embed1 = Embed(
                 title=f"Serveur {colocStatus.version.name}",
-                description=f"Adresse : `{MINECRAFT_ADDRESS}`\nModpack : [Fiefdom](https://www.curseforge.com/minecraft/modpacks/fiefdom)",
+                description=f"Adresse : `{MINECRAFT_ADDRESS}`\nModpack : [Cisco's Fantasy Medieval RPG Lite](https://www.curseforge.com/minecraft/modpacks/ciscos-fantasy-medieval-adventure-rpg)\nVersion : **15D**",
                 fields=[
                     {
                         "name": "Latence",
@@ -201,18 +201,20 @@ class Minecraft(Extension):
         ) as conn:
             async with conn.start_sftp_client() as sftp:
                 tasks = []
-                async with sftp.open("world/data/pmmo.dat", 'rb') as f:
-                    # Save the file locally as pmmo.dat
-                    with open("data/pmmo.dat", "wb") as file:
-                        data = await f.read()
-                        file.write(data)
-                # Load the pmmo.dat file and get the player stats
-                nbtfile = nbtlib.load("data/pmmo.dat")
-                nbtfile = nbtfile['']
+                # async with sftp.open("world/data/pmmo.dat", 'rb') as f:
+                #     # Save the file locally as pmmo.dat
+                #     with open("data/pmmo.dat", "wb") as file:
+                #         data = await f.read()
+                #         file.write(data)
+                # # Load the pmmo.dat file and get the player stats
+                # nbtfile = nbtlib.load("data/pmmo.dat")
+                # nbtfile = nbtfile['']
                 tasks.append(get_users(sftp, "usercache.json"))
                 files = await sftp.glob("world/stats/*json")
                 for file in files:
                     logger.debug("Opening %s", file)
+                    # Find corrsponding .dat file in world/playerdata
+                    nbtfile = f"world/playerdata/{file.removeprefix('world/stats/').removesuffix('.json')}.dat"                    
                     tasks.append(get_player_stats(sftp, file, nbtfile))
                 results = await asyncio.gather(*tasks)
                   
@@ -242,7 +244,7 @@ class Minecraft(Extension):
         # Create an embed with the server stats and send it to the Discord channel
         embed2 = Embed(
             title="Stats",
-            description=f"Actualisé toutes les heures\nDernière actualisation : {Timestamp.utcnow().format(TimestampStyles.RelativeTime)}",
+            description=f"Actualisé toutes les heures à Xh10\nDernière actualisation : {Timestamp.utcnow().format(TimestampStyles.RelativeTime)}",
             images=("attachment://stats.png"),
             color=BrandColors.BLURPLE,
             timestamp=Timestamp.utcnow().isoformat(),

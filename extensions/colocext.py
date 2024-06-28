@@ -3,8 +3,7 @@ import os
 import pytz
 from datetime import datetime, timedelta
 from bs4 import BeautifulSoup
-import aiohttp
-from dotenv import load_dotenv
+from aiohttp import ClientSession
 from interactions import (
     ActionRow,
     BaseChannel,
@@ -24,15 +23,14 @@ from interactions import (
     slash_command,
     slash_option,
     TimestampStyles,
+    OrTrigger,
 )
 from interactions.api.events import Component
 from interactions.client.utils import timestamp_converter
 from src import logutil
-from src.utils import load_config
+from src.utils import load_config, fetch
 
 logger = logutil.init_logger(os.path.basename(__file__))
-
-load_dotenv()
 
 config, module_config, enabled_servers = load_config("moduleColoc")
 
@@ -53,7 +51,7 @@ class ColocClass(Extension):
         await self.load_reminders()
         self.check_reminders.start()
         self.get_page_data.start()
-        await self.get_page_data()
+        # await self.get_page_data()
 
     @slash_command(name="fesse", description="Fesses", scopes=enabled_servers)
     async def fesse(self, ctx: SlashContext):
@@ -231,38 +229,48 @@ class ColocClass(Extension):
     async def check_reminders(self):
         current_time = datetime.now()
         reminders_to_remove = []
-        async with aiohttp.ClientSession() as session:  # Move the session creation here
+        async with ClientSession() as session:
             for remind_time, user_ids in reminders.copy().items():
                 if remind_time <= current_time:
                     for user_id in user_ids.copy():
                         user: User = await self.bot.fetch_user(user_id)
                         # Check if the user did /journa today
-                        async with session.get(f"https://zunivers-api.zerator.com/public/loot/{user.username}") as response:
-                            response = await response.json()
-                            for day in response["lootInfos"]:
-                                if day["date"] == current_time.strftime("%Y-%m-%d"):
-                                    if day["count"] == 0:
-                                        await user.send(
-                                            "Tu n'as pas encore /journa aujourd'hui, n'oublie pas !\nhttps://discord.com/channels/138283154589876224/808432657838768168"
-                                        )
-                                        logger.info("Rappel envoyé à %s", user.display_name)
-                                    else:
-                                        logger.info(
-                                            "Pas de rappel pour %s, /journa déjà fait aujourd'hui.",
-                                            user.display_name,
-                                        )
-                            next_remind_time = remind_time + timedelta(days=1)
-                            if next_remind_time not in reminders:
-                                reminders[next_remind_time] = set()
-                            reminders[next_remind_time].add(user_id)
-                            user_ids.remove(user_id)
-                        if not user_ids:
-                            reminders_to_remove.append(remind_time)
+                        response = await fetch(
+                            f"https://zunivers-api.zerator.com/public/loot/{user.username}",
+                            "json",
+                        )
+                        for day in response["lootInfos"]:
+                            if day["date"] == current_time.strftime("%Y-%m-%d"):
+                                if day["count"] == 0:
+                                    await user.send(
+                                        "Tu n'as pas encore /journa aujourd'hui, n'oublie pas !\nhttps://discord.com/channels/138283154589876224/808432657838768168"
+                                    )
+                                    logger.info("Rappel envoyé à %s", user.display_name)
+                                else:
+                                    logger.info(
+                                        "Pas de rappel pour %s, /journa déjà fait aujourd'hui.",
+                                        user.display_name,
+                                    )
+                        next_remind_time = remind_time + timedelta(days=1)
+                        if next_remind_time not in reminders:
+                            reminders[next_remind_time] = set()
+                        reminders[next_remind_time].add(user_id)
+                        user_ids.remove(user_id)
+                    if not user_ids:
+                        reminders_to_remove.append(remind_time)
         for remind_time in reminders_to_remove:
             del reminders[remind_time]
         await self.save_reminders()
 
-    @Task.create(IntervalTrigger(minutes=30))
+    @Task.create(
+        OrTrigger(
+            *[
+                TimeTrigger(hour=i, minute=j, utc=False)
+                for i in [18, 19, 20, 21, 22, 23, 0]
+                for j in [0, 15, 30, 45]
+            ]
+        )
+    )
     async def get_page_data(self):
         try:
             channel = await self.bot.fetch_channel(module_config["colocMdrChannelId"])
@@ -276,6 +284,7 @@ class ColocClass(Extension):
 
         embed = Embed(
             title="Prochains matchs de Mandatory",
+            description="Source: [Liquipedia](https://liquipedia.net/valorant/Mandatory)",
             color=0xE04747,
             timestamp=datetime.now(),
             thumbnail="https://liquipedia.net/commons/images/d/d7/Mandatory_2022_allmode.png",
@@ -298,34 +307,28 @@ class ColocClass(Extension):
                     inline=False,
                 )
 
-        first_heading, standing_str, standings = await self.get_standings()
+        first_heading, standing_str_current, standing_str_last_week, standings = await self.get_standings()
         if standings is None:
             return
 
         embedClassement = Embed(
             title=f"Classement de {first_heading}",
+            description=f"Source: [Liquipedia](https://liquipedia.net/valorant/VCL/2024/France/Split_2/Regular_Season)",
             color=0xE04747,
             timestamp=datetime.now(),
         )
-        embedClassement.add_field(name="\u200b", value=standing_str)
+        embedClassement.add_field(name="Semaine en cours", value=standing_str_current)
+        embedClassement.add_field(name="Semaine précédente", value=standing_str_last_week)
 
         try:
             await message.edit(content="", embeds=[embed, embedClassement])
         except Exception as e:
             logger.error(f"Failed to edit message: {e}")
 
-    async def fetch_html(self, url):
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url) as response:
-                if response.status != 200:
-                    logger.error(f"Failed to fetch {url}: Status {response.status}")
-                    return None
-                return await response.text()
-
     async def get_upcoming_matches(self):
         page_title = "Mandatory"
         base_url = f"https://liquipedia.net/valorant/{page_title}"
-        html_content = await self.fetch_html(base_url)
+        html_content = await fetch(base_url)
         if not html_content:
             return None
 
@@ -410,86 +413,81 @@ class ColocClass(Extension):
     async def get_standings(self):
         page_title = "VCL/2024/France/Split_2/Regular_Season"
         base_url = f"https://liquipedia.net/valorant/{page_title}"
-        html_content = await self.fetch_html(base_url)
+        html_content = await fetch(base_url)
         if not html_content:
             return None
 
         soup = BeautifulSoup(html_content, "html.parser")
-        first_heading = soup.select_one(".firstHeading").text
+        first_heading = soup.select_one(".firstHeading").text if soup.select_one(".firstHeading") else "Standings"
+
         table = soup.select_one('table.wikitable.wikitable-bordered.grouptable[style="width:425px;margin:0px"]')
         if not table:
             logger.error("Failed to find standings table.")
             return None
+
         team_rows = soup.select("tr[data-toggle-area-content]")
+        if not team_rows:
+            logger.error("No team rows found.")
+            return None
+
         values = [int(row["data-toggle-area-content"]) for row in team_rows]
         max_value = max(values)
-        logger.debug(f"Max value: {max_value}")
+        last_week_value = max_value - 1
+        logger.debug(f"Max value: {max_value}, Last week value: {last_week_value}")
 
-        team_rows = table.select(f"tr[data-toggle-area-content='{max_value}']")
         standings = {}
-        standing_str = "```ansi\n"
-        logger.debug(f"Found {len(team_rows)} teams.")
-        for row in team_rows:
-            try:
-                cells = row.find_all("td")
-                standing_tag = row.find(
-                    "th", {"class": lambda x: x and "bg-" in x, "style": "width:16px"}
-                )
-                standing = standing_tag.text.strip().strip(".") if standing_tag else ""
+        standing_str_current = "```ansi\n"
+        standing_str_last_week = "```ansi\n"
 
-                if cells:
-                    team_name = (
-                        cells[0].find("span", class_="team-template-text").text.strip()
-                    )
-                    logger.debug(f"Team name: {team_name}")
-                    overall_result = (
-                        "0-0"
-                        if cells[1].text.strip() == "-"
-                        else cells[1].text.strip() or "0-0"
-                    )
-                    match_result = (
-                        cells[2].text.strip() if cells[2].text.strip() else "0-0"
-                    )
-                    round_result = (
-                        cells[3].text.strip() if cells[3].text.strip() else "0-0"
-                    )
-                    round_diff = (
-                        cells[4].text.strip() if cells[4].text.strip() else "+0"
-                    )
+        for value in [max_value, last_week_value]:
+            team_rows = table.select(f"tr[data-toggle-area-content='{value}']")
+            logger.debug(f"Processing standings for value: {value} with {len(team_rows)} teams.")
+            
+            for row in team_rows:
+                try:
+                    cells = row.find_all("td")
+                    standing_tag = row.find("th", {"class": lambda x: x and "bg-" in x, "style": "width:16px"})
+                    standing = standing_tag.text.strip().strip(".") if standing_tag else ""
 
-                    rank_change_up = cells[0].find(
-                        "span", class_="group-table-rank-change-up"
-                    )
-                    rank_change_down = cells[0].find(
-                        "span", class_="group-table-rank-change-down"
-                    )
+                    if cells:
+                        team_name = cells[0].find("span", class_="team-template-text").text.strip()
+                        logger.debug(f"Team name: {team_name}")
 
-                    if rank_change_up:
-                        evolution = (
-                            f"\u001b[1;32m{rank_change_up.text.strip()}\u001b[0m"
-                        )
-                    elif rank_change_down:
-                        evolution = (
-                            f"\u001b[1;31m{rank_change_down.text.strip()}\u001b[0m"
-                        )
-                    else:
-                        evolution = "\u001b[1;30m==\u001b[0m"
+                        overall_result = "0-0" if cells[1].text.strip() == "-" else cells[1].text.strip() or "0-0"
+                        match_result = cells[2].text.strip() if cells[2].text.strip() else "0-0"
+                        round_result = cells[3].text.strip() if cells[3].text.strip() else "0-0"
+                        round_diff = cells[4].text.strip() if cells[4].text.strip() else "+0"
 
-                    standings[team_name] = {
-                        "standing": standing,
-                        "overall_result": overall_result,
-                        "match_result": match_result,
-                        "round_result": round_result,
-                        "round_diff": round_diff,
-                        "evolution": evolution,
-                    }
-                    logger.debug(standings[team_name])
-                    if team_name == "Mandatory":
-                        standing_str += f"\u001b[1;37m{standing:<1} {team_name:<14} ({overall_result:<3})\u001b[0m {evolution:<2} \u001b[1;37m({round_diff})\u001b[0m\n"
-                    else:
-                        standing_str += f"{standing:<1} {team_name:<14} ({overall_result:<3}) {evolution:<2} ({round_diff})\n"
-            except Exception as e:
-                logger.error(f"Error parsing standings data: {e}")
+                        rank_change_up = cells[0].find("span", class_="group-table-rank-change-up")
+                        rank_change_down = cells[0].find("span", class_="group-table-rank-change-down")
 
-        standing_str += "```"
-        return first_heading, standing_str, standings
+                        if rank_change_up:
+                            evolution = f"\u001b[1;32m{rank_change_up.text.strip()}\u001b[0m"
+                        elif rank_change_down:
+                            evolution = f"\u001b[1;31m{rank_change_down.text.strip()}\u001b[0m"
+                        else:
+                            evolution = "\u001b[1;30m==\u001b[0m"
+
+                        standings[team_name] = standings.get(team_name, {})
+                        standings[team_name][f"standing_{value}"] = {
+                            "standing": standing,
+                            "overall_result": overall_result,
+                            "match_result": match_result,
+                            "round_result": round_result,
+                            "round_diff": round_diff,
+                            "evolution": evolution,
+                        }
+                        logger.debug(standings[team_name][f"standing_{value}"])
+
+                        formatted_str = f"{standing:<1} {team_name:<14} ({overall_result:<3}) {evolution:<2} ({round_diff})\n"
+                        if value == max_value:
+                            standing_str_current += formatted_str
+                        else:
+                            standing_str_last_week += formatted_str
+                except Exception as e:
+                    logger.error(f"Error parsing standings data: {e}")
+
+        standing_str_current += "```"
+        standing_str_last_week += "```"
+
+        return first_heading, standing_str_current, standing_str_last_week, standings

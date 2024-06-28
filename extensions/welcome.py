@@ -46,7 +46,7 @@ class Welcome(Extension):
         )
         # Get the welcome channel
         channel = event.guild.get_channel(
-            serv_config.get("welcomeChannelId", event.guild.system_channel.id)
+            serv_config.get("welcomeChannelId") or event.guild.system_channel.id
         )
         # Send the welcome message
         await channel.send(filled_message)
@@ -67,7 +67,12 @@ class Welcome(Extension):
         if str(event.guild.id) not in enabled_servers:
             logger.info("Server not enabled")
             return
-        serv_config = module_config.get(str(event.guild.id), {})
+        serv_config : dict = module_config.get(str(event.guild.id), {})
+        logger.debug("Message : %s\n, Weights : %s\nChannel : %s",
+                    serv_config.get("leaveMessageList"),
+                    serv_config.get("leaveMessageWeights"),
+                    serv_config.get("welcomeChannelId")
+                    )
         leave_messages = serv_config.get(
             "leaveMessageList",
             ["Au revoir **{mention}** !"],
@@ -79,7 +84,7 @@ class Welcome(Extension):
         )
         # Get the welcome channel
         channel = event.guild.get_channel(
-            serv_config.get("welcomeChannelId", event.guild.system_channel.id)
+            serv_config.get("welcomeChannelId") or event.guild.system_channel.id
         )
         # Send the welcome message
         await channel.send(filled_message)

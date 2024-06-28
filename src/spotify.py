@@ -196,12 +196,12 @@ async def embed_song(
     if embedtype in {EmbedType.ADD, EmbedType.DELETE}:
         embed.add_field(
             name="\u200b",
-            value="[Ecouter la playlist](https://link.drndvs.fr/LaPlaylistDeLaGuilde)",
+            value="[Ecouter la playlist](https://drndvs.link/LaPlaylistDeLaGuilde)",
             inline=False
         )
         embed.add_field(
             name="\u200b",
-            value="[Ecouter les récents](https://link.drndvs.fr/LesDecouvertesDeLaGuilde)",
+            value="[Ecouter les récents](https://drndvs.link/LesDecouvertesDeLaGuilde)",
             inline=True
         )
 
