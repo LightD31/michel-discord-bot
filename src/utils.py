@@ -102,9 +102,11 @@ def format_number(num):
 
 name_cache = {}
 
+
 def escape_md(text):
     """Escape markdown special characters in the given text."""
     return re.sub(r"([_*\[\]()~`>#+\-=|{}.!])", r"\\\1", text)
+
 
 async def format_poll(event: MessageReactionAdd | MessageReactionRemove, config):
     """
@@ -275,23 +277,24 @@ def search_dict_by_sentence(my_dict, sentence):
             if key.lower() in words:
                 return value
     return None
+
+
 def extract_answer(text):
-    pattern = r'<answer>(.*?)</answer>'
+    pattern = r"<answer>(.*?)</answer>"
     match = re.search(pattern, text, re.DOTALL)
     if match:
         return match.group(1)
     else:
         return None
-    
-async def fetch(url, return_type="text", retries=3, pause=1):
+
+
+async def fetch(url, return_type="text", headers=None, params=None, retries=3, pause=1):
     for i in range(retries):
         try:
             async with ClientSession() as session:
-                async with session.get(url) as response:
+                async with session.get(url, headers=headers, params=params) as response:
                     if response.status != 200:
-                        logger.error(
-                            f"Failed to fetch {url}: Status {response.status}"
-                        )
+                        logger.error(f"Failed to fetch {url}: Status {response.status}")
                         raise Exception(
                             f"Failed to fetch {url}: Status {response.status}"
                         )
