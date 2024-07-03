@@ -24,54 +24,81 @@ from src.spotify import (
 )
 from src.utils import milliseconds_to_string, load_config
 
+# Constants and Configuration
+CONFIG, MODULE_CONFIG, ENABLED_SERVERS = load_config("moduleSpotify")
+MODULE_CONFIG = MODULE_CONFIG[ENABLED_SERVERS[0]]
+
+DISCORD2NAME = CONFIG["discord2name"][str(ENABLED_SERVERS[0])]
+SPOTIFY2DISCORD = MODULE_CONFIG["spotifyIdToDiscordId"]
+
+SPOTIFY_CLIENT_ID = CONFIG["spotify"]["spotifyClientId"]
+SPOTIFY_CLIENT_SECRET = CONFIG["spotify"]["spotifyClientSecret"]
+SPOTIFY_REDIRECT_URI = CONFIG["spotify"]["spotifyRedirectUri"]
+CHANNEL_ID = MODULE_CONFIG["spotifyChannelId"]
+PLAYLIST_ID = MODULE_CONFIG["spotifyPlaylistId"]
+NEW_PLAYLIST_ID = MODULE_CONFIG["spotifyNewPlaylistId"]
+PATCH_MESSAGE_URL = MODULE_CONFIG["spotifyRecapMessage"]
+GUILD_ID = ENABLED_SERVERS[0]
+DEV_GUILD = CONFIG["discord"]["devGuildId"]
+COOLDOWN_TIME = 1
+DATA_FOLDER = CONFIG["misc"]["dataFolder"]
+
+# Logger setup
 logger = logutil.init_logger(os.path.basename(__file__))
 
-config, module_config, enabled_servers = load_config("moduleSpotify")
-module_config = module_config[enabled_servers[0]]
-
-discord2name = config["discord2name"][str(enabled_servers[0])]
-spotify2discord = module_config['spotifyIdToDiscordId']
-
-# Load environment variables
-SPOTIFY_CLIENT_ID = config["spotify"]["spotifyClientId"]
-SPOTIFY_CLIENT_SECRET = config["spotify"]["spotifyClientSecret"]
-SPOTIFY_REDIRECT_URI = config["spotify"]["spotifyRedirectUri"]
-CHANNEL_ID = module_config["spotifyChannelId"]
-PLAYLIST_ID = module_config["spotifyPlaylistId"]
-NEW_PLAYLIST_ID = module_config["spotifyNewPlaylistId"]
-PATCH_MESSAGE_URL = module_config["spotifyRecapMessage"]
-GUILDE_GUILD_ID = enabled_servers[0]
-DEV_GUILD = config["discord"]["devGuildId"]
-COOLDOWN_TIME = 1
-DATA_FOLDER = config["misc"]["dataFolder"]
-
-# Connect to MongoDB
-client = pymongo.MongoClient(config["mongodb"]["url"])
+# MongoDB setup
+client = pymongo.MongoClient(CONFIG["mongodb"]["url"])
 db = client["Playlist"]
-playlistItemsFull = db["playlistItemsFull"]
-votesDB = db["votes"]
+playlist_items_full = db["playlist_items_full"]
+votes_db = db["votes"]
 
-# Authenticate with Spotify API
+# Spotify authentication
 sp = spotify_auth()
 
-# Keep track of last votes
+# Global variables
 last_votes = {}
-# Keep track of reminders
 reminders = {}
-# keep track of vote infos
 vote_infos = {}
-# keep track of snapshot
 snapshot = {}
+
+
+class VoteManager:
+    def __init__(self, file_path):
+        self.file_path = file_path
+
+    def load_data(self):
+        with open(self.file_path, "r", encoding="utf-8") as f:
+            return json.load(f)
+
+    def save_data(self, data):
+        with open(self.file_path, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=4)
+
+    def count_votes(self, data, song):
+        song_data = data[song]
+        yes_votes = sum(1 for v in song_data["votes"].values() if v == "yes")
+        no_votes = sum(1 for v in song_data["votes"].values() if v == "no")
+        users = [DISCORD2NAME.get(user, f"<@{user}>") for user in song_data["votes"]]
+        return yes_votes, no_votes, users
+
+    def check_deadline(self, song_id):
+        data = self.load_data()
+        return float(data[song_id]["deadline"]) <= datetime.now().timestamp()
+
+    def save_vote(self, author_id, vote, song):
+        data = self.load_data()
+        logger.info("%s voted %s to add %s", author_id, vote, song)
+        data[song]["votes"][str(author_id)] = vote
+        self.save_data(data)
 
 
 class Spotify(interactions.Extension):
     def __init__(self, bot: interactions.client):
         self.bot: interactions.Client = bot
-        self.vote_manager = VoteManager("data/addwithvotes.json")
+        self.vote_manager = VoteManager(f"{DATA_FOLDER}/addwithvotes.json")
 
     @interactions.listen()
     async def on_startup(self):
-        # Start background tasks
         self.check_playlist_changes.start()
         self.randomvote.start()
         await self.load_reminders()
@@ -81,40 +108,27 @@ class Spotify(interactions.Extension):
         self.addwithvote = self.vote_manager.load_data()
         self.check_for_end.start()
         self.new_titles_playlist.start()
-        # await self.new_titles_playlist()
 
     async def load_voteinfos(self):
-        """
-        Load vote information from a JSON file.
-        """
         with open(f"{DATA_FOLDER}/voteinfos.json", "r", encoding="utf-8") as f:
             vote_infos.update(json.load(f))
 
     async def load_snapshot(self):
-        """
-        Load snapshot information from a JSON file.
-        """
         with open(f"{DATA_FOLDER}/snapshot.json", "r", encoding="utf-8") as f:
             snapshot.update(json.load(f))
 
     async def save_snapshot(self):
-        """
-        Save snapshot information to a JSON file.
-        """
         with open(f"{DATA_FOLDER}/snapshot.json", "w", encoding="utf-8") as f:
             json.dump(snapshot, f, indent=4)
 
     async def save_voteinfos(self):
-        """
-        Save vote information to a JSON file.
-        """
         with open(f"{DATA_FOLDER}/voteinfos.json", "w", encoding="utf-8") as f:
             json.dump(vote_infos, f, indent=4)
 
     @interactions.slash_command(
         "addsong",
         description="Ajoute une chanson à la playlist de la guilde.",
-        scopes=enabled_servers,
+        scopes=ENABLED_SERVERS,
     )
     @interactions.slash_option(
         name="song",
@@ -124,85 +138,66 @@ class Spotify(interactions.Extension):
         autocomplete=True,
     )
     async def addsong(self, ctx: interactions.SlashContext, song):
-        """
-        Add a song to the guild's playlist.
-        """
-        if str(ctx.channel_id) == str(CHANNEL_ID):
-            # Get last track IDs from MongoDB
-            last_track_ids = playlistItemsFull.distinct("_id")
-            logger.info(
-                "/addsong '%s' utilisé par %s(id:%s)",
-                song,
-                ctx.author.username,
-                ctx.author_id,
-            )
-            try:
-                # Get track info from Spotify API
-                track = sp.track(song, market="FR")
-                song = spotifymongoformat(track, ctx.author_id, spotify2discord)
-            except spotipy.exceptions.SpotifyException:
-                await ctx.send("Cette chanson n'existe pas.", ephemeral=True)
-                logger.info("Commande /addsong utilisée avec une chanson inexistante")
-            if song["_id"] not in last_track_ids:
-                # Add song to MongoDB and Spotify playlist
-                logger.debug("song : %s", song)
-                playlistItemsFull.insert_one(song)
-                sp.playlist_add_items(PLAYLIST_ID, [song["_id"]])
-                # Create and send embed message
-                embed = await embed_song(
-                    song=song,
-                    track=track,
-                    embedtype=EmbedType.ADD,
-                    time=interactions.Timestamp.utcnow(),
-                    person=ctx.author.username,
-                    icon=ctx.author.avatar.url,
-                )
-                await ctx.send(
-                    content=f"{random.choice(startList)} {ctx.author.mention}, {random.choice(finishList)}",
-                    embeds=embed,
-                )
-                logger.info("%s ajouté par %s", track["name"], ctx.author.display_name)
-            else:
-                await ctx.send(
-                    "Cette chanson a déjà été ajoutée à la playlist.", ephemeral=True
-                )
-                logger.info("Commande /addsong utilisée avec une chanson déjà présente")
-        else:
+        if str(ctx.channel_id) != str(CHANNEL_ID):
             await ctx.send(
                 "Vous ne pouvez pas utiliser cette commande dans ce salon.",
                 ephemeral=True,
             )
             logger.info(
-                "Commande /addsong utilisée dans un mauvais salon(%s)",
-                ctx.channel.name,
+                "Commande /addsong utilisée dans un mauvais salon(%s)", ctx.channel.name
             )
+            return
+
+        logger.info(
+            "/addsong '%s' utilisé par %s(id:%s)",
+            song,
+            ctx.author.username,
+            ctx.author_id,
+        )
+
+        try:
+            track = sp.track(song, market="FR")
+            song_data = spotifymongoformat(
+                track, ctx.author_id, spotify2discord=SPOTIFY2DISCORD
+            )
+        except spotipy.exceptions.SpotifyException:
+            await ctx.send("Cette chanson n'existe pas.", ephemeral=True)
+            logger.info("Commande /addsong utilisée avec une chanson inexistante")
+            return
+
+        if song_data["_id"] not in playlist_items_full.distinct("_id"):
+            playlist_items_full.insert_one(song_data)
+            sp.playlist_add_items(PLAYLIST_ID, [song_data["_id"]])
+            embed = await embed_song(
+                song=song_data,
+                track=track,
+                embedtype=EmbedType.ADD,
+                time=interactions.Timestamp.utcnow(),
+                person=ctx.author.username,
+                icon=ctx.author.avatar.url,
+            )
+            await ctx.send(
+                content=f"{random.choice(startList)} {ctx.author.mention}, {random.choice(finishList)}",
+                embeds=embed,
+            )
+            logger.info("%s ajouté par %s", track["name"], ctx.author.display_name)
+        else:
+            await ctx.send(
+                "Cette chanson a déjà été ajoutée à la playlist.", ephemeral=True
+            )
+            logger.info("Commande /addsong utilisée avec une chanson déjà présente")
 
     @addsong.autocomplete("song")
     async def autocomplete_from_spotify(self, ctx: interactions.AutocompleteContext):
-        """
-        Autocomplete function for the 'addsong' command.
-        """
         if not ctx.input_text:
-            choices = [
-                {
-                    "name": "Veuillez entrer un nom de chanson",
-                    "value": "error",
-                }
-            ]
+            choices = [{"name": "Veuillez entrer un nom de chanson", "value": "error"}]
         else:
-            # Search for tracks on Spotify
             items = sp.search(ctx.input_text, limit=10, type="track", market="FR")[
                 "tracks"
             ]["items"]
             if not items:
-                choices = [
-                    {
-                        "name": "Aucun résultat",
-                        "value": "error",
-                    }
-                ]
+                choices = [{"name": "Aucun résultat", "value": "error"}]
             else:
-                # Format search results for autocomplete choices
                 choices = [
                     {
                         "name": f"{item['artists'][0]['name']} - {item['name']} (Album: {item['album']['name']})"[
@@ -230,8 +225,8 @@ class Spotify(interactions.Extension):
         channel = self.bot.get_channel(CHANNEL_ID)
         message = await channel.fetch_message(message_id)
         logger.debug("message : %s", str(message.id))
-        votes = votesDB.find_one({"_id": track_id})
-        conserver, supprimer, menfou, users = count_votes(votes["votes"], discord2name)
+        votes = votes_db.find_one({"_id": track_id})
+        conserver, supprimer, menfou, users = count_votes(votes["votes"], DISCORD2NAME)
 
         logger.debug(
             "keep : %s\nremove : %s\nmenfou : %s",
@@ -239,7 +234,7 @@ class Spotify(interactions.Extension):
             str(supprimer),
             str(menfou),
         )
-        song = playlistItemsFull.find_one({"_id": track_id})
+        song = playlist_items_full.find_one({"_id": track_id})
         logger.debug("song : %s\ntrack_id : %s", song, track_id)
         track = sp.track(track_id, market="FR")
         await message.unpin()
@@ -264,8 +259,8 @@ class Spotify(interactions.Extension):
                 components=[],
             )
             sp.playlist_remove_all_occurrences_of_items(PLAYLIST_ID, [track_id])
-            playlistItemsFull.delete_one({"_id": track_id})
-            votesDB.find_one_and_update(
+            playlist_items_full.delete_one({"_id": track_id})
+            votes_db.find_one_and_update(
                 {"_id": track_id}, {"$set": {"state": "supprimée"}}
             )
             logger.info("La chanson a été supprimée.")
@@ -292,12 +287,12 @@ class Spotify(interactions.Extension):
                 ],
                 components=[],
             )
-            votesDB.find_one_and_update(
+            votes_db.find_one_and_update(
                 {"_id": track_id}, {"$set": {"state": "conservée"}}
             )
             logger.info("La chanson a été conservée.")
-        track_ids = set(playlistItemsFull.distinct("_id"))
-        pollhistory = set(votesDB.distinct("_id"))
+        track_ids = set(playlist_items_full.distinct("_id"))
+        pollhistory = set(votes_db.distinct("_id"))
         track_id = random.choice(list(track_ids))
         logger.debug("track_id choisie : %s", track_id)
         while track_id in pollhistory:
@@ -306,7 +301,7 @@ class Spotify(interactions.Extension):
             )
             track_id = random.choice(list(track_ids))
         logger.info("Chanson tirée au sort : %s", track_id)
-        song = playlistItemsFull.find_one({"_id": track_id})
+        song = playlist_items_full.find_one({"_id": track_id})
         track = sp.track(song["_id"], market="FR")
         channel = await self.bot.fetch_channel(CHANNEL_ID)
         message = await channel.send(
@@ -353,7 +348,7 @@ class Spotify(interactions.Extension):
         await channel.purge(deletion_limit=1, after=message)
         vote_infos.update({"message_id": str(message.id), "track_id": track_id})
         await self.save_voteinfos()
-        votesDB.update_one(
+        votes_db.update_one(
             {"_id": track_id},
             {
                 "$set": {
@@ -389,13 +384,13 @@ class Spotify(interactions.Extension):
             # Check if the user has already voted and update their vote if necessary
             user_id = str(ctx.user.id)
             if ctx.custom_id == "annuler":
-                votes = votesDB.find_one_and_update(
+                votes = votes_db.find_one_and_update(
                     {"_id": track_id},
                     {"$unset": {f"votes.{user_id}": ""}},
                     return_document=pymongo.ReturnDocument.AFTER,
                 )
             else:
-                votes = votesDB.find_one_and_update(
+                votes = votes_db.find_one_and_update(
                     {"_id": track_id},
                     {"$set": {f"votes.{user_id}": ctx.custom_id}},
                     upsert=True,
@@ -403,7 +398,9 @@ class Spotify(interactions.Extension):
                 )
             logger.info("User %s voted %s", ctx.user.username, ctx.custom_id)
             # Count the votes
-            conserver, supprimer, menfou, users = count_votes(votes["votes"], discord2name)
+            conserver, supprimer, menfou, users = count_votes(
+                votes["votes"], DISCORD2NAME
+            )
             users = ", ".join(users)
             logger.info(
                 "Votes : %s conserver, %s supprimer, %s menfou",
@@ -478,7 +475,7 @@ class Spotify(interactions.Extension):
             length = len(tracks)
             duration = 0
             # Compare the current track IDs to the previous track IDs
-            last_track_ids = playlistItemsFull.distinct("_id")
+            last_track_ids = playlist_items_full.distinct("_id")
             current_track_ids = {track["track"]["id"] for track in tracks}
             added_track_ids = list(set(current_track_ids) - set(last_track_ids))
             removed_track_ids = list(set(last_track_ids) - set(current_track_ids))
@@ -486,14 +483,14 @@ class Spotify(interactions.Extension):
             logger.debug("removed_track_ids : %s", removed_track_ids)
             for track in tracks:
                 # Append the track to a list of tracks to be inserted into the MongoDB collection
-                song = spotifymongoformat(track, spotify2discord=spotify2discord)
+                song = spotifymongoformat(track, spotify2discord=SPOTIFY2DISCORD)
                 # Retrieve the time the track was added and add its duration to the total duration of the playlist
                 duration += track["track"]["duration_ms"]
                 # Send messages for added or removed tracks
                 if track["track"]["id"] in added_track_ids:
-                    song = spotifymongoformat(track, spotify2discord=spotify2discord)
+                    song = spotifymongoformat(track, spotify2discord=SPOTIFY2DISCORD)
                     track = sp.track(track["track"]["id"], market="FR")
-                    playlistItemsFull.insert_one(song)
+                    playlist_items_full.insert_one(song)
                     dt = interactions.utils.timestamp_converter(
                         datetime.fromisoformat(song["added_at"]).astimezone(
                             pytz.timezone("Europe/Paris")
@@ -504,7 +501,7 @@ class Spotify(interactions.Extension):
                         track=track,
                         embedtype=EmbedType.ADD,
                         time=dt,
-                        person=discord2name.get(song["added_by"], song["added_by"]),
+                        person=DISCORD2NAME.get(song["added_by"], song["added_by"]),
                     )
                     await channel.send(
                         content=f"{random.choice(startList)} <@{song['added_by']}>, {random.choice(finishList)}",
@@ -513,7 +510,7 @@ class Spotify(interactions.Extension):
                     logger.info(
                         "%s ajouté par %s",
                         track["name"],
-                        discord2name.get(song["added_by"], song["added_by"]),
+                        DISCORD2NAME.get(song["added_by"], song["added_by"]),
                     )
             if removed_track_ids:
                 logger.info(
@@ -521,7 +518,7 @@ class Spotify(interactions.Extension):
                     len(removed_track_ids),
                 )
                 for track_id in removed_track_ids:
-                    song = playlistItemsFull.find_one_and_delete({"_id": track_id})
+                    song = playlist_items_full.find_one_and_delete({"_id": track_id})
                     track = sp.track(track_id, market="FR")
                     embed = await embed_song(
                         song=song,
@@ -561,7 +558,7 @@ class Spotify(interactions.Extension):
         sub_cmd_name="set",
         description="Gère les rappels pour voter",
         sub_cmd_description="Ajoute un rappel pour voter pour la chanson du jour",
-        scopes=enabled_servers,
+        scopes=ENABLED_SERVERS,
     )
     @interactions.slash_option(
         name="heure",
@@ -656,7 +653,7 @@ class Spotify(interactions.Extension):
                 for user_id in user_ids.copy():
                     user = await self.bot.fetch_user(user_id)
                     if user:
-                        vote = votesDB.find_one({"_id": str(vote_infos["track_id"])})[
+                        vote = votes_db.find_one({"_id": str(vote_infos["track_id"])})[
                             "votes"
                         ].get(str(user_id))
                         if vote is None:
@@ -790,7 +787,7 @@ class Spotify(interactions.Extension):
     @interactions.slash_command(
         name="songinfo",
         description="Affiche les informations d'une chanson",
-        scopes=enabled_servers,
+        scopes=ENABLED_SERVERS,
     )
     @interactions.slash_option(
         name="song",
@@ -805,8 +802,8 @@ class Spotify(interactions.Extension):
         Displays information about a song from the mongodb database.
         """
         embed = None
-        song = playlistItemsFull.find_one({"_id": song_id})
-        votes = votesDB.find_one({"_id": song_id})
+        song = playlist_items_full.find_one({"_id": song_id})
+        votes = votes_db.find_one({"_id": song_id})
         track = sp.track(song_id, market="FR")
         if song:
             embed = await embed_song(
@@ -817,7 +814,9 @@ class Spotify(interactions.Extension):
                 person=song["added_by"],
             )
         else:
-            song = spotifymongoformat(track, votes.get("added_by", "Inconnu"), spotify2discord=spotify2discord)
+            song = spotifymongoformat(
+                track, votes.get("added_by", "Inconnu"), spotify2discord=SPOTIFY2DISCORD
+            )
             embed = await embed_song(
                 song=song,
                 track=track,
@@ -828,7 +827,7 @@ class Spotify(interactions.Extension):
         if votes:
             if votes.get("votes"):
                 conserver, supprimer, menfou, users = count_votes(
-                    votes.get("votes", {}), discord2name
+                    votes.get("votes", {}), DISCORD2NAME
                 )
                 # Create a Timestamp object from the date string and a None object if the date is not present
                 date = votes.get("date")
@@ -887,13 +886,13 @@ class Spotify(interactions.Extension):
                     {"artists": {"$regex": regex_pattern, "$options": "i"}},
                 ]
             }
-            # Fetch data from playlistItemsFull and votesDB
+            # Fetch data from playlist_items_full and votes_db
             playlist_items = {
-                item["_id"]: item for item in playlistItemsFull.find(query)
+                item["_id"]: item for item in playlist_items_full.find(query)
             }
-            votes = {item["_id"]: item for item in votesDB.find(query)}
+            votes = {item["_id"]: item for item in votes_db.find(query)}
 
-            # Merge dictionaries. In case of conflict, keep the entry from playlistItemsFull
+            # Merge dictionaries. In case of conflict, keep the entry from playlist_items_full
             results = {**playlist_items, **votes}
             if not results:
                 choices = [
@@ -923,7 +922,7 @@ class Spotify(interactions.Extension):
     @interactions.slash_command(
         name="addwithvote",
         description="Si vous êtes pas sûr d'ajoouter une chanson, vous pouvez la mettre au vote",
-        scopes=enabled_servers,
+        scopes=ENABLED_SERVERS,
     )
     @interactions.slash_option(
         name="song",
@@ -935,7 +934,7 @@ class Spotify(interactions.Extension):
     async def addwithvote(self, ctx: interactions.SlashContext, song):
         if str(ctx.channel_id) == str(CHANNEL_ID):
             # Get last track IDs from MongoDB
-            last_track_ids = playlistItemsFull.distinct("_id")
+            last_track_ids = playlist_items_full.distinct("_id")
             logger.info(
                 "/addwithvote '%s' utilisé par %s(id:%s)",
                 song,
@@ -945,7 +944,9 @@ class Spotify(interactions.Extension):
             try:
                 # Get track info from Spotify API
                 track = sp.track(song, market="FR")
-                song = spotifymongoformat(track, ctx.author_id, spotify2discord=spotify2discord)
+                song = spotifymongoformat(
+                    track, ctx.author_id, spotify2discord=SPOTIFY2DISCORD
+                )
             except spotipy.exceptions.SpotifyException:
                 await ctx.send("Cette chanson n'existe pas.", ephemeral=True)
                 logger.info("Commande /addsong utilisée avec une chanson inexistante")
@@ -1127,13 +1128,15 @@ class Spotify(interactions.Extension):
         try:
             # Get track info from Spotify API
             track = sp.track(song_id, market="FR")
-            song = spotifymongoformat(track, data[song_id]["author_id"], spotify2discord=spotify2discord)
+            song = spotifymongoformat(
+                track, data[song_id]["author_id"], spotify2discord=SPOTIFY2DISCORD
+            )
         except spotipy.exceptions.SpotifyException as e:
             logger.error("Spotify API Error while using /addwithvote: %s", e)
         if yes_votes > no_votes:
             # Add song to MongoDB and Spotify playlist
             logger.debug("song : %s", song)
-            playlistItemsFull.insert_one(song)
+            playlist_items_full.insert_one(song)
             sp.playlist_add_items(PLAYLIST_ID, [song["_id"]])
             await message.edit(
                 content="La chanson a été ajoutée à la playlist.",
@@ -1191,43 +1194,35 @@ class Spotify(interactions.Extension):
 
     @interactions.Task.create(interactions.TimeTrigger(hour=4, minute=30, utc=False))
     async def new_titles_playlist(self):
-        """
-        Create a playlist with the latest 100 songs without artist duplicates
-        """
         logger.debug("new_titles_playlist lancé")
 
-        # Load the playlist
         results = sp.playlist_tracks(playlist_id=PLAYLIST_ID, limit=100, offset=0)
         tracks = results["items"]
 
-        # Get next 100 tracks until there are no more
         while results["next"]:
             results = sp.next(results)
             tracks.extend(results["items"])
 
-        # Reverse the track list to start from the latest
         tracks.reverse()
 
-        # Remove artist duplicates
-        newtracks = []
+        new_tracks = []
         artists = set()
-        i=0
-        for track in tracks:
-            i+=1
+        for i, track in enumerate(tracks, 1):
             track_artists = {artist["name"] for artist in track["track"]["artists"]}
 
-            # Check if any artist in the track is already in the artists set
             if not artists.intersection(track_artists):
-                newtracks.append(track["track"]["id"])
+                new_tracks.append(track["track"]["id"])
                 artists.update(track_artists)
 
-            # Stop if we have 100 tracks
-            if len(newtracks) >= 100:
-                logger.info("Playlist 'Les découvertes de la guilde' créée à partir de %s titres", i)
+            if len(new_tracks) >= 100:
+                logger.info(
+                    "Playlist 'Les découvertes de la guilde' créée à partir de %s titres",
+                    i,
+                )
                 break
-            
-        # Update the playlist with the first 100 tracks
-        sp.playlist_replace_items(NEW_PLAYLIST_ID, newtracks)
+
+        sp.playlist_replace_items(NEW_PLAYLIST_ID, new_tracks)
+
     @interactions.slash_command(
         name="nextvote",
         description="Force le prochain vote PAS TOUCHE",
@@ -1238,34 +1233,3 @@ class Spotify(interactions.Extension):
         Force the next vote for the song of the day.
         """
         await self.randomvote()
-
-
-class VoteManager:
-    def __init__(self, file_path):
-        self.file_path = file_path
-
-    def load_data(self):
-        with open(self.file_path, "r", encoding="utf-8") as f:
-            return json.load(f)
-
-    def save_data(self, data):
-        with open(self.file_path, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=4)
-
-    def count_votes(self, data, song):
-        data = data[song]
-        yes_votes = len([v for v in data["votes"].values() if v == "yes"])
-        no_votes = len([v for v in data["votes"].values() if v == "no"])
-        # Get the list of users who voted
-        users = [discord2name.get(user, f"<@{user}>") for user in data["votes"]]
-        return yes_votes, no_votes, users
-
-    def check_deadline(self, surname):
-        data = self.load_data()
-        return float(data[surname]["deadline"]) <= datetime.now().timestamp()
-
-    def save_vote(self, author_id, vote, song):
-        data = self.load_data()
-        logger.info("%s voted %s to add %s", author_id, vote, song)
-        data[song]["votes"][str(author_id)] = vote
-        self.save_data(data)
