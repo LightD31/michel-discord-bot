@@ -1,4 +1,4 @@
-# Discord Bot
+# Michel
 
 [![License](https://img.shields.io/badge/license-GNU-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 
