@@ -4,7 +4,6 @@ import random
 
 from interactions import Extension, Client, BrandColors, PartialEmoji, Embed, OptionType, SlashContext, slash_command, slash_option, Message
 from interactions.client.utils import get
-from dotenv import load_dotenv
 
 from dict import discord2name
 from src import logutil
@@ -12,11 +11,11 @@ from src.utils import load_config
 
 logger = logutil.init_logger(os.path.basename(__file__))
 config, module_config, enabled_servers = load_config("moduleSecretSanta")
-load_dotenv()
 
 SECRET_SANTA_FILE = config["SecretSanta"]["secretSantaFile"]
 SECRET_SANTA_KEY = config["SecretSanta"]["secretSantaKey"]
 
+discord2name = config["discord2name"]
 
 class SecretSanta(Extension):
     def __init__(self, bot: Client):
@@ -145,14 +144,16 @@ class SecretSanta(Extension):
         random.shuffle(users)
         logger.info("Tirage au sort : %s", ", ".join([user.username for user in users]))
         # Send a private message to each user
+        server = str(ctx.guild.id)
+        discord2name_data = discord2name.get(server, {})
         description = "Ho, ho, ho, c'est Mich... le Père Noël.\nCettte année, tu dois offrir un cadeau à {mention} ! A toi de voir s'il a été sage.\n\u200b\nSigné : *Le vrai Père Noël, évidemment :disguised_face:*"
         for i, user in enumerate(users):
 
             if i == len(users) - 1:
-                embed = self.create_embed(description.format(mention=discord2name.get(users[0].id, users[0].mention)))
+                embed = self.create_embed(description.format(mention=discord2name_data.get(users[0].id, users[0].mention)))
                 await user.send(embed=embed)
             else:
-                embed = self.create_embed(description.format(mention=discord2name.get(user.id, users[i + 1].mention)))
+                embed = self.create_embed(description.format(mention=discord2name_data.get(user.id, users[i + 1].mention)))
                 await user.send(embed=embed)
 
         # Delete the info from the json file

@@ -8,10 +8,7 @@ from enum import Enum
 
 import interactions
 import spotipy
-
-from dict import discord2name, spotify2discord
 from src import logutil
-from src.utils import load_config
 
 logger = logutil.init_logger(os.path.basename(__file__))
 
@@ -296,7 +293,7 @@ async def embed_message_vote_add(
     embed.timestamp = interactions.utils.timestamp_converter(datetime.now())
     return embed
 
-def count_votes(votes):
+def count_votes(votes, discord2name):
     """
     Counts the votes and returns a dictionary with the vote counts.
 
@@ -321,13 +318,14 @@ def count_votes(votes):
     return conserver, supprimer, menfou, users
 
 
-def spotifymongoformat(track, user=None):
+def spotifymongoformat(track, user=None, spotify2discord=None):
     """
     Formats a Spotify track into a dictionary that can be stored in MongoDB.
 
     Args:
         track (dict): The Spotify track to format.
         user (str, optional): The user who added the track. Defaults to None.
+        spotify2discord (dict, optional): A dictionary mapping Spotify user IDs to Discord user IDs. Mandatory if user is None.
 
     Returns:
         dict: The formatted track.

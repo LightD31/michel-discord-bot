@@ -30,6 +30,7 @@ config, module_config, enabled_servers = load_config("moduleSpotify")
 module_config = module_config[enabled_servers[0]]
 
 discord2name = config["discord2name"][str(enabled_servers[0])]
+spotify2discord = module_config['spotifyIdToDiscordId']
 
 # Load environment variables
 SPOTIFY_CLIENT_ID = config["spotify"]["spotifyClientId"]
@@ -138,7 +139,7 @@ class Spotify(interactions.Extension):
             try:
                 # Get track info from Spotify API
                 track = sp.track(song, market="FR")
-                song = spotifymongoformat(track, ctx.author_id)
+                song = spotifymongoformat(track, ctx.author_id, spotify2discord)
             except spotipy.exceptions.SpotifyException:
                 await ctx.send("Cette chanson n'existe pas.", ephemeral=True)
                 logger.info("Commande /addsong utilisée avec une chanson inexistante")
@@ -230,7 +231,7 @@ class Spotify(interactions.Extension):
         message = await channel.fetch_message(message_id)
         logger.debug("message : %s", str(message.id))
         votes = votesDB.find_one({"_id": track_id})
-        conserver, supprimer, menfou, users = count_votes(votes["votes"])
+        conserver, supprimer, menfou, users = count_votes(votes["votes"], discord2name)
 
         logger.debug(
             "keep : %s\nremove : %s\nmenfou : %s",
@@ -402,7 +403,7 @@ class Spotify(interactions.Extension):
                 )
             logger.info("User %s voted %s", ctx.user.username, ctx.custom_id)
             # Count the votes
-            conserver, supprimer, menfou, users = count_votes(votes["votes"])
+            conserver, supprimer, menfou, users = count_votes(votes["votes"], discord2name)
             users = ", ".join(users)
             logger.info(
                 "Votes : %s conserver, %s supprimer, %s menfou",
@@ -485,12 +486,12 @@ class Spotify(interactions.Extension):
             logger.debug("removed_track_ids : %s", removed_track_ids)
             for track in tracks:
                 # Append the track to a list of tracks to be inserted into the MongoDB collection
-                song = spotifymongoformat(track)
+                song = spotifymongoformat(track, spotify2discord=spotify2discord)
                 # Retrieve the time the track was added and add its duration to the total duration of the playlist
                 duration += track["track"]["duration_ms"]
                 # Send messages for added or removed tracks
                 if track["track"]["id"] in added_track_ids:
-                    song = spotifymongoformat(track)
+                    song = spotifymongoformat(track, spotify2discord=spotify2discord)
                     track = sp.track(track["track"]["id"], market="FR")
                     playlistItemsFull.insert_one(song)
                     dt = interactions.utils.timestamp_converter(
@@ -816,7 +817,7 @@ class Spotify(interactions.Extension):
                 person=song["added_by"],
             )
         else:
-            song = spotifymongoformat(track, votes.get("added_by", "Inconnu"))
+            song = spotifymongoformat(track, votes.get("added_by", "Inconnu"), spotify2discord=spotify2discord)
             embed = await embed_song(
                 song=song,
                 track=track,
@@ -827,7 +828,7 @@ class Spotify(interactions.Extension):
         if votes:
             if votes.get("votes"):
                 conserver, supprimer, menfou, users = count_votes(
-                    votes.get("votes", {})
+                    votes.get("votes", {}), discord2name
                 )
                 # Create a Timestamp object from the date string and a None object if the date is not present
                 date = votes.get("date")
@@ -944,7 +945,7 @@ class Spotify(interactions.Extension):
             try:
                 # Get track info from Spotify API
                 track = sp.track(song, market="FR")
-                song = spotifymongoformat(track, ctx.author_id)
+                song = spotifymongoformat(track, ctx.author_id, spotify2discord=spotify2discord)
             except spotipy.exceptions.SpotifyException:
                 await ctx.send("Cette chanson n'existe pas.", ephemeral=True)
                 logger.info("Commande /addsong utilisée avec une chanson inexistante")
@@ -1126,7 +1127,7 @@ class Spotify(interactions.Extension):
         try:
             # Get track info from Spotify API
             track = sp.track(song_id, market="FR")
-            song = spotifymongoformat(track, data[song_id]["author_id"])
+            song = spotifymongoformat(track, data[song_id]["author_id"], spotify2discord=spotify2discord)
         except spotipy.exceptions.SpotifyException as e:
             logger.error("Spotify API Error while using /addwithvote: %s", e)
         if yes_votes > no_votes:
