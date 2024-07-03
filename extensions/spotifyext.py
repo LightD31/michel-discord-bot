@@ -11,7 +11,7 @@ import aiohttp
 import spotipy
 from interactions.api.events import Component
 
-from dict import discord2name, finishList, startList
+from dict import finishList, startList
 from src import logutil
 from src.spotify import (
     EmbedType,
@@ -28,6 +28,8 @@ logger = logutil.init_logger(os.path.basename(__file__))
 
 config, module_config, enabled_servers = load_config("moduleSpotify")
 module_config = module_config[enabled_servers[0]]
+
+discord2name = config["discord2name"][str(enabled_servers[0])]
 
 # Load environment variables
 SPOTIFY_CLIENT_ID = config["spotify"]["spotifyClientId"]
