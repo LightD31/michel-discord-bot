@@ -8,7 +8,7 @@ This is a Discord bot built using the interactions.py library. It provides vario
 
 ## Modules
 
-- **AI**: Uses the OpenAI API to answer questions and generate responses.
+- **AI**: Uses the OpenAI API and Anthropic API to answer questions and generate responses.
 - **Twitch**: Planning embeds and live notifications for Twitch streams.
 - **YouTube**: Notifications for new video uploads on specified channels.
 - **Random.org**: Uses the Random.org API to make random choices and selections.
