@@ -40,7 +40,6 @@ from src.utils import format_poll, load_config
 
 logger = logutil.init_logger(os.path.basename(__file__))
 config, module_config, enabled_servers = load_config("moduleUtils")
-
 # Keep track of reminders
 reminders = {}
 
@@ -740,3 +739,4 @@ class Utils(Extension):
             reminders.update(reminders_to_add)
         if reminders_to_remove or reminders_to_add:
             await self.save_reminders()
+
