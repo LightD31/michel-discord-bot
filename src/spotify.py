@@ -9,9 +9,10 @@ from enum import Enum
 import interactions
 import spotipy
 from src import logutil
+from src.utils import load_config
 
 logger = logutil.init_logger(os.path.basename(__file__))
-
+config,_,_ = load_config()
 
 def spotify_auth():
     """
@@ -22,12 +23,12 @@ def spotify_auth():
     """
     # Create a SpotifyOAuth object to handle authentication
     sp_oauth = spotipy.SpotifyOAuth(
-        client_id=os.environ.get("SPOTIFY_CLIENT_ID"),
-        redirect_uri=os.environ.get("SPOTIFY_REDIRECT_URI"),
-        client_secret=os.environ.get("SPOTIFY_CLIENT_SECRET"),
+        client_id=config["spotify"]["spotifyClientId"],
+        redirect_uri=config["spotify"]["spotifyRedirectUri"],
+        client_secret=config["spotify"]["spotifyClientSecret"],
         scope="playlist-modify-private playlist-read-private",
         open_browser=False,
-        cache_handler=spotipy.CacheFileHandler("./.cache"),
+        cache_handler=spotipy.CacheFileHandler("data/.cache"),
     )
 
     # Check if a valid token is already cached
@@ -46,15 +47,15 @@ def spotify_auth():
         logger.warning(
             "Please visit this URL to authorize the application: %s", auth_url
         )
-        print(f"Please visit this URL to authorize the application: {auth_url}")
+        # print(f"Please visit this URL to authorize the application: {auth_url}")
 
-        # Wait for the user to input the response URL after authenticating
-        auth_code = input("Enter the response URL: ")
+        # # Wait for the user to input the response URL after authenticating
+        # auth_code = input("Enter the response URL: ")
 
-        # Exchange the authorization code for an access token and refresh token
-        token_info = sp_oauth.get_access_token(
-            sp_oauth.parse_response_code(auth_code), as_dict=False
-        )
+        # # Exchange the authorization code for an access token and refresh token
+        # token_info = sp_oauth.get_access_token(
+        #     sp_oauth.parse_response_code(auth_code), as_dict=False
+        # )
 
     # Create a new instance of the Spotify API with the access token
     sp = spotipy.Spotify(auth_manager=sp_oauth, language="fr")

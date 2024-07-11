@@ -7,7 +7,7 @@ import isodate
 from interactions import BaseChannel, Client, Extension, IntervalTrigger, Task, listen
 
 from src import logutil
-from src.utils import load_config
+from src.utils import load_config, fetch
 
 logger = logutil.init_logger(os.path.basename(__file__))
 config, module_config, enabled_servers = load_config("moduleYoutube")
@@ -24,13 +24,7 @@ class YoutubeClass(Extension):
     @listen()
     async def on_startup(self):
         self.check_youtube.start()
-        await self.check_youtube()
-
-    async def fetch_data(self, url):
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url) as response:
-                response.raise_for_status()
-                return await response.json()
+        # await self.check_youtube()
 
     @Task.create(IntervalTrigger(minutes=5))
     async def check_youtube(self):
@@ -57,7 +51,7 @@ class YoutubeClass(Extension):
     async def get_uploads(self, user):
         if user not in self.playlist_cache:
             url = f"{YOUTUBE_API_URL}/channels?part=contentDetails&forHandle={user}&key={YOUTUBE_API_KEY}"
-            data = await self.fetch_data(url)
+            data = await fetch(url, return_type='json')
             logger.debug(data)
             uploads = data["items"][0]["contentDetails"]["relatedPlaylists"]["uploads"]
             self.playlist_cache[user] = uploads
@@ -67,7 +61,7 @@ class YoutubeClass(Extension):
 
     async def get_video_id(self, uploads):
         url = f"{YOUTUBE_API_URL}/playlistItems?part=snippet&maxResults=1&playlistId={uploads}&key={YOUTUBE_API_KEY}"
-        data = await self.fetch_data(url)
+        data = await self.fetch(url, return_type='json')
         logger.debug(data)
         return data["items"][0]["snippet"]["resourceId"]["videoId"]
 
@@ -92,7 +86,7 @@ class YoutubeClass(Extension):
 
     async def is_video_valid(self, video_id):
         url = f"{YOUTUBE_API_URL}/videos?part=snippet,contentDetails&id={video_id}&key={YOUTUBE_API_KEY}"
-        data = await self.fetch_data(url)
+        data = await self.fetch(url, return_type='json')
         logger.debug(data)
         if data["items"][0]["snippet"]["liveBroadcastContent"] == "none":
             duration = isodate.parse_duration(

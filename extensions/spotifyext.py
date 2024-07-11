@@ -750,7 +750,7 @@ class Spotify(interactions.Extension):
             client_secret=SPOTIFY_CLIENT_SECRET,
             scope="playlist-modify-private playlist-read-private playlist-modify-public playlist-read-collaborative",
             open_browser=False,
-            cache_handler=spotipy.CacheFileHandler("./.cache"),
+            cache_handler=spotipy.CacheFileHandler("data/.cache"),
         )
 
         # Check if a valid token is already cached

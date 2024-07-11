@@ -45,8 +45,7 @@ from twitchAPI.twitch import Twitch
 from twitchAPI.type import AuthScope, TwitchResourceNotFound
 
 from src import logutil
-
-load_dotenv()
+from src.utils import load_config
 
 logger = logutil.init_logger(os.path.basename(__file__))
 
@@ -54,14 +53,14 @@ logger = logutil.init_logger(os.path.basename(__file__))
 class TwitchExt2(Extension):
     def __init__(self, bot: Client):
         self.bot: Client = bot
-        self.client_id = os.getenv("TWITCH_CLIENT_ID")
-        self.client_secret = os.getenv("TWITCH_CLIENT_SECRET")
-        self.coloc_guild_id = int(os.getenv("COLOC_GUILD_ID"))
-        self.dev_guild_id = int(os.getenv("DEV_GUILD_ID"))
-        self.dev_channel_id = int(os.getenv("DEV_CHANNEL"))
-        self.planning_channel_id = int(os.getenv("TWITCH_PLANNING_CHANNEL_ID"))
-        self.planning_message_id = int(os.getenv("TWITCH_PLANNING_MESSAGE_ID"))
-        self.notification_channel_id = int(os.getenv("TWITCH_NOTIFICATION_CHANNEL_ID"))
+        config,module_config,enabled_servers = load_config("moduleTwitch")
+        module_config = module_config[enabled_servers[0]]
+        self.client_id = config["twitch"]["twitchClientId"]
+        self.client_secret = config["twitch"]["twitchClientSecret"]
+        self.coloc_guild_id = int(enabled_servers[0])
+        self.planning_channel_id = int(module_config["twitchStreamerList"]["zerator"]["twitchPlanningChannelId"])
+        self.planning_message_id = int(module_config["twitchStreamerList"]["zerator"]["twitchPlanningMessageId"])
+        self.notification_channel_id = int(module_config["twitchStreamerList"]["zerator"]["twitchNotificationChannelId"])
         self.eventsub = None  # Initialize eventsub here
         self.twitch = None  # Initialize twitch here
         self.stop = False

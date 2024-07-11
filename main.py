@@ -8,14 +8,15 @@ import os
 import sys
 
 import interactions
-from dotenv import load_dotenv
 
 from config import DEBUG
 from src import logutil
+from src.utils import load_config
 
-load_dotenv()
+config,_,_ = load_config()
 
-DEV_GUILD = os.environ.get("DEV_GUILD")
+DEV_GUILD = config["discord"]["devGuildId"]
+TOKEN = config["discord"]["botToken"]
 
 # Configure logging for this main.py handler
 logger = logutil.init_logger("main.py")
@@ -25,12 +26,12 @@ just an indicator. You may safely ignore",
     DEBUG,
 )
 
-if not os.environ.get("TOKEN"):
+if not TOKEN:
     logger.critical("TOKEN variable not set. Cannot continue")
     sys.exit(1)
 
 client = interactions.Client(
-    token=os.environ.get("TOKEN"),
+    token=TOKEN,
     intents=interactions.Intents.ALL,
     send_not_ready_messages=True,
     delete_unused_application_cmds=True,

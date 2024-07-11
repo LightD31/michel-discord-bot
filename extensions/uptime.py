@@ -26,6 +26,7 @@ class Uptime(Extension):
         Start background tasks.
         """
         self.send_status_update.start()
+        await self.send_status_update()
 
     @Task.create(IntervalTrigger(seconds=55))
     async def send_status_update(self):
@@ -35,7 +36,7 @@ class Uptime(Extension):
         async with aiohttp.ClientSession() as session:
             try:
                 # Create the URL
-                url = f"http://{config['uptimeKumaUrl']}/api/push/{config['uptimeKumaToken']}?status=up&msg=OK&ping={round(self.bot.latency * 1000, 1)}"
+                url = f"https://{config['uptimeKumaUrl']}/api/push/{config['uptimeKumaToken']}?status=up&msg=OK&ping={round(self.bot.latency * 1000, 1)}"
 
                 # Send the status update
                 async with session.get(url) as response:
