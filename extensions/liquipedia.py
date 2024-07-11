@@ -1,8 +1,16 @@
-import os
 from typing import List, Dict, Any, Tuple
-from interactions import Task, TimeTrigger, Extension, listen, Embed, Client
+from interactions import (
+    Task,
+    IntervalTrigger,
+    Extension,
+    listen,
+    Embed,
+    Client,
+    TimestampStyles,
+)
 from interactions.client.utils import timestamp_converter
 from src import logutil
+from src.raiderio import get_table_data, ensure_six_elements
 from src.utils import load_config, fetch
 from datetime import datetime, timedelta
 
@@ -16,20 +24,27 @@ api_key = config["liquipedia"]["liquipediaApiKey"]
 class Liquipedia(Extension):
     def __init__(self, bot):
         self.bot: Client = bot
-        self.channel = None
         self.message = None
+        self.wow_message = None
 
     @listen()
     async def on_startup(self):
         channel_id = module_config["liquipediaChannelId"]
         message_id = module_config["liquipediaMessageId"]
-        self.channel = await self.bot.fetch_channel(channel_id)
-        self.message = await self.channel.fetch_message(message_id)
+        wow_channel_id = module_config["liquipediaWowChannelId"]
+        wow_message_id = module_config["liquipediaWowMessageId"]
+        channel = await self.bot.fetch_channel(channel_id)
+        self.message = await channel.fetch_message(message_id)
+        channel = await self.bot.fetch_channel(wow_channel_id)
+        self.wow_message = await channel.fetch_message(wow_message_id)
         self.schedule.start()
+        self.mdi_schedule.start()
+        await self.mdi_schedule()
         # await self.schedule()
 
-    @Task.create(TimeTrigger(minute=5))
+    @Task.create(IntervalTrigger(minutes=5))
     async def schedule(self):
+        logger.debug("Running Liquipedia schedule task")
         try:
             team = "Mandatory"
             date = (datetime.now() - timedelta(weeks=7)).strftime("%Y-%m-%d")
@@ -156,7 +171,9 @@ class Liquipedia(Extension):
             string = "```ansi\n"
             for team in standings:
                 diff_txt = format_change(team["placementchange"])
-                standing_str = format_status(team["currentstatus"], team["standing"], True)
+                standing_str = format_status(
+                    team["currentstatus"], team["standing"], True
+                )
                 team_str = format_status(team["definitestatus"], f"{team['team']:<14}")
                 string += f"{standing_str} {team_str} ({team['match']['win']}-{team['match']['loss']}) {diff_txt} ({team['diff_rounds']})\n"
             string += "```"
@@ -369,3 +386,165 @@ class Liquipedia(Extension):
         logger.debug(f"Embeds created: {[embed.title for embed in embeds_to_return]}")
         logger.debug(f"Parents: {parents}")
         return embeds_to_return, parents
+
+    # @Task.create(IntervalTrigger(minutes=5))
+    # async def mdi_schedule(self):
+    #     try:
+    #         data, tournament = await self.mdi_placement()
+    #         embed = await self.make_mdi_embed(data, tournament)
+    #         await self.wow_message.edit(embeds=[embed])
+    #     except Exception as e:
+    #         logger.error(f"Error in MDI schedule task: {e}")
+
+    # async def mdi_placement(self):
+    #     tournament = "The_Great_Push/Dragonflight/Season_4/Group_A"
+    #     tournament_data = await self.liquipedia_request(
+    #         "worldofwarcraft",
+    #         "tournament",
+    #         f"[[pagename::{tournament}]]",
+    #         query="startdate, enddate, name,prizepool,iconurl",
+    #     )
+
+    #     data = await self.liquipedia_request(
+    #         "worldofwarcraft",
+    #         "placement",
+    #         f"[[pagename::{tournament}]]",
+    #         limit=6,
+    #         order="placement ASC",
+    #     )
+
+    #     tournament_info = {
+    #         "name": tournament_data["result"][0]["name"],
+    #         "start_date": tournament_data["result"][0]["startdate"],
+    #         "end_date": tournament_data["result"][0]["enddate"],
+    #         "prizepool": tournament_data["result"][0]["prizepool"],
+    #         "icon": tournament_data["result"][0]["iconurl"]
+    #     }
+
+    #     placement_data = [
+    #         {
+    #             "team": entry["opponentname"],
+    #             "placement": entry["placement"],
+    #             "players": [entry["opponentplayers"][f"p{i}"] for i in range(1, 6) if f"p{i}" in entry["opponentplayers"]],
+    #             "prize": entry["prizemoney"]
+    #         }
+    #         for entry in data['result']
+    #     ]
+
+    #     return placement_data, tournament_info
+
+    # async def make_mdi_embed(self, data, tournament):
+    #     embed = Embed(
+    #         title=tournament['name'],
+    #         color=0xE04747,
+    #         footer="Source: Liquipedia",
+    #         timestamp=datetime.now(),
+    #         description=f"Du {timestamp_converter(tournament['start_date']).format(TimestampStyles.LongDate)} au {timestamp_converter(tournament['end_date']).format(TimestampStyles.LongDate)}\nCashprize: **${tournament['prizepool']} USD**",
+    #     )
+    #     embed.set_thumbnail(url=tournament['icon'])
+
+    #     for entry in data:
+    #         embed.add_field(
+    #             name=f"{entry['placement']}. {entry['team']} ({entry['prize']})",
+    #             value=", ".join(entry["players"]),
+    #             inline=False,
+    #         )
+    #     return embed
+
+    @Task.create(IntervalTrigger(minutes=5))
+    async def mdi_schedule(self):
+        data, dungeons = await get_table_data()
+        infos = await self.mdi_infos()
+        safe_teams = data[:4]
+        in_danger_teams = [data[4]]
+        out_teams = [data[5]]
+        dungeons = ensure_six_elements(dungeons, "???")
+        # Prepare the infos_str section (assuming it remains unchanged)
+        infos_str = f"""Du {timestamp_converter(infos['start_date']).format(TimestampStyles.LongDate)} au {timestamp_converter(infos['end_date']).format(TimestampStyles.LongDate)}\nCashprize: **${infos['prizepool']} USD**
+    
+    **Day 1: July 05th**
+    6 teams compete over 5 hours in 3 dungeons ({', '.join(dungeons[:3])})
+    - Bottom 1 scoring team is eliminated\n
+    **Day 2: July 06th**
+    5 teams compete over 5 hours in 5 dungeons ({', '.join(dungeons[:5])})
+    - Bottom 1 scoring team is eliminated\n
+    **Day 3: July 07th**
+    4 teams compete over 5 hours in 6 dungeons ({', '.join(dungeons)})
+    - Top 3 scoring teams qualify to Global Finals
+        """
+
+        # Prepare the initial embed for infos section
+        embed_infos = Embed(
+            title=infos["name"],
+            description=infos_str,
+            color=0xE04747,
+            thumbnail=infos["icon"],
+            footer="Source: Liquipedia",
+        )
+
+        # Prepare the initial embed for data section
+        embed_data = Embed(
+            title=infos["name"],
+            color=0xE04747,
+            footer="Source: Raider.io",
+            timestamp=datetime.now(),
+        )
+
+        # Function to split data into chunks
+        def chunk_data(data_list, chunk_size=1024):
+            chunks = []
+            current_chunk = "```ansi\n"
+            for item in data_list:
+                if len(current_chunk) + len(item) + 1 > chunk_size:
+                    current_chunk += "```"
+                    chunks.append(current_chunk)
+                    current_chunk = "```ansi\n"
+                current_chunk += item + "\n"
+            if current_chunk != "```ansi\n":
+                current_chunk += "```"
+                chunks.append(current_chunk)
+            return chunks
+
+        # Chunk and add fields for safe_teams
+        safe_team_chunks = chunk_data(safe_teams)
+        for index, chunk in enumerate(safe_team_chunks):
+            embed_data.add_field(
+                name=f"Classement" if index == 0 else "\u200b", value=chunk
+            )
+
+        # Chunk and add fields for in_danger_teams
+        in_danger_chunks = chunk_data(
+            in_danger_teams
+        )  # Wrap in list since it's a single item
+        for index, chunk in enumerate(in_danger_chunks):
+            embed_data.add_field(
+                name="Équipe(s) en danger" if index == 0 else "\u200b", value=chunk
+            )
+
+        # Chunk and add fields for out_teams
+        out_team_chunks = chunk_data(out_teams)
+        for index, chunk in enumerate(out_team_chunks):
+            embed_data.add_field(
+                name="Équipe(s) éliminée(s)" if index == 0 else "\u200b", value=chunk
+            )
+
+        await self.wow_message.edit(
+            content="<:MDRBelieve:973667607439892530>", embeds=[embed_infos, embed_data]
+        )
+
+    async def mdi_infos(self):
+        tournament = "The_Great_Push/Dragonflight/Season_4/Group_A"
+        tournament_data = await self.liquipedia_request(
+            "worldofwarcraft",
+            "tournament",
+            f"[[pagename::{tournament}]]",
+            query="startdate, enddate, name,prizepool,iconurl",
+        )
+        tournament_info = {
+            "name": tournament_data["result"][0]["name"],
+            "start_date": tournament_data["result"][0]["startdate"],
+            "end_date": tournament_data["result"][0]["enddate"],
+            "prizepool": tournament_data["result"][0]["prizepool"],
+            "icon": tournament_data["result"][0]["iconurl"],
+        }
+        return tournament_info

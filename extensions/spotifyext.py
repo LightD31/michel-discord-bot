@@ -49,7 +49,7 @@ logger = logutil.init_logger(os.path.basename(__file__))
 # MongoDB setup
 client = pymongo.MongoClient(CONFIG["mongodb"]["url"])
 db = client["Playlist"]
-playlist_items_full = db["playlist_items_full"]
+playlist_items_full = db["playlistItemsFull"]
 votes_db = db["votes"]
 
 # Spotify authentication
@@ -1233,3 +1233,4 @@ class Spotify(interactions.Extension):
         Force the next vote for the song of the day.
         """
         await self.randomvote()
+        ctx.send("Vote forcé", ephemeral=True)
