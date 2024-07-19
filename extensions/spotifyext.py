@@ -1233,4 +1233,4 @@ class Spotify(interactions.Extension):
         Force the next vote for the song of the day.
         """
         await self.randomvote()
-        ctx.send("Vote forcé", ephemeral=True)
+        await ctx.send("Vote forcé", ephemeral=True)

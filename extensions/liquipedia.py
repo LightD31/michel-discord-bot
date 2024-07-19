@@ -455,9 +455,9 @@ class Liquipedia(Extension):
     async def mdi_schedule(self):
         data, dungeons = await get_table_data()
         infos = await self.mdi_infos()
-        safe_teams = data[:4]
-        in_danger_teams = [data[4]]
-        out_teams = [data[5]]
+        safe_teams = data[:5]
+        in_danger_teams = [data[5]]
+        out_teams = []
         dungeons = ensure_six_elements(dungeons, "???")
         # Prepare the infos_str section (assuming it remains unchanged)
         infos_str = f"""Du {timestamp_converter(infos['start_date']).format(TimestampStyles.LongDate)} au {timestamp_converter(infos['end_date']).format(TimestampStyles.LongDate)}\nCashprize: **${infos['prizepool']} USD**
@@ -533,7 +533,7 @@ class Liquipedia(Extension):
         )
 
     async def mdi_infos(self):
-        tournament = "The_Great_Push/Dragonflight/Season_4/Group_A"
+        tournament = "The_Great_Push/Dragonflight/Season_4/Group_B"
         tournament_data = await self.liquipedia_request(
             "worldofwarcraft",
             "tournament",

@@ -61,7 +61,7 @@ class YoutubeClass(Extension):
 
     async def get_video_id(self, uploads):
         url = f"{YOUTUBE_API_URL}/playlistItems?part=snippet&maxResults=1&playlistId={uploads}&key={YOUTUBE_API_KEY}"
-        data = await self.fetch(url, return_type='json')
+        data = await fetch(url, return_type='json')
         logger.debug(data)
         return data["items"][0]["snippet"]["resourceId"]["videoId"]
 
@@ -86,7 +86,7 @@ class YoutubeClass(Extension):
 
     async def is_video_valid(self, video_id):
         url = f"{YOUTUBE_API_URL}/videos?part=snippet,contentDetails&id={video_id}&key={YOUTUBE_API_KEY}"
-        data = await self.fetch(url, return_type='json')
+        data = await fetch(url, return_type='json')
         logger.debug(data)
         if data["items"][0]["snippet"]["liveBroadcastContent"] == "none":
             duration = isodate.parse_duration(

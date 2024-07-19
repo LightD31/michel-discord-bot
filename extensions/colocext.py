@@ -6,10 +6,10 @@ from aiohttp import ClientSession
 from interactions import (
     ActionRow,
     BaseChannel,
-
     Button,
     ButtonStyle,
     Extension,
+    Embed,
     IntervalTrigger,
     Message,
     OptionType,
@@ -35,8 +35,6 @@ module_config = module_config[enabled_servers[0]]
 
 # Keep track of reminders
 reminders = {}
-
-
 class ColocClass(Extension):
     def __init__(self, bot: Client):
         self.bot: Client = bot
@@ -46,6 +44,7 @@ class ColocClass(Extension):
         self.journa.start()
         await self.load_reminders()
         self.check_reminders.start()
+        self.corpo_recap.start()
 
     @slash_command(name="fesse", description="Fesses", scopes=enabled_servers)
     async def fesse(self, ctx: SlashContext):
@@ -255,3 +254,97 @@ class ColocClass(Extension):
         for remind_time in reminders_to_remove:
             del reminders[remind_time]
         await self.save_reminders()
+    @Task.create(TimeTrigger(23,59,45, utc=False))
+    async def corpo_recap(self):
+        bonuses_type_dict = {
+    "MEMBER_COUNT": "Taille de la corporation",
+    "LOOT": "Supplément par journa",
+    "RECYCLE_LORE_DUST": "Supplément de poudres créatrices au recyclage",
+    "RECYCLE_LORE_FRAGMENT": "Recyclage en cristaux d'histoire au recyclage"
+}
+        bonus_desc_dict = {
+            "MEMBER_COUNT": "Nombre maximum de membres dans la corporation. 4 par défaut, +4 par niveau",
+            "LOOT": "Donne des <:zrtMonnaie:1263888308556136458> supplémentaires à chaque `/journa`. Chaque niveau donne `niveau * 10`, cumulable.",
+            "RECYCLE_LORE_DUST": "Donne des <:zrtPoudre:1263889918976065537> supplémentaires à chaque `/recyclage`. Chaque niveau donne `niveau%`, cumulable.",
+            "RECYCLE_LORE_FRAGMENT":"Donne des <:zrtCristal:1263889917457731667> supplémentaires à chaque `/recyclage`. Chaque niveau donne `niveau%`, cumulable."
+        }
+
+        action_type_dict = {
+            "LEDGER": "a donné",
+            "UPGRADE": "a amélioré la corporation",
+            "JOIN": "a rejoint la corporation",
+            "LEAVE": "a quitté la corporation",
+            "CREATE": "a créé la corporation"
+        }
+        channel = await self.bot.fetch_channel(module_config["colocZuniversChannelId"])
+        # channel = await self.bot.fetch_channel(1223999470467944448)
+        data = await fetch('https://zunivers-api.zerator.com/public/corporation/ce746744-e36d-4331-a0fb-399228e66ef8', 'json')
+
+        # Get today's date
+        today = datetime.today().date()
+
+        # Filter logs for today
+        today_logs = [
+            log for log in data['corporationLogs']
+            if datetime.strptime(log['date'], "%Y-%m-%dT%H:%M:%S.%f").date() == today
+        ]
+
+        # Group actions by user
+        user_actions = {}
+        for log in today_logs:
+            user_id = log['user']['discordId']
+            if user_id not in user_actions:
+                user_actions[user_id] = {
+                    'username': log['user']['discordUserName'],
+                    'globalName': log['user']['discordGlobalName'],
+                    'avatar': log['user']['discordAvatar'],
+                    'actions': []
+                }
+            user_actions[user_id]['actions'].append({
+                'date': datetime.strptime(log['date'], "%Y-%m-%dT%H:%M:%S.%f").strftime("%H:%M"),
+                'amount': log.get('amount', None),
+                'role': log['role'],
+                'action': log['action']
+            })
+
+        # Create the corporation embed
+        corporation_embed = Embed(
+            title=f"{data['name']} Corporation",
+            description=data['description'],
+            color=0x05b600
+        )
+        corporation_embed.set_thumbnail(url=data['logoUrl'])
+        corporation_embed.add_field(name="Trésorerie", value=f"{data['balance']} <:zrtMonnaie:1263888308556136458>", inline=True)
+        corporation_embed.add_field(name=f"Membres ({len(data['userCorporations'])})", value=", ".join([f"{member['user']['discordGlobalName']}" for member in data['userCorporations']]), inline=True)
+        # corporation_embed.add_field(name="\u200b", value="\u200b", inline=True)
+        for bonus in data['corporationBonuses']:
+            corporation_embed.add_field(
+                name=f"{bonuses_type_dict[bonus['type']]} : Niv. {bonus['level']}/4",
+                value=f"{bonus_desc_dict[bonus['type']]}",
+                inline=False
+            )
+        # Create the logs embed
+        logs_embed = Embed(
+            title="Récap journalier",
+            color=0x05b600
+        )
+        for user_id, info in user_actions.items():
+            actions = ""
+            for action in info['actions']:
+                action_str = f"{action['date']}: {action_type_dict[action['action']]}"
+                if action['amount'] is not None:
+                    action_str += f" {action['amount']} <:zrtMonnaie:1263888308556136458>"
+                actions += action_str + "\n"
+            logs_embed.add_field(
+                name=info['globalName'],
+                value=actions,
+                inline=False
+            )
+
+        # Send the embeds to the channel
+        await channel.send(embeds=[corporation_embed, logs_embed])
+
+    @slash_command(name="corpo", description="Affiche les informations de la corporation", scopes=[668445729928249344])
+    async def corpo(self, ctx: SlashContext):
+        await self.corpo_recap()
+        await ctx.send("Corporation recap envoyé !", ephemeral=True)
