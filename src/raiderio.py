@@ -14,9 +14,9 @@ def ms_to_time(ms, hours=False):
         return f"{minutes:02}:{seconds:02}.{milliseconds:03}"
 
 async def get_table_data():
-    url = "https://raider.io/api/mythic-plus/rankings/teams?region=world&page=0&eventId=1000079&season=season-df-4-tr"
+    url = "https://raider.io/api/mythic-plus/rankings/teams?region=world&page=0&eventId=1000080&season=season-df-4-tr"
     data = await fetch(url, "json")
-    dungeons_url = "https://raider.io/api/events/tgp-dragonflight-season-4/brackets/group-b"
+    dungeons_url = "https://raider.io/api/events/tgp-dragonflight-season-4/brackets/global-finals"
     dungeons_data = await fetch(dungeons_url, "json")
 
     # Create the dungeons dictionary dynamically from the fetched data
@@ -57,12 +57,7 @@ async def get_table_data():
             info["clearTimeMs"] for info in dungeon_info.values() if info["clearTimeMs"] > 0
         )
         total_time_str = ms_to_time(total_time_ms, True)
-        if False:
-            color = "33"
-        elif rank == 6:
-            color = "33"
-        else:
-            color = "37"
+        color = "37"
 
         # Combine team overall info and dungeon details into a single string
         team_row = f"\u001b[1;{color}m{rank:1} | {team_name:15} | {int(overall_score):2} | {total_time_str:12} |\u001b[0m"

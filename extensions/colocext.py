@@ -254,19 +254,20 @@ class ColocClass(Extension):
         for remind_time in reminders_to_remove:
             del reminders[remind_time]
         await self.save_reminders()
-    @Task.create(TimeTrigger(23,59,45, utc=False))
-    async def corpo_recap(self):
+        
+    @Task.create(TimeTrigger(23, 59, 45, utc=False))
+    async def corpo_recap(self, date=None):
         bonuses_type_dict = {
-    "MEMBER_COUNT": "Taille de la corporation",
-    "LOOT": "Supplément par journa",
-    "RECYCLE_LORE_DUST": "Supplément de poudres créatrices au recyclage",
-    "RECYCLE_LORE_FRAGMENT": "Recyclage en cristaux d'histoire au recyclage"
-}
-        bonus_desc_dict = {
-            "MEMBER_COUNT": "Nombre maximum de membres dans la corporation. 4 par défaut, +4 par niveau",
-            "LOOT": "Donne des <:zrtMonnaie:1263888308556136458> supplémentaires à chaque `/journa`. Chaque niveau donne `niveau * 10`, cumulable.",
-            "RECYCLE_LORE_DUST": "Donne des <:zrtPoudre:1263889918976065537> supplémentaires à chaque `/recyclage`. Chaque niveau donne `niveau%`, cumulable.",
-            "RECYCLE_LORE_FRAGMENT":"Donne des <:zrtCristal:1263889917457731667> supplémentaires à chaque `/recyclage`. Chaque niveau donne `niveau%`, cumulable."
+            "MEMBER_COUNT": "Taille de la corporation",
+            "LOOT": "Supplément par journa",
+            "RECYCLE_LORE_DUST": "Supplément de poudres créatrices au recyclage",
+            "RECYCLE_LORE_FRAGMENT": "Recyclage en cristaux d'histoire au recyclage"
+        }
+        bonus_value_dict = {
+            "MEMBER_COUNT": lambda level: f"+{level * 4} membres max",
+            "LOOT": lambda level: f"+{level * 10} <:zrtMonnaie:1263888308556136458> par journa",
+            "RECYCLE_LORE_DUST": lambda level: f"+{level}% <:zrtPoudre:1263889918976065537> au recyclage",
+            "RECYCLE_LORE_FRAGMENT": lambda level: f"+{level}% <:zrtCristal:1263889917457731667> au recyclage"
         }
 
         action_type_dict = {
@@ -276,36 +277,56 @@ class ColocClass(Extension):
             "LEAVE": "a quitté la corporation",
             "CREATE": "a créé la corporation"
         }
-        channel = await self.bot.fetch_channel(module_config["colocZuniversChannelId"])
+
         # channel = await self.bot.fetch_channel(1223999470467944448)
-        data = await fetch('https://zunivers-api.zerator.com/public/corporation/ce746744-e36d-4331-a0fb-399228e66ef8', 'json')
+        channel = await self.bot.fetch_channel(module_config["colocZuniversChannelId"])
 
-        # Get today's date
-        today = datetime.today().date()
+        try:
+            data = await fetch('https://zunivers-api.zerator.com/public/corporation/ce746744-e36d-4331-a0fb-399228e66ef8', 'json')
+        except Exception as e:
+            await channel.send(f"Erreur lors de la récupération des données: {e}")
+            return
 
-        # Filter logs for today
+        if date is None:
+            date = datetime.today().date()
+        else:
+            try:
+                date = datetime.strptime(date, "%Y-%m-%d").date()
+            except ValueError:
+                await channel.send("Format de date invalide. Utilisez YYYY-MM-DD.")
+                return
+
+        # Filter and sort logs for today
         today_logs = [
             log for log in data['corporationLogs']
-            if datetime.strptime(log['date'], "%Y-%m-%dT%H:%M:%S.%f").date() == today
+            if datetime.strptime(log['date'], "%Y-%m-%dT%H:%M:%S.%f").date() == date
         ]
+        today_logs.sort(key=lambda x: datetime.strptime(x['date'], "%Y-%m-%dT%H:%M:%S.%f"))
 
-        # Group actions by user
-        user_actions = {}
-        for log in today_logs:
-            user_id = log['user']['discordId']
-            if user_id not in user_actions:
-                user_actions[user_id] = {
-                    'username': log['user']['discordUserName'],
-                    'globalName': log['user']['discordGlobalName'],
-                    'avatar': log['user']['discordAvatar'],
-                    'actions': []
-                }
-            user_actions[user_id]['actions'].append({
-                'date': datetime.strptime(log['date'], "%Y-%m-%dT%H:%M:%S.%f").strftime("%H:%M"),
-                'amount': log.get('amount', None),
-                'role': log['role'],
-                'action': log['action']
-            })
+        # Merge logs with the same timestamp
+        merged_logs = []
+        i = 0
+        while i < len(today_logs):
+            log = today_logs[i]
+            user = log['user']
+            merged_log = {
+                "user": user,
+                "date": log['date'],
+                "action": action_type_dict[log['action']],
+                "amount": log.get('amount', 0)
+            }
+            
+            # If this is an upgrade action, sum up all amounts with the same timestamp
+            if log['action'] == "UPGRADE":
+                j = i + 1
+                while j < len(today_logs) and today_logs[j]['date'] == log['date']:
+                    merged_log['amount'] += today_logs[j].get('amount', 0)
+                    j += 1
+                i = j
+            else:
+                i += 1
+            
+            merged_logs.append(merged_log)
 
         # Create the corporation embed
         corporation_embed = Embed(
@@ -316,35 +337,44 @@ class ColocClass(Extension):
         corporation_embed.set_thumbnail(url=data['logoUrl'])
         corporation_embed.add_field(name="Trésorerie", value=f"{data['balance']} <:zrtMonnaie:1263888308556136458>", inline=True)
         corporation_embed.add_field(name=f"Membres ({len(data['userCorporations'])})", value=", ".join([f"{member['user']['discordGlobalName']}" for member in data['userCorporations']]), inline=True)
-        # corporation_embed.add_field(name="\u200b", value="\u200b", inline=True)
+
         for bonus in data['corporationBonuses']:
             corporation_embed.add_field(
                 name=f"{bonuses_type_dict[bonus['type']]} : Niv. {bonus['level']}/4",
-                value=f"{bonus_desc_dict[bonus['type']]}",
+                value=f"{bonus_value_dict[bonus['type']](bonus['level'])}",
                 inline=False
             )
-        # Create the logs embed
+        
         logs_embed = Embed(
-            title="Récap journalier",
+            title=f"Journal de la corporation pour le {date}",
             color=0x05b600
         )
-        for user_id, info in user_actions.items():
-            actions = ""
-            for action in info['actions']:
-                action_str = f"{action['date']}: {action_type_dict[action['action']]}"
-                if action['amount'] is not None:
-                    action_str += f" {action['amount']} <:zrtMonnaie:1263888308556136458>"
-                actions += action_str + "\n"
-            logs_embed.add_field(
-                name=info['globalName'],
-                value=actions,
-                inline=False
-            )
+        
+        str_logs = ""
+        active_members = set()
+        for log in merged_logs:
+            if log['action'] == "a amélioré la corporation":
+                action_str = f"**{log['user']['discordGlobalName']}** {log['action']} (**{log['amount']}** <:zrtMonnaie:1263888308556136458>)"
+            else:
+                action_str = f"**{log['user']['discordGlobalName']}** {log['action']}"
+                if log['amount'] != 0:
+                    action_str += f" **{log['amount']}** <:zrtMonnaie:1263888308556136458>"
+            str_logs += f"{action_str}\n"
+            active_members.add(log['user']['discordGlobalName'])
+        logs_embed.add_field(name="Les bons employés", value=str_logs, inline=True)
+
+        # Add field for inactive members
+        all_members = set(member['user']['discordGlobalName'] for member in data['userCorporations'])
+        inactive_members = all_members - active_members
+        inactive_members_str = ", ".join(inactive_members) if inactive_members else "Aucun"
+        logs_embed.add_field(name="\u200b", value="\u200b", inline=True)
+        logs_embed.add_field(name="Les mauvais employés", value=inactive_members_str, inline=True)
 
         # Send the embeds to the channel
         await channel.send(embeds=[corporation_embed, logs_embed])
 
     @slash_command(name="corpo", description="Affiche les informations de la corporation", scopes=[668445729928249344])
-    async def corpo(self, ctx: SlashContext):
-        await self.corpo_recap()
+    @slash_option(name="date", description="Date du récap", opt_type=OptionType.STRING, required=False)
+    async def corpo(self, ctx: SlashContext, date: str = None):
+        await self.corpo_recap(date=date)
         await ctx.send("Corporation recap envoyé !", ephemeral=True)

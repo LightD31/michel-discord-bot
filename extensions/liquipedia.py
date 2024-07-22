@@ -386,91 +386,24 @@ class Liquipedia(Extension):
         logger.debug(f"Embeds created: {[embed.title for embed in embeds_to_return]}")
         logger.debug(f"Parents: {parents}")
         return embeds_to_return, parents
-
-    # @Task.create(IntervalTrigger(minutes=5))
-    # async def mdi_schedule(self):
-    #     try:
-    #         data, tournament = await self.mdi_placement()
-    #         embed = await self.make_mdi_embed(data, tournament)
-    #         await self.wow_message.edit(embeds=[embed])
-    #     except Exception as e:
-    #         logger.error(f"Error in MDI schedule task: {e}")
-
-    # async def mdi_placement(self):
-    #     tournament = "The_Great_Push/Dragonflight/Season_4/Group_A"
-    #     tournament_data = await self.liquipedia_request(
-    #         "worldofwarcraft",
-    #         "tournament",
-    #         f"[[pagename::{tournament}]]",
-    #         query="startdate, enddate, name,prizepool,iconurl",
-    #     )
-
-    #     data = await self.liquipedia_request(
-    #         "worldofwarcraft",
-    #         "placement",
-    #         f"[[pagename::{tournament}]]",
-    #         limit=6,
-    #         order="placement ASC",
-    #     )
-
-    #     tournament_info = {
-    #         "name": tournament_data["result"][0]["name"],
-    #         "start_date": tournament_data["result"][0]["startdate"],
-    #         "end_date": tournament_data["result"][0]["enddate"],
-    #         "prizepool": tournament_data["result"][0]["prizepool"],
-    #         "icon": tournament_data["result"][0]["iconurl"]
-    #     }
-
-    #     placement_data = [
-    #         {
-    #             "team": entry["opponentname"],
-    #             "placement": entry["placement"],
-    #             "players": [entry["opponentplayers"][f"p{i}"] for i in range(1, 6) if f"p{i}" in entry["opponentplayers"]],
-    #             "prize": entry["prizemoney"]
-    #         }
-    #         for entry in data['result']
-    #     ]
-
-    #     return placement_data, tournament_info
-
-    # async def make_mdi_embed(self, data, tournament):
-    #     embed = Embed(
-    #         title=tournament['name'],
-    #         color=0xE04747,
-    #         footer="Source: Liquipedia",
-    #         timestamp=datetime.now(),
-    #         description=f"Du {timestamp_converter(tournament['start_date']).format(TimestampStyles.LongDate)} au {timestamp_converter(tournament['end_date']).format(TimestampStyles.LongDate)}\nCashprize: **${tournament['prizepool']} USD**",
-    #     )
-    #     embed.set_thumbnail(url=tournament['icon'])
-
-    #     for entry in data:
-    #         embed.add_field(
-    #             name=f"{entry['placement']}. {entry['team']} ({entry['prize']})",
-    #             value=", ".join(entry["players"]),
-    #             inline=False,
-    #         )
-    #     return embed
-
+    
     @Task.create(IntervalTrigger(minutes=5))
     async def mdi_schedule(self):
         data, dungeons = await get_table_data()
         infos = await self.mdi_infos()
-        safe_teams = data[:5]
-        in_danger_teams = [data[5]]
+        safe_teams = data
+        in_danger_teams = []
         out_teams = []
         dungeons = ensure_six_elements(dungeons, "???")
         # Prepare the infos_str section (assuming it remains unchanged)
         infos_str = f"""Du {timestamp_converter(infos['start_date']).format(TimestampStyles.LongDate)} au {timestamp_converter(infos['end_date']).format(TimestampStyles.LongDate)}\nCashprize: **${infos['prizepool']} USD**
     
     **Day 1: July 05th**
-    6 teams compete over 5 hours in 3 dungeons ({', '.join(dungeons[:3])})
-    - Bottom 1 scoring team is eliminated\n
+    6 teams compete over 5 hours in 3 dungeons ({', '.join(dungeons[:3])})\n
     **Day 2: July 06th**
-    5 teams compete over 5 hours in 5 dungeons ({', '.join(dungeons[:5])})
-    - Bottom 1 scoring team is eliminated\n
+    6 teams compete over 5 hours in 5 dungeons ({', '.join(dungeons[:5])})\n
     **Day 3: July 07th**
-    4 teams compete over 5 hours in 6 dungeons ({', '.join(dungeons)})
-    - Top 3 scoring teams qualify to Global Finals
+    6 teams compete over 5 hours in 6 dungeons ({', '.join(dungeons)})
         """
 
         # Prepare the initial embed for infos section
@@ -533,7 +466,7 @@ class Liquipedia(Extension):
         )
 
     async def mdi_infos(self):
-        tournament = "The_Great_Push/Dragonflight/Season_4/Group_B"
+        tournament = "The_Great_Push/Dragonflight/Season_4/Global_Finals"
         tournament_data = await self.liquipedia_request(
             "worldofwarcraft",
             "tournament",
