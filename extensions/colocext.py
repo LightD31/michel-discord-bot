@@ -231,6 +231,7 @@ class ColocClass(Extension):
                         response = await fetch(
                             f"https://zunivers-api.zerator.com/public/loot/{user.username}",
                             "json",
+                            headers={"X-ZUnivers-RuleSetType": "NORMAL"}
                         )
                         for day in response["lootInfos"]:
                             if day["date"] == current_time.strftime("%Y-%m-%d"):
@@ -265,9 +266,9 @@ class ColocClass(Extension):
         }
         bonus_value_dict = {
             "MEMBER_COUNT": lambda level: f"+{level * 4} membres max",
-            "LOOT": lambda level: f"+{level * 10} <:zrtMonnaie:1263888308556136458> par journa",
-            "RECYCLE_LORE_DUST": lambda level: f"+{level}% <:zrtPoudre:1263889918976065537> au recyclage",
-            "RECYCLE_LORE_FRAGMENT": lambda level: f"+{level}% <:zrtCristal:1263889917457731667> au recyclage"
+            "LOOT": lambda level: f"+{sum(range(1, level + 1)) * 10} <:eraMonnaie:1265266681291341855> par journa",
+            "RECYCLE_LORE_DUST": lambda level: f"+{sum(range(1, level + 1))}% <:eraPoudre:1265266623217012892> au recyclage",
+            "RECYCLE_LORE_FRAGMENT": lambda level: f"+{sum(range(1, level + 1))}% <:eraCristal:1265266545655812118> au recyclage"
         }
 
         action_type_dict = {
@@ -282,7 +283,7 @@ class ColocClass(Extension):
         channel = await self.bot.fetch_channel(module_config["colocZuniversChannelId"])
 
         try:
-            data = await fetch('https://zunivers-api.zerator.com/public/corporation/ce746744-e36d-4331-a0fb-399228e66ef8', 'json')
+            data = await fetch('https://zunivers-api.zerator.com/public/corporation/ce746744-e36d-4331-a0fb-399228e66ef8', 'json', headers={"X-ZUnivers-RuleSetType": "NORMAL"})
         except Exception as e:
             await channel.send(f"Erreur lors de la récupération des données: {e}")
             return
@@ -332,10 +333,11 @@ class ColocClass(Extension):
         corporation_embed = Embed(
             title=f"{data['name']} Corporation",
             description=data['description'],
-            color=0x05b600
+            color=0x05b600,
+            url="https://zunivers.zerator.com/corporation/ce746744-e36d-4331-a0fb-399228e66ef8"
         )
         corporation_embed.set_thumbnail(url=data['logoUrl'])
-        corporation_embed.add_field(name="Trésorerie", value=f"{data['balance']} <:zrtMonnaie:1263888308556136458>", inline=True)
+        corporation_embed.add_field(name="Trésorerie", value=f"{data['balance']} <:eraMonnaie:1265266681291341855>", inline=True)
         corporation_embed.add_field(name=f"Membres ({len(data['userCorporations'])})", value=", ".join([f"{member['user']['discordGlobalName']}" for member in data['userCorporations']]), inline=True)
 
         for bonus in data['corporationBonuses']:
@@ -354,21 +356,23 @@ class ColocClass(Extension):
         active_members = set()
         for log in merged_logs:
             if log['action'] == "a amélioré la corporation":
-                action_str = f"**{log['user']['discordGlobalName']}** {log['action']} (**{log['amount']}** <:zrtMonnaie:1263888308556136458>)"
+                action_str = f"**{log['user']['discordGlobalName']}** {log['action']} (**{log['amount']}** <:eraMonnaie:1265266681291341855>)"
             else:
                 action_str = f"**{log['user']['discordGlobalName']}** {log['action']}"
                 if log['amount'] != 0:
-                    action_str += f" **{log['amount']}** <:zrtMonnaie:1263888308556136458>"
+                    action_str += f" **{log['amount']}** <:eraMonnaie:1265266681291341855>"
             str_logs += f"{action_str}\n"
             active_members.add(log['user']['discordGlobalName'])
-        logs_embed.add_field(name="Les bons employés", value=str_logs, inline=True)
+        if not str_logs:
+            str_logs = "Aucune action aujourd'hui."
+        logs_embed.add_field(name="Journal", value=str_logs, inline=True)
 
         # Add field for inactive members
         all_members = set(member['user']['discordGlobalName'] for member in data['userCorporations'])
         inactive_members = all_members - active_members
         inactive_members_str = ", ".join(inactive_members) if inactive_members else "Aucun"
         logs_embed.add_field(name="\u200b", value="\u200b", inline=True)
-        logs_embed.add_field(name="Les mauvais employés", value=inactive_members_str, inline=True)
+        logs_embed.add_field(name="Inactifs", value=inactive_members_str, inline=True)
 
         # Send the embeds to the channel
         await channel.send(embeds=[corporation_embed, logs_embed])
