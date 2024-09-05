@@ -1,6 +1,6 @@
 import os
 import random
-from interactions import Client,Extension, slash_command, OptionType, SlashContext, slash_option
+from interactions import Client, Extension, slash_command, OptionType, SlashContext, slash_option
 from rdoclient import RandomOrgClient
 
 from dict import chooseList
@@ -14,6 +14,17 @@ logger = logutil.init_logger(os.path.basename(__file__))
 class RandomClass(Extension):
     def __init__(self, bot: Client):
         self.bot = bot
+        self.random_client = RandomOrgClient(config.get("random").get("randomOrgApiKey"))
+
+    def _get_random_index(self, min_val: int, max_val: int) -> int:
+        """Helper function to get a random index using random.org API, fallback to Python's random."""
+        try:
+            response = self.random_client.generate_signed_integers(n=1, min=min_val, max=max_val)
+            random_index = response["random"]["data"][0]
+            return random_index, response
+        except Exception as e:
+            logger.error("Random.org API failed, using python random instead.", exc_info=True)
+            return random.randint(min_val, max_val), None
 
     @slash_command(
         name="pick",
@@ -31,29 +42,38 @@ class RandomClass(Extension):
         opt_type=OptionType.STRING,
         required=False,
     )
-    async def pick(self, ctx: SlashContext, choix, séparateur=";"):
+    async def pick(self, ctx: SlashContext, choix: str, séparateur: str = ";"):
         choices = [choice.strip() for choice in choix.split(séparateur)]
         if len(choices) <= 1:
             await ctx.send("Compliqué de faire un choix quand il n'y a pas le choix")
             return
-        try:
-            # Use random.org API to generate a random integer between 0 and len(choices)-1
-            r = RandomOrgClient(config.get("random").get("randomOrgApiKey"))
-            response = r.generate_signed_integers(n=1, min=1, max=len(choices))
-            link = r.create_url(response["random"], response["signature"])
-            random_index = response["random"]["data"][0] - 1
+        await ctx.defer()
+        random_index, response = self._get_random_index(1, len(choices))
+        random_index -= 1  # Adjusting for 0-based index
+        
+        if response:
+            link = self.random_client.create_url(response["random"], response["signature"])
             await ctx.send(
-                f"{random.choice(chooseList)} : {choices[random_index]}\n*[Sélectionné par random.org](<{link}>)*\nid : {response['random'].get('serialNumber')}\n"
+                f"{random.choice(chooseList)} : {choices[random_index]}\n*[Sélectionné par random.org](<{link}>)*"
             )
-        except Exception as e:
-            logger.error(
-                "Random.org API failed, using python random instead.\n%s\n%s",
-                response.get("error"),
-                e,
-            )
-            # If random.org API fails, use python random
-            logger.warning("Random.org API failed, using python random instead.")
-            random_index = random.randint(0, len(choices) - 1)
+        else:
             await ctx.send(
                 f"{random.choice(chooseList)} : {choices[random_index]}\n*Sélectionné par Python (erreur de random.org)*\n"
             )
+
+    @slash_command(name="roll", description="Lance un dé")
+    @slash_option(name="faces", description="Nombre de faces du dé", opt_type=OptionType.INTEGER, required=True)
+    async def roll(self, ctx: SlashContext, faces: int):
+        if faces < 2:
+            await ctx.send("Un dé doit avoir au moins 2 faces !")
+            return
+        await ctx.defer()
+        random_index, response = self._get_random_index(1, faces)
+        
+        if response:
+            link = self.random_client.create_url(response["random"], response["signature"])
+            await ctx.send(
+                f":game_die: **{random_index}** :game_die:\n*[Sélectionné par random.org](<{link}>)*"
+            )
+        else:
+            await ctx.send(f":game_die: **{random_index}** :game_die:")
