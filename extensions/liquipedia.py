@@ -38,8 +38,8 @@ class Liquipedia(Extension):
         channel = await self.bot.fetch_channel(wow_channel_id)
         self.wow_message = await channel.fetch_message(wow_message_id)
         self.schedule.start()
-        self.mdi_schedule.start()
-        await self.mdi_schedule()
+        # self.mdi_schedule.start()
+        # await self.mdi_schedule()
         # await self.schedule()
 
     @Task.create(IntervalTrigger(minutes=5))
