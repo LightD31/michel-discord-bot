@@ -6,7 +6,6 @@ import json
 from typing import Optional, Union
 
 import pytz
-from dotenv import load_dotenv
 from interactions import (
     BaseChannel,
     Client,
@@ -189,7 +188,7 @@ class TwitchExt2(Extension):
             else "Pas de catégorie définie"
         )
         if is_now:
-            name = f"<:zrtON:962320783038890054> {title} <:zrtON:962320783038890054> "
+            name = f"<:live_1:1265285043891343391><:live_2:1265285055186468864><:live_3:1265285063818477703> {title}"
             value = f"**{category}\nEn cours ({str(utils.timestamp_converter(stream.start_time).format(TimestampStyles.ShortTime))}-{str(utils.timestamp_converter(stream.end_time).format(TimestampStyles.ShortTime))})\n\u200b**"
         elif stream.start_time < now + timedelta(days=2):
             name = f"{title}"
