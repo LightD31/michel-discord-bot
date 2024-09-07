@@ -21,11 +21,12 @@ class StreamerInfo:
     is_online: bool
     location: str
 
-def split_streamer_list(streamer_list: str, max_length: int = 1024) -> List[str]:
+def split_streamer_list(streamer_list: str, max_length: int = 1024, withlink = False) -> List[str]:
     chunks = []
     current_chunk = []
     current_length = 0
-
+    if not withlink:
+        max_length = max_length // 6
     for streamer in streamer_list.split(', '):
         if current_length + len(streamer) + 2 > max_length:  # +2 for ', '
             chunks.append(', '.join(current_chunk))
@@ -46,7 +47,7 @@ class Zevent(Extension):
     API_URL = "https://zevent.fr/api/"
     PLANNING_API_URL = "https://api.zevent.gdoc.fr/events/upcoming"
     STREAMLABS_API_URL = "https://streamlabscharity.com/api/v1/teams/@zevent-2024/zevent-2024"
-    UPDATE_INTERVAL = 60  # 1 minute
+    UPDATE_INTERVAL = 30  # 1 minute
     MILESTONE_INTERVAL = 100000  # 100k
 
     def __init__(self, client: Client):
@@ -112,8 +113,7 @@ class Zevent(Extension):
 
         if current_milestone > self.last_milestone:
             # Doesn't send message for the first milestone to avoid spam when bot starts
-            # if self.last_milestone != 0:
-            if True:
+            if current_milestone > 100000:
                 milestone_message = f"🎉 Nouveau palier atteint : {current_milestone:,} € récoltés ! 🎉".replace(",", " ")
                 await self.channel.send(milestone_message)
             self.last_milestone = current_milestone
@@ -166,7 +166,7 @@ class Zevent(Extension):
 
     def create_location_embed(self, title: str, streams: Dict[str, StreamerInfo], withlink = True) -> Embed:
         streamer_count = len(streams)
-        embed = Embed(title=f"Les {streamer_count} {title}", color=0x59af37, footer="Source: zevent.fr ❤️", timestamp=datetime.now())
+        embed = Embed(title=f"Les {streamer_count} {title}", color=0x59af37, footer="Source: zevent.fr / Twitch ❤️", timestamp=datetime.now())
         
         online_streamers = [s for s in streams.values() if s.is_online]
         offline_streamers = [s for s in streams.values() if not s.is_online]
@@ -180,9 +180,9 @@ class Zevent(Extension):
                 for s in streamers
             )
 
-            chunks = split_streamer_list(streamer_list, max_length=1024)
+            chunks = split_streamer_list(streamer_list, max_length=1024, withlink=withlink)
             for i, chunk in enumerate(chunks, 1):
-                field_name = f"{status} {i}/{len(chunks)}"
+                field_name = status if len(chunks) == 1 else f"{status} {i}/{len(chunks)}"
                 embed.add_field(name=field_name, value=chunk or "Aucun streamer", inline=True)
 
         if len(embed.fields) == 0:
@@ -191,7 +191,7 @@ class Zevent(Extension):
         return embed
 
     def create_planning_embed(self, events: List[Dict]) -> Embed:
-        embed = Embed(title="Planning Zevent 2024", color=0x59af37, footer="Source: zevent.gdoc.fr ❤️", timestamp=datetime.now())
+        embed = Embed(title="Prochains évènements", color=0x59af37, footer="Source: zevent.gdoc.fr ❤️", timestamp=datetime.now())
         
         sorted_events = sorted(events, key=lambda x: x['start_at'])
         
@@ -214,13 +214,13 @@ class Zevent(Extension):
                 field_value += f"{event['description']}\n"
             
             if event['hosts']:
-                hosts = ', '.join([host['name'] for host in event['hosts']])
+                hosts = ', '.join([host['name'].replace("_", "\\_") for host in event['hosts']])
                 field_value += f"Hosts: {hosts}\n"
             
             if event['participants']:
-                participants = ', '.join([participant['name'] for participant in event['participants']])
+                participants = ', '.join([participant['name'].replace("_", "\\_") for participant in event['participants']])
                 field_value += f"Participants: {participants}"
             
-            embed.add_field(name=field_name, value=field_value, inline=False)
+            embed.add_field(name=field_name, value=field_value, inline=True)
         
         return embed
