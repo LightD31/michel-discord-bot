@@ -248,7 +248,7 @@ class Zevent(Extension):
         
         return embed
     
-    @slash_command("zevent_finish", "Créée l'embed final après l'évènement")
+    @slash_command(name="zevent_finish",description= "Créée l'embed final après l'évènement")
     async def end(self, ctx:SlashContext):
         # Fetch the data
         data = fetch(self.API_URL, return_type="json")
