@@ -21,12 +21,10 @@ class StreamerInfo:
     is_online: bool
     location: str
 
-def split_streamer_list(streamer_list: str, max_length: int = 1024, withlink = False) -> List[str]:
+def split_streamer_list(streamer_list: str, max_length: int = 1024) -> List[str]:
     chunks = []
     current_chunk = []
     current_length = 0
-    if not withlink:
-        max_length = max_length // 6
     for streamer in streamer_list.split(', '):
         if current_length + len(streamer) + 2 > max_length:  # +2 for ', '
             chunks.append(', '.join(current_chunk))
@@ -62,8 +60,8 @@ class Zevent(Extension):
         self.channel = await self.client.fetch_channel(self.CHANNEL_ID)
         self.message = await self.channel.fetch_message(self.MESSAGE_ID)
         self.twitch = await Twitch(config["twitch"]["twitchClientId"], config["twitch"]["twitchClientSecret"])
-        self.zevent.start()
-        await self.zevent()
+        # self.zevent.start()
+        # await self.zevent()
 
     @Task.create(IntervalTrigger(seconds=UPDATE_INTERVAL))
     async def zevent(self):
@@ -173,23 +171,26 @@ class Zevent(Extension):
             footer=f"Source: zevent.fr ❤️"
             )
 
-    def create_location_embed(self, title: str, streams: Dict[str, StreamerInfo], withlink = True, finished = False) -> Embed:
+    def create_location_embed(self, title: str, streams: Dict[str, StreamerInfo], withlink=True, finished=False) -> Embed:
         streamer_count = len(streams)
-        embed = Embed(title=f"Les {streamer_count} {title}", color=0x59af37, footer="Source: zevent.fr / Twitch ❤️", timestamp=datetime.now())
-        # Don't separate online and offline streamers if the event is finished
+        embed = Embed(
+            title=f"Les {streamer_count} {title}",
+            color=0x59af37,
+            footer="Source: zevent.fr / Twitch ❤️",
+            timestamp=datetime.now()
+        )
+        
         if finished:
             online_streamers = streams.values()
             offline_streamers = []
+            status = f"Les {streamer_count} {title}"  # Use the embed title as the field title when finished
+            withlink = False  # Disable links when the event is finished
         else:
             online_streamers = [s for s in streams.values() if s.is_online]
             offline_streamers = [s for s in streams.values() if not s.is_online]
-        # Don't show offline streamers if the event is finished
-        if finished:
-            status = "Streamers"
-        else:
             status = "Streamers en ligne"
-            
-        for status, streamers in [("En ligne", online_streamers), ("Hors-ligne", offline_streamers)]:
+
+        for stream_status, streamers in [(status, online_streamers), ("Hors-ligne", offline_streamers)]:
             if not streamers:
                 continue
 
@@ -198,15 +199,16 @@ class Zevent(Extension):
                 for s in streamers
             )
 
-            chunks = split_streamer_list(streamer_list, max_length=1024, withlink=withlink)
+            chunks = split_streamer_list(streamer_list, max_length=1024)
             for i, chunk in enumerate(chunks, 1):
-                field_name = status if len(chunks) == 1 else f"{status} {i}/{len(chunks)}"
+                field_name = stream_status if len(chunks) == 1 else f"{stream_status} {i}/{len(chunks)}"
                 embed.add_field(name=field_name, value=chunk or "Aucun streamer", inline=True)
 
         if len(embed.fields) == 0:
             embed.add_field(name="Status", value="Aucun streamer en ce moment", inline=False)
 
         return embed
+
 
     def create_planning_embed(self, events: List[Dict]) -> Embed:
         embed = Embed(title="Prochains évènements", color=0x59af37, footer="Source: zevent.gdoc.fr ❤️", timestamp=datetime.now())
@@ -251,17 +253,18 @@ class Zevent(Extension):
     @slash_command(name="zevent_finish",description= "Créée l'embed final après l'évènement")
     async def end(self, ctx:SlashContext):
         # Fetch the data
-        data = fetch(self.API_URL, return_type="json")
+        data = await fetch(self.API_URL, return_type="json")
         total_amount = data["donationAmount"]["formatted"]
         streams = await self.categorize_streams(data["live"])
         # Create the embeds with all the streamers regardlss of if they are online or offline, no planning
         embeds = [ 
                   self.create_main_embed(total_amount, finished=True),
-                    self.create_location_embed("streamers présents sur place", streams["LAN"], finished=True),
-                    self.create_location_embed("participants à distance", streams["Online"], finished=True)
+                    self.create_location_embed("streamers présents sur place", streams["LAN"], finished=True, withlink=False),
+                    self.create_location_embed("participants à distance", streams["Online"], finished=True, withlink=False)
                   ]
         # Edit the message
         await self.message.edit(embeds=embeds, content="")
+        await ctx.send("Embed final créé avec succès", ephemeral=True)
         
         
         
