@@ -1,4 +1,3 @@
-from math import e
 import os
 from interactions import (
     Extension, Client, listen, Message, BaseChannel,
@@ -251,11 +250,10 @@ class Zevent(Extension):
     
     @slash_command("zevent_finish", "Créée l'embed final après l'évènement")
     async def end(self, ctx:SlashContext):
-        try:
-            # Fetch the data
-            data = fetch(self.API_URL, return_type="json")
-            total_amount = data["donationAmount"]["formatted"]
-            streams = await self.categorize_streams(data["live"])
+        # Fetch the data
+        data = fetch(self.API_URL, return_type="json")
+        total_amount = data["donationAmount"]["formatted"]
+        streams = await self.categorize_streams(data["live"])
         # Create the embeds with all the streamers regardlss of if they are online or offline, no planning
         embeds = [ 
                   self.create_main_embed(total_amount, finished=True),
