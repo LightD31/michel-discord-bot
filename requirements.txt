@@ -20,5 +20,5 @@ anthropic
 beautifulsoup4
 openai
 aiohttp
-uvloop
+# uvloop
 pyfactorybridge
