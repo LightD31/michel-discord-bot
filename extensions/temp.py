@@ -14,7 +14,7 @@ class Temp(Extension):
                 'content': message.content,
                 'author': message.author.username,
             })
-        with open('messages.json', 'w') as f:
+        with open('data/messages.json', 'w') as f:
             json.dump(messages, f)
         print('Done')
         
