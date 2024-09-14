@@ -17,7 +17,7 @@ class Temp(Extension):
         # Reverse the list to have the messages in the chronological order
         messages = messages[::-1]
         with open('data/messages.json', 'w') as f:
-            json.dump(messages, f)
+            json.dump(messages, f, indent=4)
         print('Done')
         
         
