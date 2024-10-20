@@ -13,6 +13,7 @@ class Temp(Extension):
             messages.append({
                 'content': message.content,
                 'author': message.author.username,
+                'timestamp': message.created_at.isoformat()
             })
         # Reverse the list to have the messages in the chronological order
         messages = messages[::-1]
