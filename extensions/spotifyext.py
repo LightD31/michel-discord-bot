@@ -305,7 +305,7 @@ class Spotify(interactions.Extension):
         track = sp.track(song["_id"], market="FR")
         channel = await self.bot.fetch_channel(CHANNEL_ID)
         message = await channel.send(
-            content=f"Voulez-vous **conserver** cette chanson dans playlist ? (poke <@{song['added_by']}>)\n{track['preview_url']}",
+            content=f"Voulez-vous **conserver** cette chanson dans playlist ? (poke <@{song['added_by']}>)\n{track['external_urls']['spotify']}",
             embeds=[
                 await embed_song(
                     song=song,
@@ -504,7 +504,7 @@ class Spotify(interactions.Extension):
                         person=DISCORD2NAME.get(song["added_by"], song["added_by"]),
                     )
                     await channel.send(
-                        content=f"{random.choice(startList)} <@{song['added_by']}>, {random.choice(finishList)}\n{track['preview_url']}",
+                        content=f"{random.choice(startList)} <@{song['added_by']}>, {random.choice(finishList)}\n{track['external_urls']['spotify']}",
                         embeds=embed,
                     )
                     logger.info(
@@ -527,7 +527,7 @@ class Spotify(interactions.Extension):
                         time=interactions.Timestamp.utcnow(),
                     )
                     channel = await self.bot.fetch_channel(CHANNEL_ID)
-                    await channel.send(track['preview_url'],embeds=embed)
+                    await channel.send(track['external_urls']['spotify'],embeds=embed)
 
             # Store the snapshot ID, length and duration in a JSON file
             snapshot["snapshot"] = new_snap
@@ -992,7 +992,7 @@ class Spotify(interactions.Extension):
                     icon=ctx.author.avatar.url,
                 )
                 message = await ctx.send(
-                    content=f"Voulez-vous **ajouter** cette chanson à la playlist ? (Demandé par <@{ctx.author_id}>)\n{track['preview_url']}",
+                    content=f"Voulez-vous **ajouter** cette chanson à la playlist ? (Demandé par <@{ctx.author_id}>)\n{track['external_urls']['spotify']}",
                     embeds=embed,
                     components=components,
                 )
