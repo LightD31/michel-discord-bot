@@ -215,7 +215,7 @@ class Spotify(interactions.Extension):
     #         interactions.TimeTrigger(hour=21, minute=30, utc=False),
     #     )
     # )
-    # @interactions.Task.create(interactions.TimeTrigger(hour=20, minute=0, utc=False))
+    @interactions.Task.create(interactions.TimeTrigger(hour=20, minute=0, utc=False))
     async def randomvote(self):
         logger.info("Tache randomvote lancée")
         message_id = vote_infos.get("message_id")
