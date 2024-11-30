@@ -144,7 +144,7 @@ async def embed_song(
     
     embed.add_field(
         name="Titre",
-        value=f"[{track['name']}]({track['external_urls']['spotify']})\n([Preview]({track['preview_url']}))",
+        value=f"[{track['name']}]({track['external_urls']['spotify']})",
         inline=True
     )
     
