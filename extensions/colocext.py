@@ -266,7 +266,7 @@ class ColocClass(Extension):
         }
         bonus_value_dict = {
             "MEMBER_COUNT": lambda level: f"+{level * 4} membres max",
-            "LOOT": lambda level: f"+{sum(range(1, level + 1)) * 10} <:eraMonnaie:1265266681291341855> par journa",
+            "LOOT": lambda level: f"+{sum(range(1, level + 1)) * 10} <:eraMonnaie:1265266681291341855> par journa ou bonus",
             "RECYCLE_LORE_DUST": lambda level: f"+{sum(range(1, level + 1))}% <:eraPoudre:1265266623217012892> au recyclage",
             "RECYCLE_LORE_FRAGMENT": lambda level: f"+{sum(range(1, level + 1))}% <:eraCristal:1265266545655812118> au recyclage"
         }
