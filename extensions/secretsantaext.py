@@ -1,7 +1,7 @@
 import json
 import os
 import random
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Set
 
 from interactions import (
     Extension, Client, BrandColors, PartialEmoji, Embed, OptionType, 
@@ -18,6 +18,7 @@ config, module_config, enabled_servers = load_config("moduleSecretSanta")
 SECRET_SANTA_FILE = config["SecretSanta"]["secretSantaFile"]
 SECRET_SANTA_KEY = config["SecretSanta"]["secretSantaKey"]
 DRAW_RESULTS_FILE = config["SecretSanta"].get("drawResultsFile", "data/secret_santa_draw_results.json")
+BANNED_PAIRS_FILE = config["SecretSanta"].get("bannedPairsFile", "data/secret_santa_banned_pairs.json")
 
 discord2name = config["discord2name"]
 
@@ -40,79 +41,151 @@ class SecretSanta(Extension):
         except (FileNotFoundError, json.JSONDecodeError):
             return {}
 
-    def write_secret_santa_data(self, data: Dict[str, int]) -> None:
-        with open(SECRET_SANTA_FILE, "w", encoding="utf-8") as f:
-            json.dump({SECRET_SANTA_KEY: data}, f)
-        logger.info(f"Secret Santa data updated: {data}")
-
-    def update_secret_santa_data(self, guild_id: int, message_id: Optional[int] = None) -> None:
-        data = self.read_secret_santa_data()
-        if message_id is None:
-            data.pop(str(guild_id), None)
-        else:
-            data[str(guild_id)] = message_id
-        self.write_secret_santa_data(data)
-
-    def save_draw_results(self, guild_id: int, results: List[Tuple[int, int]]) -> None:
+    def read_banned_pairs(self, guild_id: int) -> List[Tuple[int, int]]:
         try:
-            with open(DRAW_RESULTS_FILE, "r+", encoding="utf-8") as f:
+            with open(BANNED_PAIRS_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                return data.get(str(guild_id), [])
+        except (FileNotFoundError, json.JSONDecodeError):
+            return []
+
+    def write_banned_pairs(self, guild_id: int, banned_pairs: List[Tuple[int, int]]) -> None:
+        try:
+            with open(BANNED_PAIRS_FILE, "r+", encoding="utf-8") as f:
                 data = json.load(f)
         except (FileNotFoundError, json.JSONDecodeError):
             data = {}
-
-        data[str(guild_id)] = results
         
-        with open(DRAW_RESULTS_FILE, "w", encoding="utf-8") as f:
+        data[str(guild_id)] = banned_pairs
+        
+        with open(BANNED_PAIRS_FILE, "w", encoding="utf-8") as f:
             json.dump(data, f)
-        logger.info(f"Draw results saved for guild {guild_id}")
+        logger.info(f"Banned pairs updated for guild {guild_id}: {banned_pairs}")
 
-    async def fetch_message(self, ctx: SlashContext, message_id: int) -> Optional[Message]:
-        try:
-            return await ctx.channel.fetch_message(message_id)
-        except Exception as e:
-            logger.error(f"Error fetching message: {e}")
-            await ctx.send(
-                embed=self.create_embed(
-                    "Il n'y a pas de Père Noël Secret en cours !\n(Le message n'a pas été trouvé)"
-                )
-            )
-            self.update_secret_santa_data(ctx.guild.id)
-            return None
+    def is_valid_assignment(self, giver: int, receiver: int, banned_pairs: List[Tuple[int, int]]) -> bool:
+        return not any((giver == p1 and receiver == p2) or (giver == p2 and receiver == p1) 
+                      for p1, p2 in banned_pairs)
+
+    def generate_valid_assignments(self, participants: List[Member], banned_pairs: List[Tuple[int, int]]) -> Optional[List[Tuple[int, int]]]:
+        max_attempts = 100
+        for _ in range(max_attempts):
+            shuffled = participants.copy()
+            random.shuffle(shuffled)
+            assignments = []
+            valid = True
+
+            for i in range(len(shuffled)):
+                giver = shuffled[i]
+                receiver = shuffled[(i + 1) % len(shuffled)]
+                
+                if not self.is_valid_assignment(giver.id, receiver.id, banned_pairs):
+                    valid = False
+                    break
+                
+                assignments.append((giver.id, receiver.id))
+            
+            if valid:
+                return assignments
+        
+        return None
 
     @slash_command(
         name="secretsanta",
         description="Les commandes du Père Noël Secret",
-        sub_cmd_name="create",
-        sub_cmd_description="Crée un Père Noël Secret",
         scopes=enabled_servers,
     )
-    @slash_option(
-        name="infos",
-        description="Informations sur le secret Santa (facultatif)",
-        required=False,
-        opt_type=OptionType.STRING,
+    async def secret_santa(self, ctx: SlashContext) -> None:
+        pass
+
+    @secret_santa.subcommand(
+        sub_cmd_name="banpair",
+        sub_cmd_description="Interdit deux utilisateurs de se tirer mutuellement",
     )
-    async def secret_santa(self, ctx: SlashContext, infos: Optional[str] = None) -> None:
-        data = self.read_secret_santa_data()
-        if str(ctx.guild.id) in data:
-            await ctx.send(
-                "Le Père Noël Secret est déjà en cours ! :santa:", ephemeral=True
-            )
+    @slash_option(
+        name="user1",
+        description="Premier utilisateur",
+        required=True,
+        opt_type=OptionType.USER,
+    )
+    @slash_option(
+        name="user2",
+        description="Deuxième utilisateur",
+        required=True,
+        opt_type=OptionType.USER,
+    )
+    async def ban_pair(self, ctx: SlashContext, user1: Member, user2: Member) -> None:
+        if user1.id == user2.id:
+            await ctx.send("Vous ne pouvez pas bannir un utilisateur avec lui-même.", ephemeral=True)
             return
 
-        embed = self.create_embed(
-            f"Ho, ho, ho, ce n'est pas Michel mais le Père Noël qui vous écrit.\n"
-            f"Si vous souhaitez participer au Secret Santa de **{ctx.guild.name}**, "
-            f"cliquez sur la réaction :santa: ci-dessous.\n"
-            f"{infos + '\\n' if infos else ''}\u200b\n"
-            f"Signé : *le Père Noël*\n"
-            f"PS : Vérifiez que vous avez vos DMs ouverts aux membres de ce serveur"
-        )
-        message = await ctx.channel.send(content="@everyone", embed=embed)
-        await message.add_reaction(":santa:")
-        self.update_secret_santa_data(ctx.guild.id, message.id)
-        await ctx.send("Le Père Noël Secret a été créé ! :santa:", ephemeral=True)
+        banned_pairs = self.read_banned_pairs(ctx.guild.id)
+        pair = (user1.id, user2.id)
+        reverse_pair = (user2.id, user1.id)
 
+        if pair in banned_pairs or reverse_pair in banned_pairs:
+            await ctx.send("Ces utilisateurs sont déjà interdits de se tirer mutuellement.", ephemeral=True)
+            return
+
+        banned_pairs.append(pair)
+        self.write_banned_pairs(ctx.guild.id, banned_pairs)
+        await ctx.send(
+            f"Les utilisateurs {user1.mention} et {user2.mention} ne pourront pas se tirer mutuellement.",
+            ephemeral=True
+        )
+
+    @secret_santa.subcommand(
+        sub_cmd_name="unbanpair",
+        sub_cmd_description="Autorise à nouveau deux utilisateurs à se tirer mutuellement",
+    )
+    @slash_option(
+        name="user1",
+        description="Premier utilisateur",
+        required=True,
+        opt_type=OptionType.USER,
+    )
+    @slash_option(
+        name="user2",
+        description="Deuxième utilisateur",
+        required=True,
+        opt_type=OptionType.USER,
+    )
+    async def unban_pair(self, ctx: SlashContext, user1: Member, user2: Member) -> None:
+        banned_pairs = self.read_banned_pairs(ctx.guild.id)
+        pair = (user1.id, user2.id)
+        reverse_pair = (user2.id, user1.id)
+
+        if pair not in banned_pairs and reverse_pair not in banned_pairs:
+            await ctx.send("Ces utilisateurs ne sont pas interdits de se tirer mutuellement.", ephemeral=True)
+            return
+
+        banned_pairs = [p for p in banned_pairs if p != pair and p != reverse_pair]
+        self.write_banned_pairs(ctx.guild.id, banned_pairs)
+        await ctx.send(
+            f"Les utilisateurs {user1.mention} et {user2.mention} peuvent à nouveau se tirer mutuellement.",
+            ephemeral=True
+        )
+
+    @secret_santa.subcommand(
+        sub_cmd_name="listbans",
+        sub_cmd_description="Liste les paires d'utilisateurs interdites",
+    )
+    async def list_bans(self, ctx: SlashContext) -> None:
+        banned_pairs = self.read_banned_pairs(ctx.guild.id)
+        
+        if not banned_pairs:
+            await ctx.send("Aucune paire d'utilisateurs n'est interdite.", ephemeral=True)
+            return
+
+        description = "Paires d'utilisateurs interdites :\n\n"
+        for user1_id, user2_id in banned_pairs:
+            user1 = await self.bot.fetch_user(user1_id)
+            user2 = await self.bot.fetch_user(user2_id)
+            description += f"• {user1.mention} et {user2.mention}\n"
+
+        embed = self.create_embed(description)
+        await ctx.send(embed=embed, ephemeral=True)
+
+    # Modified draw method to respect banned pairs
     @secret_santa.subcommand(
         sub_cmd_name="draw",
         sub_cmd_description="Effectue le tirage au sort du Père Noël Secret",
@@ -142,7 +215,16 @@ class SecretSanta(Extension):
             await ctx.send("Il n'y a pas assez de participants ! :cry:", ephemeral=True)
             return
 
-        random.shuffle(users)
+        banned_pairs = self.read_banned_pairs(ctx.guild.id)
+        draw_results = self.generate_valid_assignments(users, banned_pairs)
+
+        if draw_results is None:
+            await ctx.send(
+                "Impossible de générer un tirage valide avec les restrictions actuelles. "
+                "Veuillez vérifier les paires interdites.",
+                ephemeral=True
+            )
+            return
 
         server = str(ctx.guild.id)
         discord2name_data = discord2name.get(server, {})
@@ -153,14 +235,14 @@ class SecretSanta(Extension):
             "Signé : *Le vrai Père Noël, évidemment :disguised_face:*"
         )
 
-        draw_results = []
-        for giver, receiver in zip(users, users[1:] + [users[0]]):
+        for giver_id, receiver_id in draw_results:
+            giver = await self.bot.fetch_user(giver_id)
+            receiver = await self.bot.fetch_user(receiver_id)
             embed = self.create_embed(description.format(
-                mention=discord2name_data.get(receiver.id, receiver.mention)
+                mention=discord2name_data.get(receiver_id, receiver.mention)
             ))
             try:
                 await giver.send(embed=embed)
-                draw_results.append((giver.id, receiver.id))
             except Exception as e:
                 logger.error(f"Failed to send DM to {giver.username}: {e}")
                 await ctx.send(f"Impossible d'envoyer un message privé à {giver.mention}. Assurez-vous que vos DMs sont ouverts.", ephemeral=True)
@@ -177,60 +259,3 @@ class SecretSanta(Extension):
         )
         await message.edit(embed=embed)
         await ctx.send(embed=embed)
-
-    @secret_santa.subcommand(
-        sub_cmd_name="cancel",
-        sub_cmd_description="Annule le Père Noël Secret",
-    )
-    async def secret_santa_cancel(self, ctx: SlashContext) -> None:
-        data = self.read_secret_santa_data()
-        message_id = data.get(str(ctx.guild.id))
-        if not message_id:
-            await ctx.send(
-                embed=self.create_embed(
-                    "Il n'y a pas de Père Noël Secret en cours !\n(Serveur non trouvé)"
-                ),
-                ephemeral=True,
-            )
-            return
-
-        message = await self.fetch_message(ctx, message_id)
-        if message is None:
-            return
-
-        await message.edit(
-            embed=self.create_embed("Le Père Noël Secret a été annulé !")
-        )
-        await message.clear_reactions()
-        self.update_secret_santa_data(ctx.guild.id)
-        await ctx.send(
-            embed=self.create_embed("Le Père Noël Secret a été annulé !"),
-            ephemeral=True,
-        )
-
-    @secret_santa.subcommand(
-        sub_cmd_name="check",
-        sub_cmd_description="Vérifie le résultat du tirage pour un utilisateur",
-    )
-    @slash_option(
-        name="user",
-        description="L'utilisateur pour lequel vérifier le résultat",
-        required=True,
-        opt_type=OptionType.USER,
-    )
-    async def check_draw(self, ctx: SlashContext, user: Member) -> None:
-        try:
-            with open(DRAW_RESULTS_FILE, "r", encoding="utf-8") as f:
-                data = json.load(f)
-        except (FileNotFoundError, json.JSONDecodeError):
-            await ctx.send("Aucun résultat de tirage n'a été enregistré.", ephemeral=True)
-            return
-
-        guild_results = data.get(str(ctx.guild.id), [])
-        for giver_id, receiver_id in guild_results:
-            if giver_id == user.id:
-                receiver = await self.bot.fetch_user(receiver_id)
-                await ctx.send(f"{user.mention} doit offrir un cadeau à {receiver.mention}", ephemeral=True)
-                return
-
-        await ctx.send(f"Aucun résultat trouvé pour {user.mention}", ephemeral=True)
