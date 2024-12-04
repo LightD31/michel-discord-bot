@@ -100,10 +100,10 @@ class Spotify(interactions.Extension):
     @interactions.listen()
     async def on_startup(self):
         self.check_playlist_changes.start()
-        self.randomvote.start()
-        await self.load_reminders()
-        self.reminder_check.start()
-        await self.load_voteinfos()
+        # self.randomvote.start()
+        # await self.load_reminders()
+        # self.reminder_check.start()
+        # await self.load_voteinfos()
         await self.load_snapshot()
         self.addwithvote = self.vote_manager.load_data()
         self.check_for_end.start()
@@ -215,7 +215,7 @@ class Spotify(interactions.Extension):
     #         interactions.TimeTrigger(hour=21, minute=30, utc=False),
     #     )
     # )
-    # @interactions.Task.create(interactions.TimeTrigger(hour=20, minute=0, utc=False))
+    @interactions.Task.create(interactions.TimeTrigger(hour=20, minute=0, utc=False))
     async def randomvote(self):
         logger.info("Tache randomvote lancée")
         message_id = vote_infos.get("message_id")
