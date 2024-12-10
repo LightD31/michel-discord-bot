@@ -192,10 +192,10 @@ class SecretSanta(Extension):
     )
     async def secret_santa_draw(self, ctx: SlashContext) -> None:
         await ctx.defer()
-        
         data = self.read_secret_santa_data()
-        message_id = data.get(str(ctx.guild.id))
-        if not message_id:
+        guild_data = data.get(str(ctx.guild.id))
+        
+        if not guild_data:
             await ctx.send(
                 embed=self.create_embed(
                     "Il n'y a pas de Père Noël Secret en cours !\n(Serveur non trouvé)"
@@ -203,9 +203,29 @@ class SecretSanta(Extension):
                 ephemeral=True,
             )
             return
-
-        message = await self.fetch_message(ctx, message_id)
-        if message is None:
+        
+        channel_id = int(guild_data["channel_id"])
+        message_id = int(guild_data["message_id"])
+        
+        channel = self.bot.get_channel(channel_id)
+        if not channel:
+            await ctx.send(
+                embed=self.create_embed(
+                    "Le canal du message n'a pas été trouvé !"
+                ),
+                ephemeral=True,
+            )
+            return
+        
+        try:
+            message = await channel.fetch_message(message_id)
+        except Exception:
+            await ctx.send(
+                embed=self.create_embed(
+                    "Le message du Père Noël Secret n'a pas été trouvé !"
+                ),
+                ephemeral=True,
+            )
             return
 
         reaction = get(message.reactions, emoji=PartialEmoji.from_str("🎅"))
