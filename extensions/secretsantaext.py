@@ -40,6 +40,19 @@ class SecretSanta(Extension):
                 return data.get(SECRET_SANTA_KEY, {})
         except (FileNotFoundError, json.JSONDecodeError):
             return {}
+    def save_draw_results(self, guild_id: int, draw_results: List[Tuple[int, int]]) -> None:
+        try:
+            with open(DRAW_RESULTS_FILE, "r+", encoding="utf-8") as f:
+                data = json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError):
+            data = {}
+
+        data[str(guild_id)] = draw_results
+
+        with open(DRAW_RESULTS_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f)
+
+        logger.info(f"Draw results saved for guild {guild_id}")
 
     def read_banned_pairs(self, guild_id: int) -> List[Tuple[int, int]]:
         try:
