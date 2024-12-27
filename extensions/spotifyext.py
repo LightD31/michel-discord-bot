@@ -305,7 +305,7 @@ class Spotify(interactions.Extension):
         track = sp.track(song["_id"], market="FR")
         channel = await self.bot.fetch_channel(CHANNEL_ID)
         message = await channel.send(
-            content=f"Voulez-vous **conserver** cette chanson dans playlist ? (poke <@{song['added_by']}>)\n{track['external_urls']['spotify']}",
+            content=f"Voulez-vous **conserver** cette chanson dans playlist ? (poke <@{song['added_by']}>)",
             embeds=[
                 await embed_song(
                     song=song,
