@@ -6,6 +6,8 @@ import os
 from datetime import datetime
 from enum import Enum
 
+import aiohttp
+import re
 import interactions
 import spotipy
 from src import logutil
@@ -142,9 +144,20 @@ async def embed_song(
     embed = interactions.Embed(title=settings["title"], color=settings["color"])
     embed.set_thumbnail(url=track["album"]["images"][0]["url"])
     
+    # Obtenir l'URL de prévisualisation
+    track_id = track["id"]
+    embed_url = f"https://open.spotify.com/embed/track/{track_id}"
+    async with aiohttp.ClientSession() as session:
+        async with session.get(embed_url) as response:
+            content = await response.text()
+    preview_match = re.search(r'\"audioPreview\":{\"url\":\"(.*?)\"}', content)
+    
+    preview_url = preview_match.group(1) if preview_match else None
+    preview_text = f" ([Écouter un extrait]({preview_url}))" if preview_url else ""
+    
     embed.add_field(
         name="Titre",
-        value=f"[{track['name']}]({track['external_urls']['spotify']})",
+        value=f"[{track['name']}]({track['external_urls']['spotify']}){preview_text}",
         inline=True
     )
     
