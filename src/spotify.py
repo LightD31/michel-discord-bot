@@ -153,7 +153,7 @@ async def embed_song(
     preview_match = re.search(r'\"audioPreview\":{\"url\":\"(.*?)\"}', content)
     
     preview_url = preview_match.group(1) if preview_match else None
-    preview_text = f" ([Écouter un extrait]({preview_url}))" if preview_url else ""
+    preview_text = f"\n([Écouter un extrait]({preview_url}))" if preview_url else ""
     
     embed.add_field(
         name="Titre",
