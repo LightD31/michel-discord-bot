@@ -228,17 +228,30 @@ class ColocClass(Extension):
                     for user_id in user_ids.copy():
                         user: User = await self.bot.fetch_user(user_id)
                         # Check normal /journa
-                        response_normal = await fetch(
-                            f"https://zunivers-api.zerator.com/public/loot/{user.username}",
-                            "json",
-                            headers={"X-ZUnivers-RuleSetType": "NORMAL"}
-                        )
+                        try:
+                            response_normal = await fetch(
+                                f"https://zunivers-api.zerator.com/public/loot/{user.username}",
+                                "json",
+                                headers={"X-ZUnivers-RuleSetType": "NORMAL"}
+                            )
+                        except Exception as e:
+                            if "404" in str(e):
+                                response_normal = {"total": 0, "items": []}
+                            else:
+                                raise e
+
                         # Check hardcore /journa
-                        response_hardcore = await fetch(
-                            f"https://zunivers-api.zerator.com/public/loot/{user.username}",
-                            "json", 
-                            headers={"X-ZUnivers-RuleSetType": "HARDCORE"}
-                        )
+                        try:
+                            response_hardcore = await fetch(
+                                f"https://zunivers-api.zerator.com/public/loot/{user.username}",
+                                "json", 
+                                headers={"X-ZUnivers-RuleSetType": "HARDCORE"}
+                            )
+                        except Exception as e:
+                            if "404" in str(e):
+                                response_hardcore = {"total": 0, "items": []}
+                            else:
+                                raise e
                         
                         today = current_time.strftime("%Y-%m-%d")
                         normal_done = False
