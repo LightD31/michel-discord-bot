@@ -146,7 +146,7 @@ class IAExtension(Extension):
         ]
 
         return await self.anthropic_client.messages.create(
-            model="claude-3-5-sonnet-20240620",
+            model="claude-3-5-sonnet-latest",
             temperature=0.7,
             max_tokens=300,
             messages=[
