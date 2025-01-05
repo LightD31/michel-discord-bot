@@ -227,31 +227,48 @@ class ColocClass(Extension):
                 if remind_time <= current_time:
                     for user_id in user_ids.copy():
                         user: User = await self.bot.fetch_user(user_id)
-                        # Check if the user did /journa today
-                        response = await fetch(
+                        # Check normal /journa
+                        response_normal = await fetch(
                             f"https://zunivers-api.zerator.com/public/loot/{user.username}",
                             "json",
                             headers={"X-ZUnivers-RuleSetType": "NORMAL"}
                         )
-                        for day in response["lootInfos"]:
-                            if day["date"] == current_time.strftime("%Y-%m-%d"):
-                                if day["count"] == 0:
-                                    await user.send(
-                                        "Tu n'as pas encore /journa aujourd'hui, n'oublie pas !\nhttps://discord.com/channels/138283154589876224/808432657838768168"
-                                    )
-                                    logger.info("Rappel envoyé à %s", user.display_name)
-                                else:
-                                    logger.info(
-                                        "Pas de rappel pour %s, /journa déjà fait aujourd'hui.",
-                                        user.display_name,
-                                    )
-                        next_remind_time = remind_time + timedelta(days=1)
-                        if next_remind_time not in reminders:
-                            reminders[next_remind_time] = set()
-                        reminders[next_remind_time].add(user_id)
-                        user_ids.remove(user_id)
-                    if not user_ids:
-                        reminders_to_remove.append(remind_time)
+                        # Check hardcore /journa
+                        response_hardcore = await fetch(
+                            f"https://zunivers-api.zerator.com/public/loot/{user.username}",
+                            "json", 
+                            headers={"X-ZUnivers-RuleSetType": "HARDCORE"}
+                        )
+                        
+                        today = current_time.strftime("%Y-%m-%d")
+                        normal_done = False
+                        hardcore_done = False
+                        
+                        for day in response_normal["lootInfos"]:
+                            if day["date"] == today:
+                                normal_done = day["count"] > 0
+                                break
+                                
+                        for day in response_hardcore["lootInfos"]:
+                            if day["date"] == today:
+                                hardcore_done = day["count"] > 0
+                                break
+
+                        if not normal_done or not hardcore_done:
+                            message = "Tu n'as pas encore fait tous tes /journa aujourd'hui !\n"
+                            if not normal_done:
+                                message += "• /journa normal manquant\nhttps://discord.com/channels/138283154589876224/808432657838768168"
+                            if not hardcore_done:
+                                message += "• /journa hardcore manquant\nhttps://discord.com/channels/138283154589876224/1263861962744270958"             
+                            await user.send(message)
+                            logger.info("Rappel envoyé à %s", user.display_name)
+                    next_remind_time = remind_time + timedelta(days=1)
+                    if next_remind_time not in reminders:
+                        reminders[next_remind_time] = set()
+                    reminders[next_remind_time].add(user_id)
+                    user_ids.remove(user_id)
+                if not user_ids:
+                    reminders_to_remove.append(remind_time)
         for remind_time in reminders_to_remove:
             del reminders[remind_time]
         await self.save_reminders()
