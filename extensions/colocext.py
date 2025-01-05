@@ -229,27 +229,27 @@ class ColocClass(Extension):
                         user: User = await self.bot.fetch_user(user_id)
                         # Check normal /journa
                         try:
-                            response_normal = await fetch(
+                            response_normal = await session.get(
                                 f"https://zunivers-api.zerator.com/public/loot/{user.username}",
-                                "json",
                                 headers={"X-ZUnivers-RuleSetType": "NORMAL"}
                             )
+                            response_normal = await response_normal.json()
                         except Exception as e:
                             if "404" in str(e):
-                                response_normal = {"total": 0, "items": []}
+                                response_normal = {"total": 0, "items": [], "lootInfos": []}
                             else:
                                 raise e
 
                         # Check hardcore /journa
                         try:
-                            response_hardcore = await fetch(
+                            response_hardcore = await session.get(
                                 f"https://zunivers-api.zerator.com/public/loot/{user.username}",
-                                "json", 
                                 headers={"X-ZUnivers-RuleSetType": "HARDCORE"}
                             )
+                            response_hardcore = await response_hardcore.json()
                         except Exception as e:
                             if "404" in str(e):
-                                response_hardcore = {"total": 0, "items": []}
+                                response_hardcore = {"total": 0, "items": [], "lootInfos": []}
                             else:
                                 raise e
                         
@@ -270,7 +270,7 @@ class ColocClass(Extension):
                         if not normal_done or not hardcore_done:
                             message = "Tu n'as pas encore fait tous tes /journa aujourd'hui !\n"
                             if not normal_done:
-                                message += "• /journa normal manquant\nhttps://discord.com/channels/138283154589876224/808432657838768168"
+                                message += "• /journa normal manquant\nhttps://discord.com/channels/138283154589876224/808432657838768168\n"
                             if not hardcore_done:
                                 message += "• /journa hardcore manquant\nhttps://discord.com/channels/138283154589876224/1263861962744270958"             
                             await user.send(message)
