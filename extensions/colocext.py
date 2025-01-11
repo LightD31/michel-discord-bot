@@ -21,6 +21,7 @@ from interactions import (
     listen,
     slash_command,
     slash_option,
+    SlashCommandChoice,
 )
 from interactions.api.events import Component
 from src import logutil
@@ -120,9 +121,8 @@ class ColocClass(Extension):
     # Set reminder to /journa
     @slash_command(
         name="journa",
-        sub_cmd_name="set",
-        description="Gère les rappels pour voter",
-        sub_cmd_description="Ajoute un rappel pour /journa",
+        sub_cmd_name="set", 
+        description="Gère les rappels pour /journa",
         scopes=enabled_servers,
     )
     @slash_option(
@@ -135,31 +135,45 @@ class ColocClass(Extension):
     )
     @slash_option(
         "minute",
-        "Minute du rappel",
+        "Minute du rappel", 
         OptionType.INTEGER,
         required=True,
         min_value=0,
-        max_value=59,
+        max_value=59
     )
-    async def rappelvote_set(self, ctx: SlashContext, heure: int, minute: int):
-        remind_time = datetime.strptime(f"{heure}:{minute}", "%H:%M")
-        current_time = datetime.now()
-        remind_time = current_time.replace(
-            hour=remind_time.hour,
-            minute=remind_time.minute,
-            second=0,
-            microsecond=0,
+    @slash_option(
+        "type",
+        "Type de /journa",
+        OptionType.STRING,
+        required=True,
+        choices=[
+            SlashCommandChoice(name="Normal", value="NORMAL"),
+            SlashCommandChoice(name="Hardcore", value="HARDCORE"),
+            SlashCommandChoice(name="Les deux", value="BOTH")
+        ]
+    )
+    async def rappelvote_set(self, ctx: SlashContext, heure: int, minute: int, type: str):
+        remind_time = datetime.now().replace(
+            hour=heure, minute=minute, second=0, microsecond=0
         )
-        if remind_time <= current_time:
+        if remind_time <= datetime.now():
             remind_time += timedelta(days=1)
-        if remind_time not in reminders:
-            reminders[remind_time] = set()
-        reminders[remind_time].add(ctx.user.id)
+
+        user_id = str(ctx.author.id)
+        
+        # Si BOTH, créer deux entrées séparées
+        if type == "BOTH":
+            if remind_time not in reminders:
+                reminders[remind_time] = {"NORMAL": [], "HARDCORE": []}
+            reminders[remind_time]["NORMAL"].append(user_id)
+            reminders[remind_time]["HARDCORE"].append(user_id) 
+        else:
+            if remind_time not in reminders:
+                reminders[remind_time] = {"NORMAL": [], "HARDCORE": []}
+            reminders[remind_time][type].append(user_id)
+
+        await ctx.send(f"Rappel ajouté à {remind_time.strftime('%H:%M')}")
         await self.save_reminders()
-        await ctx.send(
-            f"Rappel défini à {remind_time.strftime('%H:%M')}.", ephemeral=True
-        )
-        logger.info("%s a a jouté un rappel à %s", ctx.user.username, remind_time)
 
     @rappelvote_set.subcommand(
         sub_cmd_name="remove",
@@ -223,68 +237,51 @@ class ColocClass(Extension):
         current_time = datetime.now()
         reminders_to_remove = []
         async with ClientSession() as session:
-            for remind_time, user_ids in reminders.copy().items():
+            for remind_time, reminder_types in reminders.copy().items():
                 if remind_time <= current_time:
-                    for user_id in user_ids.copy():
-                        user: User = await self.bot.fetch_user(user_id)
-                        # Check normal /journa
-                        try:
-                            response_normal = await session.get(
-                                f"https://zunivers-api.zerator.com/public/loot/{user.username}",
-                                headers={"X-ZUnivers-RuleSetType": "NORMAL"}
-                            )
-                            response_normal = await response_normal.json()
-                        except Exception as e:
-                            if "404" in str(e):
-                                response_normal = {"total": 0, "items": [], "lootInfos": []}
-                            else:
-                                raise e
-
-                        # Check hardcore /journa
-                        try:
-                            response_hardcore = await session.get(
-                                f"https://zunivers-api.zerator.com/public/loot/{user.username}",
-                                headers={"X-ZUnivers-RuleSetType": "HARDCORE"}
-                            )
-                            response_hardcore = await response_hardcore.json()
-                        except Exception as e:
-                            if "404" in str(e):
-                                response_hardcore = {"total": 0, "items": [], "lootInfos": []}
-                            else:
-                                raise e
-                        
-                        today = current_time.strftime("%Y-%m-%d")
-                        normal_done = False
-                        hardcore_done = False
-                        
-                        for day in response_normal["lootInfos"]:
-                            if day["date"] == today:
-                                normal_done = day["count"] > 0
-                                break
+                    for reminder_type in ["NORMAL", "HARDCORE"]:
+                        for user_id in reminder_types[reminder_type].copy():
+                            user: User = await self.bot.fetch_user(user_id)
+                            try:
+                                response = await session.get(
+                                    f"https://zunivers-api.zerator.com/public/loot/{user.username}",
+                                    headers={"X-ZUnivers-RuleSetType": reminder_type}
+                                )
+                                response = await response.json()
                                 
-                        for day in response_hardcore["lootInfos"]:
-                            if day["date"] == today:
-                                hardcore_done = day["count"] > 0
-                                break
+                                today = current_time.strftime("%Y-%m-%d")
+                                done = False
+                                
+                                for day in response["lootInfos"]:
+                                    if day["date"] == today:
+                                        done = day["count"] > 0
+                                        break
 
-                        if not normal_done or not hardcore_done:
-                            message = "Tu n'as pas encore fait tous tes /journa aujourd'hui !\n"
-                            if not normal_done:
-                                message += "• /journa normal manquant\nhttps://discord.com/channels/138283154589876224/808432657838768168\nEt si t'es généreux [fais un /corpodon](https://discord.com/channels/138283154589876224/813980380780691486)"
-                            if not hardcore_done:
-                                message += "• /journa hardcore manquant\nhttps://discord.com/channels/138283154589876224/1263861962744270958"             
-                            await user.send(message)
-                            logger.info("Rappel envoyé à %s", user.display_name)
-                    next_remind_time = remind_time + timedelta(days=1)
-                    if next_remind_time not in reminders:
-                        reminders[next_remind_time] = set()
-                    reminders[next_remind_time].add(user_id)
-                    user_ids.remove(user_id)
-                if not user_ids:
+                                if not done:
+                                    message = ""
+                                    if reminder_type == "NORMAL":
+                                        message = "Tu n'as pas encore fait ton /journa normal aujourd'hui !\n• https://discord.com/channels/138283154589876224/808432657838768168\nEt si t'es généreux [fais un /corpodon](https://discord.com/channels/138283154589876224/813980380780691486)"
+                                    else:
+                                        message = "Tu n'as pas encore fait ton /journa hardcore aujourd'hui !\n• https://discord.com/channels/138283154589876224/1263861962744270958"
+                                        
+                                    await user.send(message)
+                                    logger.info(f"Rappel {reminder_type} envoyé à {user.display_name}")
+
+                            except Exception as e:
+                                if "404" not in str(e):
+                                    raise e
+
+                            next_remind = remind_time + timedelta(days=1)
+                            if next_remind not in reminders:
+                                reminders[next_remind] = {"NORMAL": [], "HARDCORE": []}
+                            reminders[next_remind][reminder_type].append(user_id)
+                            
                     reminders_to_remove.append(remind_time)
-        for remind_time in reminders_to_remove:
-            del reminders[remind_time]
-        await self.save_reminders()
+
+            for remind_time in reminders_to_remove:
+                del reminders[remind_time]
+                
+            await self.save_reminders()
         
     @Task.create(TimeTrigger(23, 59, 45, utc=False))
     async def corpo_recap(self, date=None):
