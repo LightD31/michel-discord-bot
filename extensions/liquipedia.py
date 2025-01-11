@@ -174,7 +174,7 @@ class Liquipedia(Extension):
                 standing_str = format_status(
                     team["currentstatus"], team["standing"], True
                 )
-                team_str = format_status(team["definitestatus"], f"{team['team']:<14}")
+                team_str = format_status(team["definitestatus"], f"{team['team']:<23}")
                 string += f"{standing_str} {team_str} ({team['match']['win']}-{team['match']['loss']}) {diff_txt} ({team['diff_rounds']})\n"
             string += "```"
             embed.add_field(name=f"Semaine {week}", value=string)
