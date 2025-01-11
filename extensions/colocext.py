@@ -36,6 +36,8 @@ module_config = module_config[enabled_servers[0]]
 
 # Keep track of reminders
 reminders = {}
+
+
 class ColocClass(Extension):
     def __init__(self, bot: Client):
         self.bot: Client = bot
@@ -107,7 +109,7 @@ class ColocClass(Extension):
                     # Assurer que les clés NORMAL et HARDCORE existent
                     reminders[remind_time] = {
                         "NORMAL": reminder_data.get("NORMAL", []),
-                        "HARDCORE": reminder_data.get("HARDCORE", [])
+                        "HARDCORE": reminder_data.get("HARDCORE", []),
                     }
         except FileNotFoundError:
             pass
@@ -119,7 +121,7 @@ class ColocClass(Extension):
         reminders_data = {
             remind_time.strftime("%Y-%m-%d %H:%M:%S"): {
                 "NORMAL": reminder_types["NORMAL"],
-                "HARDCORE": reminder_types["HARDCORE"]
+                "HARDCORE": reminder_types["HARDCORE"],
             }
             for remind_time, reminder_types in reminders.items()
         }
@@ -131,7 +133,7 @@ class ColocClass(Extension):
     # Set reminder to /journa
     @slash_command(
         name="journa",
-        sub_cmd_name="set", 
+        sub_cmd_name="set",
         description="Gère les rappels pour /journa",
         scopes=enabled_servers,
     )
@@ -145,11 +147,11 @@ class ColocClass(Extension):
     )
     @slash_option(
         "minute",
-        "Minute du rappel", 
+        "Minute du rappel",
         OptionType.INTEGER,
         required=True,
         min_value=0,
-        max_value=59
+        max_value=59,
     )
     @slash_option(
         "type",
@@ -159,10 +161,12 @@ class ColocClass(Extension):
         choices=[
             SlashCommandChoice(name="Normal", value="NORMAL"),
             SlashCommandChoice(name="Hardcore", value="HARDCORE"),
-            SlashCommandChoice(name="Les deux", value="BOTH")
-        ]
+            SlashCommandChoice(name="Les deux", value="BOTH"),
+        ],
     )
-    async def rappelvote_set(self, ctx: SlashContext, heure: int, minute: int, type: str):
+    async def rappelvote_set(
+        self, ctx: SlashContext, heure: int, minute: int, type: str
+    ):
         remind_time = datetime.now().replace(
             hour=heure, minute=minute, second=0, microsecond=0
         )
@@ -170,19 +174,27 @@ class ColocClass(Extension):
             remind_time += timedelta(days=1)
 
         user_id = str(ctx.author.id)
-        
+
         # Si BOTH, créer deux entrées séparées
         if type == "BOTH":
             if remind_time not in reminders:
                 reminders[remind_time] = {"NORMAL": [], "HARDCORE": []}
             reminders[remind_time]["NORMAL"].append(user_id)
-            reminders[remind_time]["HARDCORE"].append(user_id) 
+            reminders[remind_time]["HARDCORE"].append(user_id)
         else:
             if remind_time not in reminders:
                 reminders[remind_time] = {"NORMAL": [], "HARDCORE": []}
             reminders[remind_time][type].append(user_id)
 
-        await ctx.send(f"Rappel ajouté à {remind_time.strftime('%H:%M')}", ephemeral=True)
+        await ctx.send(
+            f"Rappel ajouté à {remind_time.strftime('%H:%M')}", ephemeral=True
+        )
+        logger.info(
+            "Rappel %s à %s ajouté pour %s",
+            type,
+            remind_time.strftime("%H:%M"),
+            ctx.author.display_name,
+        )
         await self.save_reminders()
 
     @rappelvote_set.subcommand(
@@ -213,7 +225,7 @@ class ColocClass(Extension):
             return
 
         # Send a message with the buttons, max 5 buttons per row
-        components = [ActionRow(*buttons[i:i+5]) for i in range(0, len(buttons), 5)]
+        components = [ActionRow(*buttons[i : i + 5]) for i in range(0, len(buttons), 5)]
         message = await ctx.send(
             "Quel rappel veux-tu supprimer ?",
             components=components,
@@ -226,19 +238,22 @@ class ColocClass(Extension):
                 components=components,
                 timeout=60,
             )
-            
+
             # Extraire l'timestamp et le type du custom_id
-            timestamp, reminder_type = button_ctx.ctx.custom_id.split('_')
+            timestamp, reminder_type = button_ctx.ctx.custom_id.split("_")
             remind_time = datetime.fromtimestamp(float(timestamp))
-            
+
             # Supprimer l'utilisateur du type de rappel correspondant
             if user_id in reminders[remind_time][reminder_type]:
                 reminders[remind_time][reminder_type].remove(user_id)
-            
+
             # Supprimer le rappel si les deux listes sont vides
-            if not reminders[remind_time]["NORMAL"] and not reminders[remind_time]["HARDCORE"]:
+            if (
+                not reminders[remind_time]["NORMAL"]
+                and not reminders[remind_time]["HARDCORE"]
+            ):
                 del reminders[remind_time]
-                
+
             # Sauvegarder et confirmer
             await self.save_reminders()
             await button_ctx.ctx.edit_origin(
@@ -252,10 +267,7 @@ class ColocClass(Extension):
                 ctx.user.display_name,
             )
         except TimeoutError:
-            await message.edit(
-                content="Aucun rappel sélectionné.", 
-                components=[]
-            )
+            await message.edit(content="Aucun rappel sélectionné.", components=[])
 
     @Task.create(IntervalTrigger(minutes=1))
     async def check_reminders(self):
@@ -270,13 +282,13 @@ class ColocClass(Extension):
                             try:
                                 response = await session.get(
                                     f"https://zunivers-api.zerator.com/public/loot/{user.username}",
-                                    headers={"X-ZUnivers-RuleSetType": reminder_type}
+                                    headers={"X-ZUnivers-RuleSetType": reminder_type},
                                 )
                                 response = await response.json()
-                                
+
                                 today = current_time.strftime("%Y-%m-%d")
                                 done = False
-                                
+
                                 for day in response["lootInfos"]:
                                     if day["date"] == today:
                                         done = day["count"] > 0
@@ -288,9 +300,11 @@ class ColocClass(Extension):
                                         message = "Tu n'as pas encore fait ton [/journa](https://discord.com/channels/138283154589876224/808432657838768168) normal aujourd'hui !\nEt si t'es généreux fais un [/corpodon](https://discord.com/channels/138283154589876224/813980380780691486)"
                                     else:
                                         message = "Tu n'as pas encore fait ton [/journa](https://discord.com/channels/138283154589876224/1263861962744270958) hardcore aujourd'hui !\n"
-                                        
+
                                     await user.send(message)
-                                    logger.info(f"Rappel {reminder_type} envoyé à {user.display_name}")
+                                    logger.info(
+                                        f"Rappel {reminder_type} envoyé à {user.display_name}"
+                                    )
 
                             except Exception as e:
                                 if "404" not in str(e):
@@ -300,27 +314,27 @@ class ColocClass(Extension):
                             if next_remind not in reminders:
                                 reminders[next_remind] = {"NORMAL": [], "HARDCORE": []}
                             reminders[next_remind][reminder_type].append(user_id)
-                            
+
                     reminders_to_remove.append(remind_time)
 
             for remind_time in reminders_to_remove:
                 del reminders[remind_time]
-                
+
             await self.save_reminders()
-        
+
     @Task.create(TimeTrigger(23, 59, 45, utc=False))
     async def corpo_recap(self, date=None):
         bonuses_type_dict = {
             "MEMBER_COUNT": "Taille de la corporation",
             "LOOT": "Supplément par journa",
             "RECYCLE_LORE_DUST": "Supplément de poudres créatrices au recyclage",
-            "RECYCLE_LORE_FRAGMENT": "Recyclage en cristaux d'histoire au recyclage"
+            "RECYCLE_LORE_FRAGMENT": "Recyclage en cristaux d'histoire au recyclage",
         }
         bonus_value_dict = {
             "MEMBER_COUNT": lambda level: f"+{level * 4} membres max",
             "LOOT": lambda level: f"+{sum(range(1, level + 1)) * 10} <:eraMonnaie:1265266681291341855> par journa ou bonus",
             "RECYCLE_LORE_DUST": lambda level: f"+{sum(range(1, level + 1))}% <:eraPoudre:1265266623217012892> au recyclage",
-            "RECYCLE_LORE_FRAGMENT": lambda level: f"+{sum(range(1, level + 1))}% <:eraCristal:1265266545655812118> au recyclage"
+            "RECYCLE_LORE_FRAGMENT": lambda level: f"+{sum(range(1, level + 1))}% <:eraCristal:1265266545655812118> au recyclage",
         }
 
         action_type_dict = {
@@ -328,14 +342,18 @@ class ColocClass(Extension):
             "UPGRADE": "a amélioré la corporation",
             "JOIN": "a rejoint la corporation",
             "LEAVE": "a quitté la corporation",
-            "CREATE": "a créé la corporation"
+            "CREATE": "a créé la corporation",
         }
 
         # channel = await self.bot.fetch_channel(1223999470467944448)
         channel = await self.bot.fetch_channel(module_config["colocZuniversChannelId"])
 
         try:
-            data = await fetch('https://zunivers-api.zerator.com/public/corporation/ce746744-e36d-4331-a0fb-399228e66ef8', 'json', headers={"X-ZUnivers-RuleSetType": "NORMAL"})
+            data = await fetch(
+                "https://zunivers-api.zerator.com/public/corporation/ce746744-e36d-4331-a0fb-399228e66ef8",
+                "json",
+                headers={"X-ZUnivers-RuleSetType": "NORMAL"},
+            )
         except Exception as e:
             await channel.send(f"Erreur lors de la récupération des données: {e}")
             return
@@ -351,86 +369,116 @@ class ColocClass(Extension):
 
         # Filter and sort logs for today
         today_logs = [
-            log for log in data['corporationLogs']
-            if datetime.strptime(log['date'], "%Y-%m-%dT%H:%M:%S.%f").date() == date
+            log
+            for log in data["corporationLogs"]
+            if datetime.strptime(log["date"], "%Y-%m-%dT%H:%M:%S.%f").date() == date
         ]
-        today_logs.sort(key=lambda x: datetime.strptime(x['date'], "%Y-%m-%dT%H:%M:%S.%f"))
+        today_logs.sort(
+            key=lambda x: datetime.strptime(x["date"], "%Y-%m-%dT%H:%M:%S.%f")
+        )
 
         # Merge logs with the same timestamp
         merged_logs = []
         i = 0
         while i < len(today_logs):
             log = today_logs[i]
-            user = log['user']
+            user = log["user"]
             merged_log = {
                 "user": user,
-                "date": log['date'],
-                "action": action_type_dict[log['action']],
-                "amount": log.get('amount', 0)
+                "date": log["date"],
+                "action": action_type_dict[log["action"]],
+                "amount": log.get("amount", 0),
             }
-            
+
             # If this is an upgrade action, sum up all amounts with the same timestamp
-            if log['action'] == "UPGRADE":
+            if log["action"] == "UPGRADE":
                 j = i + 1
-                while j < len(today_logs) and today_logs[j]['date'] == log['date']:
-                    merged_log['amount'] += today_logs[j].get('amount', 0)
+                while j < len(today_logs) and today_logs[j]["date"] == log["date"]:
+                    merged_log["amount"] += today_logs[j].get("amount", 0)
                     j += 1
                 i = j
             else:
                 i += 1
-            
+
             merged_logs.append(merged_log)
 
         # Create the corporation embed
         corporation_embed = Embed(
             title=f"{data['name']} Corporation",
-            description=data['description'],
-            color=0x05b600,
-            url="https://zunivers.zerator.com/corporation/ce746744-e36d-4331-a0fb-399228e66ef8"
+            description=data["description"],
+            color=0x05B600,
+            url="https://zunivers.zerator.com/corporation/ce746744-e36d-4331-a0fb-399228e66ef8",
         )
-        corporation_embed.set_thumbnail(url=data['logoUrl'])
-        corporation_embed.add_field(name="Trésorerie", value=f"{data['balance']} <:eraMonnaie:1265266681291341855>", inline=True)
-        corporation_embed.add_field(name=f"Membres ({len(data['userCorporations'])})", value=", ".join([f"{member['user']['discordGlobalName']}" for member in data['userCorporations']]), inline=True)
+        corporation_embed.set_thumbnail(url=data["logoUrl"])
+        corporation_embed.add_field(
+            name="Trésorerie",
+            value=f"{data['balance']} <:eraMonnaie:1265266681291341855>",
+            inline=True,
+        )
+        corporation_embed.add_field(
+            name=f"Membres ({len(data['userCorporations'])})",
+            value=", ".join(
+                [
+                    f"{member['user']['discordGlobalName']}"
+                    for member in data["userCorporations"]
+                ]
+            ),
+            inline=True,
+        )
 
-        for bonus in data['corporationBonuses']:
+        for bonus in data["corporationBonuses"]:
             corporation_embed.add_field(
                 name=f"{bonuses_type_dict[bonus['type']]} : Niv. {bonus['level']}/4",
                 value=f"{bonus_value_dict[bonus['type']](bonus['level'])}",
-                inline=False
+                inline=False,
             )
-        
+
         logs_embed = Embed(
-            title=f"Journal de la corporation pour le {date}",
-            color=0x05b600
+            title=f"Journal de la corporation pour le {date}", color=0x05B600
         )
-        
+
         str_logs = ""
         active_members = set()
         for log in merged_logs:
-            if log['action'] == "a amélioré la corporation":
+            if log["action"] == "a amélioré la corporation":
                 action_str = f"**{log['user']['discordGlobalName']}** {log['action']} (**{log['amount']}** <:eraMonnaie:1265266681291341855>)"
             else:
                 action_str = f"**{log['user']['discordGlobalName']}** {log['action']}"
-                if log['amount'] != 0:
-                    action_str += f" **{log['amount']}** <:eraMonnaie:1265266681291341855>"
+                if log["amount"] != 0:
+                    action_str += (
+                        f" **{log['amount']}** <:eraMonnaie:1265266681291341855>"
+                    )
             str_logs += f"{action_str}\n"
-            active_members.add(log['user']['discordGlobalName'])
+            active_members.add(log["user"]["discordGlobalName"])
         if not str_logs:
             str_logs = "Aucune action aujourd'hui."
         logs_embed.add_field(name="Journal", value=str_logs, inline=True)
 
         # Add field for inactive members
-        all_members = set(member['user']['discordGlobalName'] for member in data['userCorporations'])
+        all_members = set(
+            member["user"]["discordGlobalName"] for member in data["userCorporations"]
+        )
         inactive_members = all_members - active_members
-        inactive_members_str = ", ".join(inactive_members) if inactive_members else "Aucun"
+        inactive_members_str = (
+            ", ".join(inactive_members) if inactive_members else "Aucun"
+        )
         logs_embed.add_field(name="\u200b", value="\u200b", inline=True)
         logs_embed.add_field(name="Inactifs", value=inactive_members_str, inline=True)
 
         # Send the embeds to the channel
         await channel.send(embeds=[corporation_embed, logs_embed])
 
-    @slash_command(name="corpo", description="Affiche les informations de la corporation", scopes=[668445729928249344])
-    @slash_option(name="date", description="Date du récap", opt_type=OptionType.STRING, required=False)
+    @slash_command(
+        name="corpo",
+        description="Affiche les informations de la corporation",
+        scopes=[668445729928249344],
+    )
+    @slash_option(
+        name="date",
+        description="Date du récap",
+        opt_type=OptionType.STRING,
+        required=False,
+    )
     async def corpo(self, ctx: SlashContext, date: str = None):
         await self.corpo_recap(date=date)
         await ctx.send("Corporation recap envoyé !", ephemeral=True)
