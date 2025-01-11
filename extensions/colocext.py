@@ -172,7 +172,7 @@ class ColocClass(Extension):
                 reminders[remind_time] = {"NORMAL": [], "HARDCORE": []}
             reminders[remind_time][type].append(user_id)
 
-        await ctx.send(f"Rappel ajouté à {remind_time.strftime('%H:%M')}")
+        await ctx.send(f"Rappel ajouté à {remind_time.strftime('%H:%M')}", ephemeral=True)
         await self.save_reminders()
 
     @rappelvote_set.subcommand(
@@ -260,9 +260,9 @@ class ColocClass(Extension):
                                 if not done:
                                     message = ""
                                     if reminder_type == "NORMAL":
-                                        message = "Tu n'as pas encore fait ton /journa normal aujourd'hui !\n• https://discord.com/channels/138283154589876224/808432657838768168\nEt si t'es généreux [fais un /corpodon](https://discord.com/channels/138283154589876224/813980380780691486)"
+                                        message = "Tu n'as pas encore fait ton [/journa](https://discord.com/channels/138283154589876224/808432657838768168) normal aujourd'hui !\nEt si t'es généreux fais un [/corpodon](https://discord.com/channels/138283154589876224/813980380780691486)"
                                     else:
-                                        message = "Tu n'as pas encore fait ton /journa hardcore aujourd'hui !\n• https://discord.com/channels/138283154589876224/1263861962744270958"
+                                        message = "Tu n'as pas encore fait ton [/journa](https://discord.com/channels/138283154589876224/1263861962744270958) hardcore aujourd'hui !\n"
                                         
                                     await user.send(message)
                                     logger.info(f"Rappel {reminder_type} envoyé à {user.display_name}")
