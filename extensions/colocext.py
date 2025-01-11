@@ -220,6 +220,43 @@ class ColocClass(Extension):
             ephemeral=True,
         )
 
+        try:
+            # Attendre le clic sur un bouton
+            button_ctx: Component = await self.bot.wait_for_component(
+                components=components,
+                timeout=60,
+            )
+            
+            # Extraire l'timestamp et le type du custom_id
+            timestamp, reminder_type = button_ctx.ctx.custom_id.split('_')
+            remind_time = datetime.fromtimestamp(float(timestamp))
+            
+            # Supprimer l'utilisateur du type de rappel correspondant
+            if user_id in reminders[remind_time][reminder_type]:
+                reminders[remind_time][reminder_type].remove(user_id)
+            
+            # Supprimer le rappel si les deux listes sont vides
+            if not reminders[remind_time]["NORMAL"] and not reminders[remind_time]["HARDCORE"]:
+                del reminders[remind_time]
+                
+            # Sauvegarder et confirmer
+            await self.save_reminders()
+            await button_ctx.ctx.edit_origin(
+                content=f"Rappel {reminder_type} à {remind_time.strftime('%H:%M')} supprimé.",
+                components=[],
+            )
+            logger.info(
+                "Rappel %s à %s supprimé pour %s",
+                reminder_type,
+                remind_time.strftime("%H:%M"),
+                ctx.user.display_name,
+            )
+        except TimeoutError:
+            await message.edit(
+                content="Aucun rappel sélectionné.", 
+                components=[]
+            )
+
     @Task.create(IntervalTrigger(minutes=1))
     async def check_reminders(self):
         current_time = datetime.now()
