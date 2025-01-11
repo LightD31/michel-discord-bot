@@ -270,7 +270,7 @@ class ColocClass(Extension):
                         if not normal_done or not hardcore_done:
                             message = "Tu n'as pas encore fait tous tes /journa aujourd'hui !\n"
                             if not normal_done:
-                                message += "• /journa normal manquant\nhttps://discord.com/channels/138283154589876224/808432657838768168\n"
+                                message += "• /journa normal manquant\nhttps://discord.com/channels/138283154589876224/808432657838768168\nEt si t'es généreux [fais un /corpodon](https://discord.com/channels/138283154589876224/813980380780691486)"
                             if not hardcore_done:
                                 message += "• /journa hardcore manquant\nhttps://discord.com/channels/138283154589876224/1263861962744270958"             
                             await user.send(message)
