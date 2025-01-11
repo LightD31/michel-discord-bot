@@ -100,18 +100,22 @@ class ColocClass(Extension):
                 f"{config['misc']['dataFolder']}/journa.json", "r", encoding="utf-8"
             ) as file:
                 reminders_data = json.load(file)
-                for remind_time_str, reminder_types in reminders_data.items():
+                for remind_time_str, reminder_data in reminders_data.items():
                     remind_time = datetime.strptime(
                         remind_time_str, "%Y-%m-%d %H:%M:%S"
                     )
+                    # Assurer que les clés NORMAL et HARDCORE existent
                     reminders[remind_time] = {
-                        "NORMAL": reminder_types["NORMAL"],
-                        "HARDCORE": reminder_types["HARDCORE"]
+                        "NORMAL": reminder_data.get("NORMAL", []),
+                        "HARDCORE": reminder_data.get("HARDCORE", [])
                     }
         except FileNotFoundError:
             pass
 
     async def save_reminders(self):
+        """
+        Save reminders to a JSON file.
+        """
         reminders_data = {
             remind_time.strftime("%Y-%m-%d %H:%M:%S"): {
                 "NORMAL": reminder_types["NORMAL"],
@@ -122,7 +126,7 @@ class ColocClass(Extension):
         with open(
             f"{config['misc']['dataFolder']}/journa.json", "w", encoding="utf-8"
         ) as file:
-            json.dump(reminders_data, file, indent=4)
+            json.dump(reminders_data, file, ensure_ascii=False, indent=4)
 
     # Set reminder to /journa
     @slash_command(
