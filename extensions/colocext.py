@@ -180,57 +180,35 @@ class ColocClass(Extension):
         sub_cmd_description="Supprime un rappel pour /journa",
     )
     async def deletereminder(self, ctx: SlashContext):
-        user_id = ctx.user.id
+        user_id = str(ctx.user.id)
         # create the list of reminders for the user
         reminders_list = []
-        for remind_time, user_ids in reminders.copy().items():
-            if user_id in user_ids:
-                reminders_list.append(remind_time)
+        for remind_time, reminder_types in reminders.copy().items():
+            for reminder_type in ["NORMAL", "HARDCORE"]:
+                if user_id in reminder_types[reminder_type]:
+                    reminders_list.append((remind_time, reminder_type))
+
         # Create a button for each reminder
         buttons = [
             Button(
-                label=remind_time.strftime("%H:%M"),
+                label=f"{remind_time.strftime('%H:%M')} - {reminder_type.capitalize()}",
                 style=ButtonStyle.SECONDARY,
-                custom_id=str(remind_time.timestamp()),
+                custom_id=f"{remind_time.timestamp()}_{reminder_type}",
             )
-            for remind_time in reminders_list
+            for remind_time, reminder_type in reminders_list
         ]
-        # Send a message with the buttons
+
+        if not buttons:
+            await ctx.send("Tu n'as aucun rappel configuré.", ephemeral=True)
+            return
+
+        # Send a message with the buttons, max 5 buttons per row
+        components = [ActionRow(*buttons[i:i+5]) for i in range(0, len(buttons), 5)]
         message = await ctx.send(
             "Quel rappel veux-tu supprimer ?",
-            components=[ActionRow(*buttons)],
+            components=components,
             ephemeral=True,
         )
-        try:
-            # Wait for the user to click a button
-            button_ctx: Component = await self.bot.wait_for_component(
-                components=[
-                    str(remind_time.timestamp()) for remind_time in reminders_list
-                ],
-                timeout=60,
-            )
-            # Remove the reminder from the reminders dictionary
-            remind_time = datetime.fromtimestamp(float(button_ctx.ctx.custom_id))
-            reminders[remind_time].remove(user_id)
-            if not reminders[remind_time]:
-                del reminders[remind_time]
-            # Save the reminders to a JSON file
-            await self.save_reminders()
-            # Send a message to the user indicating that the reminder has been removed
-            await button_ctx.ctx.edit_origin(
-                content=f"Rappel à {remind_time.strftime('%H:%M')} supprimé.",
-                components=[],
-            )
-            logger.info(
-                "Rappel à %s supprimé pour %s",
-                remind_time.strftime("%H:%M"),
-                ctx.user.display_name,
-            )
-        except TimeoutError:
-            await ctx.send(
-                "Tu n'as pas sélectionné de rappel à supprimer.", ephemeral=True
-            )
-            await message.edit(content="Aucun rappel sélectionné.", components=[])
 
     @Task.create(IntervalTrigger(minutes=1))
     async def check_reminders(self):
