@@ -134,6 +134,7 @@ class ColocClass(Extension):
     @slash_command(
         name="journa",
         sub_cmd_name="set",
+        sub_cmd_description="Supprime un rappel pour /journa",
         description="Gère les rappels pour /journa",
         scopes=enabled_servers,
     )
