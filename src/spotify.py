@@ -163,7 +163,7 @@ async def embed_song(
                 if resp.status == 200:
                     audio_data = await resp.read()
                     preview_file = interactions.File(
-                        file_name=f"preview_{track_id}.mp3",
+                        file_name=f"preview.mp3",
                         file=io.BytesIO(audio_data)
                     )
     
