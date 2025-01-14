@@ -1,6 +1,7 @@
 import json
 import os
 import pytz
+import random
 from datetime import datetime, timedelta
 from aiohttp import ClientSession
 from interactions import (
@@ -36,6 +37,22 @@ module_config = module_config[enabled_servers[0]]
 
 # Keep track of reminders
 reminders = {}
+
+NORMAL_REMINDERS = [
+    "Tu n'as pas encore fait ton [/journa](https://discord.com/channels/138283154589876224/808432657838768168) normal aujourd'hui !\nN'oublie pas de faire un [/corpodon](https://discord.com/channels/138283154589876224/813980380780691486) pour soutenir la chaîne 💝",
+    "Hey! On attend ton [/journa](https://discord.com/channels/138283154589876224/808432657838768168) du jour! Et pense au [/corpodon](https://discord.com/channels/138283154589876224/813980380780691486), c'est important pour la communauté 🤗",
+    "Petit rappel pour ton [/journa](https://discord.com/channels/138283154589876224/808432657838768168) quotidien! Le [/corpodon](https://discord.com/channels/138283154589876224/813980380780691486) est aussi là pour toi 💖",
+    "Toujours pas de [/journa](https://discord.com/channels/138283154589876224/808432657838768168) aujourd'hui? Le [/corpodon](https://discord.com/channels/138283154589876224/813980380780691486) non plus? Allez hop hop hop! 💪",
+    "La journée n'est pas finie! Il est encore temps de faire ton [/journa](https://discord.com/channels/138283154589876224/808432657838768168) et ton [/corpodon](https://discord.com/channels/138283154589876224/813980380780691486) 🌟"
+]
+
+HARDCORE_REMINDERS = [
+    "Tu n'as pas encore fait ton [/journa](https://discord.com/channels/138283154589876224/1263861962744270958) hardcore aujourd'hui!\n",
+    "Mode hardcore activé! N'oublie pas ton [/journa](https://discord.com/channels/138283154589876224/1263861962744270958)!\n",
+    "Le [/journa](https://discord.com/channels/138283154589876224/1263861962744270958) hardcore t'attend! Pas d'excuse! 💪\n",
+    "Alerte hardcore! Ton [/journa](https://discord.com/channels/138283154589876224/1263861962744270958) n'est pas encore fait!\n",
+    "Mission du jour: [/journa](https://discord.com/channels/138283154589876224/1263861962744270958) hardcore! À toi de jouer!\n"
+]
 
 
 class ColocClass(Extension):
@@ -298,9 +315,9 @@ class ColocClass(Extension):
                                 if not done:
                                     message = ""
                                     if reminder_type == "NORMAL":
-                                        message = "Tu n'as pas encore fait ton [/journa](https://discord.com/channels/138283154589876224/808432657838768168) normal aujourd'hui !\nEt si t'es généreux fais un [/corpodon](https://discord.com/channels/138283154589876224/813980380780691486) ;)"
+                                        message = random.choice(NORMAL_REMINDERS)
                                     else:
-                                        message = "Tu n'as pas encore fait ton [/journa](https://discord.com/channels/138283154589876224/1263861962744270958) hardcore aujourd'hui !\n"
+                                        message = random.choice(HARDCORE_REMINDERS)
 
                                     await user.send(message)
                                     logger.info(
