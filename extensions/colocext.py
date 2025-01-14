@@ -298,7 +298,7 @@ class ColocClass(Extension):
                                 if not done:
                                     message = ""
                                     if reminder_type == "NORMAL":
-                                        message = "Tu n'as pas encore fait ton [/journa](https://discord.com/channels/138283154589876224/808432657838768168) normal aujourd'hui !\nEt si t'es généreux fais un [/corpodon](https://discord.com/channels/138283154589876224/813980380780691486)"
+                                        message = "Tu n'as pas encore fait ton [/journa](https://discord.com/channels/138283154589876224/808432657838768168) normal aujourd'hui !\nEt si t'es généreux fais un [/corpodon](https://discord.com/channels/138283154589876224/813980380780691486) ;)"
                                     else:
                                         message = "Tu n'as pas encore fait ton [/journa](https://discord.com/channels/138283154589876224/1263861962744270958) hardcore aujourd'hui !\n"
 

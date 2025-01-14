@@ -168,7 +168,7 @@ class Spotify(interactions.Extension):
         if song_data["_id"] not in playlist_items_full.distinct("_id"):
             playlist_items_full.insert_one(song_data)
             sp.playlist_add_items(PLAYLIST_ID, [song_data["_id"]])
-            embed = await embed_song(
+            embed, file = await embed_song(
                 song=song_data,
                 track=track,
                 embedtype=EmbedType.ADD,
@@ -179,6 +179,7 @@ class Spotify(interactions.Extension):
             await ctx.send(
                 content=f"{random.choice(startList)} {ctx.author.mention}, {random.choice(finishList)}",
                 embeds=embed,
+                files=file if file else None,
             )
             logger.info("%s ajouté par %s", track["name"], ctx.author.display_name)
         else:
@@ -496,7 +497,7 @@ class Spotify(interactions.Extension):
                             pytz.timezone("Europe/Paris")
                         )
                     )
-                    embed = await embed_song(
+                    embed, file = await embed_song(
                         song=song,
                         track=track,
                         embedtype=EmbedType.ADD,
@@ -506,6 +507,7 @@ class Spotify(interactions.Extension):
                     await channel.send(
                         content=f"{random.choice(startList)} <@{song['added_by']}>, {random.choice(finishList)}\n{track['external_urls']['spotify']}",
                         embeds=embed,
+                        files=file if file else None,
                     )
                     logger.info(
                         "%s ajouté par %s",
@@ -520,14 +522,18 @@ class Spotify(interactions.Extension):
                 for track_id in removed_track_ids:
                     song = playlist_items_full.find_one_and_delete({"_id": track_id})
                     track = sp.track(track_id, market="FR")
-                    embed = await embed_song(
+                    embed, file = await embed_song(
                         song=song,
                         track=track,
                         embedtype=EmbedType.DELETE,
                         time=interactions.Timestamp.utcnow(),
                     )
                     channel = await self.bot.fetch_channel(CHANNEL_ID)
-                    await channel.send(track['external_urls']['spotify'],embeds=embed)
+                    await channel.send(
+                        track["external_urls"]["spotify"],
+                        embeds=embed,
+                        files=file if file else None,
+                    )
 
             # Store the snapshot ID, length and duration in a JSON file
             snapshot["snapshot"] = new_snap
@@ -806,7 +812,7 @@ class Spotify(interactions.Extension):
         votes = votes_db.find_one({"_id": song_id})
         track = sp.track(song_id, market="FR")
         if song:
-            embed = await embed_song(
+            embed, file = await embed_song(
                 song=song,
                 track=track,
                 embedtype=EmbedType.INFOS,
@@ -817,7 +823,7 @@ class Spotify(interactions.Extension):
             song = spotifymongoformat(
                 track, votes.get("added_by", "Inconnu"), spotify2discord=SPOTIFY2DISCORD
             )
-            embed = await embed_song(
+            embed, file = await embed_song(
                 song=song,
                 track=track,
                 embedtype=EmbedType.INFOS,
@@ -857,7 +863,7 @@ class Spotify(interactions.Extension):
                 ]
         else:
             embeds = [embed]
-        await ctx.send(embeds=embeds)
+        await ctx.send(embeds=embeds, files=file if file else None)
         if not song and not votes:
             await ctx.send("Cette chanson n'existe pas.", ephemeral=True)
 
@@ -983,7 +989,7 @@ class Spotify(interactions.Extension):
                 )
                 if time < datetime.now() + timedelta(days=1):
                     time += timedelta(hours=1)
-                embed = await embed_song(
+                embed, file = await embed_song(
                     song=song,
                     track=track,
                     embedtype=EmbedType.VOTE_ADD,
@@ -994,6 +1000,7 @@ class Spotify(interactions.Extension):
                 message = await ctx.send(
                     content=f"Voulez-vous **ajouter** cette chanson à la playlist ? (Demandé par <@{ctx.author_id}>)\n{track['external_urls']['spotify']}",
                     embeds=embed,
+                    files=file if file else None,
                     components=components,
                 )
                 # Append the song, message ID and track ID to the votewithadd dictionary

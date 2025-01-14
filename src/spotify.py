@@ -81,7 +81,7 @@ async def embed_song(
     time: datetime,
     person: str = None,
     icon: str = "https://upload.wikimedia.org/wikipedia/commons/thumb/1/19/Spotify_logo_without_text.svg/200px-Spotify_logo_without_text.svg.png",
-) -> interactions.Embed:
+) -> tuple[interactions.Embed, interactions.File | None]:
     """
     Creates an embed message for a Discord bot that displays information about a song.
 
@@ -155,6 +155,18 @@ async def embed_song(
     preview_url = preview_match.group(1) if preview_match else None
     preview_text = f"\n([Écouter un extrait]({preview_url}))" if preview_url else ""
     
+    # Télécharger le fichier MP3 si disponible
+    preview_file = None
+    if preview_url:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(preview_url) as resp:
+                if resp.status == 200:
+                    audio_data = await resp.read()
+                    preview_file = interactions.File(
+                        filename=f"preview_{track_id}.mp3",
+                        fp=io.BytesIO(audio_data)
+                    )
+    
     embed.add_field(
         name="Titre",
         value=f"[{track['name']}]({track['external_urls']['spotify']}){preview_text}",
@@ -219,7 +231,7 @@ async def embed_song(
     embed.set_footer(text=settings["footer"], icon_url=icon)
     embed.timestamp = time
     
-    return embed
+    return embed, preview_file
 
 async def embed_message_vote(
     keep=0,
