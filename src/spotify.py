@@ -5,7 +5,7 @@ This module provides functionality for authenticating with the Spotify API and c
 import os
 from datetime import datetime
 from enum import Enum
-
+import io
 import aiohttp
 import re
 import interactions
