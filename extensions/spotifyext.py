@@ -240,15 +240,16 @@ class Spotify(interactions.Extension):
         track = sp.track(track_id, market="FR")
         await message.unpin()
         if supprimer > conserver or (conserver == 0 and supprimer == 0 and menfou >= 3):
+            embed, file = await embed_song(
+                song=song,
+                track=track,
+                embedtype=EmbedType.VOTE_LOSE,
+                time=interactions.Timestamp.now(),
+            )
             await message.edit(
                 content="La chanson a été supprimée.",
                 embeds=[
-                    (await embed_song(
-                        song=song,
-                        track=track,
-                        embedtype=EmbedType.VOTE_LOSE,
-                        time=interactions.Timestamp.now(),
-                    ))[0],
+                    embed,
                     await embed_message_vote(
                         keep=conserver,
                         remove=supprimer,
@@ -269,15 +270,16 @@ class Spotify(interactions.Extension):
         else:
             logger.debug("La chanson a été conservée.")
             logger.debug("track_id : %s\nmessage_id : %s", track_id, message_id)
+            embed, file = await embed_song(
+                song=song,
+                track=track,
+                embedtype=EmbedType.VOTE_WIN,
+                time=interactions.Timestamp.now(),
+            )
             await message.edit(
                 content="La chanson a été conservée.",
                 embeds=[
-                    (await embed_song(
-                        song=song,
-                        track=track,
-                        embedtype=EmbedType.VOTE_WIN,
-                        time=interactions.Timestamp.utcnow(),
-                    ))[0],
+                    embed,
                     await embed_message_vote(
                         keep=conserver,
                         remove=supprimer,
@@ -305,15 +307,16 @@ class Spotify(interactions.Extension):
         song = playlist_items_full.find_one({"_id": track_id})
         track = sp.track(song["_id"], market="FR")
         channel = await self.bot.fetch_channel(CHANNEL_ID)
+        embed, file = await embed_song(
+            song=song,
+            track=track,
+            embedtype=EmbedType.VOTE,
+            time=str(self.randomvote.next_run),
+        )
         message = await channel.send(
             content=f"Voulez-vous **conserver** cette chanson dans playlist ? (poke <@{song['added_by']}>)",
             embeds=[
-                (await embed_song(
-                    song=song,
-                    track=track,
-                    embedtype=EmbedType.VOTE,
-                    time=str(self.randomvote.next_run),
-                ))[0],
+                embed,
                 # await embed_message_vote(),
             ],
             components=[
@@ -344,6 +347,7 @@ class Spotify(interactions.Extension):
                     ),
                 ),
             ],
+            files=[file] if file else None,
         )
         await message.pin()
         await channel.purge(deletion_limit=1, after=message)
@@ -1145,32 +1149,34 @@ class Spotify(interactions.Extension):
             logger.debug("song : %s", song)
             playlist_items_full.insert_one(song)
             sp.playlist_add_items(PLAYLIST_ID, [song["_id"]])
+            embed, file = await embed_song(
+                song=song,
+                track=track,
+                embedtype=EmbedType.VOTE_WIN,
+                time=interactions.Timestamp.utcnow(),
+                person=data[song_id]["author_id"],
+            )
             await message.edit(
                 content="La chanson a été ajoutée à la playlist.",
                 embeds=[
-                    (await embed_song(
-                        song=song,
-                        track=track,
-                        embedtype=EmbedType.VOTE_WIN,
-                        time=interactions.Timestamp.utcnow(),
-                        person=data[song_id]["author_id"],
-                    ))[0],
+                    embed,
                     await embed_message_vote_add(yes_votes, no_votes, users),
                 ],
                 components=[],
             )
             logger.info("La chanson a été ajoutée à la playlist.")
         else:
+            embed, file = await embed_song(
+                song=song,
+                track=track,
+                embedtype=EmbedType.VOTE_LOSE,
+                time=interactions.Timestamp.utcnow(),
+                person=data[song_id]["author_id"],
+            )
             await message.edit(
                 content="La chanson n'a pas été ajoutée à la playlist.",
                 embeds=[
-                    (await embed_song(
-                        song=song,
-                        track=track,
-                        embedtype=EmbedType.VOTE_LOSE,
-                        time=interactions.Timestamp.utcnow(),
-                        person=data[song_id]["author_id"],
-                    ))[0],
+                    embed,
                     await embed_message_vote_add(yes_votes, no_votes, users),
                 ],
                 components=[],
