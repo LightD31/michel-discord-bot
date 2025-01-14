@@ -179,7 +179,7 @@ class Spotify(interactions.Extension):
             await ctx.send(
                 content=f"{random.choice(startList)} {ctx.author.mention}, {random.choice(finishList)}",
                 embeds=embed,
-                files=file if file else None,
+                files=[file] if file else None,
             )
             logger.info("%s ajouté par %s", track["name"], ctx.author.display_name)
         else:
@@ -507,7 +507,7 @@ class Spotify(interactions.Extension):
                     await channel.send(
                         content=f"{random.choice(startList)} <@{song['added_by']}>, {random.choice(finishList)}\n{track['external_urls']['spotify']}",
                         embeds=embed,
-                        files=file if file else None,
+                        files=[file] if file else None,
                     )
                     logger.info(
                         "%s ajouté par %s",
@@ -532,7 +532,7 @@ class Spotify(interactions.Extension):
                     await channel.send(
                         track["external_urls"]["spotify"],
                         embeds=embed,
-                        files=file if file else None,
+                        files=[file] if file else None,
                     )
 
             # Store the snapshot ID, length and duration in a JSON file
@@ -863,7 +863,7 @@ class Spotify(interactions.Extension):
                 ]
         else:
             embeds = [embed]
-        await ctx.send(embeds=embeds, files=file if file else None)
+        await ctx.send(embeds=embeds, files=[file] if file else None)
         if not song and not votes:
             await ctx.send("Cette chanson n'existe pas.", ephemeral=True)
 
@@ -1000,7 +1000,7 @@ class Spotify(interactions.Extension):
                 message = await ctx.send(
                     content=f"Voulez-vous **ajouter** cette chanson à la playlist ? (Demandé par <@{ctx.author_id}>)\n{track['external_urls']['spotify']}",
                     embeds=embed,
-                    files=file if file else None,
+                    files=[file] if file else None,
                     components=components,
                 )
                 # Append the song, message ID and track ID to the votewithadd dictionary
