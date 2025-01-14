@@ -308,12 +308,12 @@ class Spotify(interactions.Extension):
         message = await channel.send(
             content=f"Voulez-vous **conserver** cette chanson dans playlist ? (poke <@{song['added_by']}>)",
             embeds=[
-                await embed_song(
+                (await embed_song(
                     song=song,
                     track=track,
                     embedtype=EmbedType.VOTE,
                     time=str(self.randomvote.next_run),
-                ),
+                ))[0],
                 # await embed_message_vote(),
             ],
             components=[
@@ -1148,13 +1148,13 @@ class Spotify(interactions.Extension):
             await message.edit(
                 content="La chanson a été ajoutée à la playlist.",
                 embeds=[
-                    await embed_song(
+                    (await embed_song(
                         song=song,
                         track=track,
                         embedtype=EmbedType.VOTE_WIN,
                         time=interactions.Timestamp.utcnow(),
                         person=data[song_id]["author_id"],
-                    ),
+                    ))[0],
                     await embed_message_vote_add(yes_votes, no_votes, users),
                 ],
                 components=[],
@@ -1164,13 +1164,13 @@ class Spotify(interactions.Extension):
             await message.edit(
                 content="La chanson n'a pas été ajoutée à la playlist.",
                 embeds=[
-                    await embed_song(
+                    (await embed_song(
                         song=song,
                         track=track,
                         embedtype=EmbedType.VOTE_LOSE,
                         time=interactions.Timestamp.utcnow(),
                         person=data[song_id]["author_id"],
-                    ),
+                    ))[0],
                     await embed_message_vote_add(yes_votes, no_votes, users),
                 ],
                 components=[],
