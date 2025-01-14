@@ -272,12 +272,12 @@ class Spotify(interactions.Extension):
             await message.edit(
                 content="La chanson a été conservée.",
                 embeds=[
-                    await embed_song(
+                    (await embed_song(
                         song=song,
                         track=track,
                         embedtype=EmbedType.VOTE_WIN,
                         time=interactions.Timestamp.utcnow(),
-                    ),
+                    ))[0],
                     await embed_message_vote(
                         keep=conserver,
                         remove=supprimer,
