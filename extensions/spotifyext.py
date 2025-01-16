@@ -386,6 +386,7 @@ class Spotify(interactions.Extension):
         track_id = vote_infos.get("track_id")
         if ctx.message.id == int(message_id):
             embed_original = ctx.message.embeds[0]
+            file = ctx.message.attachments[0] if ctx.message.attachments else None
             # Check if the user has already voted and update their vote if necessary
             user_id = str(ctx.user.id)
             if ctx.custom_id == "annuler":
@@ -423,7 +424,8 @@ class Spotify(interactions.Extension):
                 embeds=[
                     embed_original,
                     # await embed_message_vote(keep, remove, menfou),
-                ]
+                ],
+                files = [file] if file else None,
             )
 
             # Send a message to the user informing them that their vote has been counted

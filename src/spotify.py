@@ -95,6 +95,7 @@ async def embed_song(
 
     Returns:
         interactions.Embed: An embed message containing information about the song.
+        interactions.File: An audio file containing a preview of the song.
     """
     if not person:
         person = song.get("added_by", "")
