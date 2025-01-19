@@ -39,19 +39,11 @@ module_config = module_config[enabled_servers[0]]
 reminders = {}
 
 NORMAL_REMINDERS = [
-    "Tu n'as pas encore fait ton [/journa](https://discord.com/channels/138283154589876224/808432657838768168) normal aujourd'hui !\nN'oublie pas de faire un [/corpodon](https://discord.com/channels/138283154589876224/813980380780691486) pour soutenir la chaîne 💝",
-    "Hey! On attend ton [/journa](https://discord.com/channels/138283154589876224/808432657838768168) du jour! Et pense au [/corpodon](https://discord.com/channels/138283154589876224/813980380780691486), c'est important pour la communauté 🤗",
-    "Petit rappel pour ton [/journa](https://discord.com/channels/138283154589876224/808432657838768168) quotidien! Le [/corpodon](https://discord.com/channels/138283154589876224/813980380780691486) est aussi là pour toi 💖",
-    "Toujours pas de [/journa](https://discord.com/channels/138283154589876224/808432657838768168) aujourd'hui? Le [/corpodon](https://discord.com/channels/138283154589876224/813980380780691486) non plus? Allez hop hop hop! 💪",
-    "La journée n'est pas finie! Il est encore temps de faire ton [/journa](https://discord.com/channels/138283154589876224/808432657838768168) et ton [/corpodon](https://discord.com/channels/138283154589876224/813980380780691486) 🌟"
+    "Tu n'as pas encore fait ton [/journa](https://discord.com/channels/138283154589876224/808432657838768168) normal aujourd'hui !\nN'oublie pas de faire un [/corpodon](https://discord.com/channels/138283154589876224/813980380780691486)"
 ]
 
 HARDCORE_REMINDERS = [
-    "Tu n'as pas encore fait ton [/journa](https://discord.com/channels/138283154589876224/1263861962744270958) hardcore aujourd'hui!\n",
-    "Mode hardcore activé! N'oublie pas ton [/journa](https://discord.com/channels/138283154589876224/1263861962744270958)!\n",
-    "Le [/journa](https://discord.com/channels/138283154589876224/1263861962744270958) hardcore t'attend! Pas d'excuse! 💪\n",
-    "Alerte hardcore! Ton [/journa](https://discord.com/channels/138283154589876224/1263861962744270958) n'est pas encore fait!\n",
-    "Mission du jour: [/journa](https://discord.com/channels/138283154589876224/1263861962744270958) hardcore! À toi de jouer!\n"
+    "Tu n'as pas encore fait ton [/journa](https://discord.com/channels/138283154589876224/1263861962744270958) hardcore aujourd'hui!\n"
 ]
 
 
@@ -294,7 +286,8 @@ class ColocClass(Extension):
         async with ClientSession() as session:
             for remind_time, reminder_types in reminders.copy().items():
                 if remind_time <= current_time:
-                    for reminder_type in ["NORMAL", "HARDCORE"]:
+                    # for reminder_type in ["NORMAL", "HARDCORE"]:
+                    for reminder_type in ["NORMAL"]:
                         for user_id in reminder_types[reminder_type].copy():
                             user: User = await self.bot.fetch_user(user_id)
                             try:
