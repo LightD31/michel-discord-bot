@@ -227,6 +227,9 @@ class Spotify(interactions.Extension):
         message = await channel.fetch_message(message_id)
         logger.debug("message : %s", str(message.id))
         votes = votes_db.find_one({"_id": track_id})
+        song = playlist_items_full.find_one({"_id": track_id})
+        logger.debug("song : %s\ntrack_id : %s", song, track_id)
+        track = sp.track(track_id, market="FR")
         conserver, supprimer, menfou, users = count_votes(votes["votes"], DISCORD2NAME)
 
         total_votes = conserver + supprimer + menfou
@@ -245,9 +248,7 @@ class Spotify(interactions.Extension):
             str(supprimer),
             str(menfou),
         )
-        song = playlist_items_full.find_one({"_id": track_id})
-        logger.debug("song : %s\ntrack_id : %s", song, track_id)
-        track = sp.track(track_id, market="FR")
+
         await message.unpin()
         if supprimer > conserver or (conserver == 0 and supprimer == 0 and menfou >= 3):
             embed, file = await embed_song(
