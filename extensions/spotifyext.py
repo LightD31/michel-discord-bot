@@ -236,7 +236,7 @@ class Spotify(interactions.Extension):
         if total_votes < 3:
             embed_original = message.embeds[0]
             await message.edit(
-                content=f"Pas assez de votes ({total_votes}/3), le vote est prolongé de 24h !/nVoulez-vous **conserver** cette chanson dans playlist ? (poke <@{song['added_by']}>)",
+                content=f"Pas assez de votes ({total_votes}/3), le vote est prolongé de 24h !\nVoulez-vous **conserver** cette chanson dans playlist ? (poke <@{song['added_by']}>)",
                 embeds=[embed_original],
             )
             logger.info(f"Vote prolongé de 24h car seulement {total_votes} votes")
