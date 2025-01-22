@@ -229,6 +229,16 @@ class Spotify(interactions.Extension):
         votes = votes_db.find_one({"_id": track_id})
         conserver, supprimer, menfou, users = count_votes(votes["votes"], DISCORD2NAME)
 
+        total_votes = conserver + supprimer + menfou
+        if total_votes < 3:
+            embed_original = message.embeds[0]
+            await message.edit(
+                content=f"Pas assez de votes ({total_votes}/3), le vote est prolongé de 24h !/nVoulez-vous **conserver** cette chanson dans playlist ? (poke <@{song['added_by']}>)",
+                embeds=[embed_original],
+            )
+            logger.info(f"Vote prolongé de 24h car seulement {total_votes} votes")
+            return
+
         logger.debug(
             "keep : %s\nremove : %s\nmenfou : %s",
             str(conserver),
