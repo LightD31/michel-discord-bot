@@ -234,7 +234,10 @@ class Spotify(interactions.Extension):
 
         total_votes = conserver + supprimer + menfou
         if total_votes < 3:
+            new_time = str(self.randomvote.next_run)
             embed_original = message.embeds[0]
+            embed_original.title = f"Vote prolongé jusqu'à {interactions.utils.timestamp_converter(new_time).format(interactions.TimestampStyles.RelativeTime)}"
+            embed_original.timestamp = new_time
             await message.edit(
                 content=f"Pas assez de votes ({total_votes}/3), le vote est prolongé de 24h !\nVoulez-vous **conserver** cette chanson dans playlist ? (poke <@{song['added_by']}>)",
                 embeds=[embed_original],
