@@ -283,10 +283,11 @@ class ColocClass(Extension):
     async def check_reminders(self):
         current_time = datetime.now()
         reminders_to_remove = []
+        reminders_to_add = {}  # Stockage temporaire pour les nouveaux rappels
+        
         async with ClientSession() as session:
             for remind_time, reminder_types in reminders.copy().items():
                 if remind_time <= current_time:
-                    # for reminder_type in ["NORMAL", "HARDCORE"]:
                     for reminder_type in ["NORMAL", "HARDCORE"]:
                         for user_id in reminder_types[reminder_type].copy():
                             user: User = await self.bot.fetch_user(user_id)
@@ -295,44 +296,48 @@ class ColocClass(Extension):
                                     f"https://zunivers-api.zerator.com/public/loot/{user.username}",
                                     headers={"X-ZUnivers-RuleSetType": reminder_type},
                                 )
-                                response = await response.json()
-
+                                data = await response.json()
+    
                                 today = current_time.strftime("%Y-%m-%d")
                                 done = False
-
-                                for day in response["lootInfos"]:
+    
+                                for day in data["lootInfos"]:
                                     if day["date"] == today:
                                         done = day["count"] > 0
                                         break
-
+    
                                 if not done:
-                                    message = ""
-                                    if reminder_type == "NORMAL":
-                                        message = random.choice(NORMAL_REMINDERS)
-                                    else:
-                                        message = random.choice(HARDCORE_REMINDERS)
-
+                                    message = random.choice(NORMAL_REMINDERS if reminder_type == "NORMAL" else HARDCORE_REMINDERS)
                                     await user.send(message)
                                     logger.info(
                                         f"Rappel {reminder_type} envoyé à {user.display_name}"
                                     )
-
+    
                             except Exception as e:
                                 if "404" not in str(e):
-                                    raise e
-
+                                    logger.error(f"Erreur lors de l'envoi du rappel à {user.display_name}: {e}")
+                                    continue
+    
+                            # Gestion du prochain rappel
                             next_remind = remind_time + timedelta(days=1)
-                            if next_remind not in reminders:
-                                reminders[next_remind] = {"NORMAL": [], "HARDCORE": []}
-                            reminders[next_remind][reminder_type].append(user_id)
-
+                            if next_remind not in reminders_to_add:
+                                reminders_to_add[next_remind] = {"NORMAL": [], "HARDCORE": []}
+                            reminders_to_add[next_remind][reminder_type].append(user_id)
+    
                     reminders_to_remove.append(remind_time)
-
+    
+            # Mise à jour synchronisée des rappels
             for remind_time in reminders_to_remove:
                 del reminders[remind_time]
-
+            
+            # Ajout des nouveaux rappels
+            for next_remind, reminder_data in reminders_to_add.items():
+                if next_remind not in reminders:
+                    reminders[next_remind] = {"NORMAL": [], "HARDCORE": []}
+                for reminder_type in ["NORMAL", "HARDCORE"]:
+                    reminders[next_remind][reminder_type].extend(reminder_data[reminder_type])
+    
             await self.save_reminders()
-
     @Task.create(TimeTrigger(23, 59, 45, utc=False))
     async def corpo_recap(self, date=None):
         bonuses_type_dict = {
