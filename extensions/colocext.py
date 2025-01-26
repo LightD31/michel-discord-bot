@@ -39,12 +39,21 @@ module_config = module_config[enabled_servers[0]]
 reminders = {}
 
 NORMAL_REMINDERS = [
-    "Tu n'as pas encore fait ton [/journa](https://discord.com/channels/138283154589876224/808432657838768168) normal aujourd'hui !\nN'oublie pas de faire un [/corpodon](https://discord.com/channels/138283154589876224/813980380780691486)"
+    "Tu n'as pas encore fait ton [/journa](https://discord.com/channels/138283154589876224/808432657838768168) normal aujourd'hui !\nN'oublie pas de faire un [/corpodon](https://discord.com/channels/138283154589876224/813980380780691486)",
+    "Hé ! N'oublie pas ton [/journa](https://discord.com/channels/138283154589876224/808432657838768168) du jour !\nPense aussi à faire ton [/corpodon](https://discord.com/channels/138283154589876224/813980380780691486)",
+    "Petit rappel : ton [/journa](https://discord.com/channels/138283154589876224/808432657838768168) t'attend !\nEt n'oublie pas le [/corpodon](https://discord.com/channels/138283154589876224/813980380780691486) qui va avec",
+    "Il est temps de faire ton [/journa](https://discord.com/channels/138283154589876224/808432657838768168) quotidien !\nSuivi d'un petit [/corpodon](https://discord.com/channels/138283154589876224/813980380780691486), bien sûr",
+    "Ton [/journa](https://discord.com/channels/138283154589876224/808432657838768168) du jour t'attend !\nN'oublie pas d'enchaîner avec un [/corpodon](https://discord.com/channels/138283154589876224/813980380780691486)"
 ]
 
 HARDCORE_REMINDERS = [
-    "Tu n'as pas encore fait ton [/journa](https://discord.com/channels/138283154589876224/1263861962744270958) hardcore aujourd'hui!\n"
+    "Tu n'as pas encore fait ton [/journa](https://discord.com/channels/138283154589876224/1263861962744270958) hardcore aujourd'hui!\n",
+    "Attention ! Ton [/journa](https://discord.com/channels/138283154589876224/1263861962744270958) hardcore du jour n'est pas fait !\n",
+    "Ne laisse pas passer ton [/journa](https://discord.com/channels/138283154589876224/1263861962744270958) hardcore aujourd'hui !\n",
+    "Rappel crucial : ton [/journa](https://discord.com/channels/138283154589876224/1263861962744270958) hardcore t'attend !\n",
+    "Dernier appel pour ton [/journa](https://discord.com/channels/138283154589876224/1263861962744270958) hardcore du jour !\n"
 ]
+
 
 
 class ColocClass(Extension):
