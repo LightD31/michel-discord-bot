@@ -286,7 +286,6 @@ class ColocClass(Extension):
         async with ClientSession() as session:
             for remind_time, reminder_types in reminders.copy().items():
                 if remind_time <= current_time:
-                    # for reminder_type in ["NORMAL", "HARDCORE"]:
                     for reminder_type in ["NORMAL", "HARDCORE"]:
                         for user_id in reminder_types[reminder_type].copy():
                             user: User = await self.bot.fetch_user(user_id)
@@ -300,10 +299,12 @@ class ColocClass(Extension):
                                 today = current_time.strftime("%Y-%m-%d")
                                 done = False
 
-                                for day in response["lootInfos"]:
-                                    if day["date"] == today:
-                                        done = day["count"] > 0
-                                        break
+                                # Vérifier si lootInfos existe
+                                if "lootInfos" in response:
+                                    for day in response["lootInfos"]:
+                                        if day["date"] == today:
+                                            done = day["count"] > 0
+                                            break
 
                                 if not done:
                                     message = ""
