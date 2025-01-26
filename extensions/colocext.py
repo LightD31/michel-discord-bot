@@ -287,7 +287,7 @@ class ColocClass(Extension):
             for remind_time, reminder_types in reminders.copy().items():
                 if remind_time <= current_time:
                     # for reminder_type in ["NORMAL", "HARDCORE"]:
-                    for reminder_type in ["NORMAL"]:
+                    for reminder_type in ["NORMAL", "HARDCORE"]:
                         for user_id in reminder_types[reminder_type].copy():
                             user: User = await self.bot.fetch_user(user_id)
                             try:
