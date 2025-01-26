@@ -1,5 +1,5 @@
 # Use a specific Python image
-FROM python:3.12.3
+FROM python:3.12
 
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1 \
