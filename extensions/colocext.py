@@ -310,12 +310,10 @@ class ColocClass(Extension):
                                 today = current_time.strftime("%Y-%m-%d")
                                 done = False
 
-                                # Vérifier si lootInfos existe
-                                if "lootInfos" in response:
-                                    for day in response["lootInfos"]:
-                                        if day["date"] == today:
-                                            done = day["count"] > 0
-                                            break
+                                # Vérifier si le jour existe dans les données
+                                if today in data:
+                                    # Si il y a au moins une entrée pour aujourd'hui
+                                    done = len(data[today]) > 0
 
                                 if not done:
                                     message = random.choice(NORMAL_REMINDERS if reminder_type == "NORMAL" else HARDCORE_REMINDERS)
