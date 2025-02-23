@@ -109,7 +109,7 @@ class Minecraft(Extension):
             # Create and format the status message
             embed1 = Embed(
                 title=f"Serveur {colocStatus.version.name}",
-                description=f"Adresse : `{MINECRAFT_ADDRESS}`\nModpack : [Cisco's Fantasy Medieval RPG Lite](https://www.curseforge.com/minecraft/modpacks/ciscos-fantasy-medieval-adventure-rpg)\nVersion : **15D**",
+                description=f"Adresse : `{MINECRAFT_ADDRESS}`\nModpack : [Cobblemon](https://modrinth.com/mod/cobblemon/)\nVersion : **1.6.1**",
                 fields=[
                     {
                         "name": "Latence",
