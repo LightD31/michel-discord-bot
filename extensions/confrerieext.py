@@ -186,15 +186,13 @@ class ConfrerieClass(interactions.Extension):
             for file in content["properties"]["Lien / Fichier"]["files"]:
                 if file.get("external") is not None:
                     link = f"[{file.get('name')}]({file['external']['url']})\n"
-                else:
-                    link = f"[{file.get('name')}]({file['file']['url']})\n"
-                embed.add_field(
-                    name="Consulter" if first_link else "\u200b",
-                    value=link,
-                    inline=True,
-                )
-                if first_link:
-                    first_link = False
+                    embed.add_field(
+                        name="Consulter" if first_link else "\u200b",
+                        value=link,
+                        inline=True,
+                    )
+                    if first_link:
+                        first_link = False
         message = ""
         logger.info(content["properties"]["Note de mise à jour"])
         if content["properties"]["Note de mise à jour"]["rich_text"] != []:
