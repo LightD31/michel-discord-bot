@@ -8,6 +8,7 @@ import nbtlib
 from io import BytesIO, StringIO
 from datetime import datetime, timedelta
 import asyncssh
+import socket  # Ajoutez cette importation en haut du fichier
 from interactions import (
     Extension,
     listen,
@@ -129,13 +130,12 @@ class Minecraft(Extension):
                 color=BrandColors.GREEN,
                 timestamp=Timestamp.utcnow().isoformat(),
             )
-            # embed1.description = f"Adresse : `{MINECRAFT_ADDRESS}`\nCarte 2D : [Cliquez ici](https://pl3xmap-coloc.drndvs.fr 'Pl3xMap')\nCarte 3D : [Cliquez ici](https://bluemap-coloc.drndvs.fr 'BlueMap')\nStats : [Cliquez ici](http://stats-coloc.drndvs.fr/stats/index.html 'Stats')"
             # Edit the status message in the designated Discord channel
             await message.edit(content="", embeds=[embed1, embed2])
             # Modify the channel name if the number of players has changed
             name = f"🟢︱{colocStatus.players.online if colocStatus.players.online != 0 else 'aucun'}᲼joueur{'s' if colocStatus.players.online > 1 else ''}"
         # If the Minecraft server is offline, display an error message in the status message
-        except (ConnectionResetError, ConnectionRefusedError) as e:
+        except (ConnectionResetError, ConnectionRefusedError, TimeoutError, socket.timeout) as e:
             logger.debug(e)
             embed1 = Embed(
                 title="Serveur Hors-ligne",
