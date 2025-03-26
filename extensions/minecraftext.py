@@ -110,7 +110,7 @@ class Minecraft(Extension):
             # Create and format the status message
             embed1 = Embed(
                 title=f"Serveur Fabric {colocStatus.version.name}",
-                description=f"Adresse : `{MINECRAFT_ADDRESS}`\nModpack : [Cobblemon : Star Academy](https://www.curseforge.com/minecraft/modpacks/cobblemon-star-academy)\nVersion : **0.1.5.2**",
+                description=f"Adresse : `{MINECRAFT_ADDRESS}`\nModpack : [Cobblemon : Star Academy](https://www.curseforge.com/minecraft/modpacks/cobblemon-star-academy)\nVersion : **0.1.6.1**",
                 fields=[
                     {
                         "name": "Latence",
