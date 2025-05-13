@@ -144,26 +144,101 @@ class IAExtension(Extension):
         return conversation
 
     async def _get_model_response(self, conversation, model, ctx: SlashContext, question):
+        # Extraire des informations pertinentes sur le contexte
+        server_name = ctx.guild.name
+        channel_name = ctx.channel.name
+        author = ctx.author
+        
+        # Obtenir des informations sur les utilisateurs impliqués dans la conversation
+        mentioned_users = []
+        mentioned_user_ids = set()
+        
+        # Extraire les utilisateurs mentionnés dans la conversation ou la question
+        pattern = r'<@!?(\d+)>'
+        
+        # Ajouter l'auteur de la question
+        mentioned_users.append({
+            "id": author.id,
+            "username": author.username,
+            "display_name": author.display_name,
+            "is_author": True
+        })
+        mentioned_user_ids.add(author.id)
+        
+        # Analyser la conversation pour trouver les utilisateurs mentionnés
+        for msg in conversation:
+            if msg["role"] == "user":
+                # Extraire l'ID de l'utilisateur qui parle (format: "nom : message")
+                user_parts = msg["content"].split(" : ", 1)
+                if len(user_parts) > 1:
+                    # Trouver les utilisateurs mentionnés dans le message
+                    mentions = re.findall(pattern, msg["content"])
+                    for user_id in mentions:
+                        user_id = int(user_id)
+                        if user_id not in mentioned_user_ids:
+                            user = await self.bot.fetch_user(user_id)
+                            if user:
+                                mentioned_users.append({
+                                    "id": user.id,
+                                    "username": user.username,
+                                    "display_name": user.display_name,
+                                    "is_author": user.id == author.id
+                                })
+                                mentioned_user_ids.add(user.id)
+        
+        # Rechercher des informations contextuelles pertinentes
+        # Note: dictInfos est vide dans le code original, nous pourrions y ajouter des informations
+        # pour améliorer la pertinence des réponses
         dictInfos = {}
-        infos = [
-            search_dict_by_sentence(dictInfos, question),
-            search_dict_by_sentence(dictInfos, str(ctx.author.id)),
-            f"Utilisateurs : {', '.join([f'username : {member.username} (Display name :{member.display_name}, ID : <@{member.id}>)' for member in ctx.guild.members])}",
-        ]
+        context_info = search_dict_by_sentence(dictInfos, question)
+        
+        # Structure des informations à envoyer à l'IA
+        system_context = {
+            "server": {
+                "name": server_name,
+                "channel": channel_name
+            },
+            "users": mentioned_users,
+            "question_author": {
+                "id": author.id,
+                "username": author.username,
+                "display_name": author.display_name
+            },
+            "additional_context": context_info
+        }
 
         messages = conversation.copy()
         messages.append(
             {
                 "role": "system",
                 "content": (
-                    f"Tu vas jouer le rôle de Michel·le, un assistant sarcastique aux idées de gauche, dans un chat Discord. Tu exposeras ta vision politique seulement si cela est pertinent. "
-                    f"Ton but est d'écrire une réponse au dernier message du chat, en restant dans le personnage de Michel "
-                    f"de façon concise.\nVoici les 10 derniers messages du chat Discord :<messages>{conversation}</messages>\n"
-                    f"Et voici un dictionnaire d'informations complémentaires pour te donner plus de contexte : <info>{infos}</info>"
-                    f"Lis attentivement les messages et les informations complémentaires pour bien comprendre le contexte de la conversation. "
-                    f"Ensuite, rédige une réponse sarcastique au dernier message, comme le ferait Michel·le. N'hésite pas à utiliser l'humour et l'ironie, "
-                    f"tout en restant dans les limites du raisonnable. Appuie-toi sur les éléments de contexte fournis pour rendre ta réponse pertinente. "
-                    f"Rappelle-toi que tu dois rester dans le personnage de Michel·le tout au long de ta réponse. Son ton est caustique mais pas méchant. "
+                    f"# Rôle et contexte\n"
+                    f"Tu es Michel·le, un assistant Discord sarcastique et impertinent avec des idées de gauche. "
+                    f"Tu es connu pour ton humour caustique mais jamais cruel, et ta façon unique de répondre aux questions.\n\n"
+                    
+                    f"# Contexte de la conversation\n"
+                    f"- Serveur: {server_name}\n"
+                    f"- Canal: {channel_name}\n"
+                    f"- Question posée par: {author.display_name} ({author.username})\n\n"
+                    
+                    f"# Informations sur les personnes impliquées dans la conversation\n"
+                    f"{', '.join([f'{u['display_name']} ({u['username']})' + (' (auteur de la question)' if u['is_author'] else '') for u in mentioned_users[:5]])}\n\n"
+                    
+                    f"# Consignes\n"
+                    f"1. Réponds au dernier message du chat avec le ton sarcastique caractéristique de Michel·le\n"
+                    f"2. Sois concis et direct dans tes réponses\n"
+                    f"3. Utilise l'humour et l'ironie quand c'est approprié\n"
+                    f"4. N'expose tes idées politiques que si cela est pertinent pour la question\n"
+                    f"5. Reste dans le personnage de Michel·le tout au long de ta réponse\n\n"
+                    
+                    f"# Style de réponse\n"
+                    f"- Ton sarcastique et un peu provocateur\n"
+                    f"- Direct et sans détour\n"
+                    f"- Utilise parfois des expressions familières appropriées\n"
+                    f"- N'hésite pas à remettre en question les présupposés quand nécessaire\n\n"
+                    
+                    f"# Informations contextuelles complémentaires\n"
+                    f"{context_info if context_info else 'Aucune information contextuelle supplémentaire disponible.'}"
                 ),
             }
         )
@@ -423,57 +498,4 @@ class IAExtension(Extension):
             anthropic_votes = votes.count("anthropic\n")
             deepseek_votes = votes.count("deepseek\n")
             return openai_votes, anthropic_votes, deepseek_votes
-
-    # Answer all DM messages using openrouter
-    @listen()
-    async def on_message(self, event: MessageCreate):
-        if (
-            event.message.channel.type == ChannelType.DM
-            or event.message.channel.type == ChannelType.GROUP_DM
-        ) and event.message.author.id != self.bot.user.id:
-            logger.info(
-                "Message from %s (ID: %s) in DMs : %s",
-                event.message.author.username,
-                event.message.author.id,
-                event.message.content,
-            )
-            # Get the latest 5 messages in the conversation
-            messages = await event.message.channel.fetch_messages(limit=5)
-            conversation = []
-            for message in messages:
-                author_content = f"{message.author.display_name} : {message.content}"
-                if message.author.id == self.bot.user.id:
-                    conversation.append({"role": "assistant", "content": message.content})
-                else:
-                    conversation.append({"role": "user", "content": author_content})
-            conversation.reverse()
-            
-            # Ajouter le message système et les messages utilisateur
-            dm_messages = [
-                {
-                    "role": "system",
-                    "content": (
-                        f"Tu vas jouer le rôle de Michel, un assistant sarcastique, dans un chat Discord. "
-                        f"Ton but est d'écrire une réponse au dernier message du chat, en restant dans le personnage de Michel "
-                        f"de façon concise.\nVoici les 5 derniers messages du chat Discord :<messages>{conversation}</messages>\n"
-                        f"Rédige une réponse sarcastique au dernier message, comme le ferait Michel. N'hésite pas à utiliser l'humour et l'ironie, "
-                        f"tout en restant dans les limites du raisonnable. Appuie-toi sur les éléments de contexte fournis pour rendre ta réponse pertinente. "
-                        f"Rappelle-toi que tu dois rester dans le personnage de Michel tout au long de ta réponse. Son ton est caustique mais pas méchant."
-                    ),
-                }
-            ] + conversation
-            
-            # Utiliser le modèle de l'OpenRouter pour les DMs avec le paramètre usage.include
-            response = await self.openrouter_client.chat.completions.create(
-                model="anthropic/claude-3-5-sonnet",
-                temperature=0.7,
-                max_tokens=300,
-                messages=dm_messages,
-                extra_body={"usage.include": True }
-            )
-            
-            # Utiliser la méthode de division pour les messages de DM
-            await self._split_and_send_message(event.message.channel, response.choices[0].message.content)
-            self.print_cost(response)
-            logger.info("Response : %s", response.choices[0].message.content)
 
