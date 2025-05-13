@@ -69,8 +69,8 @@ class IAExtension(Extension):
                 for model in data["data"]:
                     model_id = model["id"]
                     self.model_prices[model_id] = {
-                        "input": float(model["pricing"]["prompt"]) / 1000000,  # Convertir en coût par token
-                        "output": float(model["pricing"]["completion"]) / 1000000,  # Convertir en coût par token
+                        "input": float(model["pricing"]["prompt"]),
+                        "output": float(model["pricing"]["completion"]),
                     }
                 logger.info(f"Loaded pricing for {len(self.model_prices)} models from OpenRouter")
         except Exception as e:
@@ -268,15 +268,6 @@ class IAExtension(Extension):
                 input_tokens,
                 output_cost,
                 output_tokens,
-            )
-            
-            # Afficher également en millièmes de dollar pour une meilleure lisibilité
-            logger.info(
-                "modèle :%s | coût : %.5f m$ | %.5f m$ (in) | %.5f m$ (out)",
-                model_id,
-                total_cost * 1000,
-                input_cost * 1000,
-                output_cost * 1000,
             )
         else:
             # Fallback sur une liste de prix statiques si le modèle n'est pas dans les prix récupérés
