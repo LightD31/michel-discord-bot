@@ -1,6 +1,7 @@
 import os
 import random
 import httpx
+import re
 
 from openai import AsyncOpenAI
 from interactions.api.events import MessageCreate
@@ -169,6 +170,68 @@ class IAExtension(Extension):
         random.shuffle(responses)
         return responses
 
+    async def _split_and_send_message(self, ctx_or_channel, content, components=None):
+        """
+        Divise un message si sa longueur dépasse 2000 caractères et l'envoie en plusieurs parties.
+        
+        Args:
+            ctx_or_channel: Le contexte ou le canal où envoyer le message
+            content: Le contenu du message
+            components: Les composants à ajouter (seulement au dernier message)
+            
+        Returns:
+            Le dernier message envoyé
+        """
+        if len(content) <= 2000:
+            # Si le message est suffisamment court, l'envoyer directement
+            return await ctx_or_channel.send(content, components=components)
+        
+        # Diviser le message en parties de moins de 2000 caractères
+        messages = []
+        current_chunk = ""
+        
+        # Tenter de diviser aux paragraphes
+        paragraphs = content.split("\n\n")
+        
+        for paragraph in paragraphs:
+            # Si le paragraphe lui-même dépasse 2000 caractères, le diviser en phrases
+            if len(paragraph) > 2000:
+                sentences = re.split(r'(?<=[.!?])\s+', paragraph)
+                for sentence in sentences:
+                    if len(current_chunk) + len(sentence) + 1 > 2000:
+                        messages.append(current_chunk)
+                        current_chunk = sentence
+                    else:
+                        if current_chunk:
+                            current_chunk += " " + sentence
+                        else:
+                            current_chunk = sentence
+            else:
+                # Ajouter le paragraphe s'il tient dans le chunk actuel
+                if len(current_chunk) + len(paragraph) + 2 > 2000:
+                    messages.append(current_chunk)
+                    current_chunk = paragraph
+                else:
+                    if current_chunk:
+                        current_chunk += "\n\n" + paragraph
+                    else:
+                        current_chunk = paragraph
+        
+        # Ajouter le dernier chunk s'il n'est pas vide
+        if current_chunk:
+            messages.append(current_chunk)
+        
+        # Envoyer les messages en séquence
+        last_message = None
+        for i, msg_content in enumerate(messages):
+            # Ajouter les composants uniquement au dernier message
+            if i == len(messages) - 1:
+                last_message = await ctx_or_channel.send(msg_content, components=components)
+            else:
+                last_message = await ctx_or_channel.send(msg_content)
+        
+        return last_message
+
     async def _send_response_message(self, ctx: SlashContext, question: str, responses):
         message_content = (
             f"**{ctx.author.mention} : {question}**\n\n"
@@ -195,7 +258,7 @@ class IAExtension(Extension):
             ),
         ]
 
-        message_info = await ctx.send(message_content, components=components)
+        message_info = await self._split_and_send_message(ctx, message_content, components=components)
         await self._handle_vote(ctx, message_info, question, responses, components)
 
     async def _handle_vote(
@@ -222,10 +285,16 @@ class IAExtension(Extension):
                 new_message_content = (
                     f"**{ctx.author.mention} : {question}**\n{selected_response['content']}"
                 )
-                await message_info.edit(
-                    content=new_message_content,
-                    components=[],
-                )
+                # Utiliser la méthode de division pour le message édité
+                if len(new_message_content) <= 2000:
+                    await message_info.edit(
+                        content=new_message_content,
+                        components=[],
+                    )
+                else:
+                    # Si le message édité est trop long, supprimer l'ancien et envoyer un nouveau message divisé
+                    await message_info.delete()
+                    await self._split_and_send_message(ctx, new_message_content)
 
             openai_votes, anthropic_votes, deepseek_votes = self._count_votes()
             logger.info(
@@ -377,7 +446,8 @@ class IAExtension(Extension):
                 extra_body={"usage.include": True}
             )
             
-            await event.message.channel.send(response.choices[0].message.content)
+            # Utiliser la méthode de division pour les messages de DM
+            await self._split_and_send_message(event.message.channel, response.choices[0].message.content)
             self.print_cost(response)
             logger.info("Response : %s", response.choices[0].message.content)
 
