@@ -99,9 +99,20 @@ class IAExtension(Extension):
                 conversation, "deepseek/deepseek-chat-v3-0324", ctx, question
             )
 
+            # Calculer le coût total de la commande
+            total_cost = 0
+            openai_cost = self.calculate_cost(openai_response)
+            anthropic_cost = self.calculate_cost(anthropic_response)
+            deepseek_cost = self.calculate_cost(deepseek_response)
+            total_cost = openai_cost + anthropic_cost + deepseek_cost
+
+            # Afficher les coûts individuels
             self.print_cost(openai_response)
             self.print_cost(anthropic_response)
             self.print_cost(deepseek_response)
+            
+            # Afficher le coût total
+            logger.info(f"Coût total de la commande : {total_cost:.8f}$")
 
             responses = self._create_responses(
                 {"custom_id": "openai", "content": openai_response.choices[0].message.content},
@@ -173,7 +184,7 @@ class IAExtension(Extension):
     async def _split_and_send_message(self, ctx_or_channel, content, components=None):
         """
         Divise un message si sa longueur dépasse 2000 caractères et l'envoie en plusieurs parties.
-        Préserve l'intégrité des blocs de code et évite de les couper.
+        Préserve l'intégrité des blocs de citation et évite de les couper.
         
         Args:
             ctx_or_channel: Le contexte ou le canal où envoyer le message
@@ -187,13 +198,15 @@ class IAExtension(Extension):
             # Si le message est suffisamment court, l'envoyer directement
             return await ctx_or_channel.send(content, components=components)
         
-        # Rechercher tous les blocs de code dans le contenu
-        code_blocks = re.findall(r'```(?:\w+)?\n[\s\S]*?```', content)
+        # Rechercher tous les blocs de citation (séquences de lignes commençant par '>');
+        quote_blocks = re.findall(r'(?:^|\n)(?:> .*(?:\n|$))+', content)
         
-        # Remplacer temporairement les blocs de code par des marqueurs
+        # Remplacer temporairement les blocs de citation par des marqueurs
         placeholder_map = {}
-        for i, block in enumerate(code_blocks):
-            placeholder = f"__CODE_BLOCK_{i}__"
+        
+        # Traiter les blocs de citation
+        for i, block in enumerate(quote_blocks):
+            placeholder = f"__QUOTE_BLOCK_{i}__"
             placeholder_map[placeholder] = block
             content = content.replace(block, placeholder)
         
@@ -205,19 +218,19 @@ class IAExtension(Extension):
         paragraphs = content.split("\n\n")
         
         for paragraph in paragraphs:
-            # Vérifier si le paragraphe contient un placeholder de bloc de code
-            contains_code_block = any(placeholder in paragraph for placeholder in placeholder_map.keys())
+            # Vérifier si le paragraphe contient un placeholder de bloc de citation
+            contains_quote_block = any(placeholder in paragraph for placeholder in placeholder_map.keys())
             
-            # Si le paragraphe est un bloc de code ou contient un bloc de code
-            if contains_code_block:
+            # Si le paragraphe est un bloc de citation ou contient un bloc de citation
+            if contains_quote_block:
                 # Si ajouter ce paragraphe dépasserait la limite, envoyer le chunk actuel d'abord
                 if len(current_chunk) + len(paragraph) > 2000:
                     if current_chunk:
                         messages.append(current_chunk)
                         current_chunk = paragraph
                     else:
-                        # Si le paragraphe lui-même est trop long (rare avec les placeholders)
-                        # Diviser aux espaces, mais pas dans les blocs de code
+                        # Si le paragraphe lui-même est trop long
+                        # Diviser aux espaces, mais pas dans les blocs de citation
                         words = re.split(r'(\s+)', paragraph)
                         for word in words:
                             if len(current_chunk) + len(word) > 2000:
@@ -231,7 +244,7 @@ class IAExtension(Extension):
                     else:
                         current_chunk = paragraph
             else:
-                # Paragraphe normal sans bloc de code, utiliser l'approche standard
+                # Paragraphe normal sans bloc de citation
                 if len(current_chunk) + len(paragraph) + 2 > 2000:
                     messages.append(current_chunk)
                     current_chunk = paragraph
@@ -245,7 +258,7 @@ class IAExtension(Extension):
         if current_chunk:
             messages.append(current_chunk)
         
-        # Restaurer les blocs de code dans tous les messages
+        # Restaurer les blocs de citation dans tous les messages
         for i, msg in enumerate(messages):
             for placeholder, block in placeholder_map.items():
                 messages[i] = messages[i].replace(placeholder, block)
@@ -264,9 +277,9 @@ class IAExtension(Extension):
     async def _send_response_message(self, ctx: SlashContext, question: str, responses):
         message_content = (
             f"**{ctx.author.mention} : {question}**\n\n"
-            f"Réponse 1 : \n```{responses[0]['content']}```\n"
-            f"Réponse 2 : \n```{responses[1]['content']}```\n"
-            f"Réponse 3 : \n```{responses[2]['content']}```\n"
+            f"Réponse 1 : \n> {responses[0]['content'].replace('\n', '\n> ')}\n\n"
+            f"Réponse 2 : \n> {responses[1]['content'].replace('\n', '\n> ')}\n\n"
+            f"Réponse 3 : \n> {responses[2]['content'].replace('\n', '\n> ')}\n\n"
             f"Votez pour la meilleure réponse en cliquant sur le bouton correspondant"
         )
         components = [
@@ -336,12 +349,28 @@ class IAExtension(Extension):
             await message_info.edit(
                 content=(
                     f"**{ctx.author.mention} : {question}**\n\n"
-                    f"Réponse 1 : \n```{responses[0]['content']}```\n"
-                    f"Réponse 2 : \n```{responses[1]['content']}```\n"
-                    f"Réponse 3 : \n```{responses[2]['content']}```"
+                    f"Réponse 1 : \n> {responses[0]['content'].replace('\n', '\n> ')}\n\n"
+                    f"Réponse 2 : \n> {responses[1]['content'].replace('\n', '\n> ')}\n\n"
+                    f"Réponse 3 : \n> {responses[2]['content'].replace('\n', '\n> ')}\n\n"
                 ),
                 components=[],
             )
+
+    # Ajouter une nouvelle méthode pour calculer le coût d'une réponse
+    def calculate_cost(self, message):
+        input_tokens = getattr(getattr(message, "usage", None), "prompt_tokens", 0) or 0
+        output_tokens = getattr(getattr(message, "usage", None), "completion_tokens", 0) or 0
+        
+        model_id = message.model
+        
+        if model_id in self.model_prices:
+            input_cost = self.model_prices[model_id]["input"] * input_tokens
+            output_cost = self.model_prices[model_id]["output"] * output_tokens
+            return input_cost + output_cost
+        else:
+            # Si le modèle n'est pas dans les prix récupérés depuis l'API, retourner 0
+            logger.warning(f"Prix non trouvé pour le modèle {model_id}, utilisation de 0$")
+            return 0
 
     def print_cost(self, message):
         # Récupérer le comptage de tokens à partir de la réponse
