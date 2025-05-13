@@ -352,22 +352,14 @@ class IAExtension(Extension):
 
             await button_ctx.ctx.send("Vote enregistré", ephemeral=True)
         except TimeoutError:
-            # Préparer le contenu du message avec les trois réponses
-            timeout_content = (
-                f"**{ctx.author.mention} : {question}**\n\n"
-                f"Réponse 1 : \n> {responses[0]['content'].replace('\n', '\n> ')}\n\n"
-                f"Réponse 2 : \n> {responses[1]['content'].replace('\n', '\n> ')}\n\n"
-                f"Réponse 3 : \n> {responses[2]['content'].replace('\n', '\n> ')}\n\n"
-            )
-            
+            # En cas de timeout, éditer le message existant pour retirer les boutons
             try:
-                # Si le message édité est trop long, supprimer l'ancien et envoyer un nouveau message divisé
-                await message_info.delete()
-                await self._split_and_send_message(ctx, timeout_content)
+                # Simplement supprimer les boutons mais conserver le contenu du message original
+                await message_info.edit(components=[])
+                logger.info("Timeout de vote - Boutons supprimés")
             except Exception as e:
                 logger.error(f"Erreur lors de la gestion du timeout : {e}")
-                # En cas d'erreur, essayer d'envoyer un message simple
-                await ctx.send("Le délai de vote est dépassé. Les réponses sont disponibles.")
+                # Ne pas envoyer de nouveau message en cas d'erreur
 
     # Ajouter une nouvelle méthode pour calculer le coût d'une réponse
     def calculate_cost(self, message):
