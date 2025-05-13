@@ -112,7 +112,7 @@ class IAExtension(Extension):
             self.print_cost(deepseek_response)
             
             # Afficher le coût total
-            logger.info(f"Coût total de la commande : {total_cost:.8f}$")
+            logger.info(f"Coût total de la commande : {total_cost:.5f}$")
 
             responses = self._create_responses(
                 {"custom_id": "openai", "content": openai_response.choices[0].message.content},
@@ -352,16 +352,22 @@ class IAExtension(Extension):
 
             await button_ctx.ctx.send("Vote enregistré", ephemeral=True)
         except TimeoutError:
-            # Keep the original behavior on timeout but with three responses
-            await message_info.edit(
-                content=(
-                    f"**{ctx.author.mention} : {question}**\n\n"
-                    f"Réponse 1 : \n> {responses[0]['content'].replace('\n', '\n> ')}\n\n"
-                    f"Réponse 2 : \n> {responses[1]['content'].replace('\n', '\n> ')}\n\n"
-                    f"Réponse 3 : \n> {responses[2]['content'].replace('\n', '\n> ')}\n\n"
-                ),
-                components=[],
+            # Préparer le contenu du message avec les trois réponses
+            timeout_content = (
+                f"**{ctx.author.mention} : {question}**\n\n"
+                f"Réponse 1 : \n> {responses[0]['content'].replace('\n', '\n> ')}\n\n"
+                f"Réponse 2 : \n> {responses[1]['content'].replace('\n', '\n> ')}\n\n"
+                f"Réponse 3 : \n> {responses[2]['content'].replace('\n', '\n> ')}\n\n"
             )
+            
+            try:
+                # Si le message édité est trop long, supprimer l'ancien et envoyer un nouveau message divisé
+                await message_info.delete()
+                await self._split_and_send_message(ctx, timeout_content)
+            except Exception as e:
+                logger.error(f"Erreur lors de la gestion du timeout : {e}")
+                # En cas d'erreur, essayer d'envoyer un message simple
+                await ctx.send("Le délai de vote est dépassé. Les réponses sont disponibles.")
 
     # Ajouter une nouvelle méthode pour calculer le coût d'une réponse
     def calculate_cost(self, message):
@@ -395,7 +401,7 @@ class IAExtension(Extension):
             
             # Afficher le coût avec 8 décimales au lieu de 5
             logger.info(
-                "modèle :%s | coût : %.8f$ | %.8f$ (%d tks) in | %.8f$ (%d tks) out",
+                "modèle :%s | coût : %.5f$ | %.5f$ (%d tks) in | %.5f$ (%d tks) out",
                 model_id,
                 total_cost,
                 input_cost,
@@ -404,50 +410,13 @@ class IAExtension(Extension):
                 output_tokens,
             )
         else:
-            # Fallback sur une liste de prix statiques si le modèle n'est pas dans les prix récupérés
-            model_info = {
-                # OpenAI via OpenRouter
-                "openai/gpt-4o": {"input": 5 / 1e6, "output": 15 / 1e6},
-                "openai/gpt-4o-2024-05-13": {"input": 5 / 1e6, "output": 15 / 1e6},
-                "openai/gpt-4-turbo": {"input": 10 / 1e6, "output": 30 / 1e6},
-                "openai/gpt-4": {"input": 30 / 1e6, "output": 60 / 1e6},
-                "openai/gpt-4-32k": {"input": 60 / 1e6, "output": 120 / 1e6},
-                "openai/gpt-3.5-turbo": {"input": 0.5 / 1e6, "output": 1.5 / 1e6},
-                "openai/gpt-3.5-turbo-0125": {"input": 0.5 / 1e6, "output": 1.5 / 1e6},
-                
-                # Anthropic via OpenRouter
-                "anthropic/claude-3-haiku-20240307": {"input": 0.25 / 1e6, "output": 0.5 / 1e6},
-                "anthropic/claude-3-5-sonnet-20240620": {"input": 3 / 1e6, "output": 15 / 1e6},
-                "anthropic/claude-3-sonnet-20240229": {"input": 3 / 1e6, "output": 15 / 1e6},
-                "anthropic/claude-3-opus-20240229": {"input": 3 / 1e6, "output": 75 / 1e6},
-                
-                # Deepseek via OpenRouter
-                "deepseek/deepseek-chat": {"input": 0.2 / 1e6, "output": 0.6 / 1e6},
-                
-                # Legacy keys for backward compatibility
-                "gpt-4o": {"input": 5 / 1e6, "output": 15 / 1e6},
-                "claude-3-5-sonnet-20240620": {"input": 3 / 1e6, "output": 15 / 1e6},
-            }
-            
-            if model_id in model_info:
-                input_cost = model_info[model_id]["input"] * input_tokens
-                output_cost = model_info[model_id]["output"] * output_tokens
-                logger.info(
-                    "modèle :%s | coût : %.8f$ | %.8f$ (%d tks) in | %.8f$ (%d tks) out",
-                    model_id,
-                    input_cost + output_cost,
-                    input_cost,
-                    input_tokens,
-                    output_cost,
-                    output_tokens,
-                )
-            else:
-                logger.info(
-                    "modèle :%s | coût : inconnu | %d tks in | %d tks out",
-                    model_id,
-                    input_tokens,
-                    output_tokens,
-                )
+            # Afficher un message lorsque les informations de prix ne sont pas disponibles
+            logger.info(
+                "modèle :%s | coût : inconnu | %d tks in | %d tks out",
+                model_id,
+                input_tokens,
+                output_tokens,
+            )
 
     @staticmethod
     def _save_response_to_file(response):
@@ -508,7 +477,7 @@ class IAExtension(Extension):
                 temperature=0.7,
                 max_tokens=300,
                 messages=dm_messages,
-                extra_body={"usage.include": True}
+                extra_body={"usage.include": True }
             )
             
             # Utiliser la méthode de division pour les messages de DM
