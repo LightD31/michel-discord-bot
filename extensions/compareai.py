@@ -173,6 +173,7 @@ class IAExtension(Extension):
     async def _split_and_send_message(self, ctx_or_channel, content, components=None):
         """
         Divise un message si sa longueur dépasse 2000 caractères et l'envoie en plusieurs parties.
+        Préserve l'intégrité des blocs de code et évite de les couper.
         
         Args:
             ctx_or_channel: Le contexte ou le canal où envoyer le message
@@ -186,28 +187,51 @@ class IAExtension(Extension):
             # Si le message est suffisamment court, l'envoyer directement
             return await ctx_or_channel.send(content, components=components)
         
+        # Rechercher tous les blocs de code dans le contenu
+        code_blocks = re.findall(r'```(?:\w+)?\n[\s\S]*?```', content)
+        
+        # Remplacer temporairement les blocs de code par des marqueurs
+        placeholder_map = {}
+        for i, block in enumerate(code_blocks):
+            placeholder = f"__CODE_BLOCK_{i}__"
+            placeholder_map[placeholder] = block
+            content = content.replace(block, placeholder)
+        
         # Diviser le message en parties de moins de 2000 caractères
         messages = []
         current_chunk = ""
         
-        # Tenter de diviser aux paragraphes
+        # Diviser d'abord aux paragraphes
         paragraphs = content.split("\n\n")
         
         for paragraph in paragraphs:
-            # Si le paragraphe lui-même dépasse 2000 caractères, le diviser en phrases
-            if len(paragraph) > 2000:
-                sentences = re.split(r'(?<=[.!?])\s+', paragraph)
-                for sentence in sentences:
-                    if len(current_chunk) + len(sentence) + 1 > 2000:
+            # Vérifier si le paragraphe contient un placeholder de bloc de code
+            contains_code_block = any(placeholder in paragraph for placeholder in placeholder_map.keys())
+            
+            # Si le paragraphe est un bloc de code ou contient un bloc de code
+            if contains_code_block:
+                # Si ajouter ce paragraphe dépasserait la limite, envoyer le chunk actuel d'abord
+                if len(current_chunk) + len(paragraph) > 2000:
+                    if current_chunk:
                         messages.append(current_chunk)
-                        current_chunk = sentence
+                        current_chunk = paragraph
                     else:
-                        if current_chunk:
-                            current_chunk += " " + sentence
-                        else:
-                            current_chunk = sentence
+                        # Si le paragraphe lui-même est trop long (rare avec les placeholders)
+                        # Diviser aux espaces, mais pas dans les blocs de code
+                        words = re.split(r'(\s+)', paragraph)
+                        for word in words:
+                            if len(current_chunk) + len(word) > 2000:
+                                messages.append(current_chunk)
+                                current_chunk = word
+                            else:
+                                current_chunk += word
+                else:
+                    if current_chunk:
+                        current_chunk += "\n\n" + paragraph
+                    else:
+                        current_chunk = paragraph
             else:
-                # Ajouter le paragraphe s'il tient dans le chunk actuel
+                # Paragraphe normal sans bloc de code, utiliser l'approche standard
                 if len(current_chunk) + len(paragraph) + 2 > 2000:
                     messages.append(current_chunk)
                     current_chunk = paragraph
@@ -220,6 +244,11 @@ class IAExtension(Extension):
         # Ajouter le dernier chunk s'il n'est pas vide
         if current_chunk:
             messages.append(current_chunk)
+        
+        # Restaurer les blocs de code dans tous les messages
+        for i, msg in enumerate(messages):
+            for placeholder, block in placeholder_map.items():
+                messages[i] = messages[i].replace(placeholder, block)
         
         # Envoyer les messages en séquence
         last_message = None
