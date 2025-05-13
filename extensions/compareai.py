@@ -399,7 +399,7 @@ class IAExtension(Extension):
             output_cost = self.model_prices[model_id]["output"] * output_tokens
             total_cost = input_cost + output_cost
             
-            # Afficher le coût avec 8 décimales au lieu de 5
+            # Afficher le coût 
             logger.info(
                 "modèle :%s | coût : %.5f$ | %.5f$ (%d tks) in | %.5f$ (%d tks) out",
                 model_id,
