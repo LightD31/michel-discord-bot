@@ -184,7 +184,7 @@ class IAExtension(Extension):
     async def _split_and_send_message(self, ctx_or_channel, content, components=None):
         """
         Divise un message si sa longueur dépasse 2000 caractères et l'envoie en plusieurs parties.
-        Préserve l'intégrité des blocs de citation et évite de les couper.
+        Utilise une approche simple pour garantir que chaque message respecte la limite de Discord.
         
         Args:
             ctx_or_channel: Le contexte ou le canal où envoyer le message
@@ -194,83 +194,90 @@ class IAExtension(Extension):
         Returns:
             Le dernier message envoyé
         """
-        if len(content) <= 2000:
+        if len(content) <= 1900:  # Marge de sécurité
             # Si le message est suffisamment court, l'envoyer directement
             return await ctx_or_channel.send(content, components=components)
         
-        # Rechercher tous les blocs de citation (séquences de lignes commençant par '>');
-        quote_blocks = re.findall(r'(?:^|\n)(?:> .*(?:\n|$))+', content)
-        
-        # Remplacer temporairement les blocs de citation par des marqueurs
-        placeholder_map = {}
-        
-        # Traiter les blocs de citation
-        for i, block in enumerate(quote_blocks):
-            placeholder = f"__QUOTE_BLOCK_{i}__"
-            placeholder_map[placeholder] = block
-            content = content.replace(block, placeholder)
-        
-        # Diviser le message en parties de moins de 2000 caractères
+        # Diviser le message en parties de moins de 1900 caractères
         messages = []
-        current_chunk = ""
+        current_message = ""
         
-        # Diviser d'abord aux paragraphes
-        paragraphs = content.split("\n\n")
+        # Diviser par paragraphes pour essayer de préserver la structure
+        paragraphs = content.split('\n\n')
         
         for paragraph in paragraphs:
-            # Vérifier si le paragraphe contient un placeholder de bloc de citation
-            contains_quote_block = any(placeholder in paragraph for placeholder in placeholder_map.keys())
-            
-            # Si le paragraphe est un bloc de citation ou contient un bloc de citation
-            if contains_quote_block:
-                # Si ajouter ce paragraphe dépasserait la limite, envoyer le chunk actuel d'abord
-                if len(current_chunk) + len(paragraph) > 2000:
-                    if current_chunk:
-                        messages.append(current_chunk)
-                        current_chunk = paragraph
-                    else:
-                        # Si le paragraphe lui-même est trop long
-                        # Diviser aux espaces, mais pas dans les blocs de citation
-                        words = re.split(r'(\s+)', paragraph)
-                        for word in words:
-                            if len(current_chunk) + len(word) > 2000:
-                                messages.append(current_chunk)
-                                current_chunk = word
-                            else:
-                                current_chunk += word
-                else:
-                    if current_chunk:
-                        current_chunk += "\n\n" + paragraph
-                    else:
-                        current_chunk = paragraph
+            # Si le paragraphe lui-même est trop long, le diviser
+            if len(paragraph) > 1900:
+                # Si on a déjà du contenu dans le message actuel, l'ajouter aux messages
+                if current_message:
+                    messages.append(current_message)
+                    current_message = ""
+                
+                # Diviser le paragraphe en morceaux
+                while len(paragraph) > 0:
+                    # Trouver un bon endroit pour couper, de préférence à une fin de ligne
+                    cut_index = 1900
+                    if len(paragraph) > cut_index:
+                        # Chercher un retour à la ligne avant la limite
+                        newline_index = paragraph[:cut_index].rfind('\n')
+                        if newline_index > 0:
+                            cut_index = newline_index + 1
+                        else:
+                            # Si pas de retour à la ligne, chercher un espace
+                            space_index = paragraph[:cut_index].rfind(' ')
+                            if space_index > cut_index - 100:  # Ne pas couper trop loin en arrière
+                                cut_index = space_index + 1
+                    
+                    messages.append(paragraph[:cut_index])
+                    paragraph = paragraph[cut_index:]
             else:
-                # Paragraphe normal sans bloc de citation
-                if len(current_chunk) + len(paragraph) + 2 > 2000:
-                    messages.append(current_chunk)
-                    current_chunk = paragraph
+                # Vérifier si l'ajout de ce paragraphe dépasserait la limite
+                if len(current_message) + len(paragraph) + 2 > 1900:  # +2 pour \n\n
+                    messages.append(current_message)
+                    current_message = paragraph
                 else:
-                    if current_chunk:
-                        current_chunk += "\n\n" + paragraph
+                    if current_message:
+                        current_message += "\n\n" + paragraph
                     else:
-                        current_chunk = paragraph
+                        current_message = paragraph
         
-        # Ajouter le dernier chunk s'il n'est pas vide
-        if current_chunk:
-            messages.append(current_chunk)
+        # Ajouter le dernier message s'il n'est pas vide
+        if current_message:
+            messages.append(current_message)
         
-        # Restaurer les blocs de citation dans tous les messages
+        # Vérification de sécurité: s'assurer qu'aucun message ne dépasse 1900 caractères
         for i, msg in enumerate(messages):
-            for placeholder, block in placeholder_map.items():
-                messages[i] = messages[i].replace(placeholder, block)
+            if len(msg) > 1900:
+                # Diviser en deux simplement
+                half = len(msg) // 2
+                # Trouver un bon point de coupure
+                cut_index = msg[:half].rfind('\n')
+                if cut_index < 0 or cut_index < half - 200:
+                    cut_index = msg[:half].rfind(' ')
+                if cut_index < 0:
+                    cut_index = half
+                
+                messages[i] = msg[:cut_index]
+                messages.insert(i + 1, msg[cut_index:])
+        
+        # Log pour déboguer
+        for i, msg in enumerate(messages):
+            logger.debug(f"Message part {i+1}: length={len(msg)}")
         
         # Envoyer les messages en séquence
         last_message = None
         for i, msg_content in enumerate(messages):
-            # Ajouter les composants uniquement au dernier message
-            if i == len(messages) - 1:
-                last_message = await ctx_or_channel.send(msg_content, components=components)
-            else:
-                last_message = await ctx_or_channel.send(msg_content)
+            try:
+                # Ajouter les composants uniquement au dernier message
+                if i == len(messages) - 1:
+                    last_message = await ctx_or_channel.send(msg_content, components=components)
+                else:
+                    last_message = await ctx_or_channel.send(msg_content)
+            except Exception as e:
+                logger.error(f"Erreur lors de l'envoi de la partie {i+1} ({len(msg_content)} caractères): {e}")
+                # Essayer d'envoyer un message plus court en cas d'échec
+                if len(msg_content) > 1000:
+                    await ctx_or_channel.send(msg_content[:1000] + "... (message tronqué)")
         
         return last_message
 
