@@ -171,60 +171,83 @@ class TwitchExt2(Extension):
             logger.info("TwitchExt2 stopped")
             await self.bot.stop()
 
+    async def get_stream_data(self, user_id):
+        """
+        Get stream data for a specific user ID.
+
+        Args:
+            user_id (str): The Twitch user ID
+
+        Returns:
+            Stream or None: Stream object if the user is live, None otherwise
+        """
+        try:
+            return await first(self.twitch.get_streams(user_id=user_id))
+        except Exception as e:
+            logger.error(f"Error getting stream data for user {user_id}: {e}")
+            return None
+
     async def run(self):
         """
         Run the TwitchExt2 extension.
         """
-        # create the api instance and get user auth either from storage or website
-        self.twitch = await Twitch(self.client_id, self.client_secret)
-        helper = UserAuthenticationStorageHelper(
-            twitch=self.twitch,
-            scopes=[AuthScope.USER_READ_SUBSCRIPTIONS],
-            storage_path="./data/twitchcreds.json",
-        )
-        await helper.bind()
+        try:
+            # create the api instance and get user auth either from storage or website
+            self.twitch = await Twitch(self.client_id, self.client_secret)
+            helper = UserAuthenticationStorageHelper(
+                twitch=self.twitch,
+                scopes=[AuthScope.USER_READ_SUBSCRIPTIONS],
+                storage_path="./data/twitchcreds.json",
+            )
+            await helper.bind()
 
-        # Initialize eventsub websocket instance
-        self.eventsub = EventSubWebsocket(
-            self.twitch,
-            callback_loop=asyncio.get_event_loop(),
-            revocation_handler=self.on_revocation,
-        )
-        logger.info("Starting EventSub")
-        self.eventsub.start()
+            # Initialize eventsub websocket instance
+            self.eventsub = EventSubWebsocket(
+                self.twitch,
+                callback_loop=asyncio.get_event_loop(),
+                revocation_handler=self.on_revocation,
+            )
+            logger.info("Starting EventSub")
+            self.eventsub.start()
 
-        # Subscribe to events for all streamers
-        for streamer_key, streamer in self.streamers.items():
-            try:
-                # Get the Twitch user ID for this streamer
-                user = await first(self.twitch.get_users(logins=[streamer.streamer_id]))
-                if user:
-                    streamer.user_id = user.id
+            # Subscribe to events for all streamers
+            for streamer_key, streamer in self.streamers.items():
+                try:
+                    # Get the Twitch user ID for this streamer
+                    user = await first(self.twitch.get_users(logins=[streamer.streamer_id]))
+                    if user:
+                        streamer.user_id = user.id
 
-                    # Subscribe to events
-                    await self.eventsub.listen_stream_online(
-                        broadcaster_user_id=user.id, callback=self.on_live_start
-                    )
-                    await self.eventsub.listen_stream_offline(
-                        broadcaster_user_id=user.id, callback=self.on_live_end
-                    )
-                    await self.eventsub.listen_channel_update_v2(
-                        broadcaster_user_id=user.id, callback=self.on_update
-                    )
-                    logger.info(f"Registered event subscriptions for {streamer.streamer_id} (ID: {user.id})")
-                else:
-                    logger.error(f"Could not find Twitch user for {streamer.streamer_id}")
-            except Exception as e:
-                logger.error(f"Error subscribing to events for {streamer.streamer_id}: {e}")
+                        # Subscribe to events
+                        await self.eventsub.listen_stream_online(
+                            broadcaster_user_id=user.id, callback=self.on_live_start
+                        )
+                        await self.eventsub.listen_stream_offline(
+                            broadcaster_user_id=user.id, callback=self.on_live_end
+                        )
+                        await self.eventsub.listen_channel_update_v2(
+                            broadcaster_user_id=user.id, callback=self.on_update
+                        )
+                        logger.info(f"Registered event subscriptions for {streamer.streamer_id} (ID: {user.id})")
+                    else:
+                        logger.error(f"Could not find Twitch user for {streamer.streamer_id}")
+                except Exception as e:
+                    logger.error(f"Error subscribing to events for {streamer.streamer_id}: {e}")
 
-        # Update all streamers initially
-        await self.update()
+            # Update all streamers initially
+            await self.update()
 
-        signal.signal(signal.SIGTERM, self.stop_on_signal)
-        # Wait until the service is stopped
-        while self.stop is False:
-            await asyncio.sleep(1)
+            signal.signal(signal.SIGTERM, self.stop_on_signal)
+            # Wait until the service is stopped
+            while self.stop is False:
+                await asyncio.sleep(1)
+        except Exception as e:
+            logger.error(f"Error in run method: {e}")
+            # Try to restart after a delay
+            await asyncio.sleep(30)
+            asyncio.create_task(self.run())
 
+    @listen()
     async def on_revocation(self, data):
         logger.error("Revocation detected: %s", data)
         await self.eventsub.stop()
@@ -252,12 +275,13 @@ class TwitchExt2(Extension):
             value = f"{category}\n{utils.timestamp_converter(stream.start_time).format(TimestampStyles.LongDate)} ({str(utils.timestamp_converter(stream.start_time).format(TimestampStyles.ShortTime))}-{str(utils.timestamp_converter(stream.end_time).format(TimestampStyles.ShortTime))})\n\u200b"
         embed.add_field(name=name, value=value, inline=False)
 
-    async def fetch_schedule(self, user_id):
+    async def fetch_schedule(self, user_id, guild_id=None):
         """
         Fetches the schedule for a given user ID.
 
         Args:
             user_id (str): The ID of the user.
+            guild_id (int, optional): The guild ID to fetch the bot member from.
         """
         try:
             schedule: ChannelStreamSchedule = (
@@ -269,34 +293,56 @@ class TwitchExt2(Extension):
         except TwitchResourceNotFound as e:
             logger.error("No schedule found for user %s: %s", user_id, e)
             schedule = None
+        except Exception as e:
+            logger.error(f"Error fetching schedule for user {user_id}: {e}")
+            schedule = None
 
-        if schedule is not None:
-            bot = await self.bot.fetch_member(self.bot.user.id, self.coloc_guild_id)
-            segments = schedule.segments
-            embed = Embed(
-                title=f"<:TeamBelieve:808056449750138880> Planning de {schedule.broadcaster_name} <:TeamBelieve:808056449750138880>",
-                description="Les 5 prochains streams planifiés et dans moins de 10 jours.",
-                color=0x6441A5,
-                timestamp=datetime.now(pytz.UTC),
-                footer=EmbedFooter(text=bot.display_name, icon_url=bot.avatar_url),
-            )
-            now = datetime.now(pytz.UTC)
-            for stream in segments:
-                if stream.start_time < now < stream.end_time:
-                    self.add_field_to_embed(embed, stream=stream, is_now=True)
-                elif stream.start_time < now + timedelta(days=10):
-                    self.add_field_to_embed(embed, stream=stream, is_now=False)
-            return embed
-        else:
-            bot = await self.bot.fetch_member(self.bot.user.id, self.coloc_guild_id)
-            embed = Embed(
-                title="<:TeamBelieve:808056449750138880> Planning <:TeamBelieve:808056449750138880>",
-                description="Aucun stream planifié",
-                color=0x6441A5,
+        # Use the first streamer's guild ID if none is provided
+        if guild_id is None:
+            streamers = self.get_streamer_by_user_id(user_id)
+            if streamers:
+                guild_id = streamers[0].guild_id
+            else:
+                # Fallback to first enabled server if no streamer is found
+                guild_id = int(self.enabled_servers[0]) if self.enabled_servers else 0
+
+        try:
+            bot = await self.bot.fetch_member(self.bot.user.id, guild_id)
+
+            if schedule is not None:
+                segments = schedule.segments
+                embed = Embed(
+                    title=f"<:TeamBelieve:808056449750138880> Planning de {schedule.broadcaster_name} <:TeamBelieve:808056449750138880>",
+                    description="Les 5 prochains streams planifiés et dans moins de 10 jours.",
+                    color=0x6441A5,
+                    timestamp=datetime.now(pytz.UTC),
+                    footer=EmbedFooter(text=bot.display_name, icon_url=bot.avatar_url),
+                )
+                now = datetime.now(pytz.UTC)
+                for stream in segments:
+                    if stream.start_time < now < stream.end_time:
+                        self.add_field_to_embed(embed, stream=stream, is_now=True)
+                    elif stream.start_time < now + timedelta(days=10):
+                        self.add_field_to_embed(embed, stream=stream, is_now=False)
+                return embed
+            else:
+                embed = Embed(
+                    title="<:TeamBelieve:808056449750138880> Planning <:TeamBelieve:808056449750138880>",
+                    description="Aucun stream planifié",
+                    color=0x6441A5,
+                    timestamp=datetime.now(),
+                    footer=EmbedFooter(text=bot.display_name, icon_url=bot.avatar_url),
+                )
+                return embed
+        except Exception as e:
+            logger.error(f"Error creating schedule embed for user {user_id} in guild {guild_id}: {e}")
+            # Return a basic embed if there's an error
+            return Embed(
+                title="Planning",
+                description="Erreur lors de la récupération du planning",
+                color=0xFF0000,
                 timestamp=datetime.now(),
-                footer=EmbedFooter(text=bot.display_name, icon_url=bot.avatar_url),
             )
-            return embed
 
     async def create_stream_embed(
         self,
@@ -391,7 +437,7 @@ class TwitchExt2(Extension):
         user_login = stream.user_login
         return stream.user_id, title, description, user_login
 
-    async def create_embed(self, title, description, user_login):
+    async def create_embed(self, title, description, user_login, guild_id=None):
         """
         Create an embed with the given title, description, and user login.
 
@@ -399,20 +445,45 @@ class TwitchExt2(Extension):
             title (str): The title of the embed.
             description (str): The description of the embed.
             user_login (str): The user login.
+            guild_id (int, optional): The guild ID to fetch the bot member from.
 
         Returns:
             Embed: The created embed.
         """
-        bot = await self.bot.fetch_member(self.bot.user.id, self.coloc_guild_id)
+        # Use the first streamer's guild if none is provided
+        if guild_id is None:
+            if self.enabled_servers:
+                guild_id = int(self.enabled_servers[0])
+            else:
+                # Create a basic embed without footer if no guild is available
+                return Embed(
+                    title=title,
+                    description=description,
+                    color=0x6441A5,
+                    url=f"https://twitch.tv/{user_login}",
+                    timestamp=datetime.now(),
+                )
 
-        return Embed(
-            title=title,
-            description=description,
-            color=0x6441A5,
-            url=f"https://twitch.tv/{user_login}",
-            footer=EmbedFooter(text=bot.display_name, icon_url=bot.avatar_url),
-            timestamp=datetime.now(),
-        )
+        try:
+            bot = await self.bot.fetch_member(self.bot.user.id, guild_id)
+            return Embed(
+                title=title,
+                description=description,
+                color=0x6441A5,
+                url=f"https://twitch.tv/{user_login}",
+                footer=EmbedFooter(text=bot.display_name, icon_url=bot.avatar_url),
+                timestamp=datetime.now(),
+            )
+        except Exception as e:
+            logger.error(f"Error creating embed for {user_login} in guild {guild_id}: {e}")
+            # Return a basic embed without footer if there's an error
+            return Embed(
+                title=title,
+                description=description,
+                color=0x6441A5,
+                url=f"https://twitch.tv/{user_login}",
+                timestamp=datetime.now(),
+            )
 
     async def edit_message(
         self,
@@ -432,7 +503,7 @@ class TwitchExt2(Extension):
             logger.warning(f"Missing message or channel for {streamer.streamer_id} in guild {streamer.guild_id}")
             return
 
-        embed = await self.fetch_schedule(streamer.user_id)
+        embed = await self.fetch_schedule(streamer.user_id, streamer.guild_id)
 
         if offline is False:
             stream = await self.get_stream_data(streamer.user_id)
@@ -447,36 +518,48 @@ class TwitchExt2(Extension):
             title100 = title if len(title) <= 100 else f"{title[:97]}..."
 
             # Handle scheduled event
-            if streamer.scheduled_event:
-                await streamer.scheduled_event.edit(
-                    name=title100,
-                    description=f"**{title}**\n\n{description}",
-                    end_time=datetime.now(self.timezone) + timedelta(days=1),
-                )
-            else:
-                streamer.scheduled_event = await guild.create_scheduled_event(
-                    name=title100,
-                    event_type=ScheduledEventType.EXTERNAL,
-                    external_location=f"https://twitch.tv/{user_login}",
-                    start_time=datetime.now(self.timezone) + timedelta(seconds=5),
-                    end_time=datetime.now(self.timezone) + timedelta(days=1),
-                    description=f"**{title}**\n\n{description}",
-                )
-                await streamer.scheduled_event.edit(status=ScheduledEventStatus.ACTIVE)
+            try:
+                if streamer.scheduled_event:
+                    await streamer.scheduled_event.edit(
+                        name=title100,
+                        description=f"**{title}**\n\n{description}",
+                        end_time=datetime.now(self.timezone) + timedelta(days=1),
+                    )
+                else:
+                    streamer.scheduled_event = await guild.create_scheduled_event(
+                        name=title100,
+                        event_type=ScheduledEventType.EXTERNAL,
+                        external_location=f"https://twitch.tv/{user_login}",
+                        start_time=datetime.now(self.timezone) + timedelta(seconds=5),
+                        end_time=datetime.now(self.timezone) + timedelta(days=1),
+                        description=f"**{title}**\n\n{description}",
+                    )
+                    await streamer.scheduled_event.edit(status=ScheduledEventStatus.ACTIVE)
+            except Exception as e:
+                logger.error(f"Error handling scheduled event for {streamer.streamer_id}: {e}")
 
-            await streamer.message.edit(
-                content="", embed=[embed, live_embed], components=[]
-            )
+            try:
+                await streamer.message.edit(
+                    content="", embed=[embed, live_embed], components=[]
+                )
+            except Exception as e:
+                logger.error(f"Error editing message for {streamer.streamer_id}: {e}")
         else:
             offline_embed = await self.create_stream_embed(
                 None, streamer.user_id, offline=True, data=data
             )
 
-            if streamer.scheduled_event:
-                await streamer.scheduled_event.delete()
-                streamer.scheduled_event = None
+            try:
+                if streamer.scheduled_event:
+                    await streamer.scheduled_event.delete()
+                    streamer.scheduled_event = None
+            except Exception as e:
+                logger.error(f"Error deleting scheduled event for {streamer.streamer_id}: {e}")
 
-            await streamer.message.edit(content="", embed=[embed, offline_embed])
+            try:
+                await streamer.message.edit(content="", embed=[embed, offline_embed])
+            except Exception as e:
+                logger.error(f"Error editing message for {streamer.streamer_id}: {e}")
 
     async def on_live_start(self, data: StreamOnlineEvent):
         """
