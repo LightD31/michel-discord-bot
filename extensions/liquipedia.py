@@ -37,7 +37,7 @@ class Liquipedia(Extension):
         self.message = await channel.fetch_message(message_id)
         channel = await self.bot.fetch_channel(wow_channel_id)
         self.wow_message = await channel.fetch_message(wow_message_id)
-        self.schedule.start()
+        # self.schedule.start()
         # self.mdi_schedule.start()
         # await self.mdi_schedule()
         # await self.schedule()
