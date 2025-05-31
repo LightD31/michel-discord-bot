@@ -3,7 +3,7 @@ import os
 import signal
 from datetime import datetime, timedelta
 import json
-from typing import Optional, Union
+from typing import Optional, Union, Dict, List
 
 import pytz
 from interactions import (
@@ -49,26 +49,59 @@ from src.utils import load_config
 logger = logutil.init_logger(os.path.basename(__file__))
 
 
+class StreamerInfo:
+    """Class to store information about a streamer"""
+
+    def __init__(self, guild_id: int, streamer_id: str, config: dict):
+        self.guild_id = guild_id
+        self.streamer_id = streamer_id
+        self.user_id = None
+        self.planning_channel_id = int(config.get("twitchPlanningChannelId", 0))
+        self.planning_message_id = int(config.get("twitchPlanningMessageId", 0))
+        self.notification_channel_id = int(config.get("twitchNotificationChannelId", 0))
+        self.channel = None
+        self.message = None
+        self.notif_channel = None
+        self.scheduled_event = None
+
+
 class TwitchExt2(Extension):
     def __init__(self, bot: Client):
         self.bot: Client = bot
-        config,module_config,enabled_servers = load_config("moduleTwitch")
-        module_config = module_config[enabled_servers[0]]
-        self.client_id = config["twitch"]["twitchClientId"]
-        self.client_secret = config["twitch"]["twitchClientSecret"]
-        self.coloc_guild_id = int(enabled_servers[0])
-        self.planning_channel_id = int(module_config["twitchStreamerList"]["zerator"]["twitchPlanningChannelId"])
-        self.planning_message_id = int(module_config["twitchStreamerList"]["zerator"]["twitchPlanningMessageId"])
-        self.notification_channel_id = int(module_config["twitchStreamerList"]["zerator"]["twitchNotificationChannelId"])
+        self.config, self.module_config, self.enabled_servers = load_config("moduleTwitch")
+        self.client_id = self.config["twitch"]["twitchClientId"]
+        self.client_secret = self.config["twitch"]["twitchClientSecret"]
+
+        # Initialize data structures for multiple servers and streamers
+        self.streamers: Dict[str, StreamerInfo] = {}
+        self.init_streamers()
+
         self.eventsub = None  # Initialize eventsub here
         self.twitch = None  # Initialize twitch here
         self.stop = False
-        self.channel: BaseChannel = None
-        self.message: Message = None
-        self.notif_channel: BaseChannel = None
-        self.user_id = None
-        self.scheduled_event = None
         self.timezone = pytz.timezone("Europe/Paris")
+
+    def init_streamers(self):
+        """Initialize streamers for all enabled servers"""
+        for guild_id in self.enabled_servers:
+            server_config = self.module_config[guild_id]
+            streamer_list = server_config.get("twitchStreamerList", {})
+
+            for streamer_id, streamer_config in streamer_list.items():
+                streamer_key = f"{guild_id}_{streamer_id}"
+                self.streamers[streamer_key] = StreamerInfo(
+                    guild_id=int(guild_id),
+                    streamer_id=streamer_id,
+                    config=streamer_config,
+                )
+
+    def get_streamer_by_user_id(self, user_id: str) -> List[StreamerInfo]:
+        """Get all streamers that match the given Twitch user ID"""
+        return [s for s in self.streamers.values() if s.user_id == user_id]
+
+    def get_streamer_key(self, guild_id: int, streamer_id: str) -> str:
+        """Get the unique key for a streamer"""
+        return f"{guild_id}_{streamer_id}"
 
     @listen()
     async def on_startup(self):
@@ -77,20 +110,31 @@ class TwitchExt2(Extension):
         """
         logger.info("Waiting for bot to be ready")
         await self.bot.wait_until_ready()
-        self.channel: BaseChannel = await self.bot.fetch_channel(
-            self.planning_channel_id
-        )
-        self.message: Message = await self.channel.fetch_message(
-            self.planning_message_id
-        )
-        self.notif_channel: BaseChannel = await self.bot.fetch_channel(
-            self.notification_channel_id
-        )
-        guild = await self.bot.fetch_guild(self.coloc_guild_id)
-        for event in await guild.list_scheduled_events():
-            creator = await event.creator
-            if creator.id == self.bot.user.id:
-                self.scheduled_event = event
+
+        # Initialize channels and messages for all streamers
+        for streamer_key, streamer in self.streamers.items():
+            try:
+                if streamer.planning_channel_id:
+                    streamer.channel = await self.bot.fetch_channel(streamer.planning_channel_id)
+
+                    if streamer.planning_message_id:
+                        streamer.message = await streamer.channel.fetch_message(streamer.planning_message_id)
+
+                if streamer.notification_channel_id:
+                    streamer.notif_channel = await self.bot.fetch_channel(streamer.notification_channel_id)
+
+                # Find any existing scheduled events created by the bot
+                guild = await self.bot.fetch_guild(streamer.guild_id)
+                for event in await guild.list_scheduled_events():
+                    creator = await event.creator
+                    if creator.id == self.bot.user.id:
+                        # We should improve this to identify which streamer this event belongs to
+                        # For now, associate it with the current streamer
+                        streamer.scheduled_event = event
+                        break
+            except Exception as e:
+                logger.error(f"Error initializing channels for streamer {streamer_key}: {e}")
+
         self.check_new_emotes.start()
         logger.info("Starting TwitchExt2")
         # asyncio.create_task(self.run())
@@ -139,16 +183,8 @@ class TwitchExt2(Extension):
             storage_path="./data/twitchcreds.json",
         )
         await helper.bind()
-        # await self.twitch.set_user_authentication(
-        #     self.access_token,
-        #     [AuthScope.USER_READ_SUBSCRIPTIONS],
-        #     self.refresh_token,
-        # )
 
-        user = await first(self.twitch.get_users(logins=["zerator"]))
-        user_id = user.id
-        self.user_id = user_id
-        # create eventsub websocket instance and start the client.
+        # Initialize eventsub websocket instance
         self.eventsub = EventSubWebsocket(
             self.twitch,
             callback_loop=asyncio.get_event_loop(),
@@ -156,16 +192,34 @@ class TwitchExt2(Extension):
         )
         logger.info("Starting EventSub")
         self.eventsub.start()
-        await self.eventsub.listen_stream_online(
-            broadcaster_user_id=user_id, callback=self.on_live_start
-        )
-        await self.eventsub.listen_stream_offline(
-            broadcaster_user_id=user_id, callback=self.on_live_end
-        )
-        await self.eventsub.listen_channel_update_v2(
-            broadcaster_user_id=user_id, callback=self.on_update
-        )
+
+        # Subscribe to events for all streamers
+        for streamer_key, streamer in self.streamers.items():
+            try:
+                # Get the Twitch user ID for this streamer
+                user = await first(self.twitch.get_users(logins=[streamer.streamer_id]))
+                if user:
+                    streamer.user_id = user.id
+
+                    # Subscribe to events
+                    await self.eventsub.listen_stream_online(
+                        broadcaster_user_id=user.id, callback=self.on_live_start
+                    )
+                    await self.eventsub.listen_stream_offline(
+                        broadcaster_user_id=user.id, callback=self.on_live_end
+                    )
+                    await self.eventsub.listen_channel_update_v2(
+                        broadcaster_user_id=user.id, callback=self.on_update
+                    )
+                    logger.info(f"Registered event subscriptions for {streamer.streamer_id} (ID: {user.id})")
+                else:
+                    logger.error(f"Could not find Twitch user for {streamer.streamer_id}")
+            except Exception as e:
+                logger.error(f"Error subscribing to events for {streamer.streamer_id}: {e}")
+
+        # Update all streamers initially
         await self.update()
+
         signal.signal(signal.SIGTERM, self.stop_on_signal)
         # Wait until the service is stopped
         while self.stop is False:
@@ -362,37 +416,45 @@ class TwitchExt2(Extension):
 
     async def edit_message(
         self,
-        user_id: str,
+        streamer: StreamerInfo,
         offline: bool = False,
         data: Optional[Union[ChannelUpdateEvent, StreamOfflineEvent]] = None,
     ) -> None:
         """
-        Edit the message based on the user ID, offline status, and channel update event data.
+        Edit the message for a specific streamer.
 
         Args:
-            user_id (str): The user ID.
+            streamer (StreamerInfo): The streamer info object.
             offline (bool, optional): The offline status. Defaults to False.
-            data (ChannelUpdateEvent, optional): The channel update event data. Defaults to None.
+            data (Union[ChannelUpdateEvent, StreamOfflineEvent], optional): Event data. Defaults to None.
         """
-        embed = await self.fetch_schedule(user_id)
+        if not streamer.message or not streamer.channel:
+            logger.warning(f"Missing message or channel for {streamer.streamer_id} in guild {streamer.guild_id}")
+            return
+
+        embed = await self.fetch_schedule(streamer.user_id)
+
         if offline is False:
-            stream = await self.get_stream_data(user_id)
+            stream = await self.get_stream_data(streamer.user_id)
             live_embed = await self.create_stream_embed(
-                stream, user_id, offline=False, data=data
+                stream, streamer.user_id, offline=False, data=data
             )
-            guild: Guild = await self.bot.fetch_guild(self.coloc_guild_id)
+            guild: Guild = await self.bot.fetch_guild(streamer.guild_id)
             user_id, title, description, user_login = await self.get_stream_info(
-                stream, user_id, offline, data
+                stream, streamer.user_id, offline, data
             )
+
             title100 = title if len(title) <= 100 else f"{title[:97]}..."
-            if self.scheduled_event:
-                await self.scheduled_event.edit(
+
+            # Handle scheduled event
+            if streamer.scheduled_event:
+                await streamer.scheduled_event.edit(
                     name=title100,
                     description=f"**{title}**\n\n{description}",
                     end_time=datetime.now(self.timezone) + timedelta(days=1),
                 )
             else:
-                self.scheduled_event = await guild.create_scheduled_event(
+                streamer.scheduled_event = await guild.create_scheduled_event(
                     name=title100,
                     event_type=ScheduledEventType.EXTERNAL,
                     external_location=f"https://twitch.tv/{user_login}",
@@ -400,19 +462,21 @@ class TwitchExt2(Extension):
                     end_time=datetime.now(self.timezone) + timedelta(days=1),
                     description=f"**{title}**\n\n{description}",
                 )
-                await self.scheduled_event.edit(status=ScheduledEventStatus.ACTIVE)
-            await self.message.edit(
+                await streamer.scheduled_event.edit(status=ScheduledEventStatus.ACTIVE)
+
+            await streamer.message.edit(
                 content="", embed=[embed, live_embed], components=[]
             )
-            self.update.reschedule(IntervalTrigger(minutes=15))
         else:
             offline_embed = await self.create_stream_embed(
-                None, user_id, offline=True, data=data
+                None, streamer.user_id, offline=True, data=data
             )
-            if self.scheduled_event:
-                await self.scheduled_event.delete()
-                self.scheduled_event = None
-            await self.message.edit(content="", embed=[embed, offline_embed])
+
+            if streamer.scheduled_event:
+                await streamer.scheduled_event.delete()
+                streamer.scheduled_event = None
+
+            await streamer.message.edit(content="", embed=[embed, offline_embed])
 
     async def on_live_start(self, data: StreamOnlineEvent):
         """
@@ -424,7 +488,15 @@ class TwitchExt2(Extension):
         user_id = data.event.broadcaster_user_id
         logger.info("Stream is live: %s", data.event.broadcaster_user_name)
 
-        await self.edit_message(user_id, offline=False)
+        # Find all streamers matching this user_id
+        streamers = self.get_streamer_by_user_id(user_id)
+        for streamer in streamers:
+            try:
+                # For each server tracking this streamer, update the message
+                await self.edit_message(streamer, offline=False)
+            except Exception as e:
+                logger.error(f"Error handling live start for {streamer.streamer_id} in guild {streamer.guild_id}: {e}")
+
         self.update.reschedule(IntervalTrigger(minutes=15))
 
     async def on_live_end(self, data: StreamOfflineEvent):
@@ -436,7 +508,16 @@ class TwitchExt2(Extension):
         """
         user_id = data.event.broadcaster_user_id
         logger.info("Stream is offline: %s", data.event.broadcaster_user_name)
-        await self.edit_message(user_id, offline=True)
+
+        # Find all streamers matching this user_id
+        streamers = self.get_streamer_by_user_id(user_id)
+        for streamer in streamers:
+            try:
+                # For each server tracking this streamer, update the message
+                await self.edit_message(streamer, offline=True)
+            except Exception as e:
+                logger.error(f"Error handling live end for {streamer.streamer_id} in guild {streamer.guild_id}: {e}")
+
         self.update.reschedule(
             OrTrigger(
                 TimeTrigger(hour=2, utc=False),
@@ -448,64 +529,46 @@ class TwitchExt2(Extension):
             )
         )
 
-    async def get_stream_data(self, user_id):
-        return await first(self.twitch.get_streams(user_id=user_id))
-
     async def on_update(self, data: ChannelUpdateEvent):
+        user_id = data.event.broadcaster_user_id
         user_name = data.event.broadcaster_user_name
         logger.info(
             "Channel updated: %s (ID : %s)\nCategory: %s(ID : %s)\nTitle: %s\nContent classification: %s\nLanguage: %s\n",
             user_name,
-            data.event.broadcaster_user_id,
+            user_id,
             data.event.category_name,
             data.event.category_id,
             data.event.title,
             ", ".join(data.event.content_classification_labels),
             data.event.language,
         )
-        stream = await self.get_stream_data(data.event.broadcaster_user_id)
-        if stream:
-            await self.notif_channel.send(
-                f"**{user_name}** a mis à jour le titre ou la catégorie du live.\nTitre : **{data.event.title}**\nCatégorie : **{data.event.category_name}**"
-            )
-            await self.edit_message(
-                data.event.broadcaster_user_id, offline=False, data=data
-            )
+
+        # Find all streamers matching this user_id
+        streamers = self.get_streamer_by_user_id(user_id)
+        for streamer in streamers:
+            try:
+                stream = await self.get_stream_data(user_id)
+
+                # Send notification
+                if streamer.notif_channel:
+                    update_msg = f"**{user_name}** a mis à jour le titre ou la catégorie du live.\nTitre : **{data.event.title}**\nCatégorie : **{data.event.category_name}**"
+
+                    if not stream:
+                        update_msg = f" OMG live ??\n{update_msg}"
+
+                    await streamer.notif_channel.send(update_msg)
+
+                # Update the message
+                await self.edit_message(
+                    streamer,
+                    offline=(stream is None),
+                    data=data
+                )
+            except Exception as e:
+                logger.error(f"Error handling update for {streamer.streamer_id} in guild {streamer.guild_id}: {e}")
+
+        if any(await self.get_stream_data(s.user_id) for s in self.streamers.values()):
             self.update.reschedule(IntervalTrigger(minutes=15))
-            return
-        await self.edit_message(data.event.broadcaster_user_id, offline=True, data=data)
-        await self.notif_channel.send(
-            f" OMG live ??\n**{user_name}** a mis à jour le titre ou la catégorie du live.\nTitre : **{data.event.title}**\nCatégorie : **{data.event.category_name}**"
-        )
-
-    async def add_user(
-        self, embed: Embed, user_id: str, offline: bool = False
-    ) -> Embed:
-        """
-        Add a user to the embed with the specified user ID.
-
-        Args:
-            embed (Embed): The embed to add the user to.
-            user_id (str): The ID of the user.
-            offline (bool, optional): Whether the user is offline. Defaults to False.
-
-        Returns:
-            Embed: The updated embed.
-        """
-        user: TwitchUser = await first(self.twitch.get_users(user_ids=[user_id]))
-        status = "n'est pas en live" if offline else "est en live !"
-        embed.set_author(
-            name=f"{user.display_name} {status}",
-            icon_url=user.profile_image_url,
-            url=f"https://twitch.tv/{user.login}",
-        )
-
-        if offline:
-            embed.set_image(
-                url=f"{user.offline_image_url.format(width=1280, height=720)}?{datetime.now().timestamp()}"
-            )
-
-        return embed
 
     @Task.create(
         OrTrigger(
@@ -527,75 +590,91 @@ class TwitchExt2(Extension):
             except Exception as e:
                 logger.error("Error during cleanup: %s", e)
             await self.on_startup()
-        stream = await self.get_stream_data(self.user_id)
-        if stream:
-            await self.edit_message(self.user_id, offline=False)
-        else:
-            await self.edit_message(self.user_id, offline=True)
 
-    # Task each hour to find if there are new twitch emotes using the twitch API
+        # Update all streamers
+        for streamer_key, streamer in self.streamers.items():
+            if streamer.user_id:
+                try:
+                    stream = await self.get_stream_data(streamer.user_id)
+                    await self.edit_message(streamer, offline=(stream is None))
+                except Exception as e:
+                    logger.error(f"Error updating streamer {streamer.streamer_id} in guild {streamer.guild_id}: {e}")
+
     @Task.create(OrTrigger(*[TimeTrigger(hour=i, utc=False) for i in range(24)]))
-    # @Task.create(TimeTrigger(14, 52, 40, utc=False))
     async def check_new_emotes(self):
         logger.debug("Checking new emotes")
-        emotes = await self.twitch.get_channel_emotes(self.user_id)
-        # load the emotes from data/emotes.json
-        with open("data/emotes.json", "r") as file:
-            data = json.load(file)
-        # check if there are new emotes
-        new_emotes = [emote for emote in emotes if emote.id not in data]
-        # Check if there are deleted emotes
-        emote_ids = [emote.id for emote in emotes]
-        deleted_emotes = [emote for emote in data if emote not in emote_ids]
-        if new_emotes:
-            logger.debug("New emotes found")
-            bot = await self.bot.fetch_member(self.bot.user.id, self.coloc_guild_id)
-            for emote in new_emotes:
-                data[emote.id] = emote.name
-                # Send a embed for each emote added
-                # details
-                if emote.emote_type == 'subscriptions':
-                    if emote.tier == '1000':
-                        tier = '1'
-                    elif emote.tier == '2000':
-                        tier = '2'
-                    elif emote.tier == '3000':
-                        tier = '3'
-                    details = f"Sub tier {tier}"
-                elif emote.emote_type == 'bitstier':
-                    details = "Bits"
-                elif emote.emote_type == 'follower':
-                    details = "Follower"
-                else:
-                    details = "Other"
-                    
-                embed = Embed(
-                    title="Nouvel emote ajouté",
-                    description=f"L'emote {emote.name} a été ajouté à la chaine de ZeratoR ({details})",
-                    color=0x6441A5,
-                    timestamp=datetime.now(),
-                    thumbnail=emote.images.get('url_4x', emote.images.get('url_2x', emote.images.get('url_1x'))),
-                    footer=EmbedFooter(text=bot.display_name, icon_url=bot.avatar_url)
-                )
-                logger.info("New emote : %s", emote.name)
-                await self.notif_channel.send(embed=embed)
-        if deleted_emotes:
-            logger.info("Deleted emotes found")
-            bot = await self.bot.fetch_member(self.bot.user.id, self.coloc_guild_id)
-            for emote in deleted_emotes:
-                
-                # Send a embed for each emote deleted
-                embed = Embed(
-                    title="Emote supprimé",
-                    description=f"L'emote {data[emote]} a été supprimé de la chaine de ZeratoR :wave:",
-                    color=0x6441A5,
-                    timestamp=datetime.now(),
-                    footer=EmbedFooter(text=bot.display_name, icon_url=bot.avatar_url)
-                )
-                logger.info("Deleted emote : %s", emote)
-                await self.notif_channel.send(embed=embed)
-                del data[emote]
-        if new_emotes or deleted_emotes:
-            # Save the new emotes
-            with open("data/emotes.json", "w") as file:
-                json.dump(data, file, indent=4)
+        # Check emotes for all streamers
+        for streamer_key, streamer in self.streamers.items():
+            if not streamer.user_id or not streamer.notif_channel:
+                continue
+
+            try:
+                emotes = await self.twitch.get_channel_emotes(streamer.user_id)
+                emote_file = f"data/emotes_{streamer.guild_id}_{streamer.streamer_id}.json"
+
+                # Load existing emotes or create empty dict
+                data = {}
+                try:
+                    if os.path.exists(emote_file):
+                        with open(emote_file, "r") as file:
+                            data = json.load(file)
+                except Exception as e:
+                    logger.error(f"Error loading emotes file for {streamer.streamer_id}: {e}")
+
+                # Check for new and deleted emotes
+                new_emotes = [emote for emote in emotes if emote.id not in data]
+                emote_ids = [emote.id for emote in emotes]
+                deleted_emotes = [emote for emote in data if emote not in emote_ids]
+
+                # Process new emotes
+                if new_emotes:
+                    logger.debug(f"New emotes found for {streamer.streamer_id}")
+                    bot = await self.bot.fetch_member(self.bot.user.id, streamer.guild_id)
+                    for emote in new_emotes:
+                        data[emote.id] = emote.name
+
+                        # Determine emote details
+                        if emote.emote_type == 'subscriptions':
+                            tier = '1' if emote.tier == '1000' else '2' if emote.tier == '2000' else '3'
+                            details = f"Sub tier {tier}"
+                        elif emote.emote_type == 'bitstier':
+                            details = "Bits"
+                        elif emote.emote_type == 'follower':
+                            details = "Follower"
+                        else:
+                            details = "Other"
+
+                        embed = Embed(
+                            title="Nouvel emote ajouté",
+                            description=f"L'emote {emote.name} a été ajouté à la chaine de {streamer.streamer_id} ({details})",
+                            color=0x6441A5,
+                            timestamp=datetime.now(),
+                            thumbnail=emote.images.get('url_4x', emote.images.get('url_2x', emote.images.get('url_1x'))),
+                            footer=EmbedFooter(text=bot.display_name, icon_url=bot.avatar_url)
+                        )
+                        logger.info(f"New emote for {streamer.streamer_id}: {emote.name}")
+                        await streamer.notif_channel.send(embed=embed)
+
+                # Process deleted emotes
+                if deleted_emotes:
+                    logger.info(f"Deleted emotes found for {streamer.streamer_id}")
+                    bot = await self.bot.fetch_member(self.bot.user.id, streamer.guild_id)
+                    for emote in deleted_emotes:
+                        embed = Embed(
+                            title="Emote supprimé",
+                            description=f"L'emote {data[emote]} a été supprimé de la chaine de {streamer.streamer_id} :wave:",
+                            color=0x6441A5,
+                            timestamp=datetime.now(),
+                            footer=EmbedFooter(text=bot.display_name, icon_url=bot.avatar_url)
+                        )
+                        logger.info(f"Deleted emote for {streamer.streamer_id}: {emote}")
+                        await streamer.notif_channel.send(embed=embed)
+                        del data[emote]
+
+                # Save updated emotes
+                if new_emotes or deleted_emotes:
+                    with open(emote_file, "w") as file:
+                        json.dump(data, file, indent=4)
+
+            except Exception as e:
+                logger.error(f"Error checking emotes for {streamer.streamer_id}: {e}")
