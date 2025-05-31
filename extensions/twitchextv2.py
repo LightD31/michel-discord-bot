@@ -561,6 +561,39 @@ class TwitchExt2(Extension):
             except Exception as e:
                 logger.error(f"Error editing message for {streamer.streamer_id}: {e}")
 
+    async def add_user(
+        self, embed: Embed, user_id: str, offline: bool = False
+    ) -> Embed:
+        """
+        Add a user to the embed with the specified user ID.
+
+        Args:
+            embed (Embed): The embed to add the user to.
+            user_id (str): The ID of the user.
+            offline (bool, optional): Whether the user is offline. Defaults to False.
+
+        Returns:
+            Embed: The updated embed.
+        """
+        try:
+            user: TwitchUser = await first(self.twitch.get_users(user_ids=[user_id]))
+            status = "n'est pas en live" if offline else "est en live !"
+            embed.set_author(
+                name=f"{user.display_name} {status}",
+                icon_url=user.profile_image_url,
+                url=f"https://twitch.tv/{user.login}",
+            )
+
+            if offline and hasattr(user, 'offline_image_url') and user.offline_image_url:
+                embed.set_image(
+                    url=f"{user.offline_image_url}?{datetime.now().timestamp()}"
+                )
+            
+            return embed
+        except Exception as e:
+            logger.error(f"Error adding user {user_id} to embed: {e}")
+            return embed
+
     async def on_live_start(self, data: StreamOnlineEvent):
         """
         Handle the event when a live stream starts.
