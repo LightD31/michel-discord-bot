@@ -109,8 +109,8 @@ class Minecraft(Extension):
                 joueurs = "\u200b"
             # Create and format the status message
             embed1 = Embed(
-                title=f"Serveur Fabric {colocStatus.version.name}",
-                description=f"Adresse : `{MINECRAFT_ADDRESS}`\nModpack : [Cobblemon : Star Academy](https://www.curseforge.com/minecraft/modpacks/cobblemon-star-academy)\nVersion : **0.1.6.1**",
+                title=f"Serveur Forge {colocStatus.version.name}",
+                description=f"Adresse : `{MINECRAFT_ADDRESS}`\nModpack : [Menagerie - a zoo modpack](https://www.curseforge.com/minecraft/modpacks/menagerie)\nVersion : **2.1.4**",
                 fields=[
                     {
                         "name": "Latence",
