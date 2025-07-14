@@ -24,6 +24,7 @@ from interactions import (
     BaseChannel,
     Message,
 )
+from interactions.utlis import timestamp_converter
 import pandas as pd
 import prettytable
 from mcstatus import JavaServer
@@ -239,7 +240,7 @@ class Minecraft(Extension):
         # Create an embed with the server stats and send it to the Discord channel
         embed2 = Embed(
             title="Stats",
-            description=f"Actualisé toutes les heures à Xh10\nDernière actualisation : {Timestamp.utcnow().format(TimestampStyles.RelativeTime)}",
+            description=f"Actualisé toutes les heures à Xh10\nProchaine actualisation : {timestamp_converter(str(self.stats.next_run)).format(TimestampStyles.RelativeTime)}",
             images=("attachment://stats.png"),
             color=BrandColors.BLURPLE,
             timestamp=Timestamp.utcnow().isoformat(),
@@ -287,7 +288,7 @@ class Minecraft(Extension):
             
         # Tronquer les noms trop longs
         if "Joueur" in df.columns:
-            df["Joueur"] = df["Joueur"].str[:14]  # Limiter à 12 caractères
+            df["Joueur"] = df["Joueur"].str[:14]  # Limiter à 14 caractères
         
         # Convertir en table
         output = StringIO()
