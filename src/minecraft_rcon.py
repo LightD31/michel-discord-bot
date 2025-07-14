@@ -147,13 +147,12 @@ async def get_player_stats_rcon(rcon_client, player_name):
     try:
         stats = {}
         
-        # Commandes pour récupérer les statistiques depuis les fichiers de stats
-        # Ces commandes utilisent le système de scoreboard pour accéder aux stats
+        # Commandes pour récupérer les statistiques directement depuis les données du joueur
         commands = {
             "level": f"data get entity {player_name} XpLevel",
-            "deaths": f"execute as {player_name} run scoreboard players get @s minecraft.custom:minecraft.deaths",
-            "playtime": f"execute as {player_name} run scoreboard players get @s minecraft.custom:minecraft.play_time",
-            "walked": f"execute as {player_name} run scoreboard players get @s minecraft.custom:minecraft.walk_one_cm"
+            "deaths": f"data get entity {player_name} Stats.\"minecraft:custom\".\"minecraft:deaths\"",
+            "playtime": f"data get entity {player_name} Stats.\"minecraft:custom\".\"minecraft:play_time\"",
+            "walked": f"data get entity {player_name} Stats.\"minecraft:custom\".\"minecraft:walk_one_cm\""
         }
         
         for stat_name, command in commands.items():
@@ -163,95 +162,42 @@ async def get_player_stats_rcon(rcon_client, player_name):
                 
                 if response and "No entity was found" not in response and "has no score" not in response:
                     # Extraire la valeur numérique de la réponse
-                    if stat_name == "level":
-                        # Format: "PlayerName has the following entity data: 42"
-                        if "has the following entity data:" in response:
-                            value_str = response.split("has the following entity data:")[1].strip()
-                            # Enlever les suffixes comme 'd', 'f', 'L' etc.
-                            value_str = value_str.rstrip('dflLbsif')
-                            try:
-                                value = float(value_str)
-                                stats[stat_name] = int(value) if value.is_integer() else value
-                            except ValueError:
-                                stats[stat_name] = 0
-                        else:
-                            stats[stat_name] = 0
-                    else:
-                        # Pour les scoreboard commands: "PlayerName's score is 42"
-                        if "'s score is" in response:
-                            value_str = response.split("'s score is")[1].strip()
-                            try:
-                                stats[stat_name] = int(value_str)
-                            except ValueError:
-                                stats[stat_name] = 0
-                        # Ou format alternatif: "42"
-                        elif response.strip().isdigit():
-                            stats[stat_name] = int(response.strip())
-                        else:
-                            stats[stat_name] = 0
-                else:
-                    # Si pas de score ou entité non trouvée, essayer une approche alternative
-                    if stat_name != "level":
-                        # Essayer d'initialiser le scoreboard et réessayer
-                        init_command = f"scoreboard objectives add temp minecraft.custom:minecraft.{stat_name.replace('playtime', 'play_time').replace('walked', 'walk_one_cm')}"
-                        await rcon_client.execute_command(init_command)
-                        
-                        # Réessayer la commande originale
-                        retry_response = await rcon_client.execute_command(command)
-                        if retry_response and "has no score" not in retry_response:
-                            if "'s score is" in retry_response:
-                                value_str = retry_response.split("'s score is")[1].strip()
-                                try:
-                                    stats[stat_name] = int(value_str)
-                                except ValueError:
-                                    stats[stat_name] = 0
-                            else:
-                                stats[stat_name] = 0
-                        else:
-                            stats[stat_name] = 0
-                    else:
-                        stats[stat_name] = 0
-                        
-            except Exception as e:
-                logger.debug(f"Erreur parsing {stat_name} pour {player_name}: {e}")
-                stats[stat_name] = 0
-        
-        # Si toutes les stats sont à 0 sauf le niveau, essayer une approche différente
-        if all(stats.get(key, 0) == 0 for key in ["deaths", "playtime", "walked"]) and stats.get("level", 0) > 0:
-            logger.info(f"Tentative d'approche alternative pour {player_name}")
-            
-            # Essayer d'utiliser les commandes data get directement sur les stats
-            alt_commands = {
-                "deaths": f"data get entity {player_name} Stats.\"minecraft:custom\".\"minecraft:deaths\"",
-                "playtime": f"data get entity {player_name} Stats.\"minecraft:custom\".\"minecraft:play_time\"",
-                "walked": f"data get entity {player_name} Stats.\"minecraft:custom\".\"minecraft:walk_one_cm\""
-            }
-            
-            for stat_name, alt_command in alt_commands.items():
-                try:
-                    alt_response = await rcon_client.execute_command(alt_command)
-                    logger.debug(f"Réponse alternative {stat_name} pour {player_name}: {alt_response}")
-                    
-                    if alt_response and "has the following entity data:" in alt_response:
-                        value_str = alt_response.split("has the following entity data:")[1].strip()
+                    # Format standard: "PlayerName has the following entity data: 42"
+                    if "has the following entity data:" in response:
+                        value_str = response.split("has the following entity data:")[1].strip()
+                        # Enlever les suffixes comme 'd', 'f', 'L' etc.
                         value_str = value_str.rstrip('dflLbsif')
                         try:
                             value = float(value_str)
                             stats[stat_name] = int(value) if value.is_integer() else value
                         except ValueError:
-                            pass
-                except Exception as e:
-                    logger.debug(f"Erreur commande alternative {stat_name}: {e}")
+                            logger.debug(f"Impossible de parser la valeur: {value_str}")
+                            stats[stat_name] = 0
+                    else:
+                        stats[stat_name] = 0
+                else:
+                    stats[stat_name] = 0
+                        
+            except Exception as e:
+                logger.debug(f"Erreur parsing {stat_name} pour {player_name}: {e}")
+                stats[stat_name] = 0
         
-        # Calculs dérivés
-        playtime_seconds = format_time_from_ticks(stats.get("playtime", 0))
-        walked_km = stats.get("walked", 0) / 100000
-        deaths_per_hour = stats.get("deaths", 0) / max(1, playtime_seconds / 3600) if playtime_seconds > 0 else 0
+        # Si toutes les stats sont à 0, le joueur n'a peut-être pas de données
+        if all(stats.get(key, 0) == 0 for key in ["deaths", "playtime", "walked"]):
+            logger.info(f"Aucune statistique trouvée pour {player_name}")
+        
+        # Calculs dérivés avec corrections
+        playtime_ticks = stats.get("playtime", 0)
+        playtime_seconds = format_time_from_ticks(playtime_ticks)
+        walked_cm = stats.get("walked", 0)
+        walked_km = walked_cm / 100000  # 1 km = 100,000 cm
+        deaths = stats.get("deaths", 0)
+        deaths_per_hour = deaths / max(1, playtime_seconds / 3600) if playtime_seconds > 0 else 0
         
         return {
             "Joueur": player_name,
             "Niveau": int(stats.get("level", 0)),
-            "Morts": int(stats.get("deaths", 0)),
+            "Morts": int(deaths),
             "Morts/h": round(deaths_per_hour, 2),
             "Marche (km)": round(walked_km, 2),
             "Temps de jeu": playtime_seconds,
@@ -282,16 +228,36 @@ async def get_all_player_stats_rcon(rcon_host, rcon_port, rcon_password):
         online_players = await get_online_players_rcon(rcon_client)
         logger.info(f"Joueurs en ligne trouvés: {online_players}")
         
-        if not online_players:
-            logger.info("Aucun joueur en ligne")
+        # Essayer de récupérer la liste de tous les joueurs qui ont déjà joué
+        # via la commande whitelist list (si disponible) ou d'autres moyens
+        all_players = set(online_players) if online_players else set()
+        
+        # Tenter de récupérer les joueurs depuis la whitelist
+        try:
+            whitelist_response = await rcon_client.execute_command("whitelist list")
+            if whitelist_response and "players:" in whitelist_response.lower():
+                # Format typique: "There are X whitelisted players: player1, player2, player3"
+                players_part = whitelist_response.split("players:")[1].strip()
+                if players_part:
+                    whitelist_players = [name.strip() for name in players_part.split(",")]
+                    all_players.update(whitelist_players)
+                    logger.info(f"Joueurs de la whitelist ajoutés: {whitelist_players}")
+        except Exception as e:
+            logger.debug(f"Impossible de récupérer la whitelist: {e}")
+        
+        if not all_players:
+            logger.info("Aucun joueur trouvé")
             return []
         
         # Récupérer les stats pour chaque joueur
         results = []
-        for player in online_players:
+        for player in all_players:
             stats = await get_player_stats_rcon(rcon_client, player)
-            if stats:
+            if stats and stats.get("Temps de jeu", 0) > 0:  # Seulement les joueurs avec du temps de jeu
                 results.append(stats)
+        
+        # Trier par temps de jeu décroissant
+        results.sort(key=lambda x: x.get("Temps de jeu", 0), reverse=True)
         
         return results
         
