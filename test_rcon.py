@@ -46,19 +46,95 @@ async def test_rcon_connection(host, port, password):
     finally:
         await rcon.disconnect()
 
-async def test_player_stats(host, port, password):
-    """Test de récupération des statistiques des joueurs"""
-    print(f"\n📊 Test de récupération des statistiques...")
+async def test_player_stats_detailed(host, port, password, player_name):
+    """Test détaillé de récupération des statistiques d'un joueur spécifique"""
+    print(f"\n🔍 Test détaillé des statistiques pour le joueur: {player_name}")
+    
+    rcon = MinecraftRCON(host, port, password)
     
     try:
+        if not await rcon.connect():
+            print("❌ Impossible de se connecter")
+            return
+            
+        # Tester chaque commande individuellement
+        commands_to_test = [
+            f"data get entity {player_name} XpLevel",
+            f"data get entity {player_name} Stats.\"minecraft:custom\".\"minecraft:deaths\"",
+            f"data get entity {player_name} Stats.\"minecraft:custom\".\"minecraft:play_time\"",
+            f"data get entity {player_name} Stats.\"minecraft:custom\".\"minecraft:walk_one_cm\"",
+            f"execute as {player_name} run scoreboard players get @s minecraft.custom:minecraft.deaths",
+            f"execute as {player_name} run scoreboard players get @s minecraft.custom:minecraft.play_time",
+            f"execute as {player_name} run scoreboard players get @s minecraft.custom:minecraft.walk_one_cm"
+        ]
+        
+        for cmd in commands_to_test:
+            print(f"\n🔧 Test: {cmd}")
+            response = await rcon.execute_command(cmd)
+            if response:
+                print(f"✅ Réponse: {response}")
+            else:
+                print("❌ Pas de réponse")
+        
+        # Tester aussi quelques commandes de debugging
+        debug_commands = [
+            f"data get entity {player_name}",  # Toutes les données du joueur
+            "scoreboard objectives list",      # Liste des objectives
+        ]
+        
+        for cmd in debug_commands:
+            print(f"\n� Debug: {cmd}")
+            response = await rcon.execute_command(cmd)
+            if response:
+                # Limiter la sortie pour éviter le spam
+                if len(response) > 200:
+                    print(f"✅ Réponse (tronquée): {response[:200]}...")
+                else:
+                    print(f"✅ Réponse: {response}")
+            else:
+                print("❌ Pas de réponse")
+                
+    except Exception as e:
+        print(f"❌ Erreur: {e}")
+    finally:
+        await rcon.disconnect()
+
+async def test_player_stats(host, port, password):
+    """Test de récupération des statistiques des joueurs"""
+    print(f"\n�📊 Test de récupération des statistiques...")
+    
+    try:
+        # D'abord récupérer la liste des joueurs
+        rcon = MinecraftRCON(host, port, password)
+        if await rcon.connect():
+            response = await rcon.execute_command("list")
+            print(f"Joueurs en ligne: {response}")
+            
+            if response and "online:" in response:
+                players_part = response.split("online:")[1].strip()
+                if players_part:
+                    players = [name.strip() for name in players_part.split(",")]
+                    print(f"Joueurs détectés: {players}")
+                    
+                    # Tester les stats pour chaque joueur
+                    for player in players:
+                        await test_player_stats_detailed(host, port, password, player)
+                else:
+                    print("Aucun joueur en ligne pour tester les stats")
+            else:
+                print("Format de réponse inattendu pour la commande list")
+                
+            await rcon.disconnect()
+        
+        # Ensuite tester la fonction complète
         stats = await get_all_player_stats_rcon(host, port, password)
         
         if stats:
             print(f"✅ Statistiques récupérées pour {len(stats)} joueur(s):")
             for player_stat in stats:
-                print(f"  - {player_stat['Joueur']}: Niveau {player_stat['Niveau']}, {player_stat['Morts']} morts")
+                print(f"  - {player_stat['Joueur']}: Niveau {player_stat['Niveau']}, {player_stat['Morts']} morts, {player_stat['Temps de jeu']}s de jeu")
         else:
-            print("❌ Aucune statistique récupérée (aucun joueur en ligne ou erreur)")
+            print("❌ Aucune statistique récupérée")
             
     except Exception as e:
         print(f"❌ Erreur lors de la récupération des stats: {e}")

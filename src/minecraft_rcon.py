@@ -147,12 +147,13 @@ async def get_player_stats_rcon(rcon_client, player_name):
     try:
         stats = {}
         
-        # Commandes pour récupérer les statistiques
+        # Commandes pour récupérer les statistiques depuis les fichiers de stats
+        # Ces commandes utilisent le système de scoreboard pour accéder aux stats
         commands = {
-            "deaths": f"data get entity {player_name} Stats.\"minecraft:custom\".\"minecraft:deaths\"",
-            "playtime": f"data get entity {player_name} Stats.\"minecraft:custom\".\"minecraft:play_time\"", 
-            "walked": f"data get entity {player_name} Stats.\"minecraft:custom\".\"minecraft:walk_one_cm\"",
-            "level": f"data get entity {player_name} XpLevel"
+            "level": f"data get entity {player_name} XpLevel",
+            "deaths": f"execute as {player_name} run scoreboard players get @s minecraft.custom:minecraft.deaths",
+            "playtime": f"execute as {player_name} run scoreboard players get @s minecraft.custom:minecraft.play_time",
+            "walked": f"execute as {player_name} run scoreboard players get @s minecraft.custom:minecraft.walk_one_cm"
         }
         
         for stat_name, command in commands.items():
@@ -160,29 +161,92 @@ async def get_player_stats_rcon(rcon_client, player_name):
                 response = await rcon_client.execute_command(command)
                 logger.debug(f"Réponse {stat_name} pour {player_name}: {response}")
                 
-                if response and "No entity was found" not in response:
+                if response and "No entity was found" not in response and "has no score" not in response:
                     # Extraire la valeur numérique de la réponse
-                    if "has the following entity data:" in response:
-                        value_str = response.split("has the following entity data:")[1].strip()
-                        # Enlever les suffixes comme 'd', 'f', 'L' etc.
+                    if stat_name == "level":
+                        # Format: "PlayerName has the following entity data: 42"
+                        if "has the following entity data:" in response:
+                            value_str = response.split("has the following entity data:")[1].strip()
+                            # Enlever les suffixes comme 'd', 'f', 'L' etc.
+                            value_str = value_str.rstrip('dflLbsif')
+                            try:
+                                value = float(value_str)
+                                stats[stat_name] = int(value) if value.is_integer() else value
+                            except ValueError:
+                                stats[stat_name] = 0
+                        else:
+                            stats[stat_name] = 0
+                    else:
+                        # Pour les scoreboard commands: "PlayerName's score is 42"
+                        if "'s score is" in response:
+                            value_str = response.split("'s score is")[1].strip()
+                            try:
+                                stats[stat_name] = int(value_str)
+                            except ValueError:
+                                stats[stat_name] = 0
+                        # Ou format alternatif: "42"
+                        elif response.strip().isdigit():
+                            stats[stat_name] = int(response.strip())
+                        else:
+                            stats[stat_name] = 0
+                else:
+                    # Si pas de score ou entité non trouvée, essayer une approche alternative
+                    if stat_name != "level":
+                        # Essayer d'initialiser le scoreboard et réessayer
+                        init_command = f"scoreboard objectives add temp minecraft.custom:minecraft.{stat_name.replace('playtime', 'play_time').replace('walked', 'walk_one_cm')}"
+                        await rcon_client.execute_command(init_command)
+                        
+                        # Réessayer la commande originale
+                        retry_response = await rcon_client.execute_command(command)
+                        if retry_response and "has no score" not in retry_response:
+                            if "'s score is" in retry_response:
+                                value_str = retry_response.split("'s score is")[1].strip()
+                                try:
+                                    stats[stat_name] = int(value_str)
+                                except ValueError:
+                                    stats[stat_name] = 0
+                            else:
+                                stats[stat_name] = 0
+                        else:
+                            stats[stat_name] = 0
+                    else:
+                        stats[stat_name] = 0
+                        
+            except Exception as e:
+                logger.debug(f"Erreur parsing {stat_name} pour {player_name}: {e}")
+                stats[stat_name] = 0
+        
+        # Si toutes les stats sont à 0 sauf le niveau, essayer une approche différente
+        if all(stats.get(key, 0) == 0 for key in ["deaths", "playtime", "walked"]) and stats.get("level", 0) > 0:
+            logger.info(f"Tentative d'approche alternative pour {player_name}")
+            
+            # Essayer d'utiliser les commandes data get directement sur les stats
+            alt_commands = {
+                "deaths": f"data get entity {player_name} Stats.\"minecraft:custom\".\"minecraft:deaths\"",
+                "playtime": f"data get entity {player_name} Stats.\"minecraft:custom\".\"minecraft:play_time\"",
+                "walked": f"data get entity {player_name} Stats.\"minecraft:custom\".\"minecraft:walk_one_cm\""
+            }
+            
+            for stat_name, alt_command in alt_commands.items():
+                try:
+                    alt_response = await rcon_client.execute_command(alt_command)
+                    logger.debug(f"Réponse alternative {stat_name} pour {player_name}: {alt_response}")
+                    
+                    if alt_response and "has the following entity data:" in alt_response:
+                        value_str = alt_response.split("has the following entity data:")[1].strip()
                         value_str = value_str.rstrip('dflLbsif')
                         try:
                             value = float(value_str)
                             stats[stat_name] = int(value) if value.is_integer() else value
                         except ValueError:
-                            stats[stat_name] = 0
-                    else:
-                        stats[stat_name] = 0
-                else:
-                    stats[stat_name] = 0
-            except Exception as e:
-                logger.debug(f"Erreur parsing {stat_name} pour {player_name}: {e}")
-                stats[stat_name] = 0
+                            pass
+                except Exception as e:
+                    logger.debug(f"Erreur commande alternative {stat_name}: {e}")
         
         # Calculs dérivés
         playtime_seconds = format_time_from_ticks(stats.get("playtime", 0))
         walked_km = stats.get("walked", 0) / 100000
-        deaths_per_hour = stats.get("deaths", 0) / max(1, playtime_seconds / 3600)
+        deaths_per_hour = stats.get("deaths", 0) / max(1, playtime_seconds / 3600) if playtime_seconds > 0 else 0
         
         return {
             "Joueur": player_name,
