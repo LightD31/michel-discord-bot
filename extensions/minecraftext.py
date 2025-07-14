@@ -45,6 +45,12 @@ RCON_HOST = module_config.get("minecraftRconHost", MINECRAFT_IP)
 RCON_PORT = int(module_config.get("minecraftRconPort", 25575))
 RCON_PASSWORD = module_config["minecraftRconPassword"]
 
+logger.info(
+    f"Configuration chargée pour le serveur Minecraft : {MINECRAFT_ADDRESS} ({MINECRAFT_IP}:{MINECRAFT_PORT})"
+)
+logger.info(
+    f"RCON configuré pour {RCON_HOST}:{RCON_PORT} avec mot de passe :{RCON_PASSWORD}"
+)
 
 
 
