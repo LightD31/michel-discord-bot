@@ -142,45 +142,90 @@ async def get_online_players_rcon(rcon_client):
         logger.error(f"Erreur lors de la récupération des joueurs en ligne: {e}")
         return []
 
+async def setup_scoreboard_objectives(rcon_client):
+    """Configure les objectifs de scoreboard nécessaires pour récupérer les statistiques"""
+    objectives = {
+        "deaths": "minecraft.custom:minecraft.deaths",
+        "playtime": "minecraft.custom:minecraft.play_time", 
+        "walked": "minecraft.custom:minecraft.walk_one_cm"
+    }
+    
+    for obj_name, stat_type in objectives.items():
+        try:
+            # Créer l'objectif (ignore l'erreur s'il existe déjà)
+            await rcon_client.execute_command(f"scoreboard objectives add {obj_name} {stat_type}")
+            logger.debug(f"Objectif {obj_name} créé ou existe déjà")
+        except Exception as e:
+            logger.debug(f"Erreur lors de la création de l'objectif {obj_name}: {e}")
+
 async def get_player_stats_rcon(rcon_client, player_name):
     """Récupère les statistiques d'un joueur via RCON"""
     try:
         stats = {}
         
-        # Commandes pour récupérer les statistiques directement depuis les données du joueur
-        commands = {
-            "level": f"data get entity {player_name} XpLevel",
-            "deaths": f"data get entity {player_name} Stats.\"minecraft:custom\".\"minecraft:deaths\"",
-            "playtime": f"data get entity {player_name} Stats.\"minecraft:custom\".\"minecraft:play_time\"",
-            "walked": f"data get entity {player_name} Stats.\"minecraft:custom\".\"minecraft:walk_one_cm\""
-        }
+        # D'abord essayer data get pour les joueurs en ligne (plus précis pour le niveau)
+        level_command = f"data get entity {player_name} XpLevel"
+        level_response = await rcon_client.execute_command(level_command)
         
-        for stat_name, command in commands.items():
-            try:
-                response = await rcon_client.execute_command(command)
-                logger.debug(f"Réponse {stat_name} pour {player_name}: {response}")
-                
-                if response and "No entity was found" not in response and "has no score" not in response:
-                    # Extraire la valeur numérique de la réponse
-                    # Format standard: "PlayerName has the following entity data: 42"
-                    if "has the following entity data:" in response:
+        if level_response and "has the following entity data:" in level_response:
+            # Joueur en ligne, utiliser data get
+            commands = {
+                "level": f"data get entity {player_name} XpLevel",
+                "deaths": f"data get entity {player_name} Stats.\"minecraft:custom\".\"minecraft:deaths\"",
+                "playtime": f"data get entity {player_name} Stats.\"minecraft:custom\".\"minecraft:play_time\"",
+                "walked": f"data get entity {player_name} Stats.\"minecraft:custom\".\"minecraft:walk_one_cm\""
+            }
+            
+            for stat_name, command in commands.items():
+                try:
+                    response = await rcon_client.execute_command(command)
+                    logger.debug(f"Réponse {stat_name} pour {player_name}: {response}")
+                    
+                    if response and "has the following entity data:" in response:
                         value_str = response.split("has the following entity data:")[1].strip()
-                        # Enlever les suffixes comme 'd', 'f', 'L' etc.
                         value_str = value_str.rstrip('dflLbsif')
                         try:
                             value = float(value_str)
                             stats[stat_name] = int(value) if value.is_integer() else value
                         except ValueError:
-                            logger.debug(f"Impossible de parser la valeur: {value_str}")
                             stats[stat_name] = 0
                     else:
                         stats[stat_name] = 0
-                else:
+                except Exception as e:
+                    logger.debug(f"Erreur parsing {stat_name} pour {player_name}: {e}")
                     stats[stat_name] = 0
+        else:
+            # Joueur hors ligne, utiliser les scoreboards
+            scoreboard_commands = {
+                "deaths": f"scoreboard players get {player_name} deaths",
+                "playtime": f"scoreboard players get {player_name} playtime",
+                "walked": f"scoreboard players get {player_name} walked"
+            }
+            
+            # Le niveau n'est pas disponible via scoreboard pour les joueurs hors ligne
+            stats["level"] = 0
+            
+            for stat_name, command in scoreboard_commands.items():
+                try:
+                    response = await rcon_client.execute_command(command)
+                    logger.debug(f"Réponse scoreboard {stat_name} pour {player_name}: {response}")
+                    
+                    if response and "has no score" not in response:
+                        # Format: "PlayerName's score is 42" ou juste "42"
+                        if "'s score is" in response:
+                            value_str = response.split("'s score is")[1].strip()
+                        else:
+                            value_str = response.strip()
                         
-            except Exception as e:
-                logger.debug(f"Erreur parsing {stat_name} pour {player_name}: {e}")
-                stats[stat_name] = 0
+                        try:
+                            stats[stat_name] = int(value_str)
+                        except ValueError:
+                            stats[stat_name] = 0
+                    else:
+                        stats[stat_name] = 0
+                except Exception as e:
+                    logger.debug(f"Erreur parsing scoreboard {stat_name} pour {player_name}: {e}")
+                    stats[stat_name] = 0
         
         # Si toutes les stats sont à 0, le joueur n'a peut-être pas de données
         if all(stats.get(key, 0) == 0 for key in ["deaths", "playtime", "walked"]):
@@ -214,6 +259,32 @@ async def get_player_stats_rcon(rcon_client, player_name):
             "Temps de jeu": 0,
         }
 
+async def get_all_players_from_scoreboard(rcon_client):
+    """Récupère la liste de tous les joueurs ayant des scores dans les scoreboards"""
+    all_players = set()
+    
+    scoreboards = ["deaths", "playtime", "walked"]
+    
+    for scoreboard in scoreboards:
+        try:
+            # Lister tous les joueurs avec un score dans ce scoreboard
+            response = await rcon_client.execute_command(f"scoreboard players list * {scoreboard}")
+            logger.debug(f"Réponse scoreboard {scoreboard}: {response}")
+            
+            if response and "players" in response.lower():
+                # Extraire les noms des joueurs de la réponse
+                # Format typique: "Showing X tracked players: player1, player2, player3"
+                if ":" in response:
+                    players_part = response.split(":")[-1].strip()
+                    if players_part and players_part != "none":
+                        players = [name.strip() for name in players_part.split(",")]
+                        all_players.update(players)
+                        logger.debug(f"Joueurs trouvés dans {scoreboard}: {players}")
+        except Exception as e:
+            logger.debug(f"Erreur lors de la récupération des joueurs du scoreboard {scoreboard}: {e}")
+    
+    return list(all_players)
+
 async def get_all_player_stats_rcon(rcon_host, rcon_port, rcon_password):
     """Récupère les statistiques de tous les joueurs via RCON"""
     rcon_client = MinecraftRCON(rcon_host, rcon_port, rcon_password)
@@ -224,19 +295,25 @@ async def get_all_player_stats_rcon(rcon_host, rcon_port, rcon_password):
             logger.error("Impossible de se connecter au serveur RCON")
             return []
         
+        # Configurer les objectifs de scoreboard
+        await setup_scoreboard_objectives(rcon_client)
+        
         # Récupérer la liste des joueurs en ligne
         online_players = await get_online_players_rcon(rcon_client)
         logger.info(f"Joueurs en ligne trouvés: {online_players}")
         
-        # Essayer de récupérer la liste de tous les joueurs qui ont déjà joué
-        # via la commande whitelist list (si disponible) ou d'autres moyens
+        # Récupérer tous les joueurs depuis les scoreboards
+        scoreboard_players = await get_all_players_from_scoreboard(rcon_client)
+        logger.info(f"Joueurs trouvés dans les scoreboards: {scoreboard_players}")
+        
+        # Combiner tous les joueurs
         all_players = set(online_players) if online_players else set()
+        all_players.update(scoreboard_players)
         
         # Tenter de récupérer les joueurs depuis la whitelist
         try:
             whitelist_response = await rcon_client.execute_command("whitelist list")
             if whitelist_response and "players:" in whitelist_response.lower():
-                # Format typique: "There are X whitelisted players: player1, player2, player3"
                 players_part = whitelist_response.split("players:")[1].strip()
                 if players_part:
                     whitelist_players = [name.strip() for name in players_part.split(",")]
@@ -248,6 +325,8 @@ async def get_all_player_stats_rcon(rcon_host, rcon_port, rcon_password):
         if not all_players:
             logger.info("Aucun joueur trouvé")
             return []
+        
+        logger.info(f"Total de joueurs à traiter: {len(all_players)} - {list(all_players)}")
         
         # Récupérer les stats pour chaque joueur
         results = []
