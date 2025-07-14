@@ -202,7 +202,7 @@ class Minecraft(Extension):
         
         try:
             player_stats = await get_minecraft_stats_with_retry(
-                host="192.168.0.126",
+                host="admin:9ea5d8b3-ac23-4942-a8b8-7c1a2494c37f",
                 port=2225,
                 username="admin",
                 password=SFTPS_PASSWORD
