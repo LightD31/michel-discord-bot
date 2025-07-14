@@ -204,7 +204,7 @@ class Minecraft(Extension):
             player_stats = await get_minecraft_stats_with_retry(
                 host="82.65.116.168",
                 port=2225,
-                username="admin",
+                username="Discord",
                 password=SFTPS_PASSWORD
             )
             logger.debug(f"Retrieved stats for {len(player_stats)} players using optimized connection")
