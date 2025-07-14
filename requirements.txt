@@ -22,4 +22,3 @@ openai
 aiohttp
 uvloop
 pyfactorybridge
-mcrcon

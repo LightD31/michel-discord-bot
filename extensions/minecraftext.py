@@ -61,7 +61,7 @@ class Minecraft(Extension):
     async def on_startup(self):
         self.status.start()
         self.stats.start()
-        await self.stats()
+        # await self.stats()  # Commenté pour éviter l'exécution immédiate
 
     # Define Minecraft server object
 
