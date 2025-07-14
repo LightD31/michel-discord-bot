@@ -24,7 +24,7 @@ from interactions import (
     BaseChannel,
     Message,
 )
-from interactions.utils import timestamp_converter
+from interactions.client.utils import timestamp_converter
 import pandas as pd
 import prettytable
 from mcstatus import JavaServer
