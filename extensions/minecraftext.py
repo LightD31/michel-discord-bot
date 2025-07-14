@@ -26,7 +26,7 @@ import pandas as pd
 import prettytable
 from mcstatus import JavaServer
 from src import logutil
-from src.minecraft_rcon import get_all_player_stats_rcon, get_server_info_rcon
+from src.minecraft_rcon import get_all_player_stats_rcon, get_server_info_rcon, MinecraftRCON, get_online_players_rcon
 from src.utils import create_dynamic_image, load_config
 
 # Import necessary libraries and modules
@@ -101,15 +101,24 @@ class Minecraft(Extension):
         try:
             # Get Minecraft server status
             colocStatus = self.serverColoc.status()
+            
+            # Get players list via RCON
+            rcon_client = MinecraftRCON(RCON_HOST, RCON_PORT, RCON_PASSWORD)
+            online_players = []
+            try:
+                if await rcon_client.connect():
+                    online_players = await get_online_players_rcon(rcon_client)
+                    await rcon_client.disconnect()
+            except Exception as e:
+                logger.debug(f"Erreur RCON pour la liste des joueurs: {e}")
+                # Fallback sur l'API mcstatus si RCON échoue
+                if colocStatus.players.sample:
+                    online_players = [player.name for player in colocStatus.players.sample]
+            
             # If there are players online, get their names and display them in the status message
-            if colocStatus.players.online > 0:
-                players = "\n".join(
-                    sorted(
-                        [player.name for player in colocStatus.players.sample],
-                        key=str.lower,
-                    )
-                )
-                joueurs = f"Joueur{'s' if colocStatus.players.online > 1 else ''} ({colocStatus.players.online}/{colocStatus.players.max})"
+            if len(online_players) > 0:
+                players = "\n".join(sorted(online_players, key=str.lower))
+                joueurs = f"Joueur{'s' if len(online_players) > 1 else ''} ({len(online_players)}/{colocStatus.players.max})"
             else:
                 players = "\u200b"
                 joueurs = "\u200b"
@@ -139,7 +148,7 @@ class Minecraft(Extension):
             # Edit the status message in the designated Discord channel
             await message.edit(content="", embeds=[embed1, embed2])
             # Modify the channel name if the number of players has changed
-            name = f"🟢︱{colocStatus.players.online if colocStatus.players.online != 0 else 'aucun'}᲼joueur{'s' if colocStatus.players.online > 1 else ''}"
+            name = f"🟢︱{len(online_players) if len(online_players) != 0 else 'aucun'}᲼joueur{'s' if len(online_players) > 1 else ''}"
         # If the Minecraft server is offline, display an error message in the status message
         except (ConnectionResetError, ConnectionRefusedError, TimeoutError, socket.timeout) as e:
             logger.debug(e)
