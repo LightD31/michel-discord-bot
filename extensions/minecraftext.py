@@ -287,7 +287,7 @@ class Minecraft(Extension):
             
         # Tronquer les noms trop longs
         if "Joueur" in df.columns:
-            df["Joueur"] = df["Joueur"].str[:12]  # Limiter à 12 caractères
+            df["Joueur"] = df["Joueur"].str[:14]  # Limiter à 12 caractères
         
         # Convertir en table
         output = StringIO()
