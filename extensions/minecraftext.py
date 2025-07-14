@@ -1,14 +1,12 @@
 """
-This module provides functionality for interacting with a Minecraft server.
+This module provides functionality for interacting with a Minecraft server using RCON.
 """
 
 import asyncio
 import os
-import nbtlib
 from io import BytesIO, StringIO
 from datetime import datetime, timedelta
-import asyncssh
-import socket  # Ajoutez cette importation en haut du fichier
+import socket
 from interactions import (
     Extension,
     listen,
@@ -28,7 +26,7 @@ import pandas as pd
 import prettytable
 from mcstatus import JavaServer
 from src import logutil
-from src.minecraft import get_player_stats, get_users
+from src.minecraft_rcon import get_all_player_stats_rcon, get_server_info_rcon
 from src.utils import create_dynamic_image, load_config
 
 # Import necessary libraries and modules
@@ -43,7 +41,9 @@ MINECRAFT_IP = module_config["minecraftIp"]
 MINECRAFT_PORT = int(module_config["minecraftPort"])
 CHANNEL_ID_KUBZ = module_config["minecraftChannelId"]
 MESSAGE_ID_KUBZ = module_config["minecraftMessageId"]
-SFTPS_PASSWORD = module_config["minecraftSftpsPassword"]
+RCON_HOST = module_config.get("minecraftRconHost", MINECRAFT_IP)
+RCON_PORT = int(module_config.get("minecraftRconPort", 25575))
+RCON_PASSWORD = module_config["minecraftRconPassword"]
 
 
 
@@ -186,77 +186,83 @@ class Minecraft(Extension):
 
     @Task.create(OrTrigger(*[TimeTrigger(hour=i, minute=10) for i in range(24)]))
     async def stats(self):
-        logger.debug("Updating Minecraft server stats")
+        logger.debug("Updating Minecraft server stats via RCON")
         channel = await self.bot.fetch_channel(CHANNEL_ID_KUBZ)
         message = await channel.fetch_message(MESSAGE_ID_KUBZ)
         embed1 = message.embeds[0]
 
-        # Connect to the Minecraft server using SSH and SFTP
-        async with asyncssh.connect(
-            host="192.168.0.126",
-            port=2224,
-            username="Discord",
-            password=SFTPS_PASSWORD,
-            known_hosts=None,
-        ) as conn:
-            async with conn.start_sftp_client() as sftp:
-                tasks = []
-                # async with sftp.open("world/data/pmmo.dat", 'rb') as f:
-                #     # Save the file locally as pmmo.dat
-                #     with open("data/pmmo.dat", "wb") as file:
-                #         data = await f.read()
-                #         file.write(data)
-                # # Load the pmmo.dat file and get the player stats
-                # nbtfile = nbtlib.load("data/pmmo.dat")
-                # nbtfile = nbtfile['']
-                tasks.append(get_users(sftp, "usercache.json"))
-                files = await sftp.glob("world/stats/*json")
-                for file in files:
-                    logger.debug("Opening %s", file)
-                    # Find corrsponding .dat file in world/playerdata
-                    nbtfile = f"world/playerdata/{file.removeprefix('world/stats/').removesuffix('.json')}.dat"                    
-                    tasks.append(get_player_stats(sftp, file, nbtfile))
-                results = await asyncio.gather(*tasks)
-                  
-        # Convert the player stats to a pandas dataframe and format it
-        users_dict = results[0]
-        uuid_to_name_dict = {item["uuid"]: item["name"] for item in users_dict}
-        df = pd.DataFrame(results[1:])
-        df["Joueur"] = df["Joueur"].map(uuid_to_name_dict)
-        df["Temps de jeu"] = pd.to_timedelta(df["Temps de jeu"], unit="s").dt.round(
-            "1s"
-        )
-        df.sort_values(by="Temps de jeu", ascending=False, inplace=True)
+        try:
+            # Récupérer les statistiques via RCON
+            player_stats_list = await get_all_player_stats_rcon(RCON_HOST, RCON_PORT, RCON_PASSWORD)
+            
+            if not player_stats_list:
+                logger.info("Aucune statistique de joueur récupérée via RCON")
+                # Garder l'ancien embed2 si pas de nouvelles données
+                try:
+                    embed2 = message.embeds[1]
+                except IndexError:
+                    embed2 = Embed(
+                        title="Stats",
+                        description="Aucune donnée disponible",
+                        color=BrandColors.BLURPLE,
+                        timestamp=Timestamp.utcnow().isoformat(),
+                    )
+                await message.edit(content="", embeds=[embed1, embed2])
+                return
 
-        # Convert the dataframe to a prettytable and create an image of it
-        output = StringIO()
-        df.to_csv(output, index=False, float_format="%.2f")
-        output.seek(0)
+            # Convertir en DataFrame pour le traitement
+            df = pd.DataFrame(player_stats_list)
+            
+            # Convertir le temps de jeu en format timedelta pour l'affichage
+            df["Temps de jeu"] = pd.to_timedelta(df["Temps de jeu"], unit="s").dt.round("1s")
+            df.sort_values(by="Temps de jeu", ascending=False, inplace=True)
 
-        table = prettytable.from_csv(output)
-        table.align = "r"
-        table.align["Joueur"] = "l"
-        table.set_style(prettytable.SINGLE_BORDER)
-        table.padding_width = 1
-        table.title = "Statistiques des joueurs"
-        table.hrules = prettytable.ALL
+            # Convertir le dataframe en CSV puis en prettytable
+            output = StringIO()
+            df.to_csv(output, index=False, float_format="%.2f")
+            output.seek(0)
 
-        # Create an embed with the server stats and send it to the Discord channel
-        embed2 = Embed(
-            title="Stats",
-            description=f"Actualisé toutes les heures à Xh10\nDernière actualisation : {Timestamp.utcnow().format(TimestampStyles.RelativeTime)}",
-            images=("attachment://stats.png"),
-            color=BrandColors.BLURPLE,
-            timestamp=Timestamp.utcnow().isoformat(),
-        )
+            table = prettytable.from_csv(output)
+            table.align = "r"
+            table.align["Joueur"] = "l"
+            table.set_style(prettytable.SINGLE_BORDER)
+            table.padding_width = 1
+            table.title = "Statistiques des joueurs (RCON)"
+            table.hrules = prettytable.ALL
 
-        if table.get_string() in self.image_cache:
+            # Créer l'embed avec les statistiques
+            embed2 = Embed(
+                title="Stats",
+                description=f"Actualisé toutes les heures à Xh10 via RCON\nDernière actualisation : {Timestamp.utcnow().format(TimestampStyles.RelativeTime)}",
+                images=("attachment://stats.png"),
+                color=BrandColors.BLURPLE,
+                timestamp=Timestamp.utcnow().isoformat(),
+            )
+
+            # Vérifier le cache d'images
+            table_string = table.get_string()
+            if table_string in self.image_cache:
+                await message.edit(content="", embeds=[embed1, embed2])
+                logger.debug("Image from cache")
+            else:
+                # Créer une nouvelle image
+                imageIO = BytesIO()
+                image, imageIO = create_dynamic_image(table_string)
+                self.image_cache = {}
+                self.image_cache[table_string] = (image, imageIO)
+                image_file = File(create_dynamic_image(table_string)[1], "stats.png")
+                await message.edit(content="", embeds=[embed1, embed2], file=image_file)
+
+        except Exception as e:
+            logger.error(f"Erreur lors de la mise à jour des stats via RCON: {e}")
+            # En cas d'erreur, garder l'ancien embed2
+            try:
+                embed2 = message.embeds[1]
+            except IndexError:
+                embed2 = Embed(
+                    title="Stats",
+                    description=f"Erreur lors de la récupération des données\nDernière tentative : {Timestamp.utcnow().format(TimestampStyles.RelativeTime)}",
+                    color=BrandColors.RED,
+                    timestamp=Timestamp.utcnow().isoformat(),
+                )
             await message.edit(content="", embeds=[embed1, embed2])
-            logger.debug("Image from cache")
-        else:
-            imageIO = BytesIO()
-            image, imageIO = create_dynamic_image(table.get_string())
-            self.image_cache = {}
-            self.image_cache[table.get_string()] = (image, imageIO)
-            image = File(create_dynamic_image(table.get_string())[1], "stats.png")
-            await message.edit(content="", embeds=[embed1, embed2], file=image)
