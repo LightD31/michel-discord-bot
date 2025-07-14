@@ -1,12 +1,14 @@
 """
-This module provides functionality for interacting with a Minecraft server using RCON.
+This module provides functionality for interacting with a Minecraft server.
 """
 
 import asyncio
 import os
+import nbtlib
 from io import BytesIO, StringIO
 from datetime import datetime, timedelta
-import socket
+import asyncssh
+import socket  # Ajoutez cette importation en haut du fichier
 from interactions import (
     Extension,
     listen,
@@ -26,7 +28,7 @@ import pandas as pd
 import prettytable
 from mcstatus import JavaServer
 from src import logutil
-from src.minecraft_rcon import get_all_player_stats_rcon, get_server_info_rcon, MinecraftRCON, get_online_players_rcon
+from src.minecraft import get_player_stats, get_users
 from src.utils import create_dynamic_image, load_config
 
 # Import necessary libraries and modules
@@ -41,16 +43,8 @@ MINECRAFT_IP = module_config["minecraftIp"]
 MINECRAFT_PORT = int(module_config["minecraftPort"])
 CHANNEL_ID_KUBZ = module_config["minecraftChannelId"]
 MESSAGE_ID_KUBZ = module_config["minecraftMessageId"]
-RCON_HOST = module_config.get("minecraftRconHost", MINECRAFT_IP)
-RCON_PORT = int(module_config.get("minecraftRconPort", 25575))
-RCON_PASSWORD = module_config["minecraftRconPassword"]
+SFTPS_PASSWORD = module_config["minecraftSftpsPassword"]
 
-logger.info(
-    f"Configuration chargée pour le serveur Minecraft : {MINECRAFT_ADDRESS} ({MINECRAFT_IP}:{MINECRAFT_PORT})"
-)
-logger.info(
-    f"RCON configuré pour {RCON_HOST}:{RCON_PORT} avec mot de passe :{RCON_PASSWORD}"
-)
 
 
 
@@ -65,9 +59,15 @@ class Minecraft(Extension):
     # Start the status and stats tasks on bot startup
     @listen()
     async def on_startup(self):
+        # Nettoyer les caches au démarrage
+        from src.minecraft import stats_cache
+        stats_cache.clear()
+        self.image_cache.clear()
+        logger.info("Caches nettoyés au démarrage")
+        
         self.status.start()
-        self.stats.start()
-        await self.stats()  # Commenté pour éviter l'exécution immédiate
+        # self.stats.start()
+        # await self.stats()
 
     # Define Minecraft server object
 
@@ -101,24 +101,15 @@ class Minecraft(Extension):
         try:
             # Get Minecraft server status
             colocStatus = self.serverColoc.status()
-            
-            # Get players list via RCON
-            rcon_client = MinecraftRCON(RCON_HOST, RCON_PORT, RCON_PASSWORD)
-            online_players = []
-            try:
-                if await rcon_client.connect():
-                    online_players = await get_online_players_rcon(rcon_client)
-                    await rcon_client.disconnect()
-            except Exception as e:
-                logger.debug(f"Erreur RCON pour la liste des joueurs: {e}")
-                # Fallback sur l'API mcstatus si RCON échoue
-                if colocStatus.players.sample:
-                    online_players = [player.name for player in colocStatus.players.sample]
-            
             # If there are players online, get their names and display them in the status message
-            if len(online_players) > 0:
-                players = "\n".join(sorted(online_players, key=str.lower))
-                joueurs = f"Joueur{'s' if len(online_players) > 1 else ''} ({len(online_players)}/{colocStatus.players.max})"
+            if colocStatus.players.online > 0:
+                players = "\n".join(
+                    sorted(
+                        [player.name for player in colocStatus.players.sample],
+                        key=str.lower,
+                    )
+                )
+                joueurs = f"Joueur{'s' if colocStatus.players.online > 1 else ''} ({colocStatus.players.online}/{colocStatus.players.max})"
             else:
                 players = "\u200b"
                 joueurs = "\u200b"
@@ -148,7 +139,7 @@ class Minecraft(Extension):
             # Edit the status message in the designated Discord channel
             await message.edit(content="", embeds=[embed1, embed2])
             # Modify the channel name if the number of players has changed
-            name = f"🟢︱{len(online_players) if len(online_players) != 0 else 'aucun'}᲼joueur{'s' if len(online_players) > 1 else ''}"
+            name = f"🟢︱{colocStatus.players.online if colocStatus.players.online != 0 else 'aucun'}᲼joueur{'s' if colocStatus.players.online > 1 else ''}"
         # If the Minecraft server is offline, display an error message in the status message
         except (ConnectionResetError, ConnectionRefusedError, TimeoutError, socket.timeout) as e:
             logger.debug(e)
@@ -201,83 +192,114 @@ class Minecraft(Extension):
 
     @Task.create(OrTrigger(*[TimeTrigger(hour=i, minute=10) for i in range(24)]))
     async def stats(self):
-        logger.debug("Updating Minecraft server stats via RCON")
+        logger.debug("Updating Minecraft server stats")
         channel = await self.bot.fetch_channel(CHANNEL_ID_KUBZ)
         message = await channel.fetch_message(MESSAGE_ID_KUBZ)
         embed1 = message.embeds[0]
 
+        # Connect to the Minecraft server using optimized SFTP connection
+        from src.minecraft import get_minecraft_stats_with_retry
+        
         try:
-            # Récupérer les statistiques via RCON
-            player_stats_list = await get_all_player_stats_rcon(RCON_HOST, RCON_PORT, RCON_PASSWORD)
-            
-            if not player_stats_list:
-                logger.info("Aucune statistique de joueur récupérée via RCON")
-                # Garder l'ancien embed2 si pas de nouvelles données
-                try:
-                    embed2 = message.embeds[1]
-                except IndexError:
-                    embed2 = Embed(
-                        title="Stats",
-                        description="Aucune donnée disponible",
-                        color=BrandColors.BLURPLE,
-                        timestamp=Timestamp.utcnow().isoformat(),
-                    )
-                await message.edit(content="", embeds=[embed1, embed2])
-                return
-
-            # Convertir en DataFrame pour le traitement
-            df = pd.DataFrame(player_stats_list)
-            
-            # Convertir le temps de jeu en format timedelta pour l'affichage
-            df["Temps de jeu"] = pd.to_timedelta(df["Temps de jeu"], unit="s").dt.round("1s")
-            df.sort_values(by="Temps de jeu", ascending=False, inplace=True)
-
-            # Convertir le dataframe en CSV puis en prettytable
-            output = StringIO()
-            df.to_csv(output, index=False, float_format="%.2f")
-            output.seek(0)
-
-            table = prettytable.from_csv(output)
-            table.align = "r"
-            table.align["Joueur"] = "l"
-            table.set_style(prettytable.SINGLE_BORDER)
-            table.padding_width = 1
-            table.title = "Statistiques des joueurs (RCON)"
-            table.hrules = prettytable.ALL
-
-            # Créer l'embed avec les statistiques
-            embed2 = Embed(
-                title="Stats",
-                description=f"Actualisé toutes les heures à Xh10 via RCON\nDernière actualisation : {Timestamp.utcnow().format(TimestampStyles.RelativeTime)}",
-                images=("attachment://stats.png"),
-                color=BrandColors.BLURPLE,
-                timestamp=Timestamp.utcnow().isoformat(),
+            player_stats = await get_minecraft_stats_with_retry(
+                host="192.168.0.126",
+                port=2225,
+                username="admin",
+                password=SFTPS_PASSWORD
             )
-
-            # Vérifier le cache d'images
-            table_string = table.get_string()
-            if table_string in self.image_cache:
-                await message.edit(content="", embeds=[embed1, embed2])
-                logger.debug("Image from cache")
-            else:
-                # Créer une nouvelle image
-                imageIO = BytesIO()
-                image, imageIO = create_dynamic_image(table_string)
-                self.image_cache = {}
-                self.image_cache[table_string] = (image, imageIO)
-                image_file = File(create_dynamic_image(table_string)[1], "stats.png")
-                await message.edit(content="", embeds=[embed1, embed2], file=image_file)
-
+            logger.debug(f"Retrieved stats for {len(player_stats)} players using optimized connection")
+            
         except Exception as e:
-            logger.error(f"Erreur lors de la mise à jour des stats via RCON: {e}")
-            # En cas d'erreur, garder l'ancien embed2
-            try:
-                embed2 = message.embeds[1]
-            except IndexError:
-                embed2 = Embed(
-                    title="Stats",
-                    description=f"Erreur lors de la récupération des données\nDernière tentative : {Timestamp.utcnow().format(TimestampStyles.RelativeTime)}",
-                    color=BrandColors.RED,
-                    timestamp=Timestamp.utcnow().isoformat(),
-                )
+            logger.error(f"Failed to get stats with optimized method: {e}")
+            player_stats = []
+                  
+        # Convert the player stats to a pandas dataframe and format it (version optimisée)
+        if player_stats:
+            df = pd.DataFrame(player_stats)
+            
+            # Vérifier que la colonne "Temps de jeu" existe et est correcte
+            if "Temps de jeu" in df.columns:
+                df["Temps de jeu"] = pd.to_timedelta(df["Temps de jeu"], unit="s").dt.round("1s")
+            
+            # Trier par temps de jeu décroissant
+            if "Temps de jeu" in df.columns:
+                df.sort_values(by="Temps de jeu", ascending=False, inplace=True)
+            
+            # Limiter à 15 joueurs pour éviter que l'image soit trop grande
+            df = df.head(15)
+            
+            # Utiliser la nouvelle fonction de formatage optimisée
+            table = self.format_table_efficiently(df)
+        else:
+            # Créer une table vide
+            df = pd.DataFrame(columns=["Joueur", "Niveau", "Morts", "Morts/h", "Marche (km)", "Temps de jeu"])
+            table = self.format_table_efficiently(df)
+            logger.warning("Aucune donnée de joueur récupérée")
+
+        # Create an embed with the server stats and send it to the Discord channel
+        embed2 = Embed(
+            title="Stats",
+            description=f"Actualisé toutes les heures à Xh10\nDernière actualisation : {Timestamp.utcnow().format(TimestampStyles.RelativeTime)}",
+            images=("attachment://stats.png"),
+            color=BrandColors.BLURPLE,
+            timestamp=Timestamp.utcnow().isoformat(),
+        )
+
+        if table and table.get_string() in self.image_cache:
             await message.edit(content="", embeds=[embed1, embed2])
+            logger.debug("Image récupérée depuis le cache")
+        elif table:
+            # Nettoyer le cache avant d'ajouter une nouvelle image
+            self.optimize_image_cache()
+            
+            imageIO = BytesIO()
+            image, imageIO = create_dynamic_image(table.get_string())
+            self.image_cache[table.get_string()] = (image, imageIO)
+            image = File(create_dynamic_image(table.get_string())[1], "stats.png")
+            await message.edit(content="", embeds=[embed1, embed2], file=image)
+            logger.debug("Nouvelle image générée et mise en cache")
+        else:
+            # Aucune table à afficher
+            await message.edit(content="", embeds=[embed1, embed2])
+            logger.warning("Aucune table de statistiques à afficher")
+
+    def optimize_image_cache(self):
+        """Nettoie le cache d'images pour éviter l'accumulation"""
+        if len(self.image_cache) > 5:  # Garder seulement les 5 dernières images
+            # Supprimer les plus anciennes (simple FIFO)
+            oldest_keys = list(self.image_cache.keys())[:-5]
+            for key in oldest_keys:
+                del self.image_cache[key]
+            logger.debug(f"Cache d'images nettoyé, {len(oldest_keys)} entrées supprimées")
+
+    def format_table_efficiently(self, df):
+        """Formate la table de manière efficace pour réduire la taille de l'image"""
+        if df.empty:
+            return None
+            
+        # Formatter les colonnes numériques pour réduire la largeur
+        if "Morts/h" in df.columns:
+            df["Morts/h"] = df["Morts/h"].round(2)
+        if "Marche (km)" in df.columns:
+            df["Marche (km)"] = df["Marche (km)"].round(1)
+        if "Niveau" in df.columns:
+            df["Niveau"] = df["Niveau"].astype(str)
+            
+        # Tronquer les noms trop longs
+        if "Joueur" in df.columns:
+            df["Joueur"] = df["Joueur"].str[:12]  # Limiter à 12 caractères
+        
+        # Convertir en table
+        output = StringIO()
+        df.to_csv(output, index=False, float_format="%.1f")
+        output.seek(0)
+
+        table = prettytable.from_csv(output)
+        table.align = "r"
+        table.align["Joueur"] = "l"
+        table.set_style(prettytable.SINGLE_BORDER)
+        table.padding_width = 1
+        table.title = "Stats Joueurs (Top 15)"
+        table.hrules = prettytable.ALL
+        
+        return table
