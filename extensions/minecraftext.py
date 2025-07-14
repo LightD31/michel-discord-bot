@@ -66,8 +66,8 @@ class Minecraft(Extension):
         logger.info("Caches nettoyés au démarrage")
         
         self.status.start()
-        # self.stats.start()
-        # await self.stats()
+        self.stats.start()
+        await self.stats()
 
     # Define Minecraft server object
 
