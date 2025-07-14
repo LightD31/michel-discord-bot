@@ -39,19 +39,29 @@ module_config = module_config[enabled_servers[0]]
 reminders = {}
 
 NORMAL_REMINDERS = [
-    "Tu n'as pas encore fait ton [/journa](https://discord.com/channels/138283154589876224/808432657838768168) normal aujourd'hui !\nN'oublie pas de faire un [/corpodon](https://discord.com/channels/138283154589876224/813980380780691486)",
-    "Hé ! N'oublie pas ton [/journa](https://discord.com/channels/138283154589876224/808432657838768168) du jour !\nPense aussi à faire ton [/corpodon](https://discord.com/channels/138283154589876224/813980380780691486)",
-    "Petit rappel : ton [/journa](https://discord.com/channels/138283154589876224/808432657838768168) t'attend !\nEt n'oublie pas le [/corpodon](https://discord.com/channels/138283154589876224/813980380780691486) qui va avec",
-    "Il est temps de faire ton [/journa](https://discord.com/channels/138283154589876224/808432657838768168) quotidien !\nSuivi d'un petit [/corpodon](https://discord.com/channels/138283154589876224/813980380780691486), bien sûr",
-    "Ton [/journa](https://discord.com/channels/138283154589876224/808432657838768168) du jour t'attend !\nN'oublie pas d'enchaîner avec un [/corpodon](https://discord.com/channels/138283154589876224/813980380780691486)"
+    "Tu n'as pas encore fait ton [/journa](https://discord.com/channels/138283154589876224/808432657838768168) normal aujourd'hui !",
+    "Hé ! N'oublie pas ton [/journa](https://discord.com/channels/138283154589876224/808432657838768168) du jour !",
+    "Petit rappel : ton [/journa](https://discord.com/channels/138283154589876224/808432657838768168) t'attend !",
+    "Il est temps de faire ton [/journa](https://discord.com/channels/138283154589876224/808432657838768168) quotidien !",
+    "Ton [/journa](https://discord.com/channels/138283154589876224/808432657838768168) du jour t'attend !",
+    "Psst... Tu as pensé à ton [/journa](https://discord.com/channels/138283154589876224/808432657838768168) aujourd'hui ?",
+    "Allez, c'est le moment de faire ton [/journa](https://discord.com/channels/138283154589876224/808432657838768168) !",
+    "N'oublie pas de valider ta journée avec ton [/journa](https://discord.com/channels/138283154589876224/808432657838768168) !",
+    "Ton [/journa](https://discord.com/channels/138283154589876224/808432657838768168) quotidien n'attend que toi !",
+    "Rappel amical : il est temps de faire ton [/journa](https://discord.com/channels/138283154589876224/808432657838768168) !"
 ]
 
 HARDCORE_REMINDERS = [
-    "Tu n'as pas encore fait ton [/journa](https://discord.com/channels/138283154589876224/1263861962744270958) hardcore aujourd'hui!\n",
-    "Attention ! Ton [/journa](https://discord.com/channels/138283154589876224/1263861962744270958) hardcore du jour n'est pas fait !\n",
-    "Ne laisse pas passer ton [/journa](https://discord.com/channels/138283154589876224/1263861962744270958) hardcore aujourd'hui !\n",
-    "Rappel crucial : ton [/journa](https://discord.com/channels/138283154589876224/1263861962744270958) hardcore t'attend !\n",
-    "Dernier appel pour ton [/journa](https://discord.com/channels/138283154589876224/1263861962744270958) hardcore du jour !\n"
+    "Tu n'as pas encore fait ton [/journa](https://discord.com/channels/138283154589876224/1263861962744270958) hardcore aujourd'hui !",
+    "Attention ! Ton [/journa](https://discord.com/channels/138283154589876224/1263861962744270958) hardcore du jour n'est pas fait !",
+    "Ne laisse pas passer ton [/journa](https://discord.com/channels/138283154589876224/1263861962744270958) hardcore aujourd'hui !",
+    "Rappel crucial : ton [/journa](https://discord.com/channels/138283154589876224/1263861962744270958) hardcore t'attend !",
+    "Dernier appel pour ton [/journa](https://discord.com/channels/138283154589876224/1263861962744270958) hardcore du jour !",
+    "URGENT : Ton [/journa](https://discord.com/channels/138283154589876224/1263861962744270958) hardcore n'est pas fait !",
+    "Mode hardcore activé ! N'oublie pas ton [/journa](https://discord.com/channels/138283154589876224/1263861962744270958) !",
+    "Ton aventure hardcore t'attend avec ton [/journa](https://discord.com/channels/138283154589876224/1263861962744270958) !",
+    "Pas de repos pour les braves ! Fais ton [/journa](https://discord.com/channels/138283154589876224/1263861962744270958) hardcore !",
+    "Le mode hardcore ne pardonne pas : fais ton [/journa](https://discord.com/channels/138283154589876224/1263861962744270958) maintenant !"
 ]
 
 
