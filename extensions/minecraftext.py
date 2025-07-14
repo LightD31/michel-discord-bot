@@ -60,8 +60,8 @@ class Minecraft(Extension):
     @listen()
     async def on_startup(self):
         self.status.start()
-        # self.stats.start()
-        # await self.stats()
+        self.stats.start()
+        await self.stats()
 
     # Define Minecraft server object
 
