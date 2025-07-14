@@ -490,8 +490,9 @@ class ColocClass(Extension):
         logs_embed.add_field(name="\u200b", value="\u200b", inline=True)
         logs_embed.add_field(name="Inactifs", value=inactive_members_str, inline=True)
 
-        # Send the embeds to the channel
-        await channel.send(embeds=[corporation_embed, logs_embed])
+        # Only send the embeds if there were activities today
+        if merged_logs:
+            await channel.send(embeds=[corporation_embed, logs_embed])
 
     @slash_command(
         name="corpo",
