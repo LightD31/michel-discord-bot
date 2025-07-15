@@ -247,7 +247,7 @@ class Minecraft(Extension):
         """Create and format the statistics table."""
         if not player_stats:
             # Create empty table
-            df = pd.DataFrame(columns=["Joueur", "Niveau", "Morts", "Morts/h", "Marche (km)", "Temps de jeu"])
+            df = pd.DataFrame(columns=["Joueur", "Niveau", "Morts", "Morts/h", "Marche (km)", "Temps de jeu", "Blocs minés", "Mobs tués", "Animaux reproduits"])
             logger.warning("No player data retrieved")
         else:
             df = pd.DataFrame(player_stats)
@@ -294,6 +294,17 @@ class Minecraft(Extension):
                 del self.image_cache[key]
             logger.debug(f"Image cache cleaned, {len(oldest_keys)} entries removed")
 
+    def _format_large_number(self, num):
+        """Format large numbers for better readability."""
+        if pd.isna(num):
+            return "0"
+        if num >= 1000000:
+            return f"{num/1000000:.1f}M"
+        elif num >= 1000:
+            return f"{num/1000:.1f}k"
+        else:
+            return str(int(num))
+
     def _format_table_efficiently(self, df):
         """Format table efficiently to reduce image size."""
         if df.empty:
@@ -306,6 +317,14 @@ class Minecraft(Extension):
             df["Marche (km)"] = df["Marche (km)"].round(1)
         if "Niveau" in df.columns:
             df["Niveau"] = df["Niveau"].astype(str)
+        
+        # Format large numbers for better readability
+        if "Blocs minés" in df.columns:
+            df["Blocs minés"] = df["Blocs minés"].apply(self._format_large_number)
+        if "Mobs tués" in df.columns:
+            df["Mobs tués"] = df["Mobs tués"].apply(self._format_large_number)
+        if "Animaux reproduits" in df.columns:
+            df["Animaux reproduits"] = df["Animaux reproduits"].apply(self._format_large_number)
             
         # Truncate long names
         if "Joueur" in df.columns:

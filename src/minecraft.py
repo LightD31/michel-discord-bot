@@ -135,11 +135,21 @@ async def get_player_stats_optimized(sftp: asyncssh.SFTPClient, stats_file, nbt_
         
         # Extraction optimisée des données
         custom_stats = playerdata.get("stats", {}).get("minecraft:custom", {})
+        mined_stats = playerdata.get("stats", {}).get("minecraft:mined", {})
         
         level = str(int(nbt[""]["XpLevel"]))
         deaths = custom_stats.get("minecraft:deaths", 0)
         playtime = custom_stats.get("minecraft:play_time", 0)
         walked = custom_stats.get("minecraft:walk_one_cm", 0)
+        
+        # Calculer le nombre total de blocs minés
+        total_mined = sum(mined_stats.values()) if mined_stats else 0
+        
+        # Utiliser la statistique mob_kills qui est plus précise
+        mob_kills = custom_stats.get("minecraft:mob_kills", 0)
+        
+        # Statistique des animaux reproduits
+        animals_bred = custom_stats.get("minecraft:animals_bred", 0)
         
         # Calculs
         walked = walked / 100000
@@ -153,6 +163,9 @@ async def get_player_stats_optimized(sftp: asyncssh.SFTPClient, stats_file, nbt_
             "Morts/h": ratio,
             "Marche (km)": walked,
             "Temps de jeu": playtime_seconds,
+            "Blocs minés": total_mined,
+            "Mobs tués": mob_kills,
+            "Animaux reproduits": animals_bred,
         }
         
         # Mettre en cache
