@@ -22,3 +22,4 @@ openai
 aiohttp
 uvloop
 pyfactorybridge
+python-socketio

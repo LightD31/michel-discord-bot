@@ -21,3 +21,4 @@ beautifulsoup4
 openai
 aiohttp
 pyfactorybridge
+python-socketio
