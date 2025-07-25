@@ -388,7 +388,8 @@ class Uptime(Extension):
         try:
             monitors = await self._get_all_monitors()
             if not monitors:
-                return []
+                await ctx.send(choices=[])
+                return
             
             # Filtrer les résultats selon ce que l'utilisateur tape
             query = ctx.input_text.lower() if ctx.input_text else ""
@@ -401,11 +402,11 @@ class Uptime(Extension):
                     matching_monitors.append({"name": display_name, "value": str(monitor_id)})
             
             # Limiter à 25 résultats maximum (limite Discord)
-            return matching_monitors[:25]
+            await ctx.send(choices=matching_monitors[:25])
             
         except Exception as error:
             logger.error(f"Erreur dans l'autocomplétion des capteurs: {error}")
-            return []
+            await ctx.send(choices=[])
 
     @slash_command(
         name="uptime",
@@ -500,7 +501,7 @@ class Uptime(Extension):
     @setup_maintenance_alert.autocomplete("sensor")
     async def setup_sensor_autocomplete(self, ctx: AutocompleteContext):
         """Autocomplétion pour le paramètre sensor de la commande setup."""
-        return await self.sensor_autocomplete(ctx)
+        await self.sensor_autocomplete(ctx)
 
     @uptime_command.subcommand(
         sub_cmd_name="remove",
@@ -557,13 +558,15 @@ class Uptime(Extension):
         """Autocomplétion pour le paramètre sensor de la commande remove - ne montre que les capteurs surveillés."""
         try:
             if not ctx.guild:
-                return []
+                await ctx.send(choices=[])
+                return
                 
             guild_id = str(ctx.guild.id)
             
             # Récupérer seulement les capteurs surveillés sur ce serveur
             if guild_id not in self.maintenance_monitors:
-                return []
+                await ctx.send(choices=[])
+                return
             
             monitored_sensors = []
             query = ctx.input_text.lower() if ctx.input_text else ""
@@ -582,11 +585,11 @@ class Uptime(Extension):
                 except (ValueError, TypeError):
                     continue
             
-            return monitored_sensors[:25]
+            await ctx.send(choices=monitored_sensors[:25])
             
         except Exception as error:
             logger.error(f"Erreur dans l'autocomplétion des capteurs surveillés: {error}")
-            return []
+            await ctx.send(choices=[])
 
     @uptime_command.subcommand(
         sub_cmd_name="list",
