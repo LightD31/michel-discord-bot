@@ -190,10 +190,25 @@ def load_config(module_name: str = None) -> Tuple[dict, dict, list[str]]:
     Returns:
         A tuple containing the global configuration, the module-specific configuration, and the list of enabled servers.
     """
-    with open("config/config.json", "r", encoding="utf-8") as file:
-        data = json.load(file)
+    # Try to use the new modular config manager first
+    try:
+        from src.config_manager import ConfigManager
+        config_manager = ConfigManager()
+        data = config_manager.load_full_config()
+        logger.debug("Using modular configuration system")
+    except (ImportError, FileNotFoundError):
+        # Fallback to the old single file system
+        try:
+            with open("config/config.json", "r", encoding="utf-8") as file:
+                data = json.load(file)
+            logger.debug("Using legacy configuration system")
+        except FileNotFoundError:
+            logger.error("No configuration file found (config.json or main.json)")
+            return {}, {}, []
+    
     if module_name is None:
         return data.get("config", {}), {}, []
+    
     enabled_servers = [
         str(server_id)
         for server_id, server_info in data["servers"].items()
