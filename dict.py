@@ -49,9 +49,3 @@ chooseList = [
     "Je vote pour",
     "Je vote",
 ]
-chooseList = [
-    "Tirage au sort",
-    "Random.org a choisi",
-    "J'ai choisi",
-    "C'est décidé, ce sera",
-]
