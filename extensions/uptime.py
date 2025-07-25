@@ -178,34 +178,52 @@ class Uptime(Extension):
                 await self.handle_monitor_update(data)
 
             @self.sio.event
-            async def uptime(monitorID, period, percent):
+            async def uptime(*args):
                 """
                 Événement uptime - statistiques d'uptime.
-                Paramètres: monitorID, period (24h/30d), percent
+                Capture tous les arguments pour voir la signature exacte.
                 """
-                data = {'monitorID': monitorID, 'period': period, 'percent': percent}
-                await self._record_event('uptime', data)
-                logger.debug(f"Uptime reçu: monitorID={monitorID}, period={period}, percent={percent}")
+                logger.debug(f"Uptime reçu avec {len(args)} arguments: {args}")
+                if len(args) >= 3:
+                    monitorID, period, percent = args[0], args[1], args[2]
+                    data = {'monitorID': monitorID, 'period': period, 'percent': percent, 'extra_args': args[3:]}
+                    await self._record_event('uptime', data)
+                    logger.debug(f"Uptime reçu: monitorID={monitorID}, period={period}, percent={percent}")
+                else:
+                    data = {'args': args}
+                    await self._record_event('uptime', data)
 
             @self.sio.event
-            async def avgPing(monitorID, avgPing):
+            async def avgPing(*args):
                 """
                 Événement avgPing - ping moyen.
-                Paramètres: monitorID, avgPing
+                Capture tous les arguments pour voir la signature exacte.
                 """
-                data = {'monitorID': monitorID, 'avgPing': avgPing}
-                await self._record_event('avgPing', data)
-                logger.debug(f"AvgPing reçu: monitorID={monitorID}, avgPing={avgPing}")
+                logger.debug(f"AvgPing reçu avec {len(args)} arguments: {args}")
+                if len(args) >= 2:
+                    monitorID, avgPing = args[0], args[1]
+                    data = {'monitorID': monitorID, 'avgPing': avgPing, 'extra_args': args[2:]}
+                    await self._record_event('avgPing', data)
+                    logger.debug(f"AvgPing reçu: monitorID={monitorID}, avgPing={avgPing}")
+                else:
+                    data = {'args': args}
+                    await self._record_event('avgPing', data)
 
             @self.sio.event
-            async def heartbeatList(monitorID, heartbeatList):
+            async def heartbeatList(*args):
                 """
                 Événement heartbeatList - liste des heartbeats.
-                Paramètres: monitorID, heartbeatList
+                Capture tous les arguments pour voir la signature exacte.
                 """
-                data = {'monitorID': monitorID, 'heartbeatList': heartbeatList}
-                await self._record_event('heartbeatList', data)
-                logger.debug(f"HeartbeatList reçu: monitorID={monitorID}, count={len(heartbeatList) if heartbeatList else 0}")
+                logger.debug(f"HeartbeatList reçu avec {len(args)} arguments: {args}")
+                if len(args) >= 2:
+                    monitorID, heartbeatList = args[0], args[1]
+                    data = {'monitorID': monitorID, 'heartbeatList': heartbeatList, 'extra_args': args[2:]}
+                    await self._record_event('heartbeatList', data)
+                    logger.debug(f"HeartbeatList reçu: monitorID={monitorID}, count={len(heartbeatList) if heartbeatList else 0}")
+                else:
+                    data = {'args': args}
+                    await self._record_event('heartbeatList', data)
 
             # Événement générique pour capturer tous les autres événements
             @self.sio.event
