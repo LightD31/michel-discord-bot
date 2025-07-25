@@ -19,7 +19,9 @@ from interactions import (
     OptionType,
     Embed,
     BaseChannel,
-    AutocompleteContext
+    AutocompleteContext,
+    slash_default_member_permission,
+    Permissions
 )
 
 from src import logutil
@@ -412,6 +414,7 @@ class Uptime(Extension):
         name="uptime",
         description="Les commandes de surveillance Uptime Kuma"
     )
+    @slash_default_member_permission(Permissions.ADMINISTRATOR)
     async def uptime_command(self, ctx: SlashContext) -> None:
         pass
 
