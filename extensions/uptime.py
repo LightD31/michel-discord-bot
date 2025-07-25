@@ -210,29 +210,27 @@ class Uptime(Extension):
                     await self._record_event('avgPing', data)
 
             @self.sio.event
-            async def heartbeatList(data):
+            async def heartbeatList(*args):
                 """
                 Événement heartbeatList - liste des heartbeats avec données d'uptime.
-                Format attendu: {
-                    "heartbeatList": {
-                        "1": [heartbeats...],
-                        "2": [heartbeats...]
-                    },
-                    "uptimeList": {
-                        "1_24": 0.9998,
-                        "2_24": 0.95
-                    }
-                }
+                Capture tous les arguments pour voir la signature exacte.
+                Peut recevoir soit un objet structuré, soit des arguments séparés.
                 """
-                logger.debug(f"HeartbeatList reçu: {data}")
+                logger.debug(f"HeartbeatList reçu avec {len(args)} arguments: {args}")
+                
+                # Enregistrer l'événement brut pour le débogage
+                data = {'args': args}
                 await self._record_event('heartbeatList', data)
                 
-                if isinstance(data, dict):
-                    heartbeat_data = data.get('heartbeatList', {})
-                    uptime_data = data.get('uptimeList', {})
+                # Essayer différents formats selon le nombre d'arguments
+                if len(args) == 1 and isinstance(args[0], dict):
+                    # Format objet unique comme documenté
+                    data_obj = args[0]
+                    heartbeat_data = data_obj.get('heartbeatList', {})
+                    uptime_data = data_obj.get('uptimeList', {})
                     
-                    logger.debug(f"HeartbeatList - {len(heartbeat_data)} moniteurs avec données heartbeat")
-                    logger.debug(f"UptimeList - {len(uptime_data)} entrées d'uptime")
+                    logger.debug(f"HeartbeatList (format objet) - {len(heartbeat_data)} moniteurs avec données heartbeat")
+                    logger.debug(f"UptimeList (format objet) - {len(uptime_data)} entrées d'uptime")
                     
                     # Traiter les données de heartbeat pour chaque moniteur
                     for monitor_id, heartbeats in heartbeat_data.items():
@@ -250,9 +248,15 @@ class Uptime(Extension):
                                 'time': latest_heartbeat.get('time')
                             }
                             await self.handle_monitor_update(monitor_update)
+                            
+                elif len(args) >= 2:
+                    # Format arguments séparés (signature alternative)
+                    logger.debug(f"HeartbeatList (format arguments séparés) - arg1: {type(args[0])}, arg2: {type(args[1])}")
+                    # Pour l'instant, on enregistre juste les données sans traitement
+                    # jusqu'à ce qu'on comprenne mieux la structure
+                    
                 else:
-                    logger.warning(f"Format heartbeatList inattendu: {type(data)}")
-                    await self._record_event('heartbeatList_unexpected', {'data': data})
+                    logger.warning(f"Format heartbeatList inattendu: {len(args)} arguments de types {[type(arg) for arg in args]}")
 
             # Événement générique pour capturer tous les autres événements
             @self.sio.event
