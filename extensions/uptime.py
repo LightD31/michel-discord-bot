@@ -304,6 +304,10 @@ class Uptime(Extension):
                         # Récupérer les infos complètes du moniteur
                         monitor_info = self.monitors_cache.get(monitor_id, data)
                         
+                        # S'assurer que monitor_config a le mode défini (compatibilité)
+                        if 'mode' not in monitor_config:
+                            monitor_config['mode'] = 'detailed'
+                        
                         await self._send_maintenance_notification(
                             guild_id, monitor_id, monitor_info, status, last_status, monitor_config
                         )
@@ -316,8 +320,15 @@ class Uptime(Extension):
             logger.error(f"Erreur lors du traitement de la mise à jour du moniteur: {error}")
 
     @slash_command(
-        name="setup_maintenance_alert",
-        description="Configure les alertes de maintenance pour un capteur spécifique"
+        name="uptime",
+        description="Les commandes de surveillance Uptime Kuma"
+    )
+    async def uptime_command(self, ctx: SlashContext) -> None:
+        pass
+
+    @uptime_command.subcommand(
+        sub_cmd_name="setup",
+        sub_cmd_description="Configure les alertes de maintenance pour un capteur spécifique"
     )
     @slash_option(
         name="sensor_id",
@@ -331,7 +342,17 @@ class Uptime(Extension):
         opt_type=OptionType.CHANNEL,
         required=True
     )
-    async def setup_maintenance_alert(self, ctx: SlashContext, sensor_id: int, channel: BaseChannel):
+    @slash_option(
+        name="mode",
+        description="Mode d'affichage des notifications",
+        opt_type=OptionType.STRING,
+        required=False,
+        choices=[
+            {"name": "Simple (titre et statut seulement)", "value": "simple"},
+            {"name": "Détaillé (avec toutes les informations)", "value": "detailed"}
+        ]
+    )
+    async def setup_maintenance_alert(self, ctx: SlashContext, sensor_id: int, channel: BaseChannel, mode: str = "detailed"):
         """
         Configure une alerte de maintenance pour un capteur spécifique dans un canal donné.
         """
@@ -366,7 +387,8 @@ class Uptime(Extension):
         # Configurer la surveillance
         self.maintenance_monitors[guild_id][str(sensor_id)] = {
             "channel_id": channel.id,
-            "last_status": None
+            "last_status": None,
+            "mode": mode
         }
 
         # Sauvegarder la configuration
@@ -374,14 +396,14 @@ class Uptime(Extension):
 
         embed = Embed(
             title="✅ Alerte de maintenance configurée",
-            description=f"Les notifications de maintenance pour le capteur **{sensor_info.get('name', f'ID {sensor_id}')}** seront envoyées dans {channel.mention}",
+            description=f"Les notifications de maintenance pour le capteur **{sensor_info.get('name', f'ID {sensor_id}')}** seront envoyées dans {channel.mention} (Mode: {mode})",
             color=0x00FF00
         )
         await ctx.send(embed=embed)
 
-    @slash_command(
-        name="remove_maintenance_alert",
-        description="Supprime les alertes de maintenance pour un capteur"
+    @uptime_command.subcommand(
+        sub_cmd_name="remove",
+        sub_cmd_description="Supprime les alertes de maintenance pour un capteur"
     )
     @slash_option(
         name="sensor_id",
@@ -421,9 +443,9 @@ class Uptime(Extension):
 
         await ctx.send(f"✅ Alerte de maintenance supprimée pour le capteur ID {sensor_id}.")
 
-    @slash_command(
-        name="list_maintenance_alerts",
-        description="Liste toutes les alertes de maintenance configurées"
+    @uptime_command.subcommand(
+        sub_cmd_name="list",
+        sub_cmd_description="Liste toutes les alertes de maintenance configurées"
     )
     async def list_maintenance_alerts(self, ctx: SlashContext):
         """
@@ -453,10 +475,11 @@ class Uptime(Extension):
             channel = self.bot.get_channel(config_data["channel_id"])
             sensor_info = await self._get_sensor_info(int(sensor_id))
             sensor_name = sensor_info.get('name', f'ID {sensor_id}') if sensor_info else f'ID {sensor_id}'
+            mode = config_data.get('mode', 'detailed')
             
             embed.add_field(
                 name=f"Capteur: {sensor_name}",
-                value=f"Canal: {channel.mention if channel else 'Canal introuvable'}",
+                value=f"Canal: {channel.mention if channel else 'Canal introuvable'}\nMode: {mode}",
                 inline=False
             )
 
@@ -552,6 +575,10 @@ class Uptime(Extension):
                     
                     # Détecter les changements d'état significatifs
                     if last_status != current_status:
+                        # S'assurer que monitor_config a le mode défini (compatibilité)
+                        if 'mode' not in monitor_config:
+                            monitor_config['mode'] = 'detailed'
+                            
                         await self._send_maintenance_notification(
                             guild_id, sensor_id, sensor_info, current_status, last_status, monitor_config
                         )
@@ -596,6 +623,7 @@ class Uptime(Extension):
         Envoie une notification de maintenance dans le canal configuré.
         Gère les statuts de l'API SocketIO (0=DOWN, 1=UP, 2=PENDING, 3=MAINTENANCE).
         Envoie seulement les notifications si important=True et ignore les statuts PENDING.
+        Supporte deux modes: simple et détaillé.
         """
         try:
             # Vérifier si l'événement est marqué comme important
@@ -615,6 +643,7 @@ class Uptime(Extension):
                 return
 
             sensor_name = sensor_info.get('name', f'ID {sensor_id}')
+            notification_mode = monitor_config.get('mode', 'detailed')
             
             # Convertir les statuts numériques selon la nouvelle spécification
             # 0=DOWN, 1=UP, 2=PENDING, 3=MAINTENANCE
@@ -640,32 +669,60 @@ class Uptime(Extension):
             embed = None
             
             if current_status == 'MAINTENANCE' or current_status == 3:
-                embed = Embed(
-                    title="🔧 Maintenance en cours",
-                    description=f"Le capteur **{sensor_name}** est actuellement en maintenance.",
-                    color=0xFFA500  # Orange
-                )
+                if notification_mode == "simple":
+                    embed = Embed(
+                        title="🔧 Maintenance",
+                        description=f"**{sensor_name}** en maintenance",
+                        color=0xFFA500  # Orange
+                    )
+                else:  # detailed
+                    embed = Embed(
+                        title="🔧 Maintenance en cours",
+                        description=f"Le capteur **{sensor_name}** est actuellement en maintenance.",
+                        color=0xFFA500  # Orange
+                    )
             elif current_status == 'DOWN' or current_status == 0:
-                embed = Embed(
-                    title="❌ Capteur hors ligne",
-                    description=f"Le capteur **{sensor_name}** est actuellement hors ligne.",
-                    color=0xFF0000  # Rouge
-                )
+                if notification_mode == "simple":
+                    embed = Embed(
+                        title="❌ Hors ligne",
+                        description=f"**{sensor_name}** hors ligne",
+                        color=0xFF0000  # Rouge
+                    )
+                else:  # detailed
+                    embed = Embed(
+                        title="❌ Capteur hors ligne",
+                        description=f"Le capteur **{sensor_name}** est actuellement hors ligne.",
+                        color=0xFF0000  # Rouge
+                    )
             elif current_status == 'UP' or current_status == 1:
                 # Différencier selon l'état précédent
                 if last_status in ['DOWN', 'MAINTENANCE', 0, 3]:
                     if last_status in ['MAINTENANCE', 3]:
-                        embed = Embed(
-                            title="✅ Fin de maintenance",
-                            description=f"Le capteur **{sensor_name}** est de nouveau opérationnel après maintenance.",
-                            color=0x00FF00  # Vert
-                        )
+                        if notification_mode == "simple":
+                            embed = Embed(
+                                title="✅ Maintenance terminée",
+                                description=f"**{sensor_name}** opérationnel",
+                                color=0x00FF00  # Vert
+                            )
+                        else:  # detailed
+                            embed = Embed(
+                                title="✅ Fin de maintenance",
+                                description=f"Le capteur **{sensor_name}** est de nouveau opérationnel après maintenance.",
+                                color=0x00FF00  # Vert
+                            )
                     else:
-                        embed = Embed(
-                            title="✅ Capteur rétabli",
-                            description=f"Le capteur **{sensor_name}** est de nouveau en ligne.",
-                            color=0x00FF00  # Vert
-                        )
+                        if notification_mode == "simple":
+                            embed = Embed(
+                                title="✅ Rétabli",
+                                description=f"**{sensor_name}** en ligne",
+                                color=0x00FF00  # Vert
+                            )
+                        else:  # detailed
+                            embed = Embed(
+                                title="✅ Capteur rétabli",
+                                description=f"Le capteur **{sensor_name}** est de nouveau en ligne.",
+                                color=0x00FF00  # Vert
+                            )
                 else:
                     # Statut UP mais sans changement significatif, ignorer
                     logger.debug(f"Changement d'état UP non significatif ignoré pour moniteur {sensor_id}")
@@ -676,31 +733,35 @@ class Uptime(Extension):
                 logger.debug(f"Aucun embed créé pour moniteur {sensor_id}: {last_status} → {current_status}")
                 return
 
-            # Ajouter des informations supplémentaires
-            embed.add_field(name="ID du capteur", value=sensor_id, inline=True)
-            embed.add_field(name="État actuel", value=current_status, inline=True)
-            
-            # Ajouter l'état précédent si pertinent
-            if last_status and last_status != current_status:
-                embed.add_field(name="État précédent", value=last_status, inline=True)
-            
-            # Ajouter des informations supplémentaires provenant de SocketIO
-            if sensor_info.get('url'):
-                embed.add_field(name="URL", value=sensor_info['url'], inline=False)
-            if sensor_info.get('msg'):
-                embed.add_field(name="Message", value=sensor_info['msg'], inline=False)
-            if sensor_info.get('ping') is not None:
-                embed.add_field(name="Ping", value=f"{sensor_info['ping']} ms", inline=True)
+            # Mode détaillé : ajouter des informations supplémentaires
+            if notification_mode == "detailed":
+                embed.add_field(name="ID du capteur", value=sensor_id, inline=True)
+                embed.add_field(name="État actuel", value=current_status, inline=True)
+                
+                # Ajouter l'état précédent si pertinent
+                if last_status and last_status != current_status:
+                    embed.add_field(name="État précédent", value=last_status, inline=True)
+                
+                # Ajouter des informations supplémentaires provenant de SocketIO
+                if sensor_info.get('url'):
+                    embed.add_field(name="URL", value=sensor_info['url'], inline=False)
+                if sensor_info.get('msg'):
+                    embed.add_field(name="Message", value=sensor_info['msg'], inline=False)
+                if sensor_info.get('ping') is not None:
+                    embed.add_field(name="Ping", value=f"{sensor_info['ping']} ms", inline=True)
 
-            # Ajouter un timestamp
-            from interactions import Timestamp
-            embed.timestamp = Timestamp.now()
+                # Ajouter un timestamp
+                from interactions import Timestamp
+                embed.timestamp = Timestamp.now()
+            else:  # Mode simple
+                # En mode simple, on ajoute seulement le statut actuel comme petit champ
+                embed.add_field(name="Statut", value=current_status, inline=True)
 
             # Utiliser getattr pour éviter les problèmes de types
             send_method = getattr(channel, 'send', None)
             if send_method:
                 await send_method(embed=embed)
-                logger.info(f"Notification envoyée pour moniteur {sensor_id}: {last_status} → {current_status}")
+                logger.info(f"Notification envoyée pour moniteur {sensor_id}: {last_status} → {current_status} (mode: {notification_mode})")
             else:
                 logger.warning(f"Impossible d'envoyer un message dans le canal {channel}")
 
