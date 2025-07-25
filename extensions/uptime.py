@@ -210,20 +210,49 @@ class Uptime(Extension):
                     await self._record_event('avgPing', data)
 
             @self.sio.event
-            async def heartbeatList(*args):
+            async def heartbeatList(data):
                 """
-                Événement heartbeatList - liste des heartbeats.
-                Capture tous les arguments pour voir la signature exacte.
+                Événement heartbeatList - liste des heartbeats avec données d'uptime.
+                Format attendu: {
+                    "heartbeatList": {
+                        "1": [heartbeats...],
+                        "2": [heartbeats...]
+                    },
+                    "uptimeList": {
+                        "1_24": 0.9998,
+                        "2_24": 0.95
+                    }
+                }
                 """
-                logger.debug(f"HeartbeatList reçu avec {len(args)} arguments: {args}")
-                if len(args) >= 2:
-                    monitorID, heartbeatList = args[0], args[1]
-                    data = {'monitorID': monitorID, 'heartbeatList': heartbeatList, 'extra_args': args[2:]}
-                    await self._record_event('heartbeatList', data)
-                    logger.debug(f"HeartbeatList reçu: monitorID={monitorID}, count={len(heartbeatList) if heartbeatList else 0}")
+                logger.debug(f"HeartbeatList reçu: {data}")
+                await self._record_event('heartbeatList', data)
+                
+                if isinstance(data, dict):
+                    heartbeat_data = data.get('heartbeatList', {})
+                    uptime_data = data.get('uptimeList', {})
+                    
+                    logger.debug(f"HeartbeatList - {len(heartbeat_data)} moniteurs avec données heartbeat")
+                    logger.debug(f"UptimeList - {len(uptime_data)} entrées d'uptime")
+                    
+                    # Traiter les données de heartbeat pour chaque moniteur
+                    for monitor_id, heartbeats in heartbeat_data.items():
+                        if heartbeats and isinstance(heartbeats, list) and len(heartbeats) > 0:
+                            # Prendre le heartbeat le plus récent
+                            latest_heartbeat = heartbeats[0]  # Le plus récent est généralement en première position
+                            logger.debug(f"Heartbeat le plus récent pour moniteur {monitor_id}: {latest_heartbeat}")
+                            
+                            # Traiter comme une mise à jour de moniteur
+                            monitor_update = {
+                                'monitorID': int(monitor_id),
+                                'status': latest_heartbeat.get('status'),
+                                'msg': latest_heartbeat.get('msg'),
+                                'ping': latest_heartbeat.get('ping'),
+                                'time': latest_heartbeat.get('time')
+                            }
+                            await self.handle_monitor_update(monitor_update)
                 else:
-                    data = {'args': args}
-                    await self._record_event('heartbeatList', data)
+                    logger.warning(f"Format heartbeatList inattendu: {type(data)}")
+                    await self._record_event('heartbeatList_unexpected', {'data': data})
 
             # Événement générique pour capturer tous les autres événements
             @self.sio.event
