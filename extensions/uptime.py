@@ -178,28 +178,34 @@ class Uptime(Extension):
                 await self.handle_monitor_update(data)
 
             @self.sio.event
-            async def uptime(data):
+            async def uptime(monitorID, period, percent):
                 """
                 Événement uptime - statistiques d'uptime.
+                Paramètres: monitorID, period (24h/30d), percent
                 """
+                data = {'monitorID': monitorID, 'period': period, 'percent': percent}
                 await self._record_event('uptime', data)
-                logger.debug(f"Uptime reçu: {data}")
+                logger.debug(f"Uptime reçu: monitorID={monitorID}, period={period}, percent={percent}")
 
             @self.sio.event
-            async def avgPing(data):
+            async def avgPing(monitorID, avgPing):
                 """
                 Événement avgPing - ping moyen.
+                Paramètres: monitorID, avgPing
                 """
+                data = {'monitorID': monitorID, 'avgPing': avgPing}
                 await self._record_event('avgPing', data)
-                logger.debug(f"AvgPing reçu: {data}")
+                logger.debug(f"AvgPing reçu: monitorID={monitorID}, avgPing={avgPing}")
 
             @self.sio.event
-            async def heartbeatList(data):
+            async def heartbeatList(monitorID, heartbeatList):
                 """
                 Événement heartbeatList - liste des heartbeats.
+                Paramètres: monitorID, heartbeatList
                 """
+                data = {'monitorID': monitorID, 'heartbeatList': heartbeatList}
                 await self._record_event('heartbeatList', data)
-                logger.debug(f"HeartbeatList reçu: {data}")
+                logger.debug(f"HeartbeatList reçu: monitorID={monitorID}, count={len(heartbeatList) if heartbeatList else 0}")
 
             # Événement générique pour capturer tous les autres événements
             @self.sio.event
@@ -207,8 +213,6 @@ class Uptime(Extension):
                 logger.error(f"Erreur de connexion SocketIO: {data}")
 
             # Se connecter au serveur Uptime Kuma
-            url = f"https://{config['uptimeKuma']['uptimeKumaUrl']}"
-            await self.sio.connect(url, transports=['websocket', 'polling'])
             url = f"https://{config['uptimeKuma']['uptimeKumaUrl']}"
             await self.sio.connect(url, transports=['websocket', 'polling'])
             
