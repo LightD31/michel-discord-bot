@@ -44,6 +44,8 @@ class Uptime(Extension):
         self.sensor_states = {}
         # Cache des informations des moniteurs
         self.monitors_cache = {}
+        # Liste des événements récents pour débogage
+        self.recent_events = []
 
     @listen()
     async def on_startup(self):
@@ -95,6 +97,8 @@ class Uptime(Extension):
                             logger.info("Authentification SocketIO réussie")
                             # Demander la liste des moniteurs après authentification
                             await self.sio.emit('getMonitorList')
+                            # S'abonner aux événements de tous les moniteurs surveillés
+                            await self._subscribe_to_monitors()
                         else:
                             error_msg = response.get('msg', 'Erreur inconnue') if response else 'Aucune réponse reçue'
                             logger.error(f"Échec de l'authentification SocketIO: {error_msg}")
@@ -113,6 +117,18 @@ class Uptime(Extension):
                 """
                 Reçoit les mises à jour des moniteurs en temps réel.
                 """
+                await self._record_event('monitor', data)
+                logger.debug(f"Événement monitor reçu: {data}")
+                await self.handle_monitor_update(data)
+
+            @self.sio.event
+            async def heartbeat(data):
+                """
+                Événement heartbeat - PRINCIPAL pour les mises à jour temps réel.
+                Cet événement est utilisé par le frontend officiel d'Uptime Kuma.
+                """
+                await self._record_event('heartbeat', data)
+                logger.debug(f"Événement heartbeat reçu: {data}")
                 await self.handle_monitor_update(data)
 
             @self.sio.event
@@ -120,8 +136,10 @@ class Uptime(Extension):
                 """
                 Reçoit la liste des moniteurs.
                 """
+                await self._record_event('monitorList', data)
                 self.monitors_cache = data
                 logger.debug(f"Cache des moniteurs mis à jour: {len(data)} moniteurs")
+                logger.debug(f"IDs des moniteurs reçus: {list(data.keys())}")
                 
             @self.sio.event
             async def loginRequired():
@@ -135,11 +153,62 @@ class Uptime(Extension):
                 """
                 Met à jour les informations d'un moniteur spécifique dans le cache.
                 """
+                await self._record_event('updateMonitorIntoList', data)
+                logger.debug(f"Mise à jour reçue pour moniteurs: {list(data.keys())}")
                 for monitor_id, monitor_data in data.items():
                     self.monitors_cache[monitor_id] = monitor_data
                     logger.debug(f"Moniteur {monitor_id} mis à jour dans le cache")
 
+            # Ajouter d'autres événements pour le débogage
+            @self.sio.event
+            async def info(data):
+                """
+                Événement d'information.
+                """
+                await self._record_event('info', data)
+                logger.debug(f"Info reçue: {data}")
+
+            @self.sio.event
+            async def monitorBeat(data):
+                """
+                Événement de battement de moniteur (peut être utilisé au lieu de 'monitor').
+                """
+                await self._record_event('monitorBeat', data)
+                logger.debug(f"MonitorBeat reçu: {data}")
+                await self.handle_monitor_update(data)
+
+            @self.sio.event
+            async def uptime(data):
+                """
+                Événement uptime - statistiques d'uptime.
+                """
+                await self._record_event('uptime', data)
+                logger.debug(f"Uptime reçu: {data}")
+
+            @self.sio.event
+            async def avgPing(data):
+                """
+                Événement avgPing - ping moyen.
+                """
+                await self._record_event('avgPing', data)
+                logger.debug(f"AvgPing reçu: {data}")
+
+            @self.sio.event
+            async def heartbeatList(data):
+                """
+                Événement heartbeatList - liste des heartbeats.
+                """
+                await self._record_event('heartbeatList', data)
+                logger.debug(f"HeartbeatList reçu: {data}")
+
+            # Événement générique pour capturer tous les autres événements
+            @self.sio.event
+            async def connect_error(data):
+                logger.error(f"Erreur de connexion SocketIO: {data}")
+
             # Se connecter au serveur Uptime Kuma
+            url = f"https://{config['uptimeKuma']['uptimeKumaUrl']}"
+            await self.sio.connect(url, transports=['websocket', 'polling'])
             url = f"https://{config['uptimeKuma']['uptimeKumaUrl']}"
             await self.sio.connect(url, transports=['websocket', 'polling'])
             
@@ -148,25 +217,108 @@ class Uptime(Extension):
         except Exception as error:
             logger.error(f"Erreur lors de la connexion SocketIO: {error}")
 
+    async def _record_event(self, event_name: str, data):
+        """
+        Enregistre les événements SocketIO reçus pour le débogage.
+        """
+        import time
+        import json
+        
+        try:
+            # Limiter la taille de la liste à 50 événements
+            if len(self.recent_events) >= 50:
+                self.recent_events.pop(0)
+            
+            # Convertir les données en string pour l'affichage
+            data_str = json.dumps(data, default=str)[:200]  # Limiter à 200 caractères
+            
+            self.recent_events.append({
+                'timestamp': time.time(),
+                'event': event_name,
+                'data': data_str
+            })
+        except Exception as e:
+            logger.debug(f"Erreur lors de l'enregistrement de l'événement {event_name}: {e}")
+
+    async def _subscribe_to_monitors(self):
+        """
+        S'abonne aux mises à jour des moniteurs surveillés.
+        """
+        try:
+            if not self.connected or not self.sio:
+                logger.warning("Pas de connexion SocketIO active pour s'abonner aux moniteurs")
+                return
+                
+            # S'abonner aux événements de tous les moniteurs surveillés
+            monitored_ids = set()
+            for guild_monitors in self.maintenance_monitors.values():
+                monitored_ids.update(guild_monitors.keys())
+            
+            if monitored_ids:
+                logger.info(f"Abonnement aux moniteurs: {monitored_ids}")
+                # Certaines versions d'Uptime Kuma utilisent des événements différents
+                # Nous essayons plusieurs approches
+                for monitor_id in monitored_ids:
+                    try:
+                        # Essayer de demander les détails du moniteur pour s'assurer qu'il existe
+                        await self.sio.emit('getMonitor', int(monitor_id))
+                    except Exception as e:
+                        logger.debug(f"Erreur lors de la souscription au moniteur {monitor_id}: {e}")
+            else:
+                logger.info("Aucun moniteur à surveiller configuré")
+                
+        except Exception as error:
+            logger.error(f"Erreur lors de l'abonnement aux moniteurs: {error}")
+
     async def handle_monitor_update(self, data):
         """
         Traite les mises à jour des moniteurs reçues via SocketIO.
+        Gère les données des événements 'heartbeat', 'monitor', et 'monitorBeat'.
         """
         try:
-            monitor_id = str(data.get('monitorID'))
-            status = data.get('status')
+            # Déterminer l'ID du moniteur selon le format des données
+            monitor_id = None
+            status = None
             
-            # Mettre à jour le cache
+            # Format heartbeat (Uptime Kuma officiel)
+            if 'monitorID' in data:
+                monitor_id = str(data.get('monitorID'))
+                status = data.get('status')
+            # Format monitor alternatif
+            elif 'id' in data:
+                monitor_id = str(data.get('id'))
+                status = data.get('status')
+            
+            if not monitor_id:
+                logger.debug(f"Impossible de déterminer l'ID du moniteur dans les données: {data}")
+                return
+            
+            logger.debug(f"Traitement mise à jour moniteur {monitor_id}: status={status}, data={data}")
+            
+            # Mettre à jour le cache avec plus d'informations
             if monitor_id in self.monitors_cache:
-                self.monitors_cache[monitor_id].update(data)
+                # Fusionner les nouvelles données avec les existantes
+                if isinstance(self.monitors_cache[monitor_id], dict):
+                    self.monitors_cache[monitor_id].update(data)
+                else:
+                    self.monitors_cache[monitor_id] = data
+                logger.debug(f"Cache mis à jour pour moniteur {monitor_id}")
+            else:
+                logger.debug(f"Moniteur {monitor_id} non trouvé dans le cache, ajout des données")
+                self.monitors_cache[monitor_id] = data
             
             # Vérifier si ce moniteur est surveillé
+            monitor_found = False
             for guild_id, sensors in self.maintenance_monitors.items():
                 if monitor_id in sensors:
+                    monitor_found = True
                     monitor_config = sensors[monitor_id]
                     last_status = monitor_config.get('last_status')
                     
-                    if last_status != status:
+                    logger.debug(f"Moniteur {monitor_id} surveillé - ancien status: {last_status}, nouveau: {status}")
+                    
+                    if last_status != status and status is not None:
+                        logger.info(f"Changement d'état détecté pour moniteur {monitor_id}: {last_status} → {status}")
                         # Récupérer les infos complètes du moniteur
                         monitor_info = self.monitors_cache.get(monitor_id, data)
                         
@@ -177,6 +329,11 @@ class Uptime(Extension):
                         # Mettre à jour le dernier état connu
                         self.maintenance_monitors[guild_id][monitor_id]['last_status'] = status
                         await self.save_maintenance_monitors()
+                    else:
+                        logger.debug(f"Pas de changement d'état pour moniteur {monitor_id} (status={status})")
+            
+            if not monitor_found:
+                logger.debug(f"Moniteur {monitor_id} non surveillé par aucun serveur")
                         
         except Exception as error:
             logger.error(f"Erreur lors du traitement de la mise à jour du moniteur: {error}")
@@ -593,6 +750,84 @@ class Uptime(Extension):
         embed.add_field(name="Monitors surveillés", value=str(sum(len(sensors) for sensors in self.maintenance_monitors.values())), inline=True)
         
         await ctx.send(embed=embed)
+
+    @slash_command(
+        name="show_recent_events",
+        description="Affiche les événements SocketIO récents reçus (pour debugging)"
+    )
+    async def show_recent_events(self, ctx: SlashContext):
+        """
+        Affiche les derniers événements SocketIO reçus.
+        """
+        if not ctx.guild:
+            await ctx.send("❌ Cette commande ne peut être utilisée que dans un serveur.", ephemeral=True)
+            return
+            
+        # Vérifier si le module est activé sur ce serveur
+        if str(ctx.guild.id) not in enabled_servers:
+            await ctx.send("❌ Le module Uptime n'est pas activé sur ce serveur.", ephemeral=True)
+            return
+
+        if not self.recent_events:
+            await ctx.send("❌ Aucun événement récent enregistré.", ephemeral=True)
+            return
+
+        embed = Embed(title="📜 Événements SocketIO récents", color=0x0099FF)
+        
+        # Afficher les 10 derniers événements
+        recent = self.recent_events[-10:] if len(self.recent_events) > 10 else self.recent_events
+        
+        for i, event in enumerate(recent, 1):
+            import datetime
+            timestamp = datetime.datetime.fromtimestamp(event['timestamp']).strftime('%H:%M:%S')
+            embed.add_field(
+                name=f"{i}. {event['event']} ({timestamp})",
+                value=f"```{event['data'][:150]}{'...' if len(event['data']) > 150 else ''}```",
+                inline=False
+            )
+        
+        embed.set_footer(text=f"Total événements enregistrés: {len(self.recent_events)}")
+        await ctx.send(embed=embed, ephemeral=True)
+
+    @slash_command(
+        name="test_socketio_events",
+        description="Teste les événements SocketIO et affiche les informations de débogage"
+    )
+    async def test_socketio_events(self, ctx: SlashContext):
+        """
+        Teste les événements SocketIO.
+        """
+        if not ctx.guild:
+            await ctx.send("❌ Cette commande ne peut être utilisée que dans un serveur.", ephemeral=True)
+            return
+            
+        # Vérifier si le module est activé sur ce serveur
+        if str(ctx.guild.id) not in enabled_servers:
+            await ctx.send("❌ Le module Uptime n'est pas activé sur ce serveur.", ephemeral=True)
+            return
+
+        if not self.connected or not self.sio:
+            await ctx.send("❌ SocketIO n'est pas connecté.", ephemeral=True)
+            return
+
+        await ctx.send("🔍 Test des événements SocketIO en cours...", ephemeral=True)
+        
+        try:
+            # Forcer la mise à jour de la liste des moniteurs
+            await self.sio.emit('getMonitorList')
+            
+            # Essayer de récupérer les détails de tous les moniteurs surveillés
+            guild_id = str(ctx.guild.id)
+            if guild_id in self.maintenance_monitors:
+                for monitor_id in self.maintenance_monitors[guild_id].keys():
+                    logger.info(f"Test: Demande des détails du moniteur {monitor_id}")
+                    await self.sio.emit('getMonitor', int(monitor_id))
+                    
+            await ctx.send("✅ Événements de test envoyés! Vérifiez les logs pour voir les réponses.", ephemeral=True)
+            
+        except Exception as error:
+            logger.error(f"Erreur lors du test des événements SocketIO: {error}")
+            await ctx.send(f"❌ Erreur lors du test: {error}", ephemeral=True)
 
     @slash_command(
         name="reconnect_socketio",
