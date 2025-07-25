@@ -18,7 +18,8 @@ from interactions import (
     slash_option,
     OptionType,
     Embed,
-    BaseChannel
+    BaseChannel,
+    AutocompleteContext
 )
 
 from src import logutil
@@ -319,6 +320,93 @@ class Uptime(Extension):
         except Exception as error:
             logger.error(f"Erreur lors du traitement de la mise à jour du moniteur: {error}")
 
+    async def _get_all_monitors(self):
+        """
+        Récupère tous les moniteurs disponibles depuis Uptime Kuma.
+        Retourne un dictionnaire {nom: id} ou None en cas d'erreur.
+        """
+        try:
+            # Si on a une connexion SocketIO active, utiliser le cache
+            if self.connected and self.monitors_cache:
+                monitors = {}
+                for monitor_id, monitor_data in self.monitors_cache.items():
+                    if isinstance(monitor_data, dict) and 'name' in monitor_data:
+                        monitors[monitor_data['name']] = int(monitor_id) if monitor_id.isdigit() else monitor_id
+                return monitors
+            
+            # Sinon, faire une requête SocketIO pour obtenir la liste
+            if self.connected and self.sio:
+                await self.sio.emit('getMonitorList')
+                # Attendre un court délai pour recevoir la réponse
+                import asyncio
+                await asyncio.sleep(0.5)
+                
+                if self.monitors_cache:
+                    monitors = {}
+                    for monitor_id, monitor_data in self.monitors_cache.items():
+                        if isinstance(monitor_data, dict) and 'name' in monitor_data:
+                            monitors[monitor_data['name']] = int(monitor_id) if monitor_id.isdigit() else monitor_id
+                    return monitors
+            
+            # Fallback vers l'API REST
+            if (config.get('uptimeKuma', {}).get('uptimeKumaUrl') and 
+                config.get('uptimeKuma', {}).get('uptimeKumaUsername') and 
+                config.get('uptimeKuma', {}).get('uptimeKumaPassword')):
+                
+                async with aiohttp.ClientSession() as session:
+                    auth = aiohttp.BasicAuth(
+                        config.get('uptimeKuma', {}).get('uptimeKumaUsername', ''),
+                        config.get('uptimeKuma', {}).get('uptimeKumaPassword', '')
+                    )
+                    url = f"https://{config['uptimeKuma']['uptimeKumaUrl']}/api/monitors"
+                    
+                    async with session.get(url, auth=auth) as response:
+                        if response.status == 200:
+                            data = await response.json()
+                            monitors = {}
+                            if isinstance(data, list):
+                                for monitor in data:
+                                    if 'name' in monitor and 'id' in monitor:
+                                        monitors[monitor['name']] = monitor['id']
+                            elif isinstance(data, dict):
+                                for monitor_id, monitor_data in data.items():
+                                    if isinstance(monitor_data, dict) and 'name' in monitor_data:
+                                        monitors[monitor_data['name']] = int(monitor_id) if monitor_id.isdigit() else monitor_id
+                            return monitors
+                        else:
+                            logger.warning(f"Erreur API REST pour récupération des moniteurs: {response.status}")
+                            
+        except Exception as error:
+            logger.error(f"Erreur lors de la récupération des moniteurs: {error}")
+        
+        return {}
+
+    async def sensor_autocomplete(self, ctx: AutocompleteContext):
+        """
+        Fonction d'autocomplétion pour les noms de capteurs.
+        """
+        try:
+            monitors = await self._get_all_monitors()
+            if not monitors:
+                return []
+            
+            # Filtrer les résultats selon ce que l'utilisateur tape
+            query = ctx.input_text.lower() if ctx.input_text else ""
+            matching_monitors = []
+            
+            for name, monitor_id in monitors.items():
+                if query in name.lower():
+                    # Limiter le nom à 100 caractères pour éviter les erreurs Discord
+                    display_name = name[:97] + "..." if len(name) > 100 else name
+                    matching_monitors.append({"name": display_name, "value": str(monitor_id)})
+            
+            # Limiter à 25 résultats maximum (limite Discord)
+            return matching_monitors[:25]
+            
+        except Exception as error:
+            logger.error(f"Erreur dans l'autocomplétion des capteurs: {error}")
+            return []
+
     @slash_command(
         name="uptime",
         description="Les commandes de surveillance Uptime Kuma"
@@ -331,10 +419,11 @@ class Uptime(Extension):
         sub_cmd_description="Configure les alertes de maintenance pour un capteur spécifique"
     )
     @slash_option(
-        name="sensor_id",
-        description="ID du capteur à surveiller",
-        opt_type=OptionType.INTEGER,
-        required=True
+        name="sensor",
+        description="Nom du capteur à surveiller",
+        opt_type=OptionType.STRING,
+        required=True,
+        autocomplete=True
     )
     @slash_option(
         name="channel",
@@ -352,7 +441,7 @@ class Uptime(Extension):
             {"name": "Détaillé (avec toutes les informations)", "value": "detailed"}
         ]
     )
-    async def setup_maintenance_alert(self, ctx: SlashContext, sensor_id: int, channel: BaseChannel, mode: str = "detailed"):
+    async def setup_maintenance_alert(self, ctx: SlashContext, sensor: str, channel: BaseChannel, mode: str = "detailed"):
         """
         Configure une alerte de maintenance pour un capteur spécifique dans un canal donné.
         """
@@ -372,6 +461,13 @@ class Uptime(Extension):
             not config.get('uptimeKuma', {}).get('uptimeKumaUsername') or 
             not config.get('uptimeKuma', {}).get('uptimeKumaPassword')):
             await ctx.send("❌ Configuration Uptime Kuma manquante. Vérifiez l'URL, le nom d'utilisateur et le mot de passe.", ephemeral=True)
+            return
+
+        # Convertir le sensor (ID sous forme de string) en int
+        try:
+            sensor_id = int(sensor)
+        except ValueError:
+            await ctx.send("❌ ID de capteur invalide.", ephemeral=True)
             return
 
         # Vérifier si le capteur existe
@@ -401,17 +497,23 @@ class Uptime(Extension):
         )
         await ctx.send(embed=embed)
 
+    @setup_maintenance_alert.autocomplete("sensor")
+    async def setup_sensor_autocomplete(self, ctx: AutocompleteContext):
+        """Autocomplétion pour le paramètre sensor de la commande setup."""
+        return await self.sensor_autocomplete(ctx)
+
     @uptime_command.subcommand(
         sub_cmd_name="remove",
         sub_cmd_description="Supprime les alertes de maintenance pour un capteur"
     )
     @slash_option(
-        name="sensor_id",
-        description="ID du capteur à ne plus surveiller",
-        opt_type=OptionType.INTEGER,
-        required=True
+        name="sensor",
+        description="Nom du capteur à ne plus surveiller",
+        opt_type=OptionType.STRING,
+        required=True,
+        autocomplete=True
     )
-    async def remove_maintenance_alert(self, ctx: SlashContext, sensor_id: int):
+    async def remove_maintenance_alert(self, ctx: SlashContext, sensor: str):
         """
         Supprime la surveillance de maintenance pour un capteur spécifique.
         """
@@ -425,7 +527,14 @@ class Uptime(Extension):
             return
             
         guild_id = str(ctx.guild.id)
-        sensor_id_str = str(sensor_id)
+        
+        # Convertir le sensor (ID sous forme de string) en int puis en string pour la clé
+        try:
+            sensor_id = int(sensor)
+            sensor_id_str = str(sensor_id)
+        except ValueError:
+            await ctx.send("❌ ID de capteur invalide.", ephemeral=True)
+            return
 
         if (guild_id not in self.maintenance_monitors or 
             sensor_id_str not in self.maintenance_monitors[guild_id]):
@@ -442,6 +551,42 @@ class Uptime(Extension):
         await self.save_maintenance_monitors()
 
         await ctx.send(f"✅ Alerte de maintenance supprimée pour le capteur ID {sensor_id}.")
+
+    @remove_maintenance_alert.autocomplete("sensor")
+    async def remove_sensor_autocomplete(self, ctx: AutocompleteContext):
+        """Autocomplétion pour le paramètre sensor de la commande remove - ne montre que les capteurs surveillés."""
+        try:
+            if not ctx.guild:
+                return []
+                
+            guild_id = str(ctx.guild.id)
+            
+            # Récupérer seulement les capteurs surveillés sur ce serveur
+            if guild_id not in self.maintenance_monitors:
+                return []
+            
+            monitored_sensors = []
+            query = ctx.input_text.lower() if ctx.input_text else ""
+            
+            for sensor_id_str in self.maintenance_monitors[guild_id].keys():
+                try:
+                    sensor_id = int(sensor_id_str)
+                    sensor_info = await self._get_sensor_info(sensor_id)
+                    
+                    if sensor_info and 'name' in sensor_info:
+                        sensor_name = sensor_info['name']
+                        if query in sensor_name.lower():
+                            # Limiter le nom à 100 caractères pour éviter les erreurs Discord
+                            display_name = sensor_name[:97] + "..." if len(sensor_name) > 100 else sensor_name
+                            monitored_sensors.append({"name": display_name, "value": sensor_id_str})
+                except (ValueError, TypeError):
+                    continue
+            
+            return monitored_sensors[:25]
+            
+        except Exception as error:
+            logger.error(f"Erreur dans l'autocomplétion des capteurs surveillés: {error}")
+            return []
 
     @uptime_command.subcommand(
         sub_cmd_name="list",
@@ -672,7 +817,7 @@ class Uptime(Extension):
                 if notification_mode == "simple":
                     embed = Embed(
                         title="🔧 Maintenance",
-                        description=f"**{sensor_name}** en maintenance",
+                        description=f"**{sensor_name}** est en maintenance",
                         color=0xFFA500  # Orange
                     )
                 else:  # detailed
@@ -685,7 +830,7 @@ class Uptime(Extension):
                 if notification_mode == "simple":
                     embed = Embed(
                         title="❌ Hors ligne",
-                        description=f"**{sensor_name}** hors ligne",
+                        description=f"**{sensor_name}** est hors ligne",
                         color=0xFF0000  # Rouge
                     )
                 else:  # detailed
@@ -714,7 +859,7 @@ class Uptime(Extension):
                         if notification_mode == "simple":
                             embed = Embed(
                                 title="✅ Rétabli",
-                                description=f"**{sensor_name}** en ligne",
+                                description=f"**{sensor_name}** est en ligne",
                                 color=0x00FF00  # Vert
                             )
                         else:  # detailed
