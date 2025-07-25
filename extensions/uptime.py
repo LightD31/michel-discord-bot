@@ -213,8 +213,7 @@ class Uptime(Extension):
             async def heartbeatList(*args):
                 """
                 Événement heartbeatList - liste des heartbeats avec données d'uptime.
-                Capture tous les arguments pour voir la signature exacte.
-                Peut recevoir soit un objet structuré, soit des arguments séparés.
+                Format réel: (monitor_id: str, heartbeats: list, important: bool)
                 """
                 logger.debug(f"HeartbeatList reçu avec {len(args)} arguments: {args}")
                 
@@ -222,39 +221,42 @@ class Uptime(Extension):
                 data = {'args': args}
                 await self._record_event('heartbeatList', data)
                 
-                # Essayer différents formats selon le nombre d'arguments
-                if len(args) == 1 and isinstance(args[0], dict):
-                    # Format objet unique comme documenté
-                    data_obj = args[0]
-                    heartbeat_data = data_obj.get('heartbeatList', {})
-                    uptime_data = data_obj.get('uptimeList', {})
+                # Format réel identifié : 3 arguments (monitor_id, heartbeats, important)
+                if len(args) >= 2:
+                    monitor_id_str = str(args[0])
+                    heartbeats = args[1] if isinstance(args[1], list) else []
+                    important = args[2] if len(args) > 2 else False
                     
-                    logger.debug(f"HeartbeatList (format objet) - {len(heartbeat_data)} moniteurs avec données heartbeat")
-                    logger.debug(f"UptimeList (format objet) - {len(uptime_data)} entrées d'uptime")
+                    logger.debug(f"HeartbeatList - Moniteur {monitor_id_str}: {len(heartbeats)} heartbeats, important={important}")
                     
-                    # Traiter les données de heartbeat pour chaque moniteur
-                    for monitor_id, heartbeats in heartbeat_data.items():
-                        if heartbeats and isinstance(heartbeats, list) and len(heartbeats) > 0:
-                            # Prendre le heartbeat le plus récent
-                            latest_heartbeat = heartbeats[0]  # Le plus récent est généralement en première position
-                            logger.debug(f"Heartbeat le plus récent pour moniteur {monitor_id}: {latest_heartbeat}")
-                            
-                            # Traiter comme une mise à jour de moniteur
-                            monitor_update = {
-                                'monitorID': int(monitor_id),
-                                'status': latest_heartbeat.get('status'),
-                                'msg': latest_heartbeat.get('msg'),
-                                'ping': latest_heartbeat.get('ping'),
-                                'time': latest_heartbeat.get('time')
-                            }
-                            await self.handle_monitor_update(monitor_update)
-                            
-                elif len(args) >= 2:
-                    # Format arguments séparés (signature alternative)
-                    logger.debug(f"HeartbeatList (format arguments séparés) - arg1: {type(args[0])}, arg2: {type(args[1])}")
-                    # Pour l'instant, on enregistre juste les données sans traitement
-                    # jusqu'à ce qu'on comprenne mieux la structure
-                    
+                    # Traiter les heartbeats s'il y en a
+                    if heartbeats and len(heartbeats) > 0:
+                        # Le heartbeat le plus récent est généralement le dernier dans la liste
+                        # (le plus récent timestamp)
+                        latest_heartbeat = heartbeats[-1]  # Dernier = plus récent
+                        logger.debug(f"Heartbeat le plus récent pour moniteur {monitor_id_str}: {latest_heartbeat}")
+                        
+                        # Extraire les informations du heartbeat
+                        status = latest_heartbeat.get('status')
+                        msg = latest_heartbeat.get('msg')
+                        ping = latest_heartbeat.get('ping')
+                        time = latest_heartbeat.get('time')
+                        
+                        # Traiter comme une mise à jour de moniteur
+                        monitor_update = {
+                            'monitorID': int(monitor_id_str),
+                            'status': status,
+                            'msg': msg,
+                            'ping': ping,
+                            'time': time,
+                            'important': important
+                        }
+                        
+                        logger.debug(f"Traitement heartbeat moniteur {monitor_id_str}: status={status}, msg='{msg}', ping={ping}")
+                        await self.handle_monitor_update(monitor_update)
+                    else:
+                        logger.debug(f"Aucun heartbeat dans la liste pour moniteur {monitor_id_str}")
+                        
                 else:
                     logger.warning(f"Format heartbeatList inattendu: {len(args)} arguments de types {[type(arg) for arg in args]}")
 
