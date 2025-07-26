@@ -155,11 +155,13 @@ class IAExtension(Extension):
             # Afficher le coût total
             logger.info(f"Coût total de la commande : {total_cost:.5f}$")
 
-            responses_data = self._create_responses(
-                {"custom_id": selected_providers[0], "content": model_responses[0].choices[0].message.content},
-                {"custom_id": selected_providers[1], "content": model_responses[1].choices[0].message.content},
-                {"custom_id": selected_providers[2], "content": model_responses[2].choices[0].message.content},
-            )
+            # Créer et mélanger les réponses en extrayant le contenu entre les balises
+            responses_data = [
+                {"custom_id": selected_providers[0], "content": self._extract_response_content(model_responses[0].choices[0].message.content)},
+                {"custom_id": selected_providers[1], "content": self._extract_response_content(model_responses[1].choices[0].message.content)},
+                {"custom_id": selected_providers[2], "content": self._extract_response_content(model_responses[2].choices[0].message.content)},
+            ]
+            random.shuffle(responses_data)
 
             await self._send_response_message(ctx, question, responses_data)
         except CommandOnCooldown:
@@ -267,6 +269,11 @@ class IAExtension(Extension):
                     f"- Utilise parfois des expressions familières appropriées\n"
                     f"- N'hésite pas à remettre en question les présupposés quand nécessaire\n\n"
                     
+                    f"# Format de réponse OBLIGATOIRE\n"
+                    f"Tu DOIS encadrer ta réponse finale entre les balises <response> et </response>.\n"
+                    f"Tu peux ajouter des réflexions avant ces balises, mais seul le contenu entre les balises sera affiché à l'utilisateur.\n"
+                    f"Exemple: Je réfléchis à cette question... <response>Voici ma réponse sarcastique</response>\n\n"
+                    
                     f"# Informations contextuelles complémentaires\n"
                     f"{context_info if context_info else 'Aucune information contextuelle supplémentaire disponible.'}"
                 ),
@@ -281,10 +288,22 @@ class IAExtension(Extension):
             extra_body={"usage.include": True}
         )
 
-    def _create_responses(self, openai_response, anthropic_response, deepseek_response):
-        responses = [openai_response, anthropic_response, deepseek_response]
-        random.shuffle(responses)
-        return responses
+    def _extract_response_content(self, raw_content):
+        """Extrait le contenu entre les balises <response> et </response>"""
+        import re
+        
+        # Chercher le contenu entre <response> et </response>
+        match = re.search(r'<response>(.*?)</response>', raw_content, re.DOTALL)
+        
+        if match:
+            # Retourner le contenu extrait en supprimant les espaces en début/fin
+            extracted_content = match.group(1).strip()
+            logger.debug(f"Contenu extrait entre les balises: {extracted_content[:100]}...")
+            return extracted_content
+        else:
+            # Si pas de balises trouvées, retourner le contenu original et logger un avertissement
+            logger.warning("Aucune balise <response> trouvée dans la réponse du modèle, utilisation du contenu complet")
+            return raw_content.strip()
 
     def _get_model_display_name(self, model_id):
         """Convertit l'ID du modèle en nom d'affichage lisible"""
