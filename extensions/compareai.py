@@ -122,7 +122,7 @@ class IAExtension(Extension):
                 "openai": "openai/gpt-4.1",
                 "anthropic": "anthropic/claude-sonnet-4", 
                 "deepseek": "deepseek/deepseek-chat-v3-0324",
-                "qwen": "qwen/qwen3-235b-a22b-thinking-2507",
+                "qwen": "qwen/qwen3-235b-a22b-2507",
                 "gemini": "google/gemini-2.5-flash"
             }
             
@@ -311,7 +311,7 @@ class IAExtension(Extension):
             "openai": "OpenAI GPT-4.1",
             "anthropic": "Anthropic Claude 4 Sonnet",
             "deepseek": "DeepSeek Chat v3-0324",
-            "qwen": "Qwen3 235B A22B Thinking 2507",
+            "qwen": "Qwen3 235B A22B Instruct 2507",
             "gemini": "Google Gemini 2.5 Flash"
         }
         return model_names.get(model_id, model_id)
