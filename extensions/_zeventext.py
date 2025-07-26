@@ -1,4 +1,21 @@
+"""
+Extension Discord pour le Zevent - Version améliorée
+
+Améliorations apportées:
+1. Gestion d'erreurs robuste avec cache de secours
+2. Validation des données API avec fonctions d'aide sécurisées
+3. Meilleure gestion des exceptions lors des appels API concurrents
+4. Code plus maintenable avec séparation des responsabilités
+5. Gestion améliorée des embeds avec méthodes utilitaires
+6. Logs plus informatifs pour le debugging
+7. Protection contre les erreurs de type avec validation des données
+8. Cache des données pour éviter les pannes lors d'interruptions API
+9. Amélioration de la méthode de fin d'événement avec gestion d'erreurs
+10. Gestion robuste des milestones avec vérification des capacités de canal
+"""
+
 import os
+import asyncio
 from interactions import (
     Extension, Client, listen, Message, BaseChannel,
     Task, IntervalTrigger, Embed, File, TimestampStyles, utils, slash_command, SlashContext
@@ -6,9 +23,8 @@ from interactions import (
 from src import logutil
 from src.utils import fetch, load_config
 from datetime import datetime, timezone, timedelta
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 from twitchAPI.twitch import Twitch
-import asyncio
 from dataclasses import dataclass
 
 logger = logutil.init_logger(os.path.basename(__file__))
@@ -54,57 +70,141 @@ class Zevent(Extension):
         self.message: Optional[Message] = None
         self.twitch: Optional[Twitch] = None
         self.last_milestone = 0
+        self.last_data_cache: Optional[Dict] = None
+        self.last_update_time: Optional[datetime] = None
 
     @listen()
     async def on_startup(self):
-        self.channel = await self.client.fetch_channel(self.CHANNEL_ID)
-        self.message = await self.channel.fetch_message(self.MESSAGE_ID)
-        self.twitch = await Twitch(config["twitch"]["twitchClientId"], config["twitch"]["twitchClientSecret"])
-        # self.zevent.start()
-        # await self.zevent()
+        try:
+            self.channel = await self.client.fetch_channel(self.CHANNEL_ID)
+            if hasattr(self.channel, 'fetch_message'):
+                self.message = await self.channel.fetch_message(self.MESSAGE_ID)
+            else:
+                logger.error(f"Channel {self.CHANNEL_ID} does not support message fetching")
+                return
+            
+            self.twitch = await Twitch(config["twitch"]["twitchClientId"], config["twitch"]["twitchClientSecret"])
+            logger.info("Zevent extension initialized successfully")
+            # self.zevent.start()
+            # await self.zevent()
+        except Exception as e:
+            logger.error(f"Failed to initialize Zevent extension: {e}")
+
+    def _validate_api_data(self, data: Any, data_type: str) -> bool:
+        """Validate API response data structure"""
+        try:
+            if not isinstance(data, dict):
+                return False
+                
+            if data_type == "zevent":
+                required_keys = ["donationAmount", "viewersCount", "live"]
+                return all(key in data for key in required_keys)
+            elif data_type == "planning":
+                return "data" in data and isinstance(data["data"], list)
+            elif data_type == "streamlabs":
+                return "amount_raised" in data
+            return False
+        except Exception:
+            return False
+
+    def _safe_get_data(self, data: Any, key_path: List[str], default: Any = None) -> Any:
+        """Safely navigate nested dictionary keys"""
+        try:
+            current = data
+            for key in key_path:
+                if isinstance(current, dict) and key in current:
+                    current = current[key]
+                else:
+                    return default
+            return current
+        except Exception:
+            return default
 
     @Task.create(IntervalTrigger(seconds=UPDATE_INTERVAL))
     async def zevent(self):
+        total_amount = "Données indisponibles"
+        total_int = 0
+        
         try:
+            # Fetch data from all APIs concurrently
+            logger.debug("Fetching data from APIs...")
             data, planning_data, streamlabs_data = await asyncio.gather(
                 fetch(self.API_URL, return_type="json"),
                 fetch(self.PLANNING_API_URL, return_type="json"),
-                fetch(self.STREAMLABS_API_URL, return_type="json")
+                fetch(self.STREAMLABS_API_URL, return_type="json"),
+                return_exceptions=True
             )
 
-            if data is None or planning_data is None or streamlabs_data is None:
-                logger.error("Failed to fetch data from API")
+            # Handle API fetch exceptions and validate data
+            data = data if not isinstance(data, Exception) and self._validate_api_data(data, "zevent") else None
+            planning_data = planning_data if not isinstance(planning_data, Exception) and self._validate_api_data(planning_data, "planning") else None
+            streamlabs_data = streamlabs_data if not isinstance(streamlabs_data, Exception) and self._validate_api_data(streamlabs_data, "streamlabs") else None
+
+            if isinstance(data, Exception):
+                logger.error(f"Failed to fetch Zevent API: {data}")
+            if isinstance(planning_data, Exception):
+                logger.error(f"Failed to fetch Planning API: {planning_data}")
+            if isinstance(streamlabs_data, Exception):
+                logger.error(f"Failed to fetch Streamlabs API: {streamlabs_data}")
+
+            # If all APIs failed, try to use cached data or send error message
+            if not data and not self.last_data_cache:
+                logger.error("All APIs failed and no cached data available")
+                await self.send_simplified_update(total_amount)
                 return
+            
+            # Use cached data if current data is unavailable
+            if not data and self.last_data_cache:
+                logger.warning("Using cached data due to API failure")
+                data = self.last_data_cache
+            elif data:
+                self.last_data_cache = data
+                self.last_update_time = datetime.now()
 
-            total_amount, total_int = self.get_total_amount(data, streamlabs_data)
-            nombre_viewers = data["viewersCount"]["formatted"]
-            streams = await self.categorize_streams(data["live"])
+            if data:
+                total_amount, total_int = self.get_total_amount(data, streamlabs_data)
+                nombre_viewers = self._safe_get_data(data, ["viewersCount", "formatted"], "N/A")
+                streams = await self.categorize_streams(self._safe_get_data(data, ["live"], []))
 
-            embeds = [
-                self.create_main_embed(total_amount, nombre_viewers),
-                self.create_location_embed("streamers présents sur place", streams["LAN"]),
-                self.create_location_embed("participants à distance", streams["Online"], withlink=False),
-                self.create_planning_embed(planning_data["data"])
-            ]
+                embeds = [
+                    self.create_main_embed(total_amount, nombre_viewers),
+                    self.create_location_embed("streamers présents sur place", streams["LAN"]),
+                    self.create_location_embed("participants à distance", streams["Online"], withlink=False),
+                ]
+                
+                # Add planning embed only if planning data is available
+                if planning_data and isinstance(planning_data, dict) and "data" in planning_data:
+                    embeds.append(self.create_planning_embed(planning_data["data"]))
 
-            file = File("data/Zevent_logo.png")
-            await self.message.edit(embeds=embeds, content="", files=[file])
+                file = File("data/Zevent_logo.png")
+                
+                if self.message:
+                    await self.message.edit(embeds=embeds, content="", files=[file])
+                    logger.debug("Message updated successfully")
 
-            await self.check_and_send_milestone(total_int)
+                await self.check_and_send_milestone(total_int)
 
         except Exception as e:
-            logger.error(f"Failed to update message: {e}")
+            logger.error(f"Unexpected error in zevent task: {e}")
             await self.send_simplified_update(total_amount)
 
-    def get_total_amount(self, data: Dict, streamlabs_data: Dict) -> tuple[str, float]:
-        total_amount = data["donationAmount"]["formatted"]
-        total_int = data["donationAmount"]["number"]
-        total_from_streamlabs = streamlabs_data["amount_raised"] / 100  # Streamlabs API returns amount in cents
-        logger.debug(f"Total from Zevent: {total_int}, Total from Streamlabs: {total_from_streamlabs}")
-        if total_from_streamlabs > total_int:
-            total_int = total_from_streamlabs
-            total_amount = f"{total_int:,.2f} €".replace(",", " ")
-        return total_amount, total_int
+    def get_total_amount(self, data: Dict, streamlabs_data: Optional[Dict]) -> tuple[str, float]:
+        """Get total amount from Zevent and Streamlabs APIs, using the higher value"""
+        try:
+            total_amount = self._safe_get_data(data, ["donationAmount", "formatted"], "0 €")
+            total_int = float(self._safe_get_data(data, ["donationAmount", "number"], 0))
+            
+            if streamlabs_data and "amount_raised" in streamlabs_data:
+                total_from_streamlabs = streamlabs_data["amount_raised"] / 100  # Streamlabs API returns amount in cents
+                logger.debug(f"Total from Zevent: {total_int}, Total from Streamlabs: {total_from_streamlabs}")
+                if total_from_streamlabs > total_int:
+                    total_int = total_from_streamlabs
+                    total_amount = f"{total_int:,.2f} €".replace(",", " ")
+            
+            return total_amount, total_int
+        except Exception as e:
+            logger.error(f"Error calculating total amount: {e}")
+            return "Erreur de calcul", 0.0
 
     async def check_and_send_milestone(self, total_amount: float):
         current_milestone = int(total_amount // self.MILESTONE_INTERVAL * self.MILESTONE_INTERVAL)
@@ -113,7 +213,10 @@ class Zevent(Extension):
             # Doesn't send message for the first milestone to avoid spam when bot starts
             if self.last_milestone != 0:
                 milestone_message = f"🎉 Nouveau palier atteint : {current_milestone:,} € récoltés ! 🎉".replace(",", " ")
-                await self.channel.send(milestone_message)
+                if self.channel and hasattr(self.channel, 'send'):
+                    await self.channel.send(milestone_message)
+                else:
+                    logger.error("Cannot send milestone message: channel not available or doesn't support sending")
             self.last_milestone = current_milestone
 
     async def send_simplified_update(self, total_amount: str):
@@ -122,66 +225,73 @@ class Zevent(Extension):
                 title="Zevent Update",
                 description=f"Total récolté: {total_amount}\n\nDésolé, nous rencontrons des difficultés techniques pour afficher les détails des streamers.",
                 color=0x59af37,
-                timestamp=datetime.now()
             )
-            await self.message.edit(embeds=[simple_embed], content="")
+            simple_embed.timestamp = utils.timestamp_converter(datetime.now())
+            
+            if self.message:
+                await self.message.edit(embeds=[simple_embed], content="")
         except Exception as e:
             logger.error(f"Failed to send simplified update: {e}")
 
     async def categorize_streams(self, streams: List[Dict]) -> Dict[str, Dict[str, StreamerInfo]]:
         categorized = {"LAN": {}, "Online": {}}
         
-        twitch_usernames = list(set(stream["twitch"] for stream in streams))
+        if not streams or not self.twitch:
+            return categorized
         
-        batch_size = 100
-        live_streamers = set()
-        
-        for i in range(0, len(twitch_usernames), batch_size):
-            batch = twitch_usernames[i:i+batch_size]
-            async for stream in self.twitch.get_streams(user_login=batch):
-                live_streamers.add(stream.user_login.lower())
-
-        for stream in streams:
-            location = stream["location"]
-            twitch_name = stream["twitch"].lower()
-            display_name = stream["display"].replace("_", "\\_")
-            is_online = twitch_name in live_streamers
+        try:
+            twitch_usernames = list(set(stream.get("twitch", "") for stream in streams if stream.get("twitch")))
             
-            streamer_info = StreamerInfo(display_name, twitch_name, is_online, location)
-            categorized[location][display_name] = streamer_info
+            batch_size = 100
+            live_streamers = set()
+            
+            for i in range(0, len(twitch_usernames), batch_size):
+                batch = twitch_usernames[i:i+batch_size]
+                async for stream in self.twitch.get_streams(user_login=batch):
+                    live_streamers.add(stream.user_login.lower())
+
+            for stream in streams:
+                location = stream.get("location", "Online")
+                twitch_name = stream.get("twitch", "").lower()
+                display_name = stream.get("display", "Unknown").replace("_", "\\_")
+                is_online = twitch_name in live_streamers
+                
+                streamer_info = StreamerInfo(display_name, twitch_name, is_online, location)
+                categorized[location][display_name] = streamer_info
+        except Exception as e:
+            logger.error(f"Error categorizing streams: {e}")
         
         return categorized
 
-    def create_main_embed(self, total_amount: str, nombre_viewers: str = None, finished= False) -> Embed:
-        if finished:
-            return Embed(
-                title="Zevent 2024",
-                description=f"Total récolté: {total_amount}",
-                color=0x59af37,
-                thumbnail="attachment://Zevent_logo.png",
-                footer="Source: zevent.fr ❤️"
-            )
-        else:
-            return Embed(
+    def create_main_embed(self, total_amount: str, nombre_viewers: Optional[str] = None, finished: bool = False) -> Embed:
+        embed = Embed(
             title="Zevent 2024",
-            description=f"Total récolté: {total_amount}\nViewers cumulés: {nombre_viewers}",
             color=0x59af37,
-            timestamp=datetime.now(),
-            thumbnail="attachment://Zevent_logo.png",
-            footer=f"Source: zevent.fr ❤️"
-            )
+        )
+        
+        if finished:
+            embed.description = f"Total récolté: {total_amount}"
+        else:
+            embed.description = f"Total récolté: {total_amount}\nViewers cumulés: {nombre_viewers or 'N/A'}"
+            embed.timestamp = utils.timestamp_converter(datetime.now())
+        
+        # Set thumbnail and footer using the proper methods
+        embed.set_thumbnail("attachment://Zevent_logo.png")
+        embed.set_footer("Source: zevent.fr ❤️")
+        
+        return embed
 
     def create_location_embed(self, title: str, streams: Dict[str, StreamerInfo], withlink=True, finished=False) -> Embed:
         streamer_count = len(streams)
         embed = Embed(
             title=f"Les {streamer_count} {title}",
             color=0x59af37,
-            footer="Source: zevent.fr / Twitch ❤️",
-            timestamp=datetime.now()
         )
+        embed.set_footer("Source: zevent.fr / Twitch ❤️")
+        embed.timestamp = utils.timestamp_converter(datetime.now())
         
         if finished:
-            online_streamers = streams.values()
+            online_streamers = list(streams.values())
             offline_streamers = []
             status = f"Les {streamer_count} {title}"  # Use the embed title as the field title when finished
             withlink = False  # Disable links when the event is finished
@@ -211,60 +321,84 @@ class Zevent(Extension):
 
 
     def create_planning_embed(self, events: List[Dict]) -> Embed:
-        embed = Embed(title="Prochains évènements", color=0x59af37, footer="Source: zevent.gdoc.fr ❤️", timestamp=datetime.now())
+        embed = Embed(title="Prochains évènements", color=0x59af37)
+        embed.set_footer("Source: zevent.gdoc.fr ❤️")
+        embed.timestamp = utils.timestamp_converter(datetime.now())
         
-        sorted_events = sorted(events, key=lambda x: x['start_at'])
+        sorted_events = sorted(events, key=lambda x: x.get('start_at', ''))
         
         for event in sorted_events:
-            start_time = datetime.fromisoformat(event['start_at'].replace('Z', '+00:00')).replace(tzinfo=timezone.utc)
-            end_time = datetime.fromisoformat(event['finished_at'].replace('Z', '+00:00')).replace(tzinfo=timezone.utc)
-            
-            field_name = event['name']
-            
-            duration = end_time - start_time
-            
-            time_str = (f"{str(utils.timestamp_converter(start_time)).format(TimestampStyles.LongDateTime)} - "
-                        f"{str(utils.timestamp_converter(end_time)).format(TimestampStyles.ShortTime)}"
-                        if duration >= timedelta(minutes=20)
-                        else f"{str(utils.timestamp_converter(start_time)).format(TimestampStyles.LongDateTime)}")
-            
-            field_value = f"{time_str}\n"
-            
-            if event['description']:
-                field_value += f"{event['description']}\n"
-            
-            if event['hosts']:
-                hosts = ', '.join([host['name'].replace("_", "\\_") for host in event['hosts']])
-                field_value += f"Hosts: {hosts}\n"
-            
-            if event['participants']:
-                participants = ', '.join([participant['name'].replace("_", "\\_") for participant in event['participants']])
+            try:
+                start_at = event.get('start_at', '')
+                finished_at = event.get('finished_at', '')
                 
-                # Limit the number of participants to 1024 characters
-                if len(participants) > 1024:
-                    participants = participants[:1021] + '...'
+                if not start_at or not finished_at:
+                    continue
+                    
+                start_time = datetime.fromisoformat(start_at.replace('Z', '+00:00')).replace(tzinfo=timezone.utc)
+                end_time = datetime.fromisoformat(finished_at.replace('Z', '+00:00')).replace(tzinfo=timezone.utc)
                 
-                field_value += f"Participants: {participants}"
-            
-            embed.add_field(name=field_name, value=field_value, inline=True)
+                field_name = event.get('name', 'Événement')
+                
+                duration = end_time - start_time
+                
+                time_str = (f"{str(utils.timestamp_converter(start_time)).format(TimestampStyles.LongDateTime)} - "
+                            f"{str(utils.timestamp_converter(end_time)).format(TimestampStyles.ShortTime)}"
+                            if duration >= timedelta(minutes=20)
+                            else f"{str(utils.timestamp_converter(start_time)).format(TimestampStyles.LongDateTime)}")
+                
+                field_value = f"{time_str}\n"
+                
+                if event.get('description'):
+                    field_value += f"{event['description']}\n"
+                
+                if event.get('hosts'):
+                    hosts = ', '.join([host.get('name', '').replace("_", "\\_") for host in event['hosts']])
+                    field_value += f"Hosts: {hosts}\n"
+                
+                if event.get('participants'):
+                    participants = ', '.join([participant.get('name', '').replace("_", "\\_") for participant in event['participants']])
+                    
+                    # Limit the number of participants to 1024 characters
+                    if len(participants) > 1024:
+                        participants = participants[:1021] + '...'
+                    
+                    field_value += f"Participants: {participants}"
+                
+                embed.add_field(name=field_name, value=field_value, inline=True)
+            except Exception as e:
+                logger.error(f"Error processing event: {e}")
         
         return embed
     
-    @slash_command(name="zevent_finish",description= "Créée l'embed final après l'évènement")
-    async def end(self, ctx:SlashContext):
-        # Fetch the data
-        data = await fetch(self.API_URL, return_type="json")
-        total_amount = data["donationAmount"]["formatted"]
-        streams = await self.categorize_streams(data["live"])
-        # Create the embeds with all the streamers regardlss of if they are online or offline, no planning
-        embeds = [ 
-                  self.create_main_embed(total_amount, finished=True),
-                    self.create_location_embed("streamers présents sur place", streams["LAN"], finished=True, withlink=False),
-                    self.create_location_embed("participants à distance", streams["Online"], finished=True, withlink=False)
-                  ]
-        # Edit the message
-        await self.message.edit(embeds=embeds, content="")
-        await ctx.send("Embed final créé avec succès", ephemeral=True)
+    @slash_command(name="zevent_finish", description="Créée l'embed final après l'évènement")
+    async def end(self, ctx: SlashContext):
+        try:
+            # Fetch the data
+            data = await fetch(self.API_URL, return_type="json")
+            if not data or not self._validate_api_data(data, "zevent"):
+                await ctx.send("Erreur: Impossible de récupérer les données du Zevent", ephemeral=True)
+                return
+                
+            total_amount = self._safe_get_data(data, ["donationAmount", "formatted"], "Données indisponibles")
+            streams = await self.categorize_streams(self._safe_get_data(data, ["live"], []))
+            
+            # Create the embeds with all the streamers regardless of if they are online or offline, no planning
+            embeds = [ 
+                self.create_main_embed(total_amount, finished=True),
+                self.create_location_embed("streamers présents sur place", streams["LAN"], finished=True, withlink=False),
+                self.create_location_embed("participants à distance", streams["Online"], finished=True, withlink=False)
+            ]
+            
+            # Edit the message
+            if self.message:
+                await self.message.edit(embeds=embeds, content="")
+                await ctx.send("Embed final créé avec succès", ephemeral=True)
+            else:
+                await ctx.send("Erreur: Message non trouvé", ephemeral=True)
+        except Exception as e:
+            logger.error(f"Error in zevent_finish command: {e}")
+            await ctx.send("Erreur lors de la création de l'embed final", ephemeral=True)
         
         
         
