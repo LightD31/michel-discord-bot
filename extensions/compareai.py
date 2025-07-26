@@ -271,7 +271,7 @@ class IAExtension(Extension):
                     
                     f"# Format de réponse OBLIGATOIRE\n"
                     f"Tu DOIS encadrer ta réponse finale entre les balises <response> et </response>.\n"
-                    f"Tu peux ajouter des réflexions avant ces balises, mais seul le contenu entre les balises sera affiché à l'utilisateur.\n"
+                    f"N'ajoute pas d'autre contenu, seul le contenu entre les balises sera affiché à l'utilisateur.\n"
                     f"Exemple: Je réfléchis à cette question... <response>Voici ma réponse sarcastique</response>\n\n"
                     
                     f"# Informations contextuelles complémentaires\n"
