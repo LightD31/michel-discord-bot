@@ -41,7 +41,9 @@ class IAExtension(Extension):
         self.default_models = {
             "openai": "openai/gpt-4.1",
             "anthropic": "anthropic/claude-sonnet-4",
-            "deepseek": "deepseek/deepseek-chat-v3-0324"
+            "deepseek": "deepseek/deepseek-chat-v3-0324",
+            "qwen": "qwen/qwen3-235b-a22b-thinking-2507",
+            "gemini": "google/gemini-2.5-flash"
         }
 
     @listen()
@@ -115,13 +117,21 @@ class IAExtension(Extension):
         try:
             conversation = await self._prepare_conversation(ctx, question)
 
-            # Obtenir les réponses des trois modèles avec gestion d'erreur individuelle
-            responses = {}
-            models = {
+            # Sélectionner aléatoirement trois modèles parmi les cinq disponibles
+            all_models = {
                 "openai": "openai/gpt-4.1",
                 "anthropic": "anthropic/claude-sonnet-4", 
-                "deepseek": "deepseek/deepseek-chat-v3-0324"
+                "deepseek": "deepseek/deepseek-chat-v3-0324",
+                "qwen": "qwen/qwen3-235b-a22b-thinking-2507",
+                "gemini": "google/gemini-2.5-flash"
             }
+            
+            # Choisir 3 modèles aléatoirement
+            selected_providers = random.sample(list(all_models.keys()), 3)
+            models = {provider: all_models[provider] for provider in selected_providers}
+            
+            # Obtenir les réponses des trois modèles sélectionnés avec gestion d'erreur individuelle
+            responses = {}
             
             for provider, model in models.items():
                 try:
@@ -132,32 +142,26 @@ class IAExtension(Extension):
                     await ctx.send(f"❌ Erreur avec le modèle {provider}: {str(e)}", ephemeral=True)
                     return
 
-            openai_response = responses["openai"]
-            anthropic_response = responses["anthropic"] 
-            deepseek_response = responses["deepseek"]
+            # Obtenir les réponses dans l'ordre des clés sélectionnées
+            model_responses = [responses[provider] for provider in selected_providers]
 
             # Calculer le coût total de la commande
             total_cost = 0
-            openai_cost = self.calculate_cost(openai_response)
-            anthropic_cost = self.calculate_cost(anthropic_response)
-            deepseek_cost = self.calculate_cost(deepseek_response)
-            total_cost = openai_cost + anthropic_cost + deepseek_cost
-
-            # Afficher les coûts individuels
-            self.print_cost(openai_response)
-            self.print_cost(anthropic_response)
-            self.print_cost(deepseek_response)
+            for response in model_responses:
+                cost = self.calculate_cost(response)
+                total_cost += cost
+                self.print_cost(response)
             
             # Afficher le coût total
             logger.info(f"Coût total de la commande : {total_cost:.5f}$")
 
-            responses = self._create_responses(
-                {"custom_id": "openai", "content": openai_response.choices[0].message.content},
-                {"custom_id": "anthropic", "content": anthropic_response.choices[0].message.content},
-                {"custom_id": "deepseek", "content": deepseek_response.choices[0].message.content},
+            responses_data = self._create_responses(
+                {"custom_id": selected_providers[0], "content": model_responses[0].choices[0].message.content},
+                {"custom_id": selected_providers[1], "content": model_responses[1].choices[0].message.content},
+                {"custom_id": selected_providers[2], "content": model_responses[2].choices[0].message.content},
             )
 
-            await self._send_response_message(ctx, question, responses)
+            await self._send_response_message(ctx, question, responses_data)
         except CommandOnCooldown:
             await ctx.send(
                 "La commande est en cooldown, veuillez réessayer plus tard",
@@ -287,7 +291,9 @@ class IAExtension(Extension):
         model_names = {
             "openai": "OpenAI GPT-4.1",
             "anthropic": "Anthropic Claude 4 Sonnet",
-            "deepseek": "DeepSeek Chat v3-0324"
+            "deepseek": "DeepSeek Chat v3-0324",
+            "qwen": "Qwen 3-235B Thinking",
+            "gemini": "Google Gemini 2.5 Flash"
         }
         return model_names.get(model_id, model_id)
 
@@ -463,9 +469,10 @@ class IAExtension(Extension):
                     # Fallback: envoyer un nouveau message
                     await ctx.send(f"✅ Vote enregistré pour {response}")
 
-            openai_votes, anthropic_votes, deepseek_votes = self._count_votes()
+            openai_votes, anthropic_votes, deepseek_votes, qwen_votes, gemini_votes = self._count_votes()
             logger.info(
-                f"Total des votes - OpenAI: {openai_votes}, Anthropic: {anthropic_votes}, Deepseek: {deepseek_votes}"
+                f"Total des votes - OpenAI: {openai_votes}, Anthropic: {anthropic_votes}, "
+                f"Deepseek: {deepseek_votes}, Qwen: {qwen_votes}, Gemini: {gemini_votes}"
             )
 
             await button_ctx.ctx.send("✅ Vote enregistré avec succès", ephemeral=True)
@@ -575,15 +582,17 @@ class IAExtension(Extension):
             # Créer le dossier et fichier s'ils n'existent pas
             os.makedirs("data", exist_ok=True)
             if not os.path.exists("data/responses.txt"):
-                return 0, 0, 0
+                return 0, 0, 0, 0, 0
                 
             with open("data/responses.txt", "r", encoding='utf-8') as f:
                 votes = f.readlines()
                 openai_votes = votes.count("openai\n")
                 anthropic_votes = votes.count("anthropic\n")
                 deepseek_votes = votes.count("deepseek\n")
-                return openai_votes, anthropic_votes, deepseek_votes
+                qwen_votes = votes.count("qwen\n")
+                gemini_votes = votes.count("gemini\n")
+                return openai_votes, anthropic_votes, deepseek_votes, qwen_votes, gemini_votes
         except Exception as e:
             logger.error(f"Erreur lors du comptage des votes: {e}")
-            return 0, 0, 0
+            return 0, 0, 0, 0, 0
 
