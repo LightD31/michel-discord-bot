@@ -2,16 +2,15 @@ import os
 import random
 import httpx
 import re
+import asyncio
 
 from openai import AsyncOpenAI
-from interactions.api.events import MessageCreate
 from interactions import (
     Button,
     Extension,
     slash_command,
     Client,
     listen,
-    ChannelType,
     slash_option,
     OptionType,
     SlashContext,
@@ -27,7 +26,6 @@ from src import logutil
 from src.utils import (
     load_config,
     search_dict_by_sentence,
-    extract_answer,
 )
 
 logger = logutil.init_logger(os.path.basename(__file__))
@@ -39,6 +37,12 @@ class IAExtension(Extension):
         self.bot: Client = bot
         self.openrouter_client = None
         self.model_prices = {}
+        # Configuration des modèles par défaut
+        self.default_models = {
+            "openai": "openai/gpt-4.1",
+            "anthropic": "anthropic/claude-sonnet-4",
+            "deepseek": "deepseek/deepseek-chat-v3-0324"
+        }
 
     @listen()
     async def on_startup(self):
@@ -54,29 +58,48 @@ class IAExtension(Extension):
         await self._load_model_prices()
 
     async def _load_model_prices(self):
-        """Charge les prix des modèles depuis l'API OpenRouter"""
-        try:
-            async with httpx.AsyncClient() as client:
-                response = await client.get(
-                    "https://openrouter.ai/api/v1/models",
-                    headers={
-                        "Authorization": f"Bearer {config['OpenRouter']['openrouterApiKey']}",
-                        "HTTP-Referer": "https://discord.bot",
-                        "X-Title": "Michel Discord Bot",
-                    },
-                )
-                data = response.json()
+        """Charge les prix des modèles depuis l'API OpenRouter avec retry et timeout"""
+        max_retries = 3
+        timeout = 10
+        
+        for attempt in range(max_retries):
+            try:
+                async with httpx.AsyncClient(timeout=timeout) as client:
+                    response = await client.get(
+                        "https://openrouter.ai/api/v1/models",
+                        headers={
+                            "Authorization": f"Bearer {config['OpenRouter']['openrouterApiKey']}",
+                            "HTTP-Referer": "https://discord.bot",
+                            "X-Title": "Michel Discord Bot",
+                        },
+                    )
+                    response.raise_for_status()  # Lever une exception pour les codes d'erreur HTTP
+                    data = response.json()
+                    
+                    for model in data["data"]:
+                        model_id = model["id"]
+                        pricing = model.get("pricing", {})
+                        if pricing.get("prompt") and pricing.get("completion"):
+                            self.model_prices[model_id] = {
+                                "input": float(pricing["prompt"]),
+                                "output": float(pricing["completion"]),
+                            }
+                    
+                    logger.info(f"Loaded pricing for {len(self.model_prices)} models from OpenRouter")
+                    return  # Succès, sortir de la boucle
+                    
+            except httpx.TimeoutException:
+                logger.warning(f"Timeout lors du chargement des prix (tentative {attempt + 1}/{max_retries})")
+            except httpx.HTTPStatusError as e:
+                logger.error(f"Erreur HTTP lors du chargement des prix: {e.response.status_code}")
+                break  # Ne pas retry sur erreur HTTP
+            except Exception as e:
+                logger.error(f"Erreur lors du chargement des prix (tentative {attempt + 1}/{max_retries}): {e}")
                 
-                for model in data["data"]:
-                    model_id = model["id"]
-                    self.model_prices[model_id] = {
-                        "input": float(model["pricing"]["prompt"]),
-                        "output": float(model["pricing"]["completion"]),
-                    }
-                logger.info(f"Loaded pricing for {len(self.model_prices)} models from OpenRouter")
-        except Exception as e:
-            logger.error(f"Error loading model prices: {e}")
-            # Fallback vers les prix par défaut si l'API échoue
+            if attempt < max_retries - 1:
+                await asyncio.sleep(2 ** attempt)  # Backoff exponentiel
+        
+        logger.warning("Impossible de charger les prix des modèles, utilisation des prix par défaut")
 
     @slash_command(
         name="ask", description="Ask Michel and vote for the better answer"
@@ -85,19 +108,33 @@ class IAExtension(Extension):
     @auto_defer()
     @slash_option("question", "Ta question", opt_type=OptionType.STRING, required=True)
     async def ask_question(self, ctx: SlashContext, question: str):
+        if not self.openrouter_client:
+            await ctx.send("❌ Le client OpenRouter n'est pas initialisé", ephemeral=True)
+            return
+            
         try:
             conversation = await self._prepare_conversation(ctx, question)
 
-            # Obtenir les réponses des trois modèles
-            openai_response = await self._get_model_response(
-                conversation, "openai/gpt-4.1", ctx, question
-            )
-            anthropic_response = await self._get_model_response(
-                conversation, "anthropic/claude-3.7-sonnet", ctx, question
-            )
-            deepseek_response = await self._get_model_response(
-                conversation, "deepseek/deepseek-chat-v3-0324", ctx, question
-            )
+            # Obtenir les réponses des trois modèles avec gestion d'erreur individuelle
+            responses = {}
+            models = {
+                "openai": "openai/gpt-4o-mini",
+                "anthropic": "anthropic/claude-3-5-sonnet-20241022", 
+                "deepseek": "deepseek/deepseek-chat"
+            }
+            
+            for provider, model in models.items():
+                try:
+                    response = await self._get_model_response(conversation, model, ctx, question)
+                    responses[provider] = response
+                except Exception as e:
+                    logger.error(f"Erreur lors de l'appel au modèle {provider}: {e}")
+                    await ctx.send(f"❌ Erreur avec le modèle {provider}: {str(e)}", ephemeral=True)
+                    return
+
+            openai_response = responses["openai"]
+            anthropic_response = responses["anthropic"] 
+            deepseek_response = responses["deepseek"]
 
             # Calculer le coût total de la commande
             total_cost = 0
@@ -144,9 +181,12 @@ class IAExtension(Extension):
         return conversation
 
     async def _get_model_response(self, conversation, model, ctx: SlashContext, question):
-        # Extraire des informations pertinentes sur le contexte
-        server_name = ctx.guild.name
-        channel_name = ctx.channel.name
+        if not self.openrouter_client:
+            raise RuntimeError("OpenRouter client not initialized")
+            
+        # Extraire des informations pertinentes sur le contexte avec validation
+        server_name = ctx.guild.name if ctx.guild else "DM"
+        channel_name = ctx.channel.name if hasattr(ctx.channel, 'name') else "canal-inconnu"
         author = ctx.author
         
         # Obtenir des informations sur les utilisateurs impliqués dans la conversation
@@ -174,38 +214,24 @@ class IAExtension(Extension):
                     # Trouver les utilisateurs mentionnés dans le message
                     mentions = re.findall(pattern, msg["content"])
                     for user_id in mentions:
-                        user_id = int(user_id)
-                        if user_id not in mentioned_user_ids:
-                            user = await self.bot.fetch_user(user_id)
-                            if user:
-                                mentioned_users.append({
-                                    "id": user.id,
-                                    "username": user.username,
-                                    "display_name": user.display_name,
-                                    "is_author": user.id == author.id
-                                })
-                                mentioned_user_ids.add(user.id)
+                        try:
+                            user_id = int(user_id)
+                            if user_id not in mentioned_user_ids:
+                                user = await self.bot.fetch_user(user_id)
+                                if user:
+                                    mentioned_users.append({
+                                        "id": user.id,
+                                        "username": user.username,
+                                        "display_name": user.display_name,
+                                        "is_author": user.id == author.id
+                                    })
+                                    mentioned_user_ids.add(user.id)
+                        except (ValueError, Exception) as e:
+                            logger.warning(f"Erreur lors de la récupération de l'utilisateur {user_id}: {e}")
         
         # Rechercher des informations contextuelles pertinentes
-        # Note: dictInfos est vide dans le code original, nous pourrions y ajouter des informations
-        # pour améliorer la pertinence des réponses
-        dictInfos = {}
+        dictInfos = {}  # À implémenter selon les besoins
         context_info = search_dict_by_sentence(dictInfos, question)
-        
-        # Structure des informations à envoyer à l'IA
-        system_context = {
-            "server": {
-                "name": server_name,
-                "channel": channel_name
-            },
-            "users": mentioned_users,
-            "question_author": {
-                "id": author.id,
-                "username": author.username,
-                "display_name": author.display_name
-            },
-            "additional_context": context_info
-        }
 
         messages = conversation.copy()
         messages.append(
@@ -399,87 +425,106 @@ class IAExtension(Extension):
                 return
 
             response = button_ctx.ctx.custom_id
-            logger.info(f"Vote : {response}")
+            logger.info(f"Vote enregistré : {response}")
             self._save_response_to_file(response)
 
-            # Identify the selected response
+            # Identifier la réponse sélectionnée
             selected_response = next((resp for resp in responses if resp["custom_id"] == response), None)
             if selected_response:
-                # Create new message content with only the selected response
+                # Créer le nouveau contenu du message avec seulement la réponse sélectionnée
                 new_message_content = (
                     f"**{ctx.author.mention} : {question}**\n{selected_response['content']}"
                 )
                 # Utiliser la méthode de division pour le message édité
-                if len(new_message_content) <= 2000:
-                    await message_info.edit(
-                        content=new_message_content,
-                        components=[],
-                    )
-                else:
-                    # Si le message édité est trop long, supprimer l'ancien et envoyer un nouveau message divisé
-                    await message_info.delete()
-                    await self._split_and_send_message(ctx, new_message_content)
+                try:
+                    if len(new_message_content) <= 2000:
+                        await message_info.edit(
+                            content=new_message_content,
+                            components=[],
+                        )
+                    else:
+                        # Si le message édité est trop long, supprimer l'ancien et envoyer un nouveau message divisé
+                        await message_info.delete()
+                        await self._split_and_send_message(ctx, new_message_content)
+                except Exception as edit_error:
+                    logger.error(f"Erreur lors de l'édition du message: {edit_error}")
+                    # Fallback: envoyer un nouveau message
+                    await ctx.send(f"✅ Vote enregistré pour {response}")
 
             openai_votes, anthropic_votes, deepseek_votes = self._count_votes()
             logger.info(
-                f"Votes : OpenAI : {openai_votes}, Anthropic : {anthropic_votes}, Deepseek : {deepseek_votes}"
+                f"Total des votes - OpenAI: {openai_votes}, Anthropic: {anthropic_votes}, Deepseek: {deepseek_votes}"
             )
 
-            await button_ctx.ctx.send("Vote enregistré", ephemeral=True)
+            await button_ctx.ctx.send("✅ Vote enregistré avec succès", ephemeral=True)
+            
         except TimeoutError:
             # En cas de timeout, éditer le message existant pour retirer les boutons
             try:
-                # Simplement supprimer les boutons mais conserver le contenu du message original
                 await message_info.edit(components=[])
                 logger.info("Timeout de vote - Boutons supprimés")
             except Exception as e:
                 logger.error(f"Erreur lors de la gestion du timeout : {e}")
-                # Ne pas envoyer de nouveau message en cas d'erreur
+        except Exception as e:
+            logger.error(f"Erreur inattendue lors du vote: {e}")
+            try:
+                await ctx.send("❌ Erreur lors du traitement du vote", ephemeral=True)
+            except Exception:
+                pass  # Éviter les erreurs en cascade
 
-    # Ajouter une nouvelle méthode pour calculer le coût d'une réponse
     def calculate_cost(self, message):
-        input_tokens = getattr(getattr(message, "usage", None), "prompt_tokens", 0) or 0
-        output_tokens = getattr(getattr(message, "usage", None), "completion_tokens", 0) or 0
+        """Calcule le coût d'une réponse avec validation des données"""
+        if not hasattr(message, 'usage') or not message.usage:
+            logger.warning("Informations d'usage manquantes dans la réponse")
+            return 0.0
+            
+        input_tokens = getattr(message.usage, "prompt_tokens", 0) or 0
+        output_tokens = getattr(message.usage, "completion_tokens", 0) or 0
         
-        model_id = message.model
+        model_id = getattr(message, 'model', 'unknown')
         
         if model_id in self.model_prices:
-            input_cost = self.model_prices[model_id]["input"] * input_tokens
-            output_cost = self.model_prices[model_id]["output"] * output_tokens
-            return input_cost + output_cost
+            try:
+                input_cost = self.model_prices[model_id]["input"] * input_tokens
+                output_cost = self.model_prices[model_id]["output"] * output_tokens
+                return input_cost + output_cost
+            except (KeyError, TypeError) as e:
+                logger.error(f"Erreur lors du calcul du coût pour {model_id}: {e}")
+                return 0.0
         else:
-            # Si le modèle n'est pas dans les prix récupérés depuis l'API, retourner 0
-            logger.warning(f"Prix non trouvé pour le modèle {model_id}, utilisation de 0$")
-            return 0
+            logger.warning(f"Prix non trouvé pour le modèle {model_id}")
+            return 0.0
 
     def print_cost(self, message):
-        # Récupérer le comptage de tokens à partir de la réponse
-        input_tokens = getattr(getattr(message, "usage", None), "prompt_tokens", 0) or 0
-        output_tokens = getattr(getattr(message, "usage", None), "completion_tokens", 0) or 0
-        
-        # Calculer le coût en utilisant les prix du modèle depuis l'API
-        model_id = message.model
+        """Affiche le coût d'une réponse avec validation des données"""
+        if not hasattr(message, 'usage') or not message.usage:
+            logger.info(f"modèle : {getattr(message, 'model', 'unknown')} | coût : informations d'usage manquantes")
+            return
+            
+        input_tokens = getattr(message.usage, "prompt_tokens", 0) or 0
+        output_tokens = getattr(message.usage, "completion_tokens", 0) or 0
+        model_id = getattr(message, 'model', 'unknown')
         
         if model_id in self.model_prices:
-            # Utiliser les prix récupérés de l'API
-            input_cost = self.model_prices[model_id]["input"] * input_tokens
-            output_cost = self.model_prices[model_id]["output"] * output_tokens
-            total_cost = input_cost + output_cost
-            
-            # Afficher le coût 
-            logger.info(
-                "modèle :%s | coût : %.5f$ | %.5f$ (%d tks) in | %.5f$ (%d tks) out",
-                model_id,
-                total_cost,
-                input_cost,
-                input_tokens,
-                output_cost,
-                output_tokens,
-            )
+            try:
+                input_cost = self.model_prices[model_id]["input"] * input_tokens
+                output_cost = self.model_prices[model_id]["output"] * output_tokens
+                total_cost = input_cost + output_cost
+                
+                logger.info(
+                    "modèle : %s | coût : %.5f$ | %.5f$ (%d tks) in | %.5f$ (%d tks) out",
+                    model_id,
+                    total_cost,
+                    input_cost,
+                    input_tokens,
+                    output_cost,
+                    output_tokens,
+                )
+            except (KeyError, TypeError) as e:
+                logger.error(f"Erreur lors du calcul du coût pour {model_id}: {e}")
         else:
-            # Afficher un message lorsque les informations de prix ne sont pas disponibles
             logger.info(
-                "modèle :%s | coût : inconnu | %d tks in | %d tks out",
+                "modèle : %s | coût : inconnu | %d tks in | %d tks out",
                 model_id,
                 input_tokens,
                 output_tokens,
@@ -487,15 +532,31 @@ class IAExtension(Extension):
 
     @staticmethod
     def _save_response_to_file(response):
-        with open("data/responses.txt", "a") as f:
-            f.write(f"{response}\n")
+        """Sauvegarde la réponse dans un fichier avec gestion d'erreur"""
+        try:
+            # Créer le dossier data s'il n'existe pas
+            os.makedirs("data", exist_ok=True)
+            with open("data/responses.txt", "a", encoding='utf-8') as f:
+                f.write(f"{response}\n")
+        except Exception as e:
+            logger.error(f"Erreur lors de la sauvegarde du vote: {e}")
 
     @staticmethod
     def _count_votes():
-        with open("data/responses.txt", "r") as f:
-            votes = f.readlines()
-            openai_votes = votes.count("openai\n")
-            anthropic_votes = votes.count("anthropic\n")
-            deepseek_votes = votes.count("deepseek\n")
-            return openai_votes, anthropic_votes, deepseek_votes
+        """Compte les votes avec gestion d'erreur et création du fichier si nécessaire"""
+        try:
+            # Créer le dossier et fichier s'ils n'existent pas
+            os.makedirs("data", exist_ok=True)
+            if not os.path.exists("data/responses.txt"):
+                return 0, 0, 0
+                
+            with open("data/responses.txt", "r", encoding='utf-8') as f:
+                votes = f.readlines()
+                openai_votes = votes.count("openai\n")
+                anthropic_votes = votes.count("anthropic\n")
+                deepseek_votes = votes.count("deepseek\n")
+                return openai_votes, anthropic_votes, deepseek_votes
+        except Exception as e:
+            logger.error(f"Erreur lors du comptage des votes: {e}")
+            return 0, 0, 0
 
