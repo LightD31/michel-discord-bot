@@ -282,6 +282,15 @@ class IAExtension(Extension):
         random.shuffle(responses)
         return responses
 
+    def _get_model_display_name(self, model_id):
+        """Convertit l'ID du modèle en nom d'affichage lisible"""
+        model_names = {
+            "openai": "OpenAI GPT-4.1",
+            "anthropic": "Anthropic Claude 4 Sonnet",
+            "deepseek": "DeepSeek Chat v3-0324"
+        }
+        return model_names.get(model_id, model_id)
+
     async def _split_and_send_message(self, ctx_or_channel, content, components=None):
         """
         Divise un message si sa longueur dépasse 2000 caractères et l'envoie en plusieurs parties.
@@ -431,9 +440,12 @@ class IAExtension(Extension):
             # Identifier la réponse sélectionnée
             selected_response = next((resp for resp in responses if resp["custom_id"] == response), None)
             if selected_response:
+                # Obtenir le nom du modèle pour l'affichage
+                model_display_name = self._get_model_display_name(response)
                 # Créer le nouveau contenu du message avec seulement la réponse sélectionnée
                 new_message_content = (
-                    f"**{ctx.author.mention} : {question}**\n{selected_response['content']}"
+                    f"**{ctx.author.mention} : {question}**\n\n"
+                    f"**Réponse choisie ({model_display_name}) :**\n{selected_response['content']}"
                 )
                 # Utiliser la méthode de division pour le message édité
                 try:
@@ -459,10 +471,25 @@ class IAExtension(Extension):
             await button_ctx.ctx.send("✅ Vote enregistré avec succès", ephemeral=True)
             
         except TimeoutError:
-            # En cas de timeout, éditer le message existant pour retirer les boutons
+            # En cas de timeout, éditer le message existant pour retirer les boutons et afficher les modèles
             try:
-                await message_info.edit(components=[])
-                logger.info("Timeout de vote - Boutons supprimés")
+                # Créer le contenu du message avec les noms des modèles
+                timeout_content = (
+                    f"**{ctx.author.mention} : {question}**\n\n"
+                    f"**Réponse 1 ({self._get_model_display_name(responses[0]['custom_id'])}) :** \n> {responses[0]['content'].replace('\n', '\n> ')}\n\n"
+                    f"**Réponse 2 ({self._get_model_display_name(responses[1]['custom_id'])}) :** \n> {responses[1]['content'].replace('\n', '\n> ')}\n\n"
+                    f"**Réponse 3 ({self._get_model_display_name(responses[2]['custom_id'])}) :** \n> {responses[2]['content'].replace('\n', '\n> ')}\n\n"
+                    f"⏰ *Temps de vote expiré*"
+                )
+                
+                if len(timeout_content) <= 2000:
+                    await message_info.edit(content=timeout_content, components=[])
+                else:
+                    # Si le message est trop long, supprimer l'ancien et envoyer un nouveau message divisé
+                    await message_info.delete()
+                    await self._split_and_send_message(ctx, timeout_content)
+                    
+                logger.info("Timeout de vote - Boutons supprimés et modèles affichés")
             except Exception as e:
                 logger.error(f"Erreur lors de la gestion du timeout : {e}")
         except Exception as e:
