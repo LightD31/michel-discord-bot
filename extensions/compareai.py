@@ -118,9 +118,9 @@ class IAExtension(Extension):
             # Obtenir les réponses des trois modèles avec gestion d'erreur individuelle
             responses = {}
             models = {
-                "openai": "openai/gpt-4o-mini",
-                "anthropic": "anthropic/claude-3-5-sonnet-20241022", 
-                "deepseek": "deepseek/deepseek-chat"
+                "openai": "openai/gpt-4.1",
+                "anthropic": "anthropic/claude-sonnet-4", 
+                "deepseek": "deepseek/deepseek-chat-v3-0324"
             }
             
             for provider, model in models.items():
