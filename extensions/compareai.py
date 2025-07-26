@@ -292,7 +292,7 @@ class IAExtension(Extension):
             "openai": "OpenAI GPT-4.1",
             "anthropic": "Anthropic Claude 4 Sonnet",
             "deepseek": "DeepSeek Chat v3-0324",
-            "qwen": "Qwen 3-235B Thinking",
+            "qwen": "Qwen3 235B A22B Thinking 2507",
             "gemini": "Google Gemini 2.5 Flash"
         }
         return model_names.get(model_id, model_id)
