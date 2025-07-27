@@ -57,7 +57,7 @@ def split_streamer_list(streamer_list: str, max_length: int = 1024) -> List[str]
 
 class Zevent(Extension):
     CHANNEL_ID = 993605590033117214
-    MESSAGE_ID = 1279187668185645177
+    MESSAGE_ID = 1399095553148850176
     API_URL = "https://zevent.fr/api/"
     PLANNING_API_URL = "https://api.zevent.gdoc.fr/events/upcoming"
     STREAMLABS_API_URL = "https://streamlabscharity.com/api/v1/teams/@zevent-2024/zevent-2024"
