@@ -60,7 +60,7 @@ class Zevent(Extension):
     MESSAGE_ID = 1399095553148850176
     API_URL = "https://zevent.fr/api/"
     PLANNING_API_URL = "https://api.zevent.gdoc.fr/events/upcoming"
-    STREAMLABS_API_URL = "https://streamlabscharity.com/api/v1/teams/@zevent-2024/zevent-2024"
+    STREAMLABS_API_URL = "https://streamlabscharity.com/api/v1/teams/@zevent-2025/zevent-2025"
     UPDATE_INTERVAL = 30  # 1 minute
     MILESTONE_INTERVAL = 100000  # 100k
 
