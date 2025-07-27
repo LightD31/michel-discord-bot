@@ -265,7 +265,7 @@ class Zevent(Extension):
 
     def create_main_embed(self, total_amount: str, nombre_viewers: Optional[str] = None, finished: bool = False) -> Embed:
         embed = Embed(
-            title="Zevent 2024",
+            title="Zevent 2025",
             color=0x59af37,
         )
         
