@@ -128,22 +128,23 @@ class Zevent(Extension):
         try:
             # Fetch data from all APIs concurrently
             logger.debug("Fetching data from APIs...")
-            data, planning_data, streamlabs_data = await asyncio.gather(
+            data, streamlabs_data = await asyncio.gather(
                 fetch(self.API_URL, return_type="json"),
-                fetch(self.PLANNING_API_URL, return_type="json"),
+                # fetch(self.PLANNING_API_URL, return_type="json"),  # Planning API not available yet
                 fetch(self.STREAMLABS_API_URL, return_type="json"),
                 return_exceptions=True
             )
+            planning_data = None  # Planning API not available yet
 
             # Handle API fetch exceptions and validate data
             data = data if not isinstance(data, Exception) and self._validate_api_data(data, "zevent") else None
-            planning_data = planning_data if not isinstance(planning_data, Exception) and self._validate_api_data(planning_data, "planning") else None
+            # planning_data = planning_data if not isinstance(planning_data, Exception) and self._validate_api_data(planning_data, "planning") else None  # Planning API not available yet
             streamlabs_data = streamlabs_data if not isinstance(streamlabs_data, Exception) and self._validate_api_data(streamlabs_data, "streamlabs") else None
 
             if isinstance(data, Exception):
                 logger.error(f"Failed to fetch Zevent API: {data}")
-            if isinstance(planning_data, Exception):
-                logger.error(f"Failed to fetch Planning API: {planning_data}")
+            # if isinstance(planning_data, Exception):  # Planning API not available yet
+            #     logger.error(f"Failed to fetch Planning API: {planning_data}")
             if isinstance(streamlabs_data, Exception):
                 logger.error(f"Failed to fetch Streamlabs API: {streamlabs_data}")
 
