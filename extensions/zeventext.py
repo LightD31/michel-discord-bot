@@ -61,7 +61,7 @@ class Zevent(Extension):
     API_URL = "https://zevent.fr/api/"
     PLANNING_API_URL = "https://api.zevent.gdoc.fr/events/upcoming"
     STREAMLABS_API_URL = "https://streamlabscharity.com/api/v1/teams/@zevent-2025/zevent-2025"
-    UPDATE_INTERVAL = 30  # 1 minute
+    UPDATE_INTERVAL = 900
     MILESTONE_INTERVAL = 100000  # 100k
 
     def __init__(self, client: Client):
@@ -86,7 +86,7 @@ class Zevent(Extension):
             self.twitch = await Twitch(config["twitch"]["twitchClientId"], config["twitch"]["twitchClientSecret"])
             logger.info("Zevent extension initialized successfully")
             self.zevent.start()
-            await self.zevent()
+            # await self.zevent()
         except Exception as e:
             logger.error(f"Failed to initialize Zevent extension: {e}")
 
