@@ -85,8 +85,8 @@ class Zevent(Extension):
             
             self.twitch = await Twitch(config["twitch"]["twitchClientId"], config["twitch"]["twitchClientSecret"])
             logger.info("Zevent extension initialized successfully")
-            # self.zevent.start()
-            # await self.zevent()
+            self.zevent.start()
+            await self.zevent()
         except Exception as e:
             logger.error(f"Failed to initialize Zevent extension: {e}")
 
