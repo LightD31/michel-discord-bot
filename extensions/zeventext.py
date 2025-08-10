@@ -254,7 +254,7 @@ class Zevent(Extension):
             for stream in streams:
                 location = stream.get("location", "Online")
                 twitch_name = stream.get("twitch", "").lower()
-                display_name = stream.get("display", "Unknown").replace("_", "\\_")
+                display_name = stream.get("display", "Unknown")
                 is_online = twitch_name in live_streamers
                 
                 streamer_info = StreamerInfo(display_name, twitch_name, is_online, location)
@@ -327,7 +327,7 @@ class Zevent(Extension):
                 continue
 
             streamer_list = ', '.join(
-                f"[{s.display_name}](https://www.twitch.tv/{s.twitch_name})" if withlink else s.display_name
+                f"[{s.display_name}](https://www.twitch.tv/{s.twitch_name})" if withlink else s.display_name.replace("_", "\\_")
                 for s in streamers
             )
 
