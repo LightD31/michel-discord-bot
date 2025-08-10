@@ -18,6 +18,7 @@ from interactions import (
     Buckets,
     auto_defer,
     ButtonStyle,
+    IntegrationType
 )
 from interactions.client.errors import CommandOnCooldown
 from interactions.api.events import Component
@@ -104,7 +105,8 @@ class IAExtension(Extension):
         logger.warning("Impossible de charger les prix des modèles, utilisation des prix par défaut")
 
     @slash_command(
-        name="ask", description="Ask Michel and vote for the better answer"
+        name="ask", description="Ask Michel and vote for the better answer",
+        integration_type=[IntegrationType.GUILD_INSTALL, IntegrationType.USER_INSTALL]
     )
     @cooldown(Buckets.USER, 1, 20)
     @auto_defer()
