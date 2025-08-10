@@ -39,7 +39,7 @@ class IAExtension(Extension):
         self.model_prices = {}
         # Configuration des modèles par défaut
         self.default_models = {
-            "openai": "openai/gpt-4.1",
+            "openai": "openai/gpt-5",
             "anthropic": "anthropic/claude-sonnet-4",
             "deepseek": "deepseek/deepseek-chat-v3-0324",
             "qwen": "qwen/qwen3-235b-a22b-thinking-2507",
