@@ -106,7 +106,7 @@ class IAExtension(Extension):
 
     @slash_command(
         name="ask", description="Ask Michel and vote for the better answer",
-        integration_type=[IntegrationType.GUILD_INSTALL, IntegrationType.USER_INSTALL]
+        integration_types=[IntegrationType.GUILD_INSTALL, IntegrationType.USER_INSTALL]
     )
     @cooldown(Buckets.USER, 1, 20)
     @auto_defer()
