@@ -683,7 +683,14 @@ class TwitchExt2(Extension):
             except Exception as e:
                 logger.error(f"Error handling update for {streamer.streamer_id} in guild {streamer.guild_id}: {e}")
 
-        if any(await self.get_stream_data(s.user_id) for s in self.streamers.values()):
+        # Check if any streamer is live to reschedule update task
+        stream_checks = []
+        for streamer in self.streamers.values():
+            if streamer.user_id:
+                stream_data = await self.get_stream_data(streamer.user_id)
+                stream_checks.append(stream_data is not None)
+        
+        if any(stream_checks):
             self.update.reschedule(IntervalTrigger(minutes=15))
 
     @Task.create(

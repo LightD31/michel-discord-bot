@@ -23,7 +23,7 @@ from src import logutil
 
 logger = logutil.init_logger(os.path.basename(__file__))
 
-BASE_URL = "https://tracker.speedons.fr/api/campaigns/cn6o21t7m4hq41ukqtag"
+BASE_URL = "https://tracker.speedons.fr/api/campaigns?slug=2025"
 ICON_URL = "https://speedons.fr/static/b476f2d8ad4a19d2393eb4cff9486cc9/c6b81/icon.png"
 COLOR = 0xDBEA2B
 
