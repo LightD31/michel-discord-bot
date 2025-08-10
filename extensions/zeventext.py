@@ -130,6 +130,29 @@ class Zevent(Extension):
         """Check if the main Zevent has started (streamers go live)"""
         return datetime.now(timezone.utc) >= self.MAIN_EVENT_START_DATE
 
+    async def _is_zevent_channel_live(self) -> bool:
+        """Check if the main Zevent Twitch channel is currently live"""
+        try:
+            if not self.twitch:
+                return False
+            
+            async for stream in self.twitch.get_streams(user_login=["zevent"]):
+                return True  # If we find a stream, the channel is live
+            return False  # No stream found
+        except Exception as e:
+            logger.error(f"Error checking if Zevent channel is live: {e}")
+            return False
+
+    async def _is_concert_active(self) -> bool:
+        """Check if the concert is currently active (Zevent channel live but main event not started)"""
+        if not self._is_event_started():
+            return False  # Concert can't be active before the event start date
+        if self._is_main_event_started():
+            return False  # If main event started, we're past the concert phase
+        
+        # Check if Zevent channel is live (indicates concert is happening)
+        return await self._is_zevent_channel_live()
+
     @Task.create(IntervalTrigger(seconds=UPDATE_INTERVAL))
     async def zevent(self):
         total_amount = "Données indisponibles"
@@ -159,6 +182,8 @@ class Zevent(Extension):
                 logger.error(f"Failed to fetch Streamlabs API: {streamlabs_data}")
 
             # Check if event has started to determine what data to show
+            concert_active = await self._is_concert_active()
+            
             if not self._is_event_started():
                 # Event hasn't started yet (before concert), show countdown and streamers list
                 if data:
@@ -182,13 +207,16 @@ class Zevent(Extension):
                     await self.message.edit(embeds=embeds, content="", files=[file])
                     logger.debug("Pre-event countdown message updated successfully")
                 return
-            elif not self._is_main_event_started():
-                # Concert phase (4-5 Sept): show donations and streamers list
+            elif concert_active or not self._is_main_event_started():
+                # Concert phase: either Zevent channel is live OR we're in the concert time window
                 if data:
                     total_amount, total_int = self.get_total_amount(data, streamlabs_data)
                     streams = await self.categorize_streams(self._safe_get_data(data, ["live"], []))
+                    
+                    # Determine the status for the main embed
+                    main_embed_status = "concert_live" if concert_active else "concert_window"
                     embeds = [
-                        self.create_main_embed(total_amount),  # Show actual donations from concert
+                        self.create_main_embed(total_amount, concert_status=main_embed_status),
                         self.create_location_embed("streamers présents sur place", streams["LAN"], viewers_count=None),
                         self.create_location_embed("participants à distance", streams["Online"], withlink=False, viewers_count=None),
                     ]
@@ -393,7 +421,7 @@ class Zevent(Extension):
             logger.error(f"Error getting viewers by location: {e}")
             return {"LAN": "N/A", "Online": "N/A", "Total": "N/A"}
 
-    def create_main_embed(self, total_amount: str, nombre_viewers: Optional[str] = None, finished: bool = False) -> Embed:
+    def create_main_embed(self, total_amount: str, nombre_viewers: Optional[str] = None, finished: bool = False, concert_status: Optional[str] = None) -> Embed:
         embed = Embed(
             title="Zevent 2025",
             color=0x59af37,
@@ -407,13 +435,20 @@ class Zevent(Extension):
             embed.description = (f"🕒 Le concert pré-événement commence {event_timestamp.format(TimestampStyles.RelativeTime)}\n\n"
                                f"📅 Concert: {event_timestamp.format(TimestampStyles.LongDateTime)}\n"
                                f"📅 Zevent principal: {utils.timestamp_converter(self.MAIN_EVENT_START_DATE).format(TimestampStyles.LongDateTime)}")
-        elif not self._is_main_event_started():
-            # Concert phase (between concert and main event)
+        elif concert_status == "concert_live":
+            # Concert is currently live (Zevent channel detected online)
             main_event_timestamp = utils.timestamp_converter(self.MAIN_EVENT_START_DATE)
-            embed.description = (f"🎵 **Concert en cours !**\n"
+            embed.description = (f"🎵 **Concert en direct !** 🔴\n"
                                f"Total récolté: {total_amount}\n\n"
+                               f"▶️ [Regarder sur Twitch](https://www.twitch.tv/zevent)\n\n"
                                f"🕒 Le Zevent principal commence {main_event_timestamp.format(TimestampStyles.RelativeTime)}\n"
                                f"📅 Début du stream marathon: {main_event_timestamp.format(TimestampStyles.LongDateTime)}")
+        elif not self._is_main_event_started():
+            # Concert phase but not currently live - show like pre-event but with total amount
+            main_event_timestamp = utils.timestamp_converter(self.MAIN_EVENT_START_DATE)
+            embed.description = (f"🕒 Le Zevent commence {main_event_timestamp.format(TimestampStyles.RelativeTime)}\n\n"
+                               f"📅 Début du marathon: {main_event_timestamp.format(TimestampStyles.LongDateTime)}\n\n"
+                               f"💰 Total récolté: {total_amount}")
         else:
             embed.description = f"Total récolté: {total_amount}\nViewers cumulés: {nombre_viewers or 'N/A'}"
             
