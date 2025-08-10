@@ -63,7 +63,8 @@ class Zevent(Extension):
     STREAMLABS_API_URL = "https://streamlabscharity.com/api/v1/teams/@zevent-2025/zevent-2025"
     UPDATE_INTERVAL = 900
     MILESTONE_INTERVAL = 100000  # 100k
-    EVENT_START_DATE = datetime(2025, 9, 5, 16, 0, 0, tzinfo=timezone.utc)  # 5 septembre 2025 à 18h Paris (16h UTC)
+    EVENT_START_DATE = datetime(2025, 9, 4, 18, 0, 0, tzinfo=timezone.utc)  # 4 septembre 2025 à 20h Paris (18h UTC) - Concert pré-événement
+    MAIN_EVENT_START_DATE = datetime(2025, 9, 5, 16, 0, 0, tzinfo=timezone.utc)  # 5 septembre 2025 à 18h Paris (16h UTC) - Zevent principal
 
     def __init__(self, client: Client):
         self.client: Client = client
@@ -122,8 +123,12 @@ class Zevent(Extension):
             return default
 
     def _is_event_started(self) -> bool:
-        """Check if the Zevent has started"""
+        """Check if the Zevent has started (including pre-event concert)"""
         return datetime.now(timezone.utc) >= self.EVENT_START_DATE
+
+    def _is_main_event_started(self) -> bool:
+        """Check if the main Zevent has started (streamers go live)"""
+        return datetime.now(timezone.utc) >= self.MAIN_EVENT_START_DATE
 
     @Task.create(IntervalTrigger(seconds=UPDATE_INTERVAL))
     async def zevent(self):
@@ -155,7 +160,7 @@ class Zevent(Extension):
 
             # Check if event has started to determine what data to show
             if not self._is_event_started():
-                # Event hasn't started yet, but still show streamers list if available
+                # Event hasn't started yet (before concert), show countdown and streamers list
                 if data:
                     streams = await self.categorize_streams(self._safe_get_data(data, ["live"], []))
                     embeds = [
@@ -175,7 +180,32 @@ class Zevent(Extension):
                 file = File("data/Zevent_logo.png")
                 if self.message:
                     await self.message.edit(embeds=embeds, content="", files=[file])
-                    logger.debug("Pre-event message updated successfully")
+                    logger.debug("Pre-event countdown message updated successfully")
+                return
+            elif not self._is_main_event_started():
+                # Concert phase (4-5 Sept): show donations and streamers list
+                if data:
+                    total_amount, total_int = self.get_total_amount(data, streamlabs_data)
+                    streams = await self.categorize_streams(self._safe_get_data(data, ["live"], []))
+                    embeds = [
+                        self.create_main_embed(total_amount),  # Show actual donations from concert
+                        self.create_location_embed("streamers présents sur place", streams["LAN"], viewers_count=None),
+                        self.create_location_embed("participants à distance", streams["Online"], withlink=False, viewers_count=None),
+                    ]
+                    
+                    # Add top donations embed
+                    top_donations_embed = self.create_top_donations_embed(self._safe_get_data(data, ["live"], []))
+                    if top_donations_embed:
+                        embeds.append(top_donations_embed)
+                else:
+                    embeds = [self.create_main_embed("Données indisponibles")]
+                
+                file = File("data/Zevent_logo.png")
+                if self.message:
+                    await self.message.edit(embeds=embeds, content="", files=[file])
+                    logger.debug("Concert phase message updated successfully")
+                    
+                await self.check_and_send_milestone(total_int if data else 0)
                 return
 
             # If all APIs failed, try to use cached data or send error message
@@ -372,10 +402,18 @@ class Zevent(Extension):
         if finished:
             embed.description = f"Total récolté: {total_amount}"
         elif not self._is_event_started():
-            # Event hasn't started yet, show countdown using Discord's relative timestamp
+            # Event hasn't started yet, show countdown to concert
             event_timestamp = utils.timestamp_converter(self.EVENT_START_DATE)
-            embed.description = (f"🕒 L'événement commence {event_timestamp.format(TimestampStyles.RelativeTime)}\n\n"
-                               f"📅 Début prévu: {event_timestamp.format(TimestampStyles.LongDateTime)}")
+            embed.description = (f"🕒 Le concert pré-événement commence {event_timestamp.format(TimestampStyles.RelativeTime)}\n\n"
+                               f"📅 Concert: {event_timestamp.format(TimestampStyles.LongDateTime)}\n"
+                               f"📅 Zevent principal: {utils.timestamp_converter(self.MAIN_EVENT_START_DATE).format(TimestampStyles.LongDateTime)}")
+        elif not self._is_main_event_started():
+            # Concert phase (between concert and main event)
+            main_event_timestamp = utils.timestamp_converter(self.MAIN_EVENT_START_DATE)
+            embed.description = (f"🎵 **Concert en cours !**\n"
+                               f"Total récolté: {total_amount}\n\n"
+                               f"🕒 Le Zevent principal commence {main_event_timestamp.format(TimestampStyles.RelativeTime)}\n"
+                               f"📅 Début du stream marathon: {main_event_timestamp.format(TimestampStyles.LongDateTime)}")
         else:
             embed.description = f"Total récolté: {total_amount}\nViewers cumulés: {nombre_viewers or 'N/A'}"
             
