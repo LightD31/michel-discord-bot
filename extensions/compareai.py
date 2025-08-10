@@ -283,7 +283,7 @@ class IAExtension(Extension):
         # Ajout du paramètre usage.include pour obtenir les comptages de tokens
         return await self.openrouter_client.chat.completions.create(
             model=model,
-            max_tokens=300,
+            max_tokens=500,
             messages=messages,
             extra_body={"usage.include": True}
         )
