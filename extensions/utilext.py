@@ -1,3 +1,21 @@
+"""
+Utility Extension for Discord Bot
+
+This module provides various utility commands including:
+- Ping command for latency checking
+- Message deletion with admin permissions
+- Message sending to channels
+- Poll creation and management with reaction tracking
+- Reminder system with scheduling and frequency options
+
+Recent improvements:
+- Fixed type safety issues with proper type hints
+- Added error handling for file operations and API calls
+- Refactored poll functionality with helper methods
+- Reduced code duplication with constants and utility functions
+- Improved null safety with proper optional handling
+"""
+
 import asyncio
 import os
 import uuid
@@ -10,11 +28,9 @@ from interactions import (
     Client,
     Embed,
     Extension,
-    Message,
     OptionType,
     Permissions,
     SlashContext,
-    client,
     listen,
     slash_command,
     slash_default_member_permission,
@@ -24,30 +40,66 @@ from interactions import (
     IntervalTrigger,
     ActionRow,
     ButtonStyle,
-    User,
     SlashCommandChoice,
+    IntegrationType,
 )
 from interactions.api.events import (
-    MessageCreate,
     MessageReactionAdd,
     MessageReactionRemove,
-    Component,
 )
 from interactions.client.utils import timestamp_converter
 from datetime import datetime, timedelta
+from typing import Optional
 from src import logutil
 from src.utils import format_poll, load_config
 
 logger = logutil.init_logger(os.path.basename(__file__))
 config, module_config, enabled_servers = load_config("moduleUtils")
+# Convert strings to integers for Discord snowflake IDs
+# Type ignore because Discord IDs are ints but type checker expects Snowflake_Type
+enabled_servers_int = [int(s) for s in enabled_servers]  # type: ignore
 # Keep track of reminders
 reminders = {}
 
+# Poll emojis constant
+POLL_EMOJIS = [
+    "1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣",
+    "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"
+]
+
+# Default poll options
+DEFAULT_POLL_OPTIONS = ["Oui", "Non"]
+DEFAULT_POLL_EMOJIS = ["👍", "👎"]
+
 
 class Utils(Extension):
-    def __init__(self, bot: client):
-        self.bot: Client = bot
+    def __init__(self, bot: Client):
+        self.bot = bot
         self.lock = asyncio.Lock()
+
+    @staticmethod
+    def validate_poll_options(options: list[str]) -> bool:
+        """Validate poll options count."""
+        return len(options) <= 10
+
+    @staticmethod
+    def is_poll_embed(embed: Embed) -> bool:
+        """Check if an embed is a poll embed."""
+        return embed.color == 0x3489EB
+
+    @staticmethod
+    async def add_poll_reactions(message, options: list[str], use_default: bool = False):
+        """Add reactions to a poll message."""
+        emojis = DEFAULT_POLL_EMOJIS if use_default else POLL_EMOJIS
+        for i in range(len(options)):
+            await message.add_reaction(emojis[i])
+
+    @staticmethod
+    def parse_poll_author_id(footer_text: str) -> Optional[str]:
+        """Extract author ID from poll footer text."""
+        if not footer_text or len(footer_text.split(" ")) < 5:
+            return None
+        return footer_text.split(" ")[4].rstrip(")")
 
     @listen()
     async def on_startup(self):
@@ -55,7 +107,7 @@ class Utils(Extension):
         self.check_reminders.start()
 
     @slash_command(
-        name="ping", description="Vérifier la latence du bot", scopes=enabled_servers
+        name="ping", description="Vérifier la latence du bot", scopes=enabled_servers_int, integration_types=[IntegrationType.GUILD_INSTALL, IntegrationType.USER_INSTALL]  # type: ignore
     )
     async def ping(self, ctx: SlashContext):
         """
@@ -69,7 +121,7 @@ class Utils(Extension):
         await ctx.send(f"Pong ! Latence : {round(ctx.bot.latency * 1000)}ms")
 
     @slash_command(
-        name="delete", description="Supprimer des messages", scopes=enabled_servers
+        name="delete", description="Supprimer des messages", scopes=enabled_servers_int  # type: ignore
     )
     @slash_option(
         "nombre",
@@ -96,9 +148,9 @@ class Utils(Extension):
         opt_type=OptionType.STRING,
         required=False,
     )
-    # @slash_default_member_permission(
-    #     Permissions.ADMINISTRATOR | Permissions.MANAGE_MESSAGES
-    # )
+    @slash_default_member_permission(
+        Permissions.ADMINISTRATOR | Permissions.MANAGE_MESSAGES
+    )
     async def delete(
         self,
         ctx: SlashContext,
@@ -145,7 +197,7 @@ class Utils(Extension):
     @slash_command(
         name="send",
         description="Envoyer un message dans un channel",
-        scopes=enabled_servers,
+        scopes=enabled_servers_int,  # type: ignore
     )
     @slash_option(
         "message",
@@ -169,8 +221,8 @@ class Utils(Extension):
     async def send(
         self,
         ctx: SlashContext,
-        message: Message,
-        channel: BaseChannel = None,
+        message: str,
+        channel: Optional[BaseChannel] = None,
     ):
         """
         A slash command that sends a message to a channel.
@@ -192,7 +244,20 @@ class Utils(Extension):
                 ephemeral=True,
             )
             return
-        sent = await ctx.channel.send(message)
+        
+        # Ensure channel is a text channel that can send messages
+        if not hasattr(channel, 'send'):
+            await ctx.send(
+                "Ce type de channel ne supporte pas l'envoi de messages",
+                ephemeral=True,
+            )
+            return
+            
+        # Type cast to ensure the channel has the send method
+        from typing import cast
+        from interactions import GuildText
+        text_channel = cast(GuildText, channel)
+        sent = await text_channel.send(message)
         logger.info(
             "%s (ID: %s) a envoyé un message dans le channel #%s (ID: %s)",
             ctx.user.username,
@@ -202,7 +267,7 @@ class Utils(Extension):
         )
         await ctx.send("Message envoyé !", ephemeral=True)
 
-    @slash_command(name="poll", description="Créer un sondage", scopes=enabled_servers)
+    @slash_command(name="poll", description="Créer un sondage", scopes=enabled_servers_int, integration_types=[IntegrationType.GUILD_INSTALL, IntegrationType.USER_INSTALL])  # type: ignore
     @slash_option(
         "question",
         "Question du sondage",
@@ -229,28 +294,17 @@ class Utils(Extension):
             The options for the poll, separated by semicolon. Default is ["Oui", "Non"].
         """
         if options is None:
-            options = ["Oui", "Non"]
-            emojis = ["👍", "👎"]
+            options = DEFAULT_POLL_OPTIONS
+            emojis = DEFAULT_POLL_EMOJIS
         else:
             options = [option.strip() for option in options.split(";")]
-            if len(options) > 10:
+            if not self.validate_poll_options(options):
                 await ctx.send(
                     "Vous ne pouvez pas créer un sondage avec plus de 10 options",
                     ephemeral=True,
                 )
                 return
-            emojis = [
-                "1️⃣",
-                "2️⃣",
-                "3️⃣",
-                "4️⃣",
-                "5️⃣",
-                "6️⃣",
-                "7️⃣",
-                "8️⃣",
-                "9️⃣",
-                "🔟",
-            ]
+            emojis = POLL_EMOJIS
         embed = Embed(
             title=question,
             description="\n\n".join(
@@ -263,8 +317,7 @@ class Utils(Extension):
             icon_url=ctx.user.avatar_url,
         )
         message = await ctx.send(embed=embed)
-        for i in range(len(options)):
-            await message.add_reaction(emojis[i])
+        await self.add_poll_reactions(message, options, use_default=(options == DEFAULT_POLL_OPTIONS))
         logger.debug(
             "Création d'un sondage par %s (ID: %s)\nQuestion : %s\nOptions : %s",
             ctx.user.username,
@@ -316,7 +369,7 @@ class Utils(Extension):
                 await event.message.edit(embed=embed)
 
     @slash_command(
-        name="editpoll", description="Modifier un sondage", scopes=enabled_servers
+        name="editpoll", description="Modifier un sondage", scopes=enabled_servers_int  # type: ignore
     )
     @slash_option(
         "message_id",
@@ -367,29 +420,42 @@ class Utils(Extension):
             Whether to reset the reactions of the poll. Default is False.
         """
         await ctx.defer(ephemeral=True)
-        message = await ctx.channel.fetch_message(message_id)
+        try:
+            message = await ctx.channel.fetch_message(message_id)
+        except Exception:
+            await ctx.send(
+                "Message introuvable ou inaccessible",
+                ephemeral=True,
+            )
+            return
+        
+        # At this point, message is guaranteed to be not None
+        assert message is not None
+            
         if message.author != ctx.bot.user:
             await ctx.send(
                 "Vous ne pouvez modifier que les sondages créés par le bot",
                 ephemeral=True,
             )
             return
-        if len(message.embeds) == 0:
+        if not message.embeds:
             await ctx.send(
                 "Vous ne pouvez modifier que les sondages créés par le bot",
                 ephemeral=True,
             )
             return
-        if message.embeds[0].color != 0x3489EB:
+        if not self.is_poll_embed(message.embeds[0]):
             await ctx.send(
                 "Vous ne pouvez modifier que les sondages créés par le bot",
                 ephemeral=True,
             )
             return
         # Verify if the author of the poll is the person who made the poll
-        if message.embeds[0].footer.text.split(" ")[4][0:-1] != str(ctx.user.id):
+        footer_text = message.embeds[0].footer.text if message.embeds[0].footer else ""
+        author_id = self.parse_poll_author_id(footer_text)
+        if not author_id or author_id != str(ctx.user.id):
             await ctx.send(
-                "Vous ne pouvez modifier que les sondages que vous avez créés",
+                "Vous ne pouvez modifier que les sondages que vous avez créés" if author_id else "Impossible de vérifier l'auteur de ce sondage",
                 ephemeral=True,
             )
             return
@@ -402,44 +468,21 @@ class Utils(Extension):
             embed.title = f"{embed.title} (modifié)"
         if options is not None:
             options = [option.strip() for option in options.split(";")]
-            if len(options) > 10:
+            if not self.validate_poll_options(options):
                 await ctx.send(
                     "Vous ne pouvez pas créer un sondage avec plus de 10 options",
                     ephemeral=True,
                 )
                 return
-            emojis = [
-                "1️⃣",
-                "2️⃣",
-                "3️⃣",
-                "4️⃣",
-                "5️⃣",
-                "6️⃣",
-                "7️⃣",
-                "8️⃣",
-                "9️⃣",
-                "🔟",
-            ]
             embed.description = "\n\n".join(
-                [f"{emojis[i]} {option}" for i, option in enumerate(options)]
+                [f"{POLL_EMOJIS[i]} {option}" for i, option in enumerate(options)]
             )
-            for i in range(len(options)):
-                await message.add_reaction(emojis[i])
+            await self.add_poll_reactions(message, options)
         elif reset_reactions:
-            emojis = [
-                "1️⃣",
-                "2️⃣",
-                "3️⃣",
-                "4️⃣",
-                "5️⃣",
-                "6️⃣",
-                "7️⃣",
-                "8️⃣",
-                "9️⃣",
-                "🔟",
-            ]
-            for i in range(len(embed.description.split("\n\n"))):
-                await message.add_reaction(emojis[i])
+            description = embed.description or ""
+            option_count = len(description.split("\n\n")) if description else 2
+            for i in range(option_count):
+                await message.add_reaction(POLL_EMOJIS[i])
 
         await message.edit(embed=embed)
         logger.info("Poll edited")
@@ -486,13 +529,19 @@ class Utils(Extension):
             pass
 
     async def save_reminders(self):
-        reminders_data = {}
-        for remind_time, user_reminders in reminders.items():
-            reminders_data[remind_time.strftime("%Y-%m-%d %H:%M:%S")] = user_reminders
-        with open(
-            f"{config['misc']['dataFolder']}/taskreminders.json", "w", encoding="utf-8"
-        ) as file:
-            json.dump(reminders_data, file, indent=4)
+        """Save reminders to JSON file with error handling."""
+        try:
+            reminders_data = {}
+            for remind_time, user_reminders in reminders.items():
+                reminders_data[remind_time.strftime("%Y-%m-%d %H:%M:%S")] = user_reminders
+            
+            os.makedirs(os.path.dirname(f"{config['misc']['dataFolder']}/taskreminders.json"), exist_ok=True)
+            with open(
+                f"{config['misc']['dataFolder']}/taskreminders.json", "w", encoding="utf-8"
+            ) as file:
+                json.dump(reminders_data, file, indent=4)
+        except Exception as e:
+            logger.error(f"Failed to save reminders: {e}")
 
     # Set reminder
     @slash_command(
@@ -500,7 +549,7 @@ class Utils(Extension):
         sub_cmd_name="set",
         description="Gère les rappels pour voter",
         sub_cmd_description="Ajoute un rappel",
-        scopes=enabled_servers,
+        scopes=enabled_servers_int,  # type: ignore
     )
     @slash_option(
         name="tache",
@@ -551,8 +600,8 @@ class Utils(Extension):
         hour: int,
         minute: int,
         task: str,
-        frequency: str = None,
-        date=None,
+        frequency: Optional[str] = None,
+        date: Optional[str] = None,
     ):
         # Create the reminder time from the provided date, hour, and minute
         current_time = datetime.now()
@@ -581,7 +630,7 @@ class Utils(Extension):
             if frequency is None:
                 remind_time += timedelta(days=1)
                 if remind_time <= current_time:
-                    await ctx.send(f"Le rappel ne peut pas être dans le passé")
+                    await ctx.send("Le rappel ne peut pas être dans le passé")
                 break
             elif frequency == "daily":
                 remind_time += timedelta(days=1)
@@ -710,27 +759,51 @@ class Utils(Extension):
 
         for remind_time, user_reminders in reminders.copy().items():
             if remind_time <= current_time:
+                # Track frequency for potential rescheduling
+                recurring_reminders = {}
+                
                 for user_id, reminder_list in user_reminders.items():
-                    user = await self.bot.fetch_user(user_id)
-                    for reminder in reminder_list:
-                        await user.send(reminder["message"])
-                        logger.info(
-                            f"Reminder sent to {user.global_name}: {reminder['message']}"
-                        )
+                    try:
+                        user = await self.bot.fetch_user(user_id)
+                        if user:
+                            for reminder in reminder_list:
+                                await user.send(reminder["message"])
+                                logger.info(
+                                    f"Reminder sent to {user.display_name}: {reminder['message']}"
+                                )
+                                # Collect recurring reminders for rescheduling
+                                frequency = reminder.get("frequency")
+                                if frequency:
+                                    if user_id not in recurring_reminders:
+                                        recurring_reminders[user_id] = []
+                                    recurring_reminders[user_id].append(reminder)
+                    except Exception as e:
+                        logger.warning(f"Failed to send reminder to user {user_id}: {e}")
+                        continue
+                
                 reminders_to_remove.add(remind_time)
-                frequency = reminder.get("frequency")
-                if frequency == "daily":
-                    reminders_to_add[remind_time + timedelta(days=1)] = user_reminders
-                elif frequency == "weekly":
-                    reminders_to_add[remind_time + timedelta(weeks=1)] = user_reminders
-                elif frequency == "monthly":
-                    reminders_to_add[remind_time + relativedelta(months=1)] = (
-                        user_reminders
-                    )
-                elif frequency == "yearly":
-                    reminders_to_add[remind_time + relativedelta(years=1)] = (
-                        user_reminders
-                    )
+                
+                # Schedule recurring reminders
+                if recurring_reminders:
+                    for user_id, reminder_list in recurring_reminders.items():
+                        for reminder in reminder_list:
+                            frequency = reminder.get("frequency")
+                            if frequency == "daily":
+                                new_time = remind_time + timedelta(days=1)
+                            elif frequency == "weekly":
+                                new_time = remind_time + timedelta(weeks=1)
+                            elif frequency == "monthly":
+                                new_time = remind_time + relativedelta(months=1)
+                            elif frequency == "yearly":
+                                new_time = remind_time + relativedelta(years=1)
+                            else:
+                                continue
+                            
+                            if new_time not in reminders_to_add:
+                                reminders_to_add[new_time] = {}
+                            if user_id not in reminders_to_add[new_time]:
+                                reminders_to_add[new_time][user_id] = []
+                            reminders_to_add[new_time][user_id].append(reminder)
 
         if reminders_to_remove:
             for remind_time in reminders_to_remove:
