@@ -63,6 +63,7 @@ class Zevent(Extension):
     STREAMLABS_API_URL = "https://streamlabscharity.com/api/v1/teams/@zevent-2025/zevent-2025"
     UPDATE_INTERVAL = 900
     MILESTONE_INTERVAL = 100000  # 100k
+    EVENT_START_DATE = datetime(2025, 9, 5, 18, 0, 0, tzinfo=timezone.utc)  # 5 septembre 2025 à 18h UTC
 
     def __init__(self, client: Client):
         self.client: Client = client
@@ -120,8 +121,26 @@ class Zevent(Extension):
         except Exception:
             return default
 
+    def _is_event_started(self) -> bool:
+        """Check if the Zevent has started"""
+        return datetime.now(timezone.utc) >= self.EVENT_START_DATE
+
     @Task.create(IntervalTrigger(seconds=UPDATE_INTERVAL))
     async def zevent(self):
+        # Check if event has started
+        if not self._is_event_started():
+            try:
+                main_embed = self.create_main_embed("0 €")  # Use default values for countdown
+                file = File("data/Zevent_logo.png")
+                
+                if self.message:
+                    await self.message.edit(embeds=[main_embed], content="", files=[file])
+                    logger.debug("Countdown message updated successfully")
+                return
+            except Exception as e:
+                logger.error(f"Error updating countdown message: {e}")
+                return
+        
         total_amount = "Données indisponibles"
         total_int = 0
         
@@ -336,9 +355,15 @@ class Zevent(Extension):
         
         if finished:
             embed.description = f"Total récolté: {total_amount}"
+        elif not self._is_event_started():
+            # Event hasn't started yet, show countdown using Discord's relative timestamp
+            event_timestamp = utils.timestamp_converter(self.EVENT_START_DATE)
+            embed.description = (f"🕒 L'événement commence {event_timestamp.format(TimestampStyles.RelativeTime)}\n\n"
+                               f"📅 Début prévu: {event_timestamp.format(TimestampStyles.LongDateTime)}")
         else:
             embed.description = f"Total récolté: {total_amount}\nViewers cumulés: {nombre_viewers or 'N/A'}"
-            embed.timestamp = utils.timestamp_converter(datetime.now())
+            
+        embed.timestamp = utils.timestamp_converter(datetime.now())
         
         # Set thumbnail and footer using the proper methods
         embed.set_thumbnail("attachment://Zevent_logo.png")
