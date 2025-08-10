@@ -1,17 +1,6 @@
 """
 Extension Discord pour le Zevent - Version améliorée
 
-Améliorations apportées:
-1. Gestion d'erreurs robuste avec cache de secours
-2. Validation des données API avec fonctions d'aide sécurisées
-3. Meilleure gestion des exceptions lors des appels API concurrents
-4. Code plus maintenable avec séparation des responsabilités
-5. Gestion améliorée des embeds avec méthodes utilitaires
-6. Logs plus informatifs pour le debugging
-7. Protection contre les erreurs de type avec validation des données
-8. Cache des données pour éviter les pannes lors d'interruptions API
-9. Amélioration de la méthode de fin d'événement avec gestion d'erreurs
-10. Gestion robuste des milestones avec vérification des capacités de canal
 """
 
 import os
@@ -433,16 +422,16 @@ class Zevent(Extension):
             # Event hasn't started yet, show countdown to concert
             event_timestamp = utils.timestamp_converter(self.EVENT_START_DATE)
             embed.description = (f"🕒 Le concert pré-événement commence {event_timestamp.format(TimestampStyles.RelativeTime)}\n\n"
-                               f"📅 Concert: {event_timestamp.format(TimestampStyles.LongDateTime)}\n"
-                               f"📅 Zevent principal: {utils.timestamp_converter(self.MAIN_EVENT_START_DATE).format(TimestampStyles.LongDateTime)}")
+                               f"📅 Concert : {event_timestamp.format(TimestampStyles.LongDateTime)}\n"
+                               f"📅 Zevent : {utils.timestamp_converter(self.MAIN_EVENT_START_DATE).format(TimestampStyles.LongDateTime)}")
         elif concert_status == "concert_live":
             # Concert is currently live (Zevent channel detected online)
             main_event_timestamp = utils.timestamp_converter(self.MAIN_EVENT_START_DATE)
             embed.description = (f"🎵 **Concert en direct !** 🔴\n"
-                               f"Total récolté: {total_amount}\n\n"
+                               f"Total récolté : {total_amount}\n\n"
                                f"▶️ [Regarder sur Twitch](https://www.twitch.tv/zevent)\n\n"
-                               f"🕒 Le Zevent principal commence {main_event_timestamp.format(TimestampStyles.RelativeTime)}\n"
-                               f"📅 Début du stream marathon: {main_event_timestamp.format(TimestampStyles.LongDateTime)}")
+                               f"🕒 Le Zevent commence {main_event_timestamp.format(TimestampStyles.RelativeTime)}\n"
+                               f"📅 Début du marathon: {main_event_timestamp.format(TimestampStyles.LongDateTime)}")
         elif not self._is_main_event_started():
             # Concert phase but not currently live - show like pre-event but with total amount
             main_event_timestamp = utils.timestamp_converter(self.MAIN_EVENT_START_DATE)
@@ -456,7 +445,7 @@ class Zevent(Extension):
         
         # Set thumbnail and footer using the proper methods
         embed.set_thumbnail("attachment://Zevent_logo.png")
-        embed.set_footer("Source: zevent.fr ❤️")
+        embed.set_footer("Source: zevent.fr / Twitch ❤️")
         
         return embed
 
