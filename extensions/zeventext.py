@@ -63,7 +63,7 @@ class Zevent(Extension):
     STREAMLABS_API_URL = "https://streamlabscharity.com/api/v1/teams/@zevent-2025/zevent-2025"
     UPDATE_INTERVAL = 900
     MILESTONE_INTERVAL = 100000  # 100k
-    EVENT_START_DATE = datetime(2025, 9, 5, 18, 0, 0, tzinfo=timezone.utc)  # 5 septembre 2025 à 18h UTC
+    EVENT_START_DATE = datetime(2025, 9, 5, 16, 0, 0, tzinfo=timezone.utc)  # 5 septembre 2025 à 18h Paris (16h UTC)
 
     def __init__(self, client: Client):
         self.client: Client = client
@@ -127,20 +127,6 @@ class Zevent(Extension):
 
     @Task.create(IntervalTrigger(seconds=UPDATE_INTERVAL))
     async def zevent(self):
-        # Check if event has started
-        if not self._is_event_started():
-            try:
-                main_embed = self.create_main_embed("0 €")  # Use default values for countdown
-                file = File("data/Zevent_logo.png")
-                
-                if self.message:
-                    await self.message.edit(embeds=[main_embed], content="", files=[file])
-                    logger.debug("Countdown message updated successfully")
-                return
-            except Exception as e:
-                logger.error(f"Error updating countdown message: {e}")
-                return
-        
         total_amount = "Données indisponibles"
         total_int = 0
         
@@ -167,6 +153,31 @@ class Zevent(Extension):
             if isinstance(streamlabs_data, Exception):
                 logger.error(f"Failed to fetch Streamlabs API: {streamlabs_data}")
 
+            # Check if event has started to determine what data to show
+            if not self._is_event_started():
+                # Event hasn't started yet, but still show streamers list if available
+                if data:
+                    streams = await self.categorize_streams(self._safe_get_data(data, ["live"], []))
+                    embeds = [
+                        self.create_main_embed("0 €"),  # Countdown embed
+                        self.create_location_embed("streamers présents sur place", streams["LAN"], viewers_count=None),
+                        self.create_location_embed("participants à distance", streams["Online"], withlink=False, viewers_count=None),
+                    ]
+                    
+                    # Add top donations embed if donations are available
+                    top_donations_embed = self.create_top_donations_embed(self._safe_get_data(data, ["live"], []))
+                    if top_donations_embed:
+                        embeds.append(top_donations_embed)
+                else:
+                    # No data available, show only countdown
+                    embeds = [self.create_main_embed("0 €")]
+                
+                file = File("data/Zevent_logo.png")
+                if self.message:
+                    await self.message.edit(embeds=embeds, content="", files=[file])
+                    logger.debug("Pre-event message updated successfully")
+                return
+
             # If all APIs failed, try to use cached data or send error message
             if not data and not self.last_data_cache:
                 logger.error("All APIs failed and no cached data available")
@@ -191,6 +202,11 @@ class Zevent(Extension):
                     self.create_location_embed("streamers présents sur place", streams["LAN"], viewers_count=viewers_data["LAN"]),
                     self.create_location_embed("participants à distance", streams["Online"], withlink=False, viewers_count=viewers_data["Online"]),
                 ]
+                
+                # Add top donations embed
+                top_donations_embed = self.create_top_donations_embed(self._safe_get_data(data, ["live"], []))
+                if top_donations_embed:
+                    embeds.append(top_donations_embed)
                 
                 # Add planning embed only if planning data is available
                 if planning_data and isinstance(planning_data, dict) and "data" in planning_data:
@@ -378,8 +394,8 @@ class Zevent(Extension):
             color=0x59af37,
         )
         
-        # Add viewer count to description if provided
-        if viewers_count and not finished:
+        # Add viewer count to description if provided and event has started
+        if viewers_count and not finished and self._is_event_started():
             embed.description = f"Viewers: {viewers_count}"
         
         embed.set_footer("Source: zevent.fr / Twitch ❤️")
@@ -390,6 +406,12 @@ class Zevent(Extension):
             offline_streamers = []
             status = f"Les {streamer_count} {title}"  # Use the embed title as the field title when finished
             withlink = False  # Disable links when the event is finished
+        elif not self._is_event_started():
+            # Event hasn't started yet, show all streamers without online/offline status
+            all_streamers = list(streams.values())
+            offline_streamers = []
+            status = f"Les {streamer_count} {title}"
+            online_streamers = all_streamers
         else:
             online_streamers = [s for s in streams.values() if s.is_online]
             offline_streamers = [s for s in streams.values() if not s.is_online]
@@ -465,6 +487,77 @@ class Zevent(Extension):
                 logger.error(f"Error processing event: {e}")
         
         return embed
+    
+    def create_top_donations_embed(self, streams: List[Dict]) -> Optional[Embed]:
+        """Create embed showing top 20 streamers by donation amount"""
+        try:
+            if not streams:
+                return None
+            
+            # Filter and sort streamers by donation amount
+            streamers_with_donations = []
+            for stream in streams:
+                donation_amount = self._safe_get_data(stream, ["donationAmount", "number"], 0)
+                if donation_amount > 0:  # Only include streamers with donations
+                    streamers_with_donations.append({
+                        "display": stream.get("display", "Unknown"),
+                        "donation_amount": donation_amount,
+                        "donation_formatted": self._safe_get_data(stream, ["donationAmount", "formatted"], "0 €"),
+                        "twitch": stream.get("twitch", "")
+                    })
+            
+            # Sort by donation amount (descending) and take top 20
+            top_streamers = sorted(streamers_with_donations, key=lambda x: x["donation_amount"], reverse=True)[:20]
+            
+            if not top_streamers:
+                return None
+            
+            embed = Embed(
+                title="🏆 Top 20 - Donations par streamer",
+                color=0xffd700,  # Gold color
+            )
+            embed.set_footer("Source: zevent.fr ❤️")
+            embed.timestamp = utils.timestamp_converter(datetime.now())
+            
+            # Create the leaderboard
+            leaderboard_text = ""
+            for i, streamer in enumerate(top_streamers, 1):
+                # Use medals for top 3
+                if i == 1:
+                    medal = "🥇"
+                elif i == 2:
+                    medal = "🥈"
+                elif i == 3:
+                    medal = "🥉"
+                else:
+                    medal = f"{i}."
+                
+                display_name = streamer["display"].replace("_", "\\_")
+                leaderboard_text += f"{medal} **{display_name}** - {streamer['donation_formatted']}\n"
+            
+            # Split into chunks if too long (Discord field limit is 1024 characters)
+            chunks = []
+            current_chunk = ""
+            for line in leaderboard_text.split('\n'):
+                if len(current_chunk + line + '\n') > 1024:
+                    chunks.append(current_chunk.strip())
+                    current_chunk = line + '\n'
+                else:
+                    current_chunk += line + '\n'
+            
+            if current_chunk.strip():
+                chunks.append(current_chunk.strip())
+            
+            # Add fields for each chunk
+            for i, chunk in enumerate(chunks):
+                field_name = "Top donations" if i == 0 else f"Top donations (suite {i+1})"
+                embed.add_field(name=field_name, value=chunk, inline=False)
+            
+            return embed
+            
+        except Exception as e:
+            logger.error(f"Error creating top donations embed: {e}")
+            return None
     
     @slash_command(name="zevent_finish", description="Créée l'embed final après l'évènement")
     async def end(self, ctx: SlashContext):
