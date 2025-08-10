@@ -97,7 +97,7 @@ class Zevent(Extension):
                 return False
                 
             if data_type == "zevent":
-                required_keys = ["donationAmount", "viewersCount", "live"]
+                required_keys = ["donationAmount", "live"]
                 return all(key in data for key in required_keys)
             elif data_type == "planning":
                 return "data" in data and isinstance(data["data"], list)
@@ -164,8 +164,8 @@ class Zevent(Extension):
 
             if data:
                 total_amount, total_int = self.get_total_amount(data, streamlabs_data)
-                nombre_viewers = self._safe_get_data(data, ["viewersCount", "formatted"], "N/A")
                 streams = await self.categorize_streams(self._safe_get_data(data, ["live"], []))
+                nombre_viewers = await self.get_total_viewers_from_twitch(self._safe_get_data(data, ["live"], []))
 
                 embeds = [
                     self.create_main_embed(total_amount, nombre_viewers),
@@ -263,6 +263,27 @@ class Zevent(Extension):
             logger.error(f"Error categorizing streams: {e}")
         
         return categorized
+
+    async def get_total_viewers_from_twitch(self, streams: List[Dict]) -> str:
+        """Get total viewer count from Twitch API for all live streams"""
+        try:
+            if not streams or not self.twitch:
+                return "N/A"
+            
+            twitch_usernames = list(set(stream.get("twitch", "") for stream in streams if stream.get("twitch")))
+            total_viewers = 0
+            
+            batch_size = 100
+            for i in range(0, len(twitch_usernames), batch_size):
+                batch = twitch_usernames[i:i+batch_size]
+                async for stream in self.twitch.get_streams(user_login=batch):
+                    total_viewers += stream.viewer_count
+            
+            # Format the number with spaces as thousands separators
+            return f"{total_viewers:,}".replace(",", " ")
+        except Exception as e:
+            logger.error(f"Error getting total viewers from Twitch: {e}")
+            return "N/A"
 
     def create_main_embed(self, total_amount: str, nombre_viewers: Optional[str] = None, finished: bool = False) -> Embed:
         embed = Embed(
