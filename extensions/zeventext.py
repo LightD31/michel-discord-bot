@@ -165,12 +165,12 @@ class Zevent(Extension):
             if data:
                 total_amount, total_int = self.get_total_amount(data, streamlabs_data)
                 streams = await self.categorize_streams(self._safe_get_data(data, ["live"], []))
-                nombre_viewers = await self.get_total_viewers_from_twitch(self._safe_get_data(data, ["live"], []))
+                viewers_data = await self.get_viewers_by_location(self._safe_get_data(data, ["live"], []))
 
                 embeds = [
-                    self.create_main_embed(total_amount, nombre_viewers),
-                    self.create_location_embed("streamers présents sur place", streams["LAN"]),
-                    self.create_location_embed("participants à distance", streams["Online"], withlink=False),
+                    self.create_main_embed(total_amount, viewers_data["Total"]),
+                    self.create_location_embed("streamers présents sur place", streams["LAN"], viewers_count=viewers_data["LAN"]),
+                    self.create_location_embed("participants à distance", streams["Online"], withlink=False, viewers_count=viewers_data["Online"]),
                 ]
                 
                 # Add planning embed only if planning data is available
@@ -285,6 +285,49 @@ class Zevent(Extension):
             logger.error(f"Error getting total viewers from Twitch: {e}")
             return "N/A"
 
+    async def get_viewers_by_location(self, streams: List[Dict]) -> Dict[str, str]:
+        """Get viewer count from Twitch API separated by location (LAN/Online)"""
+        try:
+            if not streams or not self.twitch:
+                return {"LAN": "N/A", "Online": "N/A", "Total": "N/A"}
+            
+            # Organize streams by location
+            streams_by_location = {"LAN": [], "Online": []}
+            for stream in streams:
+                location = stream.get("location", "Online")
+                twitch_name = stream.get("twitch", "")
+                if twitch_name:
+                    streams_by_location[location].append(twitch_name)
+            
+            # Get live streams data from Twitch
+            all_twitch_usernames = list(set(stream.get("twitch", "") for stream in streams if stream.get("twitch")))
+            live_streams_data = {}
+            
+            batch_size = 100
+            for i in range(0, len(all_twitch_usernames), batch_size):
+                batch = all_twitch_usernames[i:i+batch_size]
+                async for stream in self.twitch.get_streams(user_login=batch):
+                    live_streams_data[stream.user_login.lower()] = stream.viewer_count
+            
+            # Calculate viewers by location
+            viewers_by_location = {"LAN": 0, "Online": 0}
+            for location, streamers in streams_by_location.items():
+                for streamer in streamers:
+                    if streamer.lower() in live_streams_data:
+                        viewers_by_location[location] += live_streams_data[streamer.lower()]
+            
+            total_viewers = viewers_by_location["LAN"] + viewers_by_location["Online"]
+            
+            # Format the numbers with spaces as thousands separators
+            return {
+                "LAN": f"{viewers_by_location['LAN']:,}".replace(",", " "),
+                "Online": f"{viewers_by_location['Online']:,}".replace(",", " "),
+                "Total": f"{total_viewers:,}".replace(",", " ")
+            }
+        except Exception as e:
+            logger.error(f"Error getting viewers by location: {e}")
+            return {"LAN": "N/A", "Online": "N/A", "Total": "N/A"}
+
     def create_main_embed(self, total_amount: str, nombre_viewers: Optional[str] = None, finished: bool = False) -> Embed:
         embed = Embed(
             title="Zevent 2025",
@@ -303,12 +346,17 @@ class Zevent(Extension):
         
         return embed
 
-    def create_location_embed(self, title: str, streams: Dict[str, StreamerInfo], withlink=True, finished=False) -> Embed:
+    def create_location_embed(self, title: str, streams: Dict[str, StreamerInfo], withlink=True, finished=False, viewers_count: Optional[str] = None) -> Embed:
         streamer_count = len(streams)
         embed = Embed(
             title=f"Les {streamer_count} {title}",
             color=0x59af37,
         )
+        
+        # Add viewer count to description if provided
+        if viewers_count and not finished:
+            embed.description = f"Viewers: {viewers_count}"
+        
         embed.set_footer("Source: zevent.fr / Twitch ❤️")
         embed.timestamp = utils.timestamp_converter(datetime.now())
         
