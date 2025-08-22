@@ -64,6 +64,77 @@ class Zevent(Extension):
         self.last_data_cache: Optional[Dict] = None
         self.last_update_time: Optional[datetime] = None
 
+    def calculate_embed_size(self, embed: Embed) -> int:
+        """Calculate the total character count of an embed"""
+        size = 0
+        
+        if embed.title:
+            size += len(embed.title)
+        if embed.description:
+            size += len(embed.description)
+        if embed.footer and embed.footer.text:
+            size += len(embed.footer.text)
+        if embed.author and embed.author.name:
+            size += len(embed.author.name)
+        
+        for field in embed.fields:
+            if field.name:
+                size += len(field.name)
+            if field.value:
+                size += len(field.value)
+        
+        return size
+
+    def calculate_total_embeds_size(self, embeds: List[Embed]) -> int:
+        """Calculate the total character count of all embeds"""
+        return sum(self.calculate_embed_size(embed) for embed in embeds)
+
+    def ensure_embeds_fit_limit(self, embeds: List[Embed], max_size: int = 5800) -> List[Embed]:
+        """Ensure the total size of embeds doesn't exceed Discord's limit"""
+        total_size = self.calculate_total_embeds_size(embeds)
+        
+        if total_size <= max_size:
+            return embeds
+        
+        logger.warning(f"Embeds size ({total_size}) exceeds limit ({max_size}), reducing content")
+        
+        # Keep main embed and reduce others
+        reduced_embeds = [embeds[0]]  # Always keep the main embed
+        remaining_size = max_size - self.calculate_embed_size(embeds[0])
+        
+        for embed in embeds[1:]:
+            embed_size = self.calculate_embed_size(embed)
+            if embed_size <= remaining_size:
+                reduced_embeds.append(embed)
+                remaining_size -= embed_size
+            else:
+                # Try to reduce this embed by removing fields
+                if embed.fields and remaining_size > 200:  # Keep at least some content
+                    reduced_embed = Embed(
+                        title=embed.title,
+                        description=embed.description,
+                        color=embed.color
+                    )
+                    if embed.footer and embed.footer.text:
+                        reduced_embed.set_footer(embed.footer.text)
+                    reduced_embed.timestamp = embed.timestamp
+                    
+                    # Add as many fields as possible
+                    for field in embed.fields:
+                        field_size = len(field.name or "") + len(field.value or "")
+                        if field_size + 50 <= remaining_size:  # +50 for safety margin
+                            reduced_embed.add_field(name=field.name, value=field.value, inline=field.inline)
+                            remaining_size -= field_size
+                        else:
+                            break
+                    
+                    if reduced_embed.fields:  # Only add if we have at least one field
+                        reduced_embeds.append(reduced_embed)
+                break
+        
+        logger.info(f"Reduced embeds from {total_size} to {self.calculate_total_embeds_size(reduced_embeds)} characters")
+        return reduced_embeds
+
     @listen()
     async def on_startup(self):
         try:
@@ -191,6 +262,9 @@ class Zevent(Extension):
                     # No data available, show only countdown
                     embeds = [self.create_main_embed("0 €")]
                 
+                # Ensure embeds fit Discord's size limit
+                embeds = self.ensure_embeds_fit_limit(embeds)
+                
                 file = File("data/Zevent_logo.png")
                 if self.message:
                     await self.message.edit(embeds=embeds, content="", files=[file])
@@ -216,6 +290,9 @@ class Zevent(Extension):
                         embeds.append(top_donations_embed)
                 else:
                     embeds = [self.create_main_embed("Données indisponibles")]
+                
+                # Ensure embeds fit Discord's size limit
+                embeds = self.ensure_embeds_fit_limit(embeds)
                 
                 file = File("data/Zevent_logo.png")
                 if self.message:
@@ -258,6 +335,9 @@ class Zevent(Extension):
                 # Add planning embed only if planning data is available
                 if planning_data and isinstance(planning_data, dict) and "data" in planning_data:
                     embeds.append(self.create_planning_embed(planning_data["data"]))
+
+                # Ensure embeds fit Discord's size limit
+                embeds = self.ensure_embeds_fit_limit(embeds)
 
                 file = File("data/Zevent_logo.png")
                 
@@ -551,7 +631,7 @@ class Zevent(Extension):
         return embed
     
     def create_top_donations_embed(self, streams: List[Dict]) -> Optional[Embed]:
-        """Create embed showing top 20 streamers by donation amount"""
+        """Create embed showing top streamers by donation amount"""
         try:
             if not streams:
                 return None
@@ -568,52 +648,50 @@ class Zevent(Extension):
                         "twitch": stream.get("twitch", "")
                     })
             
-            # Sort by donation amount (descending) and take top 20
-            top_streamers = sorted(streamers_with_donations, key=lambda x: x["donation_amount"], reverse=True)[:20]
+            # Sort by donation amount (descending)
+            top_streamers = sorted(streamers_with_donations, key=lambda x: x["donation_amount"], reverse=True)
             
             if not top_streamers:
                 return None
             
             embed = Embed(
-                title="🏆 Top 20 - Donations par streamer",
+                title="🏆 Top Donations par streamer",
                 color=0xffd700,  # Gold color
             )
             embed.set_footer("Source: zevent.fr ❤️")
             embed.timestamp = utils.timestamp_converter(datetime.now())
             
-            # Create the leaderboard
+            # Create the leaderboard with dynamic limiting
             leaderboard_text = ""
-            for i, streamer in enumerate(top_streamers, 1):
-                # Use medals for top 3
-                if i == 1:
-                    medal = "🥇"
-                elif i == 2:
-                    medal = "🥈"
-                elif i == 3:
-                    medal = "🥉"
-                else:
-                    medal = f"{i}."
+            max_streamers = 20  # Start with 20, but reduce if needed
+            
+            for attempt in range(3):  # Try up to 3 times with fewer streamers
+                leaderboard_text = ""
+                current_top = top_streamers[:max_streamers]
                 
-                display_name = streamer["display"].replace("_", "\\_")
-                leaderboard_text += f"{medal} **{display_name}** - {streamer['donation_formatted']}\n"
+                for i, streamer in enumerate(current_top, 1):
+                    # Use medals for top 3
+                    if i == 1:
+                        medal = "🥇"
+                    elif i == 2:
+                        medal = "🥈"
+                    elif i == 3:
+                        medal = "🥉"
+                    else:
+                        medal = f"{i}."
+                    
+                    display_name = streamer["display"].replace("_", "\\_")
+                    leaderboard_text += f"{medal} **{display_name}** - {streamer['donation_formatted']}\n"
+                
+                # Check if the text fits in a single field (1024 char limit)
+                if len(leaderboard_text) <= 1000:  # Leave some margin
+                    break
+                
+                # Reduce number of streamers and try again
+                max_streamers = max(10, max_streamers - 5)
             
-            # Split into chunks if too long (Discord field limit is 1024 characters)
-            chunks = []
-            current_chunk = ""
-            for line in leaderboard_text.split('\n'):
-                if len(current_chunk + line + '\n') > 1024:
-                    chunks.append(current_chunk.strip())
-                    current_chunk = line + '\n'
-                else:
-                    current_chunk += line + '\n'
-            
-            if current_chunk.strip():
-                chunks.append(current_chunk.strip())
-            
-            # Add fields for each chunk
-            for i, chunk in enumerate(chunks):
-                field_name = "Top donations" if i == 0 else f"Top donations (suite {i+1})"
-                embed.add_field(name=field_name, value=chunk, inline=False)
+            # Add the field
+            embed.add_field(name="Top donations", value=leaderboard_text, inline=False)
             
             return embed
             
@@ -639,6 +717,9 @@ class Zevent(Extension):
                 self.create_location_embed("streamers présents sur place", streams["LAN"], finished=True, withlink=False),
                 self.create_location_embed("participants à distance", streams["Online"], finished=True, withlink=False)
             ]
+            
+            # Ensure embeds fit Discord's size limit
+            embeds = self.ensure_embeds_fit_limit(embeds)
             
             # Edit the message
             if self.message:
