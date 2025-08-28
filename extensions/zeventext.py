@@ -250,7 +250,7 @@ class Zevent(Extension):
                     streams = await self.categorize_streams(self._safe_get_data(data, ["live"], []))
                     embeds = [
                         self.create_main_embed("0 €"),  # Countdown embed
-                        self.create_location_embed("streamers présents sur place", streams["LAN"], viewers_count=None),
+                        self.create_location_embed("streamers présents sur place", streams["LAN"], withlink=False, viewers_count=None),
                         self.create_location_embed("participants à distance", streams["Online"], withlink=False, viewers_count=None),
                     ]
                     
@@ -280,7 +280,7 @@ class Zevent(Extension):
                     main_embed_status = "concert_live" if concert_active else "concert_window"
                     embeds = [
                         self.create_main_embed(total_amount, concert_status=main_embed_status),
-                        self.create_location_embed("streamers présents sur place", streams["LAN"], viewers_count=None),
+                        self.create_location_embed("streamers présents sur place", streams["LAN"], withlink=False, viewers_count=None),
                         self.create_location_embed("participants à distance", streams["Online"], withlink=False, viewers_count=None),
                     ]
                     
@@ -323,7 +323,7 @@ class Zevent(Extension):
 
                 embeds = [
                     self.create_main_embed(total_amount, viewers_data["Total"]),
-                    self.create_location_embed("streamers présents sur place", streams["LAN"], viewers_count=viewers_data["LAN"]),
+                    self.create_location_embed("streamers présents sur place", streams["LAN"], withlink=False, viewers_count=viewers_data["LAN"]),
                     self.create_location_embed("participants à distance", streams["Online"], withlink=False, viewers_count=viewers_data["Online"]),
                 ]
                 
