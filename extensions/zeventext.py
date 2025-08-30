@@ -680,13 +680,13 @@ class Zevent(Extension):
         if finished:
             online_streamers = list(streams.values())
             offline_streamers = []
-            status = f"Les {streamer_count} {title}"  # Use the embed title as the field title when finished
+            status = f"Les {actual_count} {title}"  # Use the embed title as the field title when finished
             withlink = False  # Disable links when the event is finished
         elif not self._is_event_started():
             # Event hasn't started yet, show all streamers without online/offline status
             all_streamers = list(streams.values())
             offline_streamers = []
-            status = f"Les {streamer_count} {title}"
+            status = f"Les {actual_count} {title}"
             online_streamers = all_streamers
         else:
             online_streamers = [s for s in streams.values() if s.is_online]
