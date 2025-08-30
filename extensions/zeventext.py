@@ -22,7 +22,7 @@ from interactions import (
 )
 from src import logutil
 from src.utils import fetch, load_config
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone, timedelta, date
 from typing import Dict, List, Optional, Any
 from twitchAPI.twitch import Twitch
 from dataclasses import dataclass
@@ -59,7 +59,8 @@ class Zevent(Extension):
     CHANNEL_ID = 993605590033117214
     MESSAGE_ID = 1399095553148850176
     API_URL = "https://zevent.fr/api/"
-    PLANNING_API_URL = "https://api.zevent.gdoc.fr/events/upcoming"
+    PLANNING_API_URL = "https://zevent-api.gdoc.fr/events"
+    STREAMERS_API_URL = "https://zevent-api.gdoc.fr/streamers"
     STREAMLABS_API_URL = "https://streamlabscharity.com/api/v1/teams/@zevent-2025/zevent-2025"
     UPDATE_INTERVAL = 900
     MILESTONE_INTERVAL = 100000  # 100k
@@ -72,6 +73,49 @@ class Zevent(Extension):
         self.last_milestone = 0
         self.last_data_cache: Optional[Dict] = None
         self.last_update_time: Optional[datetime] = None
+    # Streamer name cache for resolving UUIDs -> display names
+    self._streamer_cache = {}
+    self._streamer_cache_time: Optional[datetime] = None
+    self.STREAMER_CACHE_TTL = timedelta(hours=24)
+
+    def _get_planning_day(self, now_date: date) -> str:
+        """Return the planning day to request: use 2025-09-04 if current date is before that, else use today."""
+        zevent_start = date(2025, 9, 4)
+        target = zevent_start if now_date < zevent_start else now_date
+        return target.strftime("%Y-%m-%d")
+
+    async def _ensure_streamer_cache(self):
+        """Fetch streamer mapping from STREAMERS_API_URL and cache it for STREAMER_CACHE_TTL."""
+        try:
+            if self._streamer_cache_time and datetime.now() - self._streamer_cache_time < self.STREAMER_CACHE_TTL:
+                return
+
+            data = await fetch(self.STREAMERS_API_URL, return_type="json")
+            if not isinstance(data, list):
+                logger.warning("Streamers API returned unexpected format; skipping cache update")
+                return
+
+            # Expected format: list of objects with 'id' and 'name' or similar
+            mapping = {}
+            for entry in data:
+                try:
+                    sid = entry.get('id')
+                    pid = entry.get('participation_id') or entry.get('participationId')
+                    name = entry.get('name') or entry.get('display_name') or entry.get('login')
+                    if sid and name:
+                        mapping[sid] = name
+                    # Also map participation_id to the same name when available
+                    if pid and name:
+                        mapping[pid] = name
+                except Exception:
+                    continue
+
+            if mapping:
+                self._streamer_cache = mapping
+                self._streamer_cache_time = datetime.now()
+                logger.info(f"Streamer cache updated with {len(mapping)} entries")
+        except Exception as e:
+            logger.error(f"Failed to update streamer cache: {e}")
 
     @listen()
     async def on_startup(self):
@@ -128,23 +172,29 @@ class Zevent(Extension):
         try:
             # Fetch data from all APIs concurrently
             logger.debug("Fetching data from APIs...")
-            data, streamlabs_data = await asyncio.gather(
+            # Determine which day to request planning for.
+            # If current date is before the Zevent start (2025-09-04),
+            # show events for 2025-09-04 instead of the current date.
+            now_date = datetime.now().date()
+            target_day = self._get_planning_day(now_date)
+            planning_url = f"{self.PLANNING_API_URL}?day={target_day}"
+            
+            data, planning_data, streamlabs_data = await asyncio.gather(
                 fetch(self.API_URL, return_type="json"),
-                # fetch(self.PLANNING_API_URL, return_type="json"),  # Planning API not available yet
+                fetch(planning_url, return_type="json"),
                 fetch(self.STREAMLABS_API_URL, return_type="json"),
                 return_exceptions=True
             )
-            planning_data = None  # Planning API not available yet
 
             # Handle API fetch exceptions and validate data
             data = data if not isinstance(data, Exception) and self._validate_api_data(data, "zevent") else None
-            # planning_data = planning_data if not isinstance(planning_data, Exception) and self._validate_api_data(planning_data, "planning") else None  # Planning API not available yet
+            planning_data = planning_data if not isinstance(planning_data, Exception) and isinstance(planning_data, list) else None
             streamlabs_data = streamlabs_data if not isinstance(streamlabs_data, Exception) and self._validate_api_data(streamlabs_data, "streamlabs") else None
 
             if isinstance(data, Exception):
                 logger.error(f"Failed to fetch Zevent API: {data}")
-            # if isinstance(planning_data, Exception):  # Planning API not available yet
-            #     logger.error(f"Failed to fetch Planning API: {planning_data}")
+            if isinstance(planning_data, Exception):
+                logger.error(f"Failed to fetch Planning API: {planning_data}")
             if isinstance(streamlabs_data, Exception):
                 logger.error(f"Failed to fetch Streamlabs API: {streamlabs_data}")
 
@@ -158,11 +208,16 @@ class Zevent(Extension):
             if not data and self.last_data_cache:
                 logger.warning("Using cached data due to API failure")
                 data = self.last_data_cache
-            elif data:
+            elif isinstance(data, dict):
+                # Only cache valid dict responses
                 self.last_data_cache = data
                 self.last_update_time = datetime.now()
 
-            if data:
+            if isinstance(data, dict):
+                # Ensure streamlabs_data is either a dict or None
+                if not isinstance(streamlabs_data, dict):
+                    streamlabs_data = None
+
                 total_amount, total_int = self.get_total_amount(data, streamlabs_data)
                 nombre_viewers = self._safe_get_data(data, ["viewersCount", "formatted"], "N/A")
                 streams = await self.categorize_streams(self._safe_get_data(data, ["live"], []))
@@ -174,8 +229,8 @@ class Zevent(Extension):
                 ]
                 
                 # Add planning embed only if planning data is available
-                if planning_data and isinstance(planning_data, dict) and "data" in planning_data:
-                    embeds.append(self.create_planning_embed(planning_data["data"]))
+                if planning_data and isinstance(planning_data, list):
+                    embeds.append(await self.create_planning_embed(planning_data))
 
                 file = File("data/Zevent_logo.png")
                 
@@ -321,55 +376,71 @@ class Zevent(Extension):
         return embed
 
 
-    def create_planning_embed(self, events: List[Dict]) -> Embed:
+    async def create_planning_embed(self, events: List[Dict]) -> Embed:
         embed = Embed(title="Prochains évènements", color=0x59af37)
         embed.set_footer("Source: zevent.gdoc.fr ❤️")
         embed.timestamp = utils.timestamp_converter(datetime.now())
-        
-        sorted_events = sorted(events, key=lambda x: x.get('start_at', ''))
-        
+
+        # New planning format: start_date, end_date, participants: {host: [...], participant: [...]}
+        sorted_events = sorted(events, key=lambda x: x.get('start_date') or '')
+
+        # Ensure we have streamer names cached for UUID resolution
+        await self._ensure_streamer_cache()
+
         for event in sorted_events:
             try:
-                start_at = event.get('start_at', '')
-                finished_at = event.get('finished_at', '')
-                
+                start_at = event.get('start_date') or ''
+                finished_at = event.get('end_date') or ''
+
                 if not start_at or not finished_at:
                     continue
-                    
+
                 start_time = datetime.fromisoformat(start_at.replace('Z', '+00:00')).replace(tzinfo=timezone.utc)
                 end_time = datetime.fromisoformat(finished_at.replace('Z', '+00:00')).replace(tzinfo=timezone.utc)
-                
+
                 field_name = event.get('name', 'Événement')
-                
+
                 duration = end_time - start_time
-                
+
                 time_str = (f"{str(utils.timestamp_converter(start_time)).format(TimestampStyles.LongDateTime)} - "
                             f"{str(utils.timestamp_converter(end_time)).format(TimestampStyles.ShortTime)}"
                             if duration >= timedelta(minutes=20)
                             else f"{str(utils.timestamp_converter(start_time)).format(TimestampStyles.LongDateTime)}")
-                
+
                 field_value = f"{time_str}\n"
-                
+
                 if event.get('description'):
                     field_value += f"{event['description']}\n"
-                
-                if event.get('hosts'):
-                    hosts = ', '.join([host.get('name', '').replace("_", "\\_") for host in event['hosts']])
-                    field_value += f"Hosts: {hosts}\n"
-                
-                if event.get('participants'):
-                    participants = ', '.join([participant.get('name', '').replace("_", "\\_") for participant in event['participants']])
-                    
-                    # Limit the number of participants to 1024 characters
-                    if len(participants) > 1024:
-                        participants = participants[:1021] + '...'
-                    
-                    field_value += f"Participants: {participants}"
-                
+
+                participants = event.get('participants') or {}
+
+                # Hosts
+                hosts_names = []
+                for hid in participants.get('host', []):
+                    name = self._streamer_cache.get(hid) or hid
+                    hosts_names.append(name.replace("_", "\\_"))
+
+                if hosts_names:
+                    field_value += f"Hosts: {', '.join(hosts_names)}\n"
+
+                # Participants
+                part_names = []
+                for pid in participants.get('participant', []):
+                    name = self._streamer_cache.get(pid) or pid
+                    part_names.append(name.replace("_", "\\_"))
+
+                # To avoid too long field, show up to 20 names then a count
+                if part_names:
+                    if len(part_names) > 20:
+                        shown = ', '.join(part_names[:20])
+                        field_value += f"Participants ({len(part_names)}): {shown}..."
+                    else:
+                        field_value += f"Participants: {', '.join(part_names)}"
+
                 embed.add_field(name=field_name, value=field_value, inline=True)
             except Exception as e:
                 logger.error(f"Error processing event: {e}")
-        
+
         return embed
     
     @slash_command(name="zevent_finish", description="Créée l'embed final après l'évènement")
