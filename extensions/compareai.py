@@ -18,6 +18,7 @@ from interactions import (
     Buckets,
     auto_defer,
     ButtonStyle,
+    IntegrationType
 )
 from interactions.client.errors import CommandOnCooldown
 from interactions.api.events import Component
@@ -39,7 +40,7 @@ class IAExtension(Extension):
         self.model_prices = {}
         # Configuration des modèles par défaut
         self.default_models = {
-            "openai": "openai/gpt-4.1",
+            "openai": "openai/gpt-5",
             "anthropic": "anthropic/claude-sonnet-4",
             "deepseek": "deepseek/deepseek-chat-v3-0324",
             "qwen": "qwen/qwen3-235b-a22b-thinking-2507",
@@ -104,7 +105,8 @@ class IAExtension(Extension):
         logger.warning("Impossible de charger les prix des modèles, utilisation des prix par défaut")
 
     @slash_command(
-        name="ask", description="Ask Michel and vote for the better answer"
+        name="ask", description="Ask Michel and vote for the better answer",
+        integration_types=[IntegrationType.GUILD_INSTALL, IntegrationType.USER_INSTALL]
     )
     @cooldown(Buckets.USER, 1, 20)
     @auto_defer()
@@ -283,7 +285,7 @@ class IAExtension(Extension):
         # Ajout du paramètre usage.include pour obtenir les comptages de tokens
         return await self.openrouter_client.chat.completions.create(
             model=model,
-            max_tokens=300,
+            max_tokens=500,
             messages=messages,
             extra_body={"usage.include": True}
         )
