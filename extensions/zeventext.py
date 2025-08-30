@@ -308,6 +308,10 @@ class Zevent(Extension):
                     top_donations_embed = self.create_top_donations_embed(self._safe_get_data(data, ["live"], []))
                     if top_donations_embed:
                         embeds.append(top_donations_embed)
+                    
+                    # Add planning embed if available
+                    if planning_data and isinstance(planning_data, list):
+                        embeds.append(await self.create_planning_embed(planning_data))
                 else:
                     # No data available, show only countdown
                     embeds = [self.create_main_embed("0 €")]
@@ -338,6 +342,10 @@ class Zevent(Extension):
                     top_donations_embed = self.create_top_donations_embed(self._safe_get_data(data, ["live"], []))
                     if top_donations_embed:
                         embeds.append(top_donations_embed)
+                    
+                    # Add planning embed if available
+                    if planning_data and isinstance(planning_data, list):
+                        embeds.append(await self.create_planning_embed(planning_data))
                 else:
                     embeds = [self.create_main_embed("Données indisponibles")]
                 
