@@ -300,8 +300,8 @@ class Zevent(Extension):
                     streams = await self.categorize_streams(self._safe_get_data(data, ["live"], []))
                     embeds = [
                         self.create_main_embed("0 €"),  # Countdown embed
-                        self.create_location_embed("streamers présents sur place", streams["LAN"], withlink=False, viewers_count=None),
-                        self.create_location_embed("participants à distance", streams["Online"], withlink=False, viewers_count=None),
+                        self.create_location_embed("streamers présents sur place", streams["LAN"], withlink=False, viewers_count=None, total_count=streams.get("_totals", {}).get("LAN")),
+                        self.create_location_embed("participants à distance", streams["Online"], withlink=False, viewers_count=None, total_count=streams.get("_totals", {}).get("Online")),
                     ]
                     
                     # Add top donations embed if donations are available
@@ -330,8 +330,8 @@ class Zevent(Extension):
                     main_embed_status = "concert_live" if concert_active else "concert_window"
                     embeds = [
                         self.create_main_embed(total_amount, concert_status=main_embed_status),
-                        self.create_location_embed("streamers présents sur place", streams["LAN"], withlink=False, viewers_count=None),
-                        self.create_location_embed("participants à distance", streams["Online"], withlink=False, viewers_count=None),
+                        self.create_location_embed("streamers présents sur place", streams["LAN"], withlink=False, viewers_count=None, total_count=streams.get("_totals", {}).get("LAN")),
+                        self.create_location_embed("participants à distance", streams["Online"], withlink=False, viewers_count=None, total_count=streams.get("_totals", {}).get("Online")),
                     ]
                     
                     # Add top donations embed
@@ -378,8 +378,8 @@ class Zevent(Extension):
 
                 embeds = [
                     self.create_main_embed(total_amount, viewers_data["Total"]),
-                    self.create_location_embed("streamers présents sur place", streams["LAN"], withlink=False, viewers_count=viewers_data["LAN"]),
-                    self.create_location_embed("participants à distance", streams["Online"], withlink=False, viewers_count=viewers_data["Online"]),
+                    self.create_location_embed("streamers présents sur place", streams["LAN"], withlink=False, viewers_count=viewers_data["LAN"], total_count=streams.get("_totals", {}).get("LAN")),
+                    self.create_location_embed("participants à distance", streams["Online"], withlink=False, viewers_count=viewers_data["Online"], total_count=streams.get("_totals", {}).get("Online")),
                 ]
                 
                 # Add top donations embed
@@ -452,7 +452,7 @@ class Zevent(Extension):
             logger.error(f"Failed to send simplified update: {e}")
 
     async def categorize_streams(self, streams: List[Dict]) -> Dict[str, Dict[str, StreamerInfo]]:
-        categorized = {"LAN": {}, "Online": {}}
+        categorized = {"LAN": {}, "Online": {}, "_totals": {"LAN": 0, "Online": 0}}
         
         if not streams or not self.twitch:
             return categorized
@@ -478,6 +478,8 @@ class Zevent(Extension):
                 
                 streamer_info = StreamerInfo(display_name, twitch_name, is_online, location)
                 categorized[location][display_name] = streamer_info
+                # Count total participants
+                categorized["_totals"][location] += 1
             
             # Limit online participants to top 100
             if "Online" in categorized:
@@ -499,7 +501,7 @@ class Zevent(Extension):
                     # Just take the first 100 live streamers
                     selected_streamers = live_online[:100]
                 
-                # Rebuild the Online category
+                # Rebuild the Online category (but keep the total count)
                 categorized["Online"] = {s.display_name: s for s in selected_streamers}
                 
         except Exception as e:
@@ -645,14 +647,15 @@ class Zevent(Extension):
         
         return embed
 
-    def create_location_embed(self, title: str, streams: Dict[str, StreamerInfo], withlink=True, finished=False, viewers_count: Optional[str] = None) -> Embed:
-        streamer_count = len(streams)
+    def create_location_embed(self, title: str, streams: Dict[str, StreamerInfo], withlink=True, finished=False, viewers_count: Optional[str] = None, total_count: Optional[int] = None) -> Embed:
+        displayed_count = len(streams)
+        actual_count = total_count if total_count is not None else displayed_count
         
-        # For online participants, show "Top 100" in title if we have exactly 100
-        if "distance" in title and streamer_count == 100 and not finished:
-            embed_title = f"Top {streamer_count} {title}"
+        # For online participants, show actual count vs displayed count if different
+        if "distance" in title and actual_count > displayed_count and not finished:
+            embed_title = f"Top {displayed_count}/{actual_count} {title}"
         else:
-            embed_title = f"Les {streamer_count} {title}"
+            embed_title = f"Les {actual_count} {title}"
             
         embed = Embed(
             title=embed_title,
@@ -853,8 +856,8 @@ class Zevent(Extension):
             # Create the embeds with all the streamers regardless of if they are online or offline, no planning
             embeds = [ 
                 self.create_main_embed(total_amount, finished=True),
-                self.create_location_embed("streamers présents sur place", streams["LAN"], finished=True, withlink=False),
-                self.create_location_embed("participants à distance", streams["Online"], finished=True, withlink=False)
+                self.create_location_embed("streamers présents sur place", streams["LAN"], finished=True, withlink=False, total_count=streams.get("_totals", {}).get("LAN")),
+                self.create_location_embed("participants à distance", streams["Online"], finished=True, withlink=False, total_count=streams.get("_totals", {}).get("Online"))
             ]
             
             # Ensure embeds fit Discord's size limit
