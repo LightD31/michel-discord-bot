@@ -462,11 +462,13 @@ class Zevent(Extension):
             
             batch_size = 100
             live_streamers = set()
+            user_ids = {}  # Store user IDs from stream data
             
             for i in range(0, len(twitch_usernames), batch_size):
                 batch = twitch_usernames[i:i+batch_size]
                 async for stream in self.twitch.get_streams(user_login=batch):
                     live_streamers.add(stream.user_login.lower())
+                    user_ids[stream.user_login.lower()] = stream.user_id
 
             for stream in streams:
                 location = stream.get("location", "Online")
@@ -476,10 +478,69 @@ class Zevent(Extension):
                 
                 streamer_info = StreamerInfo(display_name, twitch_name, is_online, location)
                 categorized[location][display_name] = streamer_info
+            
+            # Limit online participants to top 100
+            if "Online" in categorized:
+                online_streamers = list(categorized["Online"].values())
+                live_online = [s for s in online_streamers if s.is_online]
+                
+                # If we have fewer than 100 live online streamers, fill with top followers
+                if len(live_online) < 100:
+                    offline_online = [s for s in online_streamers if not s.is_online]
+                    # Get follower counts for offline streamers
+                    offline_with_followers = await self._get_streamers_with_followers(offline_online, user_ids)
+                    # Sort by follower count and take what we need
+                    needed = 100 - len(live_online)
+                    top_offline = offline_with_followers[:needed]
+                    
+                    # Rebuild the online category with live + top offline
+                    selected_streamers = live_online + top_offline
+                else:
+                    # Just take the first 100 live streamers
+                    selected_streamers = live_online[:100]
+                
+                # Rebuild the Online category
+                categorized["Online"] = {s.display_name: s for s in selected_streamers}
+                
         except Exception as e:
             logger.error(f"Error categorizing streams: {e}")
         
         return categorized
+    
+    async def _get_streamers_with_followers(self, streamers: List[StreamerInfo], user_ids: Dict[str, str]) -> List[StreamerInfo]:
+        """Get follower counts for offline streamers and return them sorted by follower count"""
+        streamers_with_counts = []
+        
+        try:
+            # Get follower counts for offline streamers using existing user IDs
+            for streamer in streamers:
+                try:
+                    user_id = user_ids.get(streamer.twitch_name.lower())
+                    if user_id:
+                        followers = await self.twitch.get_channel_followers(broadcaster_id=user_id)
+                        follower_count = followers.total if hasattr(followers, 'total') else 0
+                        streamers_with_counts.append((streamer, follower_count))
+                    else:
+                        # If no user ID available, get it from get_users as fallback
+                        users = await self.twitch.get_users(logins=[streamer.twitch_name])
+                        user_list = [user async for user in users]
+                        if user_list:
+                            followers = await self.twitch.get_channel_followers(broadcaster_id=user_list[0].id)
+                            follower_count = followers.total if hasattr(followers, 'total') else 0
+                            streamers_with_counts.append((streamer, follower_count))
+                        else:
+                            streamers_with_counts.append((streamer, 0))
+                except Exception as e:
+                    logger.debug(f"Failed to get followers for {streamer.twitch_name}: {e}")
+                    streamers_with_counts.append((streamer, 0))
+            
+            # Sort by follower count (descending)
+            streamers_with_counts.sort(key=lambda x: x[1], reverse=True)
+            return [streamer for streamer, _ in streamers_with_counts]
+            
+        except Exception as e:
+            logger.error(f"Error getting streamers with followers: {e}")
+            return streamers
 
     async def get_total_viewers_from_twitch(self, streams: List[Dict]) -> str:
         """Get total viewer count from Twitch API for all live streams"""
@@ -586,8 +647,15 @@ class Zevent(Extension):
 
     def create_location_embed(self, title: str, streams: Dict[str, StreamerInfo], withlink=True, finished=False, viewers_count: Optional[str] = None) -> Embed:
         streamer_count = len(streams)
+        
+        # For online participants, show "Top 100" in title if we have exactly 100
+        if "distance" in title and streamer_count == 100 and not finished:
+            embed_title = f"Top {streamer_count} {title}"
+        else:
+            embed_title = f"Les {streamer_count} {title}"
+            
         embed = Embed(
-            title=f"Les {streamer_count} {title}",
+            title=embed_title,
             color=0x59af37,
         )
         
