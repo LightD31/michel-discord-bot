@@ -60,14 +60,14 @@ class Zevent(Extension):
         self.client: Client = client
         self.channel: Optional[BaseChannel] = None
         self.message: Optional[Message] = None
-    self.twitch: Optional[Twitch] = None
-    self.last_milestone = 0
-    self.last_data_cache: Optional[Dict] = None
-    self.last_update_time: Optional[datetime] = None
-    # Streamer name cache for resolving UUIDs -> display names
-    self._streamer_cache: Dict[str, str] = {}
-    self._streamer_cache_time: Optional[datetime] = None
-    self.STREAMER_CACHE_TTL = timedelta(hours=24)
+        self.twitch: Optional[Twitch] = None
+        self.last_milestone = 0
+        self.last_data_cache: Optional[Dict] = None
+        self.last_update_time: Optional[datetime] = None
+        # Streamer name cache for resolving UUIDs -> display names
+        self._streamer_cache = {}
+        self._streamer_cache_time: Optional[datetime] = None
+        self.STREAMER_CACHE_TTL = timedelta(hours=24)
 
     def _get_planning_day(self, now_date: date) -> str:
         """Return the planning day to request: use 2025-09-04 if current date is before that, else use today."""
