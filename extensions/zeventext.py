@@ -68,6 +68,10 @@ class Zevent(Extension):
         self._streamer_cache = {}
         self._streamer_cache_time: Optional[datetime] = None
         self.STREAMER_CACHE_TTL = timedelta(hours=24)
+        # Planning cache
+        self._planning_cache = None
+        self._planning_cache_time: Optional[datetime] = None
+        self.PLANNING_CACHE_TTL = timedelta(minutes=15)
 
     def _get_planning_day(self, now_date: date) -> str:
         """Return the planning day to request: use 2025-09-04 if current date is before that, else use today."""
@@ -107,6 +111,32 @@ class Zevent(Extension):
                 logger.info(f"Streamer cache updated with {len(mapping)} entries")
         except Exception as e:
             logger.error(f"Failed to update streamer cache: {e}")
+
+    async def _ensure_planning_cache(self, target_day: str) -> Optional[List]:
+        """Fetch planning data and cache it for PLANNING_CACHE_TTL."""
+        try:
+            # Check if cache is still valid
+            if (self._planning_cache_time and 
+                datetime.now() - self._planning_cache_time < self.PLANNING_CACHE_TTL and 
+                self._planning_cache is not None):
+                return self._planning_cache
+
+            # Fetch new planning data
+            planning_url = f"{self.PLANNING_API_URL}?day={target_day}"
+            planning_data = await fetch(planning_url, return_type="json")
+            
+            if isinstance(planning_data, list):
+                self._planning_cache = planning_data
+                self._planning_cache_time = datetime.now()
+                logger.info(f"Planning cache updated with {len(planning_data)} events for {target_day}")
+                return planning_data
+            else:
+                logger.warning(f"Planning API returned unexpected format for {target_day}")
+                return None
+                
+        except Exception as e:
+            logger.error(f"Failed to update planning cache: {e}")
+            return None
 
     def calculate_embed_size(self, embed: Embed) -> int:
         """Calculate the total character count of an embed"""
@@ -270,26 +300,26 @@ class Zevent(Extension):
             # show events for 2025-09-04 instead of the current date.
             now_date = datetime.now().date()
             target_day = self._get_planning_day(now_date)
-            planning_url = f"{self.PLANNING_API_URL}?day={target_day}"
             
-            data, planning_data, streamlabs_data = await asyncio.gather(
+            data, streamlabs_data = await asyncio.gather(
                 fetch(self.API_URL, return_type="json"),
-                fetch(planning_url, return_type="json"),
                 fetch(self.STREAMLABS_API_URL, return_type="json"),
                 return_exceptions=True
             )
 
+            # Get planning data from cache (will fetch if cache is expired)
+            planning_data = await self._ensure_planning_cache(target_day)
+
             # Handle API fetch exceptions and validate data
             data = data if not isinstance(data, Exception) and self._validate_api_data(data, "zevent") else None
-            planning_data = planning_data if not isinstance(planning_data, Exception) and isinstance(planning_data, list) else None
             streamlabs_data = streamlabs_data if not isinstance(streamlabs_data, Exception) and self._validate_api_data(streamlabs_data, "streamlabs") else None
 
             if isinstance(data, Exception):
                 logger.error(f"Failed to fetch Zevent API: {data}")
-            if isinstance(planning_data, Exception):
-                logger.error(f"Failed to fetch Planning API: {planning_data}")
             if isinstance(streamlabs_data, Exception):
                 logger.error(f"Failed to fetch Streamlabs API: {streamlabs_data}")
+            if planning_data is None:
+                logger.warning("Planning data not available")
 
             # Check if event has started to determine what data to show
             concert_active = await self._is_concert_active()
