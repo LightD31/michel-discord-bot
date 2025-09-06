@@ -304,6 +304,16 @@ def extract_answer(text):
 
 
 async def fetch(url, return_type="text", headers=None, params=None, retries=3, pause=1):
+    # Set default headers with User-Agent if not provided
+    default_headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+    }
+    
+    if headers:
+        default_headers.update(headers)
+    else:
+        headers = default_headers
+    
     for i in range(retries):
         try:
             async with ClientSession() as session:
