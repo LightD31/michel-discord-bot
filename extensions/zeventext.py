@@ -585,6 +585,7 @@ class Zevent(Extension):
         embed.timestamp = utils.timestamp_converter(datetime.now())
         
         sorted_events = sorted(events, key=lambda x: x.get('start_at', ''))
+        current_time = datetime.now(timezone.utc)
         
         for event in sorted_events:
             try:
@@ -596,6 +597,10 @@ class Zevent(Extension):
                     
                 start_time = datetime.fromisoformat(start_at.replace('Z', '+00:00')).replace(tzinfo=timezone.utc)
                 end_time = datetime.fromisoformat(finished_at.replace('Z', '+00:00')).replace(tzinfo=timezone.utc)
+                
+                # Skip events that have already ended
+                if end_time < current_time:
+                    continue
                 
                 field_name = event.get('name', 'Événement')
                 
