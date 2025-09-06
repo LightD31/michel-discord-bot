@@ -584,7 +584,27 @@ class Zevent(Extension):
         embed.set_footer("Source: zevent.gdoc.fr ❤️")
         embed.timestamp = utils.timestamp_converter(datetime.now())
         
-        sorted_events = sorted(events, key=lambda x: x.get('start_at', ''))
+        # Filter events to only show those that haven't ended yet
+        now = datetime.now(timezone.utc)
+        upcoming_events = []
+        
+        for event in events:
+            try:
+                finished_at = event.get('finished_at', '')
+                if finished_at:
+                    end_time = datetime.fromisoformat(finished_at.replace('Z', '+00:00')).replace(tzinfo=timezone.utc)
+                    # Only include events that haven't ended yet
+                    if end_time > now:
+                        upcoming_events.append(event)
+                else:
+                    # If no end time is specified, include the event
+                    upcoming_events.append(event)
+            except Exception as e:
+                logger.error(f"Error parsing event end time: {e}")
+                # If we can't parse the time, include the event to be safe
+                upcoming_events.append(event)
+        
+        sorted_events = sorted(upcoming_events, key=lambda x: x.get('start_at', ''))
         
         for event in sorted_events:
             try:
