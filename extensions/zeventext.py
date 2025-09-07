@@ -51,7 +51,7 @@ class Zevent(Extension):
     PLANNING_API_URL = "https://zevent-api.gdoc.fr/events"
     STREAMERS_API_URL = "https://zevent-api.gdoc.fr/streamers"
     STREAMLABS_API_URL = "https://streamlabscharity.com/api/v1/teams/@zevent-2025/zevent-2025"
-    UPDATE_INTERVAL = 60
+    UPDATE_INTERVAL = 30
     MILESTONE_INTERVAL = 100000  # 100k
     EVENT_START_DATE = datetime(2025, 9, 4, 17, 55, 0, tzinfo=timezone.utc)  # 4 septembre 2025 à 20h Paris (18h UTC) - Concert pré-événement
     MAIN_EVENT_START_DATE = datetime(2025, 9, 5, 16, 0, 0, tzinfo=timezone.utc)  # 5 septembre 2025 à 18h Paris (16h UTC) - Zevent principal
