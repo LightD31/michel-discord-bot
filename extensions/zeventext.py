@@ -330,8 +330,8 @@ class Zevent(Extension):
                     streams = await self.categorize_streams(self._safe_get_data(data, ["live"], []))
                     embeds = [
                         self.create_main_embed("0 €"),  # Countdown embed
-                        self.create_location_embed("streamers présents sur place", streams["LAN"], withlink=False, viewers_count=None, total_count=streams.get("_totals", {}).get("LAN")),
-                        self.create_location_embed("participants à distance", streams["Online"], withlink=False, viewers_count=None, total_count=streams.get("_totals", {}).get("Online")),
+                        self.create_location_embed("streamers présents sur place", streams["LAN"], withlink=False, viewers_count=None, total_count=self._get_stream_total_count(streams, "LAN")),
+                        self.create_location_embed("participants à distance", streams["Online"], withlink=False, viewers_count=None, total_count=self._get_stream_total_count(streams, "Online")),
                     ]
                     
                     # Add top donations embed if donations are available
@@ -364,8 +364,8 @@ class Zevent(Extension):
                     main_embed_status = "concert_live" if concert_active else "concert_window"
                     embeds = [
                         self.create_main_embed(total_amount, concert_status=main_embed_status),
-                        self.create_location_embed("streamers présents sur place", streams["LAN"], withlink=False, viewers_count=None, total_count=streams.get("_totals", {}).get("LAN")),
-                        self.create_location_embed("participants à distance", streams["Online"], withlink=False, viewers_count=None, total_count=streams.get("_totals", {}).get("Online")),
+                        self.create_location_embed("streamers présents sur place", streams["LAN"], withlink=False, viewers_count=None, total_count=self._get_stream_total_count(streams, "LAN")),
+                        self.create_location_embed("participants à distance", streams["Online"], withlink=False, viewers_count=None, total_count=self._get_stream_total_count(streams, "Online")),
                     ]
                     
                     # Add top donations embed
@@ -416,8 +416,8 @@ class Zevent(Extension):
 
                 embeds = [
                     self.create_main_embed(total_amount, viewers_data["Total"]),
-                    self.create_location_embed("streamers présents sur place", streams["LAN"], withlink=False, viewers_count=viewers_data["LAN"], total_count=streams.get("_totals", {}).get("LAN")),
-                    self.create_location_embed("participants à distance", streams["Online"], withlink=False, viewers_count=viewers_data["Online"], total_count=streams.get("_totals", {}).get("Online")),
+                    self.create_location_embed("streamers présents sur place", streams["LAN"], withlink=False, viewers_count=viewers_data["LAN"], total_count=self._get_stream_total_count(streams, "LAN")),
+                    self.create_location_embed("participants à distance", streams["Online"], withlink=False, viewers_count=viewers_data["Online"], total_count=self._get_stream_total_count(streams, "Online")),
                 ]
                 
                 # Add top donations embed
@@ -488,6 +488,14 @@ class Zevent(Extension):
                 await self.message.edit(embeds=[simple_embed], content="")
         except Exception as e:
             logger.error(f"Failed to send simplified update: {e}")
+
+    def _get_stream_total_count(self, streams: Dict, location: str) -> int:
+        """Safely get the total count for a location from streams data"""
+        totals = streams.get("_totals", {})
+        if isinstance(totals, dict):
+            count = totals.get(location, 0)
+            return count if isinstance(count, int) else 0
+        return 0
 
     async def categorize_streams(self, streams: List[Dict]) -> Dict[str, Dict[str, StreamerInfo]]:
         categorized = {"LAN": {}, "Online": {}, "_totals": {"LAN": 0, "Online": 0}}
@@ -748,8 +756,28 @@ class Zevent(Extension):
         embed.set_footer("Source: zevent.gdoc.fr ❤️")
         embed.timestamp = utils.timestamp_converter(datetime.now())
 
-        # New planning format: start_date, end_date, participants: {host: [...], participant: [...]}
-        sorted_events = sorted(events, key=lambda x: x.get('start_date') or '')
+        # Get current time for filtering ended events
+        current_time = datetime.now(timezone.utc)
+
+        # Filter out ended events and sort by start date
+        upcoming_events = []
+        for event in events:
+            finished_at = event.get('end_date') or ''
+            if finished_at:
+                try:
+                    end_time = datetime.fromisoformat(finished_at.replace('Z', '+00:00')).replace(tzinfo=timezone.utc)
+                    # Only include events that haven't ended yet
+                    if end_time > current_time:
+                        upcoming_events.append(event)
+                except (ValueError, TypeError):
+                    # If we can't parse the end date, include the event to be safe
+                    upcoming_events.append(event)
+            else:
+                # If no end date, include the event
+                upcoming_events.append(event)
+
+        # Sort upcoming events by start date
+        sorted_events = sorted(upcoming_events, key=lambda x: x.get('start_date') or '')
 
         # Ensure we have streamer names cached for UUID resolution
         await self._ensure_streamer_cache()
@@ -894,8 +922,8 @@ class Zevent(Extension):
             # Create the embeds with all the streamers regardless of if they are online or offline, no planning
             embeds = [ 
                 self.create_main_embed(total_amount, finished=True),
-                self.create_location_embed("streamers présents sur place", streams["LAN"], finished=True, withlink=False, total_count=streams.get("_totals", {}).get("LAN")),
-                self.create_location_embed("participants à distance", streams["Online"], finished=True, withlink=False, total_count=streams.get("_totals", {}).get("Online"))
+                self.create_location_embed("streamers présents sur place", streams["LAN"], finished=True, withlink=False, total_count=self._get_stream_total_count(streams, "LAN")),
+                self.create_location_embed("participants à distance", streams["Online"], finished=True, withlink=False, total_count=self._get_stream_total_count(streams, "Online"))
             ]
             
             # Ensure embeds fit Discord's size limit
