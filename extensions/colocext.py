@@ -320,11 +320,11 @@ class ColocClass(Extension):
         """
         if event_type == "start":
             color = 0x00FF00  # Vert pour début
-            title = f"🎉 Nouvel événement : {event['name']}"
+            title = f"🎉 Nouvel événement /im {event['name']}"
             description = "Un nouvel événement vient de commencer !"
         else:  # end
             color = 0xFF0000  # Rouge pour fin
-            title = f"⏰ Fin d'événement : {event['name']}"
+            title = f"⏰ Fin d'événement /im {event['name']}"
             description = "L'événement vient de se terminer."
         
         # Timezone de Paris
@@ -498,12 +498,12 @@ class ColocClass(Extension):
         )
         
         # Ajouter l'image du logo hardcore
-        embed.set_thumbnail(url="https://zunivers.zerator.com/assets/logo-hc.webp")
+        embed.set_image(url="https://zunivers.zerator.com/assets/logo-hc.webp")
         
         if season_type == "start":
             embed.add_field(
                 name="⚠️ Mode Hardcore",
-                value="Attention ! En mode hardcore, la mort est définitive.",
+                value="Attention ! En mode hardcore, un oubli de [/journa](https://discord.com/channels/138283154589876224/1263861962744270958) et on recommmence tout !",
                 inline=False
             )
         
