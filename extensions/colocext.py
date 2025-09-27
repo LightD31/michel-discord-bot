@@ -339,7 +339,8 @@ class ColocClass(Extension):
             }
             for rarity in sorted(items_by_rarity.keys(), reverse=True):
                 rarity_emoji = rarity_emojis.get(rarity, "⭐" * rarity)  # Fallback aux étoiles si rareté inconnue
-                items_text += f"{rarity_emoji} {', '.join(items_by_rarity[rarity][:3])}"
+                rarity_display = rarity_emoji * rarity  # Répéter l'emoji selon le niveau de rareté
+                items_text += f"{rarity_display} {', '.join(items_by_rarity[rarity][:3])}"
                 if len(items_by_rarity[rarity]) > 3:
                     items_text += f" (+{len(items_by_rarity[rarity]) - 3} autres)"
                 items_text += "\n"
@@ -360,7 +361,11 @@ class ColocClass(Extension):
         
         # Image si disponible
         if "imageUrl" in event and event["imageUrl"]:
-            embed.set_image(url=event["imageUrl"])
+            image_url = event["imageUrl"]
+            # Forcer l'extension .webp si aucune extension n'est présente
+            if not image_url.lower().endswith(('.webp', '.png', '.jpg', '.jpeg', '.gif')):
+                image_url += '.webp'
+            embed.set_image(url=image_url)
         
         return embed
 
@@ -446,12 +451,6 @@ class ColocClass(Extension):
             name="📅 Période de la saison",
             value=f"Du <t:{int(begin_date.timestamp())}:F>\nAu <t:{int(end_date.timestamp())}:F>",
             inline=False
-        )
-        
-        embed.add_field(
-            name="🔢 Numéro de saison",
-            value=str(season['index']),
-            inline=True
         )
         
         # Ajouter l'image du logo hardcore
