@@ -38,8 +38,9 @@ module_config = module_config[enabled_servers[0]]
 # Keep track of reminders
 reminders = {}
 
-# Keep track of zunivers events
+# Keep track of zunivers events and hardcore season
 previous_events_state = {}
+previous_hardcore_season = None
 
 NORMAL_REMINDERS = [
     "Tu n'as pas encore fait ton [/journa](https://discord.com/channels/138283154589876224/808432657838768168) normal aujourd'hui !",
@@ -168,23 +169,30 @@ class ColocClass(Extension):
         """
         Load previous events state from a JSON file.
         """
-        global previous_events_state
+        global previous_events_state, previous_hardcore_season
         try:
             with open(
                 f"{config['misc']['dataFolder']}/zunivers_events.json", "r", encoding="utf-8"
             ) as file:
-                previous_events_state = json.load(file)
+                data = json.load(file)
+                previous_events_state = data.get("events", {})
+                previous_hardcore_season = data.get("hardcore_season", None)
         except FileNotFoundError:
             previous_events_state = {}
+            previous_hardcore_season = None
 
     async def save_events_state(self):
         """
-        Save current events state to a JSON file.
+        Save current events and hardcore season state to a JSON file.
         """
+        data = {
+            "events": previous_events_state,
+            "hardcore_season": previous_hardcore_season
+        }
         with open(
             f"{config['misc']['dataFolder']}/zunivers_events.json", "w", encoding="utf-8"
         ) as file:
-            json.dump(previous_events_state, file, ensure_ascii=False, indent=4)
+            json.dump(data, file, ensure_ascii=False, indent=4)
 
     async def check_zunivers_events(self):
         """
@@ -261,6 +269,9 @@ class ColocClass(Extension):
             except Exception as e:
                 logger.error(f"Erreur lors de la vérification des événements {rule_set}: {e}")
         
+        # Vérifier la saison hardcore actuelle
+        await self.check_hardcore_season(channel)
+        
         # Sauvegarder le nouvel état
         await self.save_events_state()
 
@@ -275,24 +286,37 @@ class ColocClass(Extension):
         """
         if event_type == "start":
             color = 0x00FF00  # Vert pour début
-            title = f"🎉 Nouvel événement {rule_set} : {event['name']}"
+            title = f"🎉 Nouvel événement \im {event['name']}"
             description = "Un nouvel événement vient de commencer !"
         else:  # end
             color = 0xFF0000  # Rouge pour fin
-            title = f"⏰ Fin d'événement {rule_set} : {event['name']}"
+            title = f"⏰ Fin d'événement \im {event['name']}"
             description = "L'événement vient de se terminer."
+        
+        # Timezone de Paris
+        paris_tz = pytz.timezone("Europe/Paris")
         
         embed = Embed(
             title=title,
             description=description,
-            color=color,
-            timestamp=datetime.now()
+            color=color
         )
+        
+        # Conversion des dates avec le timezone de Paris
+        # Les dates de l'API sont en heure de Paris (pas UTC)
+        begin_date = datetime.fromisoformat(event['beginDate'])
+        end_date = datetime.fromisoformat(event['endDate'])
+        
+        # Si les dates n'ont pas de timezone, on assume qu'elles sont en heure de Paris
+        if begin_date.tzinfo is None:
+            begin_date = paris_tz.localize(begin_date)
+        if end_date.tzinfo is None:
+            end_date = paris_tz.localize(end_date)
         
         # Informations de base
         embed.add_field(
             name="📅 Période",
-            value=f"Du <t:{int(datetime.fromisoformat(event['beginDate'].replace('Z', '+00:00')).timestamp())}:f>\nAu <t:{int(datetime.fromisoformat(event['endDate'].replace('Z', '+00:00')).timestamp())}:f>",
+            value=f"Du <t:{int(begin_date.timestamp())}:F>\nAu <t:{int(end_date.timestamp())}:F>",
             inline=False
         )
         
@@ -306,9 +330,16 @@ class ColocClass(Extension):
                 items_by_rarity[rarity].append(item["name"])
             
             items_text = ""
+            rarity_emojis = {
+                1: "<:rarity1:1421467748860432507>",
+                2: "<:rarity2:1421467800366612602>",
+                3: "<:rarity3:1421467829139538113>",
+                4: "<:rarity4:1421467859841847406>",
+                5: "<:rarity5:1421467889961275402>"
+            }
             for rarity in sorted(items_by_rarity.keys(), reverse=True):
-                rarity_emoji = "⭐" * rarity
-                items_text += f"{rarity_emoji} **Rareté {rarity}:** {', '.join(items_by_rarity[rarity][:3])}"
+                rarity_emoji = rarity_emojis.get(rarity, "⭐" * rarity)  # Fallback aux étoiles si rareté inconnue
+                items_text += f"{rarity_emoji} {', '.join(items_by_rarity[rarity][:3])}"
                 if len(items_by_rarity[rarity]) > 3:
                     items_text += f" (+{len(items_by_rarity[rarity]) - 3} autres)"
                 items_text += "\n"
@@ -333,6 +364,108 @@ class ColocClass(Extension):
         
         return embed
 
+    async def check_hardcore_season(self, channel):
+        """
+        Check current hardcore season and compare with previous state to detect changes.
+        """
+        global previous_hardcore_season
+        
+        try:
+            # Récupérer la saison hardcore actuelle
+            current_season = await fetch(
+                "https://zunivers-api.zerator.com/public/hardcore/season/current",
+                "json",
+                headers={"X-ZUnivers-RuleSetType": "HARDCORE"}
+            )
+            
+            # Vérifier s'il y a un changement
+            if previous_hardcore_season is None and current_season is not None:
+                # Nouvelle saison commencée
+                embed = await self.create_season_embed(current_season, "start")
+                await channel.send(embed=embed)
+                logger.info(f"Nouvelle saison hardcore détectée: Saison {current_season['index']}")
+                
+            elif previous_hardcore_season is not None and current_season is None:
+                # Saison terminée
+                embed = await self.create_season_embed(previous_hardcore_season, "end")
+                await channel.send(embed=embed)
+                logger.info(f"Fin de saison hardcore détectée: Saison {previous_hardcore_season['index']}")
+                
+            elif (previous_hardcore_season is not None and current_season is not None and
+                  previous_hardcore_season.get("id") != current_season.get("id")):
+                # Changement de saison
+                embed_end = await self.create_season_embed(previous_hardcore_season, "end")
+                embed_start = await self.create_season_embed(current_season, "start")
+                await channel.send(embeds=[embed_end, embed_start])
+                logger.info(f"Changement de saison hardcore: Saison {previous_hardcore_season['index']} → Saison {current_season['index']}")
+            
+            # Mettre à jour l'état
+            previous_hardcore_season = current_season
+            
+        except Exception as e:
+            logger.error(f"Erreur lors de la vérification de la saison hardcore: {e}")
+
+    async def create_season_embed(self, season, season_type):
+        """
+        Create a Discord embed for a hardcore season start or end.
+        
+        Args:
+            season: Season data from the API
+            season_type: "start" or "end"
+        """
+        # Timezone de Paris
+        paris_tz = pytz.timezone("Europe/Paris")
+        
+        if season_type == "start":
+            color = 0xFF4500  # Orange pour début de saison hardcore
+            title = f"🔥 Nouvelle saison HARDCORE : Saison {season['index']}"
+            description = "Une nouvelle saison hardcore vient de commencer !"
+        else:  # end
+            color = 0x8B0000  # Rouge foncé pour fin de saison
+            title = f"💀 Fin de saison HARDCORE : Saison {season['index']}"
+            description = "La saison hardcore vient de se terminer."
+        
+        embed = Embed(
+            title=title,
+            description=description,
+            color=color
+        )
+        
+        # Conversion des dates avec le timezone de Paris
+        begin_date = datetime.fromisoformat(season['beginDate'])
+        end_date = datetime.fromisoformat(season['endDate'])
+        
+        # Si les dates n'ont pas de timezone, on assume qu'elles sont en heure de Paris
+        if begin_date.tzinfo is None:
+            begin_date = paris_tz.localize(begin_date)
+        if end_date.tzinfo is None:
+            end_date = paris_tz.localize(end_date)
+        
+        # Informations de la saison
+        embed.add_field(
+            name="📅 Période de la saison",
+            value=f"Du <t:{int(begin_date.timestamp())}:F>\nAu <t:{int(end_date.timestamp())}:F>",
+            inline=False
+        )
+        
+        embed.add_field(
+            name="🔢 Numéro de saison",
+            value=str(season['index']),
+            inline=True
+        )
+        
+        # Ajouter l'image du logo hardcore
+        embed.set_thumbnail(url="https://zunivers.zerator.com/assets/logo-hc.webp")
+        
+        if season_type == "start":
+            embed.add_field(
+                name="⚠️ Mode Hardcore",
+                value="Attention ! En mode hardcore, la mort est définitive.",
+                inline=False
+            )
+        
+        return embed
+
     @slash_command(
         name="zunivers",
         sub_cmd_name="check",
@@ -349,54 +482,6 @@ class ColocClass(Extension):
         except Exception as e:
             await ctx.send(f"Erreur lors de la vérification: {e}", ephemeral=True)
             logger.error(f"Erreur lors de la vérification manuelle des événements: {e}")
-
-    @zunivers_check.subcommand(
-        sub_cmd_name="status",
-        sub_cmd_description="Affiche l'état actuel des événements Zunivers"
-    )
-    async def zunivers_status(self, ctx: SlashContext):
-        """Affiche l'état actuel des événements Zunivers."""
-        await ctx.defer()
-        
-        try:
-            embeds = []
-            
-            for rule_set in ["NORMAL", "HARDCORE"]:
-                current_events = await fetch(
-                    "https://zunivers-api.zerator.com/public/event/current",
-                    "json",
-                    headers={"X-ZUnivers-RuleSetType": rule_set}
-                )
-                
-                if current_events:
-                    embed = Embed(
-                        title=f"🎮 Événements {rule_set} actuels",
-                        color=0x05B600 if rule_set == "NORMAL" else 0xFF4500,
-                        timestamp=datetime.now()
-                    )
-                    
-                    for event in current_events:
-                        status = "🟢 Actif" if event["isActive"] else "🔴 Inactif"
-                        embed.add_field(
-                            name=f"{status} {event['name']}",
-                            value=f"Du <t:{int(datetime.fromisoformat(event['beginDate'].replace('Z', '+00:00')).timestamp())}:d> au <t:{int(datetime.fromisoformat(event['endDate'].replace('Z', '+00:00')).timestamp())}:d>",
-                            inline=False
-                        )
-                else:
-                    embed = Embed(
-                        title=f"🎮 Événements {rule_set} actuels",
-                        description="Aucun événement en cours",
-                        color=0x808080,
-                        timestamp=datetime.now()
-                    )
-                
-                embeds.append(embed)
-            
-            await ctx.send(embeds=embeds, ephemeral=True)
-            
-        except Exception as e:
-            await ctx.send(f"Erreur lors de la récupération des événements: {e}", ephemeral=True)
-            logger.error(f"Erreur lors de l'affichage du statut: {e}")
 
     # Set reminder to /journa
     @slash_command(
