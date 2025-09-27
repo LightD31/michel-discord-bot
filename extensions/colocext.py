@@ -38,6 +38,9 @@ module_config = module_config[enabled_servers[0]]
 # Keep track of reminders
 reminders = {}
 
+# Keep track of zunivers events
+previous_events_state = {}
+
 NORMAL_REMINDERS = [
     "Tu n'as pas encore fait ton [/journa](https://discord.com/channels/138283154589876224/808432657838768168) normal aujourd'hui !",
     "Hé ! N'oublie pas ton [/journa](https://discord.com/channels/138283154589876224/808432657838768168) du jour !",
@@ -76,6 +79,8 @@ class ColocClass(Extension):
         await self.load_reminders()
         self.check_reminders.start()
         self.corpo_recap.start()
+        await self.load_events_state()
+        self.zunivers_events_checker.start()
 
     @slash_command(name="fesse", description="Fesses", scopes=enabled_servers)
     async def fesse(self, ctx: SlashContext):
@@ -157,6 +162,241 @@ class ColocClass(Extension):
             f"{config['misc']['dataFolder']}/journa.json", "w", encoding="utf-8"
         ) as file:
             json.dump(reminders_data, file, ensure_ascii=False, indent=4)
+
+    # Zunivers Events tracking
+    async def load_events_state(self):
+        """
+        Load previous events state from a JSON file.
+        """
+        global previous_events_state
+        try:
+            with open(
+                f"{config['misc']['dataFolder']}/zunivers_events.json", "r", encoding="utf-8"
+            ) as file:
+                previous_events_state = json.load(file)
+        except FileNotFoundError:
+            previous_events_state = {}
+
+    async def save_events_state(self):
+        """
+        Save current events state to a JSON file.
+        """
+        with open(
+            f"{config['misc']['dataFolder']}/zunivers_events.json", "w", encoding="utf-8"
+        ) as file:
+            json.dump(previous_events_state, file, ensure_ascii=False, indent=4)
+
+    async def check_zunivers_events(self):
+        """
+        Check current Zunivers events and compare with previous state to detect changes.
+        """
+        channel = await self.bot.fetch_channel(module_config["colocZuniversChannelId"])
+        
+        for rule_set in ["NORMAL", "HARDCORE"]:
+            try:
+                # Récupérer les événements actuels
+                current_events = await fetch(
+                    "https://zunivers-api.zerator.com/public/event/current",
+                    "json",
+                    headers={"X-ZUnivers-RuleSetType": rule_set}
+                )
+                
+                # État précédent pour ce rule_set
+                previous_state = previous_events_state.get(rule_set, {})
+                current_state = {}
+                
+                # Analyser les événements actuels
+                for event in current_events:
+                    event_id = event["id"]
+                    event_name = event["name"]
+                    is_active = event["isActive"]
+                    
+                    current_state[event_id] = {
+                        "name": event_name,
+                        "is_active": is_active,
+                        "begin_date": event["beginDate"],
+                        "end_date": event["endDate"]
+                    }
+                    
+                    # Vérifier si c'est un nouvel événement ou un changement d'état
+                    if event_id not in previous_state:
+                        if is_active:
+                            # Nouvel événement actif
+                            embed = await self.create_event_embed(event, "start", rule_set)
+                            await channel.send(embed=embed)
+                            logger.info(f"Nouvel événement {rule_set} détecté: {event_name}")
+                    else:
+                        # Événement existant - vérifier changement d'état
+                        previous_active = previous_state[event_id]["is_active"]
+                        if previous_active != is_active:
+                            if is_active:
+                                # L'événement vient de commencer
+                                embed = await self.create_event_embed(event, "start", rule_set)
+                                await channel.send(embed=embed)
+                                logger.info(f"Événement {rule_set} commencé: {event_name}")
+                            else:
+                                # L'événement vient de se terminer
+                                embed = await self.create_event_embed(event, "end", rule_set)
+                                await channel.send(embed=embed)
+                                logger.info(f"Événement {rule_set} terminé: {event_name}")
+                
+                # Vérifier les événements qui ont disparu (terminés)
+                for event_id, prev_event in previous_state.items():
+                    if event_id not in current_state and prev_event["is_active"]:
+                        # Événement qui était actif et a maintenant disparu
+                        fake_event = {
+                            "id": event_id,
+                            "name": prev_event["name"],
+                            "isActive": False,
+                            "beginDate": prev_event["begin_date"],
+                            "endDate": prev_event["end_date"]
+                        }
+                        embed = await self.create_event_embed(fake_event, "end", rule_set)
+                        await channel.send(embed=embed)
+                        logger.info(f"Événement {rule_set} terminé (disparu): {prev_event['name']}")
+                
+                # Mettre à jour l'état pour ce rule_set
+                previous_events_state[rule_set] = current_state
+                
+            except Exception as e:
+                logger.error(f"Erreur lors de la vérification des événements {rule_set}: {e}")
+        
+        # Sauvegarder le nouvel état
+        await self.save_events_state()
+
+    async def create_event_embed(self, event, event_type, rule_set):
+        """
+        Create a Discord embed for an event start or end.
+        
+        Args:
+            event: Event data from the API
+            event_type: "start" or "end"
+            rule_set: "NORMAL" or "HARDCORE"
+        """
+        if event_type == "start":
+            color = 0x00FF00  # Vert pour début
+            title = f"🎉 Nouvel événement {rule_set} : {event['name']}"
+            description = "Un nouvel événement vient de commencer !"
+        else:  # end
+            color = 0xFF0000  # Rouge pour fin
+            title = f"⏰ Fin d'événement {rule_set} : {event['name']}"
+            description = "L'événement vient de se terminer."
+        
+        embed = Embed(
+            title=title,
+            description=description,
+            color=color,
+            timestamp=datetime.now()
+        )
+        
+        # Informations de base
+        embed.add_field(
+            name="📅 Période",
+            value=f"Du <t:{int(datetime.fromisoformat(event['beginDate'].replace('Z', '+00:00')).timestamp())}:f>\nAu <t:{int(datetime.fromisoformat(event['endDate'].replace('Z', '+00:00')).timestamp())}:f>",
+            inline=False
+        )
+        
+        # Ajouter les items s'il y en a et si c'est le début
+        if event_type == "start" and "items" in event and event["items"]:
+            items_by_rarity = {}
+            for item in event["items"]:
+                rarity = item["rarity"]
+                if rarity not in items_by_rarity:
+                    items_by_rarity[rarity] = []
+                items_by_rarity[rarity].append(item["name"])
+            
+            items_text = ""
+            for rarity in sorted(items_by_rarity.keys(), reverse=True):
+                rarity_emoji = "⭐" * rarity
+                items_text += f"{rarity_emoji} **Rareté {rarity}:** {', '.join(items_by_rarity[rarity][:3])}"
+                if len(items_by_rarity[rarity]) > 3:
+                    items_text += f" (+{len(items_by_rarity[rarity]) - 3} autres)"
+                items_text += "\n"
+            
+            embed.add_field(
+                name="🎁 Items disponibles",
+                value=items_text[:1024],  # Limiter à 1024 caractères
+                inline=False
+            )
+        
+        # Coût si disponible
+        if "balanceCost" in event:
+            embed.add_field(
+                name="💰 Coût",
+                value=f"{event['balanceCost']} <:eraMonnaie:1265266681291341855>",
+                inline=True
+            )
+        
+        # Image si disponible
+        if "imageUrl" in event and event["imageUrl"]:
+            embed.set_image(url=event["imageUrl"])
+        
+        return embed
+
+    @slash_command(
+        name="zunivers",
+        sub_cmd_name="check",
+        sub_cmd_description="Vérifie manuellement les événements Zunivers",
+        description="Gère les événements Zunivers",
+        scopes=enabled_servers,
+    )
+    async def zunivers_check(self, ctx: SlashContext):
+        """Commande pour tester manuellement la vérification des événements."""
+        await ctx.defer()
+        try:
+            await self.check_zunivers_events()
+            await ctx.send("Vérification des événements Zunivers terminée ! 🎉", ephemeral=True)
+        except Exception as e:
+            await ctx.send(f"Erreur lors de la vérification: {e}", ephemeral=True)
+            logger.error(f"Erreur lors de la vérification manuelle des événements: {e}")
+
+    @zunivers_check.subcommand(
+        sub_cmd_name="status",
+        sub_cmd_description="Affiche l'état actuel des événements Zunivers"
+    )
+    async def zunivers_status(self, ctx: SlashContext):
+        """Affiche l'état actuel des événements Zunivers."""
+        await ctx.defer()
+        
+        try:
+            embeds = []
+            
+            for rule_set in ["NORMAL", "HARDCORE"]:
+                current_events = await fetch(
+                    "https://zunivers-api.zerator.com/public/event/current",
+                    "json",
+                    headers={"X-ZUnivers-RuleSetType": rule_set}
+                )
+                
+                if current_events:
+                    embed = Embed(
+                        title=f"🎮 Événements {rule_set} actuels",
+                        color=0x05B600 if rule_set == "NORMAL" else 0xFF4500,
+                        timestamp=datetime.now()
+                    )
+                    
+                    for event in current_events:
+                        status = "🟢 Actif" if event["isActive"] else "🔴 Inactif"
+                        embed.add_field(
+                            name=f"{status} {event['name']}",
+                            value=f"Du <t:{int(datetime.fromisoformat(event['beginDate'].replace('Z', '+00:00')).timestamp())}:d> au <t:{int(datetime.fromisoformat(event['endDate'].replace('Z', '+00:00')).timestamp())}:d>",
+                            inline=False
+                        )
+                else:
+                    embed = Embed(
+                        title=f"🎮 Événements {rule_set} actuels",
+                        description="Aucun événement en cours",
+                        color=0x808080,
+                        timestamp=datetime.now()
+                    )
+                
+                embeds.append(embed)
+            
+            await ctx.send(embeds=embeds, ephemeral=True)
+            
+        except Exception as e:
+            await ctx.send(f"Erreur lors de la récupération des événements: {e}", ephemeral=True)
+            logger.error(f"Erreur lors de l'affichage du statut: {e}")
 
     # Set reminder to /journa
     @slash_command(
@@ -357,6 +597,14 @@ class ColocClass(Extension):
                     reminders[next_remind][reminder_type].extend(reminder_data[reminder_type])
     
             await self.save_reminders()
+
+    @Task.create(IntervalTrigger(hours=1))
+    async def zunivers_events_checker(self):
+        """
+        Tâche qui vérifie les événements Zunivers toutes les heures.
+        """
+        await self.check_zunivers_events()
+
     @Task.create(TimeTrigger(23, 59, 45, utc=False))
     async def corpo_recap(self, date=None):
         bonuses_type_dict = {
