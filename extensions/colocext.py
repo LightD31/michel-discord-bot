@@ -11,6 +11,7 @@ from interactions import (
     ButtonStyle,
     Extension,
     Embed,
+    File,
     IntervalTrigger,
     Message,
     OptionType,
@@ -73,6 +74,24 @@ HARDCORE_REMINDERS = [
 class ColocClass(Extension):
     def __init__(self, bot: Client):
         self.bot: Client = bot
+
+    async def download_image_as_file(self, image_url: str, filename: str = "image.webp"):
+        """
+        Télécharge une image depuis une URL et retourne un objet File pour Discord.
+        """
+        try:
+            import io
+            from interactions import File
+            
+            async with ClientSession() as session:
+                async with session.get(image_url) as response:
+                    if response.status == 200:
+                        image_data = await response.read()
+                        file_obj = io.BytesIO(image_data)
+                        return File(file=file_obj, file_name=filename)
+        except Exception as e:
+            logger.warning(f"Erreur lors du téléchargement de l'image: {e}")
+        return None
 
     @listen()
     async def on_startup(self):
@@ -230,8 +249,11 @@ class ColocClass(Extension):
                     if event_id not in previous_state:
                         if is_active:
                             # Nouvel événement actif
-                            embed = await self.create_event_embed(event, "start", rule_set)
-                            await channel.send(embed=embed)
+                            embed, image_file = await self.create_event_embed(event, "start", rule_set)
+                            if image_file:
+                                await channel.send(embed=embed, file=image_file)
+                            else:
+                                await channel.send(embed=embed)
                             logger.info(f"Nouvel événement {rule_set} détecté: {event_name}")
                     else:
                         # Événement existant - vérifier changement d'état
@@ -239,13 +261,19 @@ class ColocClass(Extension):
                         if previous_active != is_active:
                             if is_active:
                                 # L'événement vient de commencer
-                                embed = await self.create_event_embed(event, "start", rule_set)
-                                await channel.send(embed=embed)
+                                embed, image_file = await self.create_event_embed(event, "start", rule_set)
+                                if image_file:
+                                    await channel.send(embed=embed, file=image_file)
+                                else:
+                                    await channel.send(embed=embed)
                                 logger.info(f"Événement {rule_set} commencé: {event_name}")
                             else:
                                 # L'événement vient de se terminer
-                                embed = await self.create_event_embed(event, "end", rule_set)
-                                await channel.send(embed=embed)
+                                embed, image_file = await self.create_event_embed(event, "end", rule_set)
+                                if image_file:
+                                    await channel.send(embed=embed, file=image_file)
+                                else:
+                                    await channel.send(embed=embed)
                                 logger.info(f"Événement {rule_set} terminé: {event_name}")
                 
                 # Vérifier les événements qui ont disparu (terminés)
@@ -259,8 +287,11 @@ class ColocClass(Extension):
                             "beginDate": prev_event["begin_date"],
                             "endDate": prev_event["end_date"]
                         }
-                        embed = await self.create_event_embed(fake_event, "end", rule_set)
-                        await channel.send(embed=embed)
+                        embed, image_file = await self.create_event_embed(fake_event, "end", rule_set)
+                        if image_file:
+                            await channel.send(embed=embed, file=image_file)
+                        else:
+                            await channel.send(embed=embed)
                         logger.info(f"Événement {rule_set} terminé (disparu): {prev_event['name']}")
                 
                 # Mettre à jour l'état pour ce rule_set
@@ -283,14 +314,17 @@ class ColocClass(Extension):
             event: Event data from the API
             event_type: "start" or "end"
             rule_set: "NORMAL" or "HARDCORE"
+        
+        Returns:
+            tuple: (embed, image_file) where image_file can be None
         """
         if event_type == "start":
             color = 0x00FF00  # Vert pour début
-            title = f"🎉 Nouvel événement \im {event['name']}"
+            title = f"🎉 Nouvel événement : {event['name']}"
             description = "Un nouvel événement vient de commencer !"
         else:  # end
             color = 0xFF0000  # Rouge pour fin
-            title = f"⏰ Fin d'événement \im {event['name']}"
+            title = f"⏰ Fin d'événement : {event['name']}"
             description = "L'événement vient de se terminer."
         
         # Timezone de Paris
@@ -359,15 +393,25 @@ class ColocClass(Extension):
                 inline=True
             )
         
-        # Image si disponible
+        # Image si disponible - télécharger comme fichier pour forcer l'interprétation
+        image_file = None
         if "imageUrl" in event and event["imageUrl"]:
-            image_url = event["imageUrl"]
-            # Forcer l'extension .webp si aucune extension n'est présente
-            if not image_url.lower().endswith(('.webp', '.png', '.jpg', '.jpeg', '.gif')):
-                image_url += '.webp'
-            embed.set_image(url=image_url)
+            # Vérifier si l'URL a une extension
+            has_extension = any(event["imageUrl"].lower().endswith(ext) for ext in ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'])
+            
+            if not has_extension:
+                # Télécharger l'image et l'attacher comme fichier
+                image_file = await self.download_image_as_file(event["imageUrl"], "event_image.webp")
+                if image_file:
+                    # Utiliser l'attachment comme image
+                    embed.set_image(url="attachment://event_image.webp")
+                else:
+                    # Fallback vers l'URL originale
+                    embed.set_image(url=event["imageUrl"])
+            else:
+                embed.set_image(url=event["imageUrl"])
         
-        return embed
+        return embed, image_file
 
     async def check_hardcore_season(self, channel):
         """
