@@ -18,6 +18,7 @@ from interactions import (
     SlashContext,
     Task,
     TimeTrigger,
+    OrTrigger,
     User,
     Client,
     listen,
@@ -726,7 +727,7 @@ class ColocClass(Extension):
     
             await self.save_reminders()
 
-    @Task.create(IntervalTrigger(hours=1))
+    @Task.create(OrTrigger(*[TimeTrigger(hour=i, minute=1) for i in range(24)]))
     async def zunivers_events_checker(self):
         """
         Tâche qui vérifie les événements Zunivers toutes les heures.
