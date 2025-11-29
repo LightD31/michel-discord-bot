@@ -766,6 +766,7 @@ class SecretSanta(Extension):
         
         session.participants.append(ctx.author.id)
         self.save_session(session)
+        logger.info(f"User {ctx.author.id} ({ctx.author.username}) joined Secret Santa in {context_id}")
         
         # Update message
         await self._update_session_message(ctx, session)
@@ -790,6 +791,7 @@ class SecretSanta(Extension):
         
         session.participants.remove(ctx.author.id)
         self.save_session(session)
+        logger.info(f"User {ctx.author.id} ({ctx.author.username}) left Secret Santa in {context_id}")
         
         # Update message
         await self._update_session_message(ctx, session)
