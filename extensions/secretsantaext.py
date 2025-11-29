@@ -209,7 +209,6 @@ class SecretSanta(Extension):
     @slash_command(
         name="secretsanta",
         description="Commandes du Père Noël Secret",
-        scopes=enabled_servers,
         dm_permission=True,
         integration_types=[IntegrationType.GUILD_INSTALL, IntegrationType.USER_INSTALL],
     )
