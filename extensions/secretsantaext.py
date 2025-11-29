@@ -73,23 +73,15 @@ class SecretSanta(Extension):
 
     def get_real_channel_id(self, ctx: Union[SlashContext, ComponentContext]) -> int:
         """Get the real channel ID (handles Group DM quirks with user-installed apps)."""
-        # For Group DMs with user-installed apps, ctx.channel might be wrong
-        # ctx.channel_id is the correct raw channel ID
+        # ctx.channel_id is reliable, ctx.channel.id may be wrong in Group DMs
         if hasattr(ctx, 'channel_id') and ctx.channel_id:
             return int(ctx.channel_id)
-        
-        # Fallback to message's channel if available
-        if hasattr(ctx, 'message') and ctx.message and hasattr(ctx.message, '_channel_id'):
-            return int(ctx.message._channel_id)
-        
-        # Last resort: use ctx.channel.id
         return ctx.channel.id
 
     def get_context_id(self, ctx: Union[SlashContext, ComponentContext]) -> str:
         """Get a unique identifier for the context (guild or channel for private groups)."""
         if ctx.guild:
             return f"guild_{ctx.guild.id}"
-        
         return f"channel_{self.get_real_channel_id(ctx)}"
 
     def create_embed(self, title: str, message: str, color=BrandColors.RED) -> Embed:
@@ -439,12 +431,10 @@ class SecretSanta(Extension):
         session.is_drawn = True
         self.save_session(session)
 
-        # Update original message
-        if session.message_id:
+        # Update original message (only in guilds, not in Group DMs)
+        if ctx.guild and session.message_id:
             try:
                 channel = self.bot.get_channel(session.channel_id)
-                if not channel:
-                    channel = await self.bot.fetch_channel(session.channel_id)
                 if channel:
                     message = await channel.fetch_message(session.message_id)
                     
@@ -507,12 +497,10 @@ class SecretSanta(Extension):
             )
             return
         
-        # Update original message
-        if session.message_id:
+        # Update original message (only in guilds, not in Group DMs)
+        if ctx.guild and session.message_id:
             try:
                 channel = self.bot.get_channel(session.channel_id)
-                if not channel:
-                    channel = await self.bot.fetch_channel(session.channel_id)
                 if channel:
                     message = await channel.fetch_message(session.message_id)
                     embed = self.create_embed(
@@ -815,7 +803,11 @@ class SecretSanta(Extension):
         await ctx.send("Vous avez été retiré du Père Noël Secret.", ephemeral=True)
 
     async def _update_session_message(self, ctx: ComponentContext, session: SecretSantaSession) -> None:
-        """Update the session message with current participants."""
+        """Update the session message with current participants. Only works in guilds."""
+        # Skip message editing in Group DMs due to Discord API limitations
+        if not ctx.guild:
+            return
+            
         try:
             # Build participant list
             if not session.participants:
@@ -845,21 +837,7 @@ class SecretSanta(Extension):
             
             embed = self.create_embed("Père Noël Secret", description, color=BrandColors.GREEN)
             
-            # Always fetch the message from the correct channel (ctx.message may have wrong channel in Group DMs)
-            message = None
-            if session.message_id:
-                try:
-                    channel = self.bot.get_channel(session.channel_id)
-                    if not channel:
-                        channel = await self.bot.fetch_channel(session.channel_id)
-                    if channel:
-                        message = await channel.fetch_message(session.message_id)
-                except Exception as fetch_error:
-                    logger.warning(f"Could not fetch message {session.message_id} from channel {session.channel_id}: {fetch_error}")
-            
-            if message:
-                await message.edit(embed=embed, components=self._create_join_buttons())
-            else:
-                logger.warning(f"Could not find message to update for session {session.context_id}")
+            if ctx.message:
+                await ctx.message.edit(embed=embed, components=self._create_join_buttons())
         except Exception as e:
             logger.error(f"Failed to update session message: {e}")
