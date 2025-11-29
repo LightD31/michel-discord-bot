@@ -148,6 +148,64 @@ class SecretSanta(Extension):
             return [tuple(p) for p in result_data.get("results", [])]
         return None
 
+    async def save_human_readable_draw(
+        self,
+        context_id: str,
+        assignments: List[Tuple[int, int]],
+        session: SecretSantaSession,
+        context_name: str
+    ) -> None:
+        """Save a human-readable text file with the draw results."""
+        draw_file = DATA_DIR / f"draw_{context_id.replace(':', '_')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+        
+        lines = [
+            "=" * 50,
+            "🎅 PÈRE NOËL SECRET - RÉSULTATS DU TIRAGE 🎅",
+            "=" * 50,
+            "",
+            f"📅 Date du tirage : {datetime.now().strftime('%d/%m/%Y à %H:%M')}",
+            f"📍 Contexte : {context_name}",
+            f"👥 Nombre de participants : {len(assignments)}",
+        ]
+        
+        if session.budget:
+            lines.append(f"💰 Budget suggéré : {session.budget}")
+        if session.deadline:
+            lines.append(f"📆 Date limite : {session.deadline}")
+        
+        lines.extend([
+            "",
+            "-" * 50,
+            "ATTRIBUTIONS :",
+            "-" * 50,
+            "",
+        ])
+        
+        for giver_id, receiver_id in assignments:
+            try:
+                giver = await self.bot.fetch_user(giver_id)
+                giver_name = f"{giver.display_name} (@{giver.username})"
+            except Exception:
+                giver_name = f"Utilisateur #{giver_id}"
+            
+            try:
+                receiver = await self.bot.fetch_user(receiver_id)
+                receiver_name = f"{receiver.display_name} (@{receiver.username})"
+            except Exception:
+                receiver_name = f"Utilisateur #{receiver_id}"
+            
+            lines.append(f"  🎁 {giver_name}  →  {receiver_name}")
+        
+        lines.extend([
+            "",
+            "=" * 50,
+            "Fichier généré automatiquement par Michel Bot",
+            "=" * 50,
+        ])
+        
+        draw_file.write_text("\n".join(lines), encoding="utf-8")
+        logger.info(f"Human-readable draw results saved to {draw_file}")
+
     # ========== Assignment Logic ==========
     
     def is_valid_assignment(self, giver: int, receiver: int, banned_pairs: List[Tuple[int, int]]) -> bool:
@@ -635,6 +693,10 @@ class SecretSanta(Extension):
         self.save_draw_results(context_id, assignments)
         session.is_drawn = True
         self.save_session(session)
+
+        # Save human-readable file
+        context_name = ctx.guild.name if ctx.guild else f"DM Group {ctx.channel.id}"
+        await self.save_human_readable_draw(context_id, assignments, session, context_name)
 
         # Build participant mentions for the announcement
         participant_mentions = []
