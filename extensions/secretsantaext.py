@@ -636,31 +636,40 @@ class SecretSanta(Extension):
         session.is_drawn = True
         self.save_session(session)
 
-        # Update original message (only in guilds, not in group DMs)
-        if session.message_id and ctx.guild:
+        # Build participant mentions for the announcement
+        participant_mentions = []
+        for uid in session.participants:
+            try:
+                user = await self.bot.fetch_user(uid)
+                participant_mentions.append(user.mention)
+            except Exception:
+                participant_mentions.append(f"<@{uid}>")
+
+        draw_embed = self.create_embed(
+            "Tirage effectué ! 🎉",
+            f"Le tirage au sort a été effectué pour **{len(session.participants)}** participants !\n\n"
+            f"**Participants :**\n" + "\n".join(f"• {m}" for m in participant_mentions) + "\n\n"
+            "Vérifiez vos messages privés pour découvrir qui vous devez gâter ! 🎁"
+        )
+
+        if ctx.guild:
+            # In guilds, update the original message
+            if session.message_id:
+                try:
+                    channel = self.bot.get_channel(session.channel_id)
+                    if channel:
+                        message = await channel.fetch_message(session.message_id)
+                        await message.edit(embed=draw_embed, components=self._create_join_buttons(context_id, disabled=True))
+                except Exception as e:
+                    logger.error(f"Failed to update session message: {e}")
+        else:
+            # In DM groups, send a new message (can't edit original message)
             try:
                 channel = self.bot.get_channel(session.channel_id)
                 if channel:
-                    message = await channel.fetch_message(session.message_id)
-                    
-                    participant_mentions = []
-                    for uid in session.participants:
-                        try:
-                            user = await self.bot.fetch_user(uid)
-                            participant_mentions.append(user.mention)
-                        except Exception:
-                            participant_mentions.append(f"<@{uid}>")
-                    
-                    embed = self.create_embed(
-                        "Tirage effectué ! 🎉",
-                        f"Le tirage au sort a été effectué pour **{len(session.participants)}** participants !\n\n"
-                        f"**Participants :**\n" + "\n".join(f"• {m}" for m in participant_mentions) + "\n\n"
-                        "Vérifiez vos messages privés pour découvrir qui vous devez gâter ! 🎁"
-                    )
-                    
-                    await message.edit(embed=embed, components=self._create_join_buttons(context_id, disabled=True))
+                    await channel.send(embed=draw_embed)
             except Exception as e:
-                logger.error(f"Failed to update session message: {e}")
+                logger.error(f"Failed to send draw announcement in DM group: {e}")
 
         # Response
         response_msg = f"🎉 Le tirage a été effectué pour {len(session.participants)} participants !"
