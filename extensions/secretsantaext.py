@@ -260,6 +260,126 @@ class SecretSanta(Extension):
         
         return None
 
+    def generate_assignments_with_subgroups(
+        self, 
+        participant_ids: List[int], 
+        banned_pairs: List[Tuple[int, int]]
+    ) -> Optional[Tuple[List[Tuple[int, int]], int]]:
+        """
+        Generate Secret Santa assignments allowing multiple subgroups (cycles).
+        
+        Returns a tuple of (assignments, number_of_subgroups) or None if impossible.
+        Each subgroup forms its own gift-giving cycle.
+        """
+        if len(participant_ids) < 2:
+            return None
+        
+        # Build valid receivers for each participant
+        valid_receivers = self._build_valid_receivers(participant_ids, banned_pairs)
+        
+        # Check if solution is even possible
+        for giver, receivers in valid_receivers.items():
+            if not receivers:
+                logger.warning(f"No valid receivers for participant {giver}")
+                return None
+        
+        assignments: Dict[int, int] = {}
+        remaining = set(participant_ids)
+        subgroups = 0
+        
+        while remaining:
+            # Start a new subgroup with a random participant
+            subgroup_start = random.choice(list(remaining))
+            current = subgroup_start
+            subgroup_members = [current]
+            remaining.remove(current)
+            
+            # Build the cycle
+            while True:
+                # Find valid next person who hasn't been assigned yet
+                candidates = [
+                    r for r in valid_receivers[current] 
+                    if r in remaining
+                ]
+                
+                if not candidates:
+                    # Can we close the loop back to start?
+                    if (len(subgroup_members) >= 2 and 
+                        self.is_valid_assignment(current, subgroup_start, banned_pairs)):
+                        # Close the cycle
+                        assignments[current] = subgroup_start
+                        subgroups += 1
+                        break
+                    else:
+                        # Dead end - this approach failed, try rebuilding
+                        # For simplicity, we'll use a greedy retry
+                        return self._retry_subgroup_assignment(participant_ids, banned_pairs)
+                
+                # Pick next person (prefer those with fewer options)
+                random.shuffle(candidates)
+                candidates.sort(key=lambda c: len([r for r in valid_receivers[c] if r in remaining or r == subgroup_start]))
+                
+                next_person = candidates[0]
+                assignments[current] = next_person
+                subgroup_members.append(next_person)
+                remaining.remove(next_person)
+                current = next_person
+        
+        # Verify everyone has exactly one giver and one receiver
+        if len(assignments) != len(participant_ids):
+            return None
+            
+        return [(giver, assignments[giver]) for giver in participant_ids], subgroups
+
+    def _retry_subgroup_assignment(
+        self, 
+        participant_ids: List[int], 
+        banned_pairs: List[Tuple[int, int]],
+        max_retries: int = 50
+    ) -> Optional[Tuple[List[Tuple[int, int]], int]]:
+        """Retry subgroup assignment with different random starts."""
+        valid_receivers = self._build_valid_receivers(participant_ids, banned_pairs)
+        
+        for _ in range(max_retries):
+            assignments: Dict[int, int] = {}
+            remaining = set(participant_ids)
+            subgroups = 0
+            success = True
+            
+            while remaining and success:
+                # Start a new subgroup
+                participants_list = list(remaining)
+                random.shuffle(participants_list)
+                subgroup_start = participants_list[0]
+                current = subgroup_start
+                subgroup_members = [current]
+                remaining.remove(current)
+                
+                while True:
+                    candidates = [r for r in valid_receivers[current] if r in remaining]
+                    
+                    if not candidates:
+                        if (len(subgroup_members) >= 2 and 
+                            self.is_valid_assignment(current, subgroup_start, banned_pairs)):
+                            assignments[current] = subgroup_start
+                            subgroups += 1
+                            break
+                        else:
+                            success = False
+                            break
+                    
+                    random.shuffle(candidates)
+                    next_person = candidates[0]
+                    assignments[current] = next_person
+                    subgroup_members.append(next_person)
+                    remaining.remove(next_person)
+                    current = next_person
+            
+            if success and len(assignments) == len(participant_ids):
+                return [(giver, assignments[giver]) for giver in participant_ids], subgroups
+        
+        return None
+
     def _create_join_buttons(self, context_id: str, disabled: bool = False) -> List[ActionRow]:
         """Create join/leave buttons for the session."""
         return spread_to_rows(
@@ -412,7 +532,13 @@ class SecretSanta(Extension):
         sub_cmd_name="draw",
         sub_cmd_description="Effectue le tirage au sort",
     )
-    async def draw(self, ctx: SlashContext) -> None:
+    @slash_option(
+        name="allow_subgroups",
+        description="Autoriser plusieurs sous-groupes si une boucle unique est impossible",
+        required=False,
+        opt_type=OptionType.BOOLEAN,
+    )
+    async def draw(self, ctx: SlashContext, allow_subgroups: bool = False) -> None:
         await ctx.defer(ephemeral=True)
         
         context_id = self.get_context_id(ctx)
@@ -452,15 +578,28 @@ class SecretSanta(Extension):
 
         # Generate assignments
         banned_pairs = self.read_banned_pairs(context_id)
+        
+        assignments = None
+        num_subgroups = 1
+        
+        # First, try single loop
         assignments = self.generate_valid_assignments(session.participants, banned_pairs)
         
+        if not assignments and allow_subgroups:
+            # Try with subgroups
+            result = self.generate_assignments_with_subgroups(session.participants, banned_pairs)
+            if result:
+                assignments, num_subgroups = result
+                logger.info(f"Draw completed with {num_subgroups} subgroup(s) for {context_id}")
+        
         if not assignments:
+            error_msg = "Impossible de générer un tirage valide avec les restrictions actuelles.\n"
+            if not allow_subgroups:
+                error_msg += "\n💡 **Astuce :** Essayez avec l'option `allow_subgroups: True` pour autoriser plusieurs sous-groupes."
+            error_msg += "\nVérifiez les paires interdites avec `/secretsanta listbans`"
+            
             await ctx.send(
-                embed=self.create_embed(
-                    "Échec du tirage",
-                    "Impossible de générer un tirage valide avec les restrictions actuelles.\n"
-                    "Vérifiez les paires interdites avec `/secretsanta listbans`"
-                ),
+                embed=self.create_embed("Échec du tirage", error_msg),
                 ephemeral=True
             )
             return
@@ -525,6 +664,8 @@ class SecretSanta(Extension):
 
         # Response
         response_msg = f"🎉 Le tirage a été effectué pour {len(session.participants)} participants !"
+        if num_subgroups > 1:
+            response_msg += f"\n\n🔄 **{num_subgroups} sous-groupes** ont été formés (les contraintes empêchaient une boucle unique)."
         if failed_dms:
             failed_mentions = [f"<@{uid}>" for uid in failed_dms]
             response_msg += f"\n\n⚠️ Impossible d'envoyer un DM à : {', '.join(failed_mentions)}"
