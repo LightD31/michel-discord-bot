@@ -424,6 +424,8 @@ class SecretSanta(Extension):
         if session.message_id:
             try:
                 channel = self.bot.get_channel(session.channel_id)
+                if not channel:
+                    channel = await self.bot.fetch_channel(session.channel_id)
                 if channel:
                     message = await channel.fetch_message(session.message_id)
                     
@@ -490,6 +492,8 @@ class SecretSanta(Extension):
         if session.message_id:
             try:
                 channel = self.bot.get_channel(session.channel_id)
+                if not channel:
+                    channel = await self.bot.fetch_channel(session.channel_id)
                 if channel:
                     message = await channel.fetch_message(session.message_id)
                     embed = self.create_embed(
