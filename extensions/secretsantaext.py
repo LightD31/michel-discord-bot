@@ -970,15 +970,15 @@ class SecretSanta(Extension):
         
         if not session:
             logger.warning(f"Session not found for {context_id}")
-            await ctx.send("Cette session n'existe plus.", ephemeral=True)
+            await self._send_response(ctx, session, "Cette session n'existe plus.")
             return
         
         if session.is_drawn:
-            await ctx.send("Le tirage a déjà été effectué !", ephemeral=True)
+            await self._send_response(ctx, session, "Le tirage a déjà été effectué !")
             return
         
         if ctx.author.id in session.participants:
-            await ctx.send("Vous participez déjà ! 🎅", ephemeral=True)
+            await self._send_response(ctx, session, "Vous participez déjà ! 🎅")
             return
         
         session.participants.append(ctx.author.id)
@@ -987,7 +987,7 @@ class SecretSanta(Extension):
         
         # Update message
         await self._update_session_message(ctx, session)
-        await ctx.send("Vous êtes inscrit au Père Noël Secret ! 🎁", ephemeral=True)
+        await self._send_response(ctx, session, "Vous êtes inscrit au Père Noël Secret ! 🎁")
 
     @component_callback(re.compile(r"secretsanta_leave:(.+)"))
     async def on_leave_button(self, ctx: ComponentContext) -> None:
@@ -997,15 +997,15 @@ class SecretSanta(Extension):
         session = self.get_session(context_id)
         
         if not session:
-            await ctx.send("Cette session n'existe plus.", ephemeral=True)
+            await self._send_response(ctx, session, "Cette session n'existe plus.")
             return
         
         if session.is_drawn:
-            await ctx.send("Le tirage a déjà été effectué, vous ne pouvez plus vous retirer.", ephemeral=True)
+            await self._send_response(ctx, session, "Le tirage a déjà été effectué, vous ne pouvez plus vous retirer.")
             return
         
         if ctx.author.id not in session.participants:
-            await ctx.send("Vous ne participez pas à cette session.", ephemeral=True)
+            await self._send_response(ctx, session, "Vous ne participez pas à cette session.")
             return
         
         session.participants.remove(ctx.author.id)
@@ -1014,7 +1014,35 @@ class SecretSanta(Extension):
         
         # Update message
         await self._update_session_message(ctx, session)
-        await ctx.send("Vous avez été retiré du Père Noël Secret.", ephemeral=True)
+        await self._send_response(ctx, session, "Vous avez été retiré du Père Noël Secret.")
+
+    async def _send_response(self, ctx: ComponentContext, session: Optional[SecretSantaSession], message: str) -> None:
+        """
+        Send a response to the user. In DM groups, ephemeral messages only work for the session creator,
+        so we send a DM to other users instead.
+        """
+        # In guilds, always use ephemeral
+        if ctx.guild:
+            await ctx.send(message, ephemeral=True)
+            return
+        
+        # In DM groups: ephemeral only works for the session creator
+        # For others, we need to send a DM
+        if session and ctx.author.id == session.created_by:
+            await ctx.send(message, ephemeral=True)
+        else:
+            try:
+                # Send a DM to the user
+                await ctx.author.send(f"🎅 **Père Noël Secret**\n{message}")
+                # Still need to acknowledge the interaction to avoid "interaction failed"
+                await ctx.defer(edit_origin=True)
+            except Exception as e:
+                logger.error(f"Failed to send DM to {ctx.author.id}: {e}")
+                # Fallback: try ephemeral anyway (might fail but at least we tried)
+                try:
+                    await ctx.send(message, ephemeral=True)
+                except Exception:
+                    pass
 
     async def _update_session_message(self, ctx: ComponentContext, session: SecretSantaSession) -> None:
         """Update the session message with current participants."""
