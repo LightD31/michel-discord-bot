@@ -826,6 +826,16 @@ class SecretSanta(Extension):
             
             embed = self.create_embed("Père Noël Secret", description, color=BrandColors.GREEN)
             
-            await ctx.message.edit(embed=embed, components=self._create_join_buttons())
+            # Try to use ctx.message first, otherwise fetch the message
+            message = ctx.message
+            if not message and session.message_id:
+                channel = self.bot.get_channel(session.channel_id)
+                if not channel:
+                    channel = await self.bot.fetch_channel(session.channel_id)
+                if channel:
+                    message = await channel.fetch_message(session.message_id)
+            
+            if message:
+                await message.edit(embed=embed, components=self._create_join_buttons())
         except Exception as e:
             logger.error(f"Failed to update session message: {e}")
