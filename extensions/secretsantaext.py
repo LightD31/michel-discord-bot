@@ -250,6 +250,10 @@ class SecretSanta(Extension):
                 ephemeral=True
             )
             return
+        
+        # Delete old drawn session if it exists
+        if existing and existing.is_drawn:
+            self.delete_session(context_id)
 
         # Create session
         session = SecretSantaSession(
