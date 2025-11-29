@@ -1,6 +1,6 @@
 import os
 import random
-from typing import Tuple, Optional, Dict, Any
+from typing import Optional
 from interactions import (
     Client,
     Extension,
@@ -10,14 +10,10 @@ from interactions import (
     slash_option,
     IntegrationType,
 )
-from rdoclient import RandomOrgClient
 
 from dict import chooseList
 from src import logutil
-from src.utils import load_config
 
-# Configuration
-config = load_config()[0]
 logger = logutil.init_logger(os.path.basename(__file__))
 
 # Constantes
@@ -31,40 +27,16 @@ ERROR_MESSAGES = {
     "no_choice": "🤔 Compliqué de faire un choix quand il n'y a pas le choix ! Ajoutez au moins 2 options.",
     "too_many_choices": f"😅 Trop de choix ! Limitez-vous à {MAX_CHOICES} options maximum.",
     "invalid_die_faces": f"🎲 Un dé doit avoir entre {MIN_DIE_FACES} et {MAX_DIE_FACES:,} faces !",
-    "api_error": "⚡ Random.org temporairement indisponible, utilisation du générateur Python.",
 }
 
 
 class RandomClass(Extension):
     def __init__(self, bot: Client):
         self.bot = bot
-        # Gestion sécurisée de la configuration
-        if config and "random" in config and "randomOrgApiKey" in config["random"]:
-            self.random_client = RandomOrgClient(config["random"]["randomOrgApiKey"])
-        else:
-            logger.warning(
-                "Clé API Random.org non trouvée, utilisation de Python random uniquement"
-            )
-            self.random_client = None
 
-    def _get_random_index(
-        self, min_val: int, max_val: int
-    ) -> Tuple[int, Optional[Dict[str, Any]]]:
-        """Helper function to get a random index using random.org API, fallback to Python's random."""
-        if not self.random_client:
-            return random.randint(min_val, max_val), None
-
-        try:
-            response = self.random_client.generate_signed_integers(
-                n=1, min=min_val, max=max_val
-            )
-            random_index = response["random"]["data"][0]
-            return random_index, response
-        except Exception:
-            logger.error(
-                "Random.org API failed, using python random instead.", exc_info=True
-            )
-            return random.randint(min_val, max_val), None
+    def _get_random_int(self, min_val: int, max_val: int) -> int:
+        """Retourne un entier aléatoire entre min_val et max_val (inclus)."""
+        return random.randint(min_val, max_val)
 
     def _validate_choices(self, choices: list) -> Optional[str]:
         """Valide la liste des choix et retourne un message d'erreur si nécessaire."""
@@ -111,25 +83,13 @@ class RandomClass(Extension):
             await ctx.send(error_msg)
             return
 
-        await ctx.defer()
-        random_index, response = self._get_random_index(1, len(choices))
-        random_index -= 1  # Ajustement pour l'index basé sur 0
+        random_index = self._get_random_int(0, len(choices) - 1)
 
         # Sélection d'un message aléatoire de choix
         choice_message = random.choice(chooseList)
         selected_choice = choices[random_index]
 
-        if response and self.random_client:
-            link = self.random_client.create_url(
-                response["random"], response["signature"]
-            )
-            await ctx.send(
-                f"{choice_message} : **{selected_choice}**\n*[Sélectionné par random.org](<{link}>)*"
-            )
-        else:
-            await ctx.send(
-                f"{choice_message} : **{selected_choice}**\n*{ERROR_MESSAGES['api_error']}*"
-            )
+        await ctx.send(f"{choice_message} : **{selected_choice}**")
 
     @slash_command(
         name="roll",
@@ -149,20 +109,8 @@ class RandomClass(Extension):
             await ctx.send(error_msg)
             return
 
-        await ctx.defer()
-        random_index, response = self._get_random_index(1, faces)
-
-        if response and self.random_client:
-            link = self.random_client.create_url(
-                response["random"], response["signature"]
-            )
-            await ctx.send(
-                f":game_die: **{random_index}** :game_die:\n*[Sélectionné par random.org](<{link}>)*"
-            )
-        else:
-            await ctx.send(
-                f":game_die: **{random_index}** :game_die:\n*{ERROR_MESSAGES['api_error']}*"
-            )
+        result = self._get_random_int(1, faces)
+        await ctx.send(f":game_die: **{result}** :game_die:")
 
     @slash_command(
         name="coin",
@@ -170,16 +118,47 @@ class RandomClass(Extension):
         integration_types=[IntegrationType.GUILD_INSTALL, IntegrationType.USER_INSTALL],
     )
     async def coin(self, ctx: SlashContext):
-        """Nouvelle commande pour lancer une pièce."""
-        await ctx.defer()
-        random_index, response = self._get_random_index(1, 2)
+        """Lance une pièce de monnaie."""
+        result = "🪙 **Pile**" if self._get_random_int(1, 2) == 1 else "🪙 **Face**"
+        await ctx.send(result)
 
-        result = "🪙 **Pile**" if random_index == 1 else "🪙 **Face**"
+    @slash_command(
+        name="shuffle",
+        description="Mélange une liste d'éléments",
+        integration_types=[IntegrationType.GUILD_INSTALL, IntegrationType.USER_INSTALL],
+    )
+    @slash_option(
+        "liste",
+        "Éléments à mélanger, séparés par des point-virgules",
+        opt_type=OptionType.STRING,
+        required=True,
+    )
+    @slash_option(
+        "séparateur",
+        "Séparateur des éléments (Défaut: ;)",
+        opt_type=OptionType.STRING,
+        required=False,
+    )
+    async def shuffle(
+        self, ctx: SlashContext, liste: str, séparateur: str = DEFAULT_SEPARATOR
+    ):
+        """Mélange une liste d'éléments aléatoirement."""
+        # Nettoyage et validation des éléments
+        items = [item.strip() for item in liste.split(séparateur) if item.strip()]
 
-        if response and self.random_client:
-            link = self.random_client.create_url(
-                response["random"], response["signature"]
-            )
-            await ctx.send(f"{result}\n*[Sélectionné par random.org](<{link}>)*")
-        else:
-            await ctx.send(f"{result}\n*{ERROR_MESSAGES['api_error']}*")
+        # Validation des entrées
+        error_msg = self._validate_choices(items)
+        if error_msg:
+            await ctx.send(error_msg)
+            return
+
+        # Mélange de la liste
+        shuffled = items.copy()
+        random.shuffle(shuffled)
+
+        # Formatage du résultat
+        numbered_list = "\n".join(
+            f"{idx + 1}. {item}" for idx, item in enumerate(shuffled)
+        )
+
+        await ctx.send(f"🔀 **Liste mélangée :**\n{numbered_list}")
