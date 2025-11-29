@@ -1,5 +1,6 @@
 import json
 import random
+import re
 from dataclasses import dataclass, asdict
 from datetime import datetime
 from pathlib import Path
@@ -187,19 +188,19 @@ class SecretSanta(Extension):
         
         return None
 
-    def _create_join_buttons(self, disabled: bool = False) -> List[ActionRow]:
+    def _create_join_buttons(self, context_id: str, disabled: bool = False) -> List[ActionRow]:
         """Create join/leave buttons for the session."""
         return spread_to_rows(
             Button(
                 style=ButtonStyle.SUCCESS,
                 label="Participer 🎁",
-                custom_id="secretsanta_join",
+                custom_id=f"secretsanta_join:{context_id}",
                 disabled=disabled
             ),
             Button(
                 style=ButtonStyle.DANGER,
                 label="Se retirer",
-                custom_id="secretsanta_leave",
+                custom_id=f"secretsanta_leave:{context_id}",
                 disabled=disabled
             )
         )
@@ -282,7 +283,7 @@ class SecretSanta(Extension):
         
         msg = await ctx.send(
             embed=embed,
-            components=self._create_join_buttons()
+            components=self._create_join_buttons(context_id)
         )
         
         session.message_id = msg.id
@@ -446,7 +447,7 @@ class SecretSanta(Extension):
                         "Vérifiez vos messages privés pour découvrir qui vous devez gâter ! 🎁"
                     )
                     
-                    await message.edit(embed=embed, components=self._create_join_buttons(disabled=True))
+                    await message.edit(embed=embed, components=self._create_join_buttons(context_id, disabled=True))
             except Exception as e:
                 logger.error(f"Failed to update session message: {e}")
 
@@ -747,12 +748,15 @@ class SecretSanta(Extension):
 
     # ========== Button Callbacks ==========
 
-    @component_callback("secretsanta_join")
+    @component_callback(re.compile(r"secretsanta_join:(.+)"))
     async def on_join_button(self, ctx: ComponentContext) -> None:
-        context_id = self.get_context_id(ctx)
+        # Extract context_id from custom_id
+        context_id = ctx.custom_id.split(":", 1)[1]
+        logger.debug(f"Join button clicked by {ctx.author.id} for session {context_id}")
         session = self.get_session(context_id)
         
         if not session:
+            logger.warning(f"Session not found for {context_id}")
             await ctx.send("Cette session n'existe plus.", ephemeral=True)
             return
         
@@ -772,9 +776,11 @@ class SecretSanta(Extension):
         await self._update_session_message(ctx, session)
         await ctx.send("Vous êtes inscrit au Père Noël Secret ! 🎁", ephemeral=True)
 
-    @component_callback("secretsanta_leave")
+    @component_callback(re.compile(r"secretsanta_leave:(.+)"))
     async def on_leave_button(self, ctx: ComponentContext) -> None:
-        context_id = self.get_context_id(ctx)
+        # Extract context_id from custom_id
+        context_id = ctx.custom_id.split(":", 1)[1]
+        logger.debug(f"Leave button clicked by {ctx.author.id} for session {context_id}")
         session = self.get_session(context_id)
         
         if not session:
@@ -832,6 +838,6 @@ class SecretSanta(Extension):
             
             embed = self.create_embed("Père Noël Secret", description, color=BrandColors.GREEN)
             
-            await ctx.message.edit(embed=embed, components=self._create_join_buttons())
+            await ctx.message.edit(embed=embed, components=self._create_join_buttons(session.context_id))
         except Exception as e:
             logger.error(f"Failed to update session message: {e}")
