@@ -71,18 +71,11 @@ class SecretSanta(Extension):
         """Write JSON data to file."""
         file_path.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
 
-    def get_real_channel_id(self, ctx: Union[SlashContext, ComponentContext]) -> int:
-        """Get the real channel ID (handles Group DM quirks with user-installed apps)."""
-        # ctx.channel_id is reliable, ctx.channel.id may be wrong in Group DMs
-        if hasattr(ctx, 'channel_id') and ctx.channel_id:
-            return int(ctx.channel_id)
-        return ctx.channel.id
-
     def get_context_id(self, ctx: Union[SlashContext, ComponentContext]) -> str:
         """Get a unique identifier for the context (guild or channel for private groups)."""
         if ctx.guild:
             return f"guild_{ctx.guild.id}"
-        return f"channel_{self.get_real_channel_id(ctx)}"
+        return f"channel_{ctx.channel.id}"
 
     def create_embed(self, title: str, message: str, color=BrandColors.RED) -> Embed:
         """Create a themed embed."""
@@ -257,15 +250,11 @@ class SecretSanta(Extension):
                 ephemeral=True
             )
             return
-        
-        # Delete old drawn session if it exists
-        if existing and existing.is_drawn:
-            self.delete_session(context_id)
 
         # Create session
         session = SecretSantaSession(
             context_id=context_id,
-            channel_id=self.get_real_channel_id(ctx),
+            channel_id=ctx.channel.id,
             created_by=ctx.author.id,
             budget=budget,
             deadline=deadline
@@ -283,7 +272,11 @@ class SecretSanta(Extension):
         if deadline:
             description += f"📅 **Date limite :** {deadline}\n"
         
-        description += "\n**Participants (0) :**\n*Aucun participant pour le moment*"
+        # Only show participant count in guilds (can be updated there)
+        if ctx.guild:
+            description += "\n**Participants (0) :**\n*Aucun participant pour le moment*"
+        else:
+            description += "\nUtilisez `/secretsanta participants` pour voir la liste des inscrits."
         
         embed = self.create_embed("Père Noël Secret", description, color=BrandColors.GREEN)
         
@@ -431,8 +424,8 @@ class SecretSanta(Extension):
         session.is_drawn = True
         self.save_session(session)
 
-        # Update original message (only in guilds, not in Group DMs)
-        if ctx.guild and session.message_id:
+        # Update original message (only in guilds, not in group DMs)
+        if session.message_id and ctx.guild:
             try:
                 channel = self.bot.get_channel(session.channel_id)
                 if channel:
@@ -497,8 +490,8 @@ class SecretSanta(Extension):
             )
             return
         
-        # Update original message (only in guilds, not in Group DMs)
-        if ctx.guild and session.message_id:
+        # Update original message (only in guilds, not in group DMs)
+        if session.message_id and ctx.guild:
             try:
                 channel = self.bot.get_channel(session.channel_id)
                 if channel:
@@ -803,8 +796,8 @@ class SecretSanta(Extension):
         await ctx.send("Vous avez été retiré du Père Noël Secret.", ephemeral=True)
 
     async def _update_session_message(self, ctx: ComponentContext, session: SecretSantaSession) -> None:
-        """Update the session message with current participants. Only works in guilds."""
-        # Skip message editing in Group DMs due to Discord API limitations
+        """Update the session message with current participants."""
+        # Skip updating message in group DMs (bots can't edit messages there)
         if not ctx.guild:
             return
             
@@ -837,7 +830,6 @@ class SecretSanta(Extension):
             
             embed = self.create_embed("Père Noël Secret", description, color=BrandColors.GREEN)
             
-            if ctx.message:
-                await ctx.message.edit(embed=embed, components=self._create_join_buttons())
+            await ctx.message.edit(embed=embed, components=self._create_join_buttons())
         except Exception as e:
             logger.error(f"Failed to update session message: {e}")
