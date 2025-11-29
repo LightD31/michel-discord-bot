@@ -832,6 +832,8 @@ class SecretSanta(Extension):
             
             # Try to use ctx.message first, otherwise fetch the message
             message = ctx.message
+            logger.debug(f"ctx.message: {message}, ctx.channel.id: {ctx.channel.id}, session.channel_id: {session.channel_id}, session.message_id: {session.message_id}")
+            
             if not message and session.message_id:
                 channel = self.bot.get_channel(session.channel_id)
                 if not channel:
@@ -841,5 +843,7 @@ class SecretSanta(Extension):
             
             if message:
                 await message.edit(embed=embed, components=self._create_join_buttons())
+            else:
+                logger.warning(f"Could not find message to update for session {session.context_id}")
         except Exception as e:
             logger.error(f"Failed to update session message: {e}")
