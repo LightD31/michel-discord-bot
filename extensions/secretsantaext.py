@@ -71,27 +71,26 @@ class SecretSanta(Extension):
         """Write JSON data to file."""
         file_path.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
 
+    def get_real_channel_id(self, ctx: Union[SlashContext, ComponentContext]) -> int:
+        """Get the real channel ID (handles Group DM quirks with user-installed apps)."""
+        # For Group DMs with user-installed apps, ctx.channel might be wrong
+        # ctx.channel_id is the correct raw channel ID
+        if hasattr(ctx, 'channel_id') and ctx.channel_id:
+            return int(ctx.channel_id)
+        
+        # Fallback to message's channel if available
+        if hasattr(ctx, 'message') and ctx.message and hasattr(ctx.message, '_channel_id'):
+            return int(ctx.message._channel_id)
+        
+        # Last resort: use ctx.channel.id
+        return ctx.channel.id
+
     def get_context_id(self, ctx: Union[SlashContext, ComponentContext]) -> str:
         """Get a unique identifier for the context (guild or channel for private groups)."""
         if ctx.guild:
             return f"guild_{ctx.guild.id}"
         
-        # Debug logging to understand the context
-        logger.debug(f"get_context_id - ctx.channel: {ctx.channel}, ctx.channel.id: {getattr(ctx.channel, 'id', None)}")
-        if hasattr(ctx, 'channel_id'):
-            logger.debug(f"get_context_id - ctx.channel_id: {ctx.channel_id}")
-        if hasattr(ctx, 'message') and ctx.message:
-            logger.debug(f"get_context_id - ctx.message.channel: {getattr(ctx.message, 'channel', None)}, ctx.message._channel_id: {getattr(ctx.message, '_channel_id', None)}")
-        
-        # For ComponentContext, try to get channel from the message first (more reliable in Group DMs)
-        if hasattr(ctx, 'message') and ctx.message and hasattr(ctx.message, '_channel_id'):
-            return f"channel_{ctx.message._channel_id}"
-        
-        # Fallback to ctx.channel_id (the raw ID, not the channel object)
-        if hasattr(ctx, 'channel_id') and ctx.channel_id:
-            return f"channel_{ctx.channel_id}"
-            
-        return f"channel_{ctx.channel.id}"
+        return f"channel_{self.get_real_channel_id(ctx)}"
 
     def create_embed(self, title: str, message: str, color=BrandColors.RED) -> Embed:
         """Create a themed embed."""
@@ -274,7 +273,7 @@ class SecretSanta(Extension):
         # Create session
         session = SecretSantaSession(
             context_id=context_id,
-            channel_id=ctx.channel.id,
+            channel_id=self.get_real_channel_id(ctx),
             created_by=ctx.author.id,
             budget=budget,
             deadline=deadline
