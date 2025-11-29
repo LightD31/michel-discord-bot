@@ -75,6 +75,22 @@ class SecretSanta(Extension):
         """Get a unique identifier for the context (guild or channel for private groups)."""
         if ctx.guild:
             return f"guild_{ctx.guild.id}"
+        
+        # Debug logging to understand the context
+        logger.debug(f"get_context_id - ctx.channel: {ctx.channel}, ctx.channel.id: {getattr(ctx.channel, 'id', None)}")
+        if hasattr(ctx, 'channel_id'):
+            logger.debug(f"get_context_id - ctx.channel_id: {ctx.channel_id}")
+        if hasattr(ctx, 'message') and ctx.message:
+            logger.debug(f"get_context_id - ctx.message.channel: {getattr(ctx.message, 'channel', None)}, ctx.message._channel_id: {getattr(ctx.message, '_channel_id', None)}")
+        
+        # For ComponentContext, try to get channel from the message first (more reliable in Group DMs)
+        if hasattr(ctx, 'message') and ctx.message and hasattr(ctx.message, '_channel_id'):
+            return f"channel_{ctx.message._channel_id}"
+        
+        # Fallback to ctx.channel_id (the raw ID, not the channel object)
+        if hasattr(ctx, 'channel_id') and ctx.channel_id:
+            return f"channel_{ctx.channel_id}"
+            
         return f"channel_{ctx.channel.id}"
 
     def create_embed(self, title: str, message: str, color=BrandColors.RED) -> Embed:
