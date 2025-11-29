@@ -157,34 +157,106 @@ class SecretSanta(Extension):
             for p1, p2 in banned_pairs
         )
 
+    def _build_valid_receivers(
+        self, 
+        participant_ids: List[int], 
+        banned_pairs: List[Tuple[int, int]]
+    ) -> Dict[int, List[int]]:
+        """Build a dict of valid receivers for each giver."""
+        valid_receivers = {}
+        for giver in participant_ids:
+            valid_receivers[giver] = [
+                receiver for receiver in participant_ids
+                if receiver != giver and self.is_valid_assignment(giver, receiver, banned_pairs)
+            ]
+        return valid_receivers
+
+    def _backtrack_assign(
+        self,
+        givers: List[int],
+        index: int,
+        assignments: Dict[int, int],
+        available_receivers: set,
+        valid_receivers: Dict[int, List[int]]
+    ) -> bool:
+        """Backtracking algorithm to find valid assignments."""
+        if index == len(givers):
+            return True
+        
+        giver = givers[index]
+        # Get valid receivers that are still available, sorted by fewest options first (MRV heuristic)
+        candidates = [r for r in valid_receivers[giver] if r in available_receivers]
+        
+        # Shuffle to add randomness while still using smart ordering
+        random.shuffle(candidates)
+        
+        for receiver in candidates:
+            assignments[giver] = receiver
+            available_receivers.remove(receiver)
+            
+            # Forward checking: ensure remaining givers still have valid options
+            if self._has_valid_future(givers, index + 1, available_receivers, valid_receivers):
+                if self._backtrack_assign(givers, index + 1, assignments, available_receivers, valid_receivers):
+                    return True
+            
+            # Backtrack
+            available_receivers.add(receiver)
+            del assignments[giver]
+        
+        return False
+
+    def _has_valid_future(
+        self,
+        givers: List[int],
+        start_index: int,
+        available_receivers: set,
+        valid_receivers: Dict[int, List[int]]
+    ) -> bool:
+        """Forward checking: verify all future givers have at least one valid receiver."""
+        for i in range(start_index, len(givers)):
+            giver = givers[i]
+            if not any(r in available_receivers for r in valid_receivers[giver]):
+                return False
+        return True
+
     def generate_valid_assignments(
         self, 
         participant_ids: List[int], 
         banned_pairs: List[Tuple[int, int]]
     ) -> Optional[List[Tuple[int, int]]]:
-        """Generate valid Secret Santa assignments using a derangement algorithm."""
+        """
+        Generate valid Secret Santa assignments using a smart backtracking algorithm.
+        
+        Uses:
+        - Constraint propagation to build valid receiver lists
+        - MRV (Minimum Remaining Values) heuristic to order givers
+        - Forward checking to prune early
+        - Randomization for variety
+        """
         if len(participant_ids) < 2:
             return None
-            
-        max_attempts = 1000
-        for _ in range(max_attempts):
-            shuffled = participant_ids.copy()
-            random.shuffle(shuffled)
-            assignments = []
-            valid = True
-
-            for i in range(len(shuffled)):
-                giver = shuffled[i]
-                receiver = shuffled[(i + 1) % len(shuffled)]
-                
-                if giver == receiver or not self.is_valid_assignment(giver, receiver, banned_pairs):
-                    valid = False
-                    break
-                
-                assignments.append((giver, receiver))
-            
-            if valid:
-                return assignments
+        
+        # Build valid receivers for each participant
+        valid_receivers = self._build_valid_receivers(participant_ids, banned_pairs)
+        
+        # Check if solution is even possible (each person must have at least one valid receiver)
+        for giver, receivers in valid_receivers.items():
+            if not receivers:
+                logger.warning(f"No valid receivers for participant {giver}")
+                return None
+        
+        # Sort givers by number of valid receivers (MRV heuristic) - most constrained first
+        # Add randomization among equal constraints for variety
+        givers = participant_ids.copy()
+        random.shuffle(givers)  # Shuffle first for randomness
+        givers.sort(key=lambda g: len(valid_receivers[g]))  # Then sort by constraint level
+        
+        assignments: Dict[int, int] = {}
+        available_receivers = set(participant_ids)
+        
+        if self._backtrack_assign(givers, 0, assignments, available_receivers, valid_receivers):
+            # Convert to list of tuples
+            return [(giver, assignments[giver]) for giver in participant_ids]
         
         return None
 
