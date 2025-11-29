@@ -830,16 +830,17 @@ class SecretSanta(Extension):
             
             embed = self.create_embed("Père Noël Secret", description, color=BrandColors.GREEN)
             
-            # Try to use ctx.message first, otherwise fetch the message
-            message = ctx.message
-            logger.debug(f"ctx.message: {message}, ctx.channel.id: {ctx.channel.id}, session.channel_id: {session.channel_id}, session.message_id: {session.message_id}")
-            
-            if not message and session.message_id:
-                channel = self.bot.get_channel(session.channel_id)
-                if not channel:
-                    channel = await self.bot.fetch_channel(session.channel_id)
-                if channel:
-                    message = await channel.fetch_message(session.message_id)
+            # Always fetch the message from the correct channel (ctx.message may have wrong channel in Group DMs)
+            message = None
+            if session.message_id:
+                try:
+                    channel = self.bot.get_channel(session.channel_id)
+                    if not channel:
+                        channel = await self.bot.fetch_channel(session.channel_id)
+                    if channel:
+                        message = await channel.fetch_message(session.message_id)
+                except Exception as fetch_error:
+                    logger.warning(f"Could not fetch message {session.message_id} from channel {session.channel_id}: {fetch_error}")
             
             if message:
                 await message.edit(embed=embed, components=self._create_join_buttons())
