@@ -8,7 +8,8 @@ from typing import Dict, List, Optional, Tuple, Union
 from interactions import (
     Extension, Client, BrandColors, Embed, OptionType, ComponentContext,
     SlashContext, slash_command, slash_option, Member, User, Button,
-    ButtonStyle, ActionRow, component_callback, Permissions, spread_to_rows
+    ButtonStyle, ActionRow, component_callback, Permissions, spread_to_rows,
+    IntegrationType
 )
 
 from src import logutil
@@ -210,6 +211,7 @@ class SecretSanta(Extension):
         description="Commandes du Père Noël Secret",
         scopes=enabled_servers,
         dm_permission=True,
+        integration_types=[IntegrationType.GUILD_INSTALL, IntegrationType.USER_INSTALL],
     )
     async def secret_santa(self, ctx: SlashContext) -> None:
         pass
