@@ -94,7 +94,7 @@ AVAILABLE_MODELS: dict[AIProvider, ModelConfig] = {
     ),
     AIProvider.QWEN: ModelConfig(
         AIProvider.QWEN,
-        "qqwen/qwen3-vl-235b-a22b-instruct",
+        "qwen/qwen3-vl-235b-a22b-instruct",
         "Qwen3 235B A22B Instruct"
     ),
     AIProvider.GEMINI: ModelConfig(
