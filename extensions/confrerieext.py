@@ -1,8 +1,16 @@
+"""
+Extension Discord pour la gestion de la confrérie littéraire.
+
+Cette extension gère les statistiques, les défis, et les éditeurs
+via l'intégration avec l'API Notion (version 2025-09-03).
+"""
+
 import os
 from collections import defaultdict
 from datetime import datetime
 from typing import Dict, List, Optional, Any
 
+import aiohttp
 import interactions
 from notion_client import AsyncClient, APIResponseError
 
@@ -15,17 +23,27 @@ logger = logutil.init_logger(os.path.basename(__file__))
 config, module_config, enabled_servers = load_config("moduleConfrerie")
 module_config = module_config[enabled_servers[0]]
 
-# Custom exception classes
+# Notion API version
+NOTION_VERSION = "2025-09-03"
+
+
 class ConfrerieError(Exception):
-    """Base exception for Confrérie extension errors"""
+    """Base exception for Confrérie extension errors."""
     pass
+
 
 class NotionAPIError(ConfrerieError):
-    """Exception raised when Notion API calls fail"""
+    """Exception raised when Notion API calls fail."""
     pass
 
+
 class ValidationError(ConfrerieError):
-    """Exception raised when data validation fails"""
+    """Exception raised when data validation fails."""
+    pass
+
+
+class DataSourceNotFoundError(NotionAPIError):
+    """Exception raised when no data source is found for a database."""
     pass
 genres = [
     interactions.SlashCommandChoice(name="Art/Beaux livres", value="Art/Beaux livres"),
@@ -62,7 +80,7 @@ class ConfrerieClass(interactions.Extension):
     """Extension Discord pour la gestion de la confrérie littéraire.
     
     Cette extension gère les statistiques, les défis, et les éditeurs
-    via l'intégration avec Notion.
+    via l'intégration avec Notion (API version 2025-09-03).
     """
     
     def __init__(self, bot: interactions.Client):
@@ -72,20 +90,77 @@ class ConfrerieClass(interactions.Extension):
         self._stats_cache: Dict[str, Any] = {}
         self._cache_timestamp: Optional[datetime] = None
         self._cache_duration = 300  # 5 minutes cache
+        self._data_source_cache: Dict[str, str] = {}  # database_id -> data_source_id
 
     @interactions.listen()
     async def on_startup(self):
         """Initialise les tâches au démarrage du bot."""
         logger.info("Démarrage de l'extension Confrérie")
         try:
+            # Pre-cache data source IDs
+            await self._initialize_data_sources()
             self.confrerie.start()
             self.autoupdate.start()
             logger.info("Tâches de l'extension Confrérie démarrées avec succès")
         except Exception as e:
             logger.error(f"Erreur lors du démarrage des tâches: {e}")
 
-    async def _safe_notion_query(self, database_id: str, filter_params: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Effectue une requête Notion avec gestion d'erreurs.
+    async def _initialize_data_sources(self):
+        """Pre-cache data source IDs for configured databases."""
+        databases = [
+            module_config.get("confrerieNotionDbOeuvresId"),
+            module_config.get("confrerieNotionDbIdEditorsId"),
+        ]
+        for db_id in databases:
+            if db_id:
+                try:
+                    await self._get_data_source_id(db_id)
+                except Exception as e:
+                    logger.warning(f"Failed to cache data source for {db_id}: {e}")
+
+    async def _get_data_source_id(self, database_id: str) -> str:
+        """Get the data source ID for a database (required for 2025-09-03 API).
+        
+        Args:
+            database_id: The Notion database ID
+            
+        Returns:
+            The data source ID for the database
+            
+        Raises:
+            DataSourceNotFoundError: If no data source is found
+        """
+        # Check cache first
+        if database_id in self._data_source_cache:
+            return self._data_source_cache[database_id]
+        
+        try:
+            # Retrieve database to get data sources list
+            database = await self.notion.databases.retrieve(database_id=database_id)
+            data_sources = database.get("data_sources", [])
+            
+            if not data_sources:
+                raise DataSourceNotFoundError(
+                    f"No data sources found for database {database_id}"
+                )
+            
+            # Use the first data source (most databases have only one)
+            data_source_id = data_sources[0]["id"]
+            self._data_source_cache[database_id] = data_source_id
+            logger.debug(f"Cached data_source_id {data_source_id} for database {database_id}")
+            return data_source_id
+            
+        except APIResponseError as e:
+            logger.error(f"API error retrieving database {database_id}: {e}")
+            raise NotionAPIError(f"Failed to retrieve database: {e}")
+        except Exception as e:
+            logger.error(f"Unexpected error getting data source for {database_id}: {e}")
+            raise NotionAPIError(f"Unexpected error: {e}")
+
+    async def _safe_notion_query(
+        self, database_id: str, filter_params: Dict[str, Any]
+    ) -> List[Dict[str, Any]]:
+        """Query Notion data source with error handling (2025-09-03 API).
         
         Args:
             database_id: ID de la base de données Notion
@@ -98,8 +173,12 @@ class ConfrerieClass(interactions.Extension):
             NotionAPIError: En cas d'erreur API Notion
         """
         try:
-            response = await self.notion.databases.query(
-                database_id=database_id,
+            # Get the data source ID for this database
+            data_source_id = await self._get_data_source_id(database_id)
+            
+            # Use the new data_sources.query endpoint
+            response = await self.notion.data_sources.query(
+                data_source_id=data_source_id,
                 filter=filter_params
             )
             return response.get("results", [])
@@ -1007,8 +1086,13 @@ def load(bot: interactions.Client):
             NotionAPIError: En cas d'erreur API
         """
         try:
+            # Get data source ID for the editors database
+            database_id = module_config["confrerieNotionDbIdEditorsId"]
+            data_source_id = await self._get_data_source_id(database_id)
+            
+            # Use data_source_id as parent (2025-09-03 API requirement)
             return await self.notion.pages.create(
-                parent={"database_id": module_config["confrerieNotionDbIdEditorsId"]},
+                parent={"type": "data_source_id", "data_source_id": data_source_id},
                 properties=properties,
             )
         except APIResponseError as e:
