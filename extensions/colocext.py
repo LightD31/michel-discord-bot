@@ -70,6 +70,14 @@ HARDCORE_REMINDERS = [
     "Le mode hardcore ne pardonne pas : fais ton [/journa](https://discord.com/channels/138283154589876224/1263861962744270958) maintenant !"
 ]
 
+ADVENT_CALENDAR_REMINDERS = [
+    "🎄 Tu n'as pas encore ouvert ta case du [calendrier festif](https://zunivers.zerator.com/calendrier-festif/{username}) aujourd'hui !",
+    "🎁 N'oublie pas d'ouvrir ta case du [calendrier festif](https://zunivers.zerator.com/calendrier-festif/{username}) !",
+    "❄️ Une surprise t'attend dans le [calendrier festif](https://zunivers.zerator.com/calendrier-festif/{username}) !",
+    "🌟 Psst... ta case du jour du [calendrier festif](https://zunivers.zerator.com/calendrier-festif/{username}) n'est pas ouverte !",
+    "🎅 Le Père Noël attend que tu ouvres ta case du [calendrier festif](https://zunivers.zerator.com/calendrier-festif/{username}) !",
+]
+
 
 
 class ColocClass(Extension):
@@ -700,6 +708,34 @@ class ColocClass(Extension):
                                     logger.info(
                                         f"Rappel {reminder_type} envoyé à {user.display_name}"
                                     )
+                                
+                                # Vérifier le calendrier festif (uniquement en décembre, jours 1-25, mode NORMAL uniquement)
+                                if current_time.month == 12 and 1 <= current_time.day <= 25 and reminder_type == "NORMAL":
+                                    try:
+                                        calendar_response = await session.get(
+                                            f"https://zunivers-api.zerator.com/public/calendar/{user.username}",
+                                            headers={"X-ZUnivers-RuleSetType": "NORMAL"},
+                                        )
+                                        calendar_data = await calendar_response.json()
+                                        
+                                        # Vérifier si la case du jour est ouverte
+                                        today_day = current_time.day
+                                        calendar_opened = False
+                                        
+                                        if isinstance(calendar_data, list):
+                                            for entry in calendar_data:
+                                                if entry.get("day") == today_day and entry.get("openedAt") is not None:
+                                                    calendar_opened = True
+                                                    break
+                                        
+                                        if not calendar_opened:
+                                            calendar_message = random.choice(ADVENT_CALENDAR_REMINDERS).format(username=user.username)
+                                            await user.send(calendar_message)
+                                            logger.info(
+                                                f"Rappel calendrier festif envoyé à {user.display_name}"
+                                            )
+                                    except Exception as calendar_error:
+                                        logger.warning(f"Erreur lors de la vérification du calendrier festif pour {user.display_name}: {calendar_error}")
     
                             except Exception as e:
                                 if "404" not in str(e):
