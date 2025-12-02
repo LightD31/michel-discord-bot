@@ -102,11 +102,11 @@ class ZuniversAPIClient:
         result = await self._request(url, rule_set)
         return result if result else {}
     
-    async def get_user_calendar(self, username: str) -> list[dict]:
+    async def get_user_calendar(self, username: str) -> dict:
         """Get a user's advent calendar data."""
         url = ZUNIVERS_CALENDAR_URL_TEMPLATE.format(username=username)
         result = await self._request(url, ReminderType.NORMAL)
-        return result if isinstance(result, list) else []
+        return result if isinstance(result, dict) else {}
     
     async def get_corporation(self, corp_id: str) -> Optional[dict]:
         """Get corporation data."""
@@ -149,8 +149,11 @@ class ZuniversAPIClient:
         """Check if a user has opened their advent calendar for a specific day."""
         try:
             calendar_data = await self.get_user_calendar(username)
-            for entry in calendar_data:
-                if entry.get("day") == day and entry.get("openedAt") is not None:
+            # API returns a dict with "calendars" array where index is 0-based (index 0 = day 1)
+            calendars = calendar_data.get("calendars", []) if isinstance(calendar_data, dict) else calendar_data
+            for entry in calendars:
+                # index is 0-based, so day 1 = index 0, day 2 = index 1, etc.
+                if entry.get("index") == day - 1 and entry.get("openedDate") is not None:
                     return True
             return False
         except ZuniversAPIError:
