@@ -1,54 +1,283 @@
+"""
+CompareAI Extension - Compare responses from multiple AI models.
+
+This extension allows users to ask questions and receive responses from
+multiple AI models, then vote for the best response.
+"""
+
+import asyncio
 import os
 import random
-import httpx
 import re
-import asyncio
+from dataclasses import dataclass
+from enum import Enum
+from pathlib import Path
+from typing import Any, Optional
 
-from openai import AsyncOpenAI
+import httpx
 from interactions import (
     Button,
-    Extension,
-    slash_command,
+    Buckets,
+    ButtonStyle,
     Client,
-    listen,
-    slash_option,
+    Extension,
+    IntegrationType,
     OptionType,
     SlashContext,
-    cooldown,
-    Buckets,
     auto_defer,
-    ButtonStyle,
-    IntegrationType
+    cooldown,
+    listen,
+    slash_command,
+    slash_option,
 )
-from interactions.client.errors import CommandOnCooldown
 from interactions.api.events import Component
+from interactions.client.errors import CommandOnCooldown
+from openai import AsyncOpenAI
 
 from src import logutil
-from src.utils import (
-    load_config,
-    search_dict_by_sentence,
-)
+from src.utils import load_config, search_dict_by_sentence
+
+# =============================================================================
+# Configuration and Constants
+# =============================================================================
 
 logger = logutil.init_logger(os.path.basename(__file__))
 config, module_config, enabled_servers = load_config("moduleIA")
 
+# Discord message character limit with safety margin
+DISCORD_MESSAGE_LIMIT = 1900
+VOTE_TIMEOUT_SECONDS = 60
+MAX_API_RETRIES = 3
+API_TIMEOUT_SECONDS = 10
+MAX_RESPONSE_TOKENS = 500
+CONVERSATION_HISTORY_LIMIT = 10
+DATA_DIR = Path("data")
+VOTES_FILE = DATA_DIR / "responses.txt"
+
+
+class AIProvider(Enum):
+    """Enum representing supported AI providers."""
+    OPENAI = "openai"
+    ANTHROPIC = "anthropic"
+    DEEPSEEK = "deepseek"
+    QWEN = "qwen"
+    GEMINI = "gemini"
+    XAI = "xai"
+
+
+
+
+@dataclass
+class ModelConfig:
+    """Configuration for an AI model."""
+    provider: AIProvider
+    model_id: str
+    display_name: str
+
+
+# Available AI models configuration
+AVAILABLE_MODELS: dict[AIProvider, ModelConfig] = {
+    AIProvider.OPENAI: ModelConfig(
+        AIProvider.OPENAI,
+        "openai/gpt-4.1",
+        "OpenAI GPT-4.1"
+    ),
+    AIProvider.ANTHROPIC: ModelConfig(
+        AIProvider.ANTHROPIC,
+        "anthropic/claude-opus-4.5",
+        "Anthropic Claude Opus 4.5"
+    ),
+    AIProvider.DEEPSEEK: ModelConfig(
+        AIProvider.DEEPSEEK,
+        "deepseek/deepseek-chat-v3-0324",
+        "DeepSeek Chat v3-0324"
+    ),
+    AIProvider.QWEN: ModelConfig(
+        AIProvider.QWEN,
+        "qqwen/qwen3-vl-235b-a22b-instruct",
+        "Qwen3 235B A22B Instruct"
+    ),
+    AIProvider.GEMINI: ModelConfig(
+        AIProvider.GEMINI,
+        "google/gemini-3-pro-preview",
+        "Google Gemini 3 Pro Preview"
+    ),
+    AIProvider.XAI: ModelConfig(
+        AIProvider.XAI,
+        "x-ai/grok-4.1-fast:free",
+        "X-AI Grok 4.1 Fast"
+    ),
+}
+
+# Number of models to compare per question
+MODELS_TO_COMPARE = 3
+
+
+@dataclass
+class ModelResponse:
+    """Container for a model's response."""
+    provider: AIProvider
+    content: str
+    raw_response: object = None
+
+
+@dataclass
+class UserInfo:
+    """Information about a user in the conversation."""
+    user_id: int
+    username: str
+    display_name: str
+    is_author: bool = False
+
+
+@dataclass
+class ModelPricing:
+    """Pricing information for a model."""
+    input_cost_per_token: float
+    output_cost_per_token: float
+    
+    def calculate_cost(self, input_tokens: int, output_tokens: int) -> float:
+        """Calculate total cost for the given token counts."""
+        return (self.input_cost_per_token * input_tokens + 
+                self.output_cost_per_token * output_tokens)
+
+
+# =============================================================================
+# Vote Manager
+# =============================================================================
+
+class VoteManager:
+    """Handles vote storage and counting."""
+    
+    def __init__(self, votes_file: Path = VOTES_FILE):
+        self.votes_file = votes_file
+        self._ensure_data_dir()
+    
+    def _ensure_data_dir(self) -> None:
+        """Ensure the data directory exists."""
+        self.votes_file.parent.mkdir(parents=True, exist_ok=True)
+    
+    def save_vote(self, provider: str) -> bool:
+        """Save a vote to the file. Returns True on success."""
+        try:
+            with open(self.votes_file, "a", encoding="utf-8") as f:
+                f.write(f"{provider}\n")
+            return True
+        except OSError as e:
+            logger.error(f"Error saving vote: {e}")
+            return False
+    
+    def count_votes(self) -> dict[str, int]:
+        """Count all votes by provider."""
+        counts = {provider.value: 0 for provider in AIProvider}
+        
+        if not self.votes_file.exists():
+            return counts
+        
+        try:
+            with open(self.votes_file, "r", encoding="utf-8") as f:
+                for line in f:
+                    provider = line.strip()
+                    if provider in counts:
+                        counts[provider] += 1
+        except OSError as e:
+            logger.error(f"Error counting votes: {e}")
+        
+        return counts
+
+
+# =============================================================================
+# Message Utilities
+# =============================================================================
+
+class MessageSplitter:
+    """Utility for splitting long Discord messages."""
+    
+    @staticmethod
+    def split_message(content: str, limit: int = DISCORD_MESSAGE_LIMIT) -> list[str]:
+        """
+        Split a message into chunks that fit within Discord's limit.
+        
+        Attempts to split at paragraph boundaries, then line breaks, then spaces.
+        """
+        if len(content) <= limit:
+            return [content]
+        
+        messages = []
+        paragraphs = content.split("\n\n")
+        current_chunk = ""
+        
+        for paragraph in paragraphs:
+            if len(paragraph) > limit:
+                # Handle oversized paragraphs
+                if current_chunk:
+                    messages.append(current_chunk)
+                    current_chunk = ""
+                messages.extend(MessageSplitter._split_long_text(paragraph, limit))
+            elif len(current_chunk) + len(paragraph) + 2 > limit:
+                # Current chunk would exceed limit
+                messages.append(current_chunk)
+                current_chunk = paragraph
+            else:
+                # Add to current chunk
+                current_chunk = f"{current_chunk}\n\n{paragraph}" if current_chunk else paragraph
+        
+        if current_chunk:
+            messages.append(current_chunk)
+        
+        return messages
+    
+    @staticmethod
+    def _split_long_text(text: str, limit: int) -> list[str]:
+        """Split text that exceeds the limit."""
+        chunks = []
+        
+        while text:
+            if len(text) <= limit:
+                chunks.append(text)
+                break
+            
+            # Find best split point
+            cut_index = MessageSplitter._find_split_point(text, limit)
+            chunks.append(text[:cut_index])
+            text = text[cut_index:].lstrip()
+        
+        return chunks
+    
+    @staticmethod
+    def _find_split_point(text: str, limit: int) -> int:
+        """Find the best point to split text."""
+        # Try to split at newline
+        newline_idx = text[:limit].rfind("\n")
+        if newline_idx > limit // 2:
+            return newline_idx + 1
+        
+        # Try to split at space
+        space_idx = text[:limit].rfind(" ")
+        if space_idx > limit - 100:
+            return space_idx + 1
+        
+        # Fall back to hard limit
+        return limit
+
+
+# =============================================================================
+# Main Extension Class
+# =============================================================================
 
 class IAExtension(Extension):
+    """Discord extension for comparing AI model responses."""
+    
     def __init__(self, bot: Client):
         self.bot: Client = bot
-        self.openrouter_client = None
-        self.model_prices = {}
-        # Configuration des modèles par défaut
-        self.default_models = {
-            "openai": "openai/gpt-5",
-            "anthropic": "anthropic/claude-sonnet-4",
-            "deepseek": "deepseek/deepseek-chat-v3-0324",
-            "qwen": "qwen/qwen3-235b-a22b-thinking-2507",
-            "gemini": "google/gemini-2.5-flash"
-        }
+        self.openrouter_client: Optional[AsyncOpenAI] = None
+        self.model_prices: dict[str, ModelPricing] = {}
+        self.vote_manager = VoteManager()
+        self.message_splitter = MessageSplitter()
 
     @listen()
-    async def on_startup(self):
+    async def on_startup(self) -> None:
+        """Initialize the OpenRouter client on bot startup."""
         self.openrouter_client = AsyncOpenAI(
             api_key=config["OpenRouter"]["openrouterApiKey"],
             base_url="https://openrouter.ai/api/v1",
@@ -57,17 +286,13 @@ class IAExtension(Extension):
                 "X-Title": "Michel Discord Bot",
             },
         )
-        # Précharger les informations de prix des modèles
         await self._load_model_prices()
 
-    async def _load_model_prices(self):
-        """Charge les prix des modèles depuis l'API OpenRouter avec retry et timeout"""
-        max_retries = 3
-        timeout = 10
-        
-        for attempt in range(max_retries):
+    async def _load_model_prices(self) -> None:
+        """Load model prices from OpenRouter API with retry and exponential backoff."""
+        for attempt in range(MAX_API_RETRIES):
             try:
-                async with httpx.AsyncClient(timeout=timeout) as client:
+                async with httpx.AsyncClient(timeout=API_TIMEOUT_SECONDS) as client:
                     response = await client.get(
                         "https://openrouter.ai/api/v1/models",
                         headers={
@@ -76,544 +301,538 @@ class IAExtension(Extension):
                             "X-Title": "Michel Discord Bot",
                         },
                     )
-                    response.raise_for_status()  # Lever une exception pour les codes d'erreur HTTP
+                    response.raise_for_status()
                     data = response.json()
                     
-                    for model in data["data"]:
-                        model_id = model["id"]
-                        pricing = model.get("pricing", {})
-                        if pricing.get("prompt") and pricing.get("completion"):
-                            self.model_prices[model_id] = {
-                                "input": float(pricing["prompt"]),
-                                "output": float(pricing["completion"]),
-                            }
-                    
-                    logger.info(f"Loaded pricing for {len(self.model_prices)} models from OpenRouter")
-                    return  # Succès, sortir de la boucle
+                    self._parse_model_prices(data)
+                    logger.info(f"Loaded pricing for {len(self.model_prices)} models")
+                    return
                     
             except httpx.TimeoutException:
-                logger.warning(f"Timeout lors du chargement des prix (tentative {attempt + 1}/{max_retries})")
+                logger.warning(f"Timeout loading prices (attempt {attempt + 1}/{MAX_API_RETRIES})")
             except httpx.HTTPStatusError as e:
-                logger.error(f"Erreur HTTP lors du chargement des prix: {e.response.status_code}")
-                break  # Ne pas retry sur erreur HTTP
+                logger.error(f"HTTP error loading prices: {e.response.status_code}")
+                break  # Don't retry on HTTP errors
             except Exception as e:
-                logger.error(f"Erreur lors du chargement des prix (tentative {attempt + 1}/{max_retries}): {e}")
+                logger.error(f"Error loading prices (attempt {attempt + 1}/{MAX_API_RETRIES}): {e}")
                 
-            if attempt < max_retries - 1:
-                await asyncio.sleep(2 ** attempt)  # Backoff exponentiel
+            if attempt < MAX_API_RETRIES - 1:
+                await asyncio.sleep(2 ** attempt)  # Exponential backoff
         
-        logger.warning("Impossible de charger les prix des modèles, utilisation des prix par défaut")
+        logger.warning("Could not load model prices, using defaults")
+
+    def _parse_model_prices(self, data: dict) -> None:
+        """Parse model pricing data from API response."""
+        for model in data.get("data", []):
+            model_id = model.get("id")
+            pricing = model.get("pricing", {})
+            
+            if model_id and pricing.get("prompt") and pricing.get("completion"):
+                self.model_prices[model_id] = ModelPricing(
+                    input_cost_per_token=float(pricing["prompt"]),
+                    output_cost_per_token=float(pricing["completion"]),
+                )
 
     @slash_command(
-        name="ask", description="Ask Michel and vote for the better answer",
-        integration_types=[IntegrationType.GUILD_INSTALL, IntegrationType.USER_INSTALL]
+        name="ask",
+        description="Ask Michel and vote for the better answer",
+        integration_types=[IntegrationType.GUILD_INSTALL, IntegrationType.USER_INSTALL],
     )
     @cooldown(Buckets.USER, 1, 20)
     @auto_defer()
     @slash_option("question", "Ta question", opt_type=OptionType.STRING, required=True)
-    async def ask_question(self, ctx: SlashContext, question: str):
+    async def ask_question(self, ctx: SlashContext, question: str) -> None:
+        """Main command to ask a question and compare AI responses."""
         if not self.openrouter_client:
             await ctx.send("❌ Le client OpenRouter n'est pas initialisé", ephemeral=True)
             return
             
         try:
-            conversation = await self._prepare_conversation(ctx, question)
-
-            # Sélectionner aléatoirement trois modèles parmi les cinq disponibles
-            all_models = {
-                "openai": "openai/gpt-4.1",
-                "anthropic": "anthropic/claude-sonnet-4", 
-                "deepseek": "deepseek/deepseek-chat-v3-0324",
-                "qwen": "qwen/qwen3-235b-a22b-2507",
-                "gemini": "google/gemini-2.5-flash"
-            }
-            
-            # Choisir 3 modèles aléatoirement
-            selected_providers = random.sample(list(all_models.keys()), 3)
-            models = {provider: all_models[provider] for provider in selected_providers}
-            
-            # Obtenir les réponses des trois modèles sélectionnés avec gestion d'erreur individuelle
-            responses = {}
-            
-            for provider, model in models.items():
-                try:
-                    response = await self._get_model_response(conversation, model, ctx, question)
-                    responses[provider] = response
-                except Exception as e:
-                    logger.error(f"Erreur lors de l'appel au modèle {provider}: {e}")
-                    await ctx.send(f"❌ Erreur avec le modèle {provider}: {str(e)}", ephemeral=True)
-                    return
-
-            # Obtenir les réponses dans l'ordre des clés sélectionnées
-            model_responses = [responses[provider] for provider in selected_providers]
-
-            # Calculer le coût total de la commande
-            total_cost = 0
-            for response in model_responses:
-                cost = self.calculate_cost(response)
-                total_cost += cost
-                self.print_cost(response)
-            
-            # Afficher le coût total
-            logger.info(f"Coût total de la commande : {total_cost:.5f}$")
-
-            # Créer et mélanger les réponses en extrayant le contenu entre les balises
-            responses_data = [
-                {"custom_id": selected_providers[0], "content": self._extract_response_content(model_responses[0].choices[0].message.content)},
-                {"custom_id": selected_providers[1], "content": self._extract_response_content(model_responses[1].choices[0].message.content)},
-                {"custom_id": selected_providers[2], "content": self._extract_response_content(model_responses[2].choices[0].message.content)},
-            ]
-            random.shuffle(responses_data)
-
-            await self._send_response_message(ctx, question, responses_data)
+            await self._process_question(ctx, question)
         except CommandOnCooldown:
             await ctx.send(
                 "La commande est en cooldown, veuillez réessayer plus tard",
                 ephemeral=True,
             )
+        except Exception as e:
+            logger.error(f"Unexpected error in ask_question: {e}")
+            await ctx.send("❌ Une erreur inattendue s'est produite", ephemeral=True)
 
-    async def _prepare_conversation(self, ctx: SlashContext, question: str):
-        conversation = []
-        messages = await ctx.channel.fetch_messages(limit=10)
+    async def _process_question(self, ctx: SlashContext, question: str) -> None:
+        """Process a question by getting responses from multiple models."""
+        conversation = await self._prepare_conversation(ctx, question)
+        
+        # Select random models to compare
+        selected_providers = random.sample(list(AIProvider), MODELS_TO_COMPARE)
+        
+        # Get responses from selected models
+        responses = await self._get_all_model_responses(
+            conversation, selected_providers, ctx, question
+        )
+        
+        if not responses:
+            return
+        
+        # Log costs
+        self._log_total_cost(responses)
+        
+        # Prepare and send response message
+        model_responses = self._prepare_model_responses(responses, selected_providers)
+        await self._send_response_message(ctx, question, model_responses)
+
+    async def _get_all_model_responses(
+        self,
+        conversation: list[dict],
+        providers: list[AIProvider],
+        ctx: SlashContext,
+        question: str,
+    ) -> dict[AIProvider, object]:
+        """Get responses from all selected models."""
+        responses = {}
+        
+        for provider in providers:
+            model_config = AVAILABLE_MODELS[provider]
+            try:
+                response = await self._get_model_response(
+                    conversation, model_config.model_id, ctx, question
+                )
+                responses[provider] = response
+            except Exception as e:
+                logger.error(f"Error calling {provider.value}: {e}")
+                await ctx.send(
+                    f"❌ Erreur avec le modèle {provider.value}: {e}",
+                    ephemeral=True,
+                )
+                return {}
+        
+        return responses
+
+    def _log_total_cost(self, responses: dict[AIProvider, Any]) -> None:
+        """Log the cost of each response and total cost."""
+        total_cost = 0.0
+        
+        for response in responses.values():
+            cost = self._calculate_cost(response)
+            total_cost += cost
+            self._log_response_cost(response)
+        
+        logger.info(f"Total command cost: ${total_cost:.5f}")
+
+    def _prepare_model_responses(
+        self,
+        responses: dict[AIProvider, Any],
+        providers: list[AIProvider],
+    ) -> list[dict[str, str]]:
+        """Prepare and shuffle model responses for display."""
+        responses_data = [
+            {
+                "custom_id": provider.value,
+                "content": self._extract_response_content(
+                    responses[provider].choices[0].message.content
+                ),
+            }
+            for provider in providers
+        ]
+        random.shuffle(responses_data)
+        return responses_data
+
+    async def _prepare_conversation(
+        self, ctx: SlashContext, question: str
+    ) -> list[dict[str, str]]:
+        """Build conversation history from recent channel messages."""
+        conversation: list[dict[str, str]] = []
+        messages = await ctx.channel.fetch_messages(limit=CONVERSATION_HISTORY_LIMIT)
 
         for message in messages:
-            author_content = f"{message.author.display_name} : {message.content}"
             if message.author.id == self.bot.user.id:
                 conversation.append({"role": "assistant", "content": message.content})
             else:
+                author_content = f"{message.author.display_name} : {message.content}"
                 conversation.append({"role": "user", "content": author_content})
 
         conversation.reverse()
-        conversation.append({"role": "user", "content": f"{ctx.author.display_name} : {question}"})
+        conversation.append({
+            "role": "user",
+            "content": f"{ctx.author.display_name} : {question}"
+        })
 
         return conversation
 
-    async def _get_model_response(self, conversation, model, ctx: SlashContext, question):
+    async def _get_model_response(
+        self,
+        conversation: list[dict[str, str]],
+        model: str,
+        ctx: SlashContext,
+        question: str,
+    ) -> Any:
+        """Get a response from a specific AI model."""
         if not self.openrouter_client:
             raise RuntimeError("OpenRouter client not initialized")
-            
-        # Extraire des informations pertinentes sur le contexte avec validation
+        
+        # Build context information
         server_name = ctx.guild.name if ctx.guild else "DM"
-        channel_name = ctx.channel.name if hasattr(ctx.channel, 'name') else "canal-inconnu"
-        author = ctx.author
+        channel_name = getattr(ctx.channel, "name", "unknown-channel")
         
-        # Obtenir des informations sur les utilisateurs impliqués dans la conversation
-        mentioned_users = []
-        mentioned_user_ids = set()
+        # Get mentioned users in conversation
+        mentioned_users = await self._extract_mentioned_users(ctx, conversation)
         
-        # Extraire les utilisateurs mentionnés dans la conversation ou la question
-        pattern = r'<@!?(\d+)>'
+        # Get contextual information
+        context_info = search_dict_by_sentence({}, question) or ""
         
-        # Ajouter l'auteur de la question
-        mentioned_users.append({
-            "id": author.id,
-            "username": author.username,
-            "display_name": author.display_name,
-            "is_author": True
-        })
-        mentioned_user_ids.add(author.id)
-        
-        # Analyser la conversation pour trouver les utilisateurs mentionnés
-        for msg in conversation:
-            if msg["role"] == "user":
-                # Extraire l'ID de l'utilisateur qui parle (format: "nom : message")
-                user_parts = msg["content"].split(" : ", 1)
-                if len(user_parts) > 1:
-                    # Trouver les utilisateurs mentionnés dans le message
-                    mentions = re.findall(pattern, msg["content"])
-                    for user_id in mentions:
-                        try:
-                            user_id = int(user_id)
-                            if user_id not in mentioned_user_ids:
-                                user = await self.bot.fetch_user(user_id)
-                                if user:
-                                    mentioned_users.append({
-                                        "id": user.id,
-                                        "username": user.username,
-                                        "display_name": user.display_name,
-                                        "is_author": user.id == author.id
-                                    })
-                                    mentioned_user_ids.add(user.id)
-                        except (ValueError, Exception) as e:
-                            logger.warning(f"Erreur lors de la récupération de l'utilisateur {user_id}: {e}")
-        
-        # Rechercher des informations contextuelles pertinentes
-        dictInfos = {}  # À implémenter selon les besoins
-        context_info = search_dict_by_sentence(dictInfos, question)
-
-        messages = conversation.copy()
-        messages.append(
-            {
-                "role": "system",
-                "content": (
-                    f"# Rôle et contexte\n"
-                    f"Tu es Michel·le, un assistant Discord sarcastique et impertinent avec des idées de gauche. "
-                    f"Tu es connu pour ton humour caustique mais jamais cruel, et ta façon unique de répondre aux questions.\n\n"
-                    
-                    f"# Contexte de la conversation\n"
-                    f"- Serveur: {server_name}\n"
-                    f"- Canal: {channel_name}\n"
-                    f"- Question posée par: {author.display_name} ({author.username})\n\n"
-                    
-                    f"# Informations sur les personnes impliquées dans la conversation\n"
-                    f"{', '.join([f'{u['display_name']} ({u['username']})' + (' (auteur de la question)' if u['is_author'] else '') for u in mentioned_users[:5]])}\n\n"
-                    
-                    f"# Consignes\n"
-                    f"1. Réponds au dernier message du chat avec le ton sarcastique caractéristique de Michel·le\n"
-                    f"2. Sois concis et direct dans tes réponses\n"
-                    f"3. Utilise l'humour et l'ironie quand c'est approprié\n"
-                    f"4. N'expose tes idées politiques que si cela est pertinent pour la question\n"
-                    f"5. Reste dans le personnage de Michel·le tout au long de ta réponse\n\n"
-                    
-                    f"# Style de réponse\n"
-                    f"- Ton sarcastique et un peu provocateur\n"
-                    f"- Direct et sans détour\n"
-                    f"- Utilise parfois des expressions familières appropriées\n"
-                    f"- N'hésite pas à remettre en question les présupposés quand nécessaire\n\n"
-                    
-                    f"# Format de réponse OBLIGATOIRE\n"
-                    f"Tu DOIS encadrer ta réponse finale entre les balises <response> et </response>.\n"
-                    f"N'ajoute pas d'autre contenu, seul le contenu entre les balises sera affiché à l'utilisateur.\n"
-                    f"Exemple:<response>Voici ma réponse sarcastique</response>\n\n"
-                    
-                    f"# Informations contextuelles complémentaires\n"
-                    f"{context_info if context_info else 'Aucune information contextuelle supplémentaire disponible.'}"
-                ),
-            }
+        # Build system prompt
+        system_prompt = self._build_system_prompt(
+            server_name, channel_name, ctx.author, mentioned_users, context_info
         )
+        
+        messages: list[dict[str, str]] = conversation.copy()
+        messages.append({"role": "system", "content": system_prompt})
 
-        # Ajout du paramètre usage.include pour obtenir les comptages de tokens
         return await self.openrouter_client.chat.completions.create(
             model=model,
-            max_tokens=500,
-            messages=messages,
-            extra_body={"usage.include": True}
+            max_tokens=MAX_RESPONSE_TOKENS,
+            messages=messages,  # type: ignore
+            extra_body={"usage.include": True},
         )
 
-    def _extract_response_content(self, raw_content):
-        """Extrait le contenu entre les balises <response> et </response>"""
-        import re
+    async def _extract_mentioned_users(
+        self, ctx: SlashContext, conversation: list[dict[str, str]]
+    ) -> list[UserInfo]:
+        """Extract mentioned users from the conversation."""
+        mentioned_users = [
+            UserInfo(
+                user_id=ctx.author.id,
+                username=ctx.author.username,
+                display_name=ctx.author.display_name,
+                is_author=True,
+            )
+        ]
+        seen_ids: set[int] = {ctx.author.id}
         
-        # Chercher le contenu entre <response> et </response>
-        match = re.search(r'<response>(.*?)</response>', raw_content, re.DOTALL)
+        mention_pattern = re.compile(r"<@!?(\d+)>")
+        
+        for msg in conversation:
+            if msg["role"] != "user":
+                continue
+                
+            for user_id_str in mention_pattern.findall(msg["content"]):
+                try:
+                    user_id = int(user_id_str)
+                    if user_id in seen_ids:
+                        continue
+                        
+                    user = await self.bot.fetch_user(user_id)
+                    if user:
+                        mentioned_users.append(
+                            UserInfo(
+                                user_id=user.id,
+                                username=user.username,
+                                display_name=user.display_name,
+                            )
+                        )
+                        seen_ids.add(user_id)
+                except (ValueError, Exception) as e:
+                    logger.warning(f"Error fetching user {user_id_str}: {e}")
+        
+        return mentioned_users[:5]  # Limit to 5 users
+
+    def _build_system_prompt(
+        self,
+        server_name: str,
+        channel_name: str,
+        author: Any,
+        mentioned_users: list[UserInfo],
+        context_info: str,
+    ) -> str:
+        """Build the system prompt for the AI model."""
+        users_str = ", ".join(
+            f"{u.display_name} ({u.username})"
+            + (" (auteur de la question)" if u.is_author else "")
+            for u in mentioned_users
+        )
+        
+        author_display = getattr(author, "display_name", "Unknown")
+        author_username = getattr(author, "username", "unknown")
+        
+        return (
+            "# Rôle et contexte\n"
+            "Tu es Michel·le, un assistant Discord sarcastique et impertinent avec des idées de gauche. "
+            "Tu es connu pour ton humour caustique mais jamais cruel, et ta façon unique de répondre aux questions.\n\n"
+            
+            "# Contexte de la conversation\n"
+            f"- Serveur: {server_name}\n"
+            f"- Canal: {channel_name}\n"
+            f"- Question posée par: {author_display} ({author_username})\n\n"
+            
+            "# Informations sur les personnes impliquées dans la conversation\n"
+            f"{users_str}\n\n"
+            
+            "# Consignes\n"
+            "1. Réponds au dernier message du chat avec le ton sarcastique caractéristique de Michel·le\n"
+            "2. Sois concis et direct dans tes réponses\n"
+            "3. Utilise l'humour et l'ironie quand c'est approprié\n"
+            "4. N'expose tes idées politiques que si cela est pertinent pour la question\n"
+            "5. Reste dans le personnage de Michel·le tout au long de ta réponse\n\n"
+            
+            "# Style de réponse\n"
+            "- Ton sarcastique et un peu provocateur\n"
+            "- Direct et sans détour\n"
+            "- Utilise parfois des expressions familières appropriées\n"
+            "- N'hésite pas à remettre en question les présupposés quand nécessaire\n\n"
+            
+            "# Format de réponse OBLIGATOIRE\n"
+            "Tu DOIS encadrer ta réponse finale entre les balises <response> et </response>.\n"
+            "N'ajoute pas d'autre contenu, seul le contenu entre les balises sera affiché à l'utilisateur.\n"
+            "Exemple:<response>Voici ma réponse sarcastique</response>\n\n"
+            
+            "# Informations contextuelles complémentaires\n"
+            f"{context_info or 'Aucune information contextuelle supplémentaire disponible.'}"
+        )
+
+    def _extract_response_content(self, raw_content: str) -> str:
+        """Extract content between <response> and </response> tags."""
+        match = re.search(r"<response>(.*?)</response>", raw_content, re.DOTALL)
         
         if match:
-            # Retourner le contenu extrait en supprimant les espaces en début/fin
-            extracted_content = match.group(1).strip()
-            logger.debug(f"Contenu extrait entre les balises: {extracted_content[:100]}...")
-            return extracted_content
-        else:
-            # Si pas de balises trouvées, retourner le contenu original et logger un avertissement
-            logger.warning("Aucune balise <response> trouvée dans la réponse du modèle, utilisation du contenu complet")
-            return raw_content.strip()
+            extracted = match.group(1).strip()
+            logger.debug(f"Extracted response content: {extracted[:100]}...")
+            return extracted
+        
+        logger.warning("No <response> tags found, using full content")
+        return raw_content.strip()
 
-    def _get_model_display_name(self, model_id):
-        """Convertit l'ID du modèle en nom d'affichage lisible"""
-        model_names = {
-            "openai": "OpenAI GPT-4.1",
-            "anthropic": "Anthropic Claude 4 Sonnet",
-            "deepseek": "DeepSeek Chat v3-0324",
-            "qwen": "Qwen3 235B A22B Instruct 2507",
-            "gemini": "Google Gemini 2.5 Flash"
-        }
-        return model_names.get(model_id, model_id)
+    def _get_model_display_name(self, provider_id: str) -> str:
+        """Get the display name for a provider."""
+        try:
+            provider = AIProvider(provider_id)
+            return AVAILABLE_MODELS[provider].display_name
+        except (ValueError, KeyError):
+            return provider_id
 
-    async def _split_and_send_message(self, ctx_or_channel, content, components=None):
+    async def _split_and_send_message(
+        self, ctx_or_channel, content: str, components=None
+    ):
         """
-        Divise un message si sa longueur dépasse 2000 caractères et l'envoie en plusieurs parties.
-        Utilise une approche simple pour garantir que chaque message respecte la limite de Discord.
+        Split and send a message that may exceed Discord's character limit.
         
         Args:
-            ctx_or_channel: Le contexte ou le canal où envoyer le message
-            content: Le contenu du message
-            components: Les composants à ajouter (seulement au dernier message)
+            ctx_or_channel: The context or channel to send to
+            content: The message content
+            components: Optional components (only added to last message)
             
         Returns:
-            Le dernier message envoyé
+            The last message sent
         """
-        if len(content) <= 1900:  # Marge de sécurité
-            # Si le message est suffisamment court, l'envoyer directement
+        if len(content) <= DISCORD_MESSAGE_LIMIT:
             return await ctx_or_channel.send(content, components=components)
         
-        # Diviser le message en parties de moins de 1900 caractères
-        messages = []
-        current_message = ""
-        
-        # Diviser par paragraphes pour essayer de préserver la structure
-        paragraphs = content.split('\n\n')
-        
-        for paragraph in paragraphs:
-            # Si le paragraphe lui-même est trop long, le diviser
-            if len(paragraph) > 1900:
-                # Si on a déjà du contenu dans le message actuel, l'ajouter aux messages
-                if current_message:
-                    messages.append(current_message)
-                    current_message = ""
-                
-                # Diviser le paragraphe en morceaux
-                while len(paragraph) > 0:
-                    # Trouver un bon endroit pour couper, de préférence à une fin de ligne
-                    cut_index = 1900
-                    if len(paragraph) > cut_index:
-                        # Chercher un retour à la ligne avant la limite
-                        newline_index = paragraph[:cut_index].rfind('\n')
-                        if newline_index > 0:
-                            cut_index = newline_index + 1
-                        else:
-                            # Si pas de retour à la ligne, chercher un espace
-                            space_index = paragraph[:cut_index].rfind(' ')
-                            if space_index > cut_index - 100:  # Ne pas couper trop loin en arrière
-                                cut_index = space_index + 1
-                    
-                    messages.append(paragraph[:cut_index])
-                    paragraph = paragraph[cut_index:]
-            else:
-                # Vérifier si l'ajout de ce paragraphe dépasserait la limite
-                if len(current_message) + len(paragraph) + 2 > 1900:  # +2 pour \n\n
-                    messages.append(current_message)
-                    current_message = paragraph
-                else:
-                    if current_message:
-                        current_message += "\n\n" + paragraph
-                    else:
-                        current_message = paragraph
-        
-        # Ajouter le dernier message s'il n'est pas vide
-        if current_message:
-            messages.append(current_message)
-        
-        # Vérification de sécurité: s'assurer qu'aucun message ne dépasse 1900 caractères
-        for i, msg in enumerate(messages):
-            if len(msg) > 1900:
-                # Diviser en deux simplement
-                half = len(msg) // 2
-                # Trouver un bon point de coupure
-                cut_index = msg[:half].rfind('\n')
-                if cut_index < 0 or cut_index < half - 200:
-                    cut_index = msg[:half].rfind(' ')
-                if cut_index < 0:
-                    cut_index = half
-                
-                messages[i] = msg[:cut_index]
-                messages.insert(i + 1, msg[cut_index:])
-        
-        # Log pour déboguer
-        for i, msg in enumerate(messages):
-            logger.debug(f"Message part {i+1}: length={len(msg)}")
-        
-        # Envoyer les messages en séquence
+        message_parts = self.message_splitter.split_message(content)
         last_message = None
-        for i, msg_content in enumerate(messages):
+        
+        for i, part in enumerate(message_parts):
+            is_last = i == len(message_parts) - 1
             try:
-                # Ajouter les composants uniquement au dernier message
-                if i == len(messages) - 1:
-                    last_message = await ctx_or_channel.send(msg_content, components=components)
-                else:
-                    last_message = await ctx_or_channel.send(msg_content)
+                last_message = await ctx_or_channel.send(
+                    part,
+                    components=components if is_last else None,
+                )
             except Exception as e:
-                logger.error(f"Erreur lors de l'envoi de la partie {i+1} ({len(msg_content)} caractères): {e}")
-                # Essayer d'envoyer un message plus court en cas d'échec
-                if len(msg_content) > 1000:
-                    await ctx_or_channel.send(msg_content[:1000] + "... (message tronqué)")
+                logger.error(f"Error sending message part {i + 1}: {e}")
+                if len(part) > 1000:
+                    await ctx_or_channel.send(f"{part[:1000]}... (truncated)")
         
         return last_message
 
-    async def _send_response_message(self, ctx: SlashContext, question: str, responses):
-        message_content = (
-            f"**{ctx.author.mention} : {question}**\n\n"
-            f"Réponse 1 : \n> {responses[0]['content'].replace('\n', '\n> ')}\n\n"
-            f"Réponse 2 : \n> {responses[1]['content'].replace('\n', '\n> ')}\n\n"
-            f"Réponse 3 : \n> {responses[2]['content'].replace('\n', '\n> ')}\n\n"
-            f"Votez pour la meilleure réponse en cliquant sur le bouton correspondant"
-        )
-        components = [
-            Button(
-                label="Réponse 1",
-                style=ButtonStyle.SECONDARY,
-                custom_id=responses[0]["custom_id"],
-            ),
-            Button(
-                label="Réponse 2",
-                style=ButtonStyle.SECONDARY,
-                custom_id=responses[1]["custom_id"],
-            ),
-            Button(
-                label="Réponse 3",
-                style=ButtonStyle.SECONDARY,
-                custom_id=responses[2]["custom_id"],
-            ),
-        ]
+    async def _send_response_message(
+        self, ctx: SlashContext, question: str, responses: list[dict]
+    ) -> None:
+        """Send the response message with voting buttons."""
+        message_content = self._format_responses_message(ctx, question, responses)
+        components = self._create_vote_buttons(responses)
 
-        message_info = await self._split_and_send_message(ctx, message_content, components=components)
+        message_info = await self._split_and_send_message(
+            ctx, message_content, components=components
+        )
         await self._handle_vote(ctx, message_info, question, responses, components)
 
+    def _format_responses_message(
+        self, ctx: SlashContext, question: str, responses: list[dict]
+    ) -> str:
+        """Format the responses into a Discord message."""
+        formatted_responses = "\n\n".join(
+            f"Réponse {i + 1} : \n> {resp['content'].replace(chr(10), chr(10) + '> ')}"
+            for i, resp in enumerate(responses)
+        )
+        return (
+            f"**{ctx.author.mention} : {question}**\n\n"
+            f"{formatted_responses}\n\n"
+            f"Votez pour la meilleure réponse en cliquant sur le bouton correspondant"
+        )
+
+    def _create_vote_buttons(self, responses: list[dict]) -> list[Button]:
+        """Create voting buttons for responses."""
+        return [
+            Button(
+                label=f"Réponse {i + 1}",
+                style=ButtonStyle.SECONDARY,
+                custom_id=resp["custom_id"],
+            )
+            for i, resp in enumerate(responses)
+        ]
+
     async def _handle_vote(
-        self, ctx: SlashContext, message_info, question: str, responses, components
-    ):
+        self,
+        ctx: SlashContext,
+        message_info,
+        question: str,
+        responses: list[dict],
+        components: list[Button],
+    ) -> None:
+        """Handle the voting process for AI responses."""
         try:
             button_ctx: Component = await self.bot.wait_for_component(
-                components=components, timeout=60
+                components=components, timeout=VOTE_TIMEOUT_SECONDS
             )
+            
             if button_ctx.ctx.author_id != ctx.author.id:
                 await button_ctx.ctx.send(
-                    "Vous n'avez pas le droit de voter sur ce message", ephemeral=True
+                    "Vous n'avez pas le droit de voter sur ce message",
+                    ephemeral=True,
                 )
                 return
 
-            response = button_ctx.ctx.custom_id
-            logger.info(f"Vote enregistré : {response}")
-            self._save_response_to_file(response)
-
-            # Identifier la réponse sélectionnée
-            selected_response = next((resp for resp in responses if resp["custom_id"] == response), None)
-            if selected_response:
-                # Obtenir le nom du modèle pour l'affichage
-                model_display_name = self._get_model_display_name(response)
-                # Créer le nouveau contenu du message avec seulement la réponse sélectionnée
-                new_message_content = (
-                    f"**{ctx.author.mention} : {question}**\n\n"
-                    f"**Réponse choisie ({model_display_name}) :**\n{selected_response['content']}"
-                )
-                # Utiliser la méthode de division pour le message édité
-                try:
-                    if len(new_message_content) <= 2000:
-                        await message_info.edit(
-                            content=new_message_content,
-                            components=[],
-                        )
-                    else:
-                        # Si le message édité est trop long, supprimer l'ancien et envoyer un nouveau message divisé
-                        await message_info.delete()
-                        await self._split_and_send_message(ctx, new_message_content)
-                except Exception as edit_error:
-                    logger.error(f"Erreur lors de l'édition du message: {edit_error}")
-                    # Fallback: envoyer un nouveau message
-                    await ctx.send(f"✅ Vote enregistré pour {response}")
-
-            openai_votes, anthropic_votes, deepseek_votes, qwen_votes, gemini_votes = self._count_votes()
-            logger.info(
-                f"Total des votes - OpenAI: {openai_votes}, Anthropic: {anthropic_votes}, "
-                f"Deepseek: {deepseek_votes}, Qwen: {qwen_votes}, Gemini: {gemini_votes}"
-            )
-
-            await button_ctx.ctx.send("✅ Vote enregistré avec succès", ephemeral=True)
+            await self._process_vote(ctx, button_ctx, message_info, question, responses)
             
         except TimeoutError:
-            # En cas de timeout, éditer le message existant pour retirer les boutons et afficher les modèles
-            try:
-                # Créer le contenu du message avec les noms des modèles
-                timeout_content = (
-                    f"**{ctx.author.mention} : {question}**\n\n"
-                    f"**Réponse 1 ({self._get_model_display_name(responses[0]['custom_id'])}) :** \n> {responses[0]['content'].replace('\n', '\n> ')}\n\n"
-                    f"**Réponse 2 ({self._get_model_display_name(responses[1]['custom_id'])}) :** \n> {responses[1]['content'].replace('\n', '\n> ')}\n\n"
-                    f"**Réponse 3 ({self._get_model_display_name(responses[2]['custom_id'])}) :** \n> {responses[2]['content'].replace('\n', '\n> ')}\n\n"
-                    f"⏰ *Temps de vote expiré*"
-                )
-                
-                if len(timeout_content) <= 2000:
-                    await message_info.edit(content=timeout_content, components=[])
-                else:
-                    # Si le message est trop long, supprimer l'ancien et envoyer un nouveau message divisé
-                    await message_info.delete()
-                    await self._split_and_send_message(ctx, timeout_content)
-                    
-                logger.info("Timeout de vote - Boutons supprimés et modèles affichés")
-            except Exception as e:
-                logger.error(f"Erreur lors de la gestion du timeout : {e}")
+            await self._handle_vote_timeout(ctx, message_info, question, responses)
         except Exception as e:
-            logger.error(f"Erreur inattendue lors du vote: {e}")
+            logger.error(f"Unexpected error during voting: {e}")
             try:
                 await ctx.send("❌ Erreur lors du traitement du vote", ephemeral=True)
             except Exception:
-                pass  # Éviter les erreurs en cascade
+                pass
 
-    def calculate_cost(self, message):
-        """Calcule le coût d'une réponse avec validation des données"""
-        if not hasattr(message, 'usage') or not message.usage:
-            logger.warning("Informations d'usage manquantes dans la réponse")
-            return 0.0
-            
-        input_tokens = getattr(message.usage, "prompt_tokens", 0) or 0
-        output_tokens = getattr(message.usage, "completion_tokens", 0) or 0
+    async def _process_vote(
+        self,
+        ctx: SlashContext,
+        button_ctx: Component,
+        message_info,
+        question: str,
+        responses: list[dict],
+    ) -> None:
+        """Process a vote selection."""
+        provider_id = button_ctx.ctx.custom_id
+        logger.info(f"Vote registered: {provider_id}")
         
-        model_id = getattr(message, 'model', 'unknown')
-        
-        if model_id in self.model_prices:
-            try:
-                input_cost = self.model_prices[model_id]["input"] * input_tokens
-                output_cost = self.model_prices[model_id]["output"] * output_tokens
-                return input_cost + output_cost
-            except (KeyError, TypeError) as e:
-                logger.error(f"Erreur lors du calcul du coût pour {model_id}: {e}")
-                return 0.0
-        else:
-            logger.warning(f"Prix non trouvé pour le modèle {model_id}")
-            return 0.0
+        self.vote_manager.save_vote(provider_id)
 
-    def print_cost(self, message):
-        """Affiche le coût d'une réponse avec validation des données"""
-        if not hasattr(message, 'usage') or not message.usage:
-            logger.info(f"modèle : {getattr(message, 'model', 'unknown')} | coût : informations d'usage manquantes")
-            return
-            
-        input_tokens = getattr(message.usage, "prompt_tokens", 0) or 0
-        output_tokens = getattr(message.usage, "completion_tokens", 0) or 0
-        model_id = getattr(message, 'model', 'unknown')
+        selected = next(
+            (r for r in responses if r["custom_id"] == provider_id), None
+        )
         
-        if model_id in self.model_prices:
+        if selected:
+            model_name = self._get_model_display_name(provider_id)
+            new_content = (
+                f"**{ctx.author.mention} : {question}**\n\n"
+                f"**Réponse choisie ({model_name}) :**\n{selected['content']}"
+            )
+            
             try:
-                input_cost = self.model_prices[model_id]["input"] * input_tokens
-                output_cost = self.model_prices[model_id]["output"] * output_tokens
-                total_cost = input_cost + output_cost
+                if len(new_content) <= 2000:
+                    await message_info.edit(content=new_content, components=[])
+                else:
+                    await message_info.delete()
+                    await self._split_and_send_message(ctx, new_content)
+            except Exception as e:
+                logger.error(f"Error editing message: {e}")
+                await ctx.send(f"✅ Vote enregistré pour {provider_id}")
+
+        # Log vote counts
+        vote_counts = self.vote_manager.count_votes()
+        logger.info(f"Total votes: {vote_counts}")
+
+        await button_ctx.ctx.send("✅ Vote enregistré avec succès", ephemeral=True)
+
+    async def _handle_vote_timeout(
+        self,
+        ctx: SlashContext,
+        message_info,
+        question: str,
+        responses: list[dict],
+    ) -> None:
+        """Handle vote timeout by revealing model names."""
+        try:
+            formatted_responses = "\n\n".join(
+                f"**Réponse {i + 1} ({self._get_model_display_name(r['custom_id'])}) :** "
+                f"\n> {r['content'].replace(chr(10), chr(10) + '> ')}"
+                for i, r in enumerate(responses)
+            )
+            timeout_content = (
+                f"**{ctx.author.mention} : {question}**\n\n"
+                f"{formatted_responses}\n\n"
+                f"⏰ *Temps de vote expiré*"
+            )
+            
+            if len(timeout_content) <= 2000:
+                await message_info.edit(content=timeout_content, components=[])
+            else:
+                await message_info.delete()
+                await self._split_and_send_message(ctx, timeout_content)
                 
-                logger.info(
-                    "modèle : %s | coût : %.5f$ | %.5f$ (%d tks) in | %.5f$ (%d tks) out",
-                    model_id,
-                    total_cost,
-                    input_cost,
-                    input_tokens,
-                    output_cost,
-                    output_tokens,
-                )
-            except (KeyError, TypeError) as e:
-                logger.error(f"Erreur lors du calcul du coût pour {model_id}: {e}")
+            logger.info("Vote timeout - buttons removed and models revealed")
+        except Exception as e:
+            logger.error(f"Error handling timeout: {e}")
+
+    # =========================================================================
+    # Cost Calculation
+    # =========================================================================
+
+    def _calculate_cost(self, message) -> float:
+        """Calculate the cost of an API response."""
+        if not hasattr(message, "usage") or not message.usage:
+            logger.warning("Usage information missing from response")
+            return 0.0
+        
+        input_tokens = getattr(message.usage, "prompt_tokens", 0) or 0
+        output_tokens = getattr(message.usage, "completion_tokens", 0) or 0
+        model_id = getattr(message, "model", "unknown")
+        
+        pricing = self.model_prices.get(model_id)
+        if pricing:
+            return pricing.calculate_cost(input_tokens, output_tokens)
+        
+        logger.warning(f"Pricing not found for model {model_id}")
+        return 0.0
+
+    def _log_response_cost(self, message) -> None:
+        """Log the cost details of an API response."""
+        if not hasattr(message, "usage") or not message.usage:
+            model_id = getattr(message, "model", "unknown")
+            logger.info(f"Model: {model_id} | Cost: usage info missing")
+            return
+        
+        input_tokens = getattr(message.usage, "prompt_tokens", 0) or 0
+        output_tokens = getattr(message.usage, "completion_tokens", 0) or 0
+        model_id = getattr(message, "model", "unknown")
+        
+        pricing = self.model_prices.get(model_id)
+        if pricing:
+            input_cost = pricing.input_cost_per_token * input_tokens
+            output_cost = pricing.output_cost_per_token * output_tokens
+            total_cost = input_cost + output_cost
+            
+            logger.info(
+                "Model: %s | Cost: $%.5f | $%.5f (%d tks) in | $%.5f (%d tks) out",
+                model_id,
+                total_cost,
+                input_cost,
+                input_tokens,
+                output_cost,
+                output_tokens,
+            )
         else:
             logger.info(
-                "modèle : %s | coût : inconnu | %d tks in | %d tks out",
+                "Model: %s | Cost: unknown | %d tks in | %d tks out",
                 model_id,
                 input_tokens,
                 output_tokens,
             )
-
-    @staticmethod
-    def _save_response_to_file(response):
-        """Sauvegarde la réponse dans un fichier avec gestion d'erreur"""
-        try:
-            # Créer le dossier data s'il n'existe pas
-            os.makedirs("data", exist_ok=True)
-            with open("data/responses.txt", "a", encoding='utf-8') as f:
-                f.write(f"{response}\n")
-        except Exception as e:
-            logger.error(f"Erreur lors de la sauvegarde du vote: {e}")
-
-    @staticmethod
-    def _count_votes():
-        """Compte les votes avec gestion d'erreur et création du fichier si nécessaire"""
-        try:
-            # Créer le dossier et fichier s'ils n'existent pas
-            os.makedirs("data", exist_ok=True)
-            if not os.path.exists("data/responses.txt"):
-                return 0, 0, 0, 0, 0
-                
-            with open("data/responses.txt", "r", encoding='utf-8') as f:
-                votes = f.readlines()
-                openai_votes = votes.count("openai\n")
-                anthropic_votes = votes.count("anthropic\n")
-                deepseek_votes = votes.count("deepseek\n")
-                qwen_votes = votes.count("qwen\n")
-                gemini_votes = votes.count("gemini\n")
-                return openai_votes, anthropic_votes, deepseek_votes, qwen_votes, gemini_votes
-        except Exception as e:
-            logger.error(f"Erreur lors du comptage des votes: {e}")
-            return 0, 0, 0, 0, 0
-
