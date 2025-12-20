@@ -313,6 +313,9 @@ class ColocExtension(Extension):
         current_time: datetime,
     ) -> None:
         """Process a single reminder for a user."""
+        if reminder_type == ReminderType.HARDCORE and self.event_state.hardcore_season is None:
+            return
+
         try:
             user = await self.bot.fetch_user(user_id)
             if not user:
