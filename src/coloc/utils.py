@@ -165,14 +165,19 @@ def create_season_embed(season: dict, season_type: str) -> Embed:
     )
     
     # Parse and format dates
-    begin_date = parse_zunivers_date(season["beginDate"])
-    end_date = parse_zunivers_date(season["endDate"])
+    # Handle both API format (camelCase) and internal storage format (snake_case)
+    begin_date_str = season.get("beginDate") or season.get("begin_date")
+    end_date_str = season.get("endDate") or season.get("end_date")
     
-    embed.add_field(
-        name="📅 Période de la saison",
-        value=f"Du {format_discord_timestamp(begin_date)}\nAu {format_discord_timestamp(end_date)}",
-        inline=False,
-    )
+    if begin_date_str and end_date_str:
+        begin_date = parse_zunivers_date(begin_date_str)
+        end_date = parse_zunivers_date(end_date_str)
+        
+        embed.add_field(
+            name="📅 Période de la saison",
+            value=f"Du {format_discord_timestamp(begin_date)}\nAu {format_discord_timestamp(end_date)}",
+            inline=False,
+        )
     
     embed.set_image(url="https://zunivers.zerator.com/assets/logo-hc.webp")
     

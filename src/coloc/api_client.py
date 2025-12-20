@@ -68,7 +68,7 @@ class ZuniversAPIClient:
         for attempt in range(retries):
             try:
                 async with session.get(url, headers=headers) as response:
-                    if response.status == 404:
+                    if response.status == 404 or response.status == 204:
                         return None
                     if response.status >= 400:
                         raise ZuniversAPIError(
