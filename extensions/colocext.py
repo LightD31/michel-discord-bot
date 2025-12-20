@@ -345,12 +345,14 @@ class ColocExtension(Extension):
     async def _check_advent_calendar(self, user: User, day: int) -> None:
         """Check and send advent calendar reminder if needed."""
         try:
-            calendar_opened = await self.api_client.check_user_calendar_opened(
+            unopened_days = await self.api_client.get_unopened_calendar_days(
                 user.username, day
             )
-            if not calendar_opened:
+            if unopened_days:
                 url = get_advent_calendar_url(user.username)
                 message = random.choice(ADVENT_CALENDAR_REMINDERS).format(url=url)
+                cases_str = ", ".join(map(str, unopened_days))
+                message += f"\n\nCases manquantes : **{cases_str}**"
                 await user.send(message)
                 logger.info(f"Sent advent calendar reminder to {user.display_name}")
         except Exception as e:

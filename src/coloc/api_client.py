@@ -141,20 +141,27 @@ class ZuniversAPIClient:
         except ZuniversAPIError:
             return False  # Assume not done if we can't check
     
-    async def check_user_calendar_opened(
+    async def get_unopened_calendar_days(
         self,
         username: str,
         day: int,
-    ) -> bool:
-        """Check if a user has opened their advent calendar for a specific day."""
+    ) -> list[int]:
+        """Get list of unopened advent calendar days up to a specific day."""
         try:
             calendar_data = await self.get_user_calendar(username)
             # API returns a dict with "calendars" array where index is 0-based (index 0 = day 1)
             calendars = calendar_data.get("calendars", []) if isinstance(calendar_data, dict) else calendar_data
+            
+            opened_indices = set()
             for entry in calendars:
-                # index is 0-based, so day 1 = index 0, day 2 = index 1, etc.
-                if entry.get("index") == day - 1 and entry.get("openedDate") is not None:
-                    return True
-            return False
+                if entry.get("openedDate") is not None:
+                    opened_indices.add(entry.get("index"))
+            
+            # Check days up to 'day' (indices 0 to day-1)
+            unopened = []
+            for i in range(day):
+                if i not in opened_indices:
+                    unopened.append(i + 1)
+            return unopened
         except ZuniversAPIError:
-            return False  # Assume not opened if we can't check
+            return []  # Assume opened if we can't check
