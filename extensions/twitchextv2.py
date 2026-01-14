@@ -49,6 +49,16 @@ from src.utils import load_config
 logger = logutil.init_logger(os.path.basename(__file__))
 
 
+def ensure_utc(dt: datetime) -> datetime:
+    """Ensure a datetime is timezone-aware in UTC"""
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        # Assume naive datetime is in UTC
+        return pytz.UTC.localize(dt)
+    return dt.astimezone(pytz.UTC)
+
+
 class StreamerInfo:
     """Class to store information about a streamer"""
 
@@ -258,6 +268,8 @@ class TwitchExt2(Extension):
         self, embed: Embed, stream: ChannelStreamScheduleSegment, is_now=False
     ):
         now = datetime.now(pytz.UTC)
+        start_time = ensure_utc(stream.start_time)
+        end_time = ensure_utc(stream.end_time)
         title = stream.title if stream.title is not None else "Pas de titre défini"
         category = (
             stream.category.name
@@ -266,13 +278,13 @@ class TwitchExt2(Extension):
         )
         if is_now:
             name = f"<:live_1:1265285043891343391><:live_2:1265285055186468864><:live_3:1265285063818477703> {title}"
-            value = f"**{category}\nEn cours ({str(utils.timestamp_converter(stream.start_time).format(TimestampStyles.ShortTime))}-{str(utils.timestamp_converter(stream.end_time).format(TimestampStyles.ShortTime))})\n\u200b**"
-        elif stream.start_time < now + timedelta(days=2):
+            value = f"**{category}\nEn cours ({str(utils.timestamp_converter(start_time).format(TimestampStyles.ShortTime))}-{str(utils.timestamp_converter(end_time).format(TimestampStyles.ShortTime))})\n\u200b**"
+        elif start_time < now + timedelta(days=2):
             name = f"{title}"
-            value = f"{category}\n{utils.timestamp_converter(stream.start_time).format(TimestampStyles.RelativeTime)} ({str(utils.timestamp_converter(stream.start_time).format(TimestampStyles.ShortTime))}-{str(utils.timestamp_converter(stream.end_time).format(TimestampStyles.ShortTime))})\n\u200b"
+            value = f"{category}\n{utils.timestamp_converter(start_time).format(TimestampStyles.RelativeTime)} ({str(utils.timestamp_converter(start_time).format(TimestampStyles.ShortTime))}-{str(utils.timestamp_converter(end_time).format(TimestampStyles.ShortTime))})\n\u200b"
         else:
             name = f"{title}"
-            value = f"{category}\n{utils.timestamp_converter(stream.start_time).format(TimestampStyles.LongDate)} ({str(utils.timestamp_converter(stream.start_time).format(TimestampStyles.ShortTime))}-{str(utils.timestamp_converter(stream.end_time).format(TimestampStyles.ShortTime))})\n\u200b"
+            value = f"{category}\n{utils.timestamp_converter(start_time).format(TimestampStyles.LongDate)} ({str(utils.timestamp_converter(start_time).format(TimestampStyles.ShortTime))}-{str(utils.timestamp_converter(end_time).format(TimestampStyles.ShortTime))})\n\u200b"
         embed.add_field(name=name, value=value, inline=False)
 
     async def fetch_schedule(self, user_id, guild_id=None):
@@ -320,9 +332,11 @@ class TwitchExt2(Extension):
                 )
                 now = datetime.now(pytz.UTC)
                 for stream in segments:
-                    if stream.start_time < now < stream.end_time:
+                    start_time = ensure_utc(stream.start_time)
+                    end_time = ensure_utc(stream.end_time)
+                    if start_time < now < end_time:
                         self.add_field_to_embed(embed, stream=stream, is_now=True)
-                    elif stream.start_time < now + timedelta(days=10):
+                    elif start_time < now + timedelta(days=10):
                         self.add_field_to_embed(embed, stream=stream, is_now=False)
                 return embed
             else:
