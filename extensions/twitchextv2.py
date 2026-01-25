@@ -750,25 +750,74 @@ class TwitchExt2(Extension):
                 emote_file = f"data/emotes_{streamer.guild_id}_{streamer.streamer_id}.json"
 
                 # Load existing emotes or create empty dict
+                # Data structure: {emote_id: {"name": str, "image_url": str}}
                 data = {}
                 try:
                     if os.path.exists(emote_file):
                         with open(emote_file, "r") as file:
                             data = json.load(file)
+                            # Migration: convert old format (id: name) to new format (id: {name, image_url})
+                            for emote_id, value in list(data.items()):
+                                if isinstance(value, str):
+                                    data[emote_id] = {"name": value, "image_url": None}
                 except Exception as e:
                     logger.error(f"Error loading emotes file for {streamer.streamer_id}: {e}")
 
                 # Check for new and deleted emotes
                 new_emotes = [emote for emote in emotes if emote.id not in data]
                 emote_ids = [emote.id for emote in emotes]
-                deleted_emotes = [emote for emote in data if emote not in emote_ids]
+                deleted_emotes = [emote_id for emote_id in data if emote_id not in emote_ids]
 
-                # Process new emotes
-                if new_emotes:
+                # Build a map of current emote names for replacement detection
+                current_emote_names = {emote.name: emote for emote in emotes}
+                deleted_emote_names = {data[emote_id]["name"]: emote_id for emote_id in deleted_emotes}
+
+                # Detect replaced emotes (same name, different ID)
+                replaced_emotes = []
+                truly_new_emotes = []
+                for emote in new_emotes:
+                    if emote.name in deleted_emote_names:
+                        replaced_emotes.append((deleted_emote_names[emote.name], emote))
+                    else:
+                        truly_new_emotes.append(emote)
+
+                # Remove replaced emotes from deleted list
+                truly_deleted_emotes = [emote_id for emote_id in deleted_emotes if data[emote_id]["name"] not in current_emote_names]
+
+                # Process replaced emotes (same name, new ID)
+                if replaced_emotes:
+                    logger.info(f"Replaced emotes found for {streamer.streamer_id}")
+                    bot = await self.bot.fetch_member(self.bot.user.id, streamer.guild_id)
+                    for old_emote_id, new_emote in replaced_emotes:
+                        old_image_url = data[old_emote_id].get("image_url")
+                        new_image_url = new_emote.images.get('url_4x', new_emote.images.get('url_2x', new_emote.images.get('url_1x')))
+
+                        embed = Embed(
+                            title="Emote remplacé",
+                            description=f"L'emote **{new_emote.name}** a été remplacé sur la chaine de {streamer.streamer_id} 🔄",
+                            color=0xFFA500,
+                            timestamp=datetime.now(),
+                            thumbnail=new_image_url,
+                            footer=EmbedFooter(text=bot.display_name, icon_url=bot.avatar_url)
+                        )
+                        if old_image_url:
+                            embed.add_field(name="Ancienne version", value=f"[Image]({old_image_url})", inline=True)
+                        embed.add_field(name="Nouvelle version", value=f"[Image]({new_image_url})", inline=True)
+
+                        logger.info(f"Replaced emote for {streamer.streamer_id}: {new_emote.name}")
+                        await streamer.notif_channel.send(embed=embed)
+
+                        # Update data with new emote info
+                        del data[old_emote_id]
+                        data[new_emote.id] = {"name": new_emote.name, "image_url": new_image_url}
+
+                # Process truly new emotes
+                if truly_new_emotes:
                     logger.debug(f"New emotes found for {streamer.streamer_id}")
                     bot = await self.bot.fetch_member(self.bot.user.id, streamer.guild_id)
-                    for emote in new_emotes:
-                        data[emote.id] = emote.name
+                    for emote in truly_new_emotes:
+                        image_url = emote.images.get('url_4x', emote.images.get('url_2x', emote.images.get('url_1x')))
+                        data[emote.id] = {"name": emote.name, "image_url": image_url}
 
                         # Determine emote details
                         if emote.emote_type == 'subscriptions':
@@ -786,30 +835,44 @@ class TwitchExt2(Extension):
                             description=f"L'emote {emote.name} a été ajouté à la chaine de {streamer.streamer_id} ({details})",
                             color=0x6441A5,
                             timestamp=datetime.now(),
-                            thumbnail=emote.images.get('url_4x', emote.images.get('url_2x', emote.images.get('url_1x'))),
+                            thumbnail=image_url,
                             footer=EmbedFooter(text=bot.display_name, icon_url=bot.avatar_url)
                         )
                         logger.info(f"New emote for {streamer.streamer_id}: {emote.name}")
                         await streamer.notif_channel.send(embed=embed)
 
-                # Process deleted emotes
-                if deleted_emotes:
+                # Process truly deleted emotes
+                if truly_deleted_emotes:
                     logger.info(f"Deleted emotes found for {streamer.streamer_id}")
                     bot = await self.bot.fetch_member(self.bot.user.id, streamer.guild_id)
-                    for emote in deleted_emotes:
+                    for emote_id in truly_deleted_emotes:
+                        emote_data = data[emote_id]
+                        emote_name = emote_data["name"]
+                        emote_image_url = emote_data.get("image_url")
+
                         embed = Embed(
                             title="Emote supprimé",
-                            description=f"L'emote {data[emote]} a été supprimé de la chaine de {streamer.streamer_id} :wave:",
+                            description=f"L'emote **{emote_name}** a été supprimé de la chaine de {streamer.streamer_id} :wave:",
                             color=0x6441A5,
                             timestamp=datetime.now(),
                             footer=EmbedFooter(text=bot.display_name, icon_url=bot.avatar_url)
                         )
-                        logger.info(f"Deleted emote for {streamer.streamer_id}: {emote}")
+                        # Add cached image if available
+                        if emote_image_url:
+                            embed.set_thumbnail(url=emote_image_url)
+
+                        logger.info(f"Deleted emote for {streamer.streamer_id}: {emote_name}")
                         await streamer.notif_channel.send(embed=embed)
-                        del data[emote]
+                        del data[emote_id]
+
+                # Update image URLs for existing emotes (in case they weren't cached before)
+                for emote in emotes:
+                    if emote.id in data and data[emote.id].get("image_url") is None:
+                        image_url = emote.images.get('url_4x', emote.images.get('url_2x', emote.images.get('url_1x')))
+                        data[emote.id]["image_url"] = image_url
 
                 # Save updated emotes
-                if new_emotes or deleted_emotes:
+                if truly_new_emotes or truly_deleted_emotes or replaced_emotes:
                     with open(emote_file, "w") as file:
                         json.dump(data, file, indent=4)
 
