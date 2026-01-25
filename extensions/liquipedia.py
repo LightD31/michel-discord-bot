@@ -73,7 +73,7 @@ class Liquipedia(Extension):
         try:
             await self._initialize_messages()
             # Décommenter pour activer les tâches planifiées
-            # self.schedule.start()
+            self.schedule.start()
             # self.mdi_schedule.start()
         except Exception as e:
             logger.error(f"Erreur lors de l'initialisation: {e}")
