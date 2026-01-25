@@ -31,9 +31,11 @@ module_config = module_config[enabled_servers[0]]
 API_KEY = config["liquipedia"]["liquipediaApiKey"]
 LIQUIPEDIA_API_URL = "https://api.liquipedia.net/api/v3"
 DEFAULT_EMBED_COLOR = 0xE04747
+LIVE_EMBED_COLOR = 0x00FF00  # Vert pour les matchs en direct
 MAX_PAST_MATCHES = 6
 MAX_UPCOMING_MATCHES = 6
 SCHEDULE_INTERVAL_MINUTES = 5
+LIVE_UPDATE_INTERVAL_MINUTES = 1  # Mise à jour plus fréquente pour les matchs en cours
 MATCH_HISTORY_WEEKS = 7
 
 
@@ -66,6 +68,10 @@ class Liquipedia(Extension):
         self.message = None
         self.wow_message = None
         self._headers = {"Authorization": f"Apikey {API_KEY}"}
+        # Tracking des matchs en cours
+        self._ongoing_matches: Dict[str, Any] = {}  # match_id -> match data
+        self._live_messages: Dict[str, Any] = {}  # match_id -> discord message
+        self._channel = None  # Canal pour les notifications
 
     @listen()
     async def on_startup(self) -> None:
@@ -74,15 +80,16 @@ class Liquipedia(Extension):
             await self._initialize_messages()
             # Décommenter pour activer les tâches planifiées
             self.schedule.start()
+            self.live_update.start()
             # self.mdi_schedule.start()
         except Exception as e:
             logger.error(f"Erreur lors de l'initialisation: {e}")
 
     async def _initialize_messages(self) -> None:
         """Récupère les messages Discord à mettre à jour."""
-        channel = await self.bot.fetch_channel(module_config["liquipediaChannelId"])
-        if channel and hasattr(channel, 'fetch_message'):
-            self.message = await channel.fetch_message(module_config["liquipediaMessageId"])
+        self._channel = await self.bot.fetch_channel(module_config["liquipediaChannelId"])
+        if self._channel and hasattr(self._channel, 'fetch_message'):
+            self.message = await self._channel.fetch_message(module_config["liquipediaMessageId"])
         
         wow_channel = await self.bot.fetch_channel(module_config["liquipediaWowChannelId"])
         if wow_channel and hasattr(wow_channel, 'fetch_message'):
@@ -94,7 +101,10 @@ class Liquipedia(Extension):
         logger.debug("Exécution de la tâche Liquipedia schedule")
         try:
             team = "Mandatory"
-            embeds = await self._fetch_team_schedule(team)
+            embeds, ongoing_matches = await self._fetch_team_schedule_with_tracking(team)
+            
+            # Détecter les nouveaux matchs en cours
+            await self._handle_match_transitions(ongoing_matches, team)
             
             if self.message and embeds:
                 await self.message.edit(embeds=embeds)
@@ -102,6 +112,289 @@ class Liquipedia(Extension):
                 logger.warning("Aucun embed à afficher ou message non initialisé")
         except Exception as e:
             logger.exception(f"Erreur dans la tâche schedule: {e}")
+
+    @Task.create(IntervalTrigger(minutes=LIVE_UPDATE_INTERVAL_MINUTES))
+    async def live_update(self) -> None:
+        """Tâche planifiée pour mettre à jour les scores des matchs en cours."""
+        if not self._ongoing_matches:
+            return
+        
+        logger.debug(f"Mise à jour live de {len(self._ongoing_matches)} match(s) en cours")
+        
+        try:
+            team = "Mandatory"
+            date = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
+            data = await self.liquipedia_request(
+                "valorant",
+                "match",
+                f"[[opponent::{team}]] AND [[date::>{date}]]",
+                limit=5,
+                order="date DESC",
+            )
+            
+            matches_to_remove = []
+            
+            for match in data.get("result", []):
+                match_id = match.get("match2id") or match.get("pagename", "")
+                
+                if match_id in self._ongoing_matches:
+                    if match.get("finished") == 1:
+                        # Match terminé
+                        await self._handle_match_ended(match, match_id, team)
+                        matches_to_remove.append(match_id)
+                    else:
+                        # Mettre à jour le score
+                        await self._update_live_message(match, match_id)
+            
+            # Nettoyer les matchs terminés
+            for match_id in matches_to_remove:
+                self._ongoing_matches.pop(match_id, None)
+                
+        except Exception as e:
+            logger.exception(f"Erreur dans live_update: {e}")
+
+    async def _handle_match_transitions(self, ongoing_matches: Dict[str, Any], team: str) -> None:
+        """Gère les transitions de matchs (début/fin).
+        
+        Args:
+            ongoing_matches: Dictionnaire des matchs actuellement en cours.
+            team: Nom de l'équipe suivie.
+        """
+        # Détecter les nouveaux matchs
+        for match_id, match in ongoing_matches.items():
+            if match_id not in self._ongoing_matches:
+                logger.info(f"Nouveau match détecté: {match_id}")
+                await self._send_match_started_notification(match, team)
+                self._ongoing_matches[match_id] = match
+        
+        # Détecter les matchs terminés (qui ne sont plus en cours)
+        finished_matches = [
+            mid for mid in self._ongoing_matches 
+            if mid not in ongoing_matches
+        ]
+        for match_id in finished_matches:
+            logger.info(f"Match terminé détecté: {match_id}")
+            self._ongoing_matches.pop(match_id, None)
+            # Le message de fin sera géré par live_update
+
+    async def _send_match_started_notification(self, match: Dict[str, Any], team: str) -> None:
+        """Envoie une notification quand un match commence.
+        
+        Args:
+            match: Données du match.
+            team: Nom de l'équipe suivie.
+        """
+        if not self._channel:
+            logger.warning("Canal non initialisé pour les notifications")
+            return
+        
+        try:
+            name_1, name_2, shortname_1, shortname_2 = self._get_match_teams(match)
+            score_1, score_2 = self._calculate_match_scores(match)
+            
+            embed = Embed(
+                title=f"🔴 LIVE: {name_1} vs {name_2}",
+                description=(
+                    f"**{match.get('tickername', 'Tournoi')}**\n\n"
+                    f"Bo{match.get('bestof', '?')}\n"
+                    f"Le match vient de commencer!"
+                ),
+                color=LIVE_EMBED_COLOR,
+                timestamp=Timestamp.now(),
+            )
+            
+            # Score actuel
+            embed.add_field(
+                name="Score",
+                value=f"**{shortname_1}** {score_1} - {score_2} **{shortname_2}**",
+                inline=False
+            )
+            
+            embed.set_footer(text="Mise à jour automatique • Source: Liquipedia")
+            
+            # Envoyer le message et le stocker
+            match_id = match.get("match2id") or match.get("pagename", "")
+            message = await self._channel.send(
+                content="<:zrtON:962320783038890054> **Match en direct!** <:zrtON:962320783038890054>",
+                embeds=[embed]
+            )
+            self._live_messages[match_id] = message
+            logger.info(f"Notification envoyée pour le match {name_1} vs {name_2}")
+            
+        except Exception as e:
+            logger.exception(f"Erreur lors de l'envoi de la notification: {e}")
+
+    async def _update_live_message(self, match: Dict[str, Any], match_id: str) -> None:
+        """Met à jour le message de score en direct.
+        
+        Args:
+            match: Données actuelles du match.
+            match_id: Identifiant du match.
+        """
+        message = self._live_messages.get(match_id)
+        if not message:
+            return
+        
+        try:
+            name_1, name_2, shortname_1, shortname_2 = self._get_match_teams(match)
+            score_1, score_2 = self._calculate_match_scores(match)
+            
+            embed = Embed(
+                title=f"🔴 LIVE: {name_1} vs {name_2}",
+                description=(
+                    f"**{match.get('tickername', 'Tournoi')}**\n\n"
+                    f"Bo{match.get('bestof', '?')}"
+                ),
+                color=LIVE_EMBED_COLOR,
+                timestamp=Timestamp.now(),
+            )
+            
+            # Score actuel
+            embed.add_field(
+                name="Score",
+                value=f"**{shortname_1}** {score_1} - {score_2} **{shortname_2}**",
+                inline=False
+            )
+            
+            # Détails des maps jouées
+            map_veto = match["extradata"].get("mapveto", {})
+            games_details = self._format_live_games(match["match2games"], map_veto, shortname_1, shortname_2)
+            if games_details:
+                embed.add_field(
+                    name="Maps",
+                    value=games_details,
+                    inline=False
+                )
+            
+            embed.set_footer(text="Mise à jour automatique • Source: Liquipedia")
+            
+            await message.edit(embeds=[embed])
+            logger.debug(f"Message live mis à jour pour {match_id}: {score_1}-{score_2}")
+            
+        except Exception as e:
+            logger.exception(f"Erreur lors de la mise à jour du message live: {e}")
+
+    def _format_live_games(self, games: List[Dict], map_veto: Dict, shortname_1: str, shortname_2: str) -> str | None:
+        """Formate les maps pour l'affichage live."""
+        result = ""
+        for game in games:
+            if game.get("resulttype") == "np":
+                continue
+            
+            map_name = game.get("map", "???")
+            scores = game.get("scores", [0, 0])
+            
+            if scores and scores[0] is not None and scores[1] is not None:
+                game_result = self._format_game_score(int(scores[0]), int(scores[1]))
+                winner_emoji = ""
+                if game.get("winner") == "1":
+                    winner_emoji = " ✅"
+                elif game.get("winner") == "2":
+                    winner_emoji = " ❌"
+                result += f"**{map_name}**: {shortname_1} {game_result} {shortname_2}{winner_emoji}\n"
+        
+        return result if result else None
+
+    async def _handle_match_ended(self, match: Dict[str, Any], match_id: str, team: str) -> None:
+        """Gère la fin d'un match.
+        
+        Args:
+            match: Données du match.
+            match_id: Identifiant du match.
+            team: Nom de l'équipe suivie.
+        """
+        message = self._live_messages.pop(match_id, None)
+        if not message:
+            return
+        
+        try:
+            name_1, name_2, shortname_1, shortname_2 = self._get_match_teams(match)
+            score_1, score_2 = self._calculate_match_scores(match)
+            
+            winner = int(match.get("winner", 0)) - 1
+            winner_name = match["match2opponents"][winner]["name"] if winner >= 0 else "???"
+            
+            is_victory = winner_name == team
+            result_emoji = "🎉" if is_victory else "😢"
+            result_text = "VICTOIRE" if is_victory else "DÉFAITE"
+            embed_color = 0x00FF00 if is_victory else 0xFF0000
+            
+            embed = Embed(
+                title=f"{result_emoji} {result_text}: {name_1} vs {name_2}",
+                description=(
+                    f"**{match.get('tickername', 'Tournoi')}**\n\n"
+                    f"Bo{match.get('bestof', '?')} terminé!"
+                ),
+                color=embed_color,
+                timestamp=Timestamp.now(),
+            )
+            
+            # Score final
+            embed.add_field(
+                name="Score Final",
+                value=f"**{shortname_1}** {score_1} - {score_2} **{shortname_2}**",
+                inline=False
+            )
+            
+            # Détails des maps
+            map_veto = match["extradata"].get("mapveto", {})
+            games_details = self._format_games_list(match["match2games"], map_veto, shortname_1, shortname_2)
+            if games_details:
+                embed.add_field(
+                    name="Détail des maps",
+                    value=games_details,
+                    inline=False
+                )
+            
+            embed.set_footer(text="Match terminé • Source: Liquipedia")
+            
+            await message.edit(
+                content=f"{result_emoji} **Match terminé!** {result_emoji}",
+                embeds=[embed]
+            )
+            logger.info(f"Match terminé: {name_1} {score_1}-{score_2} {name_2}")
+            
+        except Exception as e:
+            logger.exception(f"Erreur lors de la gestion de fin de match: {e}")
+
+    async def _fetch_team_schedule_with_tracking(
+        self, team: str
+    ) -> Tuple[List[Embed], Dict[str, Any]]:
+        """Récupère le planning d'une équipe avec suivi des matchs en cours.
+        
+        Args:
+            team: Nom de l'équipe à suivre.
+            
+        Returns:
+            Tuple (liste des embeds, dictionnaire des matchs en cours).
+        """
+        date = (datetime.now() - timedelta(weeks=MATCH_HISTORY_WEEKS)).strftime("%Y-%m-%d")
+        data = await self.liquipedia_request(
+            "valorant",
+            "match",
+            f"[[opponent::{team}]] AND [[date::>{date}]]",
+            limit=15,
+            order="date ASC",
+        )
+        
+        embeds, pagenames = await self.make_schedule_embed(data, team)
+        
+        # Extraire les matchs en cours
+        ongoing_matches: Dict[str, Any] = {}
+        current_time = datetime.now().timestamp()
+        
+        for match in data.get("result", []):
+            match_timestamp = match["extradata"].get("timestamp", 0)
+            if match_timestamp < current_time and match.get("finished") == 0:
+                match_id = match.get("match2id") or match.get("pagename", "")
+                ongoing_matches[match_id] = match
+        
+        # Ajouter les classements des tournois
+        for pagename in pagenames:
+            standings_embeds = await self._fetch_tournament_standings(pagename)
+            embeds.extend(standings_embeds)
+        
+        return embeds, ongoing_matches
 
     async def _fetch_team_schedule(self, team: str) -> List[Embed]:
         """Récupère le planning d'une équipe.
