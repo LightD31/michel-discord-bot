@@ -159,7 +159,7 @@ class Feur(Extension):
         guild_id = str(event.message.guild.id) if event.message.guild else None
         
         # Check for "pourquoi" wordplay (check first as it contains "quoi")
-        if self._should_respond("pourquoi", content):
+        if self._should_respond(content, "pourquoi"):
             response = random.choice(POUR_FEUR_RESPONSES)
             await event.message.channel.send(response)
             await self._add_feur_reactions(event.message)
@@ -167,7 +167,7 @@ class Feur(Extension):
             return
 
         # Check for "quoi" wordplay (only if word is exactly "quoi", not part of "pourquoi")
-        if self._should_respond("quoi", content):
+        if self._should_respond(content, "quoi"):
             # Make sure it's not "pourquoi" triggering this
             words = self._extract_words(content)
             if words and words[-1] == "quoi" or ("quoi" in content and "pourquoi" not in content):
