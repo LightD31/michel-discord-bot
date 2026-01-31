@@ -1,5 +1,12 @@
+import json
 import os
-from interactions import Extension, listen
+import random
+import re
+import string
+from datetime import datetime
+from typing import Optional
+
+from interactions import Extension, listen, slash_command, SlashContext, Embed, EmbedFooter
 from interactions.api.events import MessageCreate
 
 from src import logutil
@@ -9,67 +16,87 @@ logger = logutil.init_logger(os.path.basename(__file__))
 
 config, module_config, enabled_servers = load_config("moduleFeur")
 
+# Emojis for FEUR reactions
+FEUR_EMOJIS = ["🇫", "🇪", "🇺", "🇷"]
+
+# Varied responses for more fun
+FEUR_RESPONSES = ["Feur.", "Feur 🗿"]
+POUR_FEUR_RESPONSES = ["Pour feur.", "Pour feur 🗿"]
+
+# Stats file path
+STATS_FILE = "data/feur_stats.json"
+
 
 class Feur(Extension):
-    def _should_respond_pourquoi(self, content: str) -> bool:
-        """
-        Determines if the bot should respond with "Pour feur." to a message containing "pourquoi".
-        
-        Args:
-            content (str): The sanitized and lowercased message content.
-            
-        Returns:
-            bool: True if the bot should respond, False otherwise.
-        """
-        if "pourquoi" not in content:
-            return False
-            
-        # Remove punctuation for word boundary analysis
-        words = self._extract_words(content)
-        
-        # Case 1: Message ends with "pourquoi" (with or without punctuation)
-        if words and words[-1] == "pourquoi":
-            return True
-            
-        # Case 2: "pourquoi" followed by "?" in the same sentence
-        sentences = self._split_into_sentences(content)
-        for sentence in sentences:
-            if "pourquoi" in sentence and "?" in sentence:
-                # Check if "pourquoi" comes before the "?" in this sentence
-                pourquoi_index = sentence.find("pourquoi")
-                question_mark_index = sentence.find("?", pourquoi_index)
-                if question_mark_index != -1:
-                    return True
-                    
-        return False
+    def __init__(self, bot):
+        self.bot = bot
+        self.stats = self._load_stats()
     
-    def _should_respond_quoi(self, content: str) -> bool:
+    def _load_stats(self) -> dict:
+        """Load stats from file."""
+        try:
+            if os.path.exists(STATS_FILE):
+                with open(STATS_FILE, "r", encoding="utf-8") as f:
+                    return json.load(f)
+        except Exception as e:
+            logger.error(f"Error loading feur stats: {e}")
+        return {"users": {}, "guilds": {}, "total": 0}
+    
+    def _save_stats(self):
+        """Save stats to file."""
+        try:
+            os.makedirs(os.path.dirname(STATS_FILE), exist_ok=True)
+            with open(STATS_FILE, "w", encoding="utf-8") as f:
+                json.dump(self.stats, f, indent=2)
+        except Exception as e:
+            logger.error(f"Error saving feur stats: {e}")
+    
+    def _record_feur(self, user_id: str, guild_id: Optional[str], feur_type: str):
+        """Record a feur event in stats."""
+        # Update total
+        self.stats["total"] = self.stats.get("total", 0) + 1
+        
+        # Update user stats
+        if user_id not in self.stats["users"]:
+            self.stats["users"][user_id] = {"total": 0, "feur": 0, "pour_feur": 0}
+        self.stats["users"][user_id]["total"] += 1
+        self.stats["users"][user_id][feur_type] = self.stats["users"][user_id].get(feur_type, 0) + 1
+        
+        # Update guild stats
+        if guild_id:
+            if guild_id not in self.stats["guilds"]:
+                self.stats["guilds"][guild_id] = {"total": 0, "feur": 0, "pour_feur": 0}
+            self.stats["guilds"][guild_id]["total"] += 1
+            self.stats["guilds"][guild_id][feur_type] = self.stats["guilds"][guild_id].get(feur_type, 0) + 1
+        
+        self._save_stats()
+
+    def _should_respond(self, content: str, keyword: str) -> bool:
         """
-        Determines if the bot should respond with "Feur." to a message containing "quoi".
+        Determines if the bot should respond to a message containing the keyword.
         
         Args:
             content (str): The sanitized and lowercased message content.
+            keyword (str): The keyword to check for ("quoi" or "pourquoi").
             
         Returns:
             bool: True if the bot should respond, False otherwise.
         """
-        if "quoi" not in content:
+        if keyword not in content:
             return False
             
-        # Remove punctuation for word boundary analysis
         words = self._extract_words(content)
         
-        # Case 1: Message ends with "quoi" (with or without punctuation)
-        if words and words[-1] == "quoi":
+        # Case 1: Message ends with the keyword (with or without punctuation)
+        if words and words[-1] == keyword:
             return True
             
-        # Case 2: "quoi" followed by "?" in the same sentence
+        # Case 2: Keyword followed by "?" in the same sentence
         sentences = self._split_into_sentences(content)
         for sentence in sentences:
-            if "quoi" in sentence and "?" in sentence:
-                # Check if "quoi" comes before the "?" in this sentence
-                quoi_index = sentence.find("quoi")
-                question_mark_index = sentence.find("?", quoi_index)
+            if keyword in sentence and "?" in sentence:
+                keyword_index = sentence.find(keyword)
+                question_mark_index = sentence.find("?", keyword_index)
                 if question_mark_index != -1:
                     return True
                     
@@ -85,8 +112,6 @@ class Feur(Extension):
         Returns:
             list: List of words without punctuation.
         """
-        import string
-        # Remove punctuation and split into words
         translator = str.maketrans("", "", string.punctuation)
         clean_content = content.translate(translator)
         return clean_content.split()
@@ -101,10 +126,16 @@ class Feur(Extension):
         Returns:
             list: List of sentences.
         """
-        import re
-        # Split on sentence-ending punctuation, newlines, or multiple spaces
         sentences = re.split(r'[.!?\n]+|  +', content)
         return [s.strip() for s in sentences if s.strip()]
+
+    async def _add_feur_reactions(self, message):
+        """Add F-E-U-R letter reactions to a message."""
+        try:
+            for emoji in FEUR_EMOJIS:
+                await message.add_reaction(emoji)
+        except Exception as e:
+            logger.debug(f"Could not add reactions: {e}")
 
     @listen()
     async def on_message(self, event: MessageCreate):
@@ -118,18 +149,98 @@ class Feur(Extension):
             logger.debug("Message from bot, ignoring")
             return
         if event.message.guild is not None:
-            # Don't send if in COLOC
             if str(event.message.guild.id) not in module_config.keys():
                 return
-        # Sanitize the message (remove emojis, custom emojis)
+        
         content = sanitize_content(event.message.content.lower()).strip()
         logger.debug("Message content: %s", content)
         
-        # Check for "pourquoi" wordplay
-        if self._should_respond_pourquoi(content):
-            await event.message.channel.send("Pour feur.")
+        user_id = str(event.message.author.id)
+        guild_id = str(event.message.guild.id) if event.message.guild else None
+        
+        # Check for "pourquoi" wordplay (check first as it contains "quoi")
+        if self._should_respond("pourquoi", content):
+            response = random.choice(POUR_FEUR_RESPONSES)
+            await event.message.channel.send(response)
+            await self._add_feur_reactions(event.message)
+            self._record_feur(user_id, guild_id, "pour_feur")
             return
 
-        # Check for "quoi" wordplay
-        if self._should_respond_quoi(content):
-            await event.message.channel.send("Feur.")
+        # Check for "quoi" wordplay (only if word is exactly "quoi", not part of "pourquoi")
+        if self._should_respond("quoi", content):
+            # Make sure it's not "pourquoi" triggering this
+            words = self._extract_words(content)
+            if words and words[-1] == "quoi" or ("quoi" in content and "pourquoi" not in content):
+                response = random.choice(FEUR_RESPONSES)
+                await event.message.channel.send(response)
+                await self._add_feur_reactions(event.message)
+                self._record_feur(user_id, guild_id, "feur")
+
+    @slash_command(name="feurstats", description="Affiche les statistiques de feur")
+    async def feur_stats(self, ctx: SlashContext):
+        """Display feur statistics."""
+        guild_id = str(ctx.guild_id) if ctx.guild_id else None
+        user_id = str(ctx.author.id)
+        
+        # Get user stats
+        user_stats = self.stats["users"].get(user_id, {"total": 0, "feur": 0, "pour_feur": 0})
+        
+        # Get guild stats
+        guild_stats = self.stats["guilds"].get(guild_id, {"total": 0, "feur": 0, "pour_feur": 0}) if guild_id else None
+        
+        # Get top users in this guild
+        top_users = []
+        if guild_id and ctx.guild:
+            user_totals = []
+            for uid, ustats in self.stats["users"].items():
+                try:
+                    member = await ctx.guild.fetch_member(int(uid))
+                    if member:
+                        user_totals.append((member.display_name, ustats.get("total", 0)))
+                except Exception:
+                    pass
+            top_users = sorted(user_totals, key=lambda x: x[1], reverse=True)[:5]
+        
+        embed = Embed(
+            title="📊 Statistiques Feur",
+            color=0x9B59B6,
+            timestamp=datetime.now(),
+            footer=EmbedFooter(text=f"Demandé par {ctx.author.display_name}")
+        )
+        
+        # Global stats
+        embed.add_field(
+            name="🌍 Total global",
+            value=f"**{self.stats.get('total', 0)}** feurs envoyés",
+            inline=False
+        )
+        
+        # User stats
+        embed.add_field(
+            name="👤 Tes stats",
+            value=f"Total: **{user_stats.get('total', 0)}**\n"
+                  f"Feur: **{user_stats.get('feur', 0)}**\n"
+                  f"Pour feur: **{user_stats.get('pour_feur', 0)}**",
+            inline=True
+        )
+        
+        # Guild stats
+        if guild_stats:
+            embed.add_field(
+                name="🏠 Stats du serveur",
+                value=f"Total: **{guild_stats.get('total', 0)}**\n"
+                      f"Feur: **{guild_stats.get('feur', 0)}**\n"
+                      f"Pour feur: **{guild_stats.get('pour_feur', 0)}**",
+                inline=True
+            )
+        
+        # Top users
+        if top_users:
+            top_text = "\n".join([f"{i+1}. {name}: **{count}**" for i, (name, count) in enumerate(top_users)])
+            embed.add_field(
+                name="🏆 Top 5 du serveur",
+                value=top_text,
+                inline=False
+            )
+        
+        await ctx.send(embed=embed)
