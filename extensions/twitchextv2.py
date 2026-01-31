@@ -75,6 +75,11 @@ class StreamerInfo:
         self.message = None
         self.notif_channel = None
         self.scheduled_event = None
+        # Stream session info (stored when stream starts)
+        self.stream_start_time: Optional[datetime] = None
+        self.stream_title: Optional[str] = None
+        self.stream_game: Optional[str] = None
+        self.stream_id: Optional[str] = None
 
 
 class TwitchExt2(Extension):
@@ -696,6 +701,15 @@ class TwitchExt2(Extension):
         streamers = self.get_streamer_by_user_id(user_id)
         for streamer in streamers:
             try:
+                # Get stream data to store session info
+                stream = await self.get_stream_data(user_id)
+                if stream:
+                    streamer.stream_start_time = ensure_utc(stream.started_at)
+                    streamer.stream_title = stream.title
+                    streamer.stream_game = stream.game_name
+                    streamer.stream_id = stream.id
+                    logger.info(f"Stored stream info for {streamer.streamer_id}: started at {streamer.stream_start_time}")
+                
                 # For each server tracking this streamer, update the message
                 await self.edit_message(streamer, offline=False)
             except Exception as e:
@@ -711,14 +725,24 @@ class TwitchExt2(Extension):
             data (StreamOfflineEvent): The event data.
         """
         user_id = data.event.broadcaster_user_id
-        logger.info("Stream is offline: %s", data.event.broadcaster_user_name)
+        broadcaster_name = data.event.broadcaster_user_name
+        logger.info("Stream is offline: %s", broadcaster_name)
 
         # Find all streamers matching this user_id
         streamers = self.get_streamer_by_user_id(user_id)
         for streamer in streamers:
             try:
+                # Send stream end notification
+                await self.send_stream_end_notification(streamer, broadcaster_name)
+                
                 # For each server tracking this streamer, update the message
                 await self.edit_message(streamer, offline=True)
+                
+                # Clear stream session info
+                streamer.stream_start_time = None
+                streamer.stream_title = None
+                streamer.stream_game = None
+                streamer.stream_id = None
             except Exception as e:
                 logger.error(f"Error handling live end for {streamer.streamer_id} in guild {streamer.guild_id}: {e}")
 
@@ -732,6 +756,73 @@ class TwitchExt2(Extension):
                 TimeTrigger(hour=22, utc=False),
             )
         )
+
+    async def send_stream_end_notification(self, streamer: StreamerInfo, broadcaster_name: str):
+        """
+        Send a notification message when a stream ends with stream summary.
+
+        Args:
+            streamer (StreamerInfo): The streamer info object.
+            broadcaster_name (str): The broadcaster's display name.
+        """
+        if not streamer.notif_channel:
+            return
+
+        try:
+            # Calculate stream duration
+            end_time = datetime.now(pytz.UTC)
+            duration_str = "Durée inconnue"
+            
+            if streamer.stream_start_time:
+                duration = end_time - streamer.stream_start_time
+                hours, remainder = divmod(int(duration.total_seconds()), 3600)
+                minutes, seconds = divmod(remainder, 60)
+                
+                if hours > 0:
+                    duration_str = f"{hours}h {minutes}min"
+                else:
+                    duration_str = f"{minutes}min {seconds}s"
+
+            # Get VOD info if available
+            vod_url = None
+            try:
+                videos = self.twitch.get_videos(user_id=streamer.user_id, video_type="archive", first=1)
+                async for video in videos:
+                    # Check if this VOD is from the stream that just ended
+                    if streamer.stream_id and video.stream_id == streamer.stream_id:
+                        vod_url = video.url
+                    break
+            except Exception as e:
+                logger.debug(f"Could not fetch VOD for {streamer.streamer_id}: {e}")
+
+            # Create embed for stream end notification
+            bot = await self.bot.fetch_member(self.bot.user.id, streamer.guild_id)
+            
+            embed = Embed(
+                title=f"🔴 {broadcaster_name} a terminé son live !",
+                color=0x9146FF,  # Twitch purple
+                timestamp=end_time,
+                footer=EmbedFooter(text=bot.display_name, icon_url=bot.avatar_url),
+            )
+            
+            embed.add_field(name="⏱️ Durée", value=duration_str, inline=True)
+            
+            if vod_url:
+                embed.add_field(name="📺 VOD", value=f"[Regarder le replay]({vod_url})", inline=False)
+
+            # Get user info for thumbnail
+            try:
+                user: TwitchUser = await first(self.twitch.get_users(user_ids=[streamer.user_id]))
+                if user:
+                    embed.set_thumbnail(url=user.profile_image_url)
+            except Exception as e:
+                logger.debug(f"Could not fetch user info for thumbnail: {e}")
+
+            await streamer.notif_channel.send(embed=embed)
+            logger.info(f"Sent stream end notification for {streamer.streamer_id} in guild {streamer.guild_id}")
+
+        except Exception as e:
+            logger.error(f"Error sending stream end notification for {streamer.streamer_id}: {e}")
 
     async def on_update(self, data: ChannelUpdateEvent):
         user_id = data.event.broadcaster_user_id
