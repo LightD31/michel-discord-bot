@@ -1,7 +1,8 @@
 import os
 import random
+import time
 from datetime import datetime
-from typing import Optional
+from typing import Any, Optional, Dict, Tuple
 
 import pymongo
 import pytz
@@ -41,6 +42,51 @@ TIMEZONE = pytz.timezone("Europe/Paris")
 LEADERBOARD_PAGE_SIZE = 10
 RANK_MEDALS = ["🥇", "🥈", "🥉"]
 DEFAULT_LEVEL_UP_MESSAGE = "Bravo {mention}, tu as atteint le niveau {lvl} !"
+
+# Cache settings
+USER_CACHE_TTL = 300  # 5 minutes
+RANK_CACHE_TTL = 60  # 1 minute
+
+
+class TTLCache:
+    """Simple TTL cache implementation."""
+    
+    def __init__(self, ttl: int = 300):
+        self._cache: Dict[str, Tuple[Any, float]] = {}
+        self._ttl = ttl
+    
+    def get(self, key: str) -> Optional[Any]:
+        """Get a value from cache if it exists and is not expired."""
+        if key in self._cache:
+            value, timestamp = self._cache[key]
+            if time.time() - timestamp < self._ttl:
+                return value
+            else:
+                del self._cache[key]
+        return None
+    
+    def set(self, key: str, value: Any) -> None:
+        """Set a value in cache with current timestamp."""
+        self._cache[key] = (value, time.time())
+    
+    def delete(self, key: str) -> None:
+        """Delete a key from cache."""
+        if key in self._cache:
+            del self._cache[key]
+    
+    def clear(self) -> None:
+        """Clear the entire cache."""
+        self._cache.clear()
+    
+    def cleanup(self) -> None:
+        """Remove expired entries from cache."""
+        current_time = time.time()
+        expired_keys = [
+            key for key, (_, timestamp) in self._cache.items()
+            if current_time - timestamp >= self._ttl
+        ]
+        for key in expired_keys:
+            del self._cache[key]
 
 
 def calculate_level(xp: int) -> tuple[int, int, int]:
@@ -90,19 +136,90 @@ class XP(Extension):
 
     def __init__(self, bot: client):
         self.bot: Client = bot
-        mongo_client = pymongo.MongoClient(config.get("mongodb", {}).get("url", ""))
-        self.db = mongo_client["Playlist"]
+        
+        # MongoDB connection with validation
+        mongo_url = config.get("mongodb", {}).get("url", "")
+        if not mongo_url:
+            logger.error("MongoDB URL not configured! XP module may not work correctly.")
+        
+        try:
+            mongo_client = pymongo.MongoClient(mongo_url, serverSelectionTimeoutMS=5000)
+            # Test connection
+            mongo_client.admin.command('ping')
+            self.db = mongo_client["Playlist"]
+            self._db_connected = True
+            logger.info("Successfully connected to MongoDB")
+        except pymongo.errors.ConnectionFailure as e:
+            logger.error("Failed to connect to MongoDB: %s", e)
+            self.db = None
+            self._db_connected = False
+        
+        # Initialize caches
+        self._user_cache = TTLCache(ttl=USER_CACHE_TTL)
+        self._rank_cache = TTLCache(ttl=RANK_CACHE_TTL)
+        
+        # Validate configuration
+        self._validate_config()
+        
         logger.debug("enabled_servers for XP module: %s", enabled_servers)
+
+    def _validate_config(self) -> None:
+        """Validate module configuration and log warnings for missing settings."""
+        for guild_id in enabled_servers:
+            guild_config = module_config.get(guild_id, {})
+            
+            if not guild_config:
+                logger.warning("No configuration found for guild %s", guild_id)
+                continue
+            
+            # Check for optional but recommended settings
+            if "xpChannelId" not in guild_config:
+                logger.debug("No permanent leaderboard channel configured for guild %s", guild_id)
+            
+            if "levelUpMessageList" not in guild_config:
+                logger.debug("Using default level up message for guild %s", guild_id)
+
+    def _ensure_indexes(self, guild_id: str) -> None:
+        """Ensure MongoDB indexes exist for the guild collection."""
+        if not self._db_connected:
+            return
+        
+        try:
+            collection = self.db[guild_id]
+            # Create index on xp field for faster sorting (descending for leaderboard)
+            collection.create_index([("xp", pymongo.DESCENDING)], background=True)
+            # Create index on time field for cooldown checks
+            collection.create_index([("time", pymongo.DESCENDING)], background=True)
+            logger.debug("Ensured indexes for guild %s", guild_id)
+        except Exception as e:
+            logger.error("Failed to create indexes for guild %s: %s", guild_id, e)
 
     @listen()
     async def on_startup(self):
+        # Ensure indexes for all enabled servers
+        for guild_id in enabled_servers:
+            self._ensure_indexes(guild_id)
+        
+        # Start cache cleanup task
+        self._cache_cleanup_task.start()
+        
         self.leaderboardpermanent.start()
         await self.leaderboardpermanent()
+
+    @Task.create(TimeTrigger(minute=30, utc=False))
+    async def _cache_cleanup_task(self):
+        """Periodically clean up expired cache entries."""
+        self._user_cache.cleanup()
+        self._rank_cache.cleanup()
+        logger.debug("Cache cleanup completed")
 
     @listen()
     async def on_message(self, event: MessageCreate):
         """Give XP to a user when they send a message."""
         message = event.message
+        
+        if not self._db_connected:
+            return
         
         if not self._is_valid_xp_message(message):
             return
@@ -112,13 +229,20 @@ class XP(Extension):
         
         self._ensure_guild_collection(guild_id, message.guild.name)
         
-        stats = self.db[guild_id].find_one({"_id": user_id})
-        
-        if stats is None:
-            self._create_new_user(guild_id, user_id, message.created_at.timestamp())
+        try:
+            stats = self.db[guild_id].find_one({"_id": user_id})
+        except pymongo.errors.PyMongoError as e:
+            logger.error("Database error when fetching user stats: %s", e)
             return
         
-        if self._is_on_cooldown(message.created_at.timestamp(), stats["time"]):
+        if stats is None:
+            if not self._create_new_user(guild_id, user_id, message.created_at.timestamp()):
+                return
+            return
+        
+        # Safely get time with fallback
+        last_time = stats.get("time", 0)
+        if self._is_on_cooldown(message.created_at.timestamp(), last_time):
             logger.debug("No XP given to %s due to cooldown.", user_id)
             return
         
@@ -138,12 +262,20 @@ class XP(Extension):
 
     def _ensure_guild_collection(self, guild_id: str, guild_name: str) -> None:
         """Create a new collection for the guild if it doesn't exist."""
-        if guild_id not in self.db.list_collection_names():
-            self.db.create_collection(guild_id)
-            logger.debug("Created a new collection for %s.", guild_name)
+        try:
+            if guild_id not in self.db.list_collection_names():
+                self.db.create_collection(guild_id)
+                self._ensure_indexes(guild_id)
+                logger.debug("Created a new collection for %s.", guild_name)
+        except pymongo.errors.PyMongoError as e:
+            logger.error("Failed to create collection for %s: %s", guild_name, e)
 
-    def _create_new_user(self, guild_id: str, user_id: str, timestamp: float) -> None:
-        """Create a new user entry in the database."""
+    def _create_new_user(self, guild_id: str, user_id: str, timestamp: float) -> bool:
+        """Create a new user entry in the database.
+        
+        Returns:
+            True if user was created successfully, False otherwise.
+        """
         new_user = {
             "_id": user_id,
             "xp": random.randint(XP_MIN, XP_MAX),
@@ -151,8 +283,28 @@ class XP(Extension):
             "msg": 1,
             "lvl": 0,
         }
-        self.db[guild_id].insert_one(new_user)
-        logger.debug("Added %s to the database.", user_id)
+        try:
+            self.db[guild_id].insert_one(new_user)
+            # Invalidate rank cache for this guild
+            self._invalidate_rank_cache(guild_id)
+            logger.debug("Added %s to the database.", user_id)
+            return True
+        except pymongo.errors.DuplicateKeyError:
+            logger.debug("User %s already exists (race condition).", user_id)
+            return True
+        except pymongo.errors.PyMongoError as e:
+            logger.error("Failed to create user %s: %s", user_id, e)
+            return False
+
+    def _invalidate_rank_cache(self, guild_id: str) -> None:
+        """Invalidate rank cache entries for a guild."""
+        # Clear all rank cache entries for this guild
+        keys_to_delete = [
+            key for key in list(self._rank_cache._cache.keys())
+            if key.startswith(f"{guild_id}_")
+        ]
+        for key in keys_to_delete:
+            self._rank_cache.delete(key)
 
     def _is_on_cooldown(self, current_time: float, last_time: float) -> bool:
         """Check if the user is on XP cooldown."""
@@ -161,21 +313,29 @@ class XP(Extension):
     async def _update_user_xp(self, guild_id: str, user_id: str, stats: dict, message: Message) -> None:
         """Update user XP and handle level ups."""
         xp_gained = random.randint(XP_MIN, XP_MAX)
-        new_xp = stats["xp"] + xp_gained
-        new_msg_count = stats["msg"] + 1
+        current_xp = stats.get("xp", 0)
+        current_msg = stats.get("msg", 0)
+        new_xp = current_xp + xp_gained
+        new_msg_count = current_msg + 1
         
-        self.db[guild_id].update_one(
-            {"_id": user_id},
-            {"$set": {
-                "xp": new_xp,
-                "time": message.created_at.timestamp(),
-                "msg": new_msg_count,
-            }}
-        )
-        logger.debug("Gave %s XP.", user_id)
+        try:
+            self.db[guild_id].update_one(
+                {"_id": user_id},
+                {"$set": {
+                    "xp": new_xp,
+                    "time": message.created_at.timestamp(),
+                    "msg": new_msg_count,
+                }}
+            )
+            # Invalidate rank cache since XP changed
+            self._invalidate_rank_cache(guild_id)
+            logger.debug("Gave %s XP.", user_id)
+        except pymongo.errors.PyMongoError as e:
+            logger.error("Failed to update XP for %s: %s", user_id, e)
+            return
         
         new_level, _, _ = calculate_level(new_xp)
-        old_level = stats["lvl"]
+        old_level = stats.get("lvl", 0)
         
         if new_level > old_level:
             await self._handle_level_up(guild_id, user_id, new_level, message)
@@ -200,13 +360,64 @@ class XP(Extension):
         )
         await message.channel.send(formatted_message)
 
-    def _get_user_rank(self, guild_id: str, user_id: str) -> int:
-        """Get the rank of a user in the guild."""
-        rankings = self.db[guild_id].find().sort("xp", -1)
-        for rank, entry in enumerate(rankings, start=1):
-            if entry["_id"] == user_id:
+    def _get_user_rank(self, guild_id: str, user_id: str) -> Optional[int]:
+        """Get the rank of a user in the guild using MongoDB aggregation.
+        
+        Returns:
+            The user's rank (1-indexed), or None if user not found.
+        """
+        if not self._db_connected:
+            return None
+        
+        # Check cache first
+        cache_key = f"{guild_id}_{user_id}"
+        cached_rank = self._rank_cache.get(cache_key)
+        if cached_rank is not None:
+            return cached_rank
+        
+        try:
+            # Use aggregation with $setWindowFields for efficient rank calculation
+            pipeline = [
+                {
+                    "$setWindowFields": {
+                        "sortBy": {"xp": -1},
+                        "output": {
+                            "rank": {"$rank": {}}
+                        }
+                    }
+                },
+                {
+                    "$match": {"_id": user_id}
+                },
+                {
+                    "$project": {"rank": 1}
+                }
+            ]
+            
+            result = list(self.db[guild_id].aggregate(pipeline))
+            
+            if result:
+                rank = result[0]["rank"]
+                self._rank_cache.set(cache_key, rank)
                 return rank
-        return 0
+            
+            return None
+        except pymongo.errors.PyMongoError as e:
+            logger.error("Failed to get rank for user %s in guild %s: %s", user_id, guild_id, e)
+            # Fallback to old method if aggregation fails
+            return self._get_user_rank_fallback(guild_id, user_id)
+
+    def _get_user_rank_fallback(self, guild_id: str, user_id: str) -> Optional[int]:
+        """Fallback method to get user rank without aggregation."""
+        try:
+            rankings = self.db[guild_id].find({}, {"_id": 1}).sort("xp", -1)
+            for rank, entry in enumerate(rankings, start=1):
+                if entry["_id"] == user_id:
+                    return rank
+            return None
+        except pymongo.errors.PyMongoError as e:
+            logger.error("Fallback rank query failed: %s", e)
+            return None
 
     def _create_progress_bar(self, xp_in_level: int, xp_max: int, length: int = 10) -> str:
         """Create a visual progress bar."""
@@ -226,18 +437,28 @@ class XP(Extension):
     )
     async def rank(self, ctx: SlashContext, utilisateur: User = None):
         """Display the level and XP of a user."""
+        if not self._db_connected:
+            await ctx.send("❌ La base de données n'est pas disponible.", ephemeral=True)
+            return
+        
         target_user = utilisateur or ctx.author
         guild_id = str(ctx.guild.id)
         
-        stats = self.db[guild_id].find_one({"_id": str(target_user.id)})
+        try:
+            stats = self.db[guild_id].find_one({"_id": str(target_user.id)})
+        except pymongo.errors.PyMongoError as e:
+            logger.error("Database error in rank command: %s", e)
+            await ctx.send("❌ Erreur lors de la récupération des statistiques.", ephemeral=True)
+            return
         
         if stats is None:
             await ctx.send(f"{target_user.mention} n'a pas encore de niveau.")
             return
         
-        xp = stats["xp"]
+        xp = stats.get("xp", 0)
         lvl, xp_in_level, xp_max = calculate_level(xp)
         rank = self._get_user_rank(guild_id, str(target_user.id))
+        rank_display = f"{rank}/{ctx.guild.member_count}" if rank else "N/A"
         
         embed = Embed(
             title=f"Statistiques de {target_user.username}",
@@ -246,9 +467,9 @@ class XP(Extension):
         )
         embed.add_field(name="Name", value=target_user.mention, inline=True)
         embed.add_field(name="Niveau", value=lvl, inline=True)
-        embed.add_field(name="Rank", value=f"{rank}/{ctx.guild.member_count}", inline=True)
+        embed.add_field(name="Rank", value=rank_display, inline=True)
         embed.add_field(name="XP", value=f"{xp_in_level}/{xp_max}", inline=True)
-        embed.add_field(name="Messages", value=stats["msg"], inline=True)
+        embed.add_field(name="Messages", value=stats.get("msg", 0), inline=True)
         embed.add_field(
             name="Progression",
             value=self._create_progress_bar(xp_in_level, xp_max),
@@ -258,13 +479,26 @@ class XP(Extension):
         await ctx.send(embed=embed)
 
     async def _get_member_info(self, guild: Guild, user_id: str) -> Optional[tuple[str, str]]:
-        """Get member display name and username."""
-        member = guild.get_member(user_id)
-        if member is None:
-            member = await self.bot.fetch_user(user_id)
-        if member is None:
+        """Get member display name and username with caching."""
+        # Check cache first
+        cache_key = f"user_{user_id}"
+        cached_info = self._user_cache.get(cache_key)
+        if cached_info is not None:
+            return cached_info
+        
+        try:
+            member = guild.get_member(user_id)
+            if member is None:
+                member = await self.bot.fetch_user(user_id)
+            if member is None:
+                return None
+            
+            result = (member.display_name, member.username)
+            self._user_cache.set(cache_key, result)
+            return result
+        except Exception as e:
+            logger.debug("Could not fetch member %s: %s", user_id, e)
             return None
-        return member.display_name, member.username
 
     def _format_leaderboard_entry(self, rank: int, display_name: str, username: str, 
                                    lvl: int, xp_in_level: int, xp_max: int, 
@@ -278,7 +512,23 @@ class XP(Extension):
 
     async def _build_leaderboard_embeds(self, guild: Guild) -> list[Embed]:
         """Build leaderboard embeds for a guild."""
-        rankings = self.db[str(guild.id)].find().sort("xp", -1)
+        if not self._db_connected:
+            return [Embed(
+                title="Erreur",
+                description="La base de données n'est pas disponible.",
+                color=0xFF0000,
+            )]
+        
+        try:
+            rankings = self.db[str(guild.id)].find().sort("xp", -1)
+        except pymongo.errors.PyMongoError as e:
+            logger.error("Database error building leaderboard: %s", e)
+            return [Embed(
+                title="Erreur",
+                description="Impossible de récupérer le classement.",
+                color=0xFF0000,
+            )]
+        
         embeds = []
         embed = create_leaderboard_embed(guild.name)
         entry_count = 0
@@ -290,13 +540,13 @@ class XP(Extension):
                     continue
                 
                 display_name, username = member_info
-                total_xp = entry["xp"]
+                total_xp = entry.get("xp", 0)
                 lvl, xp_in_level, xp_max = calculate_level(total_xp)
                 
                 name, value = self._format_leaderboard_entry(
                     entry_count, display_name, username,
                     lvl, xp_in_level, xp_max,
-                    total_xp, entry["msg"]
+                    total_xp, entry.get("msg", 0)
                 )
                 embed.add_field(name=name, value=value, inline=False)
                 entry_count += 1
