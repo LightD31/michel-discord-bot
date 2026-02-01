@@ -78,6 +78,9 @@ class StreamerInfo:
         # Stream session info (stored when stream starts)
         self.stream_start_time: Optional[datetime] = None
         self.stream_title: Optional[str] = None
+        # Last notified title and category (to avoid duplicate notifications)
+        self.last_notified_title: Optional[str] = None
+        self.last_notified_category: Optional[str] = None
         self.stream_game: Optional[str] = None
         self.stream_id: Optional[str] = None
 
@@ -743,6 +746,7 @@ class TwitchExt2(Extension):
                 streamer.stream_title = None
                 streamer.stream_game = None
                 streamer.stream_id = None
+                # Keep last_notified_title and last_notified_category to track changes even when offline
             except Exception as e:
                 logger.error(f"Error handling live end for {streamer.streamer_id} in guild {streamer.guild_id}: {e}")
 
@@ -844,14 +848,27 @@ class TwitchExt2(Extension):
             try:
                 stream = await self.get_stream_data(user_id)
 
-                # Send notification
-                if streamer.notif_channel:
-                    update_msg = f"**{user_name}** a mis à jour le titre ou la catégorie du live.\nTitre : **{data.event.title}**\nCatégorie : **{data.event.category_name}**"
+                # Check if title or category actually changed to avoid duplicate notifications
+                new_title = data.event.title
+                new_category = data.event.category_name
+                
+                title_changed = streamer.last_notified_title != new_title
+                category_changed = streamer.last_notified_category != new_category
+                
+                # Send notification only if something actually changed
+                if streamer.notif_channel and (title_changed or category_changed):
+                    # Update the last notified values
+                    streamer.last_notified_title = new_title
+                    streamer.last_notified_category = new_category
+                    
+                    update_msg = f"**{user_name}** a mis à jour le titre ou la catégorie du live.\nTitre : **{new_title}**\nCatégorie : **{new_category}**"
 
                     if not stream:
                         update_msg = f" OMG live ??\n{update_msg}"
 
                     await streamer.notif_channel.send(update_msg)
+                elif not (title_changed or category_changed):
+                    logger.debug(f"Skipping duplicate notification for {streamer.streamer_id} - title and category unchanged")
 
                 # Update the message
                 await self.edit_message(
