@@ -1,6 +1,5 @@
 import json
 import os
-import random
 import re
 import string
 from datetime import datetime
@@ -16,12 +15,9 @@ logger = logutil.init_logger(os.path.basename(__file__))
 
 config, module_config, enabled_servers = load_config("moduleFeur")
 
-# Emojis for FEUR reactions
+# Emojis for reactions
 FEUR_EMOJIS = ["🇫", "🇪", "🇺", "🇷"]
-
-# Varied responses for more fun
-FEUR_RESPONSES = ["Feur.", "Feur 🗿"]
-POUR_FEUR_RESPONSES = ["Pour feur.", "Pour feur 🗿"]
+POUR_FEUR_EMOJIS = ["🇵", "🇴", "🇺", "🇷", "🇫", "🇪", "⛎", "®️"]  # ⛎ for second U, ® for second R
 
 # Stats file path
 STATS_FILE = "data/feur_stats.json"
@@ -129,10 +125,10 @@ class Feur(Extension):
         sentences = re.split(r'[.!?\n]+|  +', content)
         return [s.strip() for s in sentences if s.strip()]
 
-    async def _add_feur_reactions(self, message):
-        """Add F-E-U-R letter reactions to a message."""
+    async def _add_reactions(self, message, emojis: list):
+        """Add letter reactions to a message."""
         try:
-            for emoji in FEUR_EMOJIS:
+            for emoji in emojis:
                 await message.add_reaction(emoji)
         except Exception as e:
             logger.debug(f"Could not add reactions: {e}")
@@ -160,9 +156,7 @@ class Feur(Extension):
         
         # Check for "pourquoi" wordplay (check first as it contains "quoi")
         if self._should_respond(content, "pourquoi"):
-            response = random.choice(POUR_FEUR_RESPONSES)
-            await event.message.channel.send(response)
-            await self._add_feur_reactions(event.message)
+            await self._add_reactions(event.message, POUR_FEUR_EMOJIS)
             self._record_feur(user_id, guild_id, "pour_feur")
             return
 
@@ -171,9 +165,7 @@ class Feur(Extension):
             # Make sure it's not "pourquoi" triggering this
             words = self._extract_words(content)
             if words and words[-1] == "quoi" or ("quoi" in content and "pourquoi" not in content):
-                response = random.choice(FEUR_RESPONSES)
-                await event.message.channel.send(response)
-                await self._add_feur_reactions(event.message)
+                await self._add_reactions(event.message, FEUR_EMOJIS)
                 self._record_feur(user_id, guild_id, "feur")
 
     @slash_command(name="feurstats", description="Affiche les statistiques de feur")
