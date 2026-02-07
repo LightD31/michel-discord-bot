@@ -1,10 +1,12 @@
 """Extension Liquipedia pour le suivi des matchs esports.
 
 Cette extension permet de suivre les matchs Valorant et WoW MDI
-via l'API Liquipedia et Raider.io.
+via l'API Liquipedia et Raider.io, avec l'API VLR.gg comme failover.
+La source avec les données les plus récentes est automatiquement sélectionnée.
 """
 
-from typing import List, Dict, Any, Tuple
+import asyncio
+from typing import List, Dict, Any, Tuple, Optional
 from dataclasses import dataclass
 from enum import Enum
 from interactions import (
@@ -21,6 +23,11 @@ from interactions.client.utils import timestamp_converter
 from src import logutil
 from src.raiderio import get_table_data, ensure_six_elements
 from src.utils import load_config, fetch
+from src.vlrgg import (
+    fetch_all_team_data as vlrgg_fetch_all,
+    parse_vlrgg_timestamp,
+    get_most_recent_result_time,
+)
 from datetime import datetime, timedelta
 
 logger = logutil.init_logger(__name__)
@@ -37,6 +44,12 @@ MAX_UPCOMING_MATCHES = 6
 SCHEDULE_INTERVAL_MINUTES = 5
 LIVE_UPDATE_INTERVAL_MINUTES = 1  # Mise à jour plus fréquente pour les matchs en cours
 MATCH_HISTORY_WEEKS = 7
+
+
+class DataSource(Enum):
+    """Source des données de matchs."""
+    LIQUIPEDIA = "liquipedia"
+    VLRGG = "vlrgg"
 
 
 class MatchStatus(Enum):
@@ -123,6 +136,28 @@ class Liquipedia(Extension):
         
         try:
             team = "Mandatory"
+            
+            # Tenter la mise à jour via Liquipedia d'abord
+            lp_success = await self._live_update_liquipedia(team)
+            
+            if not lp_success:
+                # Fallback VLR.gg pour les mises à jour live
+                logger.info("Basculement sur VLR.gg pour la mise à jour live")
+                await self._live_update_vlrgg(team)
+                
+        except Exception as e:
+            logger.exception(f"Erreur dans live_update: {e}")
+
+    async def _live_update_liquipedia(self, team: str) -> bool:
+        """Met à jour les scores live via Liquipedia.
+        
+        Args:
+            team: Nom de l'équipe.
+            
+        Returns:
+            True si la mise à jour a réussi, False sinon.
+        """
+        try:
             date = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
             data = await self.liquipedia_request(
                 "valorant",
@@ -139,22 +174,125 @@ class Liquipedia(Extension):
                 
                 if match_id in self._ongoing_matches:
                     if match.get("finished") == 1:
-                        # Match terminé
                         await self._handle_match_ended(match, match_id, team)
                         matches_to_remove.append(match_id)
                     else:
-                        # Mettre à jour le score
                         await self._update_live_message(match, match_id)
             
-            # Nettoyer les matchs terminés
             for match_id in matches_to_remove:
                 self._ongoing_matches.pop(match_id, None)
-                
+            
+            return True
         except Exception as e:
-            logger.exception(f"Erreur dans live_update: {e}")
+            logger.warning(f"Échec de la mise à jour live via Liquipedia: {e}")
+            return False
+
+    async def _live_update_vlrgg(self, team: str) -> None:
+        """Met à jour les scores live via VLR.gg (fallback).
+        
+        Args:
+            team: Nom de l'équipe.
+        """
+        try:
+            vlr_data = await self._fetch_vlrgg_data(team)
+            if not vlr_data:
+                return
+            
+            vlr_live = vlr_data.get("live", [])
+            
+            for match_id in list(self._ongoing_matches.keys()):
+                # Pour les matchs VLR.gg, vérifier s'ils sont toujours live
+                if match_id.startswith("vlrgg_"):
+                    still_live = any(
+                        f"vlrgg_{m.get('team1', '')}_{m.get('team2', '')}" == match_id
+                        for m in vlr_live
+                    )
+                    if not still_live:
+                        # Match probablement terminé
+                        message = self._live_messages.pop(match_id, None)
+                        if message:
+                            try:
+                                await message.edit(
+                                    content="**Match terminé!**",
+                                )
+                            except Exception:
+                                pass
+                        self._ongoing_matches.pop(match_id, None)
+                    else:
+                        # Mettre à jour le score
+                        for m in vlr_live:
+                            vlr_id = f"vlrgg_{m.get('team1', '')}_{m.get('team2', '')}"
+                            if vlr_id == match_id:
+                                await self._update_vlrgg_live_message(m, match_id)
+                                break
+        except Exception as e:
+            logger.warning(f"Échec de la mise à jour live via VLR.gg: {e}")
+
+    async def _update_vlrgg_live_message(
+        self, match: Dict[str, Any], match_id: str
+    ) -> None:
+        """Met à jour le message de score en direct depuis VLR.gg.
+        
+        Args:
+            match: Données du match VLR.gg.
+            match_id: Identifiant du match.
+        """
+        message = self._live_messages.get(match_id)
+        if not message:
+            return
+        
+        try:
+            team1 = match.get("team1", "???")
+            team2 = match.get("team2", "???")
+            score1 = match.get("score1", "?")
+            score2 = match.get("score2", "?")
+            current_map = match.get("current_map", "")
+            event = match.get("match_event", "")
+            
+            embed = Embed(
+                title=f"🔴 LIVE: {team1} vs {team2}",
+                description=f"**{event}**",
+                color=LIVE_EMBED_COLOR,
+                timestamp=Timestamp.now(),
+            )
+            
+            embed.add_field(
+                name="Score",
+                value=f"**{team1}** {score1} - {score2} **{team2}**",
+                inline=False
+            )
+            
+            if current_map:
+                embed.add_field(
+                    name="Map actuelle",
+                    value=current_map,
+                    inline=False
+                )
+            
+            # Détails des rounds
+            t1_ct = match.get("team1_round_ct", "")
+            t1_t = match.get("team1_round_t", "")
+            t2_ct = match.get("team2_round_ct", "")
+            t2_t = match.get("team2_round_t", "")
+            if t1_ct and t1_ct != "N/A":
+                embed.add_field(
+                    name="Rounds",
+                    value=f"CT: {t1_ct}-{t2_ct} | T: {t1_t}-{t2_t}",
+                    inline=False
+                )
+            
+            embed.set_footer(text="Mise à jour automatique • Source: VLR.gg")
+            
+            await message.edit(embeds=[embed])
+            logger.debug(f"Message live VLR.gg mis à jour pour {match_id}: {score1}-{score2}")
+            
+        except Exception as e:
+            logger.exception(f"Erreur lors de la mise à jour VLR.gg du message live: {e}")
 
     async def _handle_match_transitions(self, ongoing_matches: Dict[str, Any], team: str) -> None:
         """Gère les transitions de matchs (début/fin).
+        
+        Supporte les matchs provenant de Liquipedia et VLR.gg.
         
         Args:
             ongoing_matches: Dictionnaire des matchs actuellement en cours.
@@ -164,7 +302,10 @@ class Liquipedia(Extension):
         for match_id, match in ongoing_matches.items():
             if match_id not in self._ongoing_matches:
                 logger.info(f"Nouveau match détecté: {match_id}")
-                await self._send_match_started_notification(match, team)
+                if match_id.startswith("vlrgg_"):
+                    await self._send_vlrgg_match_started_notification(match, team)
+                else:
+                    await self._send_match_started_notification(match, team)
                 self._ongoing_matches[match_id] = match
         
         # Détecter les matchs terminés (qui ne sont plus en cours)
@@ -223,6 +364,55 @@ class Liquipedia(Extension):
             
         except Exception as e:
             logger.exception(f"Erreur lors de l'envoi de la notification: {e}")
+
+    async def _send_vlrgg_match_started_notification(
+        self, match: Dict[str, Any], team: str
+    ) -> None:
+        """Envoie une notification quand un match commence (source VLR.gg).
+        
+        Args:
+            match: Données du match VLR.gg.
+            team: Nom de l'équipe suivie.
+        """
+        if not self._channel:
+            logger.warning("Canal non initialisé pour les notifications")
+            return
+        
+        try:
+            team1 = match.get("team1", "???")
+            team2 = match.get("team2", "???")
+            score1 = match.get("score1", "0")
+            score2 = match.get("score2", "0")
+            event = match.get("match_event", "Tournoi")
+            
+            embed = Embed(
+                title=f"🔴 LIVE: {team1} vs {team2}",
+                description=(
+                    f"**{event}**\n\n"
+                    f"Le match vient de commencer!"
+                ),
+                color=LIVE_EMBED_COLOR,
+                timestamp=Timestamp.now(),
+            )
+            
+            embed.add_field(
+                name="Score",
+                value=f"**{team1}** {score1} - {score2} **{team2}**",
+                inline=False
+            )
+            
+            embed.set_footer(text="Mise à jour automatique • Source: VLR.gg")
+            
+            match_id = f"vlrgg_{team1}_{team2}"
+            message = await self._channel.send(
+                content="<:zrtON:962320783038890054> **Match en direct!** <:zrtON:962320783038890054>",
+                embeds=[embed]
+            )
+            self._live_messages[match_id] = message
+            logger.info(f"Notification VLR.gg envoyée pour le match {team1} vs {team2}")
+            
+        except Exception as e:
+            logger.exception(f"Erreur lors de l'envoi de la notification VLR.gg: {e}")
 
     async def _update_live_message(self, match: Dict[str, Any], match_id: str) -> None:
         """Met à jour le message de score en direct.
@@ -362,42 +552,326 @@ class Liquipedia(Extension):
     ) -> Tuple[List[Embed], Dict[str, Any]]:
         """Récupère le planning d'une équipe avec suivi des matchs en cours.
         
+        Utilise Liquipedia comme source principale et VLR.gg comme failover.
+        Compare la fraîcheur des données pour choisir la meilleure source.
+        
         Args:
             team: Nom de l'équipe à suivre.
             
         Returns:
             Tuple (liste des embeds, dictionnaire des matchs en cours).
         """
+        # Récupérer les données des deux sources en parallèle
+        lp_task = self._fetch_liquipedia_data(team)
+        vlr_task = self._fetch_vlrgg_data(team)
+        
+        lp_result, vlr_result = await asyncio.gather(
+            lp_task, vlr_task, return_exceptions=True
+        )
+        
+        lp_ok = not isinstance(lp_result, Exception) and lp_result is not None
+        vlr_ok = not isinstance(vlr_result, Exception) and vlr_result is not None
+        
+        # Choisir la meilleure source
+        source = DataSource.LIQUIPEDIA
+        if lp_ok and vlr_ok:
+            assert isinstance(lp_result, dict) and isinstance(vlr_result, dict)
+            if self._vlrgg_has_fresher_data(lp_result, vlr_result):
+                source = DataSource.VLRGG
+                logger.info("VLR.gg sélectionné (données plus récentes)")
+            else:
+                logger.info("Liquipedia sélectionné (données plus récentes ou équivalentes)")
+        elif not lp_ok and vlr_ok:
+            source = DataSource.VLRGG
+            logger.warning(f"Liquipedia indisponible, basculement sur VLR.gg: {lp_result}")
+        elif not lp_ok and not vlr_ok:
+            logger.error(f"Les deux sources ont échoué: LP={lp_result}, VLR={vlr_result}")
+            raise Exception("Les deux sources de données (Liquipedia et VLR.gg) sont indisponibles")
+        
+        if source == DataSource.VLRGG:
+            assert isinstance(vlr_result, dict)
+            embeds = self._build_vlrgg_embeds(vlr_result, team)
+            ongoing = self._extract_vlrgg_ongoing(vlr_result)
+            return embeds, ongoing
+        else:
+            # Source Liquipedia — flux existant
+            assert isinstance(lp_result, dict)
+            embeds, pagenames = await self.make_schedule_embed(lp_result, team)
+            
+            # Extraire les matchs en cours
+            ongoing_matches: Dict[str, Any] = {}
+            current_time = datetime.now().timestamp()
+            
+            for match in lp_result.get("result", []):
+                match_timestamp = match["extradata"].get("timestamp", 0)
+                if match_timestamp < current_time and match.get("finished") == 0:
+                    match_id = match.get("match2id") or match.get("pagename", "")
+                    ongoing_matches[match_id] = match
+            
+            # Ajouter les classements des tournois
+            for pagename in pagenames:
+                standings_embeds = await self._fetch_tournament_standings(pagename)
+                embeds.extend(standings_embeds)
+            
+            return embeds, ongoing_matches
+
+    async def _fetch_liquipedia_data(self, team: str) -> Dict[str, Any]:
+        """Récupère les données Liquipedia pour une équipe.
+        
+        Args:
+            team: Nom de l'équipe.
+            
+        Returns:
+            Données JSON de l'API Liquipedia.
+        """
         date = (datetime.now() - timedelta(weeks=MATCH_HISTORY_WEEKS)).strftime("%Y-%m-%d")
-        data = await self.liquipedia_request(
+        return await self.liquipedia_request(
             "valorant",
             "match",
             f"[[opponent::{team}]] AND [[date::>{date}]]",
             limit=15,
             order="date ASC",
         )
+
+    async def _fetch_vlrgg_data(self, team: str) -> Optional[Dict[str, Any]]:
+        """Récupère les données VLR.gg pour une équipe.
         
-        embeds, pagenames = await self.make_schedule_embed(data, team)
+        Args:
+            team: Nom de l'équipe.
+            
+        Returns:
+            Dictionnaire avec les clés 'results', 'upcoming', 'live'.
+        """
+        try:
+            data = await vlrgg_fetch_all(team)
+            total = len(data.get("results", [])) + len(data.get("upcoming", [])) + len(data.get("live", []))
+            if total == 0:
+                logger.debug(f"VLR.gg: aucune donnée trouvée pour {team}")
+                return None
+            return data
+        except Exception as e:
+            logger.error(f"Erreur lors de la récupération VLR.gg: {e}")
+            return None
+
+    def _vlrgg_has_fresher_data(
+        self, lp_data: Dict[str, Any], vlr_data: Dict[str, Any]
+    ) -> bool:
+        """Détermine si VLR.gg a des données plus fraîches que Liquipedia.
         
-        # Extraire les matchs en cours
-        ongoing_matches: Dict[str, Any] = {}
+        Critères:
+        - VLR.gg a un match en direct que Liquipedia ne détecte pas
+        - VLR.gg a un résultat plus récent que le dernier de Liquipedia
+        
+        Args:
+            lp_data: Données Liquipedia (résultat de liquipedia_request).
+            vlr_data: Données VLR.gg (résultat de fetch_all_team_data).
+            
+        Returns:
+            True si VLR.gg est plus frais.
+        """
+        # Si VLR.gg a des matchs live et Liquipedia n'en détecte pas
+        vlr_live = vlr_data.get("live", [])
         current_time = datetime.now().timestamp()
         
-        for match in data.get("result", []):
-            match_timestamp = match["extradata"].get("timestamp", 0)
-            if match_timestamp < current_time and match.get("finished") == 0:
-                match_id = match.get("match2id") or match.get("pagename", "")
-                ongoing_matches[match_id] = match
+        lp_ongoing_count = sum(
+            1 for m in lp_data.get("result", [])
+            if m.get("finished") == 0
+            and m.get("extradata", {}).get("timestamp", 0) < current_time
+        )
         
-        # Ajouter les classements des tournois
-        for pagename in pagenames:
-            standings_embeds = await self._fetch_tournament_standings(pagename)
-            embeds.extend(standings_embeds)
+        if vlr_live and lp_ongoing_count == 0:
+            logger.info("VLR.gg détecte un match live que Liquipedia ne montre pas")
+            return True
         
-        return embeds, ongoing_matches
+        # Comparer le résultat le plus récent
+        vlr_results = vlr_data.get("results", [])
+        most_recent_vlr = get_most_recent_result_time(vlr_results)
+        
+        if most_recent_vlr:
+            # Trouver le timestamp du dernier résultat Liquipedia
+            lp_finished = [
+                m for m in lp_data.get("result", [])
+                if m.get("finished") == 1
+            ]
+            if lp_finished:
+                latest_lp_ts = max(
+                    m.get("extradata", {}).get("timestamp", 0) for m in lp_finished
+                )
+                latest_lp = datetime.fromtimestamp(latest_lp_ts) if latest_lp_ts else None
+                
+                if latest_lp and most_recent_vlr > latest_lp:
+                    logger.info(
+                        f"VLR.gg a un résultat plus récent: {most_recent_vlr} vs {latest_lp}"
+                    )
+                    return True
+            elif vlr_results:
+                # Liquipedia n'a aucun résultat mais VLR.gg en a
+                return True
+        
+        # Comparer les matchs à venir
+        vlr_upcoming = vlr_data.get("upcoming", [])
+        lp_upcoming = [
+            m for m in lp_data.get("result", [])
+            if m.get("extradata", {}).get("timestamp", 0) > current_time
+        ]
+        
+        if vlr_upcoming and not lp_upcoming:
+            logger.info("VLR.gg a des matchs à venir que Liquipedia ne montre pas")
+            return True
+        
+        return False
+
+    def _build_vlrgg_embeds(
+        self, vlr_data: Dict[str, Any], team: str
+    ) -> List[Embed]:
+        """Construit les embeds Discord à partir des données VLR.gg.
+        
+        Args:
+            vlr_data: Données VLR.gg.
+            team: Nom de l'équipe.
+            
+        Returns:
+            Liste des embeds à afficher.
+        """
+        embeds = []
+        
+        # Embed des résultats passés
+        results = vlr_data.get("results", [])
+        if results:
+            past_embed = self._create_base_embed(
+                f"Derniers matchs de {team}",
+                footer_text="Source: VLR.gg (failover)"
+            )
+            for i, match in enumerate(results[:MAX_PAST_MATCHES]):
+                field = self._format_vlrgg_result(match, team)
+                past_embed.add_field(
+                    name=field["name"], value=field["value"], inline=True
+                )
+                if (i + 1) % 2 != 0:
+                    past_embed.add_field(name="\u200b", value="\u200b", inline=True)
+            embeds.append(past_embed)
+        
+        # Embed des matchs en direct
+        live = vlr_data.get("live", [])
+        if live:
+            live_embed = self._create_base_embed(
+                f"Match en cours de {team}",
+                footer_text="Source: VLR.gg (failover)"
+            )
+            for match in live:
+                field = self._format_vlrgg_live(match)
+                live_embed.add_field(
+                    name=field["name"], value=field["value"], inline=False
+                )
+            embeds.append(live_embed)
+        
+        # Embed des matchs à venir
+        upcoming = vlr_data.get("upcoming", [])
+        if upcoming:
+            upcoming_embed = self._create_base_embed(
+                f"Prochains matchs de {team}",
+                footer_text="Source: VLR.gg (failover)"
+            )
+            for i, match in enumerate(upcoming[:MAX_UPCOMING_MATCHES]):
+                field = self._format_vlrgg_upcoming(match)
+                upcoming_embed.add_field(
+                    name=field["name"], value=field["value"], inline=True
+                )
+                if (i + 1) % 2 != 0:
+                    upcoming_embed.add_field(name="\u200b", value="\u200b", inline=True)
+            embeds.append(upcoming_embed)
+        
+        return embeds
+
+    def _format_vlrgg_result(self, match: Dict[str, Any], team: str) -> Dict[str, str]:
+        """Formate un résultat VLR.gg pour l'affichage."""
+        team1 = match.get("team1", "???")
+        team2 = match.get("team2", "???")
+        score1 = match.get("score1", "?")
+        score2 = match.get("score2", "?")
+        time_completed = match.get("time_completed", "?")
+        tournament = match.get("tournament_name", match.get("round_info", ""))
+        
+        # Déterminer victoire/défaite
+        try:
+            s1, s2 = int(score1), int(score2)
+            team_lower = team.lower()
+            is_team1 = team_lower in team1.lower()
+            team_won = (is_team1 and s1 > s2) or (not is_team1 and s2 > s1)
+            resultat = (
+                "Gagné <:zrtHypers:1257757857122877612>"
+                if team_won
+                else "Perdu <:zrtCry:1257757854861885571>"
+            )
+        except (ValueError, TypeError):
+            resultat = ""
+        
+        return {
+            "name": f"{team1} {score1}-{score2} {team2}",
+            "value": f"{tournament}\n{time_completed}\n{resultat}",
+        }
+
+    def _format_vlrgg_live(self, match: Dict[str, Any]) -> Dict[str, str]:
+        """Formate un match live VLR.gg pour l'affichage."""
+        team1 = match.get("team1", "???")
+        team2 = match.get("team2", "???")
+        score1 = match.get("score1", "?")
+        score2 = match.get("score2", "?")
+        current_map = match.get("current_map", "")
+        event = match.get("match_event", match.get("match_series", ""))
+        
+        value = f"**{event}**\n"
+        if current_map:
+            value += f"Map actuelle: {current_map}\n"
+        
+        # Détails des rounds si disponibles
+        t1_ct = match.get("team1_round_ct", "")
+        t1_t = match.get("team1_round_t", "")
+        t2_ct = match.get("team2_round_ct", "")
+        t2_t = match.get("team2_round_t", "")
+        if t1_ct and t1_ct != "N/A":
+            value += f"Rounds — CT: {t1_ct}-{t2_ct} | T: {t1_t}-{t2_t}"
+        
+        return {
+            "name": f"<:zrtON:962320783038890054> {team1} {score1}-{score2} {team2} <:zrtON:962320783038890054>",
+            "value": value,
+        }
+
+    def _format_vlrgg_upcoming(self, match: Dict[str, Any]) -> Dict[str, str]:
+        """Formate un match à venir VLR.gg pour l'affichage."""
+        team1 = match.get("team1", "???")
+        team2 = match.get("team2", "???")
+        eta = match.get("time_until_match", "?")
+        event = match.get("match_event", match.get("match_series", ""))
+        timestamp_str = match.get("unix_timestamp", "")
+        
+        time_display = eta
+        ts = parse_vlrgg_timestamp(timestamp_str)
+        if ts:
+            time_display = f"<t:{int(ts.timestamp())}:R>"
+        
+        return {
+            "name": f"{team1} vs {team2}",
+            "value": f"{time_display}\n{event}",
+        }
+
+    def _extract_vlrgg_ongoing(self, vlr_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Extrait les matchs en cours depuis les données VLR.gg.
+        
+        Args:
+            vlr_data: Données VLR.gg.
+            
+        Returns:
+            Dictionnaire match_id -> match data.
+        """
+        ongoing: Dict[str, Any] = {}
+        for match in vlr_data.get("live", []):
+            match_id = f"vlrgg_{match.get('team1', '')}_{match.get('team2', '')}"
+            ongoing[match_id] = match
+        return ongoing
 
     async def _fetch_team_schedule(self, team: str) -> List[Embed]:
-        """Récupère le planning d'une équipe.
+        """Récupère le planning d'une équipe avec failover VLR.gg.
         
         Args:
             team: Nom de l'équipe à suivre.
@@ -405,15 +879,33 @@ class Liquipedia(Extension):
         Returns:
             Liste des embeds à afficher.
         """
-        date = (datetime.now() - timedelta(weeks=MATCH_HISTORY_WEEKS)).strftime("%Y-%m-%d")
-        data = await self.liquipedia_request(
-            "valorant",
-            "match",
-            f"[[opponent::{team}]] AND [[date::>{date}]]",
-            limit=15,
-            order="date ASC",
+        # Tenter les deux sources en parallèle
+        lp_task = self._fetch_liquipedia_data(team)
+        vlr_task = self._fetch_vlrgg_data(team)
+        
+        lp_result, vlr_result = await asyncio.gather(
+            lp_task, vlr_task, return_exceptions=True
         )
-        embeds, pagenames = await self.make_schedule_embed(data, team)
+        
+        lp_ok = not isinstance(lp_result, Exception) and lp_result is not None
+        vlr_ok = not isinstance(vlr_result, Exception) and vlr_result is not None
+        
+        source = DataSource.LIQUIPEDIA
+        if lp_ok and vlr_ok:
+            assert isinstance(lp_result, dict) and isinstance(vlr_result, dict)
+            if self._vlrgg_has_fresher_data(lp_result, vlr_result):
+                source = DataSource.VLRGG
+        elif not lp_ok and vlr_ok:
+            source = DataSource.VLRGG
+        elif not lp_ok and not vlr_ok:
+            raise Exception("Les deux sources de données sont indisponibles")
+        
+        if source == DataSource.VLRGG:
+            assert isinstance(vlr_result, dict)
+            return self._build_vlrgg_embeds(vlr_result, team)
+        
+        assert isinstance(lp_result, dict)
+        embeds, pagenames = await self.make_schedule_embed(lp_result, team)
         
         # Ajouter les classements des tournois
         for pagename in pagenames:
