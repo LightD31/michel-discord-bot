@@ -34,7 +34,7 @@ config, module_config, enabled_servers = load_config("moduleOlympics")
 module_config = module_config[enabled_servers[0]]
 
 # ─── Constantes ───────────────────────────────────────────────────────────────
-BASE_URL = "https://www.olympics.com/wmr-owg2026/competition/api/ENG"
+BASE_URL = "https://www.olympics.com/wmr-owg2026/competition/api/FRA"
 MEDALS_URL = f"{BASE_URL}/medals"
 MEDALLISTS_URL = f"{BASE_URL}/medallists"
 EVENT_MEDALS_URL = f"{BASE_URL}/eventmedals"
