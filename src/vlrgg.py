@@ -4,10 +4,13 @@ Utilisé comme source alternative/failover pour les données de matchs Valorant
 lorsque l'API Liquipedia est indisponible ou a des données moins récentes.
 
 API: https://vlrggapi.vercel.app (https://github.com/axsddlr/vlrggapi)
+
+Note: L'API VLR.gg a un rate limit plus bas. Un cache avec TTL est utilisé
+pour minimiser le nombre de requêtes.
 """
 
-import asyncio
 import re
+import time
 from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta
 
@@ -18,11 +21,26 @@ logger = logutil.init_logger(__name__)
 
 VLRGG_API_URL = "https://vlrggapi.vercel.app"
 
+# Cache TTL en secondes — une seule requête par endpoint dans cette fenêtre
+CACHE_TTL_SECONDS = 120  # 2 minutes
+
+# Cache interne : { "endpoint:params_hash" -> (timestamp, data) }
+_cache: Dict[str, tuple] = {}
+
+
+def _cache_key(endpoint: str, params: Optional[Dict[str, str]]) -> str:
+    """Génère une clé de cache unique pour un endpoint + params."""
+    params_str = "&".join(f"{k}={v}" for k, v in sorted((params or {}).items()))
+    return f"{endpoint}?{params_str}"
+
 
 async def vlrgg_request(
     endpoint: str, params: Optional[Dict[str, str]] = None
 ) -> Dict[str, Any]:
-    """Effectue une requête vers l'API VLR.gg.
+    """Effectue une requête vers l'API VLR.gg avec cache.
+
+    Les réponses sont mises en cache pendant CACHE_TTL_SECONDS pour
+    respecter le rate limit de l'API.
 
     Args:
         endpoint: Point d'entrée API (ex: "match").
@@ -31,12 +49,27 @@ async def vlrgg_request(
     Returns:
         Données JSON de la réponse, ou dict vide en cas d'erreur.
     """
+    key = _cache_key(endpoint, params)
+
+    # Vérifier le cache
+    if key in _cache:
+        cached_time, cached_data = _cache[key]
+        age = time.monotonic() - cached_time
+        if age < CACHE_TTL_SECONDS:
+            logger.debug(f"VLR.gg cache hit pour {key} (âge: {age:.0f}s)")
+            return cached_data
+
     url = f"{VLRGG_API_URL}/{endpoint}"
     try:
         data = await fetch(url, params=params, return_type="json")
+        _cache[key] = (time.monotonic(), data)
         return data
     except Exception as e:
         logger.error(f"Erreur API VLR.gg pour {endpoint}: {e}")
+        # Renvoyer le cache expiré plutôt que rien si on en a un
+        if key in _cache:
+            logger.warning(f"Utilisation du cache expiré pour {key}")
+            return _cache[key][1]
         return {}
 
 
@@ -173,7 +206,8 @@ async def fetch_team_live(team: str) -> List[Dict[str, Any]]:
 async def fetch_all_team_data(team: str) -> Dict[str, Any]:
     """Récupère toutes les données de matchs pour une équipe.
 
-    Effectue les 3 requêtes (résultats, à venir, en direct) en parallèle.
+    Les requêtes sont effectuées séquentiellement pour respecter le rate limit
+    de l'API VLR.gg. Le cache intégré évite les requêtes redondantes.
 
     Args:
         team: Nom de l'équipe.
@@ -181,18 +215,24 @@ async def fetch_all_team_data(team: str) -> Dict[str, Any]:
     Returns:
         Dictionnaire avec les clés 'results', 'upcoming', et 'live'.
     """
-    results_data, upcoming_data, live_data = await asyncio.gather(
-        fetch_team_results(team),
-        fetch_team_upcoming(team),
-        fetch_team_live(team),
-        return_exceptions=True,
-    )
+    result: Dict[str, Any] = {"results": [], "upcoming": [], "live": []}
 
-    return {
-        "results": results_data if isinstance(results_data, list) else [],
-        "upcoming": upcoming_data if isinstance(upcoming_data, list) else [],
-        "live": live_data if isinstance(live_data, list) else [],
-    }
+    try:
+        result["results"] = await fetch_team_results(team)
+    except Exception as e:
+        logger.warning(f"VLR.gg fetch_team_results échoué: {e}")
+
+    try:
+        result["upcoming"] = await fetch_team_upcoming(team)
+    except Exception as e:
+        logger.warning(f"VLR.gg fetch_team_upcoming échoué: {e}")
+
+    try:
+        result["live"] = await fetch_team_live(team)
+    except Exception as e:
+        logger.warning(f"VLR.gg fetch_team_live échoué: {e}")
+
+    return result
 
 
 async def check_api_health() -> bool:
