@@ -44,6 +44,18 @@ COUNTRY_NAME = "France"
 
 STATE_FILE = "config/olympics_state.json"
 
+# Headers requis pour l'API Olympics.com (anti-bot)
+OLYMPICS_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+    "Accept": "application/json, text/plain, */*",
+    "Accept-Language": "fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7",
+    "Referer": "https://www.olympics.com/fr/olympic-games/milan-cortina-2026/medals",
+    "Origin": "https://www.olympics.com",
+    "Sec-Fetch-Dest": "empty",
+    "Sec-Fetch-Mode": "cors",
+    "Sec-Fetch-Site": "same-origin",
+}
+
 # Emojis pour les médailles
 MEDAL_EMOJIS = {
     "ME_GOLD": "🥇",
@@ -197,7 +209,7 @@ class Olympics(Extension):
         Returns:
             Liste des médailles françaises avec détails.
         """
-        data = await fetch(MEDALS_URL, return_type="json")
+        data = await fetch(MEDALS_URL, return_type="json", headers=OLYMPICS_HEADERS)
         medal_table = data.get("medalStandings", {}).get("medalsTable", [])
 
         for country in medal_table:
@@ -218,7 +230,7 @@ class Olympics(Extension):
         Returns:
             Liste du classement par pays.
         """
-        data = await fetch(MEDALS_URL, return_type="json")
+        data = await fetch(MEDALS_URL, return_type="json", headers=OLYMPICS_HEADERS)
         return data.get("medalStandings", {}).get("medalsTable", [])
 
     async def _fetch_all_medallists(self) -> List[Dict[str, Any]]:
@@ -227,7 +239,7 @@ class Olympics(Extension):
         Returns:
             Liste de tous les athlètes médaillés.
         """
-        data = await fetch(MEDALLISTS_URL, return_type="json")
+        data = await fetch(MEDALLISTS_URL, return_type="json", headers=OLYMPICS_HEADERS)
         return data.get("athletes", [])
 
     async def _fetch_event_medals(self) -> Dict[str, Any]:
@@ -236,7 +248,7 @@ class Olympics(Extension):
         Returns:
             Données des médailles par discipline/épreuve.
         """
-        data = await fetch(EVENT_MEDALS_URL, return_type="json")
+        data = await fetch(EVENT_MEDALS_URL, return_type="json", headers=OLYMPICS_HEADERS)
         return data.get("eventMedals", {})
 
     # ─── Helpers ──────────────────────────────────────────────────────────────
@@ -567,7 +579,7 @@ class Olympics(Extension):
         await ctx.defer()
         code = code.upper().strip()
         try:
-            data = await fetch(MEDALS_URL, return_type="json")
+            data = await fetch(MEDALS_URL, return_type="json", headers=OLYMPICS_HEADERS)
             medal_table = data.get("medalStandings", {}).get("medalsTable", [])
 
             country_data = None

@@ -311,8 +311,8 @@ async def fetch(url, return_type="text", headers=None, params=None, retries=3, p
     
     if headers:
         default_headers.update(headers)
-    else:
-        headers = default_headers
+    
+    headers = default_headers
     
     for i in range(retries):
         try:
