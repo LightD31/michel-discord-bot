@@ -9,7 +9,9 @@ import json
 import asyncio
 from datetime import datetime
 from typing import Dict, List, Optional, Any
+from functools import partial
 
+from curl_cffi import requests as cffi_requests
 from interactions import (
     Extension,
     Client,
@@ -25,7 +27,7 @@ from interactions import (
 )
 
 from src import logutil
-from src.utils import load_config, fetch
+from src.utils import load_config
 
 logger = logutil.init_logger(os.path.basename(__file__))
 config, module_config, enabled_servers = load_config("moduleOlympics")
@@ -106,6 +108,52 @@ class Olympics(Extension):
         # Format : "{eventCode}_{medalType}_{competitorCode}"
         self.known_medals: set[str] = set()
         self._load_state()
+
+    # ─── HTTP Client dédié Olympics ──────────────────────────────────────────────
+
+    async def _olympics_fetch(self, url: str, retries: int = 3) -> dict:
+        """Effectue une requête GET vers l'API Olympics.com.
+
+        Utilise curl_cffi pour impersonner le fingerprint TLS de Chrome,
+        nécessaire pour contourner le WAF d'olympics.com.
+
+        Args:
+            url: URL de l'API.
+            retries: Nombre de tentatives.
+
+        Returns:
+            Données JSON.
+        """
+        headers = {
+            "Accept": "application/json, text/plain, */*",
+            "Accept-Language": "fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7",
+            "Referer": "https://www.olympics.com/fr/olympic-games/milan-cortina-2026/medals",
+            "Origin": "https://www.olympics.com",
+        }
+
+        for attempt in range(retries):
+            try:
+                response = await asyncio.to_thread(
+                    partial(
+                        cffi_requests.get,
+                        url,
+                        headers=headers,
+                        impersonate="chrome",
+                        timeout=30,
+                    )
+                )
+                if response.status_code == 200:
+                    return response.json()
+                logger.warning(
+                    f"Olympics API {url} - status {response.status_code} (tentative {attempt + 1}/{retries})"
+                )
+            except Exception as e:
+                logger.warning(f"Olympics API erreur: {e} (tentative {attempt + 1}/{retries})")
+
+            if attempt < retries - 1:
+                await asyncio.sleep(2 ** attempt)  # Backoff exponentiel
+
+        raise Exception(f"Impossible de récupérer {url} après {retries} tentatives")
 
     # ─── Persistance ──────────────────────────────────────────────────────────
 
@@ -209,7 +257,7 @@ class Olympics(Extension):
         Returns:
             Liste des médailles françaises avec détails.
         """
-        data = await fetch(MEDALS_URL, return_type="json", headers=OLYMPICS_HEADERS)
+        data = await self._olympics_fetch(MEDALS_URL)
         medal_table = data.get("medalStandings", {}).get("medalsTable", [])
 
         for country in medal_table:
@@ -230,7 +278,7 @@ class Olympics(Extension):
         Returns:
             Liste du classement par pays.
         """
-        data = await fetch(MEDALS_URL, return_type="json", headers=OLYMPICS_HEADERS)
+        data = await self._olympics_fetch(MEDALS_URL)
         return data.get("medalStandings", {}).get("medalsTable", [])
 
     async def _fetch_all_medallists(self) -> List[Dict[str, Any]]:
@@ -239,7 +287,7 @@ class Olympics(Extension):
         Returns:
             Liste de tous les athlètes médaillés.
         """
-        data = await fetch(MEDALLISTS_URL, return_type="json", headers=OLYMPICS_HEADERS)
+        data = await self._olympics_fetch(MEDALLISTS_URL)
         return data.get("athletes", [])
 
     async def _fetch_event_medals(self) -> Dict[str, Any]:
@@ -248,7 +296,7 @@ class Olympics(Extension):
         Returns:
             Données des médailles par discipline/épreuve.
         """
-        data = await fetch(EVENT_MEDALS_URL, return_type="json", headers=OLYMPICS_HEADERS)
+        data = await self._olympics_fetch(EVENT_MEDALS_URL)
         return data.get("eventMedals", {})
 
     # ─── Helpers ──────────────────────────────────────────────────────────────
@@ -579,7 +627,7 @@ class Olympics(Extension):
         await ctx.defer()
         code = code.upper().strip()
         try:
-            data = await fetch(MEDALS_URL, return_type="json", headers=OLYMPICS_HEADERS)
+            data = await self._olympics_fetch(MEDALS_URL)
             medal_table = data.get("medalStandings", {}).get("medalsTable", [])
 
             country_data = None

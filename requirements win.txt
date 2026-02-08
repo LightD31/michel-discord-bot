@@ -20,5 +20,6 @@ anthropic
 beautifulsoup4
 openai
 aiohttp
+curl_cffi
 pyfactorybridge
 python-socketio
