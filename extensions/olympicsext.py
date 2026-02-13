@@ -419,8 +419,8 @@ class Olympics(Extension):
 
         lines = []
         lines.append("```")
-        lines.append(f"{'#':>2} {'Pays':<14} {'🥇':>2} {'🥈':>2} {'🥉':>2} {'Tot':>3}")
-        lines.append("─" * 45)
+        lines.append(f"{'#':>2} {'Pays':<15} {'🥇':>2} {'🥈':>2} {'🥉':>2} {'Tot':>3}")
+        lines.append("─" * 38)
 
         for country in standings[:top_n]:
             rank = country.get("rank", "-")
