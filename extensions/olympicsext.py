@@ -419,7 +419,7 @@ class Olympics(Extension):
 
         lines = []
         lines.append("```")
-        lines.append(f"{'#':>3} {'Pays':<14} {'🥇':>3} {'🥈':>3} {'🥉':>3} {'Tot':>4}")
+        lines.append(f"{'#':>2} {'Pays':<12} {'🥇':>2} {'🥈':>2} {'🥉':>2} {'Tot':>3}")
         lines.append("─" * 45)
 
         for country in standings[:top_n]:
@@ -439,7 +439,7 @@ class Olympics(Extension):
             bronze = totals.get("bronze", 0)
             total = totals.get("total", 0)
 
-            marker = " ◄" if org == COUNTRY_CODE else ""
+            marker = "◄" if org == COUNTRY_CODE else ""
             lines.append(
                 f"{rank:>2} {flag} {name:<12} {gold:>3} {silver:>3} {bronze:>3} {total:>4}{marker}"
             )
