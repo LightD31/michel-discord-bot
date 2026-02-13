@@ -441,7 +441,7 @@ class Olympics(Extension):
 
             marker = " ◄" if org == COUNTRY_CODE else ""
             lines.append(
-                f"{rank:>3} {flag} {name:<12} {gold:>4} {silver:>4} {bronze:>4} {total:>5}{marker}"
+                f"{rank:>2} {flag} {name:<12} {gold:>3} {silver:>3} {bronze:>3} {total:>4}{marker}"
             )
 
         lines.append("```")
