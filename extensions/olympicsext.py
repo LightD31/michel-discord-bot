@@ -419,7 +419,7 @@ class Olympics(Extension):
 
         lines = []
         lines.append("```")
-        lines.append(f"{'#':>3} {'Pays':<14} {'🥇':>4} {'🥈':>4} {'🥉':>4} {'Tot':>5}")
+        lines.append(f"{'#':>3} {'Pays':<14} {'🥇':>3} {'🥈':>3} {'🥉':>3} {'Tot':>4}")
         lines.append("─" * 45)
 
         for country in standings[:top_n]:
