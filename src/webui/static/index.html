@@ -1696,16 +1696,13 @@
             if (hasSchema) {
                 await saveModuleForm(serverId, moduleName, formId);
             }
-            // Find the extension that uses this module
-            const bi = state.botInfo || {};
-            const exts = bi.extensions || [];
-            // moduleBirthday -> birthday, moduleTwitch -> twitch, etc.
-            const shortName = moduleName.replace(/^module/, '').toLowerCase();
-            const matchExt = exts.find(e => e.toLowerCase().includes(shortName));
-            if (matchExt) {
-                await reloadExtension(matchExt);
+            // Use the server-side mapping to find the correct extension path
+            const map = state.botInfo?.module_extension_map || {};
+            const extPath = map[moduleName];
+            if (extPath) {
+                await reloadExtension(extPath);
             } else {
-                toast('Extension non trouvée — rechargez manuellement', 'warning');
+                toast('Extension non trouvée pour ce module — utilisez "Recharger tout"', 'warning');
             }
         } catch (e) { /* handled */ }
     }

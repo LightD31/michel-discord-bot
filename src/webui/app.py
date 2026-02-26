@@ -78,11 +78,27 @@ def create_app(bot=None) -> FastAPI:
             except FileNotFoundError:
                 return {"config": {}, "servers": {}}
 
-    def _save_full_config(data: dict):
-        """Save the full config back to disk."""
-        os.makedirs("config", exist_ok=True)
-        with open("config/config.json", "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=4, ensure_ascii=False)
+    def _save_server_config(server_id: str, server_config: dict):
+        """Save config for a single server to its own file."""
+        from src.config_manager import save_server_config
+        save_server_config(str(server_id), server_config)
+
+    def _save_global_config(global_config: dict):
+        """Save the global config section to main.json (preserving include etc.)."""
+        main_path = os.path.join("config", "main.json")
+        try:
+            if os.path.isfile(main_path):
+                with open(main_path, "r", encoding="utf-8") as f:
+                    main_json = json.load(f)
+            else:
+                main_json = {}
+            main_json["config"] = global_config
+            os.makedirs("config", exist_ok=True)
+            with open(main_path, "w", encoding="utf-8") as f:
+                json.dump(main_json, f, indent=4, ensure_ascii=False)
+        except Exception as e:
+            logger.error(f"Failed to save main.json: {e}")
+            raise
 
     def _get_session(request: Request) -> Optional[Session]:
         token = request.cookies.get(COOKIE_NAME)
@@ -109,13 +125,34 @@ def create_app(bot=None) -> FastAPI:
                     try:
                         with open(fpath, "r", encoding="utf-8") as f:
                             content = f.read()
-                        # Look for load_config("moduleXxx") calls
                         import re
-                        for match in re.finditer(r'load_config\(["\'](\w+)["\']\)', content):
+                        for match in re.finditer(r'load_config\(["\']([\w]+)["\']\)', content):
                             modules.add(match.group(1))
                     except Exception:
                         pass
         return sorted(modules)
+
+    def _build_module_to_extension_map() -> dict[str, str]:
+        """Build a mapping from module config name to extension module path.
+        E.g. {'moduleTricount': 'extensions.tricount', 'moduleTwitch': 'extensions.twitchextv2'}
+        """
+        mapping = {}
+        ext_dir = "extensions"
+        if os.path.isdir(ext_dir):
+            for fname in os.listdir(ext_dir):
+                if fname.endswith(".py") and not fname.startswith("_"):
+                    ext_module_path = f"extensions.{fname[:-3]}"
+                    fpath = os.path.join(ext_dir, fname)
+                    try:
+                        with open(fpath, "r", encoding="utf-8") as f:
+                            content = f.read()
+                        import re
+                        for match in re.finditer(r'load_config\(["\']([\w]+)["\']\)', content):
+                            mod_name = match.group(1)
+                            mapping[mod_name] = ext_module_path
+                    except Exception:
+                        pass
+        return mapping
 
     # ── Auth routes ──────────────────────────────────────────────────
 
@@ -269,7 +306,7 @@ def create_app(bot=None) -> FastAPI:
             raise HTTPException(status_code=404, detail="Serveur non trouvé")
 
         data["servers"][server_id][module_name] = body.config
-        _save_full_config(data)
+        _save_server_config(server_id, data["servers"][server_id])
         logger.info(f"Updated {module_name} config for server {server_id}")
         return JSONResponse({"status": "ok"})
 
@@ -286,7 +323,7 @@ def create_app(bot=None) -> FastAPI:
             data["servers"][server_id][module_name] = {}
 
         data["servers"][server_id][module_name]["enabled"] = body.enabled
-        _save_full_config(data)
+        _save_server_config(server_id, data["servers"][server_id])
         logger.info(f"{'Enabled' if body.enabled else 'Disabled'} {module_name} for server {server_id}")
         return JSONResponse({"status": "ok", "enabled": body.enabled})
 
@@ -303,9 +340,27 @@ def create_app(bot=None) -> FastAPI:
         _require_session(request)
         data = _get_full_config()
         data.setdefault("config", {})[section] = body.config
-        _save_full_config(data)
+        _save_global_config(data["config"])
         logger.info(f"Updated global config section: {section}")
         return JSONResponse({"status": "ok"})
+
+    # ── Extension helpers ────────────────────────────────────────────
+
+    def _get_extension_module_paths() -> list[str]:
+        """Get the module paths (e.g. 'extensions.tricount') for all loaded extensions."""
+        paths = []
+        if bot and hasattr(bot, "ext"):
+            for class_name, ext_instance in bot.ext.items():
+                # interactions.py Extension stores the module name in extension_name
+                module_path = getattr(ext_instance, "extension_name", None)
+                if module_path:
+                    paths.append(module_path)
+                else:
+                    # Fallback: derive from the class's module
+                    mod = type(ext_instance).__module__
+                    if mod:
+                        paths.append(mod)
+        return paths
 
     # ── Extension reload ─────────────────────────────────────────────
 
@@ -317,20 +372,20 @@ def create_app(bot=None) -> FastAPI:
             raise HTTPException(status_code=503, detail="Bot non disponible")
 
         results = {"reloaded": [], "failed": []}
-        ext_names = list(bot.ext.keys()) if hasattr(bot, "ext") else []
-        for ext_name in ext_names:
+        ext_paths = _get_extension_module_paths()
+        for ext_path in ext_paths:
             try:
-                bot.reload_extension(ext_name)
-                results["reloaded"].append(ext_name)
-                logger.info(f"Reloaded extension: {ext_name}")
+                bot.reload_extension(ext_path)
+                results["reloaded"].append(ext_path)
+                logger.info(f"Reloaded extension: {ext_path}")
             except Exception as e:
-                results["failed"].append({"name": ext_name, "error": str(e)})
-                logger.error(f"Failed to reload {ext_name}: {e}")
+                results["failed"].append({"name": ext_path, "error": str(e)})
+                logger.error(f"Failed to reload {ext_path}: {e}")
         return JSONResponse(results)
 
     @app.post("/api/reload/{ext_name:path}")
     async def api_reload_one(request: Request, ext_name: str):
-        """Reload a single extension by name."""
+        """Reload a single extension by module path (e.g. 'extensions.tricount')."""
         _require_session(request)
         if not bot:
             raise HTTPException(status_code=503, detail="Bot non disponible")
@@ -348,14 +403,15 @@ def create_app(bot=None) -> FastAPI:
     async def api_bot_info(request: Request):
         """Get bot status information."""
         _require_session(request)
-        info = {"status": "unknown", "guilds": 0, "extensions": []}
+        info = {"status": "unknown", "guilds": 0, "extensions": [], "module_extension_map": {}}
         if bot:
             try:
                 info["status"] = "online" if bot.is_ready else "starting"
                 info["guilds"] = len(bot.guilds) if bot.guilds else 0
                 info["user"] = str(bot.user) if bot.user else None
-                info["extensions"] = list(bot.ext.keys()) if hasattr(bot, "ext") else []
+                info["extensions"] = _get_extension_module_paths()
                 info["latency"] = round(bot.latency * 1000) if bot.latency else None
+                info["module_extension_map"] = _build_module_to_extension_map()
             except Exception:
                 info["status"] = "error"
         return JSONResponse(info)
