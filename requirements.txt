@@ -24,3 +24,5 @@ curl_cffi
 uvloop
 pyfactorybridge
 python-socketio
+fastapi
+uvicorn[standard]

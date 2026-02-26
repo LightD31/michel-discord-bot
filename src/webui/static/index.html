@@ -1,0 +1,1247 @@
+<!DOCTYPE html>
+<html lang="fr" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Michel Bot — Dashboard</title>
+    <style>
+        :root {
+            --bg-primary: #1a1b1e;
+            --bg-secondary: #2b2d31;
+            --bg-tertiary: #313338;
+            --bg-card: #2b2d31;
+            --text-primary: #f2f3f5;
+            --text-secondary: #b5bac1;
+            --text-muted: #949ba4;
+            --accent: #5865f2;
+            --accent-hover: #4752c4;
+            --success: #23a55a;
+            --danger: #f23f43;
+            --warning: #f0b232;
+            --border: #3f4147;
+            --shadow: rgba(0,0,0,0.3);
+            --radius: 8px;
+            --radius-lg: 12px;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+        }
+
+        /* ── Layout ────────────────────────────────── */
+        .app {
+            display: flex;
+            min-height: 100vh;
+        }
+
+        .sidebar {
+            width: 260px;
+            background: var(--bg-secondary);
+            border-right: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            position: fixed;
+            top: 0;
+            left: 0;
+            height: 100vh;
+            z-index: 100;
+        }
+
+        .sidebar-header {
+            padding: 16px 20px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .sidebar-header h1 {
+            font-size: 18px;
+            font-weight: 700;
+        }
+
+        .sidebar-header .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: var(--success);
+            flex-shrink: 0;
+        }
+
+        .sidebar-nav {
+            flex: 1;
+            padding: 8px;
+            overflow-y: auto;
+        }
+
+        .nav-section {
+            margin-bottom: 8px;
+        }
+
+        .nav-section-title {
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            color: var(--text-muted);
+            padding: 8px 12px 4px;
+            letter-spacing: 0.5px;
+        }
+
+        .nav-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 12px;
+            border-radius: var(--radius);
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: all 0.15s;
+            font-size: 14px;
+        }
+
+        .nav-item:hover {
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+        }
+
+        .nav-item.active {
+            background: var(--accent);
+            color: white;
+        }
+
+        .nav-item .icon {
+            font-size: 18px;
+            width: 24px;
+            text-align: center;
+        }
+
+        .sidebar-footer {
+            padding: 12px;
+            border-top: 1px solid var(--border);
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px;
+            border-radius: var(--radius);
+        }
+
+        .user-avatar {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background: var(--accent);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 14px;
+            flex-shrink: 0;
+        }
+
+        .user-avatar img {
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+        }
+
+        .user-name {
+            font-size: 13px;
+            font-weight: 600;
+            flex: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .logout-btn {
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            cursor: pointer;
+            font-size: 16px;
+            padding: 4px;
+        }
+
+        .logout-btn:hover { color: var(--danger); }
+
+        /* ── Main Content ──────────────────────────── */
+        .main {
+            flex: 1;
+            margin-left: 260px;
+            padding: 24px 32px;
+            max-width: 1000px;
+        }
+
+        .page-header {
+            margin-bottom: 24px;
+        }
+
+        .page-header h2 {
+            font-size: 24px;
+            font-weight: 700;
+            margin-bottom: 4px;
+        }
+
+        .page-header p {
+            color: var(--text-secondary);
+            font-size: 14px;
+        }
+
+        /* ── Cards ─────────────────────────────────── */
+        .card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+            padding: 20px;
+            margin-bottom: 16px;
+        }
+
+        .card-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 16px;
+        }
+
+        .card-title {
+            font-size: 16px;
+            font-weight: 600;
+        }
+
+        .card-subtitle {
+            font-size: 13px;
+            color: var(--text-muted);
+            margin-top: 2px;
+        }
+
+        /* ── Stats Grid ────────────────────────────── */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+
+        .stat-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+            padding: 20px;
+        }
+
+        .stat-label {
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-muted);
+            margin-bottom: 8px;
+        }
+
+        .stat-value {
+            font-size: 28px;
+            font-weight: 700;
+        }
+
+        .stat-value.online { color: var(--success); }
+        .stat-value.error { color: var(--danger); }
+
+        /* ── Module List ───────────────────────────── */
+        .module-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .module-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 14px 16px;
+            background: var(--bg-tertiary);
+            border-radius: var(--radius);
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+
+        .module-item:hover {
+            background: #383a40;
+        }
+
+        .module-info {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .module-name {
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        .module-status {
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+
+        /* ── Toggle Switch ─────────────────────────── */
+        .toggle {
+            position: relative;
+            width: 44px;
+            height: 24px;
+            flex-shrink: 0;
+        }
+
+        .toggle input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .toggle-slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: var(--border);
+            border-radius: 12px;
+            transition: 0.2s;
+        }
+
+        .toggle-slider::before {
+            content: "";
+            position: absolute;
+            width: 18px;
+            height: 18px;
+            left: 3px;
+            bottom: 3px;
+            background: white;
+            border-radius: 50%;
+            transition: 0.2s;
+        }
+
+        .toggle input:checked + .toggle-slider {
+            background: var(--success);
+        }
+
+        .toggle input:checked + .toggle-slider::before {
+            transform: translateX(20px);
+        }
+
+        /* ── Config Editor ─────────────────────────── */
+        .config-editor {
+            margin-top: 16px;
+        }
+
+        .config-field {
+            margin-bottom: 16px;
+        }
+
+        .config-field label {
+            display: block;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            margin-bottom: 6px;
+        }
+
+        .config-field input[type="text"],
+        .config-field input[type="number"],
+        .config-field textarea {
+            width: 100%;
+            padding: 10px 12px;
+            background: var(--bg-primary);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            color: var(--text-primary);
+            font-size: 14px;
+            font-family: 'Consolas', 'Monaco', monospace;
+            outline: none;
+            transition: border-color 0.15s;
+        }
+
+        .config-field input:focus,
+        .config-field textarea:focus {
+            border-color: var(--accent);
+        }
+
+        .config-field textarea {
+            min-height: 120px;
+            resize: vertical;
+        }
+
+        /* ── Buttons ───────────────────────────────── */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 16px;
+            border: none;
+            border-radius: var(--radius);
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+
+        .btn-primary {
+            background: var(--accent);
+            color: white;
+        }
+        .btn-primary:hover { background: var(--accent-hover); }
+
+        .btn-success {
+            background: var(--success);
+            color: white;
+        }
+        .btn-success:hover { opacity: 0.9; }
+
+        .btn-danger {
+            background: var(--danger);
+            color: white;
+        }
+        .btn-danger:hover { opacity: 0.9; }
+
+        .btn-ghost {
+            background: transparent;
+            color: var(--text-secondary);
+            border: 1px solid var(--border);
+        }
+        .btn-ghost:hover {
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+        }
+
+        .btn-sm {
+            padding: 6px 12px;
+            font-size: 13px;
+        }
+
+        /* ── Toast Notifications ───────────────────── */
+        .toast-container {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            z-index: 1000;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .toast {
+            padding: 12px 20px;
+            border-radius: var(--radius);
+            font-size: 14px;
+            font-weight: 500;
+            box-shadow: 0 4px 12px var(--shadow);
+            animation: toast-in 0.3s ease;
+            max-width: 350px;
+        }
+
+        .toast.success { background: var(--success); color: white; }
+        .toast.error { background: var(--danger); color: white; }
+        .toast.info { background: var(--accent); color: white; }
+
+        @keyframes toast-in {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* ── Login Page ────────────────────────────── */
+        .login-page {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            background: var(--bg-primary);
+        }
+
+        .login-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+            padding: 40px;
+            text-align: center;
+            max-width: 400px;
+            width: 100%;
+        }
+
+        .login-card h1 {
+            font-size: 28px;
+            margin-bottom: 8px;
+        }
+
+        .login-card p {
+            color: var(--text-secondary);
+            margin-bottom: 24px;
+        }
+
+        .login-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            padding: 12px 24px;
+            background: var(--accent);
+            color: white;
+            border: none;
+            border-radius: var(--radius);
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.15s;
+            text-decoration: none;
+        }
+
+        .login-btn:hover { background: var(--accent-hover); }
+
+        .login-btn svg { width: 24px; height: 24px; }
+
+        /* ── JSON Editor Modal ─────────────────────── */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.6);
+            z-index: 500;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-overlay.active {
+            display: flex;
+        }
+
+        .modal {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+            padding: 24px;
+            width: 90%;
+            max-width: 700px;
+            max-height: 80vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .modal-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 16px;
+        }
+
+        .modal-header h3 {
+            font-size: 18px;
+            font-weight: 700;
+        }
+
+        .modal-body {
+            flex: 1;
+            overflow-y: auto;
+        }
+
+        .modal-footer {
+            display: flex;
+            justify-content: flex-end;
+            gap: 8px;
+            margin-top: 16px;
+        }
+
+        .json-editor {
+            width: 100%;
+            min-height: 300px;
+            padding: 12px;
+            background: var(--bg-primary);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            color: var(--text-primary);
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 13px;
+            resize: vertical;
+            outline: none;
+            tab-size: 4;
+        }
+
+        .json-editor:focus { border-color: var(--accent); }
+
+        .json-error {
+            color: var(--danger);
+            font-size: 12px;
+            margin-top: 6px;
+        }
+
+        /* ── Server icon ───────────────────────────── */
+        .server-icon {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background: var(--accent);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 14px;
+            flex-shrink: 0;
+            overflow: hidden;
+        }
+
+        .server-icon img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        /* ── Breadcrumb ────────────────────────────── */
+        .breadcrumb {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 13px;
+            color: var(--text-muted);
+            margin-bottom: 16px;
+        }
+
+        .breadcrumb a {
+            color: var(--accent);
+            text-decoration: none;
+            cursor: pointer;
+        }
+
+        .breadcrumb a:hover { text-decoration: underline; }
+
+        /* ── Loading ───────────────────────────────── */
+        .loading {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 40px;
+            color: var(--text-muted);
+        }
+
+        .spinner {
+            width: 24px;
+            height: 24px;
+            border: 3px solid var(--border);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin-right: 12px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* ── Responsive ────────────────────────────── */
+        @media (max-width: 768px) {
+            .sidebar { display: none; }
+            .main { margin-left: 0; padding: 16px; }
+        }
+
+        /* ── Config Key-Value pairs ────────────────── */
+        .kv-grid {
+            display: grid;
+            grid-template-columns: 200px 1fr;
+            gap: 8px 16px;
+            align-items: start;
+        }
+
+        .kv-key {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            padding-top: 10px;
+            word-break: break-all;
+        }
+
+        .kv-value input {
+            width: 100%;
+            padding: 8px 10px;
+            background: var(--bg-primary);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            color: var(--text-primary);
+            font-size: 13px;
+            font-family: 'Consolas', monospace;
+            outline: none;
+        }
+
+        .kv-value input:focus { border-color: var(--accent); }
+
+        /* ── Empty states ──────────────────────────── */
+        .empty-state {
+            text-align: center;
+            padding: 40px;
+            color: var(--text-muted);
+        }
+
+        .empty-state .icon { font-size: 48px; margin-bottom: 12px; }
+        .empty-state h3 { margin-bottom: 8px; color: var(--text-secondary); }
+    </style>
+</head>
+<body>
+    <div id="app"></div>
+    <div class="toast-container" id="toasts"></div>
+
+    <!-- JSON Editor Modal -->
+    <div class="modal-overlay" id="modal-overlay">
+        <div class="modal">
+            <div class="modal-header">
+                <h3 id="modal-title">Éditer la configuration</h3>
+                <button class="btn btn-ghost btn-sm" onclick="closeModal()">✕</button>
+            </div>
+            <div class="modal-body">
+                <textarea class="json-editor" id="json-editor" spellcheck="false"></textarea>
+                <div class="json-error" id="json-error"></div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-ghost" onclick="closeModal()">Annuler</button>
+                <button class="btn btn-success" id="modal-save-btn" onclick="saveModal()">💾 Sauvegarder</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    // ── State ─────────────────────────────────────────
+    const state = {
+        user: null,
+        currentPage: 'home',
+        currentServerId: null,
+        currentModule: null,
+        config: null,
+        servers: null,
+        botInfo: null,
+        modules: [],
+    };
+
+    let modalSaveCallback = null;
+
+    // ── API helpers ───────────────────────────────────
+    async function api(url, options = {}) {
+        try {
+            const resp = await fetch(url, {
+                headers: { 'Content-Type': 'application/json', ...options.headers },
+                ...options,
+            });
+            if (resp.status === 401) {
+                state.user = null;
+                render();
+                return null;
+            }
+            if (!resp.ok) {
+                const err = await resp.json().catch(() => ({ detail: 'Erreur inconnue' }));
+                throw new Error(err.detail || `HTTP ${resp.status}`);
+            }
+            return await resp.json();
+        } catch (e) {
+            toast(e.message, 'error');
+            throw e;
+        }
+    }
+
+    // ── Toast system ──────────────────────────────────
+    function toast(message, type = 'info') {
+        const container = document.getElementById('toasts');
+        const el = document.createElement('div');
+        el.className = `toast ${type}`;
+        el.textContent = message;
+        container.appendChild(el);
+        setTimeout(() => el.remove(), 4000);
+    }
+
+    // ── Modal ─────────────────────────────────────────
+    function openModal(title, json, onSave) {
+        document.getElementById('modal-title').textContent = title;
+        document.getElementById('json-editor').value = JSON.stringify(json, null, 4);
+        document.getElementById('json-error').textContent = '';
+        modalSaveCallback = onSave;
+        document.getElementById('modal-overlay').classList.add('active');
+    }
+
+    function closeModal() {
+        document.getElementById('modal-overlay').classList.remove('active');
+        modalSaveCallback = null;
+    }
+
+    async function saveModal() {
+        const editor = document.getElementById('json-editor');
+        const errorEl = document.getElementById('json-error');
+        try {
+            const parsed = JSON.parse(editor.value);
+            errorEl.textContent = '';
+            if (modalSaveCallback) {
+                await modalSaveCallback(parsed);
+            }
+            closeModal();
+            toast('Configuration sauvegardée !', 'success');
+        } catch (e) {
+            if (e instanceof SyntaxError) {
+                errorEl.textContent = `JSON invalide : ${e.message}`;
+            } else {
+                errorEl.textContent = e.message;
+                toast('Erreur lors de la sauvegarde', 'error');
+            }
+        }
+    }
+
+    // ── Navigation ────────────────────────────────────
+    function navigate(page, serverId = null, moduleName = null) {
+        state.currentPage = page;
+        state.currentServerId = serverId;
+        state.currentModule = moduleName;
+        render();
+    }
+
+    // ── Data loading ──────────────────────────────────
+    async function loadUserInfo() {
+        const data = await api('/api/me');
+        if (data && data.authenticated) {
+            state.user = data;
+        } else {
+            state.user = null;
+        }
+    }
+
+    async function loadBotInfo() {
+        try {
+            state.botInfo = await api('/api/bot-info');
+        } catch (e) {
+            state.botInfo = { status: 'error' };
+        }
+    }
+
+    async function loadServers() {
+        try {
+            state.servers = await api('/api/servers');
+        } catch (e) {
+            state.servers = {};
+        }
+    }
+
+    async function loadModules() {
+        try {
+            const data = await api('/api/modules');
+            state.modules = data.modules || [];
+        } catch (e) {
+            state.modules = [];
+        }
+    }
+
+    async function loadConfig() {
+        try {
+            state.config = await api('/api/config');
+        } catch (e) {
+            state.config = {};
+        }
+    }
+
+    // ── Render ────────────────────────────────────────
+    function render() {
+        const app = document.getElementById('app');
+        if (!state.user) {
+            app.innerHTML = renderLogin();
+            return;
+        }
+        app.innerHTML = `
+            <div class="app">
+                ${renderSidebar()}
+                <div class="main">
+                    ${renderPage()}
+                </div>
+            </div>
+        `;
+    }
+
+    function renderLogin() {
+        return `
+            <div class="login-page">
+                <div class="login-card">
+                    <h1>🤖 Michel Bot</h1>
+                    <p>Connectez-vous avec Discord pour accéder au dashboard de configuration.</p>
+                    <a href="/auth/login" class="login-btn">
+                        <svg viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028c.462-.63.874-1.295 1.226-1.994a.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03z"/>
+                        </svg>
+                        Se connecter avec Discord
+                    </a>
+                </div>
+            </div>
+        `;
+    }
+
+    function renderSidebar() {
+        const serverItems = state.servers
+            ? Object.entries(state.servers).map(([id, s]) => {
+                const isActive = state.currentPage === 'server' && state.currentServerId === id;
+                const iconUrl = s.icon
+                    ? `https://cdn.discordapp.com/icons/${id}/${s.icon}.png?size=64`
+                    : null;
+                return `
+                    <div class="nav-item ${isActive ? 'active' : ''}" onclick="navigate('server', '${id}')">
+                        <div class="server-icon">
+                            ${iconUrl ? `<img src="${iconUrl}" alt="">` : s.name?.charAt(0) || '?'}
+                        </div>
+                        <span>${s.name || id}</span>
+                    </div>
+                `;
+            }).join('')
+            : '<div class="loading"><div class="spinner"></div> Chargement...</div>';
+
+        return `
+            <div class="sidebar">
+                <div class="sidebar-header">
+                    <div class="status-dot" style="background: ${state.botInfo?.status === 'online' ? 'var(--success)' : 'var(--warning)'}"></div>
+                    <h1>Michel Bot</h1>
+                </div>
+                <div class="sidebar-nav">
+                    <div class="nav-section">
+                        <div class="nav-section-title">Général</div>
+                        <div class="nav-item ${state.currentPage === 'home' ? 'active' : ''}" onclick="navigate('home')">
+                            <span class="icon">🏠</span> Accueil
+                        </div>
+                        <div class="nav-item ${state.currentPage === 'global' ? 'active' : ''}" onclick="navigate('global')">
+                            <span class="icon">⚙️</span> Config globale
+                        </div>
+                    </div>
+                    <div class="nav-section">
+                        <div class="nav-section-title">Serveurs</div>
+                        ${serverItems}
+                    </div>
+                </div>
+                <div class="sidebar-footer">
+                    <div class="user-info">
+                        <div class="user-avatar">
+                            ${state.user.avatar
+                                ? `<img src="https://cdn.discordapp.com/avatars/${state.user.user_id}/${state.user.avatar}.png?size=64" alt="">`
+                                : state.user.username.charAt(0)
+                            }
+                        </div>
+                        <span class="user-name">${state.user.username}</span>
+                        <button class="logout-btn" onclick="window.location='/auth/logout'" title="Déconnexion">🚪</button>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    function renderPage() {
+        switch (state.currentPage) {
+            case 'home': return renderHomePage();
+            case 'global': return renderGlobalConfig();
+            case 'server': return renderServerPage();
+            case 'module': return renderModulePage();
+            default: return renderHomePage();
+        }
+    }
+
+    // ── Home Page ─────────────────────────────────────
+    function renderHomePage() {
+        const bi = state.botInfo || {};
+        return `
+            <div class="page-header">
+                <h2>Dashboard</h2>
+                <p>Vue d'ensemble de Michel Bot</p>
+            </div>
+
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-label">Statut</div>
+                    <div class="stat-value ${bi.status === 'online' ? 'online' : 'error'}">
+                        ${bi.status === 'online' ? '● En ligne' : bi.status || 'Inconnu'}
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Serveurs</div>
+                    <div class="stat-value">${bi.guilds || 0}</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Latence</div>
+                    <div class="stat-value">${bi.latency != null ? bi.latency + ' ms' : '—'}</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Extensions</div>
+                    <div class="stat-value">${bi.extensions?.length || 0}</div>
+                </div>
+            </div>
+
+            ${bi.extensions?.length ? `
+                <div class="card">
+                    <div class="card-header">
+                        <div>
+                            <div class="card-title">Extensions chargées</div>
+                            <div class="card-subtitle">${bi.extensions.length} extension(s) active(s)</div>
+                        </div>
+                    </div>
+                    <div class="module-list">
+                        ${bi.extensions.map(ext => `
+                            <div class="module-item">
+                                <div class="module-info">
+                                    <span class="module-name">📦 ${ext}</span>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            ` : ''}
+
+            <div class="card">
+                <div class="card-header">
+                    <div>
+                        <div class="card-title">Modules configurables</div>
+                        <div class="card-subtitle">${state.modules.length} module(s) détecté(s) dans les extensions</div>
+                    </div>
+                </div>
+                <div class="module-list">
+                    ${state.modules.map(m => `
+                        <div class="module-item">
+                            <div class="module-info">
+                                <span class="module-name">🧩 ${m}</span>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+        `;
+    }
+
+    // ── Global Config Page ────────────────────────────
+    function renderGlobalConfig() {
+        const globalConfig = state.config?.config || {};
+        const sections = Object.keys(globalConfig);
+        return `
+            <div class="page-header">
+                <h2>Configuration globale</h2>
+                <p>Paramètres partagés entre tous les serveurs</p>
+            </div>
+
+            ${sections.length === 0 ? `
+                <div class="empty-state">
+                    <div class="icon">📭</div>
+                    <h3>Aucune configuration</h3>
+                    <p>La configuration globale est vide.</p>
+                </div>
+            ` : sections.map(section => `
+                <div class="card">
+                    <div class="card-header">
+                        <div>
+                            <div class="card-title">📁 ${section}</div>
+                            <div class="card-subtitle">${Object.keys(globalConfig[section]).length} paramètre(s)</div>
+                        </div>
+                        <button class="btn btn-ghost btn-sm" onclick="editGlobalSection('${section}')">
+                            ✏️ Éditer
+                        </button>
+                    </div>
+                    <div class="kv-grid">
+                        ${renderConfigPreview(globalConfig[section])}
+                    </div>
+                </div>
+            `).join('')}
+        `;
+    }
+
+    function renderConfigPreview(obj, prefix = '') {
+        let html = '';
+        for (const [key, value] of Object.entries(obj)) {
+            const fullKey = prefix ? `${prefix}.${key}` : key;
+            if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+                html += `<div class="kv-key" style="grid-column: 1 / -1; color: var(--accent); margin-top: 8px;">▸ ${key}</div>`;
+                html += renderConfigPreview(value, fullKey);
+            } else {
+                const displayValue = typeof value === 'string' && (key.toLowerCase().includes('token') || key.toLowerCase().includes('secret') || key.toLowerCase().includes('password'))
+                    ? '••••••••'
+                    : JSON.stringify(value);
+                html += `
+                    <div class="kv-key">${key}</div>
+                    <div class="kv-value"><input type="text" value="${escapeHtml(displayValue)}" readonly></div>
+                `;
+            }
+        }
+        return html;
+    }
+
+    async function editGlobalSection(section) {
+        const globalConfig = state.config?.config || {};
+        const sectionData = globalConfig[section] || {};
+        openModal(`Éditer : ${section}`, sectionData, async (newData) => {
+            await api(`/api/global-config/${section}`, {
+                method: 'PUT',
+                body: JSON.stringify({ section, config: newData }),
+            });
+            await loadConfig();
+            render();
+        });
+    }
+
+    // ── Server Page ───────────────────────────────────
+    function renderServerPage() {
+        const sid = state.currentServerId;
+        const server = state.servers?.[sid];
+        if (!server) {
+            return `<div class="loading"><div class="spinner"></div> Chargement...</div>`;
+        }
+        const serverConfig = server.config || {};
+        const moduleNames = Object.keys(serverConfig);
+
+        const iconUrl = server.icon
+            ? `https://cdn.discordapp.com/icons/${sid}/${server.icon}.png?size=128`
+            : null;
+
+        return `
+            <div class="page-header">
+                <div style="display:flex; align-items:center; gap:16px;">
+                    <div class="server-icon" style="width:48px;height:48px;font-size:20px;">
+                        ${iconUrl ? `<img src="${iconUrl}" alt="">` : server.name?.charAt(0) || '?'}
+                    </div>
+                    <div>
+                        <h2>${server.name || sid}</h2>
+                        <p>ID: ${sid} — ${moduleNames.length} module(s) configuré(s)</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title">Modules</div>
+                </div>
+                <div class="module-list">
+                    ${moduleNames.length === 0 ? `
+                        <div class="empty-state">
+                            <h3>Aucun module</h3>
+                            <p>Ce serveur n'a aucun module configuré.</p>
+                        </div>
+                    ` : moduleNames.map(mod => {
+                        const modConfig = serverConfig[mod] || {};
+                        const enabled = modConfig.enabled === true;
+                        return `
+                            <div class="module-item" onclick="navigate('module', '${sid}', '${mod}')">
+                                <div class="module-info">
+                                    <span class="module-name">${mod}</span>
+                                    <span class="module-status">${enabled ? '✅ Activé' : '❌ Désactivé'}</span>
+                                </div>
+                                <label class="toggle" onclick="event.stopPropagation()">
+                                    <input type="checkbox" ${enabled ? 'checked' : ''} 
+                                        onchange="toggleModule('${sid}', '${mod}', this.checked)">
+                                    <span class="toggle-slider"></span>
+                                </label>
+                            </div>
+                        `;
+                    }).join('')}
+                </div>
+            </div>
+        `;
+    }
+
+    async function toggleModule(serverId, moduleName, enabled) {
+        try {
+            await api(`/api/servers/${serverId}/modules/${moduleName}/toggle`, {
+                method: 'POST',
+                body: JSON.stringify({ module: moduleName, enabled }),
+            });
+            toast(`${moduleName} ${enabled ? 'activé' : 'désactivé'}`, 'success');
+            await loadServers();
+            await loadConfig();
+            render();
+        } catch (e) { /* handled by api() */ }
+    }
+
+    // ── Module Detail Page ────────────────────────────
+    function renderModulePage() {
+        const sid = state.currentServerId;
+        const mod = state.currentModule;
+        const server = state.servers?.[sid];
+        if (!server) return '<div class="loading"><div class="spinner"></div></div>';
+
+        const modConfig = server.config?.[mod] || {};
+        const enabled = modConfig.enabled === true;
+
+        return `
+            <div class="breadcrumb">
+                <a onclick="navigate('server', '${sid}')">${server.name || sid}</a>
+                <span>›</span>
+                <span>${mod}</span>
+            </div>
+
+            <div class="page-header">
+                <div style="display:flex; align-items:center; justify-content:space-between;">
+                    <div>
+                        <h2>${mod}</h2>
+                        <p>Configuration du module pour ${server.name || sid}</p>
+                    </div>
+                    <label class="toggle" style="transform: scale(1.2);">
+                        <input type="checkbox" ${enabled ? 'checked' : ''} 
+                            onchange="toggleModule('${sid}', '${mod}', this.checked)">
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title">Paramètres</div>
+                    <button class="btn btn-primary btn-sm" onclick="editModuleConfig('${sid}', '${mod}')">
+                        ✏️ Éditer JSON
+                    </button>
+                </div>
+                ${Object.keys(modConfig).length === 0 ? `
+                    <div class="empty-state">
+                        <h3>Configuration vide</h3>
+                        <p>Utilisez le bouton "Éditer JSON" pour ajouter des paramètres.</p>
+                    </div>
+                ` : `
+                    <div class="kv-grid">
+                        ${renderConfigPreview(modConfig)}
+                    </div>
+                `}
+            </div>
+        `;
+    }
+
+    async function editModuleConfig(serverId, moduleName) {
+        const server = state.servers?.[serverId];
+        const modConfig = server?.config?.[moduleName] || {};
+        openModal(`${moduleName} — ${server?.name || serverId}`, modConfig, async (newData) => {
+            await api(`/api/servers/${serverId}/modules/${moduleName}`, {
+                method: 'PUT',
+                body: JSON.stringify({ config: newData }),
+            });
+            await loadServers();
+            await loadConfig();
+            render();
+        });
+    }
+
+    // ── Utility ───────────────────────────────────────
+    function escapeHtml(str) {
+        const div = document.createElement('div');
+        div.textContent = String(str);
+        return div.innerHTML.replace(/"/g, '&quot;');
+    }
+
+    // ── Initialize ────────────────────────────────────
+    async function init() {
+        await loadUserInfo();
+        if (state.user) {
+            await Promise.all([loadBotInfo(), loadServers(), loadModules(), loadConfig()]);
+        }
+        render();
+
+        // Periodically refresh bot info
+        setInterval(async () => {
+            if (state.user) {
+                await loadBotInfo();
+                // Only re-render if on home page to avoid disrupting edits
+                if (state.currentPage === 'home') render();
+            }
+        }, 30000);
+    }
+
+    init();
+    </script>
+</body>
+</html>

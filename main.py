@@ -18,6 +18,11 @@ config,_,_ = load_config()
 DEV_GUILD = config["discord"]["devGuildId"]
 TOKEN = config["discord"]["botToken"]
 
+# Web UI configuration
+WEBUI_ENABLED = config.get("webui", {}).get("enabled", False)
+WEBUI_HOST = config.get("webui", {}).get("host", "0.0.0.0")
+WEBUI_PORT = config.get("webui", {}).get("port", 8080)
+
 # Configure logging for this main.py handler
 logger = logutil.init_logger("main.py")
 logger.debug(
@@ -44,6 +49,14 @@ client = interactions.Client(
 async def on_startup():
     """Called when the bot starts"""
     logger.info(f"Logged in as {client.user}")
+
+    # Start Web UI if enabled
+    if WEBUI_ENABLED:
+        try:
+            from src.webui.server import start_webui
+            start_webui(bot=client, host=WEBUI_HOST, port=WEBUI_PORT)
+        except Exception as e:
+            logger.error(f"Failed to start Web UI: {e}")
 
 
 # get all python files in "extensions" folder
