@@ -683,13 +683,143 @@
 
         .empty-state .icon { font-size: 48px; margin-bottom: 12px; }
         .empty-state h3 { margin-bottom: 8px; color: var(--text-secondary); }
+
+        /* ── Schema form ───────────────────────────── */
+        .schema-form {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            padding: 4px 0;
+        }
+
+        .form-field {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .form-field-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .form-label {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-secondary);
+        }
+
+        .required-badge {
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+            background: var(--danger);
+            color: #fff;
+            padding: 1px 5px;
+            border-radius: 4px;
+        }
+
+        .form-description {
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-bottom: 2px;
+        }
+
+        .form-input, .form-textarea {
+            width: 100%;
+            padding: 8px 10px;
+            background: var(--bg-primary);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            color: var(--text-primary);
+            font-size: 13px;
+            font-family: 'Segoe UI', Arial, sans-serif;
+            outline: none;
+            transition: border-color 0.15s;
+        }
+
+        .form-input:focus, .form-textarea:focus {
+            border-color: var(--accent);
+        }
+
+        .form-textarea {
+            resize: vertical;
+            min-height: 60px;
+        }
+
+        .form-textarea.json-field {
+            font-family: 'Consolas', 'Courier New', monospace;
+            font-size: 12px;
+        }
+
+        .btn-reveal {
+            position: absolute;
+            right: 8px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-size: 16px;
+            opacity: 0.6;
+            padding: 4px;
+        }
+        .btn-reveal:hover { opacity: 1; }
+
+        .schema-badge {
+            font-size: 11px;
+            padding: 2px 8px;
+            border-radius: 10px;
+            background: var(--accent);
+            color: #fff;
+            font-weight: 500;
+        }
+        .schema-badge.no-schema {
+            background: var(--bg-tertiary);
+            color: var(--text-muted);
+        }
+
+        .schema-preview {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .preview-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            padding: 6px 0;
+            border-bottom: 1px solid var(--border);
+        }
+        .preview-row:last-child { border-bottom: none; }
+
+        .preview-label {
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--text-secondary);
+            flex-shrink: 0;
+            margin-right: 16px;
+        }
+
+        .preview-value {
+            font-size: 13px;
+            color: var(--text-primary);
+            text-align: right;
+            word-break: break-all;
+        }
+        .preview-value.empty {
+            color: var(--text-muted);
+            font-style: italic;
+        }
     </style>
 </head>
 <body>
     <div id="app"></div>
     <div class="toast-container" id="toasts"></div>
 
-    <!-- JSON Editor Modal -->
+    <!-- Editor Modal -->
     <div class="modal-overlay" id="modal-overlay">
         <div class="modal">
             <div class="modal-header">
@@ -717,7 +847,9 @@
         config: null,
         servers: null,
         botInfo: null,
-        modules: [],
+        modules: {},
+        moduleSchemas: {},
+        globalSchemas: {},
     };
 
     let modalSaveCallback = null;
@@ -767,14 +899,37 @@
     function closeModal() {
         document.getElementById('modal-overlay').classList.remove('active');
         modalSaveCallback = null;
+        // Reset modal body to default JSON editor layout
+        const body = document.getElementById('modal-overlay').querySelector('.modal-body');
+        body.innerHTML = `
+            <textarea class="json-editor" id="json-editor" spellcheck="false"></textarea>
+            <div class="json-error" id="json-error"></div>
+        `;
     }
 
     async function saveModal() {
         const editor = document.getElementById('json-editor');
         const errorEl = document.getElementById('json-error');
+
+        // Schema form mode: no JSON editor present
+        if (!editor) {
+            try {
+                if (modalSaveCallback) {
+                    await modalSaveCallback();
+                }
+                closeModal();
+                toast('Configuration sauvegardée !', 'success');
+            } catch (e) {
+                if (errorEl) errorEl.textContent = e.message;
+                toast('Erreur lors de la sauvegarde', 'error');
+            }
+            return;
+        }
+
+        // JSON editor mode
         try {
             const parsed = JSON.parse(editor.value);
-            errorEl.textContent = '';
+            if (errorEl) errorEl.textContent = '';
             if (modalSaveCallback) {
                 await modalSaveCallback(parsed);
             }
@@ -782,9 +937,9 @@
             toast('Configuration sauvegardée !', 'success');
         } catch (e) {
             if (e instanceof SyntaxError) {
-                errorEl.textContent = `JSON invalide : ${e.message}`;
+                if (errorEl) errorEl.textContent = `JSON invalide : ${e.message}`;
             } else {
-                errorEl.textContent = e.message;
+                if (errorEl) errorEl.textContent = e.message;
                 toast('Erreur lors de la sauvegarde', 'error');
             }
         }
@@ -827,9 +982,23 @@
     async function loadModules() {
         try {
             const data = await api('/api/modules');
-            state.modules = data.modules || [];
+            state.modules = data.modules || {};
         } catch (e) {
-            state.modules = [];
+            state.modules = {};
+        }
+    }
+
+    async function loadSchemas() {
+        try {
+            const [modSchemas, globalSchemas] = await Promise.all([
+                api('/api/schemas/modules'),
+                api('/api/schemas/global'),
+            ]);
+            state.moduleSchemas = modSchemas || {};
+            state.globalSchemas = globalSchemas || {};
+        } catch (e) {
+            state.moduleSchemas = {};
+            state.globalSchemas = {};
         }
     }
 
@@ -839,6 +1008,157 @@
         } catch (e) {
             state.config = {};
         }
+    }
+
+    // ── Schema-based form rendering ───────────────────
+
+    /**
+     * Render a form based on a schema and current values.
+     * @param {string} formId - Unique form ID for collecting values
+     * @param {object} schema - { fields: { key: { label, type, description, required, default, secret } } }
+     * @param {object} values - Current config values
+     * @param {object} options - { excludeEnabled: bool }
+     */
+    function renderSchemaForm(formId, schema, values, options = {}) {
+        const fields = schema.fields || {};
+        const entries = Object.entries(fields);
+        if (entries.length === 0) return '<p style="color:var(--text-muted)">Aucun champ défini.</p>';
+
+        let html = `<div class="schema-form" data-form-id="${formId}">`;
+        for (const [key, field] of entries) {
+            if (options.excludeEnabled && key === 'enabled') continue;
+
+            const value = values[key];
+            const hasValue = value !== undefined && value !== null;
+            const fieldType = field.type || 'string';
+            const isSecret = field.secret || false;
+            const isRequired = field.required || false;
+
+            html += `<div class="form-field" data-key="${key}">`;
+            html += `<div class="form-field-header">`;
+            html += `<label class="form-label">${field.label || key}`;
+            if (isRequired) html += ' <span class="required-badge">requis</span>';
+            html += `</label>`;
+            html += `</div>`;
+            if (field.description) {
+                html += `<div class="form-description">${field.description}</div>`;
+            }
+
+            switch (fieldType) {
+                case 'boolean':
+                    html += `
+                        <label class="toggle" style="margin-top:4px;">
+                            <input type="checkbox" data-field="${key}" data-type="boolean"
+                                ${value === true ? 'checked' : ''}>
+                            <span class="toggle-slider"></span>
+                        </label>`;
+                    break;
+
+                case 'number':
+                    html += `<input type="number" class="form-input" data-field="${key}" data-type="number"
+                        value="${hasValue ? value : (field.default ?? '')}"
+                        placeholder="${field.default != null ? 'Défaut: ' + field.default : ''}">`;
+                    break;
+
+                case 'secret':
+                    html += `<div style="position:relative;">
+                        <input type="password" class="form-input" data-field="${key}" data-type="secret"
+                            value="${hasValue ? value : ''}"
+                            placeholder="${hasValue ? '••••••••' : 'Non défini'}">
+                        <button class="btn-reveal" onclick="togglePasswordVisibility(this)" type="button" title="Afficher/masquer">👁</button>
+                    </div>`;
+                    break;
+
+                case 'channel':
+                case 'role':
+                case 'message':
+                case 'url':
+                    const typeHint = {channel: 'ID du salon', role: 'ID du rôle', message: 'ID du message', url: 'URL'}[fieldType];
+                    html += `<input type="text" class="form-input" data-field="${key}" data-type="${fieldType}"
+                        value="${hasValue ? escapeHtml(String(value)) : ''}"
+                        placeholder="${typeHint}">`;
+                    break;
+
+                case 'list':
+                    const listVal = Array.isArray(value) ? value.join('\n') : (hasValue ? String(value) : '');
+                    const defaultHint = Array.isArray(field.default) ? field.default.join(', ') : '';
+                    html += `<textarea class="form-textarea" data-field="${key}" data-type="list"
+                        placeholder="${defaultHint ? 'Défaut: ' + defaultHint : 'Une valeur par ligne'}"
+                        rows="3">${escapeHtml(listVal)}</textarea>`;
+                    break;
+
+                case 'list:number':
+                    const numListVal = Array.isArray(value) ? value.join(', ') : (hasValue ? String(value) : '');
+                    html += `<input type="text" class="form-input" data-field="${key}" data-type="list:number"
+                        value="${escapeHtml(numListVal)}"
+                        placeholder="Nombres séparés par des virgules (ex: 1, 2, 3)">`;
+                    break;
+
+                case 'dict':
+                    const jsonStr = hasValue ? JSON.stringify(value, null, 2) : '{}';
+                    html += `<textarea class="form-textarea json-field" data-field="${key}" data-type="dict"
+                        rows="5" spellcheck="false">${escapeHtml(jsonStr)}</textarea>`;
+                    break;
+
+                default: // string
+                    html += `<input type="text" class="form-input" data-field="${key}" data-type="string"
+                        value="${hasValue ? escapeHtml(String(value)) : ''}"
+                        placeholder="${field.default != null ? 'Défaut: ' + field.default : ''}">`;
+            }
+
+            html += `</div>`;
+        }
+        html += `</div>`;
+        return html;
+    }
+
+    /**
+     * Collect form values from a rendered schema form.
+     */
+    function collectFormValues(formId) {
+        const form = document.querySelector(`[data-form-id="${formId}"]`);
+        if (!form) return {};
+        const result = {};
+        const inputs = form.querySelectorAll('[data-field]');
+        for (const input of inputs) {
+            const key = input.dataset.field;
+            const type = input.dataset.type;
+            let val;
+            switch (type) {
+                case 'boolean':
+                    val = input.checked;
+                    break;
+                case 'number':
+                    val = input.value === '' ? undefined : Number(input.value);
+                    break;
+                case 'list':
+                    val = input.value.trim() ? input.value.trim().split('\n').map(s => s.trim()).filter(Boolean) : undefined;
+                    break;
+                case 'list:number':
+                    val = input.value.trim()
+                        ? input.value.split(',').map(s => Number(s.trim())).filter(n => !isNaN(n))
+                        : undefined;
+                    break;
+                case 'dict':
+                    try { val = JSON.parse(input.value); } catch { val = undefined; }
+                    break;
+                case 'secret':
+                    // Only include if user actually typed something
+                    val = input.value || undefined;
+                    break;
+                default:
+                    val = input.value || undefined;
+            }
+            if (val !== undefined) {
+                result[key] = val;
+            }
+        }
+        return result;
+    }
+
+    function togglePasswordVisibility(btn) {
+        const input = btn.previousElementSibling;
+        input.type = input.type === 'password' ? 'text' : 'password';
     }
 
     // ── Render ────────────────────────────────────────
@@ -878,7 +1198,7 @@
     function renderSidebar() {
         const serverItems = state.servers
             ? Object.entries(state.servers).map(([id, s]) => {
-                const isActive = state.currentPage === 'server' && state.currentServerId === id;
+                const isActive = (state.currentPage === 'server' || state.currentPage === 'module') && state.currentServerId === id;
                 const iconUrl = s.icon
                     ? `https://cdn.discordapp.com/icons/${id}/${s.icon}.png?size=64`
                     : null;
@@ -943,6 +1263,7 @@
     // ── Home Page ─────────────────────────────────────
     function renderHomePage() {
         const bi = state.botInfo || {};
+        const moduleEntries = Object.entries(state.modules);
         return `
             <div class="page-header">
                 <h2>Dashboard</h2>
@@ -977,6 +1298,9 @@
                             <div class="card-title">Extensions chargées</div>
                             <div class="card-subtitle">${bi.extensions.length} extension(s) active(s)</div>
                         </div>
+                        <button class="btn btn-primary btn-sm" onclick="reloadAllExtensions()" id="reload-all-btn">
+                            🔄 Recharger tout
+                        </button>
                     </div>
                     <div class="module-list">
                         ${bi.extensions.map(ext => `
@@ -984,6 +1308,9 @@
                                 <div class="module-info">
                                     <span class="module-name">📦 ${ext}</span>
                                 </div>
+                                <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation(); reloadExtension('${ext}')" title="Recharger">
+                                    🔄
+                                </button>
                             </div>
                         `).join('')}
                     </div>
@@ -994,15 +1321,17 @@
                 <div class="card-header">
                     <div>
                         <div class="card-title">Modules configurables</div>
-                        <div class="card-subtitle">${state.modules.length} module(s) détecté(s) dans les extensions</div>
+                        <div class="card-subtitle">${moduleEntries.length} module(s) détecté(s)</div>
                     </div>
                 </div>
                 <div class="module-list">
-                    ${state.modules.map(m => `
-                        <div class="module-item">
+                    ${moduleEntries.map(([name, info]) => `
+                        <div class="module-item" style="cursor:default">
                             <div class="module-info">
-                                <span class="module-name">🧩 ${m}</span>
+                                <span class="module-name">${info.icon || '🧩'} ${info.label || name}</span>
+                                <span class="module-status">${info.description || ''}</span>
                             </div>
+                            ${info.has_schema ? '<span class="schema-badge">Formulaire</span>' : '<span class="schema-badge no-schema">JSON</span>'}
                         </div>
                     `).join('')}
                 </div>
@@ -1013,7 +1342,12 @@
     // ── Global Config Page ────────────────────────────
     function renderGlobalConfig() {
         const globalConfig = state.config?.config || {};
-        const sections = Object.keys(globalConfig);
+        const allSections = new Set([
+            ...Object.keys(globalConfig),
+            ...Object.keys(state.globalSchemas),
+        ]);
+        const sections = [...allSections].sort();
+
         return `
             <div class="page-header">
                 <h2>Configuration globale</h2>
@@ -1026,27 +1360,75 @@
                     <h3>Aucune configuration</h3>
                     <p>La configuration globale est vide.</p>
                 </div>
-            ` : sections.map(section => `
-                <div class="card">
-                    <div class="card-header">
-                        <div>
-                            <div class="card-title">📁 ${section}</div>
-                            <div class="card-subtitle">${Object.keys(globalConfig[section]).length} paramètre(s)</div>
+            ` : sections.map(section => {
+                const schema = state.globalSchemas[section];
+                const sectionData = globalConfig[section] || {};
+                const sectionLabel = schema?.label || section;
+                const sectionIcon = schema?.icon || '📁';
+                const fieldCount = Object.keys(schema?.fields || sectionData).length;
+
+                return `
+                    <div class="card">
+                        <div class="card-header">
+                            <div>
+                                <div class="card-title">${sectionIcon} ${sectionLabel}</div>
+                                <div class="card-subtitle">${fieldCount} paramètre(s)</div>
+                            </div>
+                            <div style="display:flex;gap:8px;">
+                                <button class="btn btn-ghost btn-sm" onclick="editGlobalSectionJson('${section}')">
+                                    { } JSON
+                                </button>
+                                <button class="btn btn-primary btn-sm" onclick="editGlobalSection('${section}')">
+                                    ✏️ Éditer
+                                </button>
+                            </div>
                         </div>
-                        <button class="btn btn-ghost btn-sm" onclick="editGlobalSection('${section}')">
-                            ✏️ Éditer
-                        </button>
+                        ${schema ? renderSchemaPreview(schema, sectionData) : renderConfigPreview(sectionData)}
                     </div>
-                    <div class="kv-grid">
-                        ${renderConfigPreview(globalConfig[section])}
-                    </div>
-                </div>
-            `).join('')}
+                `;
+            }).join('')}
         `;
     }
 
+    function renderSchemaPreview(schema, values) {
+        const fields = schema.fields || {};
+        let html = '<div class="schema-preview">';
+        for (const [key, field] of Object.entries(fields)) {
+            const val = values[key];
+            const hasVal = val !== undefined && val !== null;
+            const isSecret = field.secret || false;
+            let displayVal = '—';
+            if (hasVal) {
+                if (isSecret) displayVal = '••••••••';
+                else if (typeof val === 'boolean') displayVal = val ? '✅ Oui' : '❌ Non';
+                else if (Array.isArray(val)) displayVal = val.join(', ');
+                else if (typeof val === 'object') displayVal = JSON.stringify(val);
+                else displayVal = String(val);
+            }
+            html += `
+                <div class="preview-row">
+                    <span class="preview-label">${field.label || key}</span>
+                    <span class="preview-value ${!hasVal ? 'empty' : ''}">${escapeHtml(displayVal)}</span>
+                </div>
+            `;
+        }
+        // Show any extra keys not in schema
+        for (const key of Object.keys(values)) {
+            if (!(key in fields)) {
+                html += `
+                    <div class="preview-row">
+                        <span class="preview-label" style="color:var(--warning)">${key} <small>(non défini dans le schéma)</small></span>
+                        <span class="preview-value">${escapeHtml(JSON.stringify(values[key]))}</span>
+                    </div>
+                `;
+            }
+        }
+        html += '</div>';
+        return html;
+    }
+
     function renderConfigPreview(obj, prefix = '') {
-        let html = '';
+        let html = '<div class="kv-grid">';
         for (const [key, value] of Object.entries(obj)) {
             const fullKey = prefix ? `${prefix}.${key}` : key;
             if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
@@ -1062,13 +1444,49 @@
                 `;
             }
         }
+        html += '</div>';
         return html;
     }
 
     async function editGlobalSection(section) {
         const globalConfig = state.config?.config || {};
         const sectionData = globalConfig[section] || {};
-        openModal(`Éditer : ${section}`, sectionData, async (newData) => {
+        const schema = state.globalSchemas[section];
+
+        if (schema) {
+            // Show the schema form in a modal
+            const formId = `global-${section}`;
+            const formHtml = renderSchemaForm(formId, schema, sectionData);
+            document.getElementById('modal-title').textContent = `${schema.label || section}`;
+            document.getElementById('modal-overlay').querySelector('.modal-body').innerHTML = formHtml;
+            const errEl = document.getElementById('json-error');
+            if (errEl) errEl.textContent = '';
+            modalSaveCallback = async () => {
+                const values = collectFormValues(formId);
+                // Merge with existing data (to keep keys not in schema)
+                const merged = { ...sectionData, ...values };
+                await api(`/api/global-config/${section}`, {
+                    method: 'PUT',
+                    body: JSON.stringify({ section, config: merged }),
+                });
+                await loadConfig();
+                render();
+            };
+            document.getElementById('modal-overlay').classList.add('active');
+        } else {
+            editGlobalSectionJson(section);
+        }
+    }
+
+    async function editGlobalSectionJson(section) {
+        const globalConfig = state.config?.config || {};
+        const sectionData = globalConfig[section] || {};
+        // Reset modal body to JSON editor
+        document.getElementById('modal-overlay').querySelector('.modal-body').innerHTML = `
+            <textarea class="json-editor" id="json-editor" spellcheck="false"></textarea>
+            <div class="json-error" id="json-error"></div>
+        `;
+        openModal(`Éditer JSON : ${section}`, sectionData, async (newData) => {
             await api(`/api/global-config/${section}`, {
                 method: 'PUT',
                 body: JSON.stringify({ section, config: newData }),
@@ -1086,7 +1504,12 @@
             return `<div class="loading"><div class="spinner"></div> Chargement...</div>`;
         }
         const serverConfig = server.config || {};
-        const moduleNames = Object.keys(serverConfig);
+        // Merge all known modules + those already in config
+        const allModuleNames = new Set([
+            ...Object.keys(serverConfig),
+            ...Object.keys(state.moduleSchemas),
+        ]);
+        const moduleNames = [...allModuleNames].sort();
 
         const iconUrl = server.icon
             ? `https://cdn.discordapp.com/icons/${sid}/${server.icon}.png?size=128`
@@ -1100,7 +1523,7 @@
                     </div>
                     <div>
                         <h2>${server.name || sid}</h2>
-                        <p>ID: ${sid} — ${moduleNames.length} module(s) configuré(s)</p>
+                        <p>ID: ${sid} — ${Object.keys(serverConfig).length} module(s) configuré(s)</p>
                     </div>
                 </div>
             </div>
@@ -1117,12 +1540,21 @@
                         </div>
                     ` : moduleNames.map(mod => {
                         const modConfig = serverConfig[mod] || {};
+                        const schema = state.moduleSchemas[mod];
                         const enabled = modConfig.enabled === true;
+                        const label = schema?.label || state.modules[mod]?.label || mod;
+                        const icon = schema?.icon || state.modules[mod]?.icon || '🧩';
+                        const desc = schema?.description || '';
+                        const isConfigured = mod in serverConfig;
                         return `
                             <div class="module-item" onclick="navigate('module', '${sid}', '${mod}')">
                                 <div class="module-info">
-                                    <span class="module-name">${mod}</span>
-                                    <span class="module-status">${enabled ? '✅ Activé' : '❌ Désactivé'}</span>
+                                    <span class="module-name">${icon} ${label}</span>
+                                    <span class="module-status">${
+                                        isConfigured
+                                            ? (enabled ? '✅ Activé' : '❌ Désactivé')
+                                            : '⚪ Non configuré'
+                                    }</span>
                                 </div>
                                 <label class="toggle" onclick="event.stopPropagation()">
                                     <input type="checkbox" ${enabled ? 'checked' : ''} 
@@ -1158,20 +1590,25 @@
         if (!server) return '<div class="loading"><div class="spinner"></div></div>';
 
         const modConfig = server.config?.[mod] || {};
+        const schema = state.moduleSchemas[mod];
         const enabled = modConfig.enabled === true;
+        const label = schema?.label || state.modules[mod]?.label || mod;
+        const icon = schema?.icon || '🧩';
+        const description = schema?.description || '';
+        const formId = `module-${sid}-${mod}`;
 
         return `
             <div class="breadcrumb">
                 <a onclick="navigate('server', '${sid}')">${server.name || sid}</a>
                 <span>›</span>
-                <span>${mod}</span>
+                <span>${icon} ${label}</span>
             </div>
 
             <div class="page-header">
                 <div style="display:flex; align-items:center; justify-content:space-between;">
                     <div>
-                        <h2>${mod}</h2>
-                        <p>Configuration du module pour ${server.name || sid}</p>
+                        <h2>${icon} ${label}</h2>
+                        <p>${description || 'Configuration du module pour ' + (server.name || sid)}</p>
                     </div>
                     <label class="toggle" style="transform: scale(1.2);">
                         <input type="checkbox" ${enabled ? 'checked' : ''} 
@@ -1184,27 +1621,103 @@
             <div class="card">
                 <div class="card-header">
                     <div class="card-title">Paramètres</div>
-                    <button class="btn btn-primary btn-sm" onclick="editModuleConfig('${sid}', '${mod}')">
-                        ✏️ Éditer JSON
-                    </button>
+                    <div style="display:flex;gap:8px;">
+                        <button class="btn btn-ghost btn-sm" onclick="editModuleConfigJson('${sid}', '${mod}')">
+                            { } JSON
+                        </button>
+                        ${schema ? `
+                            <button class="btn btn-success" onclick="saveModuleForm('${sid}', '${mod}', '${formId}')">
+                                💾 Sauvegarder
+                            </button>
+                        ` : ''}
+                        <button class="btn btn-ghost btn-sm" onclick="saveAndReloadModule('${sid}', '${mod}', '${formId}', ${!!schema})" title="Sauvegarder et recharger l'extension">
+                            🔄 Appliquer
+                        </button>
+                    </div>
                 </div>
-                ${Object.keys(modConfig).length === 0 ? `
-                    <div class="empty-state">
-                        <h3>Configuration vide</h3>
-                        <p>Utilisez le bouton "Éditer JSON" pour ajouter des paramètres.</p>
+                ${schema
+                    ? renderSchemaForm(formId, schema, modConfig, { excludeEnabled: true })
+                    : (Object.keys(modConfig).length === 0
+                        ? `<div class="empty-state">
+                            <h3>Configuration vide</h3>
+                            <p>Utilisez le bouton "JSON" pour ajouter des paramètres.</p>
+                        </div>`
+                        : renderConfigPreview(modConfig)
+                    )
+                }
+            </div>
+
+            ${schema ? renderExtraKeysCard(schema, modConfig) : ''}
+        `;
+    }
+
+    function renderExtraKeysCard(schema, config) {
+        const schemaKeys = new Set(Object.keys(schema.fields || {}));
+        const extraKeys = Object.keys(config).filter(k => !schemaKeys.has(k));
+        if (extraKeys.length === 0) return '';
+        return `
+            <div class="card" style="margin-top:16px;">
+                <div class="card-header">
+                    <div>
+                        <div class="card-title">⚠️ Paramètres supplémentaires</div>
+                        <div class="card-subtitle">Clés présentes dans la config mais pas dans le schéma</div>
                     </div>
-                ` : `
-                    <div class="kv-grid">
-                        ${renderConfigPreview(modConfig)}
-                    </div>
-                `}
+                </div>
+                <div class="kv-grid">
+                    ${extraKeys.map(key => `
+                        <div class="kv-key" style="color:var(--warning)">${key}</div>
+                        <div class="kv-value"><input type="text" value="${escapeHtml(JSON.stringify(config[key]))}" readonly></div>
+                    `).join('')}
+                </div>
             </div>
         `;
     }
 
-    async function editModuleConfig(serverId, moduleName) {
+    async function saveModuleForm(serverId, moduleName, formId) {
+        try {
+            const values = collectFormValues(formId);
+            const server = state.servers?.[serverId];
+            const existing = server?.config?.[moduleName] || {};
+            // Preserve enabled and extra keys
+            const merged = { ...existing, ...values };
+            await api(`/api/servers/${serverId}/modules/${moduleName}`, {
+                method: 'PUT',
+                body: JSON.stringify({ config: merged }),
+            });
+            toast('Configuration sauvegardée !', 'success');
+            await loadServers();
+            await loadConfig();
+            render();
+        } catch (e) { /* handled by api() */ }
+    }
+
+    async function saveAndReloadModule(serverId, moduleName, formId, hasSchema) {
+        try {
+            if (hasSchema) {
+                await saveModuleForm(serverId, moduleName, formId);
+            }
+            // Find the extension that uses this module
+            const bi = state.botInfo || {};
+            const exts = bi.extensions || [];
+            // moduleBirthday -> birthday, moduleTwitch -> twitch, etc.
+            const shortName = moduleName.replace(/^module/, '').toLowerCase();
+            const matchExt = exts.find(e => e.toLowerCase().includes(shortName));
+            if (matchExt) {
+                await reloadExtension(matchExt);
+            } else {
+                toast('Extension non trouvée — rechargez manuellement', 'warning');
+            }
+        } catch (e) { /* handled */ }
+    }
+
+    async function editModuleConfigJson(serverId, moduleName) {
         const server = state.servers?.[serverId];
         const modConfig = server?.config?.[moduleName] || {};
+        // Reset modal body to JSON editor
+        document.getElementById('modal-overlay').querySelector('.modal-body').innerHTML = `
+            <textarea class="json-editor" id="json-editor" spellcheck="false"></textarea>
+            <div class="json-error" id="json-error"></div>
+        `;
         openModal(`${moduleName} — ${server?.name || serverId}`, modConfig, async (newData) => {
             await api(`/api/servers/${serverId}/modules/${moduleName}`, {
                 method: 'PUT',
@@ -1214,6 +1727,32 @@
             await loadConfig();
             render();
         });
+    }
+
+    // ── Reload extensions ─────────────────────────────
+    async function reloadAllExtensions() {
+        const btn = document.getElementById('reload-all-btn');
+        if (btn) { btn.disabled = true; btn.textContent = '⏳ Rechargement...'; }
+        try {
+            const result = await api('/api/reload', { method: 'POST' });
+            if (result) {
+                const ok = result.reloaded?.length || 0;
+                const fail = result.failed?.length || 0;
+                if (fail > 0) {
+                    toast(`${ok} rechargée(s), ${fail} en erreur : ${result.failed.map(f => f.name).join(', ')}`, 'error');
+                } else {
+                    toast(`${ok} extension(s) rechargée(s) — config appliquée !`, 'success');
+                }
+            }
+        } catch (e) { /* handled by api() */ }
+        if (btn) { btn.disabled = false; btn.textContent = '🔄 Recharger tout'; }
+    }
+
+    async function reloadExtension(extName) {
+        try {
+            await api(`/api/reload/${extName}`, { method: 'POST' });
+            toast(`${extName} rechargée — config appliquée !`, 'success');
+        } catch (e) { /* handled by api() */ }
     }
 
     // ── Utility ───────────────────────────────────────
@@ -1227,7 +1766,7 @@
     async function init() {
         await loadUserInfo();
         if (state.user) {
-            await Promise.all([loadBotInfo(), loadServers(), loadModules(), loadConfig()]);
+            await Promise.all([loadBotInfo(), loadServers(), loadModules(), loadSchemas(), loadConfig()]);
         }
         render();
 
@@ -1235,7 +1774,6 @@
         setInterval(async () => {
             if (state.user) {
                 await loadBotInfo();
-                // Only re-render if on home page to avoid disrupting edits
                 if (state.currentPage === 'home') render();
             }
         }, 30000);

@@ -15,6 +15,7 @@ from pydantic import BaseModel
 from src import logutil
 from src.utils import load_config as bot_load_config
 from src.webui.auth import DiscordOAuth, Session
+from src.webui.schemas import MODULE_SCHEMAS, GLOBAL_CONFIG_SCHEMAS
 
 logger = logutil.init_logger("webui.app")
 
@@ -194,9 +195,40 @@ def create_app(bot=None) -> FastAPI:
 
     @app.get("/api/modules")
     async def api_get_modules(request: Request):
-        """Get all discovered module names."""
+        """Get all discovered module names with their schemas."""
         _require_session(request)
-        return JSONResponse({"modules": _discover_modules()})
+        discovered = _discover_modules()
+        modules = {}
+        for mod_name in discovered:
+            schema = MODULE_SCHEMAS.get(mod_name, {})
+            modules[mod_name] = {
+                "label": schema.get("label", mod_name),
+                "description": schema.get("description", ""),
+                "icon": schema.get("icon", "🧩"),
+                "has_schema": bool(schema),
+            }
+        return JSONResponse({"modules": modules})
+
+    @app.get("/api/schemas/modules")
+    async def api_module_schemas(request: Request):
+        """Get all module configuration schemas."""
+        _require_session(request)
+        return JSONResponse(MODULE_SCHEMAS)
+
+    @app.get("/api/schemas/modules/{module_name}")
+    async def api_module_schema(request: Request, module_name: str):
+        """Get schema for a specific module."""
+        _require_session(request)
+        schema = MODULE_SCHEMAS.get(module_name)
+        if not schema:
+            return JSONResponse({"fields": {}, "label": module_name})
+        return JSONResponse(schema)
+
+    @app.get("/api/schemas/global")
+    async def api_global_schemas(request: Request):
+        """Get all global config section schemas."""
+        _require_session(request)
+        return JSONResponse(GLOBAL_CONFIG_SCHEMAS)
 
     @app.get("/api/servers")
     async def api_get_servers(request: Request):
@@ -274,6 +306,41 @@ def create_app(bot=None) -> FastAPI:
         _save_full_config(data)
         logger.info(f"Updated global config section: {section}")
         return JSONResponse({"status": "ok"})
+
+    # ── Extension reload ─────────────────────────────────────────────
+
+    @app.post("/api/reload")
+    async def api_reload_all(request: Request):
+        """Reload all extensions to apply config changes."""
+        _require_session(request)
+        if not bot:
+            raise HTTPException(status_code=503, detail="Bot non disponible")
+
+        results = {"reloaded": [], "failed": []}
+        ext_names = list(bot.ext.keys()) if hasattr(bot, "ext") else []
+        for ext_name in ext_names:
+            try:
+                bot.reload_extension(ext_name)
+                results["reloaded"].append(ext_name)
+                logger.info(f"Reloaded extension: {ext_name}")
+            except Exception as e:
+                results["failed"].append({"name": ext_name, "error": str(e)})
+                logger.error(f"Failed to reload {ext_name}: {e}")
+        return JSONResponse(results)
+
+    @app.post("/api/reload/{ext_name:path}")
+    async def api_reload_one(request: Request, ext_name: str):
+        """Reload a single extension by name."""
+        _require_session(request)
+        if not bot:
+            raise HTTPException(status_code=503, detail="Bot non disponible")
+        try:
+            bot.reload_extension(ext_name)
+            logger.info(f"Reloaded extension: {ext_name}")
+            return JSONResponse({"status": "ok", "extension": ext_name})
+        except Exception as e:
+            logger.error(f"Failed to reload {ext_name}: {e}")
+            raise HTTPException(status_code=500, detail=str(e))
 
     # ── Bot info ─────────────────────────────────────────────────────
 
