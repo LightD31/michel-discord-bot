@@ -65,40 +65,22 @@ def create_app(bot=None) -> FastAPI:
 
     COOKIE_NAME = "michel_session"
 
+    CONFIG_PATH = os.path.join("config", "config.json")
+
     def _get_full_config() -> dict:
-        """Load the full raw config from disk."""
+        """Load the full config from disk (single file or multi-file)."""
         try:
             from src.config_manager import ConfigManager
             cm = ConfigManager()
             return cm.load_full_config()
         except Exception:
-            try:
-                with open("config/config.json", "r", encoding="utf-8") as f:
-                    return json.load(f)
-            except FileNotFoundError:
-                return {"config": {}, "servers": {}}
+            return {"config": {}, "servers": {}}
 
-    def _save_server_config(server_id: str, server_config: dict):
-        """Save config for a single server to its own file."""
-        from src.config_manager import save_server_config
-        save_server_config(str(server_id), server_config)
-
-    def _save_global_config(global_config: dict):
-        """Save the global config section to main.json (preserving include etc.)."""
-        main_path = os.path.join("config", "main.json")
-        try:
-            if os.path.isfile(main_path):
-                with open(main_path, "r", encoding="utf-8") as f:
-                    main_json = json.load(f)
-            else:
-                main_json = {}
-            main_json["config"] = global_config
-            os.makedirs("config", exist_ok=True)
-            with open(main_path, "w", encoding="utf-8") as f:
-                json.dump(main_json, f, indent=4, ensure_ascii=False)
-        except Exception as e:
-            logger.error(f"Failed to save main.json: {e}")
-            raise
+    def _save_config(data: dict):
+        """Save the full config to a single config.json file."""
+        os.makedirs("config", exist_ok=True)
+        with open(CONFIG_PATH, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=4, ensure_ascii=False)
 
     def _get_session(request: Request) -> Optional[Session]:
         token = request.cookies.get(COOKIE_NAME)
@@ -277,6 +259,8 @@ def create_app(bot=None) -> FastAPI:
         # Enrich with guild names from Discord if available
         user_guilds = {g["id"]: g for g in session.guilds}
         result = {}
+
+        # Include servers already in config
         for server_id, server_config in servers.items():
             guild_info = user_guilds.get(str(server_id), {})
             result[server_id] = {
@@ -284,6 +268,16 @@ def create_app(bot=None) -> FastAPI:
                 "icon": guild_info.get("icon"),
                 "config": server_config,
             }
+
+        # Also include user's managed guilds that aren't in config yet
+        for guild_id, guild_info in user_guilds.items():
+            if guild_id not in result:
+                result[guild_id] = {
+                    "name": guild_info.get("name", f"Serveur {guild_id}"),
+                    "icon": guild_info.get("icon"),
+                    "config": {},
+                }
+
         return JSONResponse(result)
 
     @app.get("/api/servers/{server_id}")
@@ -302,11 +296,12 @@ def create_app(bot=None) -> FastAPI:
         _require_session(request)
         data = _get_full_config()
 
+        # Create server entry if it doesn't exist
         if server_id not in data.get("servers", {}):
-            raise HTTPException(status_code=404, detail="Serveur non trouvé")
+            data.setdefault("servers", {})[server_id] = {}
 
         data["servers"][server_id][module_name] = body.config
-        _save_server_config(server_id, data["servers"][server_id])
+        _save_config(data)
         logger.info(f"Updated {module_name} config for server {server_id}")
         return JSONResponse({"status": "ok"})
 
@@ -316,14 +311,15 @@ def create_app(bot=None) -> FastAPI:
         _require_session(request)
         data = _get_full_config()
 
+        # Create server entry if it doesn't exist
         if server_id not in data.get("servers", {}):
-            raise HTTPException(status_code=404, detail="Serveur non trouvé")
+            data.setdefault("servers", {})[server_id] = {}
 
         if module_name not in data["servers"][server_id]:
             data["servers"][server_id][module_name] = {}
 
         data["servers"][server_id][module_name]["enabled"] = body.enabled
-        _save_server_config(server_id, data["servers"][server_id])
+        _save_config(data)
         logger.info(f"{'Enabled' if body.enabled else 'Disabled'} {module_name} for server {server_id}")
         return JSONResponse({"status": "ok", "enabled": body.enabled})
 
@@ -340,9 +336,41 @@ def create_app(bot=None) -> FastAPI:
         _require_session(request)
         data = _get_full_config()
         data.setdefault("config", {})[section] = body.config
-        _save_global_config(data["config"])
+        _save_config(data)
         logger.info(f"Updated global config section: {section}")
         return JSONResponse({"status": "ok"})
+
+    # ── Config migration ─────────────────────────────────────────────
+
+    @app.post("/api/migrate-config")
+    async def api_migrate_config(request: Request):
+        """Consolidate multi-file config into a single config.json."""
+        _require_session(request)
+
+        # Load full config (merges main.json + includes)
+        data = _get_full_config()
+
+        # Save as single file
+        _save_config(data)
+        logger.info("Migrated config to single config.json")
+
+        # Remove old multi-file structure
+        import shutil
+        removed = []
+        main_path = os.path.join("config", "main.json")
+        if os.path.isfile(main_path):
+            os.remove(main_path)
+            removed.append("main.json")
+        for subdir in ["services", "servers"]:
+            dirpath = os.path.join("config", subdir)
+            if os.path.isdir(dirpath):
+                shutil.rmtree(dirpath)
+                removed.append(f"{subdir}/")
+
+        return JSONResponse({
+            "status": "ok",
+            "message": f"Config consolidée dans config.json. Fichiers supprimés: {', '.join(removed) or 'aucun'}",
+        })
 
     # ── Extension helpers ────────────────────────────────────────────
 

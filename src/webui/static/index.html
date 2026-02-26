@@ -1354,6 +1354,23 @@
                 <p>Paramètres partagés entre tous les serveurs</p>
             </div>
 
+            <div class="card" style="margin-bottom:16px; border: 1px solid var(--border);">
+                <div class="card-header">
+                    <div>
+                        <div class="card-title">🗂️ Fichier de configuration</div>
+                        <div class="card-subtitle">Toute la config est stockée dans <code>config/config.json</code></div>
+                    </div>
+                    <div style="display:flex;gap:8px;">
+                        <button class="btn btn-ghost btn-sm" onclick="migrateConfig()" title="Consolide main.json + includes en un seul config.json">
+                            📦 Migrer depuis multi-fichiers
+                        </button>
+                        <button class="btn btn-ghost btn-sm" onclick="downloadConfig()">
+                            ⬇️ Exporter
+                        </button>
+                    </div>
+                </div>
+            </div>
+
             ${sections.length === 0 ? `
                 <div class="empty-state">
                     <div class="icon">📭</div>
@@ -1757,6 +1774,31 @@
         const div = document.createElement('div');
         div.textContent = String(str);
         return div.innerHTML.replace(/"/g, '&quot;');
+    }
+
+    async function migrateConfig() {
+        if (!confirm('Consolider main.json + fichiers inclus en un seul config.json ?\nLes anciens fichiers seront supprimés.')) return;
+        try {
+            const result = await api('/api/migrate-config', { method: 'POST' });
+            if (result) {
+                toast(result.message, 'success');
+                await loadConfig();
+                render();
+            }
+        } catch (e) { /* handled */ }
+    }
+
+    async function downloadConfig() {
+        try {
+            const data = await api('/api/config');
+            const blob = new Blob([JSON.stringify(data, null, 4)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'config.json';
+            a.click();
+            URL.revokeObjectURL(url);
+        } catch (e) { /* handled */ }
     }
 
     // ── Initialize ────────────────────────────────────
