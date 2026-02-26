@@ -187,20 +187,30 @@ def create_app(bot=None) -> FastAPI:
         session = _get_session(request)
         if not session:
             return JSONResponse({"authenticated": False})
+
+        # Only return guilds where the bot is also present
+        bot_guild_ids: set[str] = set()
+        if bot and bot.guilds:
+            bot_guild_ids = {str(g.id) for g in bot.guilds}
+
+        managed = oauth.get_user_managed_guilds(session)
+        guilds = [
+            {
+                "id": g["id"],
+                "name": g["name"],
+                "icon": g.get("icon"),
+                "managed": True,
+            }
+            for g in managed
+            if not bot_guild_ids or g["id"] in bot_guild_ids
+        ]
+
         return JSONResponse({
             "authenticated": True,
             "user_id": session.user_id,
             "username": session.username,
             "avatar": session.avatar,
-            "guilds": [
-                {
-                    "id": g["id"],
-                    "name": g["name"],
-                    "icon": g.get("icon"),
-                    "managed": True,
-                }
-                for g in oauth.get_user_managed_guilds(session)
-            ],
+            "guilds": guilds,
         })
 
     # ── Config API routes ────────────────────────────────────────────
@@ -251,27 +261,34 @@ def create_app(bot=None) -> FastAPI:
 
     @app.get("/api/servers")
     async def api_get_servers(request: Request):
-        """Get all configured servers."""
+        """Get servers where both the user and the bot are present."""
         session = _require_session(request)
         data = _get_full_config()
         servers = data.get("servers", {})
+
+        # Build the set of guild IDs the bot is in
+        bot_guild_ids: set[str] = set()
+        if bot and bot.guilds:
+            bot_guild_ids = {str(g.id) for g in bot.guilds}
 
         # Enrich with guild names from Discord if available
         user_guilds = {g["id"]: g for g in session.guilds}
         result = {}
 
-        # Include servers already in config
+        # Include servers already in config — only if bot is in them
         for server_id, server_config in servers.items():
+            if bot_guild_ids and str(server_id) not in bot_guild_ids:
+                continue
             guild_info = user_guilds.get(str(server_id), {})
             result[server_id] = {
-                "name": guild_info.get("name", f"Serveur {server_id}"),
+                "name": guild_info.get("name", server_config.get("serverName", f"Serveur {server_id}")),
                 "icon": guild_info.get("icon"),
                 "config": server_config,
             }
 
-        # Also include user's managed guilds that aren't in config yet
+        # Also include user's managed guilds that aren't in config yet — only if bot is in them
         for guild_id, guild_info in user_guilds.items():
-            if guild_id not in result:
+            if guild_id not in result and (not bot_guild_ids or guild_id in bot_guild_ids):
                 result[guild_id] = {
                     "name": guild_info.get("name", f"Serveur {guild_id}"),
                     "icon": guild_info.get("icon"),
@@ -431,7 +448,7 @@ def create_app(bot=None) -> FastAPI:
     async def api_bot_info(request: Request):
         """Get bot status information."""
         _require_session(request)
-        info = {"status": "unknown", "guilds": 0, "extensions": [], "module_extension_map": {}}
+        info = {"status": "unknown", "guilds": 0, "extensions": [], "module_extension_map": {}, "bot_guild_ids": []}
         if bot:
             try:
                 info["status"] = "online" if bot.is_ready else "starting"
@@ -440,6 +457,7 @@ def create_app(bot=None) -> FastAPI:
                 info["extensions"] = _get_extension_module_paths()
                 info["latency"] = round(bot.latency * 1000) if bot.latency else None
                 info["module_extension_map"] = _build_module_to_extension_map()
+                info["bot_guild_ids"] = [str(g.id) for g in bot.guilds] if bot.guilds else []
             except Exception:
                 info["status"] = "error"
         return JSONResponse(info)
