@@ -177,6 +177,39 @@ MODULE_SCHEMAS: dict[str, dict] = {
         },
     },
 
+    "moduleSatisfactory": {
+        "label": "Satisfactory",
+        "description": "Statut et gestion du serveur Satisfactory.",
+        "icon": "🏭",
+        "fields": {
+            "enabled": _field("Activé", "boolean", default=False),
+            "satisfactoryChannelId": _field(
+                "Salon statut", "channel", required=True,
+                description="Salon pour le message de statut du serveur."
+            ),
+            "satisfactoryMessageId": _field(
+                "Message statut", "message",
+                description="ID du message de statut (rempli automatiquement)."
+            ),
+            "satisfactoryServerIp": _field(
+                "IP du serveur", "string", required=True,
+                description="Adresse IP du serveur Satisfactory."
+            ),
+            "satisfactoryServerPort": _field(
+                "Port du serveur", "string", default="7777",
+                description="Port du serveur Satisfactory."
+            ),
+            "satisfactoryServerPassword": _field(
+                "Mot de passe serveur", "secret",
+                description="Mot de passe du serveur Satisfactory.", secret=True
+            ),
+            "satisfactoryServerToken": _field(
+                "Token API serveur", "secret",
+                description="Token d'authentification API du serveur.", secret=True
+            ),
+        },
+    },
+
     "moduleSecretSanta": {
         "label": "Secret Santa",
         "description": "Organisation du Secret Santa.",
@@ -192,6 +225,10 @@ MODULE_SCHEMAS: dict[str, dict] = {
         "icon": "🎵",
         "fields": {
             "enabled": _field("Activé", "boolean", default=False),
+            "voteEnabled": _field(
+                "Votes activés", "boolean", default=False,
+                description="Activer les votes sur les morceaux ajoutés."
+            ),
             "spotifyChannelId": _field(
                 "Salon notifications", "channel", required=True,
                 description="Salon pour les notifications d'écoute."
@@ -207,6 +244,14 @@ MODULE_SCHEMAS: dict[str, dict] = {
             "spotifyRecapMessage": _field(
                 "URL message récap", "url",
                 description="URL du message de récap (webhook PATCH)."
+            ),
+            "spotifyRecapMessageId": _field(
+                "ID message récap", "message",
+                description="ID du message de récap dans le salon."
+            ),
+            "spotifyIdToName": _field(
+                "Mapping Spotify → Nom", "dict",
+                description="Objet JSON : clé = Spotify user ID, valeur = prénom."
             ),
             "spotifyIdToDiscordId": _field(
                 "Mapping Spotify → Discord", "dict",
@@ -324,7 +369,69 @@ MODULE_SCHEMAS: dict[str, dict] = {
             ),
             "youtubeChannelList": _field(
                 "Chaînes YouTube", "list", required=True,
-                description="Liste des IDs de chaînes YouTube à surveiller."
+                description="Liste des noms de chaînes YouTube à surveiller."
+            ),
+        },
+    },
+
+    "moduleMinecraft": {
+        "label": "Minecraft",
+        "description": "Statut et gestion du serveur Minecraft via RCON.",
+        "icon": "⛏️",
+        "fields": {
+            "enabled": _field("Activé", "boolean", default=False),
+            "minecraftChannelId": _field(
+                "Salon statut", "channel", required=True,
+                description="Salon pour le message de statut du serveur."
+            ),
+            "minecraftMessageId": _field(
+                "Message statut", "message",
+                description="ID du message de statut (rempli automatiquement)."
+            ),
+            "minecraftUrl": _field(
+                "URL publique", "string",
+                description="Nom de domaine public du serveur Minecraft."
+            ),
+            "minecraftIp": _field(
+                "IP du serveur", "string", required=True,
+                description="Adresse IP du serveur Minecraft."
+            ),
+            "minecraftPort": _field(
+                "Port du serveur", "string", default="25565",
+                description="Port du serveur Minecraft."
+            ),
+            "minecraftRconHost": _field(
+                "Hôte RCON", "string",
+                description="Adresse IP pour la connexion RCON."
+            ),
+            "minecraftRconPort": _field(
+                "Port RCON", "number", default=25575,
+                description="Port RCON du serveur."
+            ),
+            "minecraftRconPassword": _field(
+                "Mot de passe RCON", "secret",
+                description="Mot de passe RCON du serveur.", secret=True
+            ),
+            "minecraftSftpsPassword": _field(
+                "Mot de passe SFTP", "secret",
+                description="Mot de passe SFTP pour l'accès aux fichiers.", secret=True
+            ),
+        },
+    },
+
+    "moduleGuildeux": {
+        "label": "Guildeux",
+        "description": "Gestion des liens de guilde.",
+        "icon": "⚔️",
+        "fields": {
+            "enabled": _field("Activé", "boolean", default=False),
+            "lienChannelId": _field(
+                "Salon des liens", "channel", required=True,
+                description="Salon pour le message des liens de guilde."
+            ),
+            "lienMessageId": _field(
+                "Message des liens", "message",
+                description="ID du message contenant les liens."
             ),
         },
     },
@@ -339,14 +446,16 @@ GLOBAL_CONFIG_SCHEMAS: dict[str, dict] = {
         "label": "Discord",
         "icon": "💬",
         "fields": {
+            "botId": _field("Bot ID", "string",
+                            description="ID de l'application / bot Discord."),
             "botToken": _field("Token du bot", "secret", required=True,
                                description="Token du bot Discord.", secret=True),
-            "devGuildId": _field("Serveur de développement", "string",
-                                 description="ID du serveur de développement."),
-            "clientId": _field("Client ID", "string",
-                               description="Client ID de l'application Discord."),
             "ownerId": _field("ID propriétaire", "string",
                               description="ID Discord du propriétaire du bot."),
+            "devGuildId": _field("Serveur de développement", "string",
+                                 description="ID du serveur de développement."),
+            "devGuildChannelId": _field("Salon de dev", "channel",
+                                        description="ID du salon de développement."),
         },
     },
 
@@ -427,6 +536,8 @@ GLOBAL_CONFIG_SCHEMAS: dict[str, dict] = {
                                     description="Code 2FA si activé (optionnel)."),
             "uptimeKumaToken": _field("Token push", "secret",
                                       description="Token push pour le statut du bot.", secret=True),
+            "uptimeKumaApiKey": _field("Clé API", "secret",
+                                       description="Clé API Uptime Kuma.", secret=True),
         },
     },
 
@@ -436,6 +547,49 @@ GLOBAL_CONFIG_SCHEMAS: dict[str, dict] = {
         "fields": {
             "dataFolder": _field("Dossier de données", "string", default="data",
                                   description="Chemin du dossier de données local."),
+        },
+    },
+
+    "discord2name": {
+        "label": "Discord → Prénoms",
+        "icon": "👤",
+        "fields": {
+            "__info": _field(
+                "Info", "string",
+                description="Mapping par serveur : ID Discord → prénom. Modifier en JSON."
+            ),
+        },
+        "rawJson": True,
+    },
+
+    "shlink": {
+        "label": "Shlink",
+        "icon": "🔗",
+        "fields": {
+            "shlinkApiKey": _field("Clé API", "secret", required=True,
+                                   description="Clé API Shlink pour raccourcir les URLs.", secret=True),
+        },
+    },
+
+    "random": {
+        "label": "Random.org",
+        "icon": "🎲",
+        "fields": {
+            "randomOrgApiKey": _field("Clé API", "secret", required=True,
+                                      description="Clé API Random.org.", secret=True),
+        },
+    },
+
+    "SecretSanta": {
+        "label": "Secret Santa (global)",
+        "icon": "🎅",
+        "fields": {
+            "secretSantaFile": _field("Fichier de données", "string",
+                                      description="Chemin du fichier JSON des données Secret Santa.",
+                                      default="data/secretsanta.json"),
+            "secretSantaKey": _field("Clé de chiffrement", "secret",
+                                     description="Clé utilisée pour le chiffrement des assignations.",
+                                     secret=True),
         },
     },
 
