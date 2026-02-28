@@ -1,4 +1,3 @@
-import json
 import os
 import re
 import string
@@ -9,6 +8,7 @@ from interactions import Extension, listen, slash_command, SlashContext, Embed, 
 from interactions.api.events import MessageCreate
 
 from src import logutil
+from src.mongodb import mongo_manager
 from src.utils import load_config, sanitize_content
 
 logger = logutil.init_logger(os.path.basename(__file__))
@@ -19,53 +19,41 @@ config, module_config, enabled_servers = load_config("moduleFeur")
 FEUR_EMOJIS = ["🇫", "🇪", "🇺", "🇷"]
 POUR_FEUR_EMOJIS = ["🇵", "🇴", "🇺", "🇷", "🇫", "🇪", "⛎", "®️"]  # ⛎ for second U, ® for second R
 
-# Stats file path
-STATS_FILE = "data/feur_stats.json"
+# MongoDB collections
+# All feur data is per-guild: guild_{guild_id} → feur_stats collection
 
 
 class Feur(Extension):
     def __init__(self, bot):
         self.bot = bot
-        self.stats = self._load_stats()
-    
-    def _load_stats(self) -> dict:
-        """Load stats from file."""
-        try:
-            if os.path.exists(STATS_FILE):
-                with open(STATS_FILE, "r", encoding="utf-8") as f:
-                    return json.load(f)
-        except Exception as e:
-            logger.error(f"Error loading feur stats: {e}")
-        return {"users": {}, "guilds": {}, "total": 0}
-    
-    def _save_stats(self):
-        """Save stats to file."""
-        try:
-            os.makedirs(os.path.dirname(STATS_FILE), exist_ok=True)
-            with open(STATS_FILE, "w", encoding="utf-8") as f:
-                json.dump(self.stats, f, indent=2)
-        except Exception as e:
-            logger.error(f"Error saving feur stats: {e}")
-    
-    def _record_feur(self, user_id: str, guild_id: Optional[str], feur_type: str):
-        """Record a feur event in stats."""
-        # Update total
-        self.stats["total"] = self.stats.get("total", 0) + 1
-        
-        # Update user stats
-        if user_id not in self.stats["users"]:
-            self.stats["users"][user_id] = {"total": 0, "feur": 0, "pour_feur": 0}
-        self.stats["users"][user_id]["total"] += 1
-        self.stats["users"][user_id][feur_type] = self.stats["users"][user_id].get(feur_type, 0) + 1
-        
-        # Update guild stats
-        if guild_id:
-            if guild_id not in self.stats["guilds"]:
-                self.stats["guilds"][guild_id] = {"total": 0, "feur": 0, "pour_feur": 0}
-            self.stats["guilds"][guild_id]["total"] += 1
-            self.stats["guilds"][guild_id][feur_type] = self.stats["guilds"][guild_id].get(feur_type, 0) + 1
-        
-        self._save_stats()
+
+    def _get_feur_col(self, guild_id: str):
+        """Return the feur_stats collection for a guild."""
+        return mongo_manager.get_guild_collection(guild_id, "feur_stats")
+
+    async def _get_stats(self, guild_id: str, doc_id: str) -> dict:
+        """Get stats document from MongoDB for a specific guild."""
+        col = self._get_feur_col(guild_id)
+        doc = await col.find_one({"_id": doc_id})
+        if doc:
+            return {k: v for k, v in doc.items() if k != "_id"}
+        return {"total": 0, "feur": 0, "pour_feur": 0}
+
+    async def _record_feur(self, user_id: str, guild_id: Optional[str], feur_type: str):
+        """Record a feur event using atomic MongoDB $inc in the guild's DB."""
+        if not guild_id:
+            return
+        col = self._get_feur_col(guild_id)
+        # Update guild total
+        await col.update_one(
+            {"_id": "guild_total"}, {"$inc": {"total": 1, feur_type: 1}}, upsert=True
+        )
+        # Update user stats within this guild
+        await col.update_one(
+            {"_id": f"user_{user_id}"},
+            {"$inc": {"total": 1, feur_type: 1}},
+            upsert=True,
+        )
 
     def _should_respond(self, content: str, keyword: str) -> bool:
         """
@@ -157,7 +145,7 @@ class Feur(Extension):
         # Check for "pourquoi" wordplay (check first as it contains "quoi")
         if self._should_respond(content, "pourquoi"):
             await self._add_reactions(event.message, POUR_FEUR_EMOJIS)
-            self._record_feur(user_id, guild_id, "pour_feur")
+            await self._record_feur(user_id, guild_id, "pour_feur")
             return
 
         # Check for "quoi" wordplay (only if word is exactly "quoi", not part of "pourquoi")
@@ -166,7 +154,7 @@ class Feur(Extension):
             words = self._extract_words(content)
             if words and words[-1] == "quoi" or ("quoi" in content and "pourquoi" not in content):
                 await self._add_reactions(event.message, FEUR_EMOJIS)
-                self._record_feur(user_id, guild_id, "feur")
+                await self._record_feur(user_id, guild_id, "feur")
 
     @slash_command(name="feurstats", description="Affiche les statistiques de feur")
     async def feur_stats(self, ctx: SlashContext):
@@ -174,21 +162,25 @@ class Feur(Extension):
         guild_id = str(ctx.guild_id) if ctx.guild_id else None
         user_id = str(ctx.author.id)
         
-        # Get user stats
-        user_stats = self.stats["users"].get(user_id, {"total": 0, "feur": 0, "pour_feur": 0})
+        if not guild_id:
+            await ctx.send("Cette commande doit être utilisée dans un serveur.", ephemeral=True)
+            return
         
-        # Get guild stats
-        guild_stats = self.stats["guilds"].get(guild_id, {"total": 0, "feur": 0, "pour_feur": 0}) if guild_id else None
+        # Get stats from the guild's feur_stats collection
+        guild_stats = await self._get_stats(guild_id, "guild_total")
+        user_stats = await self._get_stats(guild_id, f"user_{user_id}")
         
         # Get top users in this guild
         top_users = []
-        if guild_id and ctx.guild:
+        if ctx.guild:
+            col = self._get_feur_col(guild_id)
             user_totals = []
-            for uid, ustats in self.stats["users"].items():
+            async for doc in col.find({"_id": {"$regex": "^user_"}}):
+                uid = doc["_id"].replace("user_", "")
                 try:
                     member = await ctx.guild.fetch_member(int(uid))
                     if member:
-                        user_totals.append((member.display_name, ustats.get("total", 0)))
+                        user_totals.append((member.display_name, doc.get("total", 0)))
                 except Exception:
                     pass
             top_users = sorted(user_totals, key=lambda x: x[1], reverse=True)[:5]
@@ -200,13 +192,15 @@ class Feur(Extension):
             footer=EmbedFooter(text=f"Demandé par {ctx.author.display_name}")
         )
         
-        # Global stats
+        # Guild stats
         embed.add_field(
-            name="🌍 Total global",
-            value=f"**{self.stats.get('total', 0)}** feurs envoyés",
+            name="🏠 Stats du serveur",
+            value=f"Total: **{guild_stats.get('total', 0)}**\n"
+                  f"Feur: **{guild_stats.get('feur', 0)}**\n"
+                  f"Pour feur: **{guild_stats.get('pour_feur', 0)}**",
             inline=False
         )
-        
+
         # User stats
         embed.add_field(
             name="👤 Tes stats",
@@ -215,16 +209,6 @@ class Feur(Extension):
                   f"Pour feur: **{user_stats.get('pour_feur', 0)}**",
             inline=True
         )
-        
-        # Guild stats
-        if guild_stats:
-            embed.add_field(
-                name="🏠 Stats du serveur",
-                value=f"Total: **{guild_stats.get('total', 0)}**\n"
-                      f"Feur: **{guild_stats.get('feur', 0)}**\n"
-                      f"Pour feur: **{guild_stats.get('pour_feur', 0)}**",
-                inline=True
-            )
         
         # Top users
         if top_users:

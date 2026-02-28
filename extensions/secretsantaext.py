@@ -14,18 +14,15 @@ from interactions import (
 )
 
 from src import logutil
+from src.mongodb import mongo_manager
 from src.utils import load_config
 
 logger = logutil.init_logger(__name__)
 config, module_config, enabled_servers = load_config("moduleSecretSanta")
 
-# Data directory setup
+# Data directory setup (kept only for human-readable draw files)
 DATA_DIR = Path("data/secret_santa")
 DATA_DIR.mkdir(parents=True, exist_ok=True)
-
-SESSIONS_FILE = DATA_DIR / "sessions.json"
-DRAW_RESULTS_FILE = DATA_DIR / "draw_results.json"
-BANNED_PAIRS_FILE = DATA_DIR / "banned_pairs.json"
 
 discord2name = config.get("discord2name", {})
 
@@ -53,30 +50,29 @@ class SecretSantaSession:
 class SecretSanta(Extension):
     def __init__(self, bot: Client):
         self.bot = bot
-        self._ensure_data_files()
-
-    def _ensure_data_files(self) -> None:
-        """Ensure all data files exist."""
-        for file_path in [SESSIONS_FILE, DRAW_RESULTS_FILE, BANNED_PAIRS_FILE]:
-            if not file_path.exists():
-                file_path.write_text("{}", encoding="utf-8")
-
-    def _read_json(self, file_path: Path) -> dict:
-        """Read JSON data from file."""
-        try:
-            return json.loads(file_path.read_text(encoding="utf-8"))
-        except (FileNotFoundError, json.JSONDecodeError):
-            return {}
-
-    def _write_json(self, file_path: Path, data: dict) -> None:
-        """Write JSON data to file."""
-        file_path.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
 
     def get_context_id(self, ctx: Union[SlashContext, ComponentContext]) -> str:
         """Get a unique identifier for the context (guild or channel for private groups)."""
         if ctx.guild:
             return f"guild_{ctx.guild.id}"
         return f"channel_{ctx.channel.id}"
+
+    def _get_collections(self, context_id: str):
+        """Return (sessions_col, draw_results_col, banned_pairs_col) for the given context.
+
+        Guild contexts  → per-guild database ``guild_{guild_id}``
+        Channel contexts → global database (DMs / group DMs)
+        """
+        if context_id.startswith("guild_"):
+            guild_id = context_id.removeprefix("guild_")
+            db = mongo_manager.get_guild_db(guild_id)
+        else:
+            db = mongo_manager.global_db
+        return (
+            db["secret_santa_sessions"],
+            db["secret_santa_draw_results"],
+            db["secret_santa_banned_pairs"],
+        )
 
     def create_embed(self, title: str, message: str, color=BrandColors.RED) -> Embed:
         """Create a themed embed."""
@@ -88,64 +84,73 @@ class SecretSanta(Extension):
 
     # ========== Session Management ==========
     
-    def get_session(self, context_id: str) -> Optional[SecretSantaSession]:
+    async def get_session(self, context_id: str) -> Optional[SecretSantaSession]:
         """Get a session by context ID."""
-        data = self._read_json(SESSIONS_FILE)
-        session_data = data.get(context_id)
-        if session_data:
-            return SecretSantaSession(**session_data)
+        sessions_col, _, _ = self._get_collections(context_id)
+        doc = await sessions_col.find_one({"_id": context_id})
+        if doc:
+            doc["context_id"] = doc.pop("_id")
+            return SecretSantaSession(**doc)
         return None
 
-    def save_session(self, session: SecretSantaSession) -> None:
+    async def save_session(self, session: SecretSantaSession) -> None:
         """Save a session."""
-        data = self._read_json(SESSIONS_FILE)
-        data[session.context_id] = asdict(session)
-        self._write_json(SESSIONS_FILE, data)
+        sessions_col, _, _ = self._get_collections(session.context_id)
+        data = asdict(session)
+        data["_id"] = data.pop("context_id")
+        await sessions_col.update_one({"_id": data["_id"]}, {"$set": data}, upsert=True)
         logger.info(f"Session saved for {session.context_id}")
 
-    def delete_session(self, context_id: str) -> bool:
+    async def delete_session(self, context_id: str) -> bool:
         """Delete a session. Returns True if session existed."""
-        data = self._read_json(SESSIONS_FILE)
-        if context_id in data:
-            del data[context_id]
-            self._write_json(SESSIONS_FILE, data)
+        sessions_col, _, _ = self._get_collections(context_id)
+        result = await sessions_col.delete_one({"_id": context_id})
+        if result.deleted_count > 0:
             logger.info(f"Session deleted for {context_id}")
             return True
         return False
 
     # ========== Banned Pairs ==========
     
-    def read_banned_pairs(self, context_id: str) -> List[Tuple[int, int]]:
+    async def read_banned_pairs(self, context_id: str) -> List[Tuple[int, int]]:
         """Read banned pairs for a context."""
-        data = self._read_json(BANNED_PAIRS_FILE)
-        pairs = data.get(context_id, [])
-        return [tuple(p) for p in pairs]
+        _, _, banned_pairs_col = self._get_collections(context_id)
+        doc = await banned_pairs_col.find_one({"_id": context_id})
+        if doc:
+            return [tuple(p) for p in doc.get("pairs", [])]
+        return []
 
-    def write_banned_pairs(self, context_id: str, banned_pairs: List[Tuple[int, int]]) -> None:
+    async def write_banned_pairs(self, context_id: str, banned_pairs: List[Tuple[int, int]]) -> None:
         """Write banned pairs for a context."""
-        data = self._read_json(BANNED_PAIRS_FILE)
-        data[context_id] = [list(p) for p in banned_pairs]
-        self._write_json(BANNED_PAIRS_FILE, data)
+        _, _, banned_pairs_col = self._get_collections(context_id)
+        await banned_pairs_col.update_one(
+            {"_id": context_id},
+            {"$set": {"pairs": [list(p) for p in banned_pairs]}},
+            upsert=True,
+        )
         logger.info(f"Banned pairs updated for {context_id}")
 
     # ========== Draw Results ==========
     
-    def save_draw_results(self, context_id: str, draw_results: List[Tuple[int, int]]) -> None:
+    async def save_draw_results(self, context_id: str, draw_results: List[Tuple[int, int]]) -> None:
         """Save draw results."""
-        data = self._read_json(DRAW_RESULTS_FILE)
-        data[context_id] = {
-            "results": [list(p) for p in draw_results],
-            "drawn_at": datetime.now().isoformat()
-        }
-        self._write_json(DRAW_RESULTS_FILE, data)
+        _, draw_results_col, _ = self._get_collections(context_id)
+        await draw_results_col.update_one(
+            {"_id": context_id},
+            {"$set": {
+                "results": [list(p) for p in draw_results],
+                "drawn_at": datetime.now().isoformat(),
+            }},
+            upsert=True,
+        )
         logger.info(f"Draw results saved for {context_id}")
 
-    def get_draw_results(self, context_id: str) -> Optional[List[Tuple[int, int]]]:
+    async def get_draw_results(self, context_id: str) -> Optional[List[Tuple[int, int]]]:
         """Get draw results for a context."""
-        data = self._read_json(DRAW_RESULTS_FILE)
-        result_data = data.get(context_id)
-        if result_data:
-            return [tuple(p) for p in result_data.get("results", [])]
+        _, draw_results_col, _ = self._get_collections(context_id)
+        doc = await draw_results_col.find_one({"_id": context_id})
+        if doc:
+            return [tuple(p) for p in doc.get("results", [])]
         return None
 
     async def save_human_readable_draw(
@@ -489,7 +494,7 @@ class SecretSanta(Extension):
         deadline: Optional[str] = None
     ) -> None:
         context_id = self.get_context_id(ctx)
-        existing = self.get_session(context_id)
+        existing = await self.get_session(context_id)
         
         if existing and not existing.is_drawn:
             await ctx.send(
@@ -537,7 +542,7 @@ class SecretSanta(Extension):
         )
         
         session.message_id = msg.id
-        self.save_session(session)
+        await self.save_session(session)
         
         logger.info(f"Secret Santa session created by {ctx.author.id} in {context_id}")
 
@@ -547,7 +552,7 @@ class SecretSanta(Extension):
     )
     async def list_participants(self, ctx: SlashContext) -> None:
         context_id = self.get_context_id(ctx)
-        session = self.get_session(context_id)
+        session = await self.get_session(context_id)
         
         if not session:
             await ctx.send(
@@ -600,7 +605,7 @@ class SecretSanta(Extension):
         await ctx.defer(ephemeral=True)
         
         context_id = self.get_context_id(ctx)
-        session = self.get_session(context_id)
+        session = await self.get_session(context_id)
         
         if not session:
             await ctx.send(
@@ -635,7 +640,7 @@ class SecretSanta(Extension):
             return
 
         # Generate assignments
-        banned_pairs = self.read_banned_pairs(context_id)
+        banned_pairs = await self.read_banned_pairs(context_id)
         
         assignments = None
         num_subgroups = 1
@@ -690,9 +695,9 @@ class SecretSanta(Extension):
                 failed_dms.append(giver_id)
 
         # Save results and update session
-        self.save_draw_results(context_id, assignments)
+        await self.save_draw_results(context_id, assignments)
         session.is_drawn = True
-        self.save_session(session)
+        await self.save_session(session)
 
         # Save human-readable file
         context_name = ctx.guild.name if ctx.guild else f"DM Group {ctx.channel.id}"
@@ -749,7 +754,7 @@ class SecretSanta(Extension):
     )
     async def cancel_session(self, ctx: SlashContext) -> None:
         context_id = self.get_context_id(ctx)
-        session = self.get_session(context_id)
+        session = await self.get_session(context_id)
         
         if not session:
             await ctx.send(
@@ -790,7 +795,7 @@ class SecretSanta(Extension):
             except Exception as e:
                 logger.error(f"Failed to update cancelled session message: {e}")
         
-        self.delete_session(context_id)
+        await self.delete_session(context_id)
         
         await ctx.send(
             embed=self.create_embed(
@@ -819,7 +824,7 @@ class SecretSanta(Extension):
             )
             return
         
-        results = self.get_draw_results(context_id)
+        results = await self.get_draw_results(context_id)
         
         if not results:
             await ctx.send(
@@ -851,7 +856,7 @@ class SecretSanta(Extension):
     )
     async def remind_assignment(self, ctx: SlashContext) -> None:
         context_id = self.get_context_id(ctx)
-        results = self.get_draw_results(context_id)
+        results = await self.get_draw_results(context_id)
         
         if not results:
             await ctx.send(
@@ -880,7 +885,7 @@ class SecretSanta(Extension):
             )
             return
         
-        session = self.get_session(context_id)
+        session = await self.get_session(context_id)
         server = str(ctx.guild.id) if ctx.guild else None
         discord2name_data = discord2name.get(server, {}) if server else {}
         
@@ -937,7 +942,7 @@ class SecretSanta(Extension):
             return
 
         context_id = self.get_context_id(ctx)
-        banned_pairs = self.read_banned_pairs(context_id)
+        banned_pairs = await self.read_banned_pairs(context_id)
         
         # Check if pair already exists
         for p1, p2 in banned_pairs:
@@ -949,7 +954,7 @@ class SecretSanta(Extension):
                 return
 
         banned_pairs.append((user1.id, user2.id))
-        self.write_banned_pairs(context_id, banned_pairs)
+        await self.write_banned_pairs(context_id, banned_pairs)
         
         await ctx.send(
             embed=self.create_embed(
@@ -977,7 +982,7 @@ class SecretSanta(Extension):
     )
     async def unban_pair(self, ctx: SlashContext, user1: Member | User, user2: Member | User) -> None:
         context_id = self.get_context_id(ctx)
-        banned_pairs = self.read_banned_pairs(context_id)
+        banned_pairs = await self.read_banned_pairs(context_id)
         
         new_pairs = [
             (p1, p2) for p1, p2 in banned_pairs
@@ -991,7 +996,7 @@ class SecretSanta(Extension):
             )
             return
 
-        self.write_banned_pairs(context_id, new_pairs)
+        await self.write_banned_pairs(context_id, new_pairs)
         
         await ctx.send(
             embed=self.create_embed(
@@ -1007,7 +1012,7 @@ class SecretSanta(Extension):
     )
     async def list_bans(self, ctx: SlashContext) -> None:
         context_id = self.get_context_id(ctx)
-        banned_pairs = self.read_banned_pairs(context_id)
+        banned_pairs = await self.read_banned_pairs(context_id)
         
         if not banned_pairs:
             await ctx.send(
@@ -1037,7 +1042,7 @@ class SecretSanta(Extension):
         # Extract context_id from custom_id
         context_id = ctx.custom_id.split(":", 1)[1]
         logger.debug(f"Join button clicked by {ctx.author.id} for session {context_id}")
-        session = self.get_session(context_id)
+        session = await self.get_session(context_id)
         
         if not session:
             logger.warning(f"Session not found for {context_id}")
@@ -1053,7 +1058,7 @@ class SecretSanta(Extension):
             return
         
         session.participants.append(ctx.author.id)
-        self.save_session(session)
+        await self.save_session(session)
         logger.info(f"User {ctx.author.id} ({ctx.author.username}) joined Secret Santa in {context_id} (total: {len(session.participants)})")
         
         # Update message
@@ -1065,7 +1070,7 @@ class SecretSanta(Extension):
         # Extract context_id from custom_id
         context_id = ctx.custom_id.split(":", 1)[1]
         logger.debug(f"Leave button clicked by {ctx.author.id} for session {context_id}")
-        session = self.get_session(context_id)
+        session = await self.get_session(context_id)
         
         if not session:
             await self._send_response(ctx, session, "Cette session n'existe plus.")
@@ -1080,7 +1085,7 @@ class SecretSanta(Extension):
             return
         
         session.participants.remove(ctx.author.id)
-        self.save_session(session)
+        await self.save_session(session)
         logger.info(f"User {ctx.author.id} ({ctx.author.username}) left Secret Santa in {context_id} (total: {len(session.participants)})")
         
         # Update message

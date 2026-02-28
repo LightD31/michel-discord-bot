@@ -5,7 +5,6 @@ des alertes automatiques dans un canal Discord configuré.
 """
 
 import os
-import json
 import asyncio
 from datetime import datetime
 from typing import Dict, List, Optional, Any
@@ -27,6 +26,7 @@ from interactions import (
 )
 
 from src import logutil
+from src.mongodb import mongo_manager
 from src.utils import load_config
 
 logger = logutil.init_logger(os.path.basename(__file__))
@@ -44,7 +44,8 @@ POLL_INTERVAL_MINUTES = 3
 COUNTRY_CODE = "FRA"
 COUNTRY_NAME = "France"
 
-STATE_FILE = "config/olympics_state.json"
+# MongoDB collection (global – pas lié à un serveur)
+_olympics_col = mongo_manager.get_global_collection("olympics_state")
 
 # Headers requis pour l'API Olympics.com (anti-bot)
 OLYMPICS_HEADERS = {
@@ -107,7 +108,6 @@ class Olympics(Extension):
         # État : ensemble des clés de médailles déjà connues
         # Format : "{eventCode}_{medalType}_{competitorCode}"
         self.known_medals: set[str] = set()
-        self._load_state()
 
     # ─── HTTP Client dédié Olympics ──────────────────────────────────────────────
 
@@ -157,24 +157,26 @@ class Olympics(Extension):
 
     # ─── Persistance ──────────────────────────────────────────────────────────
 
-    def _load_state(self) -> None:
-        """Charge l'état des médailles déjà notifiées."""
+    async def _load_state(self) -> None:
+        """Charge l'état des médailles déjà notifiées depuis MongoDB."""
         try:
-            with open(STATE_FILE, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                self.known_medals = set(data.get("known_medals", []))
-            logger.info(f"État Olympics chargé : {len(self.known_medals)} médailles connues")
-        except FileNotFoundError:
-            logger.info("Aucun fichier d'état Olympics trouvé, première exécution")
+            doc = await _olympics_col.find_one({"_id": "known_medals"})
+            if doc:
+                self.known_medals = set(doc.get("medals", []))
+                logger.info(f"État Olympics chargé : {len(self.known_medals)} médailles connues")
+            else:
+                logger.info("Aucun état Olympics trouvé, première exécution")
         except Exception as e:
             logger.error(f"Erreur lors du chargement de l'état Olympics : {e}")
 
-    def _save_state(self) -> None:
-        """Sauvegarde l'état des médailles notifiées."""
+    async def _save_state(self) -> None:
+        """Sauvegarde l'état des médailles notifiées dans MongoDB."""
         try:
-            os.makedirs(os.path.dirname(STATE_FILE), exist_ok=True)
-            with open(STATE_FILE, "w", encoding="utf-8") as f:
-                json.dump({"known_medals": list(self.known_medals)}, f, indent=2)
+            await _olympics_col.update_one(
+                {"_id": "known_medals"},
+                {"$set": {"medals": list(self.known_medals)}},
+                upsert=True,
+            )
         except Exception as e:
             logger.error(f"Erreur lors de la sauvegarde de l'état Olympics : {e}")
 
@@ -184,6 +186,7 @@ class Olympics(Extension):
     async def on_startup(self) -> None:
         """Initialise le canal et démarre la tâche de surveillance."""
         try:
+            await self._load_state()
             channel_id = module_config.get("olympicsChannelId")
             if channel_id:
                 self.channel = await self.bot.fetch_channel(channel_id)
@@ -209,7 +212,7 @@ class Olympics(Extension):
             for medal in medals:
                 key = self._medal_key(medal)
                 self.known_medals.add(key)
-            self._save_state()
+            await self._save_state()
             logger.info(f"Initialisation : {len(self.known_medals)} médailles FRA existantes enregistrées")
         except Exception as e:
             logger.error(f"Erreur lors de l'initialisation des médailles : {e}")
@@ -232,7 +235,7 @@ class Olympics(Extension):
 
             if new_medals:
                 logger.info(f"{len(new_medals)} nouvelle(s) médaille(s) détectée(s) pour la France !")
-                self._save_state()
+                await self._save_state()
 
                 # Récupérer le classement à jour pour le contexte
                 standings = await self._fetch_medal_standings()

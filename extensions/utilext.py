@@ -19,7 +19,6 @@ Recent improvements:
 import asyncio
 import os
 import uuid
-import json
 from dateutil.relativedelta import relativedelta
 from interactions import (
     TimestampStyles,
@@ -51,6 +50,7 @@ from interactions.client.utils import timestamp_converter
 from datetime import datetime, timedelta
 from typing import Optional
 from src import logutil
+from src.mongodb import mongo_manager
 from src.utils import format_poll, load_config
 
 logger = logutil.init_logger(os.path.basename(__file__))
@@ -58,8 +58,8 @@ config, module_config, enabled_servers = load_config("moduleUtils")
 # Convert strings to integers for Discord snowflake IDs
 # Type ignore because Discord IDs are ints but type checker expects Snowflake_Type
 enabled_servers_int = [int(s) for s in enabled_servers]  # type: ignore
-# Keep track of reminders
-reminders = {}
+# Keep track of reminders per guild: {guild_id: {remind_time: {user_id: [reminder]}}}
+guild_reminders: dict[str, dict] = {}
 
 # Poll emojis constant
 POLL_EMOJIS = [
@@ -510,36 +510,32 @@ class Utils(Extension):
     # Create a set of commands to define daily tasks
     async def load_reminders(self):
         """
-        Load reminders from a JSON file and populate the reminders dictionary.
+        Load reminders from per-guild MongoDB and populate guild_reminders.
         """
         try:
-            with open(
-                f"{config['misc']['dataFolder']}/taskreminders.json",
-                "r",
-                encoding="utf-8",
-            ) as file:
-                reminders_data = json.load(file)
-                for remind_time_str, user_reminders in reminders_data.items():
-                    remind_time = datetime.strptime(
-                        remind_time_str, "%Y-%m-%d %H:%M:%S"
-                    )
-                    reminders[remind_time] = user_reminders
-            logger.debug(reminders)
-        except FileNotFoundError:
-            pass
+            for guild_id in enabled_servers:
+                col = mongo_manager.get_guild_collection(guild_id, "task_reminders")
+                guild_reminders[guild_id] = {}
+                async for doc in col.find():
+                    remind_time = datetime.strptime(doc["_id"], "%Y-%m-%d %H:%M:%S")
+                    guild_reminders[guild_id][remind_time] = doc.get("user_reminders", {})
+            logger.debug(guild_reminders)
+        except Exception as e:
+            logger.error(f"Failed to load reminders: {e}")
 
-    async def save_reminders(self):
-        """Save reminders to JSON file with error handling."""
+    async def save_reminders(self, guild_id: Optional[str] = None):
+        """Save reminders to per-guild MongoDB. If guild_id given, save only that guild."""
         try:
-            reminders_data = {}
-            for remind_time, user_reminders in reminders.items():
-                reminders_data[remind_time.strftime("%Y-%m-%d %H:%M:%S")] = user_reminders
-            
-            os.makedirs(os.path.dirname(f"{config['misc']['dataFolder']}/taskreminders.json"), exist_ok=True)
-            with open(
-                f"{config['misc']['dataFolder']}/taskreminders.json", "w", encoding="utf-8"
-            ) as file:
-                json.dump(reminders_data, file, indent=4)
+            guilds = [guild_id] if guild_id else list(guild_reminders.keys())
+            for gid in guilds:
+                col = mongo_manager.get_guild_collection(gid, "task_reminders")
+                await col.delete_many({})
+                reminders = guild_reminders.get(gid, {})
+                for remind_time, user_reminders in reminders.items():
+                    await col.insert_one({
+                        "_id": remind_time.strftime("%Y-%m-%d %H:%M:%S"),
+                        "user_reminders": user_reminders,
+                    })
         except Exception as e:
             logger.error(f"Failed to save reminders: {e}")
 
@@ -642,6 +638,10 @@ class Utils(Extension):
                 remind_time += relativedelta(years=1)
 
         # Check if there are reminders for this remind_time, if not, initialize it
+        gid = str(ctx.guild_id)
+        if gid not in guild_reminders:
+            guild_reminders[gid] = {}
+        reminders = guild_reminders[gid]
         if remind_time not in reminders:
             reminders[remind_time] = {}
 
@@ -658,7 +658,7 @@ class Utils(Extension):
         )
 
         # Save the reminders
-        await self.save_reminders()
+        await self.save_reminders(gid)
 
         # Send confirmation message
         await ctx.send(
@@ -679,6 +679,8 @@ class Utils(Extension):
     )
     async def delete_reminder(self, ctx):
         user_id = str(ctx.author.id)
+        gid = str(ctx.guild_id)
+        reminders = guild_reminders.get(gid, {})
         buttons = []
         uuid_reminder_map = {}
         # Iterate through reminders to find user's reminders
@@ -734,7 +736,7 @@ class Utils(Extension):
                     del reminders[remind_time][user_id]
                     if not reminders[remind_time]:
                         del reminders[remind_time]
-                await self.save_reminders()
+                await self.save_reminders(gid)
                 await ctx.edit_origin(
                     content=f"Rappel à {remind_time.strftime('%H:%M')} supprimé.",
                     components=[],
@@ -754,62 +756,65 @@ class Utils(Extension):
     @Task.create(IntervalTrigger(minutes=1))
     async def check_reminders(self):
         current_time = datetime.now()
-        reminders_to_remove = set()
-        reminders_to_add = {}
+        guilds_to_save = set()
 
-        for remind_time, user_reminders in reminders.copy().items():
-            if remind_time <= current_time:
-                # Track frequency for potential rescheduling
-                recurring_reminders = {}
-                
-                for user_id, reminder_list in user_reminders.items():
-                    try:
-                        user = await self.bot.fetch_user(user_id)
-                        if user:
+        for gid, reminders in guild_reminders.items():
+            reminders_to_remove = set()
+            reminders_to_add = {}
+
+            for remind_time, user_reminders in list(reminders.items()):
+                if remind_time <= current_time:
+                    recurring_reminders = {}
+                    
+                    for user_id, reminder_list in user_reminders.items():
+                        try:
+                            user = await self.bot.fetch_user(user_id)
+                            if user:
+                                for reminder in reminder_list:
+                                    await user.send(reminder["message"])
+                                    logger.info(
+                                        f"Reminder sent to {user.display_name}: {reminder['message']}"
+                                    )
+                                    frequency = reminder.get("frequency")
+                                    if frequency:
+                                        if user_id not in recurring_reminders:
+                                            recurring_reminders[user_id] = []
+                                        recurring_reminders[user_id].append(reminder)
+                        except Exception as e:
+                            logger.warning(f"Failed to send reminder to user {user_id}: {e}")
+                            continue
+                    
+                    reminders_to_remove.add(remind_time)
+                    
+                    if recurring_reminders:
+                        for user_id, reminder_list in recurring_reminders.items():
                             for reminder in reminder_list:
-                                await user.send(reminder["message"])
-                                logger.info(
-                                    f"Reminder sent to {user.display_name}: {reminder['message']}"
-                                )
-                                # Collect recurring reminders for rescheduling
                                 frequency = reminder.get("frequency")
-                                if frequency:
-                                    if user_id not in recurring_reminders:
-                                        recurring_reminders[user_id] = []
-                                    recurring_reminders[user_id].append(reminder)
-                    except Exception as e:
-                        logger.warning(f"Failed to send reminder to user {user_id}: {e}")
-                        continue
-                
-                reminders_to_remove.add(remind_time)
-                
-                # Schedule recurring reminders
-                if recurring_reminders:
-                    for user_id, reminder_list in recurring_reminders.items():
-                        for reminder in reminder_list:
-                            frequency = reminder.get("frequency")
-                            if frequency == "daily":
-                                new_time = remind_time + timedelta(days=1)
-                            elif frequency == "weekly":
-                                new_time = remind_time + timedelta(weeks=1)
-                            elif frequency == "monthly":
-                                new_time = remind_time + relativedelta(months=1)
-                            elif frequency == "yearly":
-                                new_time = remind_time + relativedelta(years=1)
-                            else:
-                                continue
-                            
-                            if new_time not in reminders_to_add:
-                                reminders_to_add[new_time] = {}
-                            if user_id not in reminders_to_add[new_time]:
-                                reminders_to_add[new_time][user_id] = []
-                            reminders_to_add[new_time][user_id].append(reminder)
+                                if frequency == "daily":
+                                    new_time = remind_time + timedelta(days=1)
+                                elif frequency == "weekly":
+                                    new_time = remind_time + timedelta(weeks=1)
+                                elif frequency == "monthly":
+                                    new_time = remind_time + relativedelta(months=1)
+                                elif frequency == "yearly":
+                                    new_time = remind_time + relativedelta(years=1)
+                                else:
+                                    continue
+                                
+                                if new_time not in reminders_to_add:
+                                    reminders_to_add[new_time] = {}
+                                if user_id not in reminders_to_add[new_time]:
+                                    reminders_to_add[new_time][user_id] = []
+                                reminders_to_add[new_time][user_id].append(reminder)
 
-        if reminders_to_remove:
-            for remind_time in reminders_to_remove:
-                del reminders[remind_time]
-        if reminders_to_add:
-            reminders.update(reminders_to_add)
-        if reminders_to_remove or reminders_to_add:
-            await self.save_reminders()
+            if reminders_to_remove:
+                for remind_time in reminders_to_remove:
+                    del reminders[remind_time]
+                guilds_to_save.add(gid)
+            if reminders_to_add:
+                reminders.update(reminders_to_add)
+                guilds_to_save.add(gid)
+
+        for gid in guilds_to_save:
+            await self.save_reminders(gid)
 

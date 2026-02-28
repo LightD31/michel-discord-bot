@@ -45,21 +45,23 @@ last_votes = {}
 
 
 class VoteManager:
-    def __init__(self, file_path, discord2name):
-        self.file_path = file_path
+    def __init__(self, guild_id, discord2name):
+        self.guild_id = guild_id
         self.discord2name = discord2name
-        if not os.path.exists(file_path):
-            os.makedirs(os.path.dirname(file_path), exist_ok=True)
-            with open(file_path, "w", encoding="utf-8") as f:
-                json.dump({}, f)
+        self.collection = mongo_manager.get_guild_collection(guild_id, "addwithvotes")
 
-    def load_data(self):
-        with open(self.file_path, "r", encoding="utf-8") as f:
-            return json.load(f)
+    async def load_data(self):
+        data = {}
+        async for doc in self.collection.find():
+            song_id = doc["_id"]
+            data[song_id] = {k: v for k, v in doc.items() if k != "_id"}
+        return data
 
-    def save_data(self, data):
-        with open(self.file_path, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=4)
+    async def save_data(self, data):
+        for song_id, song_data in data.items():
+            await self.collection.update_one(
+                {"_id": song_id}, {"$set": song_data}, upsert=True
+            )
 
     def count_votes(self, data, song):
         song_data = data[song]
@@ -68,15 +70,17 @@ class VoteManager:
         users = [self.discord2name.get(user, f"<@{user}>") for user in song_data["votes"]]
         return yes_votes, no_votes, users
 
-    def check_deadline(self, song_id):
-        data = self.load_data()
-        return float(data[song_id]["deadline"]) <= datetime.now().timestamp()
+    async def check_deadline(self, song_id):
+        doc = await self.collection.find_one({"_id": song_id})
+        if doc is None:
+            return True
+        return float(doc["deadline"]) <= datetime.now().timestamp()
 
-    def save_vote(self, author_id, vote, song):
-        data = self.load_data()
+    async def save_vote(self, author_id, vote, song):
         logger.info("%s voted %s to add %s", author_id, vote, song)
-        data[song]["votes"][str(author_id)] = vote
-        self.save_data(data)
+        await self.collection.update_one(
+            {"_id": song}, {"$set": {f"votes.{author_id}": vote}}
+        )
 
 
 class ServerData:
@@ -93,7 +97,7 @@ class ServerData:
         self.recap_message_id = config.get("spotifyRecapMessageId")
 
         # Per-server MongoDB collections (motor async)
-        db = mongo_manager[f"Playlist_{guild_id}"]
+        db = mongo_manager.get_guild_db(guild_id)
         self.playlist_items_full = db["playlistItemsFull"]
         self.votes_db = db["votes"]
 
@@ -102,10 +106,13 @@ class ServerData:
         self.snapshot = {}
         self.reminders = {}
 
-        # Per-server vote manager
-        self.vote_manager = VoteManager(
-            f"{DATA_FOLDER}/addwithvotes_{guild_id}.json", self.discord2name
-        )
+        # Per-server vote manager (MongoDB-backed)
+        self.vote_manager = VoteManager(guild_id, self.discord2name)
+
+        # Per-server MongoDB collections for state
+        self.vote_infos_col = db["vote_infos"]
+        self.snapshot_col = db["snapshot"]
+        self.reminders_col = db["reminders"]
 
 
 # Build per-server data
@@ -137,48 +144,41 @@ class Spotify(interactions.Extension):
         self.new_titles_playlist.start()
 
     async def load_voteinfos(self, server: ServerData):
-        try:
-            with open(f"{DATA_FOLDER}/voteinfos_{server.guild_id}.json", "r", encoding="utf-8") as f:
-                server.vote_infos.update(json.load(f))
-        except FileNotFoundError:
-            pass
+        async for doc in server.vote_infos_col.find():
+            key = doc["_id"]
+            server.vote_infos[key] = {k: v for k, v in doc.items() if k != "_id"}
 
     async def load_snapshot(self, server: ServerData):
-        try:
-            with open(f"{DATA_FOLDER}/snapshot_{server.guild_id}.json", "r", encoding="utf-8") as f:
-                server.snapshot.update(json.load(f))
-        except FileNotFoundError:
+        doc = await server.snapshot_col.find_one({"_id": "current"})
+        if doc:
+            server.snapshot = {k: v for k, v in doc.items() if k != "_id"}
+        else:
             server.snapshot = {"snapshot": "", "duration": 0, "length": 0}
 
     async def save_snapshot(self, server: ServerData):
-        with open(f"{DATA_FOLDER}/snapshot_{server.guild_id}.json", "w", encoding="utf-8") as f:
-            json.dump(server.snapshot, f, indent=4)
+        await server.snapshot_col.update_one(
+            {"_id": "current"}, {"$set": server.snapshot}, upsert=True
+        )
 
     async def save_voteinfos(self, server: ServerData):
-        with open(f"{DATA_FOLDER}/voteinfos_{server.guild_id}.json", "w", encoding="utf-8") as f:
-            json.dump(server.vote_infos, f, indent=4)
+        for key, value in server.vote_infos.items():
+            await server.vote_infos_col.update_one(
+                {"_id": key}, {"$set": value}, upsert=True
+            )
 
     async def load_reminders(self, server: ServerData):
-        try:
-            with open(
-                f"{DATA_FOLDER}/reminderspotify_{server.guild_id}.json", "r", encoding="utf-8"
-            ) as file:
-                reminders_data = json.load(file)
-                for remind_time_str, user_ids in reminders_data.items():
-                    remind_time = datetime.strptime(
-                        remind_time_str, "%Y-%m-%d %H:%M:%S"
-                    )
-                    server.reminders[remind_time] = set(user_ids)
-        except FileNotFoundError:
-            pass
+        async for doc in server.reminders_col.find():
+            remind_time = datetime.strptime(doc["_id"], "%Y-%m-%d %H:%M:%S")
+            server.reminders[remind_time] = set(doc["user_ids"])
 
     async def save_reminders(self, server: ServerData):
-        reminders_data = {
-            remind_time.strftime("%Y-%m-%d %H:%M:%S"): list(user_ids)
-            for remind_time, user_ids in server.reminders.items()
-        }
-        with open(f"{DATA_FOLDER}/reminderspotify_{server.guild_id}.json", "w", encoding="utf-8") as file:
-            json.dump(reminders_data, file, indent=4)
+        # Clear and rewrite all reminders
+        await server.reminders_col.delete_many({})
+        for remind_time, user_ids in server.reminders.items():
+            await server.reminders_col.insert_one({
+                "_id": remind_time.strftime("%Y-%m-%d %H:%M:%S"),
+                "user_ids": list(user_ids),
+            })
 
     @interactions.slash_command(
         "addsong",
@@ -1044,7 +1044,7 @@ class Spotify(interactions.Extension):
             except spotipy.exceptions.SpotifyException:
                 await ctx.send("Cette chanson n'existe pas.", ephemeral=True)
                 logger.info("Commande /addsong utilisée avec une chanson inexistante")
-            data = server.vote_manager.load_data()
+            data = await server.vote_manager.load_data()
             # List all song_id in data
             song_ids = list(data.keys())
             if song["_id"] not in last_track_ids and song["_id"] not in song_ids:
@@ -1092,7 +1092,7 @@ class Spotify(interactions.Extension):
                     components=components,
                 )
                 # Append the song, message ID and track ID to the votewithadd dictionary
-                data = server.vote_manager.load_data()
+                data = await server.vote_manager.load_data()
                 data[song["_id"]] = {
                     "channel_id": ctx.channel.id,
                     "message_id": message.id,
@@ -1102,7 +1102,7 @@ class Spotify(interactions.Extension):
                         str(ctx.author.id): "yes",
                     },
                 }
-                server.vote_manager.save_data(data)
+                await server.vote_manager.save_data(data)
                 logger.info(
                     "%s ajouté au vote par %s", track["name"], ctx.author.display_name
                 )
@@ -1143,14 +1143,14 @@ class Spotify(interactions.Extension):
             return
         last_votes[user_id] = time.time()
         # check if the user has already voted and update their vote if necessary
-        data = server.vote_manager.load_data()
+        data = await server.vote_manager.load_data()
         if vote == "annuler":
             data[song_id]["votes"].pop(user_id, None)
-            server.vote_manager.save_data(data)
+            await server.vote_manager.save_data(data)
         else:
-            server.vote_manager.save_vote(user_id, vote, song_id)
+            await server.vote_manager.save_vote(user_id, vote, song_id)
         # count the votes
-        data = server.vote_manager.load_data()
+        data = await server.vote_manager.load_data()
         yes, no, users = server.vote_manager.count_votes(data, song_id)
         # update the message with the vote counts
         users = ", ".join(users)
@@ -1217,7 +1217,7 @@ class Spotify(interactions.Extension):
             song_id (str): The song ID to end the vote for.
             server (ServerData): The server data.
         """
-        data = server.vote_manager.load_data()
+        data = await server.vote_manager.load_data()
         yes_votes, no_votes, users = server.vote_manager.count_votes(data, song_id)
         # Get the message
         channel = await self.bot.fetch_channel(data[song_id]["channel_id"])
@@ -1270,7 +1270,7 @@ class Spotify(interactions.Extension):
             logger.info("La chanson n'a pas été ajoutée à la playlist.")
         # Remove the vote from the data dictionary
         data.pop(song_id)
-        server.vote_manager.save_data(data)
+        await server.vote_manager.save_data(data)
 
     @interactions.Task.create(
         interactions.OrTrigger(
@@ -1283,15 +1283,15 @@ class Spotify(interactions.Extension):
         """
         for server in SERVERS.values():
             try:
-                data = server.vote_manager.load_data()
+                data = await server.vote_manager.load_data()
                 songs_to_end = []
                 for song_id in data:
-                    if server.vote_manager.check_deadline(song_id):
+                    if await server.vote_manager.check_deadline(song_id):
                         await self.endvote(song_id, server)
                         songs_to_end.append(song_id)
                 for song_id in songs_to_end:
                     data.pop(song_id)
-                server.vote_manager.save_data(data)
+                await server.vote_manager.save_data(data)
             except Exception as e:
                 logger.error(
                     "Error in check_for_end for server %s: %s", server.guild_id, e

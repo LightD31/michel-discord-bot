@@ -138,10 +138,9 @@ class XP(Extension):
     def __init__(self, bot: client):
         self.bot: Client = bot
         
-        # MongoDB connection via global motor manager
-        self.db = mongo_manager["Playlist"]
+        # MongoDB connection via global motor manager (per-guild DB)
         self._db_connected = True
-        logger.info("XP module using global motor MongoDB manager")
+        logger.info("XP module using global motor MongoDB manager (per-guild databases)")
         
         # Initialize caches
         self._user_cache = TTLCache(ttl=USER_CACHE_TTL)
@@ -174,7 +173,7 @@ class XP(Extension):
             return
         
         try:
-            collection = self.db[guild_id]
+            collection = mongo_manager.get_guild_collection(guild_id, "xp")
             # Create index on xp field for faster sorting (descending for leaderboard)
             await collection.create_index([("xp", pymongo.DESCENDING)], background=True)
             # Create index on time field for cooldown checks
@@ -229,7 +228,7 @@ class XP(Extension):
         await self._ensure_guild_collection(guild_id, message.guild.name)
         
         try:
-            stats = await self.db[guild_id].find_one({"_id": user_id})
+            stats = await mongo_manager.get_guild_collection(guild_id, "xp").find_one({"_id": user_id})
         except pymongo.errors.PyMongoError as e:
             logger.error("Database error when fetching user stats: %s", e)
             return
@@ -260,13 +259,14 @@ class XP(Extension):
         return True
 
     async def _ensure_guild_collection(self, guild_id: str, guild_name: str) -> None:
-        """Create a new collection for the guild if it doesn't exist."""
+        """Create the xp collection for the guild if it doesn't exist."""
         try:
-            existing = await self.db.list_collection_names()
-            if guild_id not in existing:
-                await self.db.create_collection(guild_id)
+            guild_db = mongo_manager.get_guild_db(guild_id)
+            existing = await guild_db.list_collection_names()
+            if "xp" not in existing:
+                await guild_db.create_collection("xp")
                 await self._ensure_indexes(guild_id)
-                logger.debug("Created a new collection for %s.", guild_name)
+                logger.debug("Created xp collection for %s.", guild_name)
         except pymongo.errors.PyMongoError as e:
             logger.error("Failed to create collection for %s: %s", guild_name, e)
 
@@ -284,7 +284,7 @@ class XP(Extension):
             "lvl": 0,
         }
         try:
-            await self.db[guild_id].insert_one(new_user)
+            await mongo_manager.get_guild_collection(guild_id, "xp").insert_one(new_user)
             # Invalidate rank cache for this guild
             self._invalidate_rank_cache(guild_id)
             logger.debug("Added %s to the database.", user_id)
@@ -319,7 +319,7 @@ class XP(Extension):
         new_msg_count = current_msg + 1
         
         try:
-            await self.db[guild_id].update_one(
+            await mongo_manager.get_guild_collection(guild_id, "xp").update_one(
                 {"_id": user_id},
                 {"$set": {
                     "xp": new_xp,
@@ -342,7 +342,7 @@ class XP(Extension):
 
     async def _handle_level_up(self, guild_id: str, user_id: str, new_level: int, message: Message) -> None:
         """Handle user level up notification."""
-        await self.db[guild_id].update_one(
+        await mongo_manager.get_guild_collection(guild_id, "xp").update_one(
             {"_id": user_id}, 
             {"$set": {"lvl": new_level}}, 
             upsert=True
@@ -394,7 +394,7 @@ class XP(Extension):
                 }
             ]
             
-            result = await self.db[guild_id].aggregate(pipeline).to_list(length=None)
+            result = await mongo_manager.get_guild_collection(guild_id, "xp").aggregate(pipeline).to_list(length=None)
             
             if result:
                 rank = result[0]["rank"]
@@ -410,7 +410,7 @@ class XP(Extension):
     async def _get_user_rank_fallback(self, guild_id: str, user_id: str) -> Optional[int]:
         """Fallback method to get user rank without aggregation."""
         try:
-            rankings = self.db[guild_id].find({}, {"_id": 1}).sort("xp", -1)
+            rankings = mongo_manager.get_guild_collection(guild_id, "xp").find({}, {"_id": 1}).sort("xp", -1)
             rank = 0
             async for entry in rankings:
                 rank += 1
@@ -447,7 +447,7 @@ class XP(Extension):
         guild_id = str(ctx.guild.id)
         
         try:
-            stats = await self.db[guild_id].find_one({"_id": str(target_user.id)})
+            stats = await mongo_manager.get_guild_collection(guild_id, "xp").find_one({"_id": str(target_user.id)})
         except pymongo.errors.PyMongoError as e:
             logger.error("Database error in rank command: %s", e)
             await ctx.send("❌ Erreur lors de la récupération des statistiques.", ephemeral=True)
@@ -522,7 +522,7 @@ class XP(Extension):
             )]
         
         try:
-            rankings_cursor = self.db[str(guild.id)].find().sort("xp", -1)
+            rankings_cursor = mongo_manager.get_guild_collection(str(guild.id), "xp").find().sort("xp", -1)
             rankings = await rankings_cursor.to_list(length=None)
         except pymongo.errors.PyMongoError as e:
             logger.error("Database error building leaderboard: %s", e)

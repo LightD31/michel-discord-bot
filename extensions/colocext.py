@@ -81,7 +81,7 @@ class ColocExtension(Extension):
     def __init__(self, bot: Client):
         self.bot = bot
         self.api_client = ZuniversAPIClient()
-        self.storage = StorageManager(config["misc"]["dataFolder"])
+        self.storage = StorageManager(config["misc"]["dataFolder"], guild_id=enabled_servers[0])
         self.reminders = ReminderCollection()
         self.event_state = EventState()
 
@@ -91,8 +91,8 @@ class ColocExtension(Extension):
     async def on_startup(self):
         """Initialize the extension on bot startup."""
         # Load persistent data
-        self.reminders = self.storage.load_reminders()
-        self.event_state = self.storage.load_event_state()
+        self.reminders = await self.storage.load_reminders()
+        self.event_state = await self.storage.load_event_state()
         
         # Start scheduled tasks
         self.daily_journa_check.start()
@@ -201,7 +201,7 @@ class ColocExtension(Extension):
         else:
             self.reminders.add_reminder(remind_time, user_id, ReminderType(type))
 
-        self.storage.save_reminders(self.reminders)
+        await self.storage.save_reminders(self.reminders)
 
         await ctx.send(
             f"Rappel ajouté à {remind_time.strftime('%H:%M')}", ephemeral=True
@@ -253,7 +253,7 @@ class ColocExtension(Extension):
             reminder_type = ReminderType(reminder_type_str)
 
             self.reminders.remove_reminder(remind_time, user_id, reminder_type)
-            self.storage.save_reminders(self.reminders)
+            await self.storage.save_reminders(self.reminders)
 
             await button_ctx.ctx.edit_origin(
                 content=f"Rappel {reminder_type.value} à {remind_time.strftime('%H:%M')} supprimé.",
@@ -304,7 +304,7 @@ class ColocExtension(Extension):
                         next_remind, user_id, ReminderType(type_name)
                     )
 
-        self.storage.save_reminders(self.reminders)
+        await self.storage.save_reminders(self.reminders)
 
     async def _process_reminder(
         self,
@@ -395,7 +395,7 @@ class ColocExtension(Extension):
             await self._check_events_for_rule_set(channel, rule_set)
 
         await self._check_hardcore_season(channel)
-        self.storage.save_event_state(self.event_state)
+        await self.storage.save_event_state(self.event_state)
 
     async def _check_events_for_rule_set(
         self, channel: GuildText, rule_set: ReminderType

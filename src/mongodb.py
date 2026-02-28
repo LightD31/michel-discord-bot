@@ -1,21 +1,28 @@
 """
 Global MongoDB manager using motor (async driver).
 
+Architecture:
+    - Each Discord guild gets its own database: ``guild_{guild_id}``
+      with one collection per module (birthday, xp, tricount_groups, …).
+    - Truly global data (olympics, task_reminders, …) lives in the
+      ``global`` database.
+
 Usage:
     from src.mongodb import mongo_manager
 
-    # Get a database
-    db = mongo_manager.get_database("Playlist")
+    # Per-guild helpers
+    db  = mongo_manager.get_guild_db("123456789")
+    col = mongo_manager.get_guild_collection("123456789", "birthday")
 
-    # Get a collection
-    collection = mongo_manager.get_collection("Playlist", "birthday")
+    # Global helpers
+    col = mongo_manager.get_global_collection("olympics_state")
 
-    # Or use the shorthand
-    collection = mongo_manager["Playlist"]["birthday"]
+    # Low-level / legacy access
+    db  = mongo_manager["some_db"]["some_collection"]
 """
 
 import os
-from typing import Optional
+from typing import Optional, Union
 
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase, AsyncIOMotorCollection
 
@@ -23,6 +30,10 @@ from src import logutil
 from src.utils import load_config
 
 logger = logutil.init_logger(os.path.basename(__file__))
+
+# Database naming conventions
+GLOBAL_DB_NAME = "global"
+GUILD_DB_PREFIX = "guild_"
 
 
 class MongoManager:
@@ -69,6 +80,31 @@ class MongoManager:
     def client(self) -> AsyncIOMotorClient:
         """Return the underlying motor client (creates it if needed)."""
         return self._ensure_client()
+
+    # --- Per-guild helpers -------------------------------------------
+
+    def get_guild_db(self, guild_id: Union[str, int]) -> AsyncIOMotorDatabase:
+        """Return the database for a specific guild."""
+        return self.client[f"{GUILD_DB_PREFIX}{guild_id}"]
+
+    def get_guild_collection(
+        self, guild_id: Union[str, int], collection_name: str
+    ) -> AsyncIOMotorCollection:
+        """Return a collection inside a guild's database."""
+        return self.client[f"{GUILD_DB_PREFIX}{guild_id}"][collection_name]
+
+    # --- Global helpers ----------------------------------------------
+
+    @property
+    def global_db(self) -> AsyncIOMotorDatabase:
+        """Return the global database (for non-guild-specific data)."""
+        return self.client[GLOBAL_DB_NAME]
+
+    def get_global_collection(self, collection_name: str) -> AsyncIOMotorCollection:
+        """Return a collection in the global database."""
+        return self.client[GLOBAL_DB_NAME][collection_name]
+
+    # --- Low-level / legacy helpers ----------------------------------
 
     def get_database(self, name: str) -> AsyncIOMotorDatabase:
         """Return a motor database by name."""

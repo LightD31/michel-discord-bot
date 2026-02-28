@@ -27,10 +27,15 @@ config, module_config, enabled_servers = load_config("moduleTricount")
 class TricountClass(Extension):
     def __init__(self, bot):
         self.bot: Client = bot
-        # Database connection via global motor manager
-        db = mongo_manager["Playlist"]
-        self.groups_collection = db["tricount_groups"]
-        self.expenses_collection = db["tricount_expenses"]
+
+    # Per-guild collection helpers
+    @staticmethod
+    def _groups_col(guild_id):
+        return mongo_manager.get_guild_collection(str(guild_id), "tricount_groups")
+
+    @staticmethod
+    def _expenses_col(guild_id):
+        return mongo_manager.get_guild_collection(str(guild_id), "tricount_expenses")
 
     @slash_command(
         name="tricount",
@@ -64,9 +69,8 @@ class TricountClass(Extension):
             return
             
         # Vérifier si un groupe avec ce nom existe déjà sur ce serveur
-        existing_group = await self.groups_collection.find_one({
-            "name": nom,
-            "server": ctx.guild.id
+        existing_group = await self._groups_col(ctx.guild.id).find_one({
+            "name": nom
         })
         
         if existing_group:
@@ -77,14 +81,13 @@ class TricountClass(Extension):
         group_data = {
             "name": nom,
             "description": description or "",
-            "server": ctx.guild.id,
             "creator": ctx.author.id,
             "members": [ctx.author.id],
             "created_at": datetime.now(),
             "is_active": True
         }
         
-        result = await self.groups_collection.insert_one(group_data)
+        result = await self._groups_col(ctx.guild.id).insert_one(group_data)
         group_id = result.inserted_id
         
         embed = Embed(
@@ -123,9 +126,8 @@ class TricountClass(Extension):
             return
             
         # Trouver le groupe
-        group = await self.groups_collection.find_one({
+        group = await self._groups_col(ctx.guild.id).find_one({
             "name": nom,
-            "server": ctx.guild.id,
             "is_active": True
         })
         
@@ -139,7 +141,7 @@ class TricountClass(Extension):
             return
             
         # Ajouter l'utilisateur au groupe
-        await self.groups_collection.update_one(
+        await self._groups_col(ctx.guild.id).update_one(
             {"_id": group["_id"]},
             {"$push": {"members": ctx.author.id}}
         )
@@ -166,8 +168,7 @@ class TricountClass(Extension):
             return
             
         input_text = ctx.input_text.lower()
-        groups = await self.groups_collection.find({
-            "server": ctx.guild.id,
+        groups = await self._groups_col(ctx.guild.id).find({
             "is_active": True
         }).to_list(length=None)
         
@@ -200,9 +201,8 @@ class TricountClass(Extension):
             return
             
         # Trouver le groupe
-        group = await self.groups_collection.find_one({
+        group = await self._groups_col(ctx.guild.id).find_one({
             "name": nom,
-            "server": ctx.guild.id,
             "is_active": True
         })
         
@@ -216,7 +216,7 @@ class TricountClass(Extension):
             return
             
         # Retirer l'utilisateur du groupe
-        await self.groups_collection.update_one(
+        await self._groups_col(ctx.guild.id).update_one(
             {"_id": group["_id"]},
             {"$pull": {"members": ctx.author.id}}
         )
@@ -243,8 +243,7 @@ class TricountClass(Extension):
             return
             
         input_text = ctx.input_text.lower()
-        groups = await self.groups_collection.find({
-            "server": ctx.guild.id,
+        groups = await self._groups_col(ctx.guild.id).find({
             "is_active": True,
             "members": ctx.author.id
         }).to_list(length=None)
@@ -311,9 +310,8 @@ class TricountClass(Extension):
             return
             
         # Trouver le groupe
-        group = await self.groups_collection.find_one({
+        group = await self._groups_col(ctx.guild.id).find_one({
             "name": groupe,
-            "server": ctx.guild.id,
             "is_active": True
         })
         
@@ -335,7 +333,6 @@ class TricountClass(Extension):
         expense_data = {
             "group_id": group["_id"],
             "group_name": groupe,
-            "server": ctx.guild.id,
             "amount": round(montant, 2),
             "description": description,
             "payer": payeur.id,
@@ -344,7 +341,7 @@ class TricountClass(Extension):
             "date": datetime.now(),
         }
         
-        await self.expenses_collection.insert_one(expense_data)
+        await self._expenses_col(ctx.guild.id).insert_one(expense_data)
         
         embed = Embed(
             title="✅ Dépense ajoutée",
@@ -377,8 +374,7 @@ class TricountClass(Extension):
             return
             
         input_text = ctx.input_text.lower()
-        groups = await self.groups_collection.find({
-            "server": ctx.guild.id,
+        groups = await self._groups_col(ctx.guild.id).find({
             "is_active": True,
             "members": ctx.author.id
         }).to_list(length=None)
@@ -450,9 +446,8 @@ class TricountClass(Extension):
             return
             
         # Trouver le groupe
-        group = await self.groups_collection.find_one({
+        group = await self._groups_col(ctx.guild.id).find_one({
             "name": groupe,
-            "server": ctx.guild.id,
             "is_active": True
         })
         
@@ -467,7 +462,7 @@ class TricountClass(Extension):
             
         # Trouver la dépense
         try:
-            expense = await self.expenses_collection.find_one({
+            expense = await self._expenses_col(ctx.guild.id).find_one({
                 "_id": ObjectId(depense_id),
                 "group_id": group["_id"]
             })
@@ -512,7 +507,7 @@ class TricountClass(Extension):
             return
             
         # Mettre à jour la dépense
-        await self.expenses_collection.update_one(
+        await self._expenses_col(ctx.guild.id).update_one(
             {"_id": ObjectId(depense_id)},
             {"$set": modifications}
         )
@@ -545,8 +540,7 @@ class TricountClass(Extension):
             return
             
         input_text = ctx.input_text.lower()
-        groups = await self.groups_collection.find({
-            "server": ctx.guild.id,
+        groups = await self._groups_col(ctx.guild.id).find({
             "is_active": True,
             "members": ctx.author.id
         }).to_list(length=None)
@@ -573,8 +567,7 @@ class TricountClass(Extension):
         input_text = ctx.input_text.lower()
         
         # Récupérer tous les groupes de l'utilisateur
-        user_groups = await self.groups_collection.find({
-            "server": ctx.guild.id,
+        user_groups = await self._groups_col(ctx.guild.id).find({
             "is_active": True,
             "members": ctx.author.id
         }).to_list(length=None)
@@ -586,7 +579,7 @@ class TricountClass(Extension):
         group_ids = [group["_id"] for group in user_groups]
         
         # Récupérer les dépenses que l'utilisateur peut modifier
-        expenses = await self.expenses_collection.find({
+        expenses = await self._expenses_col(ctx.guild.id).find({
             "group_id": {"$in": group_ids},
             "$or": [
                 {"added_by": ctx.author.id},
@@ -650,9 +643,8 @@ class TricountClass(Extension):
             return
             
         # Trouver le groupe
-        group = await self.groups_collection.find_one({
+        group = await self._groups_col(ctx.guild.id).find_one({
             "name": groupe,
-            "server": ctx.guild.id,
             "is_active": True
         })
         
@@ -667,7 +659,7 @@ class TricountClass(Extension):
             
         # Récupérer les dépenses du groupe (les plus récentes d'abord)
         limit_value = limite if limite is not None else 10
-        expenses = await self.expenses_collection.find({"group_id": group["_id"]}).sort("date", -1).limit(limit_value).to_list(length=None)
+        expenses = await self._expenses_col(ctx.guild.id).find({"group_id": group["_id"]}).sort("date", -1).limit(limit_value).to_list(length=None)
         
         if not expenses:
             embed = Embed(
@@ -737,8 +729,7 @@ class TricountClass(Extension):
             return
             
         input_text = ctx.input_text.lower()
-        groups = await self.groups_collection.find({
-            "server": ctx.guild.id,
+        groups = await self._groups_col(ctx.guild.id).find({
             "is_active": True,
             "members": ctx.author.id
         }).to_list(length=None)
@@ -771,9 +762,8 @@ class TricountClass(Extension):
             return
             
         # Trouver le groupe
-        group = await self.groups_collection.find_one({
+        group = await self._groups_col(ctx.guild.id).find_one({
             "name": groupe,
-            "server": ctx.guild.id,
             "is_active": True
         })
         
@@ -787,7 +777,7 @@ class TricountClass(Extension):
             return
             
         # Récupérer toutes les dépenses du groupe
-        expenses = await self.expenses_collection.find({"group_id": group["_id"]}).to_list(length=None)
+        expenses = await self._expenses_col(ctx.guild.id).find({"group_id": group["_id"]}).to_list(length=None)
         
         if not expenses:
             embed = Embed(
@@ -850,8 +840,7 @@ class TricountClass(Extension):
             return
             
         input_text = ctx.input_text.lower()
-        groups = await self.groups_collection.find({
-            "server": ctx.guild.id,
+        groups = await self._groups_col(ctx.guild.id).find({
             "is_active": True,
             "members": ctx.author.id
         }).to_list(length=None)
@@ -877,8 +866,7 @@ class TricountClass(Extension):
             return
             
         # Récupérer tous les groupes dont l'utilisateur est membre
-        groups = await self.groups_collection.find({
-            "server": ctx.guild.id,
+        groups = await self._groups_col(ctx.guild.id).find({
             "is_active": True,
             "members": ctx.author.id
         }).to_list(length=None)
@@ -900,8 +888,8 @@ class TricountClass(Extension):
         
         for group in groups[:10]:  # Limiter à 10 groupes pour éviter les embeds trop longs
             # Calculer le nombre de dépenses
-            expense_count = await self.expenses_collection.count_documents({"group_id": group["_id"]})
-            expenses_for_group = await self.expenses_collection.find({"group_id": group["_id"]}).to_list(length=None)
+            expense_count = await self._expenses_col(ctx.guild.id).count_documents({"group_id": group["_id"]})
+            expenses_for_group = await self._expenses_col(ctx.guild.id).find({"group_id": group["_id"]}).to_list(length=None)
             total_amount = sum(
                 expense["amount"] 
                 for expense in expenses_for_group

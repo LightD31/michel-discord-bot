@@ -4,7 +4,6 @@ and monitors specific sensors for maintenance notifications.
 """
 
 import os
-import json
 
 import aiohttp
 from interactions import (
@@ -25,6 +24,7 @@ from interactions import (
 )
 
 from src import logutil
+from src.mongodb import mongo_manager
 from src.utils import load_config
 
 logger = logutil.init_logger(os.path.basename(__file__))
@@ -743,28 +743,30 @@ class Uptime(Extension):
 
     async def load_maintenance_monitors(self):
         """
-        Charge les configurations de surveillance depuis le fichier JSON.
+        Charge les configurations de surveillance depuis MongoDB (per-guild DB).
         """
         try:
-            file_path = f"{config['misc']['dataFolder']}/uptime_maintenance_monitors.json"
-            with open(file_path, "r", encoding="utf-8") as file:
-                self.maintenance_monitors = json.load(file)
-            logger.info(f"Configurations de surveillance chargées: {len(self.maintenance_monitors)} serveurs")
-        except FileNotFoundError:
-            logger.info("Aucun fichier de surveillance trouvé, démarrage avec une configuration vide")
             self.maintenance_monitors = {}
+            for guild_id in enabled_servers:
+                col = mongo_manager.get_guild_collection(guild_id, "uptime_monitors")
+                doc = await col.find_one({"_id": "config"})
+                if doc:
+                    self.maintenance_monitors[guild_id] = {k: v for k, v in doc.items() if k != "_id"}
+            logger.info(f"Configurations de surveillance chargées: {len(self.maintenance_monitors)} serveurs")
         except Exception as error:
             logger.error(f"Erreur lors du chargement des configurations: {error}")
             self.maintenance_monitors = {}
 
     async def save_maintenance_monitors(self):
         """
-        Sauvegarde les configurations de surveillance dans le fichier JSON.
+        Sauvegarde les configurations de surveillance dans MongoDB (per-guild DB).
         """
         try:
-            file_path = f"{config['misc']['dataFolder']}/uptime_maintenance_monitors.json"
-            with open(file_path, "w", encoding="utf-8") as file:
-                json.dump(self.maintenance_monitors, file, indent=4, ensure_ascii=False)
+            for guild_id, monitors in self.maintenance_monitors.items():
+                col = mongo_manager.get_guild_collection(guild_id, "uptime_monitors")
+                await col.update_one(
+                    {"_id": "config"}, {"$set": monitors}, upsert=True
+                )
         except Exception as error:
             logger.error(f"Erreur lors de la sauvegarde des configurations: {error}")
 

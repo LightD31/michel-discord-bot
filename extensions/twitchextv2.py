@@ -2,7 +2,6 @@ import asyncio
 import os
 import signal
 from datetime import datetime, timedelta
-import json
 from typing import Optional, Union, Dict, List
 
 import aiohttp
@@ -46,6 +45,7 @@ from twitchAPI.twitch import Twitch
 from twitchAPI.type import AuthScope, TwitchResourceNotFound
 
 from src import logutil
+from src.mongodb import mongo_manager
 from src.utils import load_config
 
 logger = logutil.init_logger(os.path.basename(__file__))
@@ -929,25 +929,17 @@ class TwitchExt2(Extension):
 
             try:
                 emotes = await self.twitch.get_channel_emotes(streamer.user_id)
-                emote_file = f"data/emotes_{streamer.guild_id}_{streamer.streamer_id}.json"
+                emote_col = mongo_manager.get_guild_collection(streamer.guild_id, f"twitch_emotes_{streamer.streamer_id}")
 
-                # Load existing emotes or create empty dict
+                # Load existing emotes from MongoDB
                 # Data structure: {emote_id: {"name": str, "cached_file": str (optional)}}
                 data = {}
                 try:
-                    if os.path.exists(emote_file):
-                        with open(emote_file, "r") as file:
-                            data = json.load(file)
-                            # Migration: convert old format to new format
-                            for emote_id, value in list(data.items()):
-                                if isinstance(value, str):
-                                    # Old format: {id: name}
-                                    data[emote_id] = {"name": value, "cached_file": None}
-                                elif isinstance(value, dict) and "image_url" in value:
-                                    # Previous format with image_url: convert to cached_file
-                                    data[emote_id] = {"name": value["name"], "cached_file": None}
+                    async for doc in emote_col.find():
+                        emote_id = doc["_id"]
+                        data[emote_id] = {"name": doc.get("name", ""), "cached_file": doc.get("cached_file")}
                 except Exception as e:
-                    logger.error(f"Error loading emotes file for {streamer.streamer_id}: {e}")
+                    logger.error(f"Error loading emotes from MongoDB for {streamer.streamer_id}: {e}")
 
                 # Check for new and deleted emotes
                 new_emotes = [emote for emote in emotes if emote.id not in data]
@@ -1076,10 +1068,13 @@ class TwitchExt2(Extension):
                         cached_file = await self.download_emote_image(emote.id, image_url, streamer.guild_id, streamer.streamer_id)
                         data[emote.id]["cached_file"] = cached_file
 
-                # Save updated emotes
+                # Save updated emotes to MongoDB
                 if truly_new_emotes or truly_deleted_emotes or replaced_emotes:
-                    with open(emote_file, "w") as file:
-                        json.dump(data, file, indent=4)
+                    # Sync MongoDB with current data dict
+                    await emote_col.delete_many({})
+                    if data:
+                        docs = [{"_id": eid, "name": edata["name"], "cached_file": edata.get("cached_file")} for eid, edata in data.items()]
+                        await emote_col.insert_many(docs)
 
             except Exception as e:
                 logger.error(f"Error checking emotes for {streamer.streamer_id}: {e}")

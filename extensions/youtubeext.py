@@ -1,5 +1,4 @@
 import datetime
-import json
 import os
 
 import aiohttp
@@ -7,6 +6,7 @@ import isodate
 from interactions import BaseChannel, Client, Extension, IntervalTrigger, Task, listen
 
 from src import logutil
+from src.mongodb import mongo_manager
 from src.utils import load_config, fetch
 
 logger = logutil.init_logger(os.path.basename(__file__))
@@ -38,7 +38,7 @@ class YoutubeClass(Extension):
             for user in module_config[str(server)]["youtubeChannelList"]:
                 uploads = await self.get_uploads(user)
                 video_id = await self.get_video_id(uploads)
-                youtube_data = self.get_youtube_data()
+                youtube_data = await self.get_youtube_data()
                 if self.is_video_already_checked(server, user, video_id, youtube_data):
                     continue
                 youtube_data = self.update_youtube_data(
@@ -46,7 +46,7 @@ class YoutubeClass(Extension):
                 )
                 if await self.is_video_valid(video_id):
                     await channel.send(f"https://www.youtube.com/watch?v={video_id}")
-                self.save_youtube_data(youtube_data)
+                await self.save_youtube_data(youtube_data)
 
     async def get_uploads(self, user):
         if user not in self.playlist_cache:
@@ -65,12 +65,14 @@ class YoutubeClass(Extension):
         logger.debug(data)
         return data["items"][0]["snippet"]["resourceId"]["videoId"]
 
-    def get_youtube_data(self):
-        try:
-            with open("data/youtube.json", "r", encoding="utf-8") as file:
-                return json.load(file)
-        except FileNotFoundError:
-            return {}
+    async def get_youtube_data(self):
+        data = {}
+        for server_id in enabled_servers:
+            col = mongo_manager.get_guild_collection(server_id, "youtube")
+            doc = await col.find_one({"_id": "youtube_data"})
+            if doc:
+                data[str(server_id)] = {k: v for k, v in doc.items() if k != "_id"}
+        return data
 
     def is_video_already_checked(self, server, user, video_id, youtube_data):
         return (
@@ -100,6 +102,9 @@ class YoutubeClass(Extension):
             logger.info("New video is a live stream")
         return False
 
-    def save_youtube_data(self, youtube_data):
-        with open("data/youtube.json", "w", encoding="utf-8") as file:
-            json.dump(youtube_data, file, indent=4)
+    async def save_youtube_data(self, youtube_data):
+        for server_id, users in youtube_data.items():
+            col = mongo_manager.get_guild_collection(server_id, "youtube")
+            await col.update_one(
+                {"_id": "youtube_data"}, {"$set": users}, upsert=True
+            )

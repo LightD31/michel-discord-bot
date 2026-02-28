@@ -109,77 +109,80 @@ class BirthdayClass(Extension):
     def __init__(self, bot: Client) -> None:
         self.bot = bot
 
-        # Database connection via global motor manager
-        try:
-            db = mongo_manager["Playlist"]
-            self.collection = db["birthday"]
-        except Exception as e:
-            logger.error("Failed to initialize database: %s", e)
-            raise DatabaseError(f"Database initialization failed: {e}")
+    # ------------------------------------------------------------------
+    # Per-guild collection helper
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _get_col(guild_id):
+        """Retourne la collection birthday du guild."""
+        return mongo_manager.get_guild_collection(str(guild_id), "birthday")
 
     # ------------------------------------------------------------------
     # Ensure indexes (called once on startup)
     # ------------------------------------------------------------------
 
     async def _ensure_indexes(self) -> None:
-        """Crée les index nécessaires (appelé au démarrage)."""
-        try:
-            await self.collection.create_index(
-                [("user", pymongo.ASCENDING), ("server", pymongo.ASCENDING)],
-                unique=True,
-            )
-        except Exception as e:
-            logger.error("Failed to create indexes: %s", e)
+        """Crée les index nécessaires pour chaque serveur activé."""
+        for guild_id in enabled_servers:
+            try:
+                col = self._get_col(guild_id)
+                await col.create_index(
+                    [("user", pymongo.ASCENDING)],
+                    unique=True,
+                )
+            except Exception as e:
+                logger.error("Failed to create indexes for guild %s: %s", guild_id, e)
 
     # ------------------------------------------------------------------
     # Database helpers (motor async natif)
     # ------------------------------------------------------------------
 
-    async def _db_find_one(self, query: dict) -> Optional[dict]:
+    async def _db_find_one(self, guild_id, query: dict) -> Optional[dict]:
         """Trouve un document."""
         try:
-            return await self.collection.find_one(query)
+            return await self._get_col(guild_id).find_one(query)
         except Exception as e:
             logger.error("DB find_one failed: %s", e)
             raise DatabaseError(f"Failed to query database: {e}")
 
-    async def _db_find(self, query: dict) -> list[dict]:
+    async def _db_find(self, guild_id, query: dict) -> list[dict]:
         """Trouve plusieurs documents."""
         try:
-            return await self.collection.find(query).to_list(length=None)
+            return await self._get_col(guild_id).find(query).to_list(length=None)
         except Exception as e:
             logger.error("DB find failed: %s", e)
             raise DatabaseError(f"Failed to query database: {e}")
 
-    async def _db_update_one(self, query: dict, update: dict) -> None:
+    async def _db_update_one(self, guild_id, query: dict, update: dict) -> None:
         """Met à jour un document."""
         try:
-            await self.collection.update_one(query, update)
+            await self._get_col(guild_id).update_one(query, update)
         except Exception as e:
             logger.error("DB update_one failed: %s", e)
             raise DatabaseError(f"Failed to update database: {e}")
 
-    async def _db_insert_one(self, document: dict) -> None:
+    async def _db_insert_one(self, guild_id, document: dict) -> None:
         """Insère un document."""
         try:
-            await self.collection.insert_one(document)
+            await self._get_col(guild_id).insert_one(document)
         except Exception as e:
             logger.error("DB insert_one failed: %s", e)
             raise DatabaseError(f"Failed to insert into database: {e}")
 
-    async def _db_delete_one(self, query: dict) -> int:
+    async def _db_delete_one(self, guild_id, query: dict) -> int:
         """Supprime un document. Retourne le nombre supprimé."""
         try:
-            result = await self.collection.delete_one(query)
+            result = await self._get_col(guild_id).delete_one(query)
             return result.deleted_count
         except Exception as e:
             logger.error("DB delete_one failed: %s", e)
             raise DatabaseError(f"Failed to delete from database: {e}")
 
-    async def _db_delete_many(self, query: dict) -> int:
+    async def _db_delete_many(self, guild_id, query: dict) -> int:
         """Supprime plusieurs documents. Retourne le nombre supprimé."""
         try:
-            result = await self.collection.delete_many(query)
+            result = await self._get_col(guild_id).delete_many(query)
             return result.deleted_count
         except Exception as e:
             logger.error("DB delete_many failed: %s", e)
@@ -296,11 +299,12 @@ class BirthdayClass(Extension):
             parsed_date = self._validate_and_parse_date(date)
             validated_tz = self._validate_timezone(timezone)
 
-            query = {"user": ctx.author.id, "server": ctx.guild.id}
-            existing = await self._db_find_one(query)
+            guild_id = ctx.guild.id
+            query = {"user": ctx.author.id}
+            existing = await self._db_find_one(guild_id, query)
 
             if existing:
-                await self._db_update_one(query, {
+                await self._db_update_one(guild_id, query, {
                     "$set": {
                         "date": parsed_date,
                         "timezone": validated_tz.zone,
@@ -313,9 +317,8 @@ class BirthdayClass(Extension):
                     ctx.author.display_name, ctx.guild.name, parsed_date.strftime("%d/%m/%Y"),
                 )
             else:
-                await self._db_insert_one({
+                await self._db_insert_one(guild_id, {
                     "user": ctx.author.id,
-                    "server": ctx.guild.id,
                     "date": parsed_date,
                     "timezone": validated_tz.zone,
                     "hideyear": hideyear or False,
@@ -367,7 +370,7 @@ class BirthdayClass(Extension):
             return
 
         try:
-            deleted = await self._db_delete_one({"user": ctx.author.id, "server": ctx.guild.id})
+            deleted = await self._db_delete_one(ctx.guild.id, {"user": ctx.author.id})
             if deleted > 0:
                 await ctx.send("Anniversaire supprimé ✅", ephemeral=True)
                 logger.info("Birthday removed for %s on server %s", ctx.author.display_name, ctx.guild.name)
@@ -411,12 +414,14 @@ class BirthdayClass(Extension):
             )
 
             if button_ctx.custom_id == "birthday_purge_confirm":
-                deleted = await self._db_delete_many({"user": ctx.author.id})
+                total_deleted = 0
+                for gid in enabled_servers:
+                    total_deleted += await self._db_delete_one(gid, {"user": ctx.author.id})
                 await button_ctx.edit_origin(
-                    content=f"Anniversaire supprimé sur {deleted} serveur(s) ✅",
+                    content=f"Anniversaire supprimé sur {total_deleted} serveur(s) ✅",
                     components=[],
                 )
-                logger.info("Birthday purged for %s on %d server(s)", ctx.author.display_name, deleted)
+                logger.info("Birthday purged for %s on %d server(s)", ctx.author.display_name, total_deleted)
             else:
                 await button_ctx.edit_origin(content="Suppression annulée.", components=[])
 
@@ -438,7 +443,7 @@ class BirthdayClass(Extension):
             return
 
         try:
-            birthdays = await self._db_find({"server": ctx.guild.id})
+            birthdays = await self._db_find(ctx.guild.id, {})
 
             if not birthdays:
                 await ctx.send("Aucun anniversaire enregistré sur ce serveur.", ephemeral=True)
@@ -509,16 +514,19 @@ class BirthdayClass(Extension):
         logger.debug("Starting birthday check task")
 
         try:
-            # Ne récupère que les anniversaires des serveurs activés
-            server_ids = [int(sid) for sid in enabled_servers]
-            birthdays = await self._db_find({"server": {"$in": server_ids}})
-            logger.debug("Found %d birthdays to check", len(birthdays))
-
-            for birthday in birthdays:
+            # Itérer chaque serveur activé et charger les anniversaires depuis sa DB
+            for guild_id in enabled_servers:
                 try:
-                    await self._process_birthday(birthday)
+                    birthdays = await self._db_find(guild_id, {})
+                    logger.debug("Found %d birthdays to check for guild %s", len(birthdays), guild_id)
+                    for birthday in birthdays:
+                        try:
+                            birthday["_guild_id"] = int(guild_id)
+                            await self._process_birthday(birthday)
+                        except Exception as e:
+                            logger.error("Error processing birthday for user %s: %s", birthday.get("user", "unknown"), e)
                 except Exception as e:
-                    logger.error("Error processing birthday for user %s: %s", birthday.get("user", "unknown"), e)
+                    logger.error("Error loading birthdays for guild %s: %s", guild_id, e)
 
         except Exception as e:
             logger.error("Critical error in anniversaire_check task: %s", e)
@@ -548,13 +556,14 @@ class BirthdayClass(Extension):
         if birthday.get("isBirthday", False):
             return
 
-        query = {"user": birthday["user"], "server": birthday["server"]}
-        await self._db_update_one(query, {"$set": {"isBirthday": True}})
+        guild_id = birthday["_guild_id"]
+        query = {"user": birthday["user"]}
+        await self._db_update_one(guild_id, query, {"$set": {"isBirthday": True}})
 
         try:
-            server = await self.bot.fetch_guild(birthday["server"])
+            server = await self.bot.fetch_guild(guild_id)
             if not server:
-                logger.warning("Could not fetch server %s", birthday["server"])
+                logger.warning("Could not fetch server %s", guild_id)
                 return
 
             member = await server.fetch_member(birthday["user"])
@@ -563,7 +572,7 @@ class BirthdayClass(Extension):
                 return
 
             # Détermination du salon
-            srv_cfg = self._server_config(birthday["server"])
+            srv_cfg = self._server_config(guild_id)
             channel_id = srv_cfg.get("birthdayChannelId")
             channel = await server.fetch_channel(channel_id) if channel_id else server.system_channel
 
@@ -572,8 +581,8 @@ class BirthdayClass(Extension):
                 return
 
             age = _compute_age(birth_date, now_tz.replace(tzinfo=None))
-            await self._send_birthday_message(channel, member, age, birthday["server"])
-            await self._toggle_birthday_role(server, member, birthday["server"], add=True)
+            await self._send_birthday_message(channel, member, age, guild_id)
+            await self._toggle_birthday_role(server, member, guild_id, add=True)
 
             logger.info(
                 "Birthday celebration completed for %s on server %s (%d years old)",
@@ -588,11 +597,12 @@ class BirthdayClass(Extension):
         if not birthday.get("isBirthday", False):
             return
 
-        query = {"user": birthday["user"], "server": birthday["server"]}
-        await self._db_update_one(query, {"$set": {"isBirthday": False}})
+        guild_id = birthday["_guild_id"]
+        query = {"user": birthday["user"]}
+        await self._db_update_one(guild_id, query, {"$set": {"isBirthday": False}})
 
         try:
-            server = await self.bot.fetch_guild(birthday["server"])
+            server = await self.bot.fetch_guild(guild_id)
             if not server:
                 return
 
@@ -601,7 +611,7 @@ class BirthdayClass(Extension):
                 return
 
             logger.info("Birthday ended for %s on server %s", member.display_name, server.name)
-            await self._toggle_birthday_role(server, member, birthday["server"], add=False)
+            await self._toggle_birthday_role(server, member, guild_id, add=False)
 
         except Exception as e:
             logger.error("Error handling birthday end: %s", e)
