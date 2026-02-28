@@ -361,7 +361,7 @@ def spotifymongoformat(track, user=None, spotify2discord=None):
         song = {
             "_id": str(track["track"].get("id", None)),
             "added_by": str(
-                user if user else spotify2discord.get(track["added_by"]["id"])
+                user if user else spotify2discord.get(track["added_by"]["id"], track["added_by"]["id"])
             ),
             "added_at": track.get("added_at", interactions.Timestamp.utcnow()),
             "duration_ms": track["track"]["duration_ms"],
@@ -373,7 +373,7 @@ def spotifymongoformat(track, user=None, spotify2discord=None):
         song = {
             "_id": str(track.get("id", None)),
             "added_by": str(
-                user if user else spotify2discord.get(track["added_by"]["id"])
+                user if user else spotify2discord.get(track["added_by"]["id"], track["added_by"]["id"])
             ),
             "added_at": track.get("added_at", interactions.Timestamp.utcnow()),
             "duration_ms": track["duration_ms"],
