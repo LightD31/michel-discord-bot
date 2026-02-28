@@ -7,7 +7,6 @@ from datetime import datetime, timedelta
 import interactions
 import pymongo
 import pytz
-import aiohttp
 import spotipy
 from interactions.api.events import Component
 
@@ -92,7 +91,8 @@ class ServerData:
         self.channel_id = config.get("spotifyChannelId")
         self.playlist_id = config.get("spotifyPlaylistId")
         self.new_playlist_id = config.get("spotifyNewPlaylistId")
-        self.patch_message_url = config.get("spotifyRecapMessage")
+        self.recap_channel_id = config.get("spotifyRecapChannelId")
+        self.recap_message_id = config.get("spotifyRecapMessageId")
 
         # Per-server MongoDB collections
         db = mongo_client[f"Playlist_{guild_id}"]
@@ -649,22 +649,14 @@ class Spotify(interactions.Extension):
             await self.save_snapshot(server)
             logger.debug("Snapshot mis à jour")
             # Send a message indicating that the playlist has been updated
-        message = f"Dernière màj de la playlist {interactions.Timestamp.utcnow().format(interactions.TimestampStyles.RelativeTime)}, si c'était il y a plus d'**une minute**, il y a probablement un problème\n`/addsong Titre et artiste de la chanson` pour ajouter une chanson\nIl y a actuellement **{server.snapshot.get('length', 0)}** chansons dans la playlist, pour un total de **{milliseconds_to_string(server.snapshot.get('duration', 0))}**\nDashboard : https://drndvs.link/StatsPlaylist"
-        try:
-            async with aiohttp.ClientSession(
-                timeout=aiohttp.ClientTimeout(total=5)
-            ) as session:
-                async with session.patch(
-                    url=server.patch_message_url,
-                    json={
-                        "content": message,
-                    },
-                ) as response:
-                    response.raise_for_status()
-        except aiohttp.ClientError as e:
-            logger.error("Error while trying to patch message : %s", e)
-        except TimeoutError:
-            logger.error("TimeoutError while trying to patch message")
+        if server.recap_channel_id and server.recap_message_id:
+            recap_content = f"Dernière màj de la playlist {interactions.Timestamp.utcnow().format(interactions.TimestampStyles.RelativeTime)}, si c'était il y a plus d'**une minute**, il y a probablement un problème\n`/addsong Titre et artiste de la chanson` pour ajouter une chanson\nIl y a actuellement **{server.snapshot.get('length', 0)}** chansons dans la playlist, pour un total de **{milliseconds_to_string(server.snapshot.get('duration', 0))}**\nDashboard : https://drndvs.link/StatsPlaylist"
+            try:
+                recap_channel = await self.bot.fetch_channel(server.recap_channel_id)
+                recap_message = await recap_channel.fetch_message(server.recap_message_id)
+                await recap_message.edit(content=recap_content)
+            except Exception as e:
+                logger.error("Error while trying to edit recap message: %s", e)
 
     @interactions.slash_command(
         name="rappelvote",

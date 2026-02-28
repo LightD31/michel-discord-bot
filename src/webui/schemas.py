@@ -241,9 +241,9 @@ MODULE_SCHEMAS: dict[str, dict] = {
                 "Playlist découvertes", "string",
                 description="ID de la playlist de découvertes."
             ),
-            "spotifyRecapMessage": _field(
-                "URL message récap", "url",
-                description="URL du message de récap (webhook PATCH)."
+            "spotifyRecapChannelId": _field(
+                "Salon message récap", "channel",
+                description="Salon où se trouve le message de récap de la playlist."
             ),
             "spotifyRecapMessageId": _field(
                 "ID message récap", "message",
