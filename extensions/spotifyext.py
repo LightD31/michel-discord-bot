@@ -89,10 +89,10 @@ class ServerData:
         self.guild_id = guild_id
         self.discord2name = global_config.get("discord2name", {}).get(guild_id, {})
         self.spotify2discord = config.get("spotifyIdToDiscordId", {})
-        self.channel_id = config["spotifyChannelId"]
-        self.playlist_id = config["spotifyPlaylistId"]
-        self.new_playlist_id = config["spotifyNewPlaylistId"]
-        self.patch_message_url = config["spotifyRecapMessage"]
+        self.channel_id = config.get("spotifyChannelId")
+        self.playlist_id = config.get("spotifyPlaylistId")
+        self.new_playlist_id = config.get("spotifyNewPlaylistId")
+        self.patch_message_url = config.get("spotifyRecapMessage")
 
         # Per-server MongoDB collections
         db = mongo_client[f"Playlist_{guild_id}"]
