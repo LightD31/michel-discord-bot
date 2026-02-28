@@ -25,20 +25,11 @@ from src.spotify import (
 from src.utils import milliseconds_to_string, load_config
 
 # Constants and Configuration
-CONFIG, MODULE_CONFIG, ENABLED_SERVERS = load_config("moduleSpotify")
-MODULE_CONFIG = MODULE_CONFIG[ENABLED_SERVERS[0]]
-
-DISCORD2NAME = CONFIG["discord2name"][str(ENABLED_SERVERS[0])]
-SPOTIFY2DISCORD = MODULE_CONFIG["spotifyIdToDiscordId"]
+CONFIG, MODULE_CONFIGS, ENABLED_SERVERS = load_config("moduleSpotify")
 
 SPOTIFY_CLIENT_ID = CONFIG["spotify"]["spotifyClientId"]
 SPOTIFY_CLIENT_SECRET = CONFIG["spotify"]["spotifyClientSecret"]
 SPOTIFY_REDIRECT_URI = CONFIG["spotify"]["spotifyRedirectUri"]
-CHANNEL_ID = MODULE_CONFIG["spotifyChannelId"]
-PLAYLIST_ID = MODULE_CONFIG["spotifyPlaylistId"]
-NEW_PLAYLIST_ID = MODULE_CONFIG["spotifyNewPlaylistId"]
-PATCH_MESSAGE_URL = MODULE_CONFIG["spotifyRecapMessage"]
-GUILD_ID = ENABLED_SERVERS[0]
 DEV_GUILD = CONFIG["discord"]["devGuildId"]
 COOLDOWN_TIME = 1
 DATA_FOLDER = CONFIG["misc"]["dataFolder"]
@@ -47,24 +38,23 @@ DATA_FOLDER = CONFIG["misc"]["dataFolder"]
 logger = logutil.init_logger(os.path.basename(__file__))
 
 # MongoDB setup
-client = pymongo.MongoClient(CONFIG["mongodb"]["url"])
-db = client["Playlist"]
-playlist_items_full = db["playlistItemsFull"]
-votes_db = db["votes"]
+mongo_client = pymongo.MongoClient(CONFIG["mongodb"]["url"])
 
 # Spotify authentication
 sp = spotify_auth()
 
 # Global variables
 last_votes = {}
-reminders = {}
-vote_infos = {}
-snapshot = {}
 
 
 class VoteManager:
-    def __init__(self, file_path):
+    def __init__(self, file_path, discord2name):
         self.file_path = file_path
+        self.discord2name = discord2name
+        if not os.path.exists(file_path):
+            os.makedirs(os.path.dirname(file_path), exist_ok=True)
+            with open(file_path, "w", encoding="utf-8") as f:
+                json.dump({}, f)
 
     def load_data(self):
         with open(self.file_path, "r", encoding="utf-8") as f:
@@ -78,7 +68,7 @@ class VoteManager:
         song_data = data[song]
         yes_votes = sum(1 for v in song_data["votes"].values() if v == "yes")
         no_votes = sum(1 for v in song_data["votes"].values() if v == "no")
-        users = [DISCORD2NAME.get(user, f"<@{user}>") for user in song_data["votes"]]
+        users = [self.discord2name.get(user, f"<@{user}>") for user in song_data["votes"]]
         return yes_votes, no_votes, users
 
     def check_deadline(self, song_id):
@@ -92,38 +82,105 @@ class VoteManager:
         self.save_data(data)
 
 
+class ServerData:
+    """Holds per-server configuration, state, and MongoDB collections."""
+
+    def __init__(self, guild_id: str, config: dict, global_config: dict):
+        self.guild_id = guild_id
+        self.discord2name = global_config.get("discord2name", {}).get(guild_id, {})
+        self.spotify2discord = config.get("spotifyIdToDiscordId", {})
+        self.channel_id = config["spotifyChannelId"]
+        self.playlist_id = config["spotifyPlaylistId"]
+        self.new_playlist_id = config["spotifyNewPlaylistId"]
+        self.patch_message_url = config["spotifyRecapMessage"]
+
+        # Per-server MongoDB collections
+        db = mongo_client[f"Playlist_{guild_id}"]
+        self.playlist_items_full = db["playlistItemsFull"]
+        self.votes_db = db["votes"]
+
+        # Per-server state
+        self.vote_infos = {}
+        self.snapshot = {}
+        self.reminders = {}
+
+        # Per-server vote manager
+        self.vote_manager = VoteManager(
+            f"{DATA_FOLDER}/addwithvotes_{guild_id}.json", self.discord2name
+        )
+
+
+# Build per-server data
+SERVERS: dict[str, ServerData] = {}
+for _guild_id in ENABLED_SERVERS:
+    SERVERS[str(_guild_id)] = ServerData(
+        str(_guild_id), MODULE_CONFIGS[_guild_id], CONFIG
+    )
+
+
 class Spotify(interactions.Extension):
     def __init__(self, bot: interactions.client):
         self.bot: interactions.Client = bot
-        self.vote_manager = VoteManager(f"{DATA_FOLDER}/addwithvotes.json")
+
+    def get_server(self, guild_id) -> ServerData:
+        """Get the server data for a given guild ID."""
+        return SERVERS[str(guild_id)]
 
     @interactions.listen()
     async def on_startup(self):
+        for server in SERVERS.values():
+            await self.load_voteinfos(server)
+            await self.load_snapshot(server)
+            await self.load_reminders(server)
         self.check_playlist_changes.start()
         self.randomvote.start()
-        await self.load_reminders()
         self.reminder_check.start()
-        await self.load_voteinfos()
-        await self.load_snapshot()
-        self.addwithvote = self.vote_manager.load_data()
         self.check_for_end.start()
         self.new_titles_playlist.start()
 
-    async def load_voteinfos(self):
-        with open(f"{DATA_FOLDER}/voteinfos.json", "r", encoding="utf-8") as f:
-            vote_infos.update(json.load(f))
+    async def load_voteinfos(self, server: ServerData):
+        try:
+            with open(f"{DATA_FOLDER}/voteinfos_{server.guild_id}.json", "r", encoding="utf-8") as f:
+                server.vote_infos.update(json.load(f))
+        except FileNotFoundError:
+            pass
 
-    async def load_snapshot(self):
-        with open(f"{DATA_FOLDER}/snapshot.json", "r", encoding="utf-8") as f:
-            snapshot.update(json.load(f))
+    async def load_snapshot(self, server: ServerData):
+        try:
+            with open(f"{DATA_FOLDER}/snapshot_{server.guild_id}.json", "r", encoding="utf-8") as f:
+                server.snapshot.update(json.load(f))
+        except FileNotFoundError:
+            server.snapshot = {"snapshot": "", "duration": 0, "length": 0}
 
-    async def save_snapshot(self):
-        with open(f"{DATA_FOLDER}/snapshot.json", "w", encoding="utf-8") as f:
-            json.dump(snapshot, f, indent=4)
+    async def save_snapshot(self, server: ServerData):
+        with open(f"{DATA_FOLDER}/snapshot_{server.guild_id}.json", "w", encoding="utf-8") as f:
+            json.dump(server.snapshot, f, indent=4)
 
-    async def save_voteinfos(self):
-        with open(f"{DATA_FOLDER}/voteinfos.json", "w", encoding="utf-8") as f:
-            json.dump(vote_infos, f, indent=4)
+    async def save_voteinfos(self, server: ServerData):
+        with open(f"{DATA_FOLDER}/voteinfos_{server.guild_id}.json", "w", encoding="utf-8") as f:
+            json.dump(server.vote_infos, f, indent=4)
+
+    async def load_reminders(self, server: ServerData):
+        try:
+            with open(
+                f"{DATA_FOLDER}/reminderspotify_{server.guild_id}.json", "r", encoding="utf-8"
+            ) as file:
+                reminders_data = json.load(file)
+                for remind_time_str, user_ids in reminders_data.items():
+                    remind_time = datetime.strptime(
+                        remind_time_str, "%Y-%m-%d %H:%M:%S"
+                    )
+                    server.reminders[remind_time] = set(user_ids)
+        except FileNotFoundError:
+            pass
+
+    async def save_reminders(self, server: ServerData):
+        reminders_data = {
+            remind_time.strftime("%Y-%m-%d %H:%M:%S"): list(user_ids)
+            for remind_time, user_ids in server.reminders.items()
+        }
+        with open(f"{DATA_FOLDER}/reminderspotify_{server.guild_id}.json", "w", encoding="utf-8") as file:
+            json.dump(reminders_data, file, indent=4)
 
     @interactions.slash_command(
         "addsong",
@@ -138,7 +195,8 @@ class Spotify(interactions.Extension):
         autocomplete=True,
     )
     async def addsong(self, ctx: interactions.SlashContext, song):
-        if str(ctx.channel_id) != str(CHANNEL_ID):
+        server = self.get_server(ctx.guild_id)
+        if str(ctx.channel_id) != str(server.channel_id):
             await ctx.send(
                 "Vous ne pouvez pas utiliser cette commande dans ce salon.",
                 ephemeral=True,
@@ -158,16 +216,16 @@ class Spotify(interactions.Extension):
         try:
             track = sp.track(song, market="FR")
             song_data = spotifymongoformat(
-                track, ctx.author_id, spotify2discord=SPOTIFY2DISCORD
+                track, ctx.author_id, spotify2discord=server.spotify2discord
             )
         except spotipy.exceptions.SpotifyException:
             await ctx.send("Cette chanson n'existe pas.", ephemeral=True)
             logger.info("Commande /addsong utilisée avec une chanson inexistante")
             return
 
-        if song_data["_id"] not in playlist_items_full.distinct("_id"):
-            playlist_items_full.insert_one(song_data)
-            sp.playlist_add_items(PLAYLIST_ID, [song_data["_id"]])
+        if song_data["_id"] not in server.playlist_items_full.distinct("_id"):
+            server.playlist_items_full.insert_one(song_data)
+            sp.playlist_add_items(server.playlist_id, [song_data["_id"]])
             embed, file = await embed_song(
                 song=song_data,
                 track=track,
@@ -218,19 +276,33 @@ class Spotify(interactions.Extension):
     # )
     @interactions.Task.create(interactions.TimeTrigger(hour=20, minute=0, utc=False))
     async def randomvote(self):
-        logger.info("Tache randomvote lancée")
-        message_id = vote_infos.get("message_id")
-        track_id = vote_infos.get("track_id")
+        for server in SERVERS.values():
+            try:
+                await self._randomvote_for_server(server)
+            except Exception as e:
+                logger.error("Error in randomvote for server %s: %s", server.guild_id, e)
+
+    async def _randomvote_for_server(self, server: ServerData):
+        logger.info("Tache randomvote lancée pour le serveur %s", server.guild_id)
+        message_id = server.vote_infos.get("message_id")
+        track_id = server.vote_infos.get("track_id")
+        if not message_id or not track_id:
+            logger.warning(
+                "Pas de vote en cours pour le serveur %s, lancement d'un nouveau vote",
+                server.guild_id,
+            )
+            await self._start_new_vote(server)
+            return
         logger.debug("message_id: %s", message_id)
         logger.debug("track_id: %s", track_id)
-        channel = self.bot.get_channel(CHANNEL_ID)
+        channel = self.bot.get_channel(server.channel_id)
         message = await channel.fetch_message(message_id)
         logger.debug("message : %s", str(message.id))
-        votes = votes_db.find_one({"_id": track_id})
-        song = playlist_items_full.find_one({"_id": track_id})
+        votes = server.votes_db.find_one({"_id": track_id})
+        song = server.playlist_items_full.find_one({"_id": track_id})
         logger.debug("song : %s\ntrack_id : %s", song, track_id)
         track = sp.track(track_id, market="FR")
-        conserver, supprimer, menfou, users = count_votes(votes["votes"], DISCORD2NAME)
+        conserver, supprimer, menfou, users = count_votes(votes["votes"], server.discord2name)
 
         total_votes = conserver + supprimer + menfou
         if total_votes < 3:
@@ -274,13 +346,13 @@ class Spotify(interactions.Extension):
                 ],
                 components=[],
             )
-            sp.playlist_remove_all_occurrences_of_items(PLAYLIST_ID, [track_id])
-            playlist_items_full.delete_one({"_id": track_id})
-            votes_db.find_one_and_update(
+            sp.playlist_remove_all_occurrences_of_items(server.playlist_id, [track_id])
+            server.playlist_items_full.delete_one({"_id": track_id})
+            server.votes_db.find_one_and_update(
                 {"_id": track_id}, {"$set": {"state": "supprimée"}}
             )
             logger.info("La chanson a été supprimée.")
-            await self.check_playlist_changes()
+            await self._check_playlist_changes_for_server(server)
         else:
             logger.debug("La chanson a été conservée.")
             logger.debug("track_id : %s\nmessage_id : %s", track_id, message_id)
@@ -304,12 +376,16 @@ class Spotify(interactions.Extension):
                 ],
                 components=[],
             )
-            votes_db.find_one_and_update(
+            server.votes_db.find_one_and_update(
                 {"_id": track_id}, {"$set": {"state": "conservée"}}
             )
             logger.info("La chanson a été conservée.")
-        track_ids = set(playlist_items_full.distinct("_id"))
-        pollhistory = set(votes_db.distinct("_id"))
+        await self._start_new_vote(server)
+
+    async def _start_new_vote(self, server: ServerData):
+        """Pick a random song and start a new vote for a server."""
+        track_ids = set(server.playlist_items_full.distinct("_id"))
+        pollhistory = set(server.votes_db.distinct("_id"))
         track_id = random.choice(list(track_ids))
         logger.debug("track_id choisie : %s", track_id)
         while track_id in pollhistory:
@@ -318,9 +394,9 @@ class Spotify(interactions.Extension):
             )
             track_id = random.choice(list(track_ids))
         logger.info("Chanson tirée au sort : %s", track_id)
-        song = playlist_items_full.find_one({"_id": track_id})
+        song = server.playlist_items_full.find_one({"_id": track_id})
         track = sp.track(song["_id"], market="FR")
-        channel = await self.bot.fetch_channel(CHANNEL_ID)
+        channel = await self.bot.fetch_channel(server.channel_id)
         embed, file = await embed_song(
             song=song,
             track=track,
@@ -365,9 +441,9 @@ class Spotify(interactions.Extension):
         )
         await message.pin()
         await channel.purge(deletion_limit=1, after=message)
-        vote_infos.update({"message_id": str(message.id), "track_id": track_id})
-        await self.save_voteinfos()
-        votes_db.update_one(
+        server.vote_infos.update({"message_id": str(message.id), "track_id": track_id})
+        await self.save_voteinfos(server)
+        server.votes_db.update_one(
             {"_id": track_id},
             {
                 "$set": {
@@ -387,6 +463,7 @@ class Spotify(interactions.Extension):
         logger.debug("ctx.custom_id : %s", ctx.custom_id)
         if ctx.custom_id not in ["conserver", "supprimer", "menfou", "annuler"]:
             return
+        server = self.get_server(ctx.guild_id)
         # Check if the user has voted recently
         user_id = str(ctx.user.id)
         if user_id in last_votes and time.time() - last_votes[user_id] < COOLDOWN_TIME:
@@ -396,20 +473,20 @@ class Spotify(interactions.Extension):
             logger.warning("%s a essayé de voter trop rapidement", ctx.user.username)
             return
         last_votes[user_id] = time.time()
-        message_id = vote_infos.get("message_id")
-        track_id = vote_infos.get("track_id")
+        message_id = server.vote_infos.get("message_id")
+        track_id = server.vote_infos.get("track_id")
         if ctx.message.id == int(message_id):
             embed_original = ctx.message.embeds[0]
             # Check if the user has already voted and update their vote if necessary
             user_id = str(ctx.user.id)
             if ctx.custom_id == "annuler":
-                votes = votes_db.find_one_and_update(
+                votes = server.votes_db.find_one_and_update(
                     {"_id": track_id},
                     {"$unset": {f"votes.{user_id}": ""}},
                     return_document=pymongo.ReturnDocument.AFTER,
                 )
             else:
-                votes = votes_db.find_one_and_update(
+                votes = server.votes_db.find_one_and_update(
                     {"_id": track_id},
                     {"$set": {f"votes.{user_id}": ctx.custom_id}},
                     upsert=True,
@@ -418,7 +495,7 @@ class Spotify(interactions.Extension):
             logger.info("User %s voted %s", ctx.user.username, ctx.custom_id)
             # Count the votes
             conserver, supprimer, menfou, users = count_votes(
-                votes["votes"], DISCORD2NAME
+                votes["votes"], server.discord2name
             )
             users = ", ".join(users)
             logger.info(
@@ -457,19 +534,30 @@ class Spotify(interactions.Extension):
         """
         Check for changes in the Spotify playlist and update the Discord message accordingly.
         """
-        logger.debug("check_playlist_changes lancé")
+        for server in SERVERS.values():
+            try:
+                await self._check_playlist_changes_for_server(server)
+            except Exception as e:
+                logger.error(
+                    "Error in check_playlist_changes for server %s: %s",
+                    server.guild_id,
+                    e,
+                )
+
+    async def _check_playlist_changes_for_server(self, server: ServerData):
+        logger.debug("check_playlist_changes lancé pour le serveur %s", server.guild_id)
 
         # Retrieve the channel where messages will be sent
-        channel = await self.bot.fetch_channel(CHANNEL_ID)
+        channel = await self.bot.fetch_channel(server.channel_id)
         logger.debug(
             "old_snap : %s, duration : %s, length : %s",
-            snapshot["snapshot"],
-            snapshot["duration"],
-            snapshot["length"],
+            server.snapshot.get("snapshot"),
+            server.snapshot.get("duration"),
+            server.snapshot.get("length"),
         )
         # Compare the current snapshot ID to the previous snapshot ID
         try:
-            new_snap = sp.playlist(PLAYLIST_ID, fields="snapshot_id")["snapshot_id"]
+            new_snap = sp.playlist(server.playlist_id, fields="snapshot_id")["snapshot_id"]
         except spotipy.SpotifyException as e:
             logger.error("Spotify API Error : %s", e)
             return
@@ -477,14 +565,15 @@ class Spotify(interactions.Extension):
             logger.error("ConnectionError : %s", e)
             return
 
-        if new_snap != snapshot["snapshot"]:
+        if new_snap != server.snapshot.get("snapshot"):
             # Retrieve the tracks of the playlist
             try:
                 results = sp.playlist_tracks(
-                    playlist_id=PLAYLIST_ID, limit=100, offset=0
+                    playlist_id=server.playlist_id, limit=100, offset=0
                 )
             except spotipy.SpotifyException as e:
                 logger.error("Spotify API Error : %s", e)
+                return
             tracks = results["items"]
             # get next 100 tracks
             while results["next"]:
@@ -494,7 +583,7 @@ class Spotify(interactions.Extension):
             length = len(tracks)
             duration = 0
             # Compare the current track IDs to the previous track IDs
-            last_track_ids = playlist_items_full.distinct("_id")
+            last_track_ids = server.playlist_items_full.distinct("_id")
             current_track_ids = {track["track"]["id"] for track in tracks}
             added_track_ids = list(set(current_track_ids) - set(last_track_ids))
             removed_track_ids = list(set(last_track_ids) - set(current_track_ids))
@@ -502,14 +591,14 @@ class Spotify(interactions.Extension):
             logger.debug("removed_track_ids : %s", removed_track_ids)
             for track in tracks:
                 # Append the track to a list of tracks to be inserted into the MongoDB collection
-                song = spotifymongoformat(track, spotify2discord=SPOTIFY2DISCORD)
+                song = spotifymongoformat(track, spotify2discord=server.spotify2discord)
                 # Retrieve the time the track was added and add its duration to the total duration of the playlist
                 duration += track["track"]["duration_ms"]
                 # Send messages for added or removed tracks
                 if track["track"]["id"] in added_track_ids:
-                    song = spotifymongoformat(track, spotify2discord=SPOTIFY2DISCORD)
+                    song = spotifymongoformat(track, spotify2discord=server.spotify2discord)
                     track = sp.track(track["track"]["id"], market="FR")
-                    playlist_items_full.insert_one(song)
+                    server.playlist_items_full.insert_one(song)
                     dt = interactions.utils.timestamp_converter(
                         datetime.fromisoformat(song["added_at"]).astimezone(
                             pytz.timezone("Europe/Paris")
@@ -520,7 +609,7 @@ class Spotify(interactions.Extension):
                         track=track,
                         embedtype=EmbedType.ADD,
                         time=dt,
-                        person=DISCORD2NAME.get(song["added_by"], song["added_by"]),
+                        person=server.discord2name.get(song["added_by"], song["added_by"]),
                     )
                     await channel.send(
                         content=f"{random.choice(startList)} <@{song['added_by']}>, {random.choice(finishList)}\n{track['external_urls']['spotify']}",
@@ -530,7 +619,7 @@ class Spotify(interactions.Extension):
                     logger.info(
                         "%s ajouté par %s",
                         track["name"],
-                        DISCORD2NAME.get(song["added_by"], song["added_by"]),
+                        server.discord2name.get(song["added_by"], song["added_by"]),
                     )
             if removed_track_ids:
                 logger.info(
@@ -538,7 +627,7 @@ class Spotify(interactions.Extension):
                     len(removed_track_ids),
                 )
                 for track_id in removed_track_ids:
-                    song = playlist_items_full.find_one_and_delete({"_id": track_id})
+                    song = server.playlist_items_full.find_one_and_delete({"_id": track_id})
                     track = sp.track(track_id, market="FR")
                     embed, file = await embed_song(
                         song=song,
@@ -546,7 +635,7 @@ class Spotify(interactions.Extension):
                         embedtype=EmbedType.DELETE,
                         time=interactions.Timestamp.utcnow(),
                     )
-                    channel = await self.bot.fetch_channel(CHANNEL_ID)
+                    channel = await self.bot.fetch_channel(server.channel_id)
                     await channel.send(
                         track["external_urls"]["spotify"],
                         embeds=embed,
@@ -554,19 +643,19 @@ class Spotify(interactions.Extension):
                     )
 
             # Store the snapshot ID, length and duration in a JSON file
-            snapshot["snapshot"] = new_snap
-            snapshot["length"] = length
-            snapshot["duration"] = duration
-            await self.save_snapshot()
+            server.snapshot["snapshot"] = new_snap
+            server.snapshot["length"] = length
+            server.snapshot["duration"] = duration
+            await self.save_snapshot(server)
             logger.debug("Snapshot mis à jour")
             # Send a message indicating that the playlist has been updated
-        message = f"Dernière màj de la playlist {interactions.Timestamp.utcnow().format(interactions.TimestampStyles.RelativeTime)}, si c'était il y a plus d'**une minute**, il y a probablement un problème\n`/addsong Titre et artiste de la chanson` pour ajouter une chanson\nIl y a actuellement **{snapshot['length']}** chansons dans la playlist, pour un total de **{milliseconds_to_string(snapshot['duration'])}**\nStatus : https://status.drndvs.fr/status/guildeux\nDashboard : https://drndvs.link/StatsPlaylist"
+        message = f"Dernière màj de la playlist {interactions.Timestamp.utcnow().format(interactions.TimestampStyles.RelativeTime)}, si c'était il y a plus d'**une minute**, il y a probablement un problème\n`/addsong Titre et artiste de la chanson` pour ajouter une chanson\nIl y a actuellement **{server.snapshot.get('length', 0)}** chansons dans la playlist, pour un total de **{milliseconds_to_string(server.snapshot.get('duration', 0))}**\nDashboard : https://drndvs.link/StatsPlaylist"
         try:
             async with aiohttp.ClientSession(
                 timeout=aiohttp.ClientTimeout(total=5)
             ) as session:
                 async with session.patch(
-                    url=PATCH_MESSAGE_URL,
+                    url=server.patch_message_url,
                     json={
                         "content": message,
                     },
@@ -609,7 +698,8 @@ class Spotify(interactions.Extension):
             heure (int): The hour of the reminder.
             minute (int): The minute of the reminder.
         """
-        if str(ctx.channel_id) == str(CHANNEL_ID):
+        server = self.get_server(ctx.guild_id)
+        if str(ctx.channel_id) == str(server.channel_id):
             logger.info(
                 "%s a ajouté un rappel à %s:%s", ctx.user.display_name, heure, minute
             )
@@ -623,10 +713,10 @@ class Spotify(interactions.Extension):
             )
             if remind_time <= current_time:
                 remind_time += timedelta(days=1)
-            if remind_time not in reminders:
-                reminders[remind_time] = set()
-            reminders[remind_time].add(ctx.user.id)
-            await self.save_reminders()
+            if remind_time not in server.reminders:
+                server.reminders[remind_time] = set()
+            server.reminders[remind_time].add(ctx.user.id)
+            await self.save_reminders(server)
 
             await ctx.send(
                 f"Rappel défini à {remind_time.strftime('%H:%M')}.", ephemeral=True
@@ -642,47 +732,31 @@ class Spotify(interactions.Extension):
                 ctx.channel_id,
             )
 
-    async def load_reminders(self):
-        """
-        Load reminders from a JSON file and populate the reminders dictionary.
-        """
-        try:
-            with open(
-                f"{DATA_FOLDER}/reminderspotify.json", "r", encoding="utf-8"
-            ) as file:
-                reminders_data = json.load(file)
-                for remind_time_str, user_ids in reminders_data.items():
-                    remind_time = datetime.strptime(
-                        remind_time_str, "%Y-%m-%d %H:%M:%S"
-                    )
-                    reminders[remind_time] = set(user_ids)
-        except FileNotFoundError:
-            pass
-
-    async def save_reminders(self):
-        reminders_data = {
-            remind_time.strftime("%Y-%m-%d %H:%M:%S"): list(user_ids)
-            for remind_time, user_ids in reminders.items()
-        }
-        with open(f"{DATA_FOLDER}/reminderspotify.json", "w", encoding="utf-8") as file:
-            json.dump(reminders_data, file, indent=4)
-
     @interactions.Task.create(interactions.IntervalTrigger(minutes=1))
     async def reminder_check(self):
-        logger.debug("reminder_check lancé")
+        for server in SERVERS.values():
+            try:
+                await self._reminder_check_for_server(server)
+            except Exception as e:
+                logger.error(
+                    "Error in reminder_check for server %s: %s", server.guild_id, e
+                )
+
+    async def _reminder_check_for_server(self, server: ServerData):
+        logger.debug("reminder_check lancé pour le serveur %s", server.guild_id)
         current_time = datetime.now()
         reminders_to_remove = []
-        for remind_time, user_ids in reminders.copy().items():
+        for remind_time, user_ids in server.reminders.copy().items():
             if current_time >= remind_time:
                 for user_id in user_ids.copy():
                     user = await self.bot.fetch_user(user_id)
                     if user:
-                        vote = votes_db.find_one({"_id": str(vote_infos["track_id"])})[
-                            "votes"
-                        ].get(str(user_id))
+                        vote = server.votes_db.find_one(
+                            {"_id": str(server.vote_infos["track_id"])}
+                        )["votes"].get(str(user_id))
                         if vote is None:
                             await user.send(
-                                f"Hey {user.mention}, tu n'as pas voté aujourd'hui :pleading_face: \nhttps://discord.com/channels/136812800709361664/352980972800704513/{vote_infos.get('message_id')}"
+                                f"Hey {user.mention}, tu n'as pas voté aujourd'hui :pleading_face: \nhttps://discord.com/channels/{server.guild_id}/{server.channel_id}/{server.vote_infos.get('message_id')}"
                             )
                             logger.debug("Rappel envoyé à %s", user.display_name)
                         else:
@@ -691,26 +765,27 @@ class Spotify(interactions.Extension):
                                 user.display_name,
                             )
                     next_remind_time = remind_time + timedelta(days=1)
-                    if next_remind_time not in reminders:
-                        reminders[next_remind_time] = set()
-                    reminders[next_remind_time].add(user_id)
+                    if next_remind_time not in server.reminders:
+                        server.reminders[next_remind_time] = set()
+                    server.reminders[next_remind_time].add(user_id)
                     user_ids.remove(user_id)
                 if not user_ids:
                     reminders_to_remove.append(remind_time)
         for remind_time in reminders_to_remove:
-            del reminders[remind_time]
+            del server.reminders[remind_time]
 
-        await self.save_reminders()
+        await self.save_reminders(server)
 
     @setreminder.subcommand(
         sub_cmd_name="remove",
         sub_cmd_description="Enlève un rappel de vote pour la chanson du jour",
     )
     async def deletereminder(self, ctx: interactions.SlashContext):
+        server = self.get_server(ctx.guild_id)
         user_id = ctx.user.id
         # create the list of reminders for the user
         reminders_list = []
-        for remind_time, user_ids in reminders.copy().items():
+        for remind_time, user_ids in server.reminders.copy().items():
             if user_id in user_ids:
                 reminders_list.append(remind_time)
         # Create a button for each reminder
@@ -738,11 +813,11 @@ class Spotify(interactions.Extension):
             )
             # Remove the reminder from the reminders dictionary
             remind_time = datetime.fromtimestamp(float(button_ctx.ctx.custom_id))
-            reminders[remind_time].remove(user_id)
-            if not reminders[remind_time]:
-                del reminders[remind_time]
+            server.reminders[remind_time].remove(user_id)
+            if not server.reminders[remind_time]:
+                del server.reminders[remind_time]
             # Save the reminders to a JSON file
-            await self.save_reminders()
+            await self.save_reminders(server)
             # Send a message to the user indicating that the reminder has been removed
             await button_ctx.ctx.edit_origin(
                 content=f"Rappel à {remind_time.strftime('%H:%M')} supprimé.",
@@ -825,9 +900,10 @@ class Spotify(interactions.Extension):
         """
         Displays information about a song from the mongodb database.
         """
+        server = self.get_server(ctx.guild_id)
         embed = None
-        song = playlist_items_full.find_one({"_id": song_id})
-        votes = votes_db.find_one({"_id": song_id})
+        song = server.playlist_items_full.find_one({"_id": song_id})
+        votes = server.votes_db.find_one({"_id": song_id})
         track = sp.track(song_id, market="FR")
         if song:
             embed, file = await embed_song(
@@ -839,7 +915,7 @@ class Spotify(interactions.Extension):
             )
         else:
             song = spotifymongoformat(
-                track, votes.get("added_by", "Inconnu"), spotify2discord=SPOTIFY2DISCORD
+                track, votes.get("added_by", "Inconnu"), spotify2discord=server.spotify2discord
             )
             embed, file = await embed_song(
                 song=song,
@@ -851,7 +927,7 @@ class Spotify(interactions.Extension):
         if votes:
             if votes.get("votes"):
                 conserver, supprimer, menfou, users = count_votes(
-                    votes.get("votes", {}), DISCORD2NAME
+                    votes.get("votes", {}), server.discord2name
                 )
                 # Create a Timestamp object from the date string and a None object if the date is not present
                 date = votes.get("date")
@@ -890,6 +966,7 @@ class Spotify(interactions.Extension):
         """
         Autocomplete function for the 'songinfo' command.
         """
+        server = self.get_server(ctx.guild_id)
         if not ctx.input_text:
             choices = [
                 {
@@ -912,9 +989,9 @@ class Spotify(interactions.Extension):
             }
             # Fetch data from playlist_items_full and votes_db
             playlist_items = {
-                item["_id"]: item for item in playlist_items_full.find(query)
+                item["_id"]: item for item in server.playlist_items_full.find(query)
             }
-            votes = {item["_id"]: item for item in votes_db.find(query)}
+            votes = {item["_id"]: item for item in server.votes_db.find(query)}
 
             # Merge dictionaries. In case of conflict, keep the entry from playlist_items_full
             results = {**playlist_items, **votes}
@@ -956,9 +1033,10 @@ class Spotify(interactions.Extension):
         autocomplete=True,
     )
     async def addwithvote(self, ctx: interactions.SlashContext, song):
-        if str(ctx.channel_id) == str(CHANNEL_ID):
+        server = self.get_server(ctx.guild_id)
+        if str(ctx.channel_id) == str(server.channel_id):
             # Get last track IDs from MongoDB
-            last_track_ids = playlist_items_full.distinct("_id")
+            last_track_ids = server.playlist_items_full.distinct("_id")
             logger.info(
                 "/addwithvote '%s' utilisé par %s(id:%s)",
                 song,
@@ -969,12 +1047,12 @@ class Spotify(interactions.Extension):
                 # Get track info from Spotify API
                 track = sp.track(song, market="FR")
                 song = spotifymongoformat(
-                    track, ctx.author_id, spotify2discord=SPOTIFY2DISCORD
+                    track, ctx.author_id, spotify2discord=server.spotify2discord
                 )
             except spotipy.exceptions.SpotifyException:
                 await ctx.send("Cette chanson n'existe pas.", ephemeral=True)
                 logger.info("Commande /addsong utilisée avec une chanson inexistante")
-            data = self.vote_manager.load_data()
+            data = server.vote_manager.load_data()
             # List all song_id in data
             song_ids = list(data.keys())
             if song["_id"] not in last_track_ids and song["_id"] not in song_ids:
@@ -1022,7 +1100,7 @@ class Spotify(interactions.Extension):
                     components=components,
                 )
                 # Append the song, message ID and track ID to the votewithadd dictionary
-                data = self.vote_manager.load_data()
+                data = server.vote_manager.load_data()
                 data[song["_id"]] = {
                     "channel_id": ctx.channel.id,
                     "message_id": message.id,
@@ -1032,7 +1110,7 @@ class Spotify(interactions.Extension):
                         str(ctx.author.id): "yes",
                     },
                 }
-                self.vote_manager.save_data(data)
+                server.vote_manager.save_data(data)
                 logger.info(
                     "%s ajouté au vote par %s", track["name"], ctx.author.display_name
                 )
@@ -1057,6 +1135,7 @@ class Spotify(interactions.Extension):
     async def on_button2(self, event: Component):
         if not event.ctx.custom_id.startswith("addwithvote"):
             return
+        server = self.get_server(event.ctx.guild_id)
         # extract the song_id and the vote from the custom_id
         song_id = event.ctx.custom_id.split("_")[1]
         vote = event.ctx.custom_id.split("_")[2]
@@ -1072,15 +1151,15 @@ class Spotify(interactions.Extension):
             return
         last_votes[user_id] = time.time()
         # check if the user has already voted and update their vote if necessary
-        data = self.vote_manager.load_data()
+        data = server.vote_manager.load_data()
         if vote == "annuler":
             data[song_id]["votes"].pop(user_id, None)
-            self.vote_manager.save_data(data)
+            server.vote_manager.save_data(data)
         else:
-            self.vote_manager.save_vote(user_id, vote, song_id)
+            server.vote_manager.save_vote(user_id, vote, song_id)
         # count the votes
-        data = self.vote_manager.load_data()
-        yes, no, users = self.vote_manager.count_votes(data, song_id)
+        data = server.vote_manager.load_data()
+        yes, no, users = server.vote_manager.count_votes(data, song_id)
         # update the message with the vote counts
         users = ", ".join(users)
         embed_original = event.ctx.message.embeds[0]
@@ -1138,15 +1217,16 @@ class Spotify(interactions.Extension):
                 ]
         await ctx.send(choices=choices)
 
-    async def endvote(self, song_id: str):
+    async def endvote(self, song_id: str, server: ServerData):
         """
-        End the vote for a given surname.
+        End the vote for a given song.
 
         Args:
-            surname (str): The surname to end the vote for.
+            song_id (str): The song ID to end the vote for.
+            server (ServerData): The server data.
         """
-        data = self.vote_manager.load_data()
-        yes_votes, no_votes, users = self.vote_manager.count_votes(data, song_id)
+        data = server.vote_manager.load_data()
+        yes_votes, no_votes, users = server.vote_manager.count_votes(data, song_id)
         # Get the message
         channel = await self.bot.fetch_channel(data[song_id]["channel_id"])
         message = await channel.fetch_message(data[song_id]["message_id"])
@@ -1154,15 +1234,15 @@ class Spotify(interactions.Extension):
             # Get track info from Spotify API
             track = sp.track(song_id, market="FR")
             song = spotifymongoformat(
-                track, data[song_id]["author_id"], spotify2discord=SPOTIFY2DISCORD
+                track, data[song_id]["author_id"], spotify2discord=server.spotify2discord
             )
         except spotipy.exceptions.SpotifyException as e:
             logger.error("Spotify API Error while using /addwithvote: %s", e)
         if yes_votes > no_votes:
             # Add song to MongoDB and Spotify playlist
             logger.debug("song : %s", song)
-            playlist_items_full.insert_one(song)
-            sp.playlist_add_items(PLAYLIST_ID, [song["_id"]])
+            server.playlist_items_full.insert_one(song)
+            sp.playlist_add_items(server.playlist_id, [song["_id"]])
             embed, file = await embed_song(
                 song=song,
                 track=track,
@@ -1198,7 +1278,7 @@ class Spotify(interactions.Extension):
             logger.info("La chanson n'a pas été ajoutée à la playlist.")
         # Remove the vote from the data dictionary
         data.pop(song_id)
-        self.vote_manager.save_data(data)
+        server.vote_manager.save_data(data)
 
     @interactions.Task.create(
         interactions.OrTrigger(
@@ -1207,23 +1287,40 @@ class Spotify(interactions.Extension):
     )
     async def check_for_end(self):
         """
-        Check if the vote has ended for each surname and end it if necessary.
+        Check if the vote has ended for each song and end it if necessary.
         """
-        data = self.vote_manager.load_data()
-        songs_to_end = []
-        for song_id in data:
-            if self.vote_manager.check_deadline(song_id):
-                await self.endvote(song_id)
-                songs_to_end.append(song_id)
-        for song_id in songs_to_end:
-            data.pop(song_id)
-        self.vote_manager.save_data(data)
+        for server in SERVERS.values():
+            try:
+                data = server.vote_manager.load_data()
+                songs_to_end = []
+                for song_id in data:
+                    if server.vote_manager.check_deadline(song_id):
+                        await self.endvote(song_id, server)
+                        songs_to_end.append(song_id)
+                for song_id in songs_to_end:
+                    data.pop(song_id)
+                server.vote_manager.save_data(data)
+            except Exception as e:
+                logger.error(
+                    "Error in check_for_end for server %s: %s", server.guild_id, e
+                )
 
     @interactions.Task.create(interactions.TimeTrigger(hour=4, minute=30, utc=False))
     async def new_titles_playlist(self):
-        logger.debug("new_titles_playlist lancé")
+        for server in SERVERS.values():
+            try:
+                await self._new_titles_playlist_for_server(server)
+            except Exception as e:
+                logger.error(
+                    "Error in new_titles_playlist for server %s: %s",
+                    server.guild_id,
+                    e,
+                )
 
-        results = sp.playlist_tracks(playlist_id=PLAYLIST_ID, limit=100, offset=0)
+    async def _new_titles_playlist_for_server(self, server: ServerData):
+        logger.debug("new_titles_playlist lancé pour le serveur %s", server.guild_id)
+
+        results = sp.playlist_tracks(playlist_id=server.playlist_id, limit=100, offset=0)
         tracks = results["items"]
 
         while results["next"]:
@@ -1248,7 +1345,7 @@ class Spotify(interactions.Extension):
                 )
                 break
 
-        sp.playlist_replace_items(NEW_PLAYLIST_ID, new_tracks)
+        sp.playlist_replace_items(server.new_playlist_id, new_tracks)
 
     @interactions.slash_command(
         name="nextvote",
