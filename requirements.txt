@@ -7,7 +7,7 @@ python-dotenv
 prettytable
 Pillow
 rdoclient
-pymongo
+motor
 asyncssh
 mcstatus
 pykuma

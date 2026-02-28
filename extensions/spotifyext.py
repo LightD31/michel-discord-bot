@@ -12,6 +12,7 @@ from interactions.api.events import Component
 
 from dict import finishList, startList
 from src import logutil
+from src.mongodb import mongo_manager
 from src.spotify import (
     EmbedType,
     count_votes,
@@ -35,9 +36,6 @@ DATA_FOLDER = CONFIG["misc"]["dataFolder"]
 
 # Logger setup
 logger = logutil.init_logger(os.path.basename(__file__))
-
-# MongoDB setup
-mongo_client = pymongo.MongoClient(CONFIG["mongodb"]["url"])
 
 # Spotify authentication
 sp = spotify_auth()
@@ -94,8 +92,8 @@ class ServerData:
         self.recap_channel_id = config.get("spotifyRecapChannelId")
         self.recap_message_id = config.get("spotifyRecapMessageId")
 
-        # Per-server MongoDB collections
-        db = mongo_client[f"Playlist_{guild_id}"]
+        # Per-server MongoDB collections (motor async)
+        db = mongo_manager[f"Playlist_{guild_id}"]
         self.playlist_items_full = db["playlistItemsFull"]
         self.votes_db = db["votes"]
 
@@ -223,8 +221,9 @@ class Spotify(interactions.Extension):
             logger.info("Commande /addsong utilisée avec une chanson inexistante")
             return
 
-        if song_data["_id"] not in server.playlist_items_full.distinct("_id"):
-            server.playlist_items_full.insert_one(song_data)
+        existing_ids = await server.playlist_items_full.distinct("_id")
+        if song_data["_id"] not in existing_ids:
+            await server.playlist_items_full.insert_one(song_data)
             sp.playlist_add_items(server.playlist_id, [song_data["_id"]])
             embed, file = await embed_song(
                 song=song_data,
@@ -298,8 +297,8 @@ class Spotify(interactions.Extension):
         channel = self.bot.get_channel(server.channel_id)
         message = await channel.fetch_message(message_id)
         logger.debug("message : %s", str(message.id))
-        votes = server.votes_db.find_one({"_id": track_id})
-        song = server.playlist_items_full.find_one({"_id": track_id})
+        votes = await server.votes_db.find_one({"_id": track_id})
+        song = await server.playlist_items_full.find_one({"_id": track_id})
         logger.debug("song : %s\ntrack_id : %s", song, track_id)
         track = sp.track(track_id, market="FR")
         conserver, supprimer, menfou, users = count_votes(votes["votes"], server.discord2name)
@@ -347,8 +346,8 @@ class Spotify(interactions.Extension):
                 components=[],
             )
             sp.playlist_remove_all_occurrences_of_items(server.playlist_id, [track_id])
-            server.playlist_items_full.delete_one({"_id": track_id})
-            server.votes_db.find_one_and_update(
+            await server.playlist_items_full.delete_one({"_id": track_id})
+            await server.votes_db.find_one_and_update(
                 {"_id": track_id}, {"$set": {"state": "supprimée"}}
             )
             logger.info("La chanson a été supprimée.")
@@ -376,7 +375,7 @@ class Spotify(interactions.Extension):
                 ],
                 components=[],
             )
-            server.votes_db.find_one_and_update(
+            await server.votes_db.find_one_and_update(
                 {"_id": track_id}, {"$set": {"state": "conservée"}}
             )
             logger.info("La chanson a été conservée.")
@@ -384,8 +383,8 @@ class Spotify(interactions.Extension):
 
     async def _start_new_vote(self, server: ServerData):
         """Pick a random song and start a new vote for a server."""
-        track_ids = set(server.playlist_items_full.distinct("_id"))
-        pollhistory = set(server.votes_db.distinct("_id"))
+        track_ids = set(await server.playlist_items_full.distinct("_id"))
+        pollhistory = set(await server.votes_db.distinct("_id"))
         track_id = random.choice(list(track_ids))
         logger.debug("track_id choisie : %s", track_id)
         while track_id in pollhistory:
@@ -394,7 +393,7 @@ class Spotify(interactions.Extension):
             )
             track_id = random.choice(list(track_ids))
         logger.info("Chanson tirée au sort : %s", track_id)
-        song = server.playlist_items_full.find_one({"_id": track_id})
+        song = await server.playlist_items_full.find_one({"_id": track_id})
         track = sp.track(song["_id"], market="FR")
         channel = await self.bot.fetch_channel(server.channel_id)
         embed, file = await embed_song(
@@ -443,7 +442,7 @@ class Spotify(interactions.Extension):
         await channel.purge(deletion_limit=1, after=message)
         server.vote_infos.update({"message_id": str(message.id), "track_id": track_id})
         await self.save_voteinfos(server)
-        server.votes_db.update_one(
+        await server.votes_db.update_one(
             {"_id": track_id},
             {
                 "$set": {
@@ -480,13 +479,13 @@ class Spotify(interactions.Extension):
             # Check if the user has already voted and update their vote if necessary
             user_id = str(ctx.user.id)
             if ctx.custom_id == "annuler":
-                votes = server.votes_db.find_one_and_update(
+                votes = await server.votes_db.find_one_and_update(
                     {"_id": track_id},
                     {"$unset": {f"votes.{user_id}": ""}},
                     return_document=pymongo.ReturnDocument.AFTER,
                 )
             else:
-                votes = server.votes_db.find_one_and_update(
+                votes = await server.votes_db.find_one_and_update(
                     {"_id": track_id},
                     {"$set": {f"votes.{user_id}": ctx.custom_id}},
                     upsert=True,
@@ -583,7 +582,7 @@ class Spotify(interactions.Extension):
             length = len(tracks)
             duration = 0
             # Compare the current track IDs to the previous track IDs
-            last_track_ids = server.playlist_items_full.distinct("_id")
+            last_track_ids = await server.playlist_items_full.distinct("_id")
             current_track_ids = {track["track"]["id"] for track in tracks}
             added_track_ids = list(set(current_track_ids) - set(last_track_ids))
             removed_track_ids = list(set(last_track_ids) - set(current_track_ids))
@@ -598,7 +597,7 @@ class Spotify(interactions.Extension):
                 if track["track"]["id"] in added_track_ids:
                     song = spotifymongoformat(track, spotify2discord=server.spotify2discord)
                     track = sp.track(track["track"]["id"], market="FR")
-                    server.playlist_items_full.insert_one(song)
+                    await server.playlist_items_full.insert_one(song)
                     dt = interactions.utils.timestamp_converter(
                         datetime.fromisoformat(song["added_at"]).astimezone(
                             pytz.timezone("Europe/Paris")
@@ -627,7 +626,7 @@ class Spotify(interactions.Extension):
                     len(removed_track_ids),
                 )
                 for track_id in removed_track_ids:
-                    song = server.playlist_items_full.find_one_and_delete({"_id": track_id})
+                    song = await server.playlist_items_full.find_one_and_delete({"_id": track_id})
                     track = sp.track(track_id, market="FR")
                     embed, file = await embed_song(
                         song=song,
@@ -743,9 +742,10 @@ class Spotify(interactions.Extension):
                 for user_id in user_ids.copy():
                     user = await self.bot.fetch_user(user_id)
                     if user:
-                        vote = server.votes_db.find_one(
+                        vote_doc = await server.votes_db.find_one(
                             {"_id": str(server.vote_infos["track_id"])}
-                        )["votes"].get(str(user_id))
+                        )
+                        vote = vote_doc["votes"].get(str(user_id)) if vote_doc else None
                         if vote is None:
                             await user.send(
                                 f"Hey {user.mention}, tu n'as pas voté aujourd'hui :pleading_face: \nhttps://discord.com/channels/{server.guild_id}/{server.channel_id}/{server.vote_infos.get('message_id')}"
@@ -894,8 +894,8 @@ class Spotify(interactions.Extension):
         """
         server = self.get_server(ctx.guild_id)
         embed = None
-        song = server.playlist_items_full.find_one({"_id": song_id})
-        votes = server.votes_db.find_one({"_id": song_id})
+        song = await server.playlist_items_full.find_one({"_id": song_id})
+        votes = await server.votes_db.find_one({"_id": song_id})
         track = sp.track(song_id, market="FR")
         if song:
             embed, file = await embed_song(
@@ -981,9 +981,9 @@ class Spotify(interactions.Extension):
             }
             # Fetch data from playlist_items_full and votes_db
             playlist_items = {
-                item["_id"]: item for item in server.playlist_items_full.find(query)
+                item["_id"]: item async for item in server.playlist_items_full.find(query)
             }
-            votes = {item["_id"]: item for item in server.votes_db.find(query)}
+            votes = {item["_id"]: item async for item in server.votes_db.find(query)}
 
             # Merge dictionaries. In case of conflict, keep the entry from playlist_items_full
             results = {**playlist_items, **votes}
@@ -1028,7 +1028,7 @@ class Spotify(interactions.Extension):
         server = self.get_server(ctx.guild_id)
         if str(ctx.channel_id) == str(server.channel_id):
             # Get last track IDs from MongoDB
-            last_track_ids = server.playlist_items_full.distinct("_id")
+            last_track_ids = await server.playlist_items_full.distinct("_id")
             logger.info(
                 "/addwithvote '%s' utilisé par %s(id:%s)",
                 song,
@@ -1233,7 +1233,7 @@ class Spotify(interactions.Extension):
         if yes_votes > no_votes:
             # Add song to MongoDB and Spotify playlist
             logger.debug("song : %s", song)
-            server.playlist_items_full.insert_one(song)
+            await server.playlist_items_full.insert_one(song)
             sp.playlist_add_items(server.playlist_id, [song["_id"]])
             embed, file = await embed_song(
                 song=song,

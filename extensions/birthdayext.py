@@ -43,6 +43,7 @@ from interactions import (
 )
 
 from src import logutil
+from src.mongodb import mongo_manager
 from src.utils import CustomPaginator, load_config
 
 logger = logutil.init_logger(os.path.basename(__file__))
@@ -108,69 +109,77 @@ class BirthdayClass(Extension):
     def __init__(self, bot: Client) -> None:
         self.bot = bot
 
-        # Database connection
+        # Database connection via global motor manager
         try:
-            client = pymongo.MongoClient(config["mongodb"]["url"])
-            db = client["Playlist"]
-            self.collection: pymongo.collection.Collection = db["birthday"]
-            # Index composé pour accélérer les lookups
-            self.collection.create_index(
+            db = mongo_manager["Playlist"]
+            self.collection = db["birthday"]
+        except Exception as e:
+            logger.error("Failed to initialize database: %s", e)
+            raise DatabaseError(f"Database initialization failed: {e}")
+
+    # ------------------------------------------------------------------
+    # Ensure indexes (called once on startup)
+    # ------------------------------------------------------------------
+
+    async def _ensure_indexes(self) -> None:
+        """Crée les index nécessaires (appelé au démarrage)."""
+        try:
+            await self.collection.create_index(
                 [("user", pymongo.ASCENDING), ("server", pymongo.ASCENDING)],
                 unique=True,
             )
         except Exception as e:
-            logger.error("Failed to connect to database: %s", e)
-            raise DatabaseError(f"Database connection failed: {e}")
+            logger.error("Failed to create indexes: %s", e)
 
     # ------------------------------------------------------------------
-    # Database helpers (wrappers async autour de pymongo synchrone)
+    # Database helpers (motor async natif)
     # ------------------------------------------------------------------
 
     async def _db_find_one(self, query: dict) -> Optional[dict]:
-        """Trouve un document (non-bloquant)."""
+        """Trouve un document."""
         try:
-            return await asyncio.to_thread(self.collection.find_one, query)
+            return await self.collection.find_one(query)
         except Exception as e:
             logger.error("DB find_one failed: %s", e)
             raise DatabaseError(f"Failed to query database: {e}")
 
     async def _db_find(self, query: dict) -> list[dict]:
-        """Trouve plusieurs documents (non-bloquant)."""
+        """Trouve plusieurs documents."""
         try:
-            return await asyncio.to_thread(lambda: list(self.collection.find(query)))
+            return await self.collection.find(query).to_list(length=None)
         except Exception as e:
             logger.error("DB find failed: %s", e)
             raise DatabaseError(f"Failed to query database: {e}")
 
     async def _db_update_one(self, query: dict, update: dict) -> None:
-        """Met à jour un document (non-bloquant)."""
+        """Met à jour un document."""
         try:
-            await asyncio.to_thread(self.collection.update_one, query, update)
+            await self.collection.update_one(query, update)
         except Exception as e:
             logger.error("DB update_one failed: %s", e)
             raise DatabaseError(f"Failed to update database: {e}")
 
     async def _db_insert_one(self, document: dict) -> None:
-        """Insère un document (non-bloquant)."""
+        """Insère un document."""
         try:
-            await asyncio.to_thread(self.collection.insert_one, document)
+            await self.collection.insert_one(document)
         except Exception as e:
             logger.error("DB insert_one failed: %s", e)
             raise DatabaseError(f"Failed to insert into database: {e}")
 
     async def _db_delete_one(self, query: dict) -> int:
-        """Supprime un document. Retourne le nombre supprimé (non-bloquant)."""
+        """Supprime un document. Retourne le nombre supprimé."""
         try:
-            result = await asyncio.to_thread(self.collection.delete_one, query)
+            result = await self.collection.delete_one(query)
             return result.deleted_count
         except Exception as e:
             logger.error("DB delete_one failed: %s", e)
             raise DatabaseError(f"Failed to delete from database: {e}")
 
     async def _db_delete_many(self, query: dict) -> int:
-        """Supprime plusieurs documents. Retourne le nombre supprimé (non-bloquant)."""
+        """Supprime plusieurs documents. Retourne le nombre supprimé."""
         try:
-            result = await asyncio.to_thread(self.collection.delete_many, query)
+            result = await self.collection.delete_many(query)
             return result.deleted_count
         except Exception as e:
             logger.error("DB delete_many failed: %s", e)
@@ -236,6 +245,7 @@ class BirthdayClass(Extension):
 
     @listen()
     async def on_startup(self) -> None:
+        await self._ensure_indexes()
         self.anniversaire_check.start()
 
     # ------------------------------------------------------------------
