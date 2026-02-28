@@ -25,7 +25,7 @@ from interactions import (
     slash_option,
 )
 from interactions.api.events import MessageCreate
-from interactions.ext import paginators
+from src.utils import CustomPaginator
 
 from src import logutil
 from src.mongodb import mongo_manager
@@ -615,31 +615,3 @@ class XP(Extension):
             )
         except Exception as e:
             logger.error("Failed to update leaderboard for guild %s: %s", guild_id, e)
-
-
-class CustomPaginator(paginators.Paginator):
-    # Override the functions here
-    async def _on_button(
-        self, ctx: ComponentContext, *args, **kwargs
-    ) -> Optional[Message]:
-        if self._timeout_task:
-            self._timeout_task.ping.set()
-        match ctx.custom_id.split("|")[1]:
-            case "first":
-                self.page_index = 0
-            case "last":
-                self.page_index = len(self.pages) - 1
-            case "next":
-                if (self.page_index + 1) < len(self.pages):
-                    self.page_index += 1
-            case "back":
-                if self.page_index >= 1:
-                    self.page_index -= 1
-            case "select":
-                self.page_index = int(ctx.values[0])
-            case "callback":
-                if self.callback:
-                    return await self.callback(ctx)
-
-        await ctx.edit_origin(**self.to_dict())
-        return None
