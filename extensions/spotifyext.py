@@ -110,48 +110,6 @@ class ServerData:
         )
 
 
-def _migrate_old_data(guild_id: str):
-    """
-    Auto-migrate old single-server data to the new per-server format.
-    Runs once at startup; skips if the new data already exists.
-    """
-    import shutil
-
-    new_db = mongo_client[f"Playlist_{guild_id}"]
-    old_db = mongo_client["Playlist"]
-
-    for col_name in ["playlistItemsFull", "votes"]:
-        old_col = old_db[col_name]
-        new_col = new_db[col_name]
-        if new_col.count_documents({}) == 0 and old_col.count_documents({}) > 0:
-            docs = list(old_col.find())
-            new_col.insert_many(docs)
-            logger.info(
-                "[Migration] Copied %d documents from Playlist.%s to Playlist_%s.%s",
-                len(docs), col_name, guild_id, col_name,
-            )
-        else:
-            logger.debug("[Migration] Playlist_%s.%s already has data or source is empty, skipping.", guild_id, col_name)
-
-    json_files = [
-        ("addwithvotes.json", f"addwithvotes_{guild_id}.json"),
-        ("voteinfos.json", f"voteinfos_{guild_id}.json"),
-        ("snapshot.json", f"snapshot_{guild_id}.json"),
-        ("reminderspotify.json", f"reminderspotify_{guild_id}.json"),
-    ]
-    for old_name, new_name in json_files:
-        old_path = os.path.join(DATA_FOLDER, old_name)
-        new_path = os.path.join(DATA_FOLDER, new_name)
-        if os.path.exists(old_path) and not os.path.exists(new_path):
-            shutil.copy2(old_path, new_path)
-            logger.info("[Migration] Copied %s -> %s", old_name, new_name)
-        else:
-            logger.debug("[Migration] %s already exists or source missing, skipping.", new_name)
-
-
-# Migrate old data for the primary (first) server before building ServerData
-_migrate_old_data(str(ENABLED_SERVERS[0]))
-
 # Build per-server data
 SERVERS: dict[str, ServerData] = {}
 for _guild_id in ENABLED_SERVERS:
