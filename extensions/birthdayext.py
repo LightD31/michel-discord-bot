@@ -9,10 +9,12 @@ This extension manages user birthdays with features including:
 - Robust error handling and validation
 
 Author: Improved by Assistant
-Version: 2.0
+Version: 3.0
 """
 
+import asyncio
 import os
+import re
 import random
 from datetime import datetime
 from typing import Optional
@@ -20,13 +22,16 @@ from typing import Optional
 import pymongo
 import pytz
 from babel.dates import format_date, get_date_format
+from dateutil.relativedelta import relativedelta
 from interactions import (
+    ActionRow,
     AutocompleteContext,
+    Button,
+    ButtonStyle,
     Client,
     ComponentContext,
     Embed,
     Extension,
-    Message,
     OptionType,
     OrTrigger,
     SlashContext,
@@ -36,106 +41,206 @@ from interactions import (
     slash_command,
     slash_option,
 )
-from interactions.ext import paginators
 
 from src import logutil
-from src.utils import load_config
+from src.utils import CustomPaginator, load_config
 
 logger = logutil.init_logger(os.path.basename(__file__))
 config, module_config, enabled_servers = load_config("moduleBirthday")
 
 
+# ---------------------------------------------------------------------------
 # Custom exception classes
+# ---------------------------------------------------------------------------
+
 class BirthdayError(Exception):
-    """Base exception for Birthday extension errors"""
+    """Exception de base pour l'extension Birthday."""
     pass
 
 
 class DatabaseError(BirthdayError):
-    """Exception raised when database operations fail"""
+    """Exception levée en cas d'échec d'opération base de données."""
     pass
 
 
 class ValidationError(BirthdayError):
-    """Exception raised when data validation fails"""
+    """Exception levée en cas de validation de données incorrecte."""
     pass
 
 
-class DiscordAPIError(BirthdayError):
-    """Exception raised when Discord API calls fail"""
-    pass
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
 
+def _safe_replace_year(dt: datetime, year: int) -> datetime:
+    """Remplace l'année de *dt* en gérant le 29 février.
+
+    Si *dt* est le 29 février et que *year* n'est pas bissextile,
+    retourne le 1er mars.
+    """
+    try:
+        return dt.replace(year=year)
+    except ValueError:
+        return dt.replace(year=year, month=3, day=1)
+
+
+def _strip_year_from_format(date_format: str) -> str:
+    """Supprime les tokens d'année (y, yy, yyyy …) d'un format de date babel/ICU.
+
+    Utilise une regex pour ne cibler que les tokens d'année isolés.
+    """
+    cleaned = re.sub(r"[,/\-.\s]*y+[,/\-.\s]*", " ", date_format)
+    return cleaned.strip(" ,.-/")
+
+
+def _compute_age(birth_date: datetime, reference: Optional[datetime] = None) -> int:
+    """Calcule l'âge en années complètes entre *birth_date* et *reference*."""
+    if reference is None:
+        reference = datetime.now()
+    return relativedelta(reference, birth_date).years
+
+
+# ---------------------------------------------------------------------------
+# Extension
+# ---------------------------------------------------------------------------
 
 class BirthdayClass(Extension):
-    def __init__(self, bot):
-        self.bot: Client = bot
+    def __init__(self, bot: Client) -> None:
+        self.bot = bot
+
         # Database connection
         try:
             client = pymongo.MongoClient(config["mongodb"]["url"])
             db = client["Playlist"]
-            self.collection = db["birthday"]
+            self.collection: pymongo.collection.Collection = db["birthday"]
+            # Index composé pour accélérer les lookups
+            self.collection.create_index(
+                [("user", pymongo.ASCENDING), ("server", pymongo.ASCENDING)],
+                unique=True,
+            )
         except Exception as e:
-            logger.error(f"Failed to connect to database: {e}")
+            logger.error("Failed to connect to database: %s", e)
             raise DatabaseError(f"Database connection failed: {e}")
 
-    def _validate_and_parse_date(self, date_str: str) -> datetime:
-        """Validate and parse date string to datetime object"""
+    # ------------------------------------------------------------------
+    # Database helpers (wrappers async autour de pymongo synchrone)
+    # ------------------------------------------------------------------
+
+    async def _db_find_one(self, query: dict) -> Optional[dict]:
+        """Trouve un document (non-bloquant)."""
+        try:
+            return await asyncio.to_thread(self.collection.find_one, query)
+        except Exception as e:
+            logger.error("DB find_one failed: %s", e)
+            raise DatabaseError(f"Failed to query database: {e}")
+
+    async def _db_find(self, query: dict) -> list[dict]:
+        """Trouve plusieurs documents (non-bloquant)."""
+        try:
+            return await asyncio.to_thread(lambda: list(self.collection.find(query)))
+        except Exception as e:
+            logger.error("DB find failed: %s", e)
+            raise DatabaseError(f"Failed to query database: {e}")
+
+    async def _db_update_one(self, query: dict, update: dict) -> None:
+        """Met à jour un document (non-bloquant)."""
+        try:
+            await asyncio.to_thread(self.collection.update_one, query, update)
+        except Exception as e:
+            logger.error("DB update_one failed: %s", e)
+            raise DatabaseError(f"Failed to update database: {e}")
+
+    async def _db_insert_one(self, document: dict) -> None:
+        """Insère un document (non-bloquant)."""
+        try:
+            await asyncio.to_thread(self.collection.insert_one, document)
+        except Exception as e:
+            logger.error("DB insert_one failed: %s", e)
+            raise DatabaseError(f"Failed to insert into database: {e}")
+
+    async def _db_delete_one(self, query: dict) -> int:
+        """Supprime un document. Retourne le nombre supprimé (non-bloquant)."""
+        try:
+            result = await asyncio.to_thread(self.collection.delete_one, query)
+            return result.deleted_count
+        except Exception as e:
+            logger.error("DB delete_one failed: %s", e)
+            raise DatabaseError(f"Failed to delete from database: {e}")
+
+    async def _db_delete_many(self, query: dict) -> int:
+        """Supprime plusieurs documents. Retourne le nombre supprimé (non-bloquant)."""
+        try:
+            result = await asyncio.to_thread(self.collection.delete_many, query)
+            return result.deleted_count
+        except Exception as e:
+            logger.error("DB delete_many failed: %s", e)
+            raise DatabaseError(f"Failed to delete from database: {e}")
+
+    # ------------------------------------------------------------------
+    # Validation helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _validate_and_parse_date(date_str: str) -> datetime:
+        """Valide et parse une chaîne de date (JJ/MM/AAAA) en datetime."""
         try:
             return datetime.strptime(date_str, "%d/%m/%Y")
         except ValueError:
-            raise ValidationError("Date invalide. Format attendu: JJ/MM/AAAA")
+            raise ValidationError("Date invalide. Format attendu : JJ/MM/AAAA")
 
-    def _validate_timezone(self, timezone_str: str) -> pytz.BaseTzInfo:
-        """Validate timezone string and return timezone object"""
+    @staticmethod
+    def _validate_timezone(timezone_str: str) -> pytz.BaseTzInfo:
+        """Valide un fuseau horaire et retourne l'objet tz correspondant."""
         if timezone_str not in pytz.all_timezones:
             raise ValidationError("Fuseau horaire invalide")
         return pytz.timezone(timezone_str)
 
-    async def _get_user_birthday(self, user_id: int, server_id: int) -> Optional[dict]:
-        """Get user's birthday from database"""
-        try:
-            return self.collection.find_one({"user": user_id, "server": server_id})
-        except Exception as e:
-            logger.error(f"Failed to get user birthday: {e}")
-            raise DatabaseError(f"Failed to retrieve birthday: {e}")
+    # ------------------------------------------------------------------
+    # Config helpers
+    # ------------------------------------------------------------------
 
-    async def _update_birthday(self, user_id: int, server_id: int, date: datetime, timezone: pytz.BaseTzInfo, hideyear: Optional[bool]):
-        """Update existing birthday in database"""
-        try:
-            self.collection.update_one(
-                {"user": user_id, "server": server_id},
-                {
-                    "$set": {
-                        "date": date,
-                        "timezone": timezone.zone,
-                        "hideyear": hideyear or False,
-                    }
-                },
-            )
-        except Exception as e:
-            logger.error(f"Failed to update birthday: {e}")
-            raise DatabaseError(f"Failed to update birthday: {e}")
+    @staticmethod
+    def _server_config(server_id: int) -> dict:
+        """Retourne la config du module pour un serveur donné."""
+        return module_config.get(str(server_id), {})
 
-    async def _add_birthday(self, user_id: int, server_id: int, date: datetime, timezone: pytz.BaseTzInfo, hideyear: Optional[bool]):
-        """Add new birthday to database"""
+    # ------------------------------------------------------------------
+    # Role helper (factorisé give / remove)
+    # ------------------------------------------------------------------
+
+    async def _toggle_birthday_role(self, server, member, server_id: int, *, add: bool) -> None:
+        """Ajoute ou retire le rôle d'anniversaire pour *member* sur *server*."""
+        role_id = self._server_config(server_id).get("birthdayRoleId")
+        if not role_id:
+            return
+
         try:
-            self.collection.insert_one(
-                {
-                    "user": user_id,
-                    "server": server_id,
-                    "date": date,
-                    "timezone": timezone.zone,
-                    "hideyear": hideyear or False,
-                    "isBirthday": False,
-                }
-            )
+            role = await server.fetch_role(role_id)
+            if not role:
+                logger.warning("Could not fetch birthday role %s in server %s", role_id, server.name)
+                return
+
+            if add:
+                await member.add_role(role)
+                logger.info("Birthday role %s given to %s on server %s", role.name, member.display_name, server.name)
+            elif role in member.roles:
+                await member.remove_role(role)
+                logger.info("Birthday role %s removed from %s on server %s", role.name, member.display_name, server.name)
         except Exception as e:
-            logger.error(f"Failed to add birthday: {e}")
-            raise DatabaseError(f"Failed to add birthday: {e}")
+            action = "giving" if add else "removing"
+            logger.error("Error %s birthday role: %s", action, e)
+
+    # ------------------------------------------------------------------
+    # Startup
+    # ------------------------------------------------------------------
 
     @listen()
-    async def on_startup(self):
+    async def on_startup(self) -> None:
         self.anniversaire_check.start()
+
+    # ------------------------------------------------------------------
+    # /anniversaire ajouter
+    # ------------------------------------------------------------------
 
     @slash_command(
         name="anniversaire",
@@ -146,7 +251,7 @@ class BirthdayClass(Extension):
     )
     @slash_option(
         name="date",
-        description="Date de l'anniversaire (format: JJ/MM/AAAA)",
+        description="Date de l'anniversaire (format : JJ/MM/AAAA)",
         opt_type=OptionType.STRING,
         required=True,
         min_length=10,
@@ -154,7 +259,7 @@ class BirthdayClass(Extension):
     )
     @slash_option(
         name="timezone",
-        description="Fuseau horaire ex: Europe/Paris",
+        description="Fuseau horaire ex : Europe/Paris",
         opt_type=OptionType.STRING,
         required=True,
         autocomplete=True,
@@ -171,431 +276,336 @@ class BirthdayClass(Extension):
         date: str,
         timezone: str,
         hideyear: Optional[bool] = False,
-    ):
-        """
-        Add or modify a user's birthday
-        
-        Args:
-            ctx: The slash command context
-            date: Birthday date in DD/MM/YYYY format
-            timezone: Timezone string (e.g., Europe/Paris)
-            hideyear: Whether to hide the birth year (optional)
-        """
+    ) -> None:
+        """Ajoute ou modifie l'anniversaire d'un utilisateur."""
         if not ctx.guild:
-            await ctx.send("Cette commande ne peut être utilisée que dans un serveur", ephemeral=True)
+            await ctx.send("Cette commande ne peut être utilisée que dans un serveur.", ephemeral=True)
             return
 
         try:
-            # Validate and parse date
             parsed_date = self._validate_and_parse_date(date)
-            
-            # Validate timezone
-            validated_timezone = self._validate_timezone(timezone)
-            
-            # Check if user already has a birthday in this server
-            existing_birthday = await self._get_user_birthday(ctx.author.id, ctx.guild.id)
-            
-            if existing_birthday:
-                await self._update_birthday(ctx.author.id, ctx.guild.id, parsed_date, validated_timezone, hideyear)
-                await ctx.send("Anniversaire mis à jour", ephemeral=True)
+            validated_tz = self._validate_timezone(timezone)
+
+            query = {"user": ctx.author.id, "server": ctx.guild.id}
+            existing = await self._db_find_one(query)
+
+            if existing:
+                await self._db_update_one(query, {
+                    "$set": {
+                        "date": parsed_date,
+                        "timezone": validated_tz.zone,
+                        "hideyear": hideyear or False,
+                    }
+                })
+                await ctx.send("Anniversaire mis à jour ✅", ephemeral=True)
                 logger.info(
                     "Anniversaire de %s mis à jour sur le serveur %s (%s)",
-                    ctx.author.display_name,
-                    ctx.guild.name,
-                    parsed_date.strftime("%d/%m/%Y"),
+                    ctx.author.display_name, ctx.guild.name, parsed_date.strftime("%d/%m/%Y"),
                 )
             else:
-                await self._add_birthday(ctx.author.id, ctx.guild.id, parsed_date, validated_timezone, hideyear)
-                await ctx.send("Anniversaire ajouté", ephemeral=True)
+                await self._db_insert_one({
+                    "user": ctx.author.id,
+                    "server": ctx.guild.id,
+                    "date": parsed_date,
+                    "timezone": validated_tz.zone,
+                    "hideyear": hideyear or False,
+                    "isBirthday": False,
+                })
+                await ctx.send("Anniversaire ajouté ✅", ephemeral=True)
                 logger.info(
                     "Anniversaire de %s ajouté sur le serveur %s (%s)",
-                    ctx.author.display_name,
-                    ctx.guild.name,
-                    parsed_date.strftime("%d/%m/%Y"),
+                    ctx.author.display_name, ctx.guild.name, parsed_date.strftime("%d/%m/%Y"),
                 )
-                
+
         except ValidationError as e:
             await ctx.send(str(e), ephemeral=True)
         except DatabaseError as e:
-            logger.error(f"Database error for user {ctx.author.display_name}: {e}")
+            logger.error("Database error for user %s: %s", ctx.author.display_name, e)
             await ctx.send("Erreur lors de l'enregistrement. Veuillez réessayer.", ephemeral=True)
         except Exception as e:
-            logger.error(f"Unexpected error in anniversaire command: {e}")
+            logger.error("Unexpected error in anniversaire command: %s", e)
             await ctx.send("Une erreur inattendue s'est produite.", ephemeral=True)
 
+    # ------------------------------------------------------------------
+    # Timezone autocomplete
+    # ------------------------------------------------------------------
+
     @anniversaire.autocomplete("timezone")
-    async def anniversaire_timezone(self, ctx: AutocompleteContext):
-        timezone_imput = ctx.input_text.lower()
-        timezones = pytz.all_timezones
-        if timezone_imput:
-            timezones = [
-                timezone for timezone in timezones if timezone_imput in timezone.lower()
-            ]
-            # Limit the number of choices to 25
-            timezones = timezones[:25]
+    async def anniversaire_timezone(self, ctx: AutocompleteContext) -> None:
+        timezone_input = ctx.input_text.lower()
+        all_tz = list(pytz.all_timezones)
+
+        if timezone_input:
+            filtered = [tz for tz in all_tz if timezone_input in tz.lower()][:25]
         else:
-            timezones = random.sample(timezones, 25)
-        await ctx.send(
-            choices=[
-                {
-                    "name": timezone,
-                    "value": timezone,
-                }
-                for timezone in timezones
-            ]
-        )
+            filtered = random.sample(all_tz, 25)
+
+        await ctx.send(choices=[{"name": tz, "value": tz} for tz in filtered])
+
+    # ------------------------------------------------------------------
+    # /anniversaire supprimer
+    # ------------------------------------------------------------------
 
     @anniversaire.subcommand(
         sub_cmd_name="supprimer",
         sub_cmd_description="Supprime ton anniversaire sur ce serveur",
     )
-    async def anniversaire_supprimer(self, ctx: SlashContext):
-        """Remove user's birthday from current server"""
+    async def anniversaire_supprimer(self, ctx: SlashContext) -> None:
+        """Supprime l'anniversaire de l'utilisateur sur le serveur courant."""
         if not ctx.guild:
-            await ctx.send("Cette commande ne peut être utilisée que dans un serveur", ephemeral=True)
+            await ctx.send("Cette commande ne peut être utilisée que dans un serveur.", ephemeral=True)
             return
-            
+
         try:
-            result = self.collection.delete_one({"user": ctx.author.id, "server": ctx.guild.id})
-            if result.deleted_count > 0:
-                await ctx.send("Anniversaire supprimé", ephemeral=True)
-                logger.info(f"Birthday removed for {ctx.author.display_name} on server {ctx.guild.name}")
+            deleted = await self._db_delete_one({"user": ctx.author.id, "server": ctx.guild.id})
+            if deleted > 0:
+                await ctx.send("Anniversaire supprimé ✅", ephemeral=True)
+                logger.info("Birthday removed for %s on server %s", ctx.author.display_name, ctx.guild.name)
             else:
-                await ctx.send("Aucun anniversaire trouvé à supprimer", ephemeral=True)
-        except Exception as e:
-            logger.error(f"Failed to delete birthday: {e}")
-            await ctx.send("Erreur lors de la suppression", ephemeral=True)
+                await ctx.send("Aucun anniversaire trouvé à supprimer.", ephemeral=True)
+        except DatabaseError:
+            await ctx.send("Erreur lors de la suppression.", ephemeral=True)
+
+    # ------------------------------------------------------------------
+    # /anniversaire purge (avec confirmation)
+    # ------------------------------------------------------------------
 
     @anniversaire.subcommand(
         sub_cmd_name="purge",
         sub_cmd_description="Supprime ton anniversaire sur tous les serveurs",
     )
-    async def anniversaire_purge(self, ctx: SlashContext):
-        # Remove from database
-        self.collection.delete_many({"user": ctx.author.id})
-        await ctx.send("Anniversaire supprimé sur tous les serveurs", ephemeral=True)
+    async def anniversaire_purge(self, ctx: SlashContext) -> None:
+        """Supprime l'anniversaire de l'utilisateur sur tous les serveurs (avec confirmation)."""
+        confirm_button = Button(
+            style=ButtonStyle.DANGER,
+            label="Confirmer la suppression",
+            custom_id="birthday_purge_confirm",
+        )
+        cancel_button = Button(
+            style=ButtonStyle.SECONDARY,
+            label="Annuler",
+            custom_id="birthday_purge_cancel",
+        )
+
+        msg = await ctx.send(
+            "⚠️ Es-tu sûr de vouloir supprimer ton anniversaire sur **tous** les serveurs ?",
+            components=[ActionRow(confirm_button, cancel_button)],
+            ephemeral=True,
+        )
+
+        try:
+            button_ctx: ComponentContext = await self.bot.wait_for_component(
+                components=[confirm_button, cancel_button],
+                messages=msg,
+                timeout=30,
+            )
+
+            if button_ctx.custom_id == "birthday_purge_confirm":
+                deleted = await self._db_delete_many({"user": ctx.author.id})
+                await button_ctx.edit_origin(
+                    content=f"Anniversaire supprimé sur {deleted} serveur(s) ✅",
+                    components=[],
+                )
+                logger.info("Birthday purged for %s on %d server(s)", ctx.author.display_name, deleted)
+            else:
+                await button_ctx.edit_origin(content="Suppression annulée.", components=[])
+
+        except TimeoutError:
+            await msg.edit(content="Temps écoulé, suppression annulée.", components=[])
+
+    # ------------------------------------------------------------------
+    # /anniversaire liste
+    # ------------------------------------------------------------------
 
     @anniversaire.subcommand(
         sub_cmd_name="liste",
         sub_cmd_description="Liste des anniversaires",
     )
-    async def anniversaire_liste(self, ctx: SlashContext):
-        """List all birthdays on current server"""
+    async def anniversaire_liste(self, ctx: SlashContext) -> None:
+        """Affiche la liste paginée de tous les anniversaires du serveur."""
         if not ctx.guild:
-            await ctx.send("Cette commande ne peut être utilisée que dans un serveur", ephemeral=True)
+            await ctx.send("Cette commande ne peut être utilisée que dans un serveur.", ephemeral=True)
             return
-            
-        try:
-            # Get all birthdays for this server
-            birthdays = list(self.collection.find({"server": ctx.guild.id}))
-            
-            if not birthdays:
-                await ctx.send("Aucun anniversaire enregistré sur ce serveur", ephemeral=True)
-                return
-            
-            # Get locale configuration
-            locale = module_config.get(str(ctx.guild.id), {}).get("birthdayGuildLocale", "en_US")
-            date_format = str(get_date_format("long", locale=locale))
-            # Remove the year from the date format
-            date_format = date_format.replace("y", "").strip()
 
-            # Create embeds for pagination
-            embeds = []
-            embed = Embed(
-                title="Anniversaires",
-                description="",
-                color=0x00FF00,
-            )
-            birthday_list = ""
-            
-            # Sort by date without taking the year into account
-            birthdays = sorted(
-                birthdays,
-                key=lambda x: x["date"].replace(year=2000),
-            )
-            
-            users_processed = 0
+        try:
+            birthdays = await self._db_find({"server": ctx.guild.id})
+
+            if not birthdays:
+                await ctx.send("Aucun anniversaire enregistré sur ce serveur.", ephemeral=True)
+                return
+
+            # Locale / format de date
+            srv_cfg = self._server_config(ctx.guild.id)
+            locale = srv_cfg.get("birthdayGuildLocale", "en_US")
+            raw_format = str(get_date_format("long", locale=locale))
+            date_format = _strip_year_from_format(raw_format)
+
+            # Tri par mois/jour (gestion du 29 février)
+            birthdays.sort(key=lambda b: _safe_replace_year(b["date"], 2000))
+
+            # Construction des embeds paginés (25 entrées par page)
+            embeds: list[Embed] = []
+            lines: list[str] = []
+
             for birthday in birthdays:
                 try:
-                    date: datetime = birthday["date"]
-                    user = await self.bot.fetch_user(birthday["user"])
-                    
+                    bd_date: datetime = birthday["date"]
+                    uid = birthday["user"]
+
+                    # Préfère le cache Discord, fallback sur l'API
+                    user = self.bot.get_user(uid) or await self.bot.fetch_user(uid)
                     if not user:
-                        logger.warning(f"Could not fetch user {birthday['user']}")
+                        logger.warning("Could not fetch user %s", uid)
                         continue
-                        
+
                     hideyear: bool = birthday.get("hideyear", False)
+                    formatted = format_date(bd_date, date_format, locale=locale)
+
                     if hideyear:
-                        birthday_list += f"**{user.mention}** : {format_date(date, date_format, locale=locale)}\n"
+                        lines.append(f"**{user.mention}** : {formatted}")
                     else:
-                        birthday_list += f"**{user.mention}** : {format_date(date, date_format, locale=locale)} ({datetime.now().year - date.year} ans)\n"
-                    
-                    users_processed += 1
-                    
-                    # Create new embed every 25 users
-                    if users_processed % 25 == 0:
-                        embed.description = birthday_list
-                        embeds.append(embed)
-                        embed = Embed(
-                            title="Anniversaires",
-                            description="",
-                            color=0x00FF00,
-                        )
-                        birthday_list = ""
-                        
+                        age = _compute_age(bd_date)
+                        lines.append(f"**{user.mention}** : {formatted} ({age} ans)")
+
+                    if len(lines) % 25 == 0:
+                        embeds.append(Embed(title="Anniversaires 🎂", description="\n".join(lines), color=0x00FF00))
+                        lines = []
+
                 except Exception as e:
-                    logger.error(f"Error processing birthday for user {birthday['user']}: {e}")
+                    logger.error("Error processing birthday for user %s: %s", birthday.get("user"), e)
                     continue
-            
-            # Add the last embed if it has content
-            if birthday_list:
-                embed.description = birthday_list
-                embeds.append(embed)
-            
+
+            if lines:
+                embeds.append(Embed(title="Anniversaires 🎂", description="\n".join(lines), color=0x00FF00))
+
             if not embeds:
-                await ctx.send("Impossible de récupérer les anniversaires", ephemeral=True)
+                await ctx.send("Impossible de récupérer les anniversaires.", ephemeral=True)
                 return
-                
-            # Send paginated response
+
             paginator = CustomPaginator.create_from_embeds(self.bot, *embeds, timeout=3600)
             await paginator.send(ctx)
-            
-        except Exception as e:
-            logger.error(f"Error in anniversaire_liste: {e}")
-            await ctx.send("Erreur lors de la récupération des anniversaires", ephemeral=True)
 
-    @Task.create(OrTrigger(*[TimeTrigger(i, j) for i in range(24) for j in [0, 30]]))
-    # @Task.create(TimeTrigger(0, 14, 10, utc=False))
-    async def anniversaire_check(self):
-        """Periodic task to check for birthdays and update roles"""
+        except Exception as e:
+            logger.error("Error in anniversaire_liste: %s", e)
+            await ctx.send("Erreur lors de la récupération des anniversaires.", ephemeral=True)
+
+    # ------------------------------------------------------------------
+    # Vérification planifiée des anniversaires (toutes les heures)
+    # ------------------------------------------------------------------
+
+    @Task.create(OrTrigger(*[TimeTrigger(hour, 0) for hour in range(24)]))
+    async def anniversaire_check(self) -> None:
+        """Vérifie les anniversaires toutes les heures et gère les rôles / messages."""
         logger.debug("Starting birthday check task")
-        
+
         try:
-            # Get all birthdays from database
-            birthdays = list(self.collection.find())
-            logger.debug(f"Found {len(birthdays)} birthdays to check")
-            
+            # Ne récupère que les anniversaires des serveurs activés
+            server_ids = [int(sid) for sid in enabled_servers]
+            birthdays = await self._db_find({"server": {"$in": server_ids}})
+            logger.debug("Found %d birthdays to check", len(birthdays))
+
             for birthday in birthdays:
                 try:
                     await self._process_birthday(birthday)
                 except Exception as e:
-                    logger.error(f"Error processing birthday for user {birthday.get('user', 'unknown')}: {e}")
-                    continue
-                    
-        except Exception as e:
-            logger.error(f"Critical error in anniversaire_check task: {e}")
+                    logger.error("Error processing birthday for user %s: %s", birthday.get("user", "unknown"), e)
 
-    async def _process_birthday(self, birthday: dict):
-        """Process a single birthday entry"""
-        try:
-            date: datetime = birthday["date"]
-            timezone = pytz.timezone(birthday["timezone"])
-            
-            # Get current date and time in the user's timezone
-            now_in_user_tz = datetime.now(timezone)
-            
-            # Create the birthday datetime for this year in the user's timezone
-            birthday_this_year = timezone.localize(
-                datetime(now_in_user_tz.year, date.month, date.day, 0, 0, 0)
-            )
-            
-            logger.debug(
-                "Processing birthday - now in user tz: %s, birthday this year: %s",
-                now_in_user_tz,
-                birthday_this_year,
-            )
-            
-            # Check if today is the birthday
-            if now_in_user_tz.date() == birthday_this_year.date():
-                await self._handle_birthday_celebration(birthday, now_in_user_tz, date)
-            else:
-                await self._handle_birthday_end(birthday)
-                
         except Exception as e:
-            logger.error(f"Error in _process_birthday: {e}")
-            raise
+            logger.error("Critical error in anniversaire_check task: %s", e)
 
-    async def _handle_birthday_celebration(self, birthday: dict, now_in_user_tz: datetime, date: datetime):
-        """Handle birthday celebration (send message, give role)"""
-        # Check if birthday is already marked
+    # ------------------------------------------------------------------
+    # Traitement interne des anniversaires
+    # ------------------------------------------------------------------
+
+    async def _process_birthday(self, birthday: dict) -> None:
+        """Traite une entrée d'anniversaire individuelle."""
+        date: datetime = birthday["date"]
+        timezone = pytz.timezone(birthday["timezone"])
+        now_tz = datetime.now(timezone)
+
+        # Gestion du 29 février
+        birthday_today = _safe_replace_year(date, now_tz.year)
+
+        logger.debug("Processing birthday – now: %s, birthday this year: %s", now_tz.date(), birthday_today.date())
+
+        if now_tz.date() == birthday_today.date():
+            await self._handle_birthday_celebration(birthday, now_tz, date)
+        else:
+            await self._handle_birthday_end(birthday)
+
+    async def _handle_birthday_celebration(self, birthday: dict, now_tz: datetime, birth_date: datetime) -> None:
+        """Envoie le message d'anniversaire et attribue le rôle."""
         if birthday.get("isBirthday", False):
-            logger.debug(f"Birthday already marked for user {birthday['user']}")
             return
-            
+
+        query = {"user": birthday["user"], "server": birthday["server"]}
+        await self._db_update_one(query, {"$set": {"isBirthday": True}})
+
         try:
-            # Mark as birthday
-            self.collection.update_one(
-                {"user": birthday["user"], "server": birthday["server"]},
-                {"$set": {"isBirthday": True}},
-            )
-            
-            # Get server and member
             server = await self.bot.fetch_guild(birthday["server"])
             if not server:
-                logger.warning(f"Could not fetch server {birthday['server']}")
+                logger.warning("Could not fetch server %s", birthday["server"])
                 return
-                
+
             member = await server.fetch_member(birthday["user"])
             if not member:
-                logger.warning(f"Could not fetch member {birthday['user']} in server {server.name}")
+                logger.warning("Could not fetch member %s in server %s", birthday["user"], server.name)
                 return
-            
-            # Get channel for birthday message
-            channel_id = module_config.get(str(birthday["server"]), {}).get("birthdayChannelId")
-            if channel_id:
-                channel = await server.fetch_channel(channel_id)
-            else:
-                channel = server.system_channel
-                
-            if not channel:
-                logger.warning(f"No valid channel found for birthday message in server {server.name}")
-                return
-            
-            # Send birthday message
-            await self._send_birthday_message(channel, member, now_in_user_tz.year - date.year, birthday["server"])
-            
-            # Give birthday role if configured
-            await self._give_birthday_role(server, member, birthday["server"])
-            
-            logger.info(
-                "Birthday celebration completed for %s on server %s (%s years old)",
-                member.display_name,
-                server.name,
-                now_in_user_tz.year - date.year,
-            )
-            
-        except Exception as e:
-            logger.error(f"Error handling birthday celebration: {e}")
-            raise
 
-    async def _handle_birthday_end(self, birthday: dict):
-        """Handle end of birthday (remove role)"""
-        # Check if birthday is already marked as not birthday
+            # Détermination du salon
+            srv_cfg = self._server_config(birthday["server"])
+            channel_id = srv_cfg.get("birthdayChannelId")
+            channel = await server.fetch_channel(channel_id) if channel_id else server.system_channel
+
+            if not channel:
+                logger.warning("No valid channel for birthday message in server %s", server.name)
+                return
+
+            age = _compute_age(birth_date, now_tz.replace(tzinfo=None))
+            await self._send_birthday_message(channel, member, age, birthday["server"])
+            await self._toggle_birthday_role(server, member, birthday["server"], add=True)
+
+            logger.info(
+                "Birthday celebration completed for %s on server %s (%d years old)",
+                member.display_name, server.name, age,
+            )
+
+        except Exception as e:
+            logger.error("Error handling birthday celebration: %s", e)
+
+    async def _handle_birthday_end(self, birthday: dict) -> None:
+        """Retire le rôle d'anniversaire quand la journée est passée."""
         if not birthday.get("isBirthday", False):
             return
-            
-        try:
-            # Mark as not birthday
-            self.collection.update_one(
-                {"user": birthday["user"], "server": birthday["server"]},
-                {"$set": {"isBirthday": False}},
-            )
 
-            # Get server and member
+        query = {"user": birthday["user"], "server": birthday["server"]}
+        await self._db_update_one(query, {"$set": {"isBirthday": False}})
+
+        try:
             server = await self.bot.fetch_guild(birthday["server"])
             if not server:
-                logger.warning(f"Could not fetch server {birthday['server']}")
                 return
-                
+
             member = await server.fetch_member(birthday["user"])
             if not member:
-                logger.warning(f"Could not fetch member {birthday['user']} in server {server.name}")
                 return
-                
-            logger.info(
-                "Birthday ended for %s on server %s",
-                member.display_name,
-                server.name,
-            )
-            
-            # Remove birthday role if configured
-            await self._remove_birthday_role(server, member, birthday["server"])
-            
-        except Exception as e:
-            logger.error(f"Error handling birthday end: {e}")
-            raise
 
-    async def _send_birthday_message(self, channel, member, age: int, server_id: str):
-        """Send birthday message to channel"""
+            logger.info("Birthday ended for %s on server %s", member.display_name, server.name)
+            await self._toggle_birthday_role(server, member, birthday["server"], add=False)
+
+        except Exception as e:
+            logger.error("Error handling birthday end: %s", e)
+
+    async def _send_birthday_message(self, channel, member, age: int, server_id: int) -> None:
+        """Envoie un message d'anniversaire aléatoire dans le salon configuré."""
         try:
-            # Get personalized messages
-            server_config = module_config.get(server_id, {})
-            messages = server_config.get("birthdayMessageList", ["Joyeux anniversaire {mention} ! 🎉"])
-            weights = server_config.get("birthdayMessageWeights", [1] * len(messages))
-            
-            message_template = random.choices(messages, weights)[0]
-            message = message_template.format(mention=member.mention, age=age)
-            
-            await channel.send(message)
-            logger.debug(f"Birthday message sent to {member.display_name}")
-            
+            srv_cfg = self._server_config(server_id)
+            messages = srv_cfg.get("birthdayMessageList", ["Joyeux anniversaire {mention} ! 🎉"])
+            weights = srv_cfg.get("birthdayMessageWeights", [1] * len(messages))
+
+            template = random.choices(messages, weights)[0]
+            await channel.send(template.format(mention=member.mention, age=age))
+            logger.debug("Birthday message sent for %s", member.display_name)
+
         except Exception as e:
-            logger.error(f"Error sending birthday message: {e}")
-            raise
-
-    async def _give_birthday_role(self, server, member, server_id: str):
-        """Give birthday role to member"""
-        try:
-            role_id = module_config.get(server_id, {}).get("birthdayRoleId")
-            if not role_id:
-                return
-                
-            role = await server.fetch_role(role_id)
-            if not role:
-                logger.warning(f"Could not fetch birthday role {role_id} in server {server.name}")
-                return
-                
-            await member.add_role(role)
-            logger.info(
-                "Birthday role %s given to %s on server %s",
-                role.name,
-                member.display_name,
-                server.name,
-            )
-            
-        except Exception as e:
-            logger.error(f"Error giving birthday role: {e}")
-            raise
-
-    async def _remove_birthday_role(self, server, member, server_id: str):
-        """Remove birthday role from member"""
-        try:
-            role_id = module_config.get(server_id, {}).get("birthdayRoleId")
-            if not role_id:
-                return
-                
-            role = await server.fetch_role(role_id)
-            if not role:
-                logger.warning(f"Could not fetch birthday role {role_id} in server {server.name}")
-                return
-                
-            if role in member.roles:
-                await member.remove_role(role)
-                logger.info(
-                    "Birthday role %s removed from %s on server %s",
-                    role.name,
-                    member.display_name,
-                    server.name,
-                )
-                
-        except Exception as e:
-            logger.error(f"Error removing birthday role: {e}")
-            raise
-
-
-class CustomPaginator(paginators.Paginator):
-    # Override the functions here
-    async def _on_button(
-        self, ctx: ComponentContext, *args, **kwargs
-    ) -> Optional[Message]:
-        if self._timeout_task:
-            self._timeout_task.ping.set()
-        match ctx.custom_id.split("|")[1]:
-            case "first":
-                self.page_index = 0
-            case "last":
-                self.page_index = len(self.pages) - 1
-            case "next":
-                if (self.page_index + 1) < len(self.pages):
-                    self.page_index += 1
-            case "back":
-                if self.page_index >= 1:
-                    self.page_index -= 1
-            case "select":
-                self.page_index = int(ctx.values[0])
-            case "callback":
-                if self.callback:
-                    return await self.callback(ctx)
-
-        await ctx.edit_origin(**self.to_dict())
-        return None
+            logger.error("Error sending birthday message: %s", e)
