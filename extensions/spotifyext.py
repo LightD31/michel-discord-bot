@@ -127,7 +127,7 @@ class Spotify(interactions.Extension):
 
     @interactions.slash_command(
         "addsong",
-        description="Ajoute une chanson à la playlist de la guilde.",
+        description="Ajoute une chanson à la playlist.",
         scopes=ENABLED_SERVERS,
     )
     @interactions.slash_option(
@@ -1243,7 +1243,7 @@ class Spotify(interactions.Extension):
 
             if len(new_tracks) >= 100:
                 logger.info(
-                    "Playlist 'Les découvertes de la guilde' créée à partir de %s titres",
+                    "Playlist 'Les découvertes' créée à partir de %s titres",
                     i,
                 )
                 break
