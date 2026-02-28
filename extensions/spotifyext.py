@@ -589,13 +589,13 @@ class Spotify(interactions.Extension):
             logger.debug("added_track_ids : %s", added_track_ids)
             logger.debug("removed_track_ids : %s", removed_track_ids)
 
-            # If too many changes detected (e.g. after DB migration / initial sync),
-            # silently sync the database without sending any notification.
-            skip_notifications = len(added_track_ids) > 5 or len(removed_track_ids) > 5
+            # If the DB was empty (initial sync after migration), skip all notifications
+            # and just populate the database silently.
+            skip_notifications = not last_track_ids
             if skip_notifications:
                 logger.warning(
-                    "Bulk change detected for server %s: %d added, %d removed – skipping notifications (initial sync)",
-                    server.guild_id, len(added_track_ids), len(removed_track_ids),
+                    "Initial playlist sync for server %s: %d tracks – skipping notifications",
+                    server.guild_id, len(added_track_ids),
                 )
 
             for track in tracks:
