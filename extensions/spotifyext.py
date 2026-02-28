@@ -588,6 +588,16 @@ class Spotify(interactions.Extension):
             removed_track_ids = list(set(last_track_ids) - set(current_track_ids))
             logger.debug("added_track_ids : %s", added_track_ids)
             logger.debug("removed_track_ids : %s", removed_track_ids)
+
+            # If too many changes detected (e.g. after DB migration / initial sync),
+            # silently sync the database without sending any notification.
+            skip_notifications = len(added_track_ids) > 5 or len(removed_track_ids) > 5
+            if skip_notifications:
+                logger.warning(
+                    "Bulk change detected for server %s: %d added, %d removed – skipping notifications (initial sync)",
+                    server.guild_id, len(added_track_ids), len(removed_track_ids),
+                )
+
             for track in tracks:
                 # Append the track to a list of tracks to be inserted into the MongoDB collection
                 song = spotifymongoformat(track, spotify2discord=server.spotify2discord)
@@ -596,30 +606,31 @@ class Spotify(interactions.Extension):
                 # Send messages for added or removed tracks
                 if track["track"]["id"] in added_track_ids:
                     song = spotifymongoformat(track, spotify2discord=server.spotify2discord)
-                    track = sp.track(track["track"]["id"], market="FR")
                     await server.playlist_items_full.insert_one(song)
-                    dt = interactions.utils.timestamp_converter(
-                        datetime.fromisoformat(song["added_at"]).astimezone(
-                            pytz.timezone("Europe/Paris")
+                    if not skip_notifications:
+                        track = sp.track(track["track"]["id"], market="FR")
+                        dt = interactions.utils.timestamp_converter(
+                            datetime.fromisoformat(song["added_at"]).astimezone(
+                                pytz.timezone("Europe/Paris")
+                            )
                         )
-                    )
-                    embed, file = await embed_song(
-                        song=song,
-                        track=track,
-                        embedtype=EmbedType.ADD,
-                        time=dt,
-                        person=server.discord2name.get(song["added_by"], song["added_by"]),
-                    )
-                    await channel.send(
-                        content=f"{random.choice(startList)} <@{song['added_by']}>, {random.choice(finishList)}\n{track['external_urls']['spotify']}",
-                        embeds=embed,
-                        files=[file] if file else None,
-                    )
-                    logger.info(
-                        "%s ajouté par %s",
-                        track["name"],
-                        server.discord2name.get(song["added_by"], song["added_by"]),
-                    )
+                        embed, file = await embed_song(
+                            song=song,
+                            track=track,
+                            embedtype=EmbedType.ADD,
+                            time=dt,
+                            person=server.discord2name.get(song["added_by"], song["added_by"]),
+                        )
+                        await channel.send(
+                            content=f"{random.choice(startList)} <@{song['added_by']}>, {random.choice(finishList)}\n{track['external_urls']['spotify']}",
+                            embeds=embed,
+                            files=[file] if file else None,
+                        )
+                        logger.info(
+                            "%s ajouté par %s",
+                            track["name"],
+                            server.discord2name.get(song["added_by"], song["added_by"]),
+                        )
             if removed_track_ids:
                 logger.info(
                     "%s chanson(s) ont été supprimée(s) depuis la dernière vérification",
@@ -627,19 +638,20 @@ class Spotify(interactions.Extension):
                 )
                 for track_id in removed_track_ids:
                     song = await server.playlist_items_full.find_one_and_delete({"_id": track_id})
-                    track = sp.track(track_id, market="FR")
-                    embed, file = await embed_song(
-                        song=song,
-                        track=track,
-                        embedtype=EmbedType.DELETE,
-                        time=interactions.Timestamp.utcnow(),
-                    )
-                    channel = await self.bot.fetch_channel(server.channel_id)
-                    await channel.send(
-                        track["external_urls"]["spotify"],
-                        embeds=embed,
-                        files=[file] if file else None,
-                    )
+                    if not skip_notifications:
+                        track = sp.track(track_id, market="FR")
+                        embed, file = await embed_song(
+                            song=song,
+                            track=track,
+                            embedtype=EmbedType.DELETE,
+                            time=interactions.Timestamp.utcnow(),
+                        )
+                        channel = await self.bot.fetch_channel(server.channel_id)
+                        await channel.send(
+                            track["external_urls"]["spotify"],
+                            embeds=embed,
+                            files=[file] if file else None,
+                        )
 
             # Store the snapshot ID, length and duration in a JSON file
             server.snapshot["snapshot"] = new_snap

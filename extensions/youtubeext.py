@@ -35,18 +35,24 @@ class YoutubeClass(Extension):
                 )
             else:
                 continue
+            youtube_data = await self.get_youtube_data()
+            is_initial_sync = str(server) not in youtube_data
+            if is_initial_sync:
+                logger.warning(
+                    "Initial YouTube sync for server %s – skipping notifications",
+                    server,
+                )
             for user in module_config[str(server)]["youtubeChannelList"]:
                 uploads = await self.get_uploads(user)
                 video_id = await self.get_video_id(uploads)
-                youtube_data = await self.get_youtube_data()
                 if self.is_video_already_checked(server, user, video_id, youtube_data):
                     continue
                 youtube_data = self.update_youtube_data(
                     server, user, video_id, youtube_data
                 )
-                if await self.is_video_valid(video_id):
+                if not is_initial_sync and await self.is_video_valid(video_id):
                     await channel.send(f"https://www.youtube.com/watch?v={video_id}")
-                await self.save_youtube_data(youtube_data)
+            await self.save_youtube_data(youtube_data)
 
     async def get_uploads(self, user):
         if user not in self.playlist_cache:

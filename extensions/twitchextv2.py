@@ -946,6 +946,22 @@ class TwitchExt2(Extension):
                 emote_ids = [emote.id for emote in emotes]
                 deleted_emotes = [emote_id for emote_id in data if emote_id not in emote_ids]
 
+                # If the DB was empty (initial sync after migration), skip all notifications
+                # and just populate the database silently.
+                if not data and new_emotes:
+                    logger.warning(
+                        "Initial emote sync for %s: %d emotes found – skipping notifications",
+                        streamer.streamer_id, len(new_emotes),
+                    )
+                    docs = [{"_id": emote.id, "name": emote.name, "cached_file": None} for emote in emotes]
+                    if docs:
+                        await emote_col.insert_many(docs)
+                    # Download and cache images
+                    for emote in emotes:
+                        image_url = emote.images.get('url_4x', emote.images.get('url_2x', emote.images.get('url_1x')))
+                        await self.download_emote_image(emote.id, image_url, streamer.guild_id, streamer.streamer_id)
+                    continue
+
                 # Build a map of current emote names for replacement detection
                 current_emote_names = {emote.name: emote for emote in emotes}
                 deleted_emote_names = {data[emote_id]["name"]: emote_id for emote_id in deleted_emotes}
