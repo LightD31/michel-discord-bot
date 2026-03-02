@@ -21,7 +21,11 @@ Usage:
     db  = mongo_manager["some_db"]["some_collection"]
 """
 
+import json
 import os
+import shutil
+from datetime import datetime
+from pathlib import Path
 from typing import Optional, Union
 
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase, AsyncIOMotorCollection
@@ -130,6 +134,88 @@ class MongoManager:
             self._client.close()
             self._client = None
             logger.info("MongoDB connection closed.")
+
+    # ------------------------------------------------------------------
+    # Backup
+    # ------------------------------------------------------------------
+
+    async def backup_all(
+        self,
+        backup_dir: str = "data/backups",
+        max_backups: int = 7,
+    ) -> str:
+        """Export every relevant database (global + guild_*) to JSON files.
+
+        Args:
+            backup_dir: Root directory where backups are stored.
+            max_backups: Number of timestamped backup folders to keep.
+                         Older ones are deleted automatically.
+
+        Returns:
+            The path to the newly created backup folder.
+        """
+        timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        dest = Path(backup_dir) / timestamp
+        dest.mkdir(parents=True, exist_ok=True)
+
+        db_names = await self.client.list_database_names()
+        # Only back up our own databases
+        relevant = [
+            n for n in db_names
+            if n.startswith(GUILD_DB_PREFIX) or n == GLOBAL_DB_NAME
+        ]
+
+        total_docs = 0
+        for db_name in relevant:
+            db = self.client[db_name]
+            col_names = await db.list_collection_names()
+            db_dir = dest / db_name
+            db_dir.mkdir(parents=True, exist_ok=True)
+
+            for col_name in col_names:
+                docs = []
+                async for doc in db[col_name].find():
+                    # Convert ObjectId and other BSON types to strings
+                    doc["_id"] = str(doc["_id"])
+                    docs.append(doc)
+
+                out_file = db_dir / f"{col_name}.json"
+                out_file.write_text(
+                    json.dumps(docs, ensure_ascii=False, indent=2, default=str),
+                    encoding="utf-8",
+                )
+                total_docs += len(docs)
+
+            logger.debug(
+                "Backed up database '%s' (%d collections)", db_name, len(col_names)
+            )
+
+        logger.info(
+            "Backup complete: %d databases, %d total documents → %s",
+            len(relevant),
+            total_docs,
+            dest,
+        )
+
+        # Prune old backups
+        self._prune_backups(backup_dir, max_backups)
+
+        return str(dest)
+
+    @staticmethod
+    def _prune_backups(backup_dir: str, max_backups: int) -> None:
+        """Keep only the *max_backups* most recent backup folders."""
+        root = Path(backup_dir)
+        if not root.is_dir():
+            return
+        folders = sorted(
+            [f for f in root.iterdir() if f.is_dir()],
+            key=lambda p: p.name,
+            reverse=True,
+        )
+        for old in folders[max_backups:]:
+            shutil.rmtree(old, ignore_errors=True)
+            logger.info("Pruned old backup: %s", old)
 
     # ------------------------------------------------------------------
     # dict-like access:  mongo_manager["dbname"]["collection"]

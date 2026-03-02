@@ -600,6 +600,21 @@ GLOBAL_CONFIG_SCHEMAS: dict[str, dict] = {
         },
     },
 
+    "backup": {
+        "label": "Sauvegarde BDD",
+        "icon": "💾",
+        "fields": {
+            "enabled": _field("Activé", "boolean", default=True,
+                              description="Activer la sauvegarde automatique quotidienne."),
+            "backupDir": _field("Dossier de sauvegarde", "string", default="data/backups",
+                                 description="Chemin du dossier où les sauvegardes sont stockées."),
+            "maxBackups": _field("Nombre de sauvegardes", "number", default=7,
+                                  description="Nombre de sauvegardes à conserver (les plus anciennes sont supprimées)."),
+            "backupHour": _field("Heure de sauvegarde", "number", default=4,
+                                  description="Heure locale à laquelle la sauvegarde quotidienne est effectuée (0-23)."),
+        },
+    },
+
     "webui": {
         "label": "Dashboard Web",
         "icon": "🌐",
