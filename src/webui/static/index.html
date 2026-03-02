@@ -1184,6 +1184,96 @@
                 font-size: 16px;
             }
         }
+
+        /* ── Models List Editor ──────────────────────── */
+        .models-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .model-entry {
+            display: grid;
+            grid-template-columns: 1fr 1.5fr 1.5fr auto;
+            gap: 8px;
+            align-items: center;
+            padding: 10px 12px;
+            background: var(--bg-primary);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+        }
+
+        .model-entry input {
+            width: 100%;
+            padding: 6px 8px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            color: var(--text-primary);
+            font-size: 13px;
+            font-family: 'Consolas', monospace;
+            outline: none;
+        }
+
+        .model-entry input:focus {
+            border-color: var(--accent);
+        }
+
+        .model-entry .btn-remove-model {
+            background: none;
+            border: none;
+            color: var(--danger);
+            cursor: pointer;
+            font-size: 18px;
+            padding: 4px 8px;
+            border-radius: var(--radius);
+            line-height: 1;
+        }
+
+        .model-entry .btn-remove-model:hover {
+            background: rgba(248, 63, 67, 0.1);
+        }
+
+        .models-header {
+            display: grid;
+            grid-template-columns: 1fr 1.5fr 1.5fr auto;
+            gap: 8px;
+            padding: 0 12px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-muted);
+        }
+
+        .btn-add-model {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 14px;
+            background: var(--bg-tertiary);
+            border: 1px dashed var(--border);
+            border-radius: var(--radius);
+            color: var(--text-secondary);
+            cursor: pointer;
+            font-size: 13px;
+            transition: all 0.15s;
+        }
+
+        .btn-add-model:hover {
+            border-color: var(--accent);
+            color: var(--accent);
+            background: rgba(88, 101, 242, 0.05);
+        }
+
+        @media (max-width: 768px) {
+            .model-entry {
+                grid-template-columns: 1fr;
+            }
+            .models-header {
+                display: none;
+            }
+        }
     </style>
 </head>
 <body>
@@ -1662,6 +1752,23 @@
                         rows="5" spellcheck="false">${escapeHtml(jsonStr)}</textarea>`;
                     break;
 
+                case 'models':
+                    const models = Array.isArray(value) ? value : [];
+                    html += `<div class="models-list" data-field="${key}" data-type="models">`;
+                    html += `<div class="models-header"><span>Provider</span><span>Model ID</span><span>Nom d'affichage</span><span></span></div>`;
+                    models.forEach((m, idx) => {
+                        html += `
+                            <div class="model-entry" data-model-idx="${idx}">
+                                <input type="text" data-model-field="provider" value="${escapeHtml(m.provider || '')}" placeholder="ex: openai">
+                                <input type="text" data-model-field="model_id" value="${escapeHtml(m.model_id || '')}" placeholder="ex: openai/gpt-4.1">
+                                <input type="text" data-model-field="display_name" value="${escapeHtml(m.display_name || '')}" placeholder="ex: OpenAI GPT-4.1">
+                                <button class="btn-remove-model" onclick="this.closest('.model-entry').remove()" title="Supprimer">✕</button>
+                            </div>`;
+                    });
+                    html += `</div>`;
+                    html += `<button type="button" class="btn-add-model" onclick="addModelEntry(this)">+ Ajouter un modèle</button>`;
+                    break;
+
                 default: // string
                     html += `<input type="text" class="form-input" data-field="${key}" data-type="string"
                         value="${hasValue ? escapeHtml(String(value)) : ''}"
@@ -1701,6 +1808,9 @@
                 case 'dict':
                     try { val = JSON.parse(input.value); } catch { val = undefined; }
                     break;
+                case 'models':
+                    // Handled separately below
+                    continue;
                 case 'secret':
                     val = input.value || undefined;
                     break;
@@ -1711,7 +1821,41 @@
                 result[key] = val;
             }
         }
+        // Collect models lists
+        const modelsLists = form.querySelectorAll('[data-type="models"]');
+        for (const list of modelsLists) {
+            const key = list.dataset.field;
+            const entries = list.querySelectorAll('.model-entry');
+            const models = [];
+            for (const entry of entries) {
+                const provider = entry.querySelector('[data-model-field="provider"]')?.value?.trim();
+                const model_id = entry.querySelector('[data-model-field="model_id"]')?.value?.trim();
+                const display_name = entry.querySelector('[data-model-field="display_name"]')?.value?.trim();
+                if (provider && model_id) {
+                    models.push({ provider, model_id, display_name: display_name || provider });
+                }
+            }
+            if (models.length > 0) {
+                result[key] = models;
+            }
+        }
+
         return result;
+    }
+
+    function addModelEntry(btn) {
+        const list = btn.previousElementSibling;
+        const idx = list.querySelectorAll('.model-entry').length;
+        const entry = document.createElement('div');
+        entry.className = 'model-entry';
+        entry.dataset.modelIdx = idx;
+        entry.innerHTML = `
+            <input type="text" data-model-field="provider" value="" placeholder="ex: openai">
+            <input type="text" data-model-field="model_id" value="" placeholder="ex: openai/gpt-4.1">
+            <input type="text" data-model-field="display_name" value="" placeholder="ex: OpenAI GPT-4.1">
+            <button class="btn-remove-model" onclick="this.closest('.model-entry').remove()" title="Supprimer">✕</button>
+        `;
+        list.appendChild(entry);
     }
 
     function togglePasswordVisibility(btn) {
@@ -1995,6 +2139,26 @@
             const val = values[key];
             const hasVal = val !== undefined && val !== null;
             const isSecret = field.secret || false;
+            const fieldType = field.type || 'string';
+
+            if (fieldType === 'models' && Array.isArray(val) && val.length > 0) {
+                html += `
+                    <div class="preview-row" style="flex-direction:column;gap:6px;">
+                        <span class="preview-label">${field.label || key} (${val.length})</span>
+                        <div style="display:flex;flex-direction:column;gap:4px;width:100%;">
+                            ${val.map(m => `
+                                <div style="display:flex;gap:8px;align-items:center;padding:4px 8px;background:var(--bg-primary);border-radius:var(--radius);font-size:13px;">
+                                    <span style="font-weight:600;color:var(--accent);min-width:80px;">${escapeHtml(m.provider || '')}</span>
+                                    <span style="color:var(--text-muted);font-family:Consolas,monospace;flex:1;">${escapeHtml(m.model_id || '')}</span>
+                                    <span style="color:var(--text-secondary);">${escapeHtml(m.display_name || '')}</span>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                `;
+                continue;
+            }
+
             let displayVal = '—';
             if (hasVal) {
                 if (isSecret) displayVal = '••••••••';

@@ -10,7 +10,6 @@ import os
 import random
 import re
 from dataclasses import dataclass
-from enum import Enum
 from pathlib import Path
 from typing import Any, Optional
 
@@ -55,68 +54,70 @@ DATA_DIR = Path("data")
 VOTES_FILE = DATA_DIR / "responses.txt"
 
 
-class AIProvider(Enum):
-    """Enum representing supported AI providers."""
-    OPENAI = "openai"
-    ANTHROPIC = "anthropic"
-    DEEPSEEK = "deepseek"
-    QWEN = "qwen"
-    GEMINI = "gemini"
-    XAI = "xai"
-
-
-
-
 @dataclass
 class ModelConfig:
     """Configuration for an AI model."""
-    provider: AIProvider
+    provider: str
     model_id: str
     display_name: str
 
 
-# Available AI models configuration
-AVAILABLE_MODELS: dict[AIProvider, ModelConfig] = {
-    AIProvider.OPENAI: ModelConfig(
-        AIProvider.OPENAI,
-        "openai/gpt-4.1",
-        "OpenAI GPT-4.1"
-    ),
-    AIProvider.ANTHROPIC: ModelConfig(
-        AIProvider.ANTHROPIC,
-        "anthropic/claude-opus-4.5",
-        "Anthropic Claude Opus 4.5"
-    ),
-    AIProvider.DEEPSEEK: ModelConfig(
-        AIProvider.DEEPSEEK,
-        "deepseek/deepseek-chat-v3-0324",
-        "DeepSeek Chat v3-0324"
-    ),
-    AIProvider.QWEN: ModelConfig(
-        AIProvider.QWEN,
-        "qwen/qwen3-vl-235b-a22b-instruct",
-        "Qwen3 235B A22B Instruct"
-    ),
-    AIProvider.GEMINI: ModelConfig(
-        AIProvider.GEMINI,
-        "google/gemini-3-pro-preview",
-        "Google Gemini 3 Pro Preview"
-    ),
-    AIProvider.XAI: ModelConfig(
-        AIProvider.XAI,
-        "x-ai/grok-4.1-fast:free",
-        "X-AI Grok 4.1 Fast"
-    ),
-}
+# Default models used when config doesn't define any
+_DEFAULT_MODELS: list[dict[str, str]] = [
+    {"provider": "openai", "model_id": "openai/gpt-4.1", "display_name": "OpenAI GPT-4.1"},
+    {"provider": "anthropic", "model_id": "anthropic/claude-opus-4.5", "display_name": "Anthropic Claude Opus 4.5"},
+    {"provider": "deepseek", "model_id": "deepseek/deepseek-chat-v3-0324", "display_name": "DeepSeek Chat v3-0324"},
+    {"provider": "qwen", "model_id": "qwen/qwen3-vl-235b-a22b-instruct", "display_name": "Qwen3 235B A22B Instruct"},
+    {"provider": "gemini", "model_id": "google/gemini-3-pro-preview", "display_name": "Google Gemini 3 Pro Preview"},
+    {"provider": "xai", "model_id": "x-ai/grok-4.1-fast:free", "display_name": "X-AI Grok 4.1 Fast"},
+]
 
-# Number of models to compare per question
-MODELS_TO_COMPARE = 3
+
+def _load_models_from_config() -> dict[str, ModelConfig]:
+    """Load AI models from the global config, falling back to defaults."""
+    models_raw = config.get("OpenRouter", {}).get("models", _DEFAULT_MODELS)
+    models: dict[str, ModelConfig] = {}
+    for entry in models_raw:
+        provider = entry.get("provider", "")
+        model_id = entry.get("model_id", "")
+        display_name = entry.get("display_name", provider)
+        if provider and model_id:
+            models[provider] = ModelConfig(
+                provider=provider,
+                model_id=model_id,
+                display_name=display_name,
+            )
+        else:
+            logger.warning(f"Skipping invalid model entry: {entry}")
+    if not models:
+        logger.error("No valid models configured, falling back to defaults")
+        return _load_models_from_defaults()
+    logger.info(f"Loaded {len(models)} AI models from config: {list(models.keys())}")
+    return models
+
+
+def _load_models_from_defaults() -> dict[str, ModelConfig]:
+    """Build AVAILABLE_MODELS from the hardcoded defaults."""
+    return {
+        entry["provider"]: ModelConfig(
+            provider=entry["provider"],
+            model_id=entry["model_id"],
+            display_name=entry["display_name"],
+        )
+        for entry in _DEFAULT_MODELS
+    }
+
+
+AVAILABLE_MODELS: dict[str, ModelConfig] = _load_models_from_config()
+
+# Number of models to compare per question (from config or default)
+MODELS_TO_COMPARE = config.get("OpenRouter", {}).get("modelsToCompare", 3)
 
 
 @dataclass
 class ModelResponse:
     """Container for a model's response."""
-    provider: AIProvider
+    provider: str
     content: str
     raw_response: object = None
 
@@ -169,7 +170,7 @@ class VoteManager:
     
     def count_votes(self) -> dict[str, int]:
         """Count all votes by provider."""
-        counts = {provider.value: 0 for provider in AIProvider}
+        counts = {provider: 0 for provider in AVAILABLE_MODELS}
         
         if not self.votes_file.exists():
             return counts
@@ -363,7 +364,7 @@ class IAExtension(Extension):
         conversation = await self._prepare_conversation(ctx, question)
         
         # Select random models to compare
-        selected_providers = random.sample(list(AIProvider), MODELS_TO_COMPARE)
+        selected_providers = random.sample(list(AVAILABLE_MODELS.keys()), min(MODELS_TO_COMPARE, len(AVAILABLE_MODELS)))
         
         # Get responses from selected models
         responses = await self._get_all_model_responses(
@@ -383,10 +384,10 @@ class IAExtension(Extension):
     async def _get_all_model_responses(
         self,
         conversation: list[dict],
-        providers: list[AIProvider],
+        providers: list[str],
         ctx: SlashContext,
         question: str,
-    ) -> dict[AIProvider, object]:
+    ) -> dict[str, object]:
         """Get responses from all selected models."""
         responses = {}
         
@@ -398,16 +399,16 @@ class IAExtension(Extension):
                 )
                 responses[provider] = response
             except Exception as e:
-                logger.error(f"Error calling {provider.value}: {e}")
+                logger.error(f"Error calling {provider}: {e}")
                 await ctx.send(
-                    f"❌ Erreur avec le modèle {provider.value}: {e}",
+                    f"❌ Erreur avec le modèle {provider}: {e}",
                     ephemeral=True,
                 )
                 return {}
         
         return responses
 
-    def _log_total_cost(self, responses: dict[AIProvider, Any]) -> None:
+    def _log_total_cost(self, responses: dict[str, Any]) -> None:
         """Log the cost of each response and total cost."""
         total_cost = 0.0
         
@@ -420,13 +421,13 @@ class IAExtension(Extension):
 
     def _prepare_model_responses(
         self,
-        responses: dict[AIProvider, Any],
-        providers: list[AIProvider],
+        responses: dict[str, Any],
+        providers: list[str],
     ) -> list[dict[str, str]]:
         """Prepare and shuffle model responses for display."""
         responses_data = [
             {
-                "custom_id": provider.value,
+                "custom_id": provider,
                 "content": self._extract_response_content(
                     responses[provider].choices[0].message.content
                 ),
@@ -602,11 +603,8 @@ class IAExtension(Extension):
 
     def _get_model_display_name(self, provider_id: str) -> str:
         """Get the display name for a provider."""
-        try:
-            provider = AIProvider(provider_id)
-            return AVAILABLE_MODELS[provider].display_name
-        except (ValueError, KeyError):
-            return provider_id
+        model = AVAILABLE_MODELS.get(provider_id)
+        return model.display_name if model else provider_id
 
     async def _split_and_send_message(
         self, ctx_or_channel, content: str, components=None

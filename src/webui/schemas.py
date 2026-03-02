@@ -521,6 +521,13 @@ GLOBAL_CONFIG_SCHEMAS: dict[str, dict] = {
         "fields": {
             "openrouterApiKey": _field("Clé API", "secret", required=True,
                                        description="Clé API OpenRouter.", secret=True),
+            "modelsToCompare": _field("Modèles à comparer", "number", default=3,
+                                      description="Nombre de modèles IA à comparer par question."),
+            "models": _field(
+                "Modèles IA", "models",
+                description="Liste des modèles IA disponibles pour la comparaison. "
+                            "Chaque modèle nécessite un identifiant provider, un model_id OpenRouter et un nom d'affichage.",
+            ),
         },
     },
 
