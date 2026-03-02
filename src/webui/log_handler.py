@@ -40,6 +40,14 @@ class WebUILogHandler(logging.Handler):
 
     _instance: Optional["WebUILogHandler"] = None
 
+    # Loggers to ignore to prevent feedback loops (SSE logging its own
+    # chunks) and reduce noise from infrastructure loggers.
+    _IGNORED_LOGGERS = frozenset({
+        "sse_starlette",
+        "sse_starlette.sse",
+        "uvicorn.access",
+    })
+
     def __init__(self, max_entries: int = 2000):
         super().__init__()
         self.buffer: deque[LogEntry] = deque(maxlen=max_entries)
@@ -52,6 +60,9 @@ class WebUILogHandler(logging.Handler):
         return cls._instance
 
     def emit(self, record: logging.LogRecord):
+        # Skip loggers that would cause infinite feedback loops
+        if record.name in self._IGNORED_LOGGERS:
+            return
         try:
             entry = LogEntry(
                 timestamp=record.created,
