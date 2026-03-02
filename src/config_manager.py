@@ -67,6 +67,10 @@ class ConfigManager:
         # Load included configurations
         includes = main_config.get("include", {})
         
+        # If no includes, return config as-is (flat config.json)
+        if not includes:
+            return main_config
+        
         # Load services
         services_config = {}
         for service_file in includes.get("services", []):
