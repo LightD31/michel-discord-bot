@@ -512,6 +512,8 @@ def create_app(bot=None) -> FastAPI:
                     except asyncio.TimeoutError:
                         # Send keepalive
                         yield {"event": "ping", "data": ""}
+            except (asyncio.CancelledError, GeneratorExit):
+                pass
             finally:
                 handler.unsubscribe(queue)
 

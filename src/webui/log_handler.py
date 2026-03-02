@@ -5,6 +5,7 @@ Captures log records into a ring buffer and supports SSE streaming.
 
 import asyncio
 import logging
+import weakref
 from collections import deque
 from dataclasses import dataclass
 from typing import Optional
@@ -61,12 +62,27 @@ class WebUILogHandler(logging.Handler):
                 filename=record.filename,
             )
             self.buffer.append(entry)
-            # Notify all SSE listeners (non-blocking)
+            # Notify all SSE listeners (non-blocking), prune dead queues
+            dead = []
             for queue in self._listeners:
                 try:
                     queue.put_nowait(entry)
                 except asyncio.QueueFull:
-                    pass  # Drop if consumer is too slow
+                    # Queue is full — consumer is too slow or dead.
+                    # Drain the oldest entry to make room and retry once.
+                    try:
+                        queue.get_nowait()
+                        queue.put_nowait(entry)
+                    except Exception:
+                        dead.append(queue)
+                except Exception:
+                    dead.append(queue)
+            # Remove dead queues
+            for q in dead:
+                try:
+                    self._listeners.remove(q)
+                except ValueError:
+                    pass
         except Exception:
             self.handleError(record)
 
@@ -103,6 +119,17 @@ class WebUILogHandler(logging.Handler):
             self._listeners.remove(queue)
         except ValueError:
             pass
+        # Drain the queue to release any held LogEntry references
+        while not queue.empty():
+            try:
+                queue.get_nowait()
+            except Exception:
+                break
+
+    @property
+    def listener_count(self) -> int:
+        """Number of active SSE listeners (useful for diagnostics)."""
+        return len(self._listeners)
 
 
 def install_log_handler(max_entries: int = 2000) -> WebUILogHandler:
@@ -133,9 +160,10 @@ def install_log_handler(max_entries: int = 2000) -> WebUILogHandler:
             if handler not in logger_ref.handlers:
                 logger_ref.addHandler(handler)
 
-    # 3) Attach to standalone loggers created via logging.Logger() directly.
-    #    These aren't in the manager dict, so we monkey-patch logutil to
-    #    inject our handler into every future logger it creates.
+    # 3) Monkey-patch logutil to inject our handler into every future logger.
+    #    Use a weakref to avoid preventing handler GC if the module is torn down.
+    handler_ref = weakref.ref(handler)
+
     try:
         from src import logutil as _logutil
 
@@ -144,34 +172,20 @@ def install_log_handler(max_entries: int = 2000) -> WebUILogHandler:
 
         def _patched_init_logger(name="root"):
             lgr = _orig_init_logger(name)
-            if handler not in lgr.handlers:
-                lgr.addHandler(handler)
+            h = handler_ref()
+            if h is not None and h not in lgr.handlers:
+                lgr.addHandler(h)
             return lgr
 
         def _patched_get_logger(name):
             lgr = _orig_get_logger(name)
-            if handler not in lgr.handlers:
-                lgr.addHandler(handler)
+            h = handler_ref()
+            if h is not None and h not in lgr.handlers:
+                lgr.addHandler(h)
             return lgr
 
         _logutil.init_logger = _patched_init_logger
         _logutil.get_logger = _patched_get_logger
-
-        # 4) Retroactively attach to loggers that were already created
-        #    via logging.Logger() directly (not in the manager dict).
-        #    We snapshot gc objects first to avoid mutation during iteration.
-        import gc
-        try:
-            all_objects = gc.get_objects()
-        except Exception:
-            all_objects = []
-        for obj in all_objects:
-            try:
-                if isinstance(obj, logging.Logger) and handler not in obj.handlers:
-                    obj.addHandler(handler)
-            except ReferenceError:
-                # Object was garbage-collected during iteration
-                continue
 
     except ImportError:
         pass
