@@ -107,14 +107,13 @@ class TwitchExt2(Extension):
         # Ensure emote cache directory exists
         os.makedirs(self.EMOTE_CACHE_DIR, exist_ok=True)
 
-    async def download_emote_image(self, emote_id: str, image_url: str, guild_id: int, streamer_id: str) -> Optional[str]:
+    async def download_emote_image(self, emote_id: str, image_url: str, streamer_id: str) -> Optional[str]:
         """
         Download and cache an emote image locally.
 
         Args:
             emote_id: The Twitch emote ID
             image_url: The URL of the emote image
-            guild_id: The guild ID
             streamer_id: The streamer ID
 
         Returns:
@@ -123,7 +122,7 @@ class TwitchExt2(Extension):
         if not image_url:
             return None
 
-        file_path = os.path.join(self.EMOTE_CACHE_DIR, f"{guild_id}_{streamer_id}_{emote_id}.png")
+        file_path = os.path.join(self.EMOTE_CACHE_DIR, f"{streamer_id}_{emote_id}.png")
 
         try:
             async with aiohttp.ClientSession() as session:
@@ -141,31 +140,29 @@ class TwitchExt2(Extension):
             logger.error(f"Error downloading emote image {emote_id}: {e}")
             return None
 
-    def get_cached_emote_path(self, emote_id: str, guild_id: int, streamer_id: str) -> Optional[str]:
+    def get_cached_emote_path(self, emote_id: str, streamer_id: str) -> Optional[str]:
         """
         Get the path to a cached emote image if it exists.
 
         Args:
             emote_id: The Twitch emote ID
-            guild_id: The guild ID
             streamer_id: The streamer ID
 
         Returns:
             The local file path if exists, None otherwise
         """
-        file_path = os.path.join(self.EMOTE_CACHE_DIR, f"{guild_id}_{streamer_id}_{emote_id}.png")
+        file_path = os.path.join(self.EMOTE_CACHE_DIR, f"{streamer_id}_{emote_id}.png")
         return file_path if os.path.exists(file_path) else None
 
-    def delete_cached_emote(self, emote_id: str, guild_id: int, streamer_id: str) -> None:
+    def delete_cached_emote(self, emote_id: str, streamer_id: str) -> None:
         """
         Delete a cached emote image.
 
         Args:
             emote_id: The Twitch emote ID
-            guild_id: The guild ID
             streamer_id: The streamer ID
         """
-        file_path = os.path.join(self.EMOTE_CACHE_DIR, f"{guild_id}_{streamer_id}_{emote_id}.png")
+        file_path = os.path.join(self.EMOTE_CACHE_DIR, f"{streamer_id}_{emote_id}.png")
         try:
             if os.path.exists(file_path):
                 os.remove(file_path)
@@ -922,16 +919,24 @@ class TwitchExt2(Extension):
     @Task.create(OrTrigger(*[TimeTrigger(hour=i, utc=False) for i in range(24)]))
     async def check_new_emotes(self):
         logger.debug("Checking new emotes")
-        # Check emotes for all streamers
-        for streamer_key, streamer in self.streamers.items():
+
+        # Group streamers by streamer_id so we only fetch emotes once per unique streamer
+        # and send notifications to all guilds following that streamer.
+        streamers_by_id: Dict[str, List[StreamerInfo]] = {}
+        for streamer in self.streamers.values():
             if not streamer.user_id or not streamer.notif_channel:
                 continue
+            streamers_by_id.setdefault(streamer.streamer_id, []).append(streamer)
+
+        for streamer_id, guild_streamers in streamers_by_id.items():
+            # Use the first streamer's user_id (same for all entries of this streamer)
+            user_id = guild_streamers[0].user_id
 
             try:
-                emotes = await self.twitch.get_channel_emotes(streamer.user_id)
-                emote_col = mongo_manager.get_guild_collection(streamer.guild_id, f"twitch_emotes_{streamer.streamer_id}")
+                emotes = await self.twitch.get_channel_emotes(user_id)
+                emote_col = mongo_manager.get_global_collection(f"twitch_emotes_{streamer_id}")
 
-                # Load existing emotes from MongoDB
+                # Load existing emotes from MongoDB (global, shared across guilds)
                 # Data structure: {emote_id: {"name": str, "cached_file": str (optional)}}
                 data = {}
                 try:
@@ -939,7 +944,7 @@ class TwitchExt2(Extension):
                         emote_id = doc["_id"]
                         data[emote_id] = {"name": doc.get("name", ""), "cached_file": doc.get("cached_file")}
                 except Exception as e:
-                    logger.error(f"Error loading emotes from MongoDB for {streamer.streamer_id}: {e}")
+                    logger.error(f"Error loading emotes from MongoDB for {streamer_id}: {e}")
 
                 # Check for new and deleted emotes
                 new_emotes = [emote for emote in emotes if emote.id not in data]
@@ -951,12 +956,12 @@ class TwitchExt2(Extension):
                 if not data and new_emotes:
                     logger.warning(
                         "Initial emote sync for %s: %d emotes found – skipping notifications",
-                        streamer.streamer_id, len(new_emotes),
+                        streamer_id, len(new_emotes),
                     )
                     docs = []
                     for emote in emotes:
                         image_url = emote.images.get('url_4x', emote.images.get('url_2x', emote.images.get('url_1x')))
-                        cached_file = await self.download_emote_image(emote.id, image_url, streamer.guild_id, streamer.streamer_id)
+                        cached_file = await self.download_emote_image(emote.id, image_url, streamer_id)
                         docs.append({"_id": emote.id, "name": emote.name, "cached_file": cached_file})
                     if docs:
                         await emote_col.insert_many(docs)
@@ -980,36 +985,38 @@ class TwitchExt2(Extension):
 
                 # Process replaced emotes (same name, new ID)
                 if replaced_emotes:
-                    logger.info(f"Replaced emotes found for {streamer.streamer_id}")
-                    bot = await self.bot.fetch_member(self.bot.user.id, streamer.guild_id)
+                    logger.info(f"Replaced emotes found for {streamer_id}")
                     for old_emote_id, new_emote in replaced_emotes:
-                        old_cached_file = self.get_cached_emote_path(old_emote_id, streamer.guild_id, streamer.streamer_id)
+                        old_cached_file = self.get_cached_emote_path(old_emote_id, streamer_id)
                         new_image_url = new_emote.images.get('url_4x', new_emote.images.get('url_2x', new_emote.images.get('url_1x')))
 
-                        embed = Embed(
-                            title="Emote remplacé",
-                            description=f"L'emote **{new_emote.name}** a été remplacé sur la chaine de {streamer.streamer_id} 🔄",
-                            color=0xFFA500,
-                            timestamp=datetime.now(),
-                            thumbnail=new_image_url,
-                            footer=EmbedFooter(text=bot.display_name, icon_url=bot.avatar_url)
-                        )
+                        logger.info(f"Replaced emote for {streamer_id}: {new_emote.name}")
 
-                        logger.info(f"Replaced emote for {streamer.streamer_id}: {new_emote.name}")
+                        # Send notification to all guilds following this streamer
+                        for streamer in guild_streamers:
+                            bot = await self.bot.fetch_member(self.bot.user.id, streamer.guild_id)
+                            embed = Embed(
+                                title="Emote remplacé",
+                                description=f"L'emote **{new_emote.name}** a été remplacé sur la chaine de {streamer_id} 🔄",
+                                color=0xFFA500,
+                                timestamp=datetime.now(),
+                                thumbnail=new_image_url,
+                                footer=EmbedFooter(text=bot.display_name, icon_url=bot.avatar_url)
+                            )
 
-                        # Send with old image attached if available
+                            if old_cached_file:
+                                embed.add_field(name="Ancienne version", value="Voir image ci-dessous", inline=True)
+                                embed.add_field(name="Nouvelle version", value="Voir thumbnail", inline=True)
+                                await streamer.notif_channel.send(embed=embed, files=[File(old_cached_file, file_name=f"old_{new_emote.name}.png")])
+                            else:
+                                embed.add_field(name="Nouvelle version", value="Voir thumbnail", inline=True)
+                                await streamer.notif_channel.send(embed=embed)
+
+                        # Delete old cached file and download new one (once, globally)
                         if old_cached_file:
-                            embed.add_field(name="Ancienne version", value="Voir image ci-dessous", inline=True)
-                            embed.add_field(name="Nouvelle version", value="Voir thumbnail", inline=True)
-                            await streamer.notif_channel.send(embed=embed, files=[File(old_cached_file, file_name=f"old_{new_emote.name}.png")])
-                            # Delete old cached file
-                            self.delete_cached_emote(old_emote_id, streamer.guild_id, streamer.streamer_id)
-                        else:
-                            embed.add_field(name="Nouvelle version", value="Voir thumbnail", inline=True)
-                            await streamer.notif_channel.send(embed=embed)
+                            self.delete_cached_emote(old_emote_id, streamer_id)
 
-                        # Download and cache new emote image
-                        new_cached_file = await self.download_emote_image(new_emote.id, new_image_url, streamer.guild_id, streamer.streamer_id)
+                        new_cached_file = await self.download_emote_image(new_emote.id, new_image_url, streamer_id)
 
                         # Update data with new emote info
                         del data[old_emote_id]
@@ -1017,13 +1024,12 @@ class TwitchExt2(Extension):
 
                 # Process truly new emotes
                 if truly_new_emotes:
-                    logger.debug(f"New emotes found for {streamer.streamer_id}")
-                    bot = await self.bot.fetch_member(self.bot.user.id, streamer.guild_id)
+                    logger.debug(f"New emotes found for {streamer_id}")
                     for emote in truly_new_emotes:
                         image_url = emote.images.get('url_4x', emote.images.get('url_2x', emote.images.get('url_1x')))
 
-                        # Download and cache the emote image
-                        cached_file = await self.download_emote_image(emote.id, image_url, streamer.guild_id, streamer.streamer_id)
+                        # Download and cache the emote image (once, globally)
+                        cached_file = await self.download_emote_image(emote.id, image_url, streamer_id)
                         data[emote.id] = {"name": emote.name, "cached_file": cached_file}
 
                         # Determine emote details
@@ -1037,51 +1043,58 @@ class TwitchExt2(Extension):
                         else:
                             details = "Other"
 
-                        embed = Embed(
-                            title="Nouvel emote ajouté",
-                            description=f"L'emote {emote.name} a été ajouté à la chaine de {streamer.streamer_id} ({details})",
-                            color=0x6441A5,
-                            timestamp=datetime.now(),
-                            thumbnail=image_url,
-                            footer=EmbedFooter(text=bot.display_name, icon_url=bot.avatar_url)
-                        )
-                        logger.info(f"New emote for {streamer.streamer_id}: {emote.name}")
-                        await streamer.notif_channel.send(embed=embed)
+                        logger.info(f"New emote for {streamer_id}: {emote.name}")
+
+                        # Send notification to all guilds following this streamer
+                        for streamer in guild_streamers:
+                            bot = await self.bot.fetch_member(self.bot.user.id, streamer.guild_id)
+                            embed = Embed(
+                                title="Nouvel emote ajouté",
+                                description=f"L'emote {emote.name} a été ajouté à la chaine de {streamer_id} ({details})",
+                                color=0x6441A5,
+                                timestamp=datetime.now(),
+                                thumbnail=image_url,
+                                footer=EmbedFooter(text=bot.display_name, icon_url=bot.avatar_url)
+                            )
+                            await streamer.notif_channel.send(embed=embed)
 
                 # Process truly deleted emotes
                 if truly_deleted_emotes:
-                    logger.info(f"Deleted emotes found for {streamer.streamer_id}")
-                    bot = await self.bot.fetch_member(self.bot.user.id, streamer.guild_id)
+                    logger.info(f"Deleted emotes found for {streamer_id}")
                     for emote_id in truly_deleted_emotes:
                         emote_data = data[emote_id]
                         emote_name = emote_data["name"]
-                        cached_file = self.get_cached_emote_path(emote_id, streamer.guild_id, streamer.streamer_id)
+                        cached_file = self.get_cached_emote_path(emote_id, streamer_id)
 
-                        embed = Embed(
-                            title="Emote supprimé",
-                            description=f"L'emote **{emote_name}** a été supprimé de la chaine de {streamer.streamer_id} :wave:",
-                            color=0x6441A5,
-                            timestamp=datetime.now(),
-                            footer=EmbedFooter(text=bot.display_name, icon_url=bot.avatar_url)
-                        )
+                        logger.info(f"Deleted emote for {streamer_id}: {emote_name}")
 
-                        logger.info(f"Deleted emote for {streamer.streamer_id}: {emote_name}")
+                        # Send notification to all guilds following this streamer
+                        for streamer in guild_streamers:
+                            bot = await self.bot.fetch_member(self.bot.user.id, streamer.guild_id)
+                            embed = Embed(
+                                title="Emote supprimé",
+                                description=f"L'emote **{emote_name}** a été supprimé de la chaine de {streamer_id} :wave:",
+                                color=0x6441A5,
+                                timestamp=datetime.now(),
+                                footer=EmbedFooter(text=bot.display_name, icon_url=bot.avatar_url)
+                            )
 
-                        # Send with cached image if available
+                            if cached_file:
+                                await streamer.notif_channel.send(embed=embed, files=[File(cached_file, file_name=f"{emote_name}.png")])
+                            else:
+                                await streamer.notif_channel.send(embed=embed)
+
+                        # Delete cached file after sending to all guilds (once, globally)
                         if cached_file:
-                            await streamer.notif_channel.send(embed=embed, files=[File(cached_file, file_name=f"{emote_name}.png")])
-                            # Delete cached file after sending
-                            self.delete_cached_emote(emote_id, streamer.guild_id, streamer.streamer_id)
-                        else:
-                            await streamer.notif_channel.send(embed=embed)
+                            self.delete_cached_emote(emote_id, streamer_id)
 
                         del data[emote_id]
 
                 # Download and cache images for existing emotes that don't have cached files
                 for emote in emotes:
-                    if emote.id in data and not self.get_cached_emote_path(emote.id, streamer.guild_id, streamer.streamer_id):
+                    if emote.id in data and not self.get_cached_emote_path(emote.id, streamer_id):
                         image_url = emote.images.get('url_4x', emote.images.get('url_2x', emote.images.get('url_1x')))
-                        cached_file = await self.download_emote_image(emote.id, image_url, streamer.guild_id, streamer.streamer_id)
+                        cached_file = await self.download_emote_image(emote.id, image_url, streamer_id)
                         data[emote.id]["cached_file"] = cached_file
 
                 # Save updated emotes to MongoDB
@@ -1099,4 +1112,4 @@ class TwitchExt2(Extension):
                         await emote_col.insert_many(docs)
 
             except Exception as e:
-                logger.error(f"Error checking emotes for {streamer.streamer_id}: {e}")
+                logger.error(f"Error checking emotes for {streamer_id}: {e}")
