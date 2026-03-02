@@ -58,13 +58,10 @@ class ConfigManager:
         return result
     
     def load_full_config(self) -> dict:
-        """Load the complete configuration from multiple files."""
-        # Load main configuration
-        main_config = self.load_config_file("main.json")
+        """Load the complete configuration from config.json."""
+        main_config = self.load_config_file("config.json")
         
-        # If main.json doesn't exist, fallback to config.json
         if not main_config:
-            main_config = self.load_config_file("config.json")
             return main_config
         
         # Load included configurations
