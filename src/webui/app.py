@@ -76,13 +76,9 @@ def create_app(bot=None) -> FastAPI:
     CONFIG_PATH = os.path.join("config", "config.json")
 
     def _get_full_config() -> dict:
-        """Load the full config from disk (single file or multi-file)."""
-        try:
-            from src.config_manager import ConfigManager
-            cm = ConfigManager()
-            return cm.load_full_config()
-        except Exception:
-            return {"config": {}, "servers": {}}
+        """Load the full config from disk."""
+        from src.config_manager import load_full_config
+        return load_full_config() or {"config": {}, "servers": {}}
 
     def _save_config(data: dict):
         """Save the full config to a single config.json file."""
@@ -366,36 +362,6 @@ def create_app(bot=None) -> FastAPI:
         return JSONResponse({"status": "ok"})
 
     # ── Config migration ─────────────────────────────────────────────
-
-    @app.post("/api/migrate-config")
-    async def api_migrate_config(request: Request):
-        """Consolidate multi-file config into a single config.json."""
-        _require_session(request)
-
-        # Load full config (merges main.json + includes)
-        data = _get_full_config()
-
-        # Save as single file
-        _save_config(data)
-        logger.info("Migrated config to single config.json")
-
-        # Remove old multi-file structure
-        import shutil
-        removed = []
-        main_path = os.path.join("config", "main.json")
-        if os.path.isfile(main_path):
-            os.remove(main_path)
-            removed.append("main.json")
-        for subdir in ["services", "servers"]:
-            dirpath = os.path.join("config", subdir)
-            if os.path.isdir(dirpath):
-                shutil.rmtree(dirpath)
-                removed.append(f"{subdir}/")
-
-        return JSONResponse({
-            "status": "ok",
-            "message": f"Config consolidée dans config.json. Fichiers supprimés: {', '.join(removed) or 'aucun'}",
-        })
 
     @app.post("/api/migrate-discord2name")
     async def api_migrate_discord2name(request: Request):

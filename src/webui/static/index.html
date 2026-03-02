@@ -2204,9 +2204,6 @@
                         <div class="card-subtitle">Toute la config est stockée dans <code>config/config.json</code></div>
                     </div>
                     <div class="card-actions">
-                        <button class="btn btn-ghost btn-sm" onclick="migrateConfig()" title="Consolide main.json + includes en un seul config.json">
-                            📦 Migrer
-                        </button>
                         <button class="btn btn-ghost btn-sm" onclick="migrateDiscord2Name()" title="Déplace discord2name de la config globale vers les configs par serveur">
                             👤 Migrer discord2name
                         </button>
@@ -2776,18 +2773,6 @@
 
     function escapeRegExp(string) {
         return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    }
-
-    async function migrateConfig() {
-        if (!confirm('Consolider main.json + fichiers inclus en un seul config.json ?\nLes anciens fichiers seront supprimés.')) return;
-        try {
-            const result = await api('/api/migrate-config', { method: 'POST' });
-            if (result) {
-                toast(result.message, 'success');
-                await loadConfig();
-                render();
-            }
-        } catch (e) { /* handled */ }
     }
 
     async function migrateDiscord2Name() {
