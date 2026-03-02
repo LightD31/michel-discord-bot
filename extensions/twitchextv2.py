@@ -953,13 +953,13 @@ class TwitchExt2(Extension):
                         "Initial emote sync for %s: %d emotes found – skipping notifications",
                         streamer.streamer_id, len(new_emotes),
                     )
-                    docs = [{"_id": emote.id, "name": emote.name, "cached_file": None} for emote in emotes]
-                    if docs:
-                        await emote_col.insert_many(docs)
-                    # Download and cache images
+                    docs = []
                     for emote in emotes:
                         image_url = emote.images.get('url_4x', emote.images.get('url_2x', emote.images.get('url_1x')))
-                        await self.download_emote_image(emote.id, image_url, streamer.guild_id, streamer.streamer_id)
+                        cached_file = await self.download_emote_image(emote.id, image_url, streamer.guild_id, streamer.streamer_id)
+                        docs.append({"_id": emote.id, "name": emote.name, "cached_file": cached_file})
+                    if docs:
+                        await emote_col.insert_many(docs)
                     continue
 
                 # Build a map of current emote names for replacement detection
@@ -1085,7 +1085,13 @@ class TwitchExt2(Extension):
                         data[emote.id]["cached_file"] = cached_file
 
                 # Save updated emotes to MongoDB
-                if truly_new_emotes or truly_deleted_emotes or replaced_emotes:
+                # Also save when cached files were updated for existing emotes
+                has_cache_updates = any(
+                    emote.id in data and data[emote.id].get("cached_file") is not None
+                    for emote in emotes
+                    if emote.id in data
+                )
+                if truly_new_emotes or truly_deleted_emotes or replaced_emotes or has_cache_updates:
                     # Sync MongoDB with current data dict
                     await emote_col.delete_many({})
                     if data:
