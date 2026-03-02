@@ -441,13 +441,13 @@ MODULE_SCHEMAS: dict[str, dict] = {
         "description": "Mapping des IDs Discord vers des prénoms pour ce serveur.",
         "icon": "👤",
         "noToggle": True,
+        "directValue": True,
         "fields": {
-            "__info": _field(
-                "Info", "string",
-                description="Clé = ID Discord, valeur = prénom. Modifier en JSON."
+            "discord2name": _field(
+                "Membres", "discord2name",
+                description="Associez un prénom à chaque ID Discord."
             ),
         },
-        "rawJson": True,
     },
 }
 

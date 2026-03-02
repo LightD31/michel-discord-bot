@@ -1246,7 +1246,7 @@
             color: var(--text-muted);
         }
 
-        .btn-add-model {
+        .btn-add-model, .btn-add-entry {
             display: inline-flex;
             align-items: center;
             gap: 6px;
@@ -1260,10 +1260,80 @@
             transition: all 0.15s;
         }
 
-        .btn-add-model:hover {
+        .btn-add-model:hover, .btn-add-entry:hover {
             border-color: var(--accent);
             color: var(--accent);
             background: rgba(88, 101, 242, 0.05);
+        }
+
+        /* ── Name Mapping List Editor ────────────────── */
+        .namemap-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .namemap-header {
+            display: grid;
+            grid-template-columns: 1fr 1.5fr auto;
+            gap: 8px;
+            padding: 0 12px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-muted);
+        }
+
+        .namemap-entry {
+            display: grid;
+            grid-template-columns: 1fr 1.5fr auto;
+            gap: 8px;
+            align-items: center;
+            padding: 10px 12px;
+            background: var(--bg-primary);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+        }
+
+        .namemap-entry input {
+            width: 100%;
+            padding: 6px 8px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            color: var(--text-primary);
+            font-size: 13px;
+            font-family: 'Consolas', monospace;
+            outline: none;
+        }
+
+        .namemap-entry input:focus {
+            border-color: var(--accent);
+        }
+
+        .namemap-entry .btn-remove-entry {
+            background: none;
+            border: none;
+            color: var(--danger);
+            cursor: pointer;
+            font-size: 18px;
+            padding: 4px 8px;
+            border-radius: var(--radius);
+            line-height: 1;
+        }
+
+        .namemap-entry .btn-remove-entry:hover {
+            background: rgba(248, 63, 67, 0.1);
+        }
+
+        @media (max-width: 768px) {
+            .namemap-entry {
+                grid-template-columns: 1fr;
+            }
+            .namemap-header {
+                display: none;
+            }
         }
 
         @media (max-width: 768px) {
@@ -1769,6 +1839,22 @@
                     html += `<button type="button" class="btn-add-model" onclick="addModelEntry(this)">+ Ajouter un modèle</button>`;
                     break;
 
+                case 'discord2name':
+                    const nameMap = (typeof value === 'object' && value !== null && !Array.isArray(value)) ? value : {};
+                    html += `<div class="namemap-list" data-field="${key}" data-type="discord2name">`;
+                    html += `<div class="namemap-header"><span>ID Discord</span><span>Prénom</span><span></span></div>`;
+                    Object.entries(nameMap).forEach(([discordId, name]) => {
+                        html += `
+                            <div class="namemap-entry">
+                                <input type="text" data-namemap-field="discord_id" value="${escapeHtml(discordId)}" placeholder="ex: 123456789012345678">
+                                <input type="text" data-namemap-field="name" value="${escapeHtml(String(name))}" placeholder="ex: Jean">
+                                <button class="btn-remove-entry" onclick="this.closest('.namemap-entry').remove()" title="Supprimer">✕</button>
+                            </div>`;
+                    });
+                    html += `</div>`;
+                    html += `<button type="button" class="btn-add-entry" onclick="addNameMapEntry(this)">+ Ajouter un membre</button>`;
+                    break;
+
                 default: // string
                     html += `<input type="text" class="form-input" data-field="${key}" data-type="string"
                         value="${hasValue ? escapeHtml(String(value)) : ''}"
@@ -1811,6 +1897,9 @@
                 case 'models':
                     // Handled separately below
                     continue;
+                case 'discord2name':
+                    // Handled separately below
+                    continue;
                 case 'secret':
                     val = input.value || undefined;
                     break;
@@ -1840,6 +1929,22 @@
             }
         }
 
+        // Collect discord2name lists
+        const namemapLists = form.querySelectorAll('[data-type="discord2name"]');
+        for (const list of namemapLists) {
+            const key = list.dataset.field;
+            const entries = list.querySelectorAll('.namemap-entry');
+            const nameMap = {};
+            for (const entry of entries) {
+                const discordId = entry.querySelector('[data-namemap-field="discord_id"]')?.value?.trim();
+                const name = entry.querySelector('[data-namemap-field="name"]')?.value?.trim();
+                if (discordId && name) {
+                    nameMap[discordId] = name;
+                }
+            }
+            result[key] = nameMap;
+        }
+
         return result;
     }
 
@@ -1856,6 +1961,19 @@
             <button class="btn-remove-model" onclick="this.closest('.model-entry').remove()" title="Supprimer">✕</button>
         `;
         list.appendChild(entry);
+    }
+
+    function addNameMapEntry(btn) {
+        const list = btn.previousElementSibling;
+        const entry = document.createElement('div');
+        entry.className = 'namemap-entry';
+        entry.innerHTML = `
+            <input type="text" data-namemap-field="discord_id" value="" placeholder="ex: 123456789012345678">
+            <input type="text" data-namemap-field="name" value="" placeholder="ex: Jean">
+            <button class="btn-remove-entry" onclick="this.closest('.namemap-entry').remove()" title="Supprimer">✕</button>
+        `;
+        list.appendChild(entry);
+        entry.querySelector('input').focus();
     }
 
     function togglePasswordVisibility(btn) {
@@ -2162,6 +2280,24 @@
                 continue;
             }
 
+            if (fieldType === 'discord2name' && typeof val === 'object' && val !== null && !Array.isArray(val)) {
+                const entries = Object.entries(val);
+                html += `
+                    <div class="preview-row" style="flex-direction:column;gap:6px;">
+                        <span class="preview-label">${field.label || key} (${entries.length})</span>
+                        <div style="display:flex;flex-direction:column;gap:4px;width:100%;">
+                            ${entries.length > 0 ? entries.map(([id, name]) => `
+                                <div style="display:flex;gap:8px;align-items:center;padding:4px 8px;background:var(--bg-primary);border-radius:var(--radius);font-size:13px;">
+                                    <span style="color:var(--text-muted);font-family:Consolas,monospace;min-width:180px;">${escapeHtml(id)}</span>
+                                    <span style="font-weight:600;color:var(--accent);">${escapeHtml(String(name))}</span>
+                                </div>
+                            `).join('') : '<span style="color:var(--text-muted);font-size:13px;">Aucun mapping configuré</span>'}
+                        </div>
+                    </div>
+                `;
+                continue;
+            }
+
             let displayVal = '—';
             if (hasVal) {
                 if (isSecret) displayVal = '••••••••';
@@ -2404,7 +2540,9 @@
                     </div>
                 </div>
                 ${schema
-                    ? renderSchemaForm(formId, schema, modConfig, { excludeEnabled: true })
+                    ? renderSchemaForm(formId, schema,
+                        schema.directValue ? { [mod]: modConfig } : modConfig,
+                        { excludeEnabled: true })
                     : (Object.keys(modConfig).length === 0
                         ? `<div class="empty-state">
                             <h3>Configuration vide</h3>
@@ -2549,12 +2687,19 @@
     async function saveModuleForm(serverId, moduleName, formId) {
         try {
             const values = collectFormValues(formId);
+            const schema = state.moduleSchemas[moduleName];
             const server = state.servers?.[serverId];
-            const existing = server?.config?.[moduleName] || {};
-            const merged = { ...existing, ...values };
+            let config;
+            if (schema?.directValue) {
+                // For directValue modules (e.g. discord2name), the field value IS the config
+                config = values[moduleName] ?? {};
+            } else {
+                const existing = server?.config?.[moduleName] || {};
+                config = { ...existing, ...values };
+            }
             await api(`/api/servers/${serverId}/modules/${moduleName}`, {
                 method: 'PUT',
-                body: JSON.stringify({ config: merged }),
+                body: JSON.stringify({ config }),
             });
             toast('Configuration sauvegardée !', 'success');
             await loadServers();
