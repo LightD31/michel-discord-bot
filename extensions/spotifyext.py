@@ -22,7 +22,7 @@ from src.spotify import (
     spotifymongoformat,
     embed_message_vote_add,
 )
-from src.utils import milliseconds_to_string, load_config
+from src.utils import milliseconds_to_string, load_config, load_discord2name
 
 # Constants and Configuration
 CONFIG, MODULE_CONFIGS, ENABLED_SERVERS = load_config("moduleSpotify")
@@ -88,7 +88,7 @@ class ServerData:
 
     def __init__(self, guild_id: str, config: dict, global_config: dict):
         self.guild_id = guild_id
-        self.discord2name = global_config.get("discord2name", {}).get(guild_id, {})
+        self.discord2name = load_discord2name(guild_id)
         self.spotify2discord = config.get("spotifyIdToDiscordId", {})
         self.channel_id = config.get("spotifyChannelId")
         self.playlist_id = config.get("spotifyPlaylistId")

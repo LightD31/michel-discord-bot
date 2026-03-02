@@ -101,9 +101,10 @@ def load_config(module_name: str | None = None) -> Tuple[dict, dict, list[str]]:
     Load the configuration for a specific module (backward compatible).
     """
     data = _config_manager.load_full_config()
-    
+    config = data.get("config", {})
+
     if module_name is None:
-        return data.get("config", {}), {}, []
+        return config, {}, []
         
     enabled_servers = [
         str(server_id)
@@ -117,7 +118,6 @@ def load_config(module_name: str | None = None) -> Tuple[dict, dict, list[str]]:
         if str(server_id) in enabled_servers
     }
     
-    config = data.get("config", {})
     logger.info(
         "Loaded config for module %s for servers %s",
         module_name,

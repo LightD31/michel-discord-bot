@@ -344,7 +344,7 @@ class Utils(Extension):
             # Check if the message is a poll
             if event.message.embeds[0].color == 0x3489EB:
                 # Create the poll embed
-                embed = await format_poll(event, config)
+                embed = await format_poll(event)
                 await event.message.edit(embed=embed)
 
     @listen(MessageReactionRemove)
@@ -365,7 +365,7 @@ class Utils(Extension):
             # Check if the message is a poll
             if event.message.embeds[0].color == 0x3489EB:
                 # Create the poll embed
-                embed = await format_poll(event, config)
+                embed = await format_poll(event)
                 await event.message.edit(embed=embed)
 
     @slash_command(

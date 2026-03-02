@@ -2089,6 +2089,9 @@
                         <button class="btn btn-ghost btn-sm" onclick="migrateConfig()" title="Consolide main.json + includes en un seul config.json">
                             📦 Migrer
                         </button>
+                        <button class="btn btn-ghost btn-sm" onclick="migrateDiscord2Name()" title="Déplace discord2name de la config globale vers les configs par serveur">
+                            👤 Migrer discord2name
+                        </button>
                         <button class="btn btn-ghost btn-sm" onclick="downloadConfig()">
                             ⬇️ Exporter
                         </button>
@@ -2298,6 +2301,7 @@
                     ` : moduleNames.map(mod => {
                         const modConfig = serverConfig[mod] || {};
                         const schema = state.moduleSchemas[mod];
+                        const noToggle = schema?.noToggle === true;
                         const enabled = modConfig.enabled === true;
                         const label = schema?.label || state.modules[mod]?.label || mod;
                         const icon = schema?.icon || state.modules[mod]?.icon || '🧩';
@@ -2308,16 +2312,20 @@
                                 <div class="module-info">
                                     <span class="module-name">${icon} ${label}</span>
                                     <span class="module-status">${
-                                        isConfigured
-                                            ? (enabled ? '✅ Activé' : '❌ Désactivé')
-                                            : '⚪ Non configuré'
+                                        noToggle
+                                            ? (isConfigured && Object.keys(modConfig).length > 0 ? '📝 Configuré' : '⚪ Non configuré')
+                                            : (isConfigured
+                                                ? (enabled ? '✅ Activé' : '❌ Désactivé')
+                                                : '⚪ Non configuré')
                                     }</span>
                                 </div>
+                                ${noToggle ? '' : `
                                 <label class="toggle" onclick="event.stopPropagation()">
                                     <input type="checkbox" ${enabled ? 'checked' : ''} 
                                         onchange="toggleModule('${sid}', '${mod}', this.checked)">
                                     <span class="toggle-slider"></span>
                                 </label>
+                                `}
                             </div>
                         `;
                     }).join('')}
@@ -2348,6 +2356,7 @@
 
         const modConfig = server.config?.[mod] || {};
         const schema = state.moduleSchemas[mod];
+        const noToggle = schema?.noToggle === true;
         const enabled = modConfig.enabled === true;
         const label = schema?.label || state.modules[mod]?.label || mod;
         const icon = schema?.icon || '🧩';
@@ -2367,11 +2376,13 @@
                         <h2>${icon} ${label}</h2>
                         <p>${description || 'Configuration du module pour ' + (server.name || sid)}</p>
                     </div>
+                    ${noToggle ? '' : `
                     <label class="toggle" style="transform: scale(1.2);">
                         <input type="checkbox" ${enabled ? 'checked' : ''} 
                             onchange="toggleModule('${sid}', '${mod}', this.checked)">
                         <span class="toggle-slider"></span>
                     </label>
+                    `}
                 </div>
             </div>
 
@@ -2629,6 +2640,18 @@
             if (result) {
                 toast(result.message, 'success');
                 await loadConfig();
+                render();
+            }
+        } catch (e) { /* handled */ }
+    }
+
+    async function migrateDiscord2Name() {
+        if (!confirm('Déplacer discord2name de la config globale vers les configs par serveur ?\nLes données existantes par serveur seront préservées.')) return;
+        try {
+            const result = await api('/api/migrate-discord2name', { method: 'POST' });
+            if (result) {
+                toast(result.message, 'success');
+                await Promise.all([loadConfig(), loadServers()]);
                 render();
             }
         } catch (e) { /* handled */ }
