@@ -158,12 +158,20 @@ def install_log_handler(max_entries: int = 2000) -> WebUILogHandler:
         _logutil.get_logger = _patched_get_logger
 
         # 4) Retroactively attach to loggers that were already created
-        #    by scanning all live objects is impractical, but we can scan
-        #    the gc for Logger instances that aren't in the manager dict.
+        #    via logging.Logger() directly (not in the manager dict).
+        #    We snapshot gc objects first to avoid mutation during iteration.
         import gc
-        for obj in gc.get_objects():
-            if isinstance(obj, logging.Logger) and handler not in obj.handlers:
-                obj.addHandler(handler)
+        try:
+            all_objects = gc.get_objects()
+        except Exception:
+            all_objects = []
+        for obj in all_objects:
+            try:
+                if isinstance(obj, logging.Logger) and handler not in obj.handlers:
+                    obj.addHandler(handler)
+            except ReferenceError:
+                # Object was garbage-collected during iteration
+                continue
 
     except ImportError:
         pass
