@@ -107,8 +107,11 @@ class WebUILogHandler(logging.Handler):
 
 def install_log_handler(max_entries: int = 2000) -> WebUILogHandler:
     """
-    Install the WebUI log handler on the root logger so it captures
-    all log output from every module.
+    Install the WebUI log handler on the root logger AND on all existing
+    loggers (including standalone ones created via logging.Logger() directly).
+
+    Also monkey-patches logutil.init_logger and logutil.get_logger so any
+    logger created *after* this call automatically gets the WebUI handler.
     """
     handler = WebUILogHandler(max_entries=max_entries)
     formatter = logging.Formatter(
@@ -117,11 +120,52 @@ def install_log_handler(max_entries: int = 2000) -> WebUILogHandler:
     )
     handler.setFormatter(formatter)
 
+    # 1) Attach to root logger (captures standard-hierarchy loggers)
     root_logger = logging.getLogger()
     root_logger.addHandler(handler)
-
-    # Also ensure root logger level is DEBUG so all records pass through
     if root_logger.level > logging.DEBUG:
         root_logger.setLevel(logging.DEBUG)
+
+    # 2) Attach to ALL existing loggers in the manager dict
+    #    This catches loggers created via logging.getLogger(name)
+    for name, logger_ref in logging.Logger.manager.loggerDict.items():
+        if isinstance(logger_ref, logging.Logger):
+            if handler not in logger_ref.handlers:
+                logger_ref.addHandler(handler)
+
+    # 3) Attach to standalone loggers created via logging.Logger() directly.
+    #    These aren't in the manager dict, so we monkey-patch logutil to
+    #    inject our handler into every future logger it creates.
+    try:
+        from src import logutil as _logutil
+
+        _orig_init_logger = _logutil.init_logger
+        _orig_get_logger = _logutil.get_logger
+
+        def _patched_init_logger(name="root"):
+            lgr = _orig_init_logger(name)
+            if handler not in lgr.handlers:
+                lgr.addHandler(handler)
+            return lgr
+
+        def _patched_get_logger(name):
+            lgr = _orig_get_logger(name)
+            if handler not in lgr.handlers:
+                lgr.addHandler(handler)
+            return lgr
+
+        _logutil.init_logger = _patched_init_logger
+        _logutil.get_logger = _patched_get_logger
+
+        # 4) Retroactively attach to loggers that were already created
+        #    by scanning all live objects is impractical, but we can scan
+        #    the gc for Logger instances that aren't in the manager dict.
+        import gc
+        for obj in gc.get_objects():
+            if isinstance(obj, logging.Logger) and handler not in obj.handlers:
+                obj.addHandler(handler)
+
+    except ImportError:
+        pass
 
     return handler
