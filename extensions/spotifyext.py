@@ -144,9 +144,11 @@ class Spotify(interactions.Extension):
         self.new_titles_playlist.start()
 
     async def load_voteinfos(self, server: ServerData):
-        async for doc in server.vote_infos_col.find():
-            key = doc["_id"]
-            server.vote_infos[key] = {k: v for k, v in doc.items() if k != "_id"}
+        doc = await server.vote_infos_col.find_one({"_id": "current"})
+        if doc:
+            server.vote_infos = {k: v for k, v in doc.items() if k != "_id"}
+        else:
+            server.vote_infos = {}
 
     async def load_snapshot(self, server: ServerData):
         doc = await server.snapshot_col.find_one({"_id": "current"})
@@ -161,10 +163,9 @@ class Spotify(interactions.Extension):
         )
 
     async def save_voteinfos(self, server: ServerData):
-        for key, value in server.vote_infos.items():
-            await server.vote_infos_col.update_one(
-                {"_id": key}, {"$set": value}, upsert=True
-            )
+        await server.vote_infos_col.update_one(
+            {"_id": "current"}, {"$set": server.vote_infos}, upsert=True
+        )
 
     async def load_reminders(self, server: ServerData):
         async for doc in server.reminders_col.find():
