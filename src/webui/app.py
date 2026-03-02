@@ -3,6 +3,7 @@ FastAPI application for the Web UI dashboard.
 Provides config management endpoints and serves the frontend.
 """
 
+import asyncio
 import json
 import os
 import secrets
@@ -10,11 +11,13 @@ from typing import Optional
 
 from fastapi import FastAPI, Request, Response, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
+from sse_starlette.sse import EventSourceResponse
 from pydantic import BaseModel
 
 from src import logutil
 from src.utils import load_config as bot_load_config
 from src.webui.auth import DiscordOAuth, Session
+from src.webui.log_handler import WebUILogHandler, install_log_handler
 from src.webui.schemas import MODULE_SCHEMAS, GLOBAL_CONFIG_SCHEMAS
 
 logger = logutil.init_logger("webui.app")
@@ -58,6 +61,11 @@ def create_app(bot=None) -> FastAPI:
         redirect_uri=redirect_uri,
         admin_user_ids=admin_user_ids,
     )
+
+    # Install log handler on first app creation
+    log_handler = WebUILogHandler.get_instance()
+    if not log_handler:
+        log_handler = install_log_handler(max_entries=2000)
 
     app = FastAPI(title="Michel Bot Dashboard", docs_url=None, redoc_url=None)
 
@@ -461,6 +469,53 @@ def create_app(bot=None) -> FastAPI:
             except Exception:
                 info["status"] = "error"
         return JSONResponse(info)
+
+    # ── Logs API ─────────────────────────────────────────────────────
+
+    @app.get("/api/logs")
+    async def api_get_logs(request: Request, count: int = 200, level: str = "",
+                           search: str = "", logger_name: str = ""):
+        """Get recent log entries with optional filtering."""
+        _require_session(request)
+        handler = WebUILogHandler.get_instance()
+        if not handler:
+            return JSONResponse({"logs": []})
+        logs = handler.get_recent(
+            count=min(count, 2000),
+            level=level or None,
+            search=search or None,
+            logger_name=logger_name or None,
+        )
+        return JSONResponse({"logs": logs})
+
+    @app.get("/api/logs/stream")
+    async def api_stream_logs(request: Request):
+        """SSE endpoint for real-time log streaming."""
+        _require_session(request)
+        handler = WebUILogHandler.get_instance()
+        if not handler:
+            raise HTTPException(status_code=503, detail="Log handler non disponible")
+
+        queue = handler.subscribe()
+
+        async def event_generator():
+            try:
+                while True:
+                    if await request.is_disconnected():
+                        break
+                    try:
+                        entry = await asyncio.wait_for(queue.get(), timeout=30.0)
+                        yield {
+                            "event": "log",
+                            "data": json.dumps(entry.to_dict()),
+                        }
+                    except asyncio.TimeoutError:
+                        # Send keepalive
+                        yield {"event": "ping", "data": ""}
+            finally:
+                handler.unsubscribe(queue)
+
+        return EventSourceResponse(event_generator())
 
     # ── Frontend serving ─────────────────────────────────────────────
 

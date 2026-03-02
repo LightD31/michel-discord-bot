@@ -26,3 +26,4 @@ pyfactorybridge
 python-socketio
 fastapi
 uvicorn[standard]
+sse-starlette
