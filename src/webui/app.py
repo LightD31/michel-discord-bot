@@ -419,6 +419,9 @@ def create_app(bot=None) -> FastAPI:
                 schema = MODULE_SCHEMAS.get(module_name)
                 if not schema or not schema.get("fields"):
                     continue
+                # directValue modules store raw data, not field-based config
+                if schema.get("directValue"):
+                    continue
                 allowed_keys = set(schema["fields"].keys())
                 # Always keep "enabled" even if not explicitly in schema
                 allowed_keys.add("enabled")

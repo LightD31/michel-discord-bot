@@ -2696,7 +2696,7 @@
                 }
             </div>
 
-            ${schema ? renderExtraKeysCard(schema, modConfig) : ''}
+            ${schema && !schema.directValue ? renderExtraKeysCard(schema, modConfig) : ''}
         `;
     }
 
