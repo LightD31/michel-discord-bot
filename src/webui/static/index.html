@@ -1475,6 +1475,75 @@
             }
         }
 
+        /* ── Spotify User Map Editor ──────────────── */
+        .spotifymap-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .spotifymap-header {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr auto;
+            gap: 8px;
+            padding: 0 12px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-muted);
+        }
+
+        .spotifymap-entry {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr auto;
+            gap: 8px;
+            align-items: center;
+            padding: 10px 12px;
+            background: var(--bg-primary);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+        }
+
+        .spotifymap-entry input {
+            width: 100%;
+            padding: 6px 8px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            color: var(--text-primary);
+            font-size: 13px;
+            outline: none;
+        }
+
+        .spotifymap-entry input:focus {
+            border-color: var(--accent);
+        }
+
+        .spotifymap-entry .btn-remove-entry {
+            background: none;
+            border: none;
+            color: var(--danger);
+            cursor: pointer;
+            font-size: 18px;
+            padding: 4px 8px;
+            border-radius: var(--radius);
+            line-height: 1;
+        }
+
+        .spotifymap-entry .btn-remove-entry:hover {
+            background: rgba(248, 63, 67, 0.1);
+        }
+
+        @media (max-width: 768px) {
+            .spotifymap-entry {
+                grid-template-columns: 1fr;
+            }
+            .spotifymap-header {
+                display: none;
+            }
+        }
+
         /* ── Message List Editor ──────────────────── */
         .messagelist-list {
             display: flex;
@@ -2322,6 +2391,23 @@
                     html += `<button type="button" class="btn-add-entry" onclick="addKeyValueMapEntry(this)">+ Ajouter une entrée</button>`;
                     break;
 
+                case 'spotifymap':
+                    const spotifyUsers = Array.isArray(value) ? value : [];
+                    html += `<div class="spotifymap-list" data-field="${key}" data-type="spotifymap">`;
+                    html += `<div class="spotifymap-header"><span>Spotify ID</span><span>Nom</span><span>Discord ID</span><span></span></div>`;
+                    spotifyUsers.forEach((user, idx) => {
+                        html += `
+                            <div class="spotifymap-entry" data-user-idx="${idx}">
+                                <input type="text" data-spotifymap-field="spotifyId" value="${escapeHtml(user.spotifyId || '')}" placeholder="ex: exemple123">
+                                <input type="text" data-spotifymap-field="name" value="${escapeHtml(user.name || '')}" placeholder="ex: Jean">
+                                <input type="text" data-spotifymap-field="discordId" value="${escapeHtml(user.discordId || '')}" placeholder="ex: 123456789012345678">
+                                <button class="btn-remove-entry" onclick="this.closest('.spotifymap-entry').remove()" title="Supprimer">✕</button>
+                            </div>`;
+                    });
+                    html += `</div>`;
+                    html += `<button type="button" class="btn-add-entry" onclick="addSpotifyUserEntry(this)">+ Ajouter un utilisateur</button>`;
+                    break;
+
                 case 'messagelist':
                     const weightFieldKey = field.weightField || '';
                     const messages = Array.isArray(value) ? value : [];
@@ -2445,6 +2531,9 @@
                 case 'keyvaluemap':
                     // Handled separately below
                     continue;
+                case 'spotifymap':
+                    // Handled separately below
+                    continue;
                 case 'messagelist':
                     // Handled separately below
                     continue;
@@ -2530,6 +2619,25 @@
                 }
             }
             result[key] = kvMap;
+        }
+
+        // Collect spotifymap lists
+        const spotifymapLists = form.querySelectorAll('[data-type="spotifymap"]');
+        for (const list of spotifymapLists) {
+            const key = list.dataset.field;
+            const entries = list.querySelectorAll('.spotifymap-entry');
+            const spotifyUsers = [];
+            for (const entry of entries) {
+                const spotifyId = entry.querySelector('[data-spotifymap-field="spotifyId"]')?.value?.trim();
+                const name = entry.querySelector('[data-spotifymap-field="name"]')?.value?.trim();
+                const discordId = entry.querySelector('[data-spotifymap-field="discordId"]')?.value?.trim();
+                if (spotifyId && name && discordId) {
+                    spotifyUsers.push({ spotifyId, name, discordId });
+                }
+            }
+            if (spotifyUsers.length > 0) {
+                result[key] = spotifyUsers;
+            }
         }
 
         // Collect messagelist fields
@@ -2633,6 +2741,20 @@
             <input type="text" data-kvmap-field="key" value="" placeholder="ex: ${escapeHtml(keyLabel).toLowerCase()}">
             <input type="text" data-kvmap-field="value" value="" placeholder="ex: ${escapeHtml(valueLabel).toLowerCase()}">
             <button class="btn-remove-entry" onclick="this.closest('.keyvaluemap-entry').remove()" title="Supprimer">✕</button>
+        `;
+        list.appendChild(entry);
+        entry.querySelector('input').focus();
+    }
+
+    function addSpotifyUserEntry(btn) {
+        const list = btn.previousElementSibling;
+        const entry = document.createElement('div');
+        entry.className = 'spotifymap-entry';
+        entry.innerHTML = `
+            <input type="text" data-spotifymap-field="spotifyId" value="" placeholder="ex: exemple123">
+            <input type="text" data-spotifymap-field="name" value="" placeholder="ex: Jean">
+            <input type="text" data-spotifymap-field="discordId" value="" placeholder="ex: 123456789012345678">
+            <button class="btn-remove-entry" onclick="this.closest('.spotifymap-entry').remove()" title="Supprimer">✕</button>
         `;
         list.appendChild(entry);
         entry.querySelector('input').focus();
@@ -3117,6 +3239,24 @@
                                     <span style="font-weight:600;color:var(--accent);min-width:120px;">${escapeHtml(t.name || '???')}</span>
                                     <span style="color:var(--text-muted);min-width:100px;">${escapeHtml(t.game || 'valorant')}</span>
                                     ${t.vlrTeamId ? `<span style="color:var(--text-secondary);font-family:Consolas,monospace;">VLR#${escapeHtml(t.vlrTeamId)}</span>` : ''}
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                `;
+                continue;
+            }
+
+            if (fieldType === 'spotifymap' && Array.isArray(val) && val.length > 0) {
+                html += `
+                    <div class="preview-row" style="flex-direction:column;gap:6px;">
+                        <span class="preview-label">${field.label || key} (${val.length})</span>
+                        <div style="display:flex;flex-direction:column;gap:4px;width:100%;">
+                            ${val.map(u => `
+                                <div style="display:flex;gap:8px;align-items:center;padding:4px 8px;background:var(--bg-primary);border-radius:var(--radius);font-size:13px;">
+                                    <span style="color:var(--text-muted);font-family:Consolas,monospace;min-width:120px;">${escapeHtml(u.spotifyId || '???')}</span>
+                                    <span style="font-weight:600;color:var(--accent);min-width:100px;">${escapeHtml(u.name || '')}</span>
+                                    <span style="color:var(--text-secondary);font-family:Consolas,monospace;">${escapeHtml(u.discordId || '')}</span>
                                 </div>
                             `).join('')}
                         </div>

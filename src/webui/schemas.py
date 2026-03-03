@@ -21,6 +21,7 @@ This is used by the Web UI to render proper forms instead of raw JSON editors.
 # "messagelist" — list of messages with linked weight field (form rows)
 # "embedlist" — list of embeds with title, color, and links (form rows)
 # "keyvaluemap" — key-value pairs in a form (customizable key/value labels via key_label, value_label)
+# "spotifymap" — list of Spotify user mappings (spotifyId, name, discordId)
 
 
 def _field(label: str, field_type: str = "string", required: bool = False,
@@ -252,17 +253,9 @@ MODULE_SCHEMAS: dict[str, dict] = {
                 "ID message récap", "message",
                 description="ID du message de récap dans le salon."
             ),
-            "spotifyIdToName": _field(
-                "Mapping Spotify → Nom", "keyvaluemap",
-                description="Correspondance entre Spotify user ID et prénom.",
-                key_label="Spotify ID",
-                value_label="Prénom"
-            ),
-            "spotifyIdToDiscordId": _field(
-                "Mapping Spotify → Discord", "keyvaluemap",
-                description="Correspondance entre Spotify user ID et Discord user ID.",
-                key_label="Spotify ID",
-                value_label="Discord ID"
+            "spotifyUsers": _field(
+                "Mapping Spotify (ID, Nom, Discord)", "spotifymap",
+                description="Liste des utilisateurs Spotify avec nom et ID Discord associés."
             ),
         },
     },
