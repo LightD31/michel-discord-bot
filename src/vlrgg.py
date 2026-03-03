@@ -1,12 +1,15 @@
-"""Client pour l'API non-officielle VLR.gg.
+"""Client pour l'API non-officielle VLR.gg (V2).
 
-Utilisé comme source alternative/failover pour les données de matchs Valorant
-lorsque l'API Liquipedia est indisponible ou a des données moins récentes.
-
+Source unique pour les données de matchs Valorant.
 API: https://vlrggapi.vercel.app (https://github.com/axsddlr/vlrggapi)
 
-Note: L'API VLR.gg a un rate limit plus bas. Un cache avec TTL est utilisé
-pour minimiser le nombre de requêtes.
+Endpoints V2 utilisés:
+- /v2/match?q=results|upcoming|live_score — listes de matchs
+- /v2/match/details?match_id=X — détails complets d'un match
+- /v2/team?id=X — profil d'équipe
+- /v2/team/matches?id=X — historique des matchs d'une équipe (avec match_id)
+
+Note: Un cache avec TTL variable est utilisé pour minimiser le nombre de requêtes.
 """
 
 import re
@@ -21,8 +24,15 @@ logger = logutil.init_logger(__name__)
 
 VLRGG_API_URL = "https://vlrggapi.vercel.app"
 
-# Cache TTL en secondes — une seule requête par endpoint dans cette fenêtre
-CACHE_TTL_SECONDS = 120  # 2 minutes
+# Cache TTL en secondes par type d'endpoint
+CACHE_TTL = {
+    "live": 30,
+    "upcoming": 120,
+    "results": 300,
+    "details": 120,
+    "team": 600,
+    "default": 120,
+}
 
 # Cache interne : { "endpoint:params_hash" -> (timestamp, data) }
 _cache: Dict[str, tuple] = {}
@@ -34,34 +44,48 @@ def _cache_key(endpoint: str, params: Optional[Dict[str, str]]) -> str:
     return f"{endpoint}?{params_str}"
 
 
+def _get_ttl(endpoint: str, params: Optional[Dict[str, str]] = None) -> int:
+    """Détermine le TTL de cache approprié pour un endpoint."""
+    if "match/details" in endpoint:
+        return CACHE_TTL["details"]
+    if "team/matches" in endpoint or "team" in endpoint:
+        return CACHE_TTL["team"]
+    q = (params or {}).get("q", "")
+    if q == "live_score":
+        return CACHE_TTL["live"]
+    if q == "upcoming":
+        return CACHE_TTL["upcoming"]
+    if q == "results":
+        return CACHE_TTL["results"]
+    return CACHE_TTL["default"]
+
+
 async def vlrgg_request(
     endpoint: str, params: Optional[Dict[str, str]] = None
 ) -> Dict[str, Any]:
     """Effectue une requête vers l'API VLR.gg avec cache.
 
-    Les réponses sont mises en cache pendant CACHE_TTL_SECONDS pour
-    respecter le rate limit de l'API.
-
     Args:
-        endpoint: Point d'entrée API (ex: "match").
+        endpoint: Point d'entrée API (ex: "v2/match").
         params: Paramètres de requête.
 
     Returns:
         Données JSON de la réponse, ou dict vide en cas d'erreur.
     """
     key = _cache_key(endpoint, params)
+    ttl = _get_ttl(endpoint, params)
 
     # Vérifier le cache
     if key in _cache:
         cached_time, cached_data = _cache[key]
         age = time.monotonic() - cached_time
-        if age < CACHE_TTL_SECONDS:
+        if age < ttl:
             logger.debug(f"VLR.gg cache hit pour {key} (âge: {age:.0f}s)")
             return cached_data
 
     url = f"{VLRGG_API_URL}/{endpoint}"
     try:
-        data = await fetch(url, params=params, return_type="json")
+        data: Dict[str, Any] = await fetch(url, params=params, return_type="json")  # type: ignore[assignment]
         _cache[key] = (time.monotonic(), data)
         return data
     except Exception as e:
@@ -145,41 +169,54 @@ def parse_vlrgg_timestamp(timestamp_str: str) -> Optional[datetime]:
 
 
 def get_most_recent_result_time(results: List[Dict]) -> Optional[datetime]:
-    """Obtient le timestamp du résultat le plus récent.
-
-    Args:
-        results: Liste des résultats VLR.gg.
-
-    Returns:
-        datetime du résultat le plus récent, ou None.
-    """
+    """Obtient le timestamp du résultat le plus récent."""
     if not results:
         return None
-
-    # Le premier résultat est le plus récent
     time_str = results[0].get("time_completed", "")
     return parse_time_ago(time_str)
 
 
-async def fetch_team_info(team_id: str) -> Dict[str, Any]:
-    """Récupère le profil d'une équipe par son ID VLR.gg.
+def extract_match_id_from_url(url: str) -> Optional[str]:
+    """Extrait l'ID d'un match depuis une URL VLR.gg.
+
+    Ex: "https://www.vlr.gg/412345/team1-vs-team2" -> "412345"
+    """
+    if not url:
+        return None
+    m = re.search(r"vlr\.gg/(\d+)", url)
+    return m.group(1) if m else None
+
+
+# ── Endpoints V2 ─────────────────────────────────────────────────
+
+
+async def fetch_match_details(match_id: str) -> Dict[str, Any]:
+    """Récupère les détails complets d'un match par son ID.
+
+    Inclut: scores par map, stats joueurs, rounds, economy, head-to-head.
 
     Args:
-        team_id: ID VLR.gg de l'équipe.
+        match_id: ID VLR.gg du match.
 
     Returns:
-        Données du profil de l'équipe.
+        Données complètes du match, ou dict vide en cas d'erreur.
     """
-    return await vlrgg_request("team", {"id": team_id})
+    data = await vlrgg_request("v2/match/details", {"match_id": match_id})
+    return data.get("data", data)
+
+
+async def fetch_team_info(team_id: str) -> Dict[str, Any]:
+    """Récupère le profil d'une équipe par son ID VLR.gg."""
+    data = await vlrgg_request("v2/team", {"id": team_id})
+    return data.get("data", data)
 
 
 async def fetch_team_matches_by_id(
     team_id: str, page: int = 1
 ) -> List[Dict[str, Any]]:
-    """Récupère l'historique des matchs d'une équipe par son ID VLR.gg.
+    """Récupère l'historique des matchs d'une équipe par son ID.
 
-    Utilise l'endpoint /team/matches qui est plus fiable que le filtrage
-    par nom sur les matchs globaux.
+    Chaque match inclut un match_id utilisable avec fetch_match_details().
 
     Args:
         team_id: ID VLR.gg de l'équipe.
@@ -188,23 +225,18 @@ async def fetch_team_matches_by_id(
     Returns:
         Liste des matchs de l'équipe.
     """
-    data = await vlrgg_request("team/matches", {"id": team_id, "page": str(page)})
-    return data.get("data", {}).get("segments", data.get("data", []))
+    data = await vlrgg_request("v2/team/matches", {"id": team_id, "page": str(page)})
+    inner = data.get("data", {})
+    if isinstance(inner, dict):
+        return inner.get("matches", inner.get("segments", []))
+    return inner if isinstance(inner, list) else []
 
 
 async def fetch_team_results(
     team: str, team_id: Optional[str] = None
 ) -> List[Dict[str, Any]]:
-    """Récupère les résultats récents pour une équipe.
-
-    Args:
-        team: Nom de l'équipe (utilisé pour le filtrage par nom).
-        team_id: ID VLR.gg de l'équipe (optionnel, plus fiable).
-
-    Returns:
-        Liste des résultats correspondants.
-    """
-    data = await vlrgg_request("match", {"q": "results"})
+    """Récupère les résultats récents pour une équipe."""
+    data = await vlrgg_request("v2/match", {"q": "results"})
     segments = data.get("data", {}).get("segments", [])
     return filter_team_matches(team, segments)
 
@@ -212,16 +244,8 @@ async def fetch_team_results(
 async def fetch_team_upcoming(
     team: str, team_id: Optional[str] = None
 ) -> List[Dict[str, Any]]:
-    """Récupère les matchs à venir pour une équipe.
-
-    Args:
-        team: Nom de l'équipe (utilisé pour le filtrage par nom).
-        team_id: ID VLR.gg de l'équipe (optionnel, plus fiable).
-
-    Returns:
-        Liste des matchs à venir correspondants.
-    """
-    data = await vlrgg_request("match", {"q": "upcoming"})
+    """Récupère les matchs à venir pour une équipe."""
+    data = await vlrgg_request("v2/match", {"q": "upcoming"})
     segments = data.get("data", {}).get("segments", [])
     return filter_team_matches(team, segments)
 
@@ -229,16 +253,8 @@ async def fetch_team_upcoming(
 async def fetch_team_live(
     team: str, team_id: Optional[str] = None
 ) -> List[Dict[str, Any]]:
-    """Récupère les matchs en direct pour une équipe.
-
-    Args:
-        team: Nom de l'équipe (utilisé pour le filtrage par nom).
-        team_id: ID VLR.gg de l'équipe (optionnel, plus fiable).
-
-    Returns:
-        Liste des matchs en direct correspondants.
-    """
-    data = await vlrgg_request("match", {"q": "live_score"})
+    """Récupère les matchs en direct pour une équipe."""
+    data = await vlrgg_request("v2/match", {"q": "live_score"})
     segments = data.get("data", {}).get("segments", [])
     return filter_team_matches(team, segments)
 
@@ -248,22 +264,18 @@ async def fetch_all_team_data(
 ) -> Dict[str, Any]:
     """Récupère toutes les données de matchs pour une équipe.
 
-    Si team_id est fourni, utilise l'endpoint /team/matches pour les
-    résultats et matchs à venir (plus fiable). Les matchs live utilisent
-    toujours l'endpoint global avec filtrage par nom.
+    Si team_id est fourni, récupère aussi l'historique via /team/matches
+    (qui inclut les match_id pour les détails).
 
     Args:
         team: Nom de l'équipe.
-        team_id: ID VLR.gg de l'équipe (optionnel, utilisé pour
-                 l'endpoint /team/matches).
+        team_id: ID VLR.gg de l'équipe (optionnel mais recommandé).
 
     Returns:
-        Dictionnaire avec les clés 'results', 'upcoming', 'live',
-        et optionnellement 'team_matches'.
+        Dictionnaire avec 'results', 'upcoming', 'live', et optionnellement 'team_matches'.
     """
     result: Dict[str, Any] = {"results": [], "upcoming": [], "live": []}
 
-    # Si on a un team_id, récupérer aussi l'historique via /team/matches
     if team_id:
         try:
             team_matches = await fetch_team_matches_by_id(team_id)
@@ -293,14 +305,9 @@ async def fetch_all_team_data(
 
 
 async def check_api_health() -> bool:
-    """Vérifie la santé de l'API VLR.gg.
-
-    Returns:
-        True si l'API est accessible, False sinon.
-    """
+    """Vérifie la santé de l'API VLR.gg."""
     try:
-        data = await vlrgg_request("health")
-        api_status = data.get(VLRGG_API_URL, {}).get("status", "")
-        return api_status == "Healthy"
+        data = await vlrgg_request("v2/health")
+        return data.get("status") == "success" or bool(data)
     except Exception:
         return False

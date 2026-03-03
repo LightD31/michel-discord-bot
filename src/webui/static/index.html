@@ -1911,22 +1911,12 @@
                 case 'teams':
                     const teams = Array.isArray(value) ? value : [];
                     html += `<div class="teams-list" data-field="${key}" data-type="teams">`;
-                    html += `<div class="teams-header"><span>Nom</span><span>Jeu</span><span>ID VLR.gg</span><span>Nom Liquipedia</span><span>Salon / Message</span><span></span></div>`;
+                    html += `<div class="teams-header"><span>Nom</span><span>ID VLR.gg</span><span>Salon / Message</span><span></span></div>`;
                     teams.forEach((t, idx) => {
                         html += `
                             <div class="team-entry" data-team-idx="${idx}">
                                 <input type="text" data-team-field="name" value="${escapeHtml(t.name || '')}" placeholder="ex: Mandatory">
-                                <select data-team-field="game">
-                                    <option value="valorant" ${(t.game || 'valorant') === 'valorant' ? 'selected' : ''}>Valorant</option>
-                                    <option value="leagueoflegends" ${t.game === 'leagueoflegends' ? 'selected' : ''}>League of Legends</option>
-                                    <option value="counterstrike" ${t.game === 'counterstrike' ? 'selected' : ''}>Counter-Strike</option>
-                                    <option value="worldofwarcraft" ${t.game === 'worldofwarcraft' ? 'selected' : ''}>World of Warcraft</option>
-                                    <option value="overwatch" ${t.game === 'overwatch' ? 'selected' : ''}>Overwatch</option>
-                                    <option value="rocketleague" ${t.game === 'rocketleague' ? 'selected' : ''}>Rocket League</option>
-                                    <option value="other" ${t.game === 'other' ? 'selected' : ''}>Autre</option>
-                                </select>
                                 <input type="text" data-team-field="vlrTeamId" value="${escapeHtml(t.vlrTeamId || '')}" placeholder="ex: 7967">
-                                <input type="text" data-team-field="liquipediaName" value="${escapeHtml(t.liquipediaName || '')}" placeholder="ex: Mandatory">
                                 <input type="text" data-team-field="channelMessageId" value="${escapeHtml(t.channelMessageId || '')}" placeholder="channelId:messageId">
                                 <button class="btn-remove-team" onclick="this.closest('.team-entry').remove()" title="Supprimer">✕</button>
                             </div>`;
@@ -2036,14 +2026,11 @@
             const teams = [];
             for (const entry of entries) {
                 const name = entry.querySelector('[data-team-field="name"]')?.value?.trim();
-                const game = entry.querySelector('[data-team-field="game"]')?.value?.trim();
                 const vlrTeamId = entry.querySelector('[data-team-field="vlrTeamId"]')?.value?.trim();
-                const liquipediaName = entry.querySelector('[data-team-field="liquipediaName"]')?.value?.trim();
                 const channelMessageId = entry.querySelector('[data-team-field="channelMessageId"]')?.value?.trim();
                 if (name) {
-                    const team = { name, game: game || 'valorant' };
+                    const team = { name };
                     if (vlrTeamId) team.vlrTeamId = vlrTeamId;
-                    if (liquipediaName) team.liquipediaName = liquipediaName;
                     if (channelMessageId) team.channelMessageId = channelMessageId;
                     teams.push(team);
                 }
@@ -2106,17 +2093,7 @@
         entry.dataset.teamIdx = idx;
         entry.innerHTML = `
             <input type="text" data-team-field="name" value="" placeholder="ex: Mandatory">
-            <select data-team-field="game">
-                <option value="valorant" selected>Valorant</option>
-                <option value="leagueoflegends">League of Legends</option>
-                <option value="counterstrike">Counter-Strike</option>
-                <option value="worldofwarcraft">World of Warcraft</option>
-                <option value="overwatch">Overwatch</option>
-                <option value="rocketleague">Rocket League</option>
-                <option value="other">Autre</option>
-            </select>
             <input type="text" data-team-field="vlrTeamId" value="" placeholder="ex: 7967">
-            <input type="text" data-team-field="liquipediaName" value="" placeholder="ex: Mandatory">
             <input type="text" data-team-field="channelMessageId" value="" placeholder="channelId:messageId">
             <button class="btn-remove-team" onclick="this.closest('.team-entry').remove()" title="Supprimer">✕</button>
         `;

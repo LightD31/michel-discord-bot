@@ -139,9 +139,9 @@ MODULE_SCHEMAS: dict[str, dict] = {
         },
     },
 
-    "moduleLiquipedia": {
-        "label": "Esport Tracker",
-        "description": "Suivi automatique des matchs d'équipes esport via Liquipedia et VLR.gg.",
+    "moduleVlrgg": {
+        "label": "Esport Tracker (VLR.gg)",
+        "description": "Suivi automatique des matchs d'équipes Valorant via VLR.gg.",
         "icon": "🎮",
         "fields": {
             "enabled": _field("Activé", "boolean", default=False),
@@ -151,7 +151,7 @@ MODULE_SCHEMAS: dict[str, dict] = {
             ),
             "teams": _field(
                 "Équipes suivies", "teams",
-                description="Liste des équipes esport à suivre. Chaque équipe nécessite un nom, un jeu, et optionnellement un ID VLR.gg et un nom Liquipedia."
+                description="Liste des équipes Valorant à suivre. Chaque équipe nécessite un nom et un ID VLR.gg."
             ),
         },
     },
@@ -512,14 +512,7 @@ GLOBAL_CONFIG_SCHEMAS: dict[str, dict] = {
         },
     },
 
-    "liquipedia": {
-        "label": "Liquipedia",
-        "icon": "🎮",
-        "fields": {
-            "liquipediaApiKey": _field("Clé API", "secret", required=True,
-                                       description="Clé API Liquipedia.", secret=True),
-        },
-    },
+
 
     "OpenRouter": {
         "label": "OpenRouter",
