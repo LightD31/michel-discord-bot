@@ -20,11 +20,13 @@ This is used by the Web UI to render proper forms instead of raw JSON editors.
 # "url"      — URL string
 # "messagelist" — list of messages with linked weight field (form rows)
 # "embedlist" — list of embeds with title, color, and links (form rows)
+# "keyvaluemap" — key-value pairs in a form (customizable key/value labels via key_label, value_label)
 
 
 def _field(label: str, field_type: str = "string", required: bool = False,
            description: str = "", default=None, secret: bool = False,
-           weight_field: str = "", variables: str = ""):
+           weight_field: str = "", variables: str = "", key_label: str = "",
+           value_label: str = ""):
     """Helper to create a field definition."""
     f = {
         "label": label,
@@ -41,6 +43,10 @@ def _field(label: str, field_type: str = "string", required: bool = False,
         f["weightField"] = weight_field
     if variables:
         f["variables"] = variables
+    if key_label:
+        f["keyLabel"] = key_label
+    if value_label:
+        f["valueLabel"] = value_label
     return f
 
 
@@ -247,12 +253,16 @@ MODULE_SCHEMAS: dict[str, dict] = {
                 description="ID du message de récap dans le salon."
             ),
             "spotifyIdToName": _field(
-                "Mapping Spotify → Nom", "dict",
-                description="Objet JSON : clé = Spotify user ID, valeur = prénom."
+                "Mapping Spotify → Nom", "keyvaluemap",
+                description="Correspondance entre Spotify user ID et prénom.",
+                key_label="Spotify ID",
+                value_label="Prénom"
             ),
             "spotifyIdToDiscordId": _field(
-                "Mapping Spotify → Discord", "dict",
-                description="Objet JSON : clé = Spotify user ID, valeur = Discord user ID."
+                "Mapping Spotify → Discord", "keyvaluemap",
+                description="Correspondance entre Spotify user ID et Discord user ID.",
+                key_label="Spotify ID",
+                value_label="Discord ID"
             ),
         },
     },

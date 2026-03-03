@@ -1405,6 +1405,76 @@
             }
         }
 
+        /* ── Key-Value Map Editor ──────────────────── */
+        .keyvaluemap-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .keyvaluemap-header {
+            display: grid;
+            grid-template-columns: 1fr 1fr auto;
+            gap: 8px;
+            padding: 0 12px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-muted);
+        }
+
+        .keyvaluemap-entry {
+            display: grid;
+            grid-template-columns: 1fr 1fr auto;
+            gap: 8px;
+            align-items: center;
+            padding: 10px 12px;
+            background: var(--bg-primary);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+        }
+
+        .keyvaluemap-entry input {
+            width: 100%;
+            padding: 6px 8px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            color: var(--text-primary);
+            font-size: 13px;
+            font-family: 'Consolas', monospace;
+            outline: none;
+        }
+
+        .keyvaluemap-entry input:focus {
+            border-color: var(--accent);
+        }
+
+        .keyvaluemap-entry .btn-remove-entry {
+            background: none;
+            border: none;
+            color: var(--danger);
+            cursor: pointer;
+            font-size: 18px;
+            padding: 4px 8px;
+            border-radius: var(--radius);
+            line-height: 1;
+        }
+
+        .keyvaluemap-entry .btn-remove-entry:hover {
+            background: rgba(248, 63, 67, 0.1);
+        }
+
+        @media (max-width: 768px) {
+            .keyvaluemap-entry {
+                grid-template-columns: 1fr;
+            }
+            .keyvaluemap-header {
+                display: none;
+            }
+        }
+
         /* ── Message List Editor ──────────────────── */
         .messagelist-list {
             display: flex;
@@ -2234,6 +2304,24 @@
                     html += `<button type="button" class="btn-add-entry" onclick="addNameMapEntry(this)">+ Ajouter un membre</button>`;
                     break;
 
+                case 'keyvaluemap':
+                    const kvMap = (typeof value === 'object' && value !== null && !Array.isArray(value)) ? value : {};
+                    const keyLabel = field.keyLabel || 'Clé';
+                    const valueLabel = field.valueLabel || 'Valeur';
+                    html += `<div class="keyvaluemap-list" data-field="${key}" data-type="keyvaluemap" data-key-label="${escapeHtml(keyLabel)}" data-value-label="${escapeHtml(valueLabel)}">`;
+                    html += `<div class="keyvaluemap-header"><span>${escapeHtml(keyLabel)}</span><span>${escapeHtml(valueLabel)}</span><span></span></div>`;
+                    Object.entries(kvMap).forEach(([mapKey, mapValue]) => {
+                        html += `
+                            <div class="keyvaluemap-entry">
+                                <input type="text" data-kvmap-field="key" value="${escapeHtml(mapKey)}" placeholder="ex: ${escapeHtml(keyLabel).toLowerCase()}">
+                                <input type="text" data-kvmap-field="value" value="${escapeHtml(String(mapValue))}" placeholder="ex: ${escapeHtml(valueLabel).toLowerCase()}">
+                                <button class="btn-remove-entry" onclick="this.closest('.keyvaluemap-entry').remove()" title="Supprimer">✕</button>
+                            </div>`;
+                    });
+                    html += `</div>`;
+                    html += `<button type="button" class="btn-add-entry" onclick="addKeyValueMapEntry(this)">+ Ajouter une entrée</button>`;
+                    break;
+
                 case 'messagelist':
                     const weightFieldKey = field.weightField || '';
                     const messages = Array.isArray(value) ? value : [];
@@ -2354,6 +2442,9 @@
                 case 'discord2name':
                     // Handled separately below
                     continue;
+                case 'keyvaluemap':
+                    // Handled separately below
+                    continue;
                 case 'messagelist':
                     // Handled separately below
                     continue;
@@ -2423,6 +2514,22 @@
                 }
             }
             result[key] = nameMap;
+        }
+
+        // Collect keyvaluemap lists
+        const kvmapLists = form.querySelectorAll('[data-type="keyvaluemap"]');
+        for (const list of kvmapLists) {
+            const key = list.dataset.field;
+            const entries = list.querySelectorAll('.keyvaluemap-entry');
+            const kvMap = {};
+            for (const entry of entries) {
+                const mapKey = entry.querySelector('[data-kvmap-field="key"]')?.value?.trim();
+                const mapValue = entry.querySelector('[data-kvmap-field="value"]')?.value?.trim();
+                if (mapKey && mapValue) {
+                    kvMap[mapKey] = mapValue;
+                }
+            }
+            result[key] = kvMap;
         }
 
         // Collect messagelist fields
@@ -2511,6 +2618,21 @@
             <input type="text" data-namemap-field="discord_id" value="" placeholder="ex: 123456789012345678">
             <input type="text" data-namemap-field="name" value="" placeholder="ex: Jean">
             <button class="btn-remove-entry" onclick="this.closest('.namemap-entry').remove()" title="Supprimer">✕</button>
+        `;
+        list.appendChild(entry);
+        entry.querySelector('input').focus();
+    }
+
+    function addKeyValueMapEntry(btn) {
+        const list = btn.previousElementSibling;
+        const keyLabel = list.dataset.keyLabel || 'Clé';
+        const valueLabel = list.dataset.valueLabel || 'Valeur';
+        const entry = document.createElement('div');
+        entry.className = 'keyvaluemap-entry';
+        entry.innerHTML = `
+            <input type="text" data-kvmap-field="key" value="" placeholder="ex: ${escapeHtml(keyLabel).toLowerCase()}">
+            <input type="text" data-kvmap-field="value" value="" placeholder="ex: ${escapeHtml(valueLabel).toLowerCase()}">
+            <button class="btn-remove-entry" onclick="this.closest('.keyvaluemap-entry').remove()" title="Supprimer">✕</button>
         `;
         list.appendChild(entry);
         entry.querySelector('input').focus();
