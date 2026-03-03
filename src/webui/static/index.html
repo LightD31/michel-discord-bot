@@ -1405,6 +1405,82 @@
             }
         }
 
+        /* ── Message List Editor ──────────────────── */
+        .messagelist-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .messagelist-header {
+            display: grid;
+            grid-template-columns: 3fr 0.7fr auto;
+            gap: 8px;
+            padding: 0 12px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-muted);
+        }
+
+        .messagelist-entry {
+            display: grid;
+            grid-template-columns: 3fr 0.7fr auto;
+            gap: 8px;
+            align-items: center;
+            padding: 10px 12px;
+            background: var(--bg-primary);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+        }
+
+        .messagelist-entry input {
+            width: 100%;
+            padding: 6px 8px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            color: var(--text-primary);
+            font-size: 13px;
+            outline: none;
+        }
+
+        .messagelist-entry input:focus {
+            border-color: var(--accent);
+        }
+
+        .messagelist-entry .btn-remove-msg {
+            background: none;
+            border: none;
+            color: var(--danger);
+            cursor: pointer;
+            font-size: 18px;
+            padding: 4px 8px;
+            border-radius: var(--radius);
+            line-height: 1;
+        }
+
+        .messagelist-entry .btn-remove-msg:hover {
+            background: rgba(248, 63, 67, 0.1);
+        }
+
+        .messagelist-variables {
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-top: 4px;
+            font-style: italic;
+        }
+
+        @media (max-width: 768px) {
+            .messagelist-entry {
+                grid-template-columns: 1fr;
+            }
+            .messagelist-header {
+                display: none;
+            }
+        }
+
         @media (max-width: 768px) {
             .model-entry {
                 grid-template-columns: 1fr;
@@ -1815,9 +1891,18 @@
         const entries = Object.entries(fields);
         if (entries.length === 0) return '<p style="color:var(--text-muted)">Aucun champ défini.</p>';
 
+        // Collect weight fields linked from messagelist fields so we can skip them
+        const linkedWeightFields = new Set();
+        for (const [, f] of entries) {
+            if (f.type === 'messagelist' && f.weightField) {
+                linkedWeightFields.add(f.weightField);
+            }
+        }
+
         let html = `<div class="schema-form" data-form-id="${formId}">`;
         for (const [key, field] of entries) {
             if (options.excludeEnabled && key === 'enabled') continue;
+            if (linkedWeightFields.has(key)) continue;
 
             const value = values[key];
             const hasValue = value !== undefined && value !== null;
@@ -1941,6 +2026,28 @@
                     html += `<button type="button" class="btn-add-entry" onclick="addNameMapEntry(this)">+ Ajouter un membre</button>`;
                     break;
 
+                case 'messagelist':
+                    const weightFieldKey = field.weightField || '';
+                    const messages = Array.isArray(value) ? value : [];
+                    const weights = weightFieldKey ? (Array.isArray(values[weightFieldKey]) ? values[weightFieldKey] : []) : [];
+                    html += `<div class="messagelist-list" data-field="${key}" data-type="messagelist" data-weight-field="${weightFieldKey}">`;
+                    html += `<div class="messagelist-header"><span>Message</span><span>Poids</span><span></span></div>`;
+                    messages.forEach((msg, idx) => {
+                        const w = idx < weights.length ? weights[idx] : 1;
+                        html += `
+                            <div class="messagelist-entry">
+                                <input type="text" data-msg-field="message" value="${escapeHtml(String(msg))}" placeholder="Message…">
+                                <input type="number" data-msg-field="weight" value="${w}" min="0" placeholder="1">
+                                <button class="btn-remove-msg" onclick="this.closest('.messagelist-entry').remove()" title="Supprimer">✕</button>
+                            </div>`;
+                    });
+                    html += `</div>`;
+                    if (field.variables) {
+                        html += `<div class="messagelist-variables">Variables disponibles : ${escapeHtml(field.variables)}</div>`;
+                    }
+                    html += `<button type="button" class="btn-add-entry" onclick="addMessageEntry(this)">+ Ajouter un message</button>`;
+                    break;
+
                 default: // string
                     html += `<input type="text" class="form-input" data-field="${key}" data-type="string"
                         value="${hasValue ? escapeHtml(String(value)) : ''}"
@@ -1987,6 +2094,9 @@
                     // Handled separately below
                     continue;
                 case 'discord2name':
+                    // Handled separately below
+                    continue;
+                case 'messagelist':
                     // Handled separately below
                     continue;
                 case 'secret':
@@ -2054,6 +2164,30 @@
             result[key] = nameMap;
         }
 
+        // Collect messagelist fields
+        const msgLists = form.querySelectorAll('[data-type="messagelist"]');
+        for (const list of msgLists) {
+            const key = list.dataset.field;
+            const weightFieldKey = list.dataset.weightField;
+            const entries = list.querySelectorAll('.messagelist-entry');
+            const messages = [];
+            const weights = [];
+            for (const entry of entries) {
+                const msg = entry.querySelector('[data-msg-field="message"]')?.value?.trim();
+                const w = entry.querySelector('[data-msg-field="weight"]')?.value?.trim();
+                if (msg) {
+                    messages.push(msg);
+                    weights.push(w ? Number(w) : 1);
+                }
+            }
+            if (messages.length > 0) {
+                result[key] = messages;
+                if (weightFieldKey) {
+                    result[weightFieldKey] = weights;
+                }
+            }
+        }
+
         return result;
     }
 
@@ -2087,6 +2221,10 @@
 
     function addTeamEntry(btn) {
         const list = btn.previousElementSibling;
+        // Skip the variables hint div if present
+        if (list.classList.contains('messagelist-variables')) {
+            // shouldn't happen for teams, but safety
+        }
         const idx = list.querySelectorAll('.team-entry').length;
         const entry = document.createElement('div');
         entry.className = 'team-entry';
@@ -2096,6 +2234,24 @@
             <input type="text" data-team-field="vlrTeamId" value="" placeholder="ex: 7967">
             <input type="text" data-team-field="channelMessageId" value="" placeholder="channelId:messageId">
             <button class="btn-remove-team" onclick="this.closest('.team-entry').remove()" title="Supprimer">✕</button>
+        `;
+        list.appendChild(entry);
+        entry.querySelector('input').focus();
+    }
+
+    function addMessageEntry(btn) {
+        // Find the messagelist-list container (may have a variables div in between)
+        let list = btn.previousElementSibling;
+        while (list && !list.classList.contains('messagelist-list')) {
+            list = list.previousElementSibling;
+        }
+        if (!list) return;
+        const entry = document.createElement('div');
+        entry.className = 'messagelist-entry';
+        entry.innerHTML = `
+            <input type="text" data-msg-field="message" value="" placeholder="Message…">
+            <input type="number" data-msg-field="weight" value="1" min="0" placeholder="1">
+            <button class="btn-remove-msg" onclick="this.closest('.messagelist-entry').remove()" title="Supprimer">✕</button>
         `;
         list.appendChild(entry);
         entry.querySelector('input').focus();
@@ -2380,12 +2536,41 @@
 
     function renderSchemaPreview(schema, values) {
         const fields = schema.fields || {};
+        // Collect weight fields linked from messagelist fields so we can skip them
+        const linkedWeightFields = new Set();
+        for (const [, f] of Object.entries(fields)) {
+            if (f.type === 'messagelist' && f.weightField) {
+                linkedWeightFields.add(f.weightField);
+            }
+        }
         let html = '<div class="schema-preview">';
         for (const [key, field] of Object.entries(fields)) {
+            if (linkedWeightFields.has(key)) continue;
             const val = values[key];
             const hasVal = val !== undefined && val !== null;
             const isSecret = field.secret || false;
             const fieldType = field.type || 'string';
+
+            if (fieldType === 'messagelist' && Array.isArray(val) && val.length > 0) {
+                const weightFieldKey = field.weightField || '';
+                const weights = weightFieldKey ? (Array.isArray(values[weightFieldKey]) ? values[weightFieldKey] : []) : [];
+                html += `
+                    <div class="preview-row" style="flex-direction:column;gap:6px;">
+                        <span class="preview-label">${field.label || key} (${val.length})</span>
+                        <div style="display:flex;flex-direction:column;gap:4px;width:100%;">
+                            ${val.map((msg, idx) => {
+                                const w = idx < weights.length ? weights[idx] : 1;
+                                return `
+                                <div style="display:flex;gap:8px;align-items:center;padding:4px 8px;background:var(--bg-primary);border-radius:var(--radius);font-size:13px;">
+                                    <span style="flex:1;color:var(--text-primary);">${escapeHtml(String(msg))}</span>
+                                    <span style="color:var(--text-muted);font-size:12px;">×${w}</span>
+                                </div>`;
+                            }).join('')}
+                        </div>
+                    </div>
+                `;
+                continue;
+            }
 
             if (fieldType === 'models' && Array.isArray(val) && val.length > 0) {
                 html += `
@@ -2702,6 +2887,12 @@
 
     function renderExtraKeysCard(schema, config) {
         const schemaKeys = new Set(Object.keys(schema.fields || {}));
+        // Also include linked weight fields as known keys
+        for (const [, f] of Object.entries(schema.fields || {})) {
+            if (f.type === 'messagelist' && f.weightField) {
+                schemaKeys.add(f.weightField);
+            }
+        }
         const extraKeys = Object.keys(config).filter(k => !schemaKeys.has(k));
         if (extraKeys.length === 0) return '';
         return `

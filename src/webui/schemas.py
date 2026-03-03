@@ -18,10 +18,12 @@ This is used by the Web UI to render proper forms instead of raw JSON editors.
 # "list:number" — list of numbers
 # "dict"     — nested object (raw JSON editor)
 # "url"      — URL string
+# "messagelist" — list of messages with linked weight field (form rows)
 
 
 def _field(label: str, field_type: str = "string", required: bool = False,
-           description: str = "", default=None, secret: bool = False):
+           description: str = "", default=None, secret: bool = False,
+           weight_field: str = "", variables: str = ""):
     """Helper to create a field definition."""
     f = {
         "label": label,
@@ -34,6 +36,10 @@ def _field(label: str, field_type: str = "string", required: bool = False,
         f["default"] = default
     if secret:
         f["secret"] = True
+    if weight_field:
+        f["weightField"] = weight_field
+    if variables:
+        f["variables"] = variables
     return f
 
 
@@ -60,13 +66,11 @@ MODULE_SCHEMAS: dict[str, dict] = {
                 description="Locale pour le format de date (ex: fr_FR, en_US)."
             ),
             "birthdayMessageList": _field(
-                "Messages d'anniversaire", "list",
-                description="Liste de messages. Variables: {mention}, {age}.",
-                default=["Joyeux anniversaire {mention} ! 🎉"]
-            ),
-            "birthdayMessageWeights": _field(
-                "Poids des messages", "list:number",
-                description="Poids de probabilité pour chaque message (même ordre)."
+                "Messages d'anniversaire", "messagelist",
+                description="Liste de messages avec poids de probabilité.",
+                default=["Joyeux anniversaire {mention} ! 🎉"],
+                weight_field="birthdayMessageWeights",
+                variables="{mention}, {age}"
             ),
         },
     },
@@ -303,22 +307,18 @@ MODULE_SCHEMAS: dict[str, dict] = {
                 description="Salon où les messages de bienvenue sont envoyés."
             ),
             "welcomeMessageList": _field(
-                "Messages de bienvenue", "list",
-                description="Liste de messages. Variable : {mention}.",
-                default=["Bienvenue {mention} !"]
-            ),
-            "welcomeMessageWeights": _field(
-                "Poids messages bienvenue", "list:number",
-                description="Poids de probabilité pour chaque message de bienvenue."
+                "Messages de bienvenue", "messagelist",
+                description="Liste de messages avec poids de probabilité.",
+                default=["Bienvenue {mention} !"],
+                weight_field="welcomeMessageWeights",
+                variables="{mention}"
             ),
             "leaveMessageList": _field(
-                "Messages de départ", "list",
-                description="Liste de messages de départ. Variable : {username}.",
-                default=["{username} nous a quittés."]
-            ),
-            "leaveMessageWeights": _field(
-                "Poids messages départ", "list:number",
-                description="Poids de probabilité pour chaque message de départ."
+                "Messages de départ", "messagelist",
+                description="Liste de messages de départ avec poids de probabilité.",
+                default=["{username} nous a quittés."],
+                weight_field="leaveMessageWeights",
+                variables="{username}"
             ),
         },
     },
@@ -338,13 +338,11 @@ MODULE_SCHEMAS: dict[str, dict] = {
                 description="ID du message de leaderboard (rempli automatiquement)."
             ),
             "levelUpMessageList": _field(
-                "Messages de level-up", "list",
-                description="Messages envoyés au level-up. Variables : {mention}, {lvl}.",
-                default=["Bravo {mention}, tu as atteint le niveau {lvl} !"]
-            ),
-            "levelUpMessageWeights": _field(
-                "Poids messages level-up", "list:number",
-                description="Poids de probabilité pour chaque message."
+                "Messages de level-up", "messagelist",
+                description="Liste de messages avec poids de probabilité.",
+                default=["Bravo {mention}, tu as atteint le niveau {lvl} !"],
+                weight_field="levelUpMessageWeights",
+                variables="{mention}, {lvl}"
             ),
         },
     },
