@@ -187,6 +187,42 @@ def extract_match_id_from_url(url: str) -> Optional[str]:
     return m.group(1) if m else None
 
 
+def normalize_team_match(entry: Dict[str, Any]) -> Dict[str, Any]:
+    """Convertit une entrée /v2/team/matches en format compatible avec les résultats globaux.
+
+    Les endpoints globaux (/v2/match?q=results) utilisent des champs plats
+    (team1, team2, score1, score2) tandis que /v2/team/matches utilise des
+    objets imbriqués ({"name": ..., "tag": ...}) et un score combiné ("2:3").
+
+    Args:
+        entry: Entrée brute depuis /v2/team/matches.
+
+    Returns:
+        Dictionnaire normalisé avec les mêmes clés que les résultats globaux.
+    """
+    t1 = entry.get("team1", {})
+    t2 = entry.get("team2", {})
+    team1_name = t1.get("name", "???") if isinstance(t1, dict) else str(t1)
+    team2_name = t2.get("name", "???") if isinstance(t2, dict) else str(t2)
+
+    score_str = entry.get("score", "0:0")
+    parts = score_str.split(":")
+    score1 = parts[0].strip() if len(parts) >= 2 else "?"
+    score2 = parts[1].strip() if len(parts) >= 2 else "?"
+
+    return {
+        "team1": team1_name,
+        "team2": team2_name,
+        "score1": score1,
+        "score2": score2,
+        "match_page": entry.get("url", ""),
+        "tournament_name": entry.get("event", ""),
+        "time_completed": entry.get("date", ""),
+        "match_id": entry.get("match_id", ""),
+        "_source": "team_matches",
+    }
+
+
 # ── Endpoints V2 ─────────────────────────────────────────────────
 
 
@@ -300,6 +336,16 @@ async def fetch_all_team_data(
         result["live"] = await fetch_team_live(team, team_id)
     except Exception as e:
         logger.warning(f"VLR.gg fetch_team_live échoué: {e}")
+
+    # Fallback: si les résultats globaux sont vides, utiliser team_matches
+    if not result["results"] and result.get("team_matches"):
+        logger.info(
+            f"VLR.gg: résultats globaux vides pour {team}, "
+            f"utilisation de /team/matches ({len(result['team_matches'])} entrées)"
+        )
+        result["results"] = [
+            normalize_team_match(m) for m in result["team_matches"]
+        ]
 
     return result
 
