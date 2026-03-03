@@ -2332,6 +2332,9 @@
                         <button class="btn btn-ghost btn-sm" onclick="migrateDiscord2Name()" title="Déplace discord2name de la config globale vers les configs par serveur">
                             👤 Migrer discord2name
                         </button>
+                        <button class="btn btn-danger btn-sm" onclick="cleanupConfig()" title="Supprimer les clés non définies dans les schémas">
+                            🧹 Nettoyer la config
+                        </button>
                         <button class="btn btn-ghost btn-sm" onclick="downloadConfig()">
                             ⬇️ Exporter
                         </button>
@@ -2928,6 +2931,29 @@
                 render();
             }
         } catch (e) { /* handled */ }
+    }
+
+    async function cleanupConfig() {
+        try {
+            // First do a dry run to show what would be removed
+            const preview = await api('/api/cleanup-config?dry_run=true', { method: 'POST' });
+            if (!preview) return;
+            if (preview.removed_count === 0) {
+                toast('La configuration est déjà propre — aucune clé superflue trouvée.', 'success');
+                return;
+            }
+            const details = preview.removed.map(r => `• ${r.location} → ${r.key}`).join('\n');
+            if (!confirm(
+                `${preview.removed_count} clé(s) non présente(s) dans les schémas seront supprimée(s) :\n\n${details}\n\nConfirmer la suppression ?`
+            )) return;
+            // Execute the real cleanup
+            const result = await api('/api/cleanup-config', { method: 'POST' });
+            if (result) {
+                toast(`${result.removed_count} clé(s) supprimée(s) de la configuration.`, 'success');
+                await Promise.all([loadConfig(), loadServers()]);
+                render();
+            }
+        } catch (e) { /* handled by api() */ }
     }
 
     async function downloadConfig() {

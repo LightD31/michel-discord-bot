@@ -397,6 +397,79 @@ def create_app(bot=None) -> FastAPI:
             "migrated": migrated,
         })
 
+    # ── Config cleanup ───────────────────────────────────────────────
+
+    @app.post("/api/cleanup-config")
+    async def api_cleanup_config(request: Request, dry_run: bool = False):
+        """Remove config keys not present in the schemas.
+
+        Query params:
+            dry_run: if true, return what would be removed without saving.
+        """
+        _require_session(request)
+        data = _get_full_config()
+        removed: list[dict] = []
+
+        # Clean up per-server module configs
+        servers = data.get("servers", {})
+        for server_id, server_config in servers.items():
+            for module_name, module_config in list(server_config.items()):
+                if not isinstance(module_config, dict):
+                    continue
+                schema = MODULE_SCHEMAS.get(module_name)
+                if not schema or not schema.get("fields"):
+                    continue
+                allowed_keys = set(schema["fields"].keys())
+                # Always keep "enabled" even if not explicitly in schema
+                allowed_keys.add("enabled")
+                for key in list(module_config.keys()):
+                    if key not in allowed_keys:
+                        removed.append({
+                            "location": f"servers.{server_id}.{module_name}",
+                            "key": key,
+                            "value": module_config[key],
+                        })
+                        if not dry_run:
+                            del module_config[key]
+
+        # Clean up global config sections
+        global_config = data.get("config", {})
+        for section_name, section_data in global_config.items():
+            if not isinstance(section_data, dict):
+                continue
+            schema = GLOBAL_CONFIG_SCHEMAS.get(section_name)
+            if not schema or not schema.get("fields"):
+                continue
+            allowed_keys = set(schema["fields"].keys())
+            for key in list(section_data.keys()):
+                if key not in allowed_keys:
+                    removed.append({
+                        "location": f"config.{section_name}",
+                        "key": key,
+                        "value": section_data[key],
+                    })
+                    if not dry_run:
+                        del section_data[key]
+
+        if not dry_run and removed:
+            _save_config(data)
+            logger.info("Config cleanup: removed %d key(s)", len(removed))
+
+        # Sanitise values for JSON response (avoid huge blobs)
+        for entry in removed:
+            v = entry["value"]
+            if isinstance(v, (dict, list)):
+                entry["value"] = f"({type(v).__name__}, {len(v)} items)"
+            else:
+                entry["value"] = str(v)[:120]
+
+        return JSONResponse({
+            "status": "ok",
+            "dry_run": dry_run,
+            "removed_count": len(removed),
+            "removed": removed,
+        })
+
     # ── Extension helpers ────────────────────────────────────────────
 
     def _get_extension_module_paths() -> list[str]:
