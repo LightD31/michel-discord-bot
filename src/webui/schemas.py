@@ -140,26 +140,18 @@ MODULE_SCHEMAS: dict[str, dict] = {
     },
 
     "moduleLiquipedia": {
-        "label": "Liquipedia",
-        "description": "Planning des matchs esport depuis Liquipedia.",
+        "label": "Esport Tracker",
+        "description": "Suivi automatique des matchs d'équipes esport via Liquipedia et VLR.gg.",
         "icon": "🎮",
         "fields": {
             "enabled": _field("Activé", "boolean", default=False),
-            "liquipediaChannelId": _field(
-                "Salon planning Valorant", "channel", required=True,
-                description="Salon où le planning Valorant est publié."
+            "notificationChannelId": _field(
+                "Salon notifications", "channel",
+                description="Salon pour les notifications de matchs en direct et résultats."
             ),
-            "liquipediaMessageId": _field(
-                "Message planning Valorant", "message",
-                description="ID du message de planning (rempli automatiquement)."
-            ),
-            "liquipediaWowChannelId": _field(
-                "Salon planning WoW MDI", "channel",
-                description="Salon pour le planning WoW MDI."
-            ),
-            "liquipediaWowMessageId": _field(
-                "Message planning WoW", "message",
-                description="ID du message WoW (rempli automatiquement)."
+            "teams": _field(
+                "Équipes suivies", "teams",
+                description="Liste des équipes esport à suivre. Chaque équipe nécessite un nom, un jeu, et optionnellement un ID VLR.gg et un nom Liquipedia."
             ),
         },
     },

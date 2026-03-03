@@ -161,11 +161,45 @@ def get_most_recent_result_time(results: List[Dict]) -> Optional[datetime]:
     return parse_time_ago(time_str)
 
 
-async def fetch_team_results(team: str) -> List[Dict[str, Any]]:
+async def fetch_team_info(team_id: str) -> Dict[str, Any]:
+    """Récupère le profil d'une équipe par son ID VLR.gg.
+
+    Args:
+        team_id: ID VLR.gg de l'équipe.
+
+    Returns:
+        Données du profil de l'équipe.
+    """
+    return await vlrgg_request("team", {"id": team_id})
+
+
+async def fetch_team_matches_by_id(
+    team_id: str, page: int = 1
+) -> List[Dict[str, Any]]:
+    """Récupère l'historique des matchs d'une équipe par son ID VLR.gg.
+
+    Utilise l'endpoint /team/matches qui est plus fiable que le filtrage
+    par nom sur les matchs globaux.
+
+    Args:
+        team_id: ID VLR.gg de l'équipe.
+        page: Numéro de page (1-based).
+
+    Returns:
+        Liste des matchs de l'équipe.
+    """
+    data = await vlrgg_request("team/matches", {"id": team_id, "page": str(page)})
+    return data.get("data", {}).get("segments", data.get("data", []))
+
+
+async def fetch_team_results(
+    team: str, team_id: Optional[str] = None
+) -> List[Dict[str, Any]]:
     """Récupère les résultats récents pour une équipe.
 
     Args:
-        team: Nom de l'équipe.
+        team: Nom de l'équipe (utilisé pour le filtrage par nom).
+        team_id: ID VLR.gg de l'équipe (optionnel, plus fiable).
 
     Returns:
         Liste des résultats correspondants.
@@ -175,11 +209,14 @@ async def fetch_team_results(team: str) -> List[Dict[str, Any]]:
     return filter_team_matches(team, segments)
 
 
-async def fetch_team_upcoming(team: str) -> List[Dict[str, Any]]:
+async def fetch_team_upcoming(
+    team: str, team_id: Optional[str] = None
+) -> List[Dict[str, Any]]:
     """Récupère les matchs à venir pour une équipe.
 
     Args:
-        team: Nom de l'équipe.
+        team: Nom de l'équipe (utilisé pour le filtrage par nom).
+        team_id: ID VLR.gg de l'équipe (optionnel, plus fiable).
 
     Returns:
         Liste des matchs à venir correspondants.
@@ -189,11 +226,14 @@ async def fetch_team_upcoming(team: str) -> List[Dict[str, Any]]:
     return filter_team_matches(team, segments)
 
 
-async def fetch_team_live(team: str) -> List[Dict[str, Any]]:
+async def fetch_team_live(
+    team: str, team_id: Optional[str] = None
+) -> List[Dict[str, Any]]:
     """Récupère les matchs en direct pour une équipe.
 
     Args:
-        team: Nom de l'équipe.
+        team: Nom de l'équipe (utilisé pour le filtrage par nom).
+        team_id: ID VLR.gg de l'équipe (optionnel, plus fiable).
 
     Returns:
         Liste des matchs en direct correspondants.
@@ -203,32 +243,49 @@ async def fetch_team_live(team: str) -> List[Dict[str, Any]]:
     return filter_team_matches(team, segments)
 
 
-async def fetch_all_team_data(team: str) -> Dict[str, Any]:
+async def fetch_all_team_data(
+    team: str, team_id: Optional[str] = None
+) -> Dict[str, Any]:
     """Récupère toutes les données de matchs pour une équipe.
 
-    Les requêtes sont effectuées séquentiellement pour respecter le rate limit
-    de l'API VLR.gg. Le cache intégré évite les requêtes redondantes.
+    Si team_id est fourni, utilise l'endpoint /team/matches pour les
+    résultats et matchs à venir (plus fiable). Les matchs live utilisent
+    toujours l'endpoint global avec filtrage par nom.
 
     Args:
         team: Nom de l'équipe.
+        team_id: ID VLR.gg de l'équipe (optionnel, utilisé pour
+                 l'endpoint /team/matches).
 
     Returns:
-        Dictionnaire avec les clés 'results', 'upcoming', et 'live'.
+        Dictionnaire avec les clés 'results', 'upcoming', 'live',
+        et optionnellement 'team_matches'.
     """
     result: Dict[str, Any] = {"results": [], "upcoming": [], "live": []}
 
+    # Si on a un team_id, récupérer aussi l'historique via /team/matches
+    if team_id:
+        try:
+            team_matches = await fetch_team_matches_by_id(team_id)
+            result["team_matches"] = team_matches
+            logger.debug(
+                f"VLR.gg /team/matches: {len(team_matches)} matchs pour ID {team_id}"
+            )
+        except Exception as e:
+            logger.warning(f"VLR.gg fetch_team_matches_by_id échoué: {e}")
+
     try:
-        result["results"] = await fetch_team_results(team)
+        result["results"] = await fetch_team_results(team, team_id)
     except Exception as e:
         logger.warning(f"VLR.gg fetch_team_results échoué: {e}")
 
     try:
-        result["upcoming"] = await fetch_team_upcoming(team)
+        result["upcoming"] = await fetch_team_upcoming(team, team_id)
     except Exception as e:
         logger.warning(f"VLR.gg fetch_team_upcoming échoué: {e}")
 
     try:
-        result["live"] = await fetch_team_live(team)
+        result["live"] = await fetch_team_live(team, team_id)
     except Exception as e:
         logger.warning(f"VLR.gg fetch_team_live échoué: {e}")
 

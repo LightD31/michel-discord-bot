@@ -1266,6 +1266,75 @@
             background: rgba(88, 101, 242, 0.05);
         }
 
+        /* ── Teams List Editor ────────────────────── */
+        .teams-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .teams-header {
+            display: grid;
+            grid-template-columns: 1.2fr 0.8fr 1fr 1fr 1fr auto;
+            gap: 8px;
+            padding: 0 12px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-muted);
+        }
+
+        .team-entry {
+            display: grid;
+            grid-template-columns: 1.2fr 0.8fr 1fr 1fr 1fr auto;
+            gap: 8px;
+            align-items: center;
+            padding: 10px 12px;
+            background: var(--bg-primary);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+        }
+
+        .team-entry input, .team-entry select {
+            width: 100%;
+            padding: 6px 8px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            color: var(--text-primary);
+            font-size: 13px;
+            outline: none;
+        }
+
+        .team-entry input:focus, .team-entry select:focus {
+            border-color: var(--accent);
+        }
+
+        .team-entry .btn-remove-team {
+            background: none;
+            border: none;
+            color: var(--danger);
+            cursor: pointer;
+            font-size: 18px;
+            padding: 4px 8px;
+            border-radius: var(--radius);
+            line-height: 1;
+        }
+
+        .team-entry .btn-remove-team:hover {
+            background: rgba(248, 63, 67, 0.1);
+        }
+
+        @media (max-width: 768px) {
+            .team-entry {
+                grid-template-columns: 1fr;
+            }
+            .teams-header {
+                display: none;
+            }
+        }
+
         /* ── Name Mapping List Editor ────────────────── */
         .namemap-list {
             display: flex;
@@ -1839,6 +1908,33 @@
                     html += `<button type="button" class="btn-add-model" onclick="addModelEntry(this)">+ Ajouter un modèle</button>`;
                     break;
 
+                case 'teams':
+                    const teams = Array.isArray(value) ? value : [];
+                    html += `<div class="teams-list" data-field="${key}" data-type="teams">`;
+                    html += `<div class="teams-header"><span>Nom</span><span>Jeu</span><span>ID VLR.gg</span><span>Nom Liquipedia</span><span>Salon / Message</span><span></span></div>`;
+                    teams.forEach((t, idx) => {
+                        html += `
+                            <div class="team-entry" data-team-idx="${idx}">
+                                <input type="text" data-team-field="name" value="${escapeHtml(t.name || '')}" placeholder="ex: Mandatory">
+                                <select data-team-field="game">
+                                    <option value="valorant" ${(t.game || 'valorant') === 'valorant' ? 'selected' : ''}>Valorant</option>
+                                    <option value="leagueoflegends" ${t.game === 'leagueoflegends' ? 'selected' : ''}>League of Legends</option>
+                                    <option value="counterstrike" ${t.game === 'counterstrike' ? 'selected' : ''}>Counter-Strike</option>
+                                    <option value="worldofwarcraft" ${t.game === 'worldofwarcraft' ? 'selected' : ''}>World of Warcraft</option>
+                                    <option value="overwatch" ${t.game === 'overwatch' ? 'selected' : ''}>Overwatch</option>
+                                    <option value="rocketleague" ${t.game === 'rocketleague' ? 'selected' : ''}>Rocket League</option>
+                                    <option value="other" ${t.game === 'other' ? 'selected' : ''}>Autre</option>
+                                </select>
+                                <input type="text" data-team-field="vlrTeamId" value="${escapeHtml(t.vlrTeamId || '')}" placeholder="ex: 7967">
+                                <input type="text" data-team-field="liquipediaName" value="${escapeHtml(t.liquipediaName || '')}" placeholder="ex: Mandatory">
+                                <input type="text" data-team-field="channelMessageId" value="${escapeHtml(t.channelMessageId || '')}" placeholder="channelId:messageId">
+                                <button class="btn-remove-team" onclick="this.closest('.team-entry').remove()" title="Supprimer">✕</button>
+                            </div>`;
+                    });
+                    html += `</div>`;
+                    html += `<button type="button" class="btn-add-entry" onclick="addTeamEntry(this)">+ Ajouter une équipe</button>`;
+                    break;
+
                 case 'discord2name':
                     const nameMap = (typeof value === 'object' && value !== null && !Array.isArray(value)) ? value : {};
                     html += `<div class="namemap-list" data-field="${key}" data-type="discord2name">`;
@@ -1897,6 +1993,9 @@
                 case 'models':
                     // Handled separately below
                     continue;
+                case 'teams':
+                    // Handled separately below
+                    continue;
                 case 'discord2name':
                     // Handled separately below
                     continue;
@@ -1927,6 +2026,29 @@
             if (models.length > 0) {
                 result[key] = models;
             }
+        }
+
+        // Collect teams lists
+        const teamsLists = form.querySelectorAll('[data-type="teams"]');
+        for (const list of teamsLists) {
+            const key = list.dataset.field;
+            const entries = list.querySelectorAll('.team-entry');
+            const teams = [];
+            for (const entry of entries) {
+                const name = entry.querySelector('[data-team-field="name"]')?.value?.trim();
+                const game = entry.querySelector('[data-team-field="game"]')?.value?.trim();
+                const vlrTeamId = entry.querySelector('[data-team-field="vlrTeamId"]')?.value?.trim();
+                const liquipediaName = entry.querySelector('[data-team-field="liquipediaName"]')?.value?.trim();
+                const channelMessageId = entry.querySelector('[data-team-field="channelMessageId"]')?.value?.trim();
+                if (name) {
+                    const team = { name, game: game || 'valorant' };
+                    if (vlrTeamId) team.vlrTeamId = vlrTeamId;
+                    if (liquipediaName) team.liquipediaName = liquipediaName;
+                    if (channelMessageId) team.channelMessageId = channelMessageId;
+                    teams.push(team);
+                }
+            }
+            result[key] = teams;
         }
 
         // Collect discord2name lists
@@ -1971,6 +2093,32 @@
             <input type="text" data-namemap-field="discord_id" value="" placeholder="ex: 123456789012345678">
             <input type="text" data-namemap-field="name" value="" placeholder="ex: Jean">
             <button class="btn-remove-entry" onclick="this.closest('.namemap-entry').remove()" title="Supprimer">✕</button>
+        `;
+        list.appendChild(entry);
+        entry.querySelector('input').focus();
+    }
+
+    function addTeamEntry(btn) {
+        const list = btn.previousElementSibling;
+        const idx = list.querySelectorAll('.team-entry').length;
+        const entry = document.createElement('div');
+        entry.className = 'team-entry';
+        entry.dataset.teamIdx = idx;
+        entry.innerHTML = `
+            <input type="text" data-team-field="name" value="" placeholder="ex: Mandatory">
+            <select data-team-field="game">
+                <option value="valorant" selected>Valorant</option>
+                <option value="leagueoflegends">League of Legends</option>
+                <option value="counterstrike">Counter-Strike</option>
+                <option value="worldofwarcraft">World of Warcraft</option>
+                <option value="overwatch">Overwatch</option>
+                <option value="rocketleague">Rocket League</option>
+                <option value="other">Autre</option>
+            </select>
+            <input type="text" data-team-field="vlrTeamId" value="" placeholder="ex: 7967">
+            <input type="text" data-team-field="liquipediaName" value="" placeholder="ex: Mandatory">
+            <input type="text" data-team-field="channelMessageId" value="" placeholder="channelId:messageId">
+            <button class="btn-remove-team" onclick="this.closest('.team-entry').remove()" title="Supprimer">✕</button>
         `;
         list.appendChild(entry);
         entry.querySelector('input').focus();
@@ -2289,6 +2437,24 @@
                                     <span style="font-weight:600;color:var(--accent);">${escapeHtml(String(name))}</span>
                                 </div>
                             `).join('') : '<span style="color:var(--text-muted);font-size:13px;">Aucun mapping configuré</span>'}
+                        </div>
+                    </div>
+                `;
+                continue;
+            }
+
+            if (fieldType === 'teams' && Array.isArray(val) && val.length > 0) {
+                html += `
+                    <div class="preview-row" style="flex-direction:column;gap:6px;">
+                        <span class="preview-label">${field.label || key} (${val.length})</span>
+                        <div style="display:flex;flex-direction:column;gap:4px;width:100%;">
+                            ${val.map(t => `
+                                <div style="display:flex;gap:8px;align-items:center;padding:4px 8px;background:var(--bg-primary);border-radius:var(--radius);font-size:13px;">
+                                    <span style="font-weight:600;color:var(--accent);min-width:120px;">${escapeHtml(t.name || '???')}</span>
+                                    <span style="color:var(--text-muted);min-width:100px;">${escapeHtml(t.game || 'valorant')}</span>
+                                    ${t.vlrTeamId ? `<span style="color:var(--text-secondary);font-family:Consolas,monospace;">VLR#${escapeHtml(t.vlrTeamId)}</span>` : ''}
+                                </div>
+                            `).join('')}
                         </div>
                     </div>
                 `;
