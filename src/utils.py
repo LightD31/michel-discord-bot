@@ -103,12 +103,19 @@ def format_number(num):
 name_cache = {}
 
 
+def load_discord2name(guild_id: str) -> dict:
+    """Load the discord2name mapping for a specific guild from its server config."""
+    from src.config_manager import load_full_config
+    data = load_full_config()
+    return data.get("servers", {}).get(str(guild_id), {}).get("discord2name", {})
+
+
 def escape_md(text):
     """Escape markdown special characters in the given text."""
     return re.sub(r"([_*\[\]()~`>#+\-=|{}.!])", r"\\\1", text)
 
 
-async def format_poll(event: MessageReactionAdd | MessageReactionRemove, config):
+async def format_poll(event: MessageReactionAdd | MessageReactionRemove):
     """
     Formats a poll message by updating the description with the current vote counts and participants.
 
@@ -159,9 +166,8 @@ async def format_poll(event: MessageReactionAdd | MessageReactionRemove, config)
                 name_cache[server_id] = {}
             if user_id not in name_cache[server_id]:
                 # If not in cache, compute it and store it in the cache
-                name_cache[server_id][user_id] = (
-                    config["discord2name"].get(server_id, {}).get(user_id, user_name)
-                )
+                d2n = load_discord2name(server_id)
+                name_cache[server_id][user_id] = d2n.get(user_id, user_name)
             user_name = name_cache[server_id][user_id]
             user_names.append(user_name)
         user_names_str = ", ".join(user_names)
@@ -190,25 +196,16 @@ def load_config(module_name: str = None) -> Tuple[dict, dict, list[str]]:
     Returns:
         A tuple containing the global configuration, the module-specific configuration, and the list of enabled servers.
     """
-    # Try to use the new modular config manager first
-    try:
-        from src.config_manager import ConfigManager
-        config_manager = ConfigManager()
-        data = config_manager.load_full_config()
-        logger.debug("Using modular configuration system")
-    except (ImportError, FileNotFoundError):
-        # Fallback to the old single file system
-        try:
-            with open("config/config.json", "r", encoding="utf-8") as file:
-                data = json.load(file)
-            logger.debug("Using legacy configuration system")
-        except FileNotFoundError:
-            logger.error("No configuration file found (config.json or main.json)")
-            return {}, {}, []
+    from src.config_manager import load_full_config
+    data = load_full_config()
+    if not data:
+        return {}, {}, []
     
     if module_name is None:
         return data.get("config", {}), {}, []
     
+    config = data.get("config", {})
+
     enabled_servers = [
         str(server_id)
         for server_id, server_info in data["servers"].items()
@@ -219,7 +216,6 @@ def load_config(module_name: str = None) -> Tuple[dict, dict, list[str]]:
         for server_id, server_info in data["servers"].items()
         if str(server_id) in enabled_servers
     }
-    config = data.get("config", {})
     logger.info(
         "Loaded config for module %s for servers %s",
         module_name,

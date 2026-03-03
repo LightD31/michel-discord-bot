@@ -76,13 +76,9 @@ def create_app(bot=None) -> FastAPI:
     CONFIG_PATH = os.path.join("config", "config.json")
 
     def _get_full_config() -> dict:
-        """Load the full config from disk (single file or multi-file)."""
-        try:
-            from src.config_manager import ConfigManager
-            cm = ConfigManager()
-            return cm.load_full_config()
-        except Exception:
-            return {"config": {}, "servers": {}}
+        """Load the full config from disk."""
+        from src.config_manager import load_full_config
+        return load_full_config() or {"config": {}, "servers": {}}
 
     def _save_config(data: dict):
         """Save the full config to a single config.json file."""
@@ -367,34 +363,38 @@ def create_app(bot=None) -> FastAPI:
 
     # ── Config migration ─────────────────────────────────────────────
 
-    @app.post("/api/migrate-config")
-    async def api_migrate_config(request: Request):
-        """Consolidate multi-file config into a single config.json."""
+    @app.post("/api/migrate-discord2name")
+    async def api_migrate_discord2name(request: Request):
+        """Move discord2name from global config to per-server configs."""
         _require_session(request)
-
-        # Load full config (merges main.json + includes)
         data = _get_full_config()
+        global_d2n = data.get("config", {}).get("discord2name")
+        if not global_d2n or not isinstance(global_d2n, dict):
+            return JSONResponse({
+                "status": "ok",
+                "message": "Rien à migrer : discord2name n'existe pas dans la config globale.",
+                "migrated": 0,
+            })
 
-        # Save as single file
+        migrated = 0
+        for server_id, name_map in global_d2n.items():
+            if isinstance(name_map, dict):
+                data.setdefault("servers", {}).setdefault(server_id, {})
+                existing = data["servers"][server_id].get("discord2name", {})
+                # Merge: per-server values take priority over global
+                merged = {**name_map, **existing}
+                data["servers"][server_id]["discord2name"] = merged
+                migrated += 1
+
+        # Remove from global config
+        del data["config"]["discord2name"]
         _save_config(data)
-        logger.info("Migrated config to single config.json")
-
-        # Remove old multi-file structure
-        import shutil
-        removed = []
-        main_path = os.path.join("config", "main.json")
-        if os.path.isfile(main_path):
-            os.remove(main_path)
-            removed.append("main.json")
-        for subdir in ["services", "servers"]:
-            dirpath = os.path.join("config", subdir)
-            if os.path.isdir(dirpath):
-                shutil.rmtree(dirpath)
-                removed.append(f"{subdir}/")
+        logger.info("Migrated discord2name to %d server(s)", migrated)
 
         return JSONResponse({
             "status": "ok",
-            "message": f"Config consolidée dans config.json. Fichiers supprimés: {', '.join(removed) or 'aucun'}",
+            "message": f"discord2name migré vers {migrated} serveur(s). Supprimé de la config globale.",
+            "migrated": migrated,
         })
 
     # ── Extension helpers ────────────────────────────────────────────

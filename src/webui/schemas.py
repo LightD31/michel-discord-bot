@@ -435,6 +435,20 @@ MODULE_SCHEMAS: dict[str, dict] = {
             ),
         },
     },
+
+    "discord2name": {
+        "label": "Discord → Prénoms",
+        "description": "Mapping des IDs Discord vers des prénoms pour ce serveur.",
+        "icon": "👤",
+        "noToggle": True,
+        "directValue": True,
+        "fields": {
+            "discord2name": _field(
+                "Membres", "discord2name",
+                description="Associez un prénom à chaque ID Discord."
+            ),
+        },
+    },
 }
 
 
@@ -555,18 +569,6 @@ GLOBAL_CONFIG_SCHEMAS: dict[str, dict] = {
             "dataFolder": _field("Dossier de données", "string", default="data",
                                   description="Chemin du dossier de données local."),
         },
-    },
-
-    "discord2name": {
-        "label": "Discord → Prénoms",
-        "icon": "👤",
-        "fields": {
-            "__info": _field(
-                "Info", "string",
-                description="Mapping par serveur : ID Discord → prénom. Modifier en JSON."
-            ),
-        },
-        "rawJson": True,
     },
 
     "shlink": {

@@ -15,7 +15,7 @@ from interactions import (
 
 from src import logutil
 from src.mongodb import mongo_manager
-from src.utils import load_config
+from src.utils import load_config, load_discord2name
 
 logger = logutil.init_logger(__name__)
 config, module_config, enabled_servers = load_config("moduleSecretSanta")
@@ -23,8 +23,6 @@ config, module_config, enabled_servers = load_config("moduleSecretSanta")
 # Data directory setup (kept only for human-readable draw files)
 DATA_DIR = Path("data/secret_santa")
 DATA_DIR.mkdir(parents=True, exist_ok=True)
-
-discord2name = config.get("discord2name", {})
 
 
 @dataclass
@@ -669,7 +667,7 @@ class SecretSanta(Extension):
 
         # Send DMs to participants
         server = str(ctx.guild.id) if ctx.guild else None
-        discord2name_data = discord2name.get(server, {}) if server else {}
+        discord2name_data = load_discord2name(server) if server else {}
         
         failed_dms = []
         for giver_id, receiver_id in assignments:
@@ -887,7 +885,7 @@ class SecretSanta(Extension):
         
         session = await self.get_session(context_id)
         server = str(ctx.guild.id) if ctx.guild else None
-        discord2name_data = discord2name.get(server, {}) if server else {}
+        discord2name_data = load_discord2name(server) if server else {}
         
         try:
             receiver = await self.bot.fetch_user(user_assignment)

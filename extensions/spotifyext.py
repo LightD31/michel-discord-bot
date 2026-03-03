@@ -22,7 +22,7 @@ from src.spotify import (
     spotifymongoformat,
     embed_message_vote_add,
 )
-from src.utils import milliseconds_to_string, load_config
+from src.utils import milliseconds_to_string, load_config, load_discord2name
 
 # Constants and Configuration
 CONFIG, MODULE_CONFIGS, ENABLED_SERVERS = load_config("moduleSpotify")
@@ -88,7 +88,7 @@ class ServerData:
 
     def __init__(self, guild_id: str, config: dict, global_config: dict):
         self.guild_id = guild_id
-        self.discord2name = global_config.get("discord2name", {}).get(guild_id, {})
+        self.discord2name = load_discord2name(guild_id)
         self.spotify2discord = config.get("spotifyIdToDiscordId", {})
         self.channel_id = config.get("spotifyChannelId")
         self.playlist_id = config.get("spotifyPlaylistId")
@@ -144,9 +144,11 @@ class Spotify(interactions.Extension):
         self.new_titles_playlist.start()
 
     async def load_voteinfos(self, server: ServerData):
-        async for doc in server.vote_infos_col.find():
-            key = doc["_id"]
-            server.vote_infos[key] = {k: v for k, v in doc.items() if k != "_id"}
+        doc = await server.vote_infos_col.find_one({"_id": "current"})
+        if doc:
+            server.vote_infos = {k: v for k, v in doc.items() if k != "_id"}
+        else:
+            server.vote_infos = {}
 
     async def load_snapshot(self, server: ServerData):
         doc = await server.snapshot_col.find_one({"_id": "current"})
@@ -161,10 +163,9 @@ class Spotify(interactions.Extension):
         )
 
     async def save_voteinfos(self, server: ServerData):
-        for key, value in server.vote_infos.items():
-            await server.vote_infos_col.update_one(
-                {"_id": key}, {"$set": value}, upsert=True
-            )
+        await server.vote_infos_col.update_one(
+            {"_id": "current"}, {"$set": server.vote_infos}, upsert=True
+        )
 
     async def load_reminders(self, server: ServerData):
         async for doc in server.reminders_col.find():
