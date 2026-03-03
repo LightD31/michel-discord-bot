@@ -4,18 +4,19 @@ Source unique pour les données de matchs Valorant.
 API: https://vlrggapi.vercel.app (https://github.com/axsddlr/vlrggapi)
 
 Endpoints V2 utilisés:
-- /v2/match?q=results|upcoming|live_score — listes de matchs
+- /v2/team/matches?id=X — historique des matchs d'une équipe (results + upcoming)
+- /v2/match?q=live_score — matchs en direct (filtrage par nom)
 - /v2/match/details?match_id=X — détails complets d'un match
 - /v2/team?id=X — profil d'équipe
-- /v2/team/matches?id=X — historique des matchs d'une équipe (avec match_id)
 
 Note: Un cache avec TTL variable est utilisé pour minimiser le nombre de requêtes.
 """
 
+import asyncio
 import re
 import time
 from typing import List, Dict, Any, Optional
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from src.utils import fetch
 from src import logutil
@@ -116,41 +117,6 @@ def filter_team_matches(team: str, matches: List[Dict]) -> List[Dict]:
     ]
 
 
-def parse_time_ago(time_str: str) -> Optional[datetime]:
-    """Parse un temps relatif comme '2h 44m ago' en datetime.
-
-    Args:
-        time_str: Chaîne de temps relatif (ex: "2h 44m ago", "30m ago").
-
-    Returns:
-        datetime correspondant, ou None si le parsing échoue.
-    """
-    if not time_str:
-        return None
-
-    try:
-        total_minutes = 0
-        # Extraire heures
-        hours_match = re.search(r"(\d+)\s*h", time_str)
-        if hours_match:
-            total_minutes += int(hours_match.group(1)) * 60
-        # Extraire minutes
-        mins_match = re.search(r"(\d+)\s*m", time_str)
-        if mins_match:
-            total_minutes += int(mins_match.group(1))
-        # Extraire jours
-        days_match = re.search(r"(\d+)\s*d", time_str)
-        if days_match:
-            total_minutes += int(days_match.group(1)) * 1440
-
-        if total_minutes > 0:
-            return datetime.now() - timedelta(minutes=total_minutes)
-    except (ValueError, AttributeError):
-        pass
-
-    return None
-
-
 def parse_vlrgg_timestamp(timestamp_str: str) -> Optional[datetime]:
     """Parse un timestamp VLR.gg en datetime.
 
@@ -168,14 +134,6 @@ def parse_vlrgg_timestamp(timestamp_str: str) -> Optional[datetime]:
         return None
 
 
-def get_most_recent_result_time(results: List[Dict]) -> Optional[datetime]:
-    """Obtient le timestamp du résultat le plus récent."""
-    if not results:
-        return None
-    time_str = results[0].get("time_completed", "")
-    return parse_time_ago(time_str)
-
-
 def extract_match_id_from_url(url: str) -> Optional[str]:
     """Extrait l'ID d'un match depuis une URL VLR.gg.
 
@@ -187,40 +145,247 @@ def extract_match_id_from_url(url: str) -> Optional[str]:
     return m.group(1) if m else None
 
 
-def normalize_team_match(entry: Dict[str, Any]) -> Dict[str, Any]:
-    """Convertit une entrée /v2/team/matches en format compatible avec les résultats globaux.
+# Abréviations courantes des rounds de tournoi
+ROUND_ABBREVIATIONS: Dict[str, str] = {
+    "gf": "Grande Finale",
+    "grand final": "Grande Finale",
+    "f": "Finale",
+    "final": "Finale",
+    "sf": "Demi-finale",
+    "semi-final": "Demi-finale",
+    "semifinal": "Demi-finale",
+    "qf": "Quart de finale",
+    "quarter-final": "Quart de finale",
+    "quarterfinal": "Quart de finale",
+    "ro8": "Huitièmes",
+    "ro16": "Seizièmes",
+    "ro32": "32èmes",
+    "ub": "Winner Bracket",
+    "ubf": "Finale Winner Bracket",
+    "ubsf": "Demi-finale Winner Bracket",
+    "ubqf": "Quart Winner Bracket",
+    "ubr1": "Round 1 Winner Bracket",
+    "ubr2": "Round 2 Winner Bracket",
+    "lb": "Loser Bracket",
+    "lbf": "Finale Loser Bracket",
+    "lbsf": "Demi-finale Loser Bracket",
+    "lbr1": "Round 1 Loser Bracket",
+    "lbr2": "Round 2 Loser Bracket",
+    "lbr3": "Round 3 Loser Bracket",
+    "lbr4": "Round 4 Loser Bracket",
+    "gs": "Phase de groupes",
+    "group stage": "Phase de groupes",
+    "elim": "Éliminatoire",
+    "elimination": "Éliminatoire",
+    "decider": "Match décisif",
+    "winners": "Match des gagnants",
+    "losers": "Match des perdants",
+}
 
-    Les endpoints globaux (/v2/match?q=results) utilisent des champs plats
-    (team1, team2, score1, score2) tandis que /v2/team/matches utilise des
-    objets imbriqués ({"name": ..., "tag": ...}) et un score combiné ("2:3").
+
+def expand_round_name(round_str: str) -> str:
+    """Développe les abréviations courantes de rounds de tournoi.
+
+    Ex: "GF" -> "Grande Finale", "UB SF" -> "Demi-finale Winner Bracket"
+    """
+    if not round_str:
+        return round_str
+
+    normalized = round_str.strip().lower()
+
+    # Correspondance exacte
+    if normalized in ROUND_ABBREVIATIONS:
+        return ROUND_ABBREVIATIONS[normalized]
+
+    # Essayer avec tirets/espaces supprimés
+    compact = normalized.replace(" ", "").replace("-", "")
+    if compact in ROUND_ABBREVIATIONS:
+        return ROUND_ABBREVIATIONS[compact]
+
+    # Pattern "UB R1", "LB R2", etc.
+    bracket_match = re.match(r"^(ub|lb)\s*r?(\d+)$", compact)
+    if bracket_match:
+        bracket = "Winner" if bracket_match.group(1) == "ub" else "Loser"
+        return f"Round {bracket_match.group(2)} {bracket} Bracket"
+
+    return round_str
+
+
+# Formats de date courants retournés par l'API VLR.gg
+_DATE_FORMATS = [
+    "%Y/%m/%d%I:%M %p",    # 2026/02/1111:00 am (pas d'espace)
+    "%Y/%m/%d %I:%M %p",   # 2026/02/11 11:00 am
+    "%Y-%m-%d %H:%M:%S",   # 2024-04-24 21:00:00
+    "%Y-%m-%d %H:%M",      # 2024-04-24 21:00
+    "%Y/%m/%d",            # 2026/02/11
+    "%b %d, %Y",           # Feb 11, 2026
+]
+
+
+def format_vlr_date(date_str: str) -> str:
+    """Formate une date VLR.gg en timestamp Discord (affichage local pour chaque utilisateur).
+
+    Retourne un timestamp Discord <t:UNIX:f> si le parsing réussit,
+    sinon retourne la chaîne telle quelle.
+    """
+    if not date_str:
+        return "?"
+
+    cleaned = date_str.strip()
+
+    for fmt in _DATE_FORMATS:
+        try:
+            dt = datetime.strptime(cleaned, fmt)
+            return f"<t:{int(dt.timestamp())}:f>"
+        except ValueError:
+            continue
+
+    # Dernier essai: seulement des chiffres de date sans heure
+    date_only = re.match(r"(\d{4})[/-](\d{2})[/-](\d{2})", cleaned)
+    if date_only:
+        try:
+            dt = datetime(int(date_only.group(1)), int(date_only.group(2)), int(date_only.group(3)))
+            return f"<t:{int(dt.timestamp())}:D>"
+        except ValueError:
+            pass
+
+    return cleaned
+
+
+def normalize_team_match(entry: Dict[str, Any]) -> Dict[str, Any]:
+    """Convertit une entrée /v2/team/matches en format normalisé.
 
     Args:
         entry: Entrée brute depuis /v2/team/matches.
 
     Returns:
-        Dictionnaire normalisé avec les mêmes clés que les résultats globaux.
+        Dictionnaire normalisé avec clés standardisées.
     """
     t1 = entry.get("team1", {})
     t2 = entry.get("team2", {})
     team1_name = t1.get("name", "???") if isinstance(t1, dict) else str(t1)
     team2_name = t2.get("name", "???") if isinstance(t2, dict) else str(t2)
 
-    score_str = entry.get("score", "0:0")
-    parts = score_str.split(":")
+    score_str = entry.get("score", "")
+    parts = score_str.split(":") if score_str else []
     score1 = parts[0].strip() if len(parts) >= 2 else "?"
     score2 = parts[1].strip() if len(parts) >= 2 else "?"
+
+    # Déterminer le statut: si les scores sont "--" ou vides, c'est un upcoming
+    is_upcoming = score_str in ("", "-", "–", "--") or score1 == "?" or score1 == "-"
+
+    # Le champ "event" de /team/matches est en fait l'abréviation du round ("GF", "LBF", ...)
+    round_abbr = entry.get("event", "")
 
     return {
         "team1": team1_name,
         "team2": team2_name,
-        "score1": score1,
-        "score2": score2,
+        "score1": score1 if not is_upcoming else "0",
+        "score2": score2 if not is_upcoming else "0",
         "match_page": entry.get("url", ""),
-        "tournament_name": entry.get("event", ""),
-        "time_completed": entry.get("date", ""),
+        "tournament_name": "",  # Sera rempli par enrich_match_from_details
+        "round_info": expand_round_name(round_abbr),
+        "time_completed": format_vlr_date(entry.get("date", "")),
+        "match_event": "",  # Sera rempli par enrich_match_from_details
         "match_id": entry.get("match_id", ""),
-        "_source": "team_matches",
+        "result": entry.get("result", ""),  # "win" ou "loss" directement depuis l'API
+        "status": "upcoming" if is_upcoming else "completed",
     }
+
+
+def _clean_vlr_text(text: str) -> str:
+    """Nettoie le texte renvoyé par VLR.gg (tabs, newlines, espaces multiples)."""
+    if not text:
+        return ""
+    cleaned = re.sub(r"[\t\n\r]+", " ", text)
+    cleaned = re.sub(r"\s{2,}", " ", cleaned)
+    return cleaned.strip()
+
+
+def enrich_match_from_details(
+    match: Dict[str, Any], details: Dict[str, Any]
+) -> Dict[str, Any]:
+    """Enrichit un match normalisé avec les données de /v2/match/details.
+
+    Met à jour le round_info, tournament_name et time_completed
+    à partir des données plus fiables de l'endpoint details.
+
+    Note: Dans /match/details, 'event' est un dict {name, series, logo}.
+    """
+    if not details:
+        return match
+
+    # Extraire event (dict dans /match/details)
+    event_data = details.get("event", {})
+    if isinstance(event_data, dict):
+        event_name = _clean_vlr_text(event_data.get("name", ""))
+        series = _clean_vlr_text(event_data.get("series", ""))
+    else:
+        event_name = _clean_vlr_text(str(event_data))
+        series = ""
+
+    # Extraire le nom du tournoi en retirant le suffixe "series" du name
+    # Ex: name="Challengers 2026: FR Stage 1 Playoffs: Grand Final", series="Playoffs: Grand Final"
+    # => tournament = "Challengers 2026: FR Stage 1"
+    if event_name and series and series in event_name:
+        tournament = event_name[: event_name.index(series)].strip()
+        if not tournament:
+            tournament = event_name
+    elif event_name:
+        tournament = event_name
+    else:
+        tournament = ""
+
+    if tournament:
+        match["tournament_name"] = tournament
+        match["match_event"] = tournament
+
+    # Round / série ("Playoffs: Grand Final", etc.)
+    if series:
+        match["round_info"] = expand_round_name(series)
+
+    # Scores depuis teams[]
+    teams = details.get("teams", [])
+    if len(teams) >= 2 and match.get("status") == "completed":
+        s1 = teams[0].get("score", "")
+        s2 = teams[1].get("score", "")
+        if s1 and s2:
+            match["score1"] = str(s1)
+            match["score2"] = str(s2)
+
+    return match
+
+
+async def _enrich_matches(
+    matches: List[Dict[str, Any]], max_count: int = 6
+) -> List[Dict[str, Any]]:
+    """Enrichit une liste de matchs en récupérant les détails en parallèle.
+
+    Seuls les matchs avec un match_id sont enrichis.
+    """
+    to_enrich = []
+    for i, m in enumerate(matches[:max_count]):
+        match_id = m.get("match_id") or extract_match_id_from_url(
+            m.get("match_page", "")
+        )
+        if match_id:
+            to_enrich.append((i, match_id))
+
+    if not to_enrich:
+        return matches
+
+    # Récupérer les détails en parallèle
+    tasks = [fetch_match_details(mid) for _, mid in to_enrich]
+    details_list = await asyncio.gather(*tasks, return_exceptions=True)
+
+    for (idx, _match_id), details in zip(to_enrich, details_list):
+        if isinstance(details, Exception):
+            logger.warning(f"Échec enrichissement match {_match_id}: {details}")
+            continue
+        if isinstance(details, dict) and details:
+            matches[idx] = enrich_match_from_details(matches[idx], details)
+
+    return matches
 
 
 # ── Endpoints V2 ─────────────────────────────────────────────────
@@ -238,7 +403,13 @@ async def fetch_match_details(match_id: str) -> Dict[str, Any]:
         Données complètes du match, ou dict vide en cas d'erreur.
     """
     data = await vlrgg_request("v2/match/details", {"match_id": match_id})
-    return data.get("data", data)
+    inner = data.get("data", data)
+    # L'API renvoie {status, segments: [match_data]} — extraire le premier segment
+    if isinstance(inner, dict):
+        segments = inner.get("segments", [])
+        if segments and isinstance(segments, list):
+            return segments[0]
+    return inner
 
 
 async def fetch_team_info(team_id: str) -> Dict[str, Any]:
@@ -268,84 +439,64 @@ async def fetch_team_matches_by_id(
     return inner if isinstance(inner, list) else []
 
 
-async def fetch_team_results(
-    team: str, team_id: Optional[str] = None
-) -> List[Dict[str, Any]]:
-    """Récupère les résultats récents pour une équipe."""
-    data = await vlrgg_request("v2/match", {"q": "results"})
-    segments = data.get("data", {}).get("segments", [])
-    return filter_team_matches(team, segments)
+async def fetch_live_matches(team: str) -> List[Dict[str, Any]]:
+    """Récupère les matchs en direct pour une équipe.
 
+    Utilise l'endpoint global /v2/match?q=live_score car il n'existe pas
+    d'endpoint /team/live dédié.
 
-async def fetch_team_upcoming(
-    team: str, team_id: Optional[str] = None
-) -> List[Dict[str, Any]]:
-    """Récupère les matchs à venir pour une équipe."""
-    data = await vlrgg_request("v2/match", {"q": "upcoming"})
-    segments = data.get("data", {}).get("segments", [])
-    return filter_team_matches(team, segments)
+    Args:
+        team: Nom de l'équipe (filtrage par nom, insensible à la casse).
 
-
-async def fetch_team_live(
-    team: str, team_id: Optional[str] = None
-) -> List[Dict[str, Any]]:
-    """Récupère les matchs en direct pour une équipe."""
+    Returns:
+        Liste des matchs en direct correspondants.
+    """
     data = await vlrgg_request("v2/match", {"q": "live_score"})
     segments = data.get("data", {}).get("segments", [])
     return filter_team_matches(team, segments)
 
 
-async def fetch_all_team_data(
-    team: str, team_id: Optional[str] = None
-) -> Dict[str, Any]:
+async def fetch_all_team_data(team_id: str, team: str) -> Dict[str, Any]:
     """Récupère toutes les données de matchs pour une équipe.
 
-    Si team_id est fourni, récupère aussi l'historique via /team/matches
-    (qui inclut les match_id pour les détails).
+    - Results & upcoming: via /v2/team/matches (par team_id, fiable)
+    - Live: via /v2/match?q=live_score (global, filtré par nom)
 
     Args:
-        team: Nom de l'équipe.
-        team_id: ID VLR.gg de l'équipe (optionnel mais recommandé).
+        team_id: ID VLR.gg de l'équipe.
+        team: Nom de l'équipe (pour le filtrage des matchs live).
 
     Returns:
-        Dictionnaire avec 'results', 'upcoming', 'live', et optionnellement 'team_matches'.
+        Dictionnaire avec 'results', 'upcoming', 'live'.
     """
     result: Dict[str, Any] = {"results": [], "upcoming": [], "live": []}
 
-    if team_id:
-        try:
-            team_matches = await fetch_team_matches_by_id(team_id)
-            result["team_matches"] = team_matches
-            logger.debug(
-                f"VLR.gg /team/matches: {len(team_matches)} matchs pour ID {team_id}"
-            )
-        except Exception as e:
-            logger.warning(f"VLR.gg fetch_team_matches_by_id échoué: {e}")
-
+    # Historique d'équipe (results + upcoming) via /team/matches
     try:
-        result["results"] = await fetch_team_results(team, team_id)
-    except Exception as e:
-        logger.warning(f"VLR.gg fetch_team_results échoué: {e}")
-
-    try:
-        result["upcoming"] = await fetch_team_upcoming(team, team_id)
-    except Exception as e:
-        logger.warning(f"VLR.gg fetch_team_upcoming échoué: {e}")
-
-    try:
-        result["live"] = await fetch_team_live(team, team_id)
-    except Exception as e:
-        logger.warning(f"VLR.gg fetch_team_live échoué: {e}")
-
-    # Fallback: si les résultats globaux sont vides, utiliser team_matches
-    if not result["results"] and result.get("team_matches"):
-        logger.info(
-            f"VLR.gg: résultats globaux vides pour {team}, "
-            f"utilisation de /team/matches ({len(result['team_matches'])} entrées)"
+        team_matches = await fetch_team_matches_by_id(team_id)
+        normalized = [normalize_team_match(m) for m in team_matches]
+        for m in normalized:
+            status = m.get("status", "completed")
+            if status == "upcoming":
+                result["upcoming"].append(m)
+            else:
+                result["results"].append(m)
+        logger.debug(
+            f"VLR.gg /team/matches: {len(result['results'])} résultats, "
+            f"{len(result['upcoming'])} à venir pour ID {team_id}"
         )
-        result["results"] = [
-            normalize_team_match(m) for m in result["team_matches"]
-        ]
+
+        # Enrichir avec /match/details pour dates & rounds plus précis
+        result["results"] = await _enrich_matches(result["results"], max_count=6)
+        result["upcoming"] = await _enrich_matches(result["upcoming"], max_count=6)
+    except Exception as e:
+        logger.warning(f"VLR.gg fetch_team_matches_by_id échoué: {e}")
+
+    # Live via endpoint global (pas d'alternative par team_id)
+    try:
+        result["live"] = await fetch_live_matches(team)
+    except Exception as e:
+        logger.warning(f"VLR.gg fetch_live_matches échoué: {e}")
 
     return result
 

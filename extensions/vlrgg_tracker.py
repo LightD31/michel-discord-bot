@@ -13,7 +13,6 @@ Configuration par serveur via le dashboard web (moduleVlrgg):
 
 from typing import List, Dict, Any, Tuple, Optional
 from dataclasses import dataclass, field
-from enum import Enum
 from interactions import (
     Task,
     IntervalTrigger,
@@ -30,6 +29,8 @@ from src.vlrgg import (
     fetch_match_details,
     extract_match_id_from_url,
     parse_vlrgg_timestamp,
+    expand_round_name,
+    format_vlr_date,
 )
 
 logger = logutil.init_logger(__name__)
@@ -42,13 +43,6 @@ MAX_PAST_MATCHES = 6
 MAX_UPCOMING_MATCHES = 6
 SCHEDULE_INTERVAL_MINUTES = 5
 LIVE_UPDATE_INTERVAL_MINUTES = 1
-
-
-class MatchStatus(Enum):
-    """Statut d'un match."""
-    PAST = "past"
-    ONGOING = "ongoing"
-    UPCOMING = "upcoming"
 
 
 @dataclass
@@ -377,17 +371,37 @@ class VlrggTracker(Extension):
                 except Exception as e:
                     logger.warning(f"Impossible de récupérer les détails du match {vlr_match_id}: {e}")
 
-            team1 = (match_data or {}).get("team1", "???")
-            team2 = (match_data or {}).get("team2", "???")
-            score1 = (match_data or {}).get("score1", "?")
-            score2 = (match_data or {}).get("score2", "?")
+            # Extraire noms et scores depuis les détails si disponibles
+            if details and details.get("teams"):
+                teams_detail = details["teams"]
+                team1 = teams_detail[0].get("name", "???") if len(teams_detail) > 0 else "???"
+                team2 = teams_detail[1].get("name", "???") if len(teams_detail) > 1 else "???"
+                score1 = str(teams_detail[0].get("score", "?")) if len(teams_detail) > 0 else "?"
+                score2 = str(teams_detail[1].get("score", "?")) if len(teams_detail) > 1 else "?"
+            else:
+                team1 = (match_data or {}).get("team1", "???")
+                team2 = (match_data or {}).get("team2", "???")
+                score1 = (match_data or {}).get("score1", "?")
+                score2 = (match_data or {}).get("score2", "?")
 
             # Déterminer victoire/défaite
             try:
                 s1, s2 = int(score1), int(score2)
-                team_lower = tc.name.lower()
-                is_team1 = team_lower in team1.lower()
-                team_won = (is_team1 and s1 > s2) or (not is_team1 and s2 > s1)
+                # Préférer is_winner depuis les détails
+                if details and details.get("teams"):
+                    teams_detail = details["teams"]
+                    tc_lower = tc.name.lower()
+                    for td in teams_detail:
+                        if tc_lower in td.get("name", "").lower():
+                            team_won = td.get("is_winner", False)
+                            break
+                    else:
+                        is_team1 = tc_lower in team1.lower()
+                        team_won = (is_team1 and s1 > s2) or (not is_team1 and s2 > s1)
+                else:
+                    team_lower = tc.name.lower()
+                    is_team1 = team_lower in team1.lower()
+                    team_won = (is_team1 and s1 > s2) or (not is_team1 and s2 > s1)
             except (ValueError, TypeError):
                 team_won = None
 
@@ -404,10 +418,29 @@ class VlrggTracker(Extension):
                 result_text = "TERMINÉ"
                 embed_color = DEFAULT_EMBED_COLOR
 
-            event = (match_data or {}).get("match_event", "Tournoi")
+            # Construire la description de l'événement
+            event_name = ""
+            round_info = ""
+            if details and isinstance(details.get("event"), dict):
+                from src.vlrgg import _clean_vlr_text, expand_round_name
+                event_obj = details["event"]
+                series = _clean_vlr_text(event_obj.get("series", ""))
+                full_name = _clean_vlr_text(event_obj.get("name", ""))
+                if full_name and series and series in full_name:
+                    event_name = full_name[: full_name.index(series)].strip()
+                else:
+                    event_name = full_name
+                round_info = expand_round_name(series) if series else ""
+            if not event_name:
+                event_name = (match_data or {}).get("match_event", "") or (match_data or {}).get("tournament_name", "Tournoi")
+
+            description = f"**{event_name}**"
+            if round_info:
+                description += f"\n{round_info}"
+
             embed = Embed(
                 title=f"{result_emoji} {result_text}: {team1} vs {team2}",
-                description=f"**{event}**",
+                description=description,
                 color=embed_color,
                 timestamp=Timestamp.now(),
             )
@@ -454,8 +487,11 @@ class VlrggTracker(Extension):
 
     async def _fetch_vlrgg_data(self, tc: TeamConfig) -> Optional[Dict[str, Any]]:
         """Récupère les données VLR.gg pour une équipe."""
+        if not tc.vlr_team_id:
+            logger.warning(f"{tc.name}: aucun vlrTeamId configuré")
+            return None
         try:
-            data = await vlrgg_fetch_all(tc.name, team_id=tc.vlr_team_id)
+            data = await vlrgg_fetch_all(tc.vlr_team_id, tc.name)
             total = (
                 len(data.get("results", []))
                 + len(data.get("upcoming", []))
@@ -531,20 +567,34 @@ class VlrggTracker(Extension):
         score1 = match.get("score1", "?")
         score2 = match.get("score2", "?")
         time_completed = match.get("time_completed", "?")
-        tournament = match.get("tournament_name", match.get("round_info", ""))
+        tournament = match.get("tournament_name", "")
+        round_info = match.get("round_info", "")
 
-        try:
-            s1, s2 = int(score1), int(score2)
-            team_lower = team.lower()
-            is_team1 = team_lower in team1.lower()
-            team_won = (is_team1 and s1 > s2) or (not is_team1 and s2 > s1)
-            resultat = "Gagné ✅" if team_won else "Perdu ❌"
-        except (ValueError, TypeError):
-            resultat = ""
+        # Construire la description du tournoi
+        event_line = tournament
+        if round_info:
+            event_line = f"{tournament} — {round_info}" if tournament else round_info
+
+        # Utiliser le champ "result" direct de l'API si disponible
+        result_api = match.get("result", "")
+        if result_api == "win":
+            resultat = "Gagné ✅"
+        elif result_api == "loss":
+            resultat = "Perdu ❌"
+        else:
+            # Fallback: calcul depuis les scores
+            try:
+                s1, s2 = int(score1), int(score2)
+                team_lower = team.lower()
+                is_team1 = team_lower in team1.lower()
+                team_won = (is_team1 and s1 > s2) or (not is_team1 and s2 > s1)
+                resultat = "Gagné ✅" if team_won else "Perdu ❌"
+            except (ValueError, TypeError):
+                resultat = ""
 
         return {
             "name": f"{team1} {score1}-{score2} {team2}",
-            "value": f"{tournament}\n{time_completed}\n{resultat}",
+            "value": f"{event_line}\n{time_completed}\n{resultat}",
         }
 
     def _format_vlrgg_live(self, match: Dict[str, Any]) -> Dict[str, str]:
@@ -576,18 +626,25 @@ class VlrggTracker(Extension):
         """Formate un match à venir VLR.gg pour l'affichage."""
         team1 = match.get("team1", "???")
         team2 = match.get("team2", "???")
-        eta = match.get("time_until_match", "?")
-        event = match.get("match_event", match.get("match_series", ""))
-        timestamp_str = match.get("unix_timestamp", "")
+        event = match.get("match_event", match.get("tournament_name", ""))
+        round_info = match.get("round_info", "")
+        time_display = match.get("time_completed", "?")
 
-        time_display = eta
+        # Si on a un unix_timestamp ou un timestamp classique, l'utiliser
+        timestamp_str = match.get("unix_timestamp", "")
         ts = parse_vlrgg_timestamp(timestamp_str)
         if ts:
             time_display = f"<t:{int(ts.timestamp())}:R>"
+        elif match.get("time_until_match"):
+            time_display = match["time_until_match"]
+
+        event_line = event
+        if round_info:
+            event_line = f"{event} — {round_info}" if event else round_info
 
         return {
             "name": f"{team1} vs {team2}",
-            "value": f"{time_display}\n{event}",
+            "value": f"{time_display}\n{event_line}",
         }
 
     def _extract_vlrgg_ongoing(self, vlr_data: Dict[str, Any]) -> Dict[str, Any]:
@@ -608,13 +665,20 @@ class VlrggTracker(Extension):
 
         lines = []
         for map_info in maps_data:
-            map_name = map_info.get("map", "???")
+            map_name = map_info.get("map_name", map_info.get("map", "???"))
             if map_name.lower() in ("tbd", "n/a", ""):
                 continue
-            t1_score = map_info.get("team1_score", "?")
-            t2_score = map_info.get("team2_score", "?")
 
-            # Essayer de grasser le score du gagnant
+            # Scores: format nested {"score": {"team1": 13, "team2": 9}}
+            score_data = map_info.get("score", {})
+            if isinstance(score_data, dict):
+                t1_score = score_data.get("team1", "?")
+                t2_score = score_data.get("team2", "?")
+            else:
+                t1_score = map_info.get("team1_score", "?")
+                t2_score = map_info.get("team2_score", "?")
+
+            # Mettre en gras le score du gagnant
             try:
                 s1, s2 = int(t1_score), int(t2_score)
                 if s1 > s2:
@@ -626,7 +690,9 @@ class VlrggTracker(Extension):
             except (ValueError, TypeError):
                 score_str = f"{t1_score}-{t2_score}"
 
-            lines.append(f"**{map_name}**: {score_str}")
+            duration = map_info.get("duration", "")
+            dur_str = f" ({duration})" if duration else ""
+            lines.append(f"**{map_name}**: {score_str}{dur_str}")
 
         return "\n".join(lines) if lines else None
 
@@ -639,12 +705,18 @@ class VlrggTracker(Extension):
         maps_data = details.get("maps", [])
 
         for map_info in maps_data:
-            for team_key in ("team1_players", "team2_players"):
-                players = map_info.get(team_key, [])
+            # Format réel: {"players": {"team1": [...], "team2": [...]}}
+            players_data = map_info.get("players", {})
+            if isinstance(players_data, dict):
+                player_lists = list(players_data.values())
+            else:
+                player_lists = []
+
+            for players in player_lists:
                 if not isinstance(players, list):
                     continue
                 for p in players:
-                    name = p.get("player", p.get("name", ""))
+                    name = p.get("name", p.get("player", ""))
                     if not name:
                         continue
                     rating_str = p.get("rating", p.get("average_combat_score", "0"))
