@@ -1550,6 +1550,10 @@
                 render();
                 return null;
             }
+            if (resp.status === 403) {
+                // Silently return null for admin-only endpoints when user is not admin
+                return null;
+            }
             if (!resp.ok) {
                 const err = await resp.json().catch(() => ({ detail: 'Erreur inconnue' }));
                 throw new Error(err.detail || `HTTP ${resp.status}`);
@@ -1645,6 +1649,13 @@
 
     // ── Navigation ────────────────────────────────────
     function navigate(page, serverId = null, moduleName = null) {
+        // Restrict admin-only pages for non-admin users
+        const adminPages = ['global', 'server', 'module', 'logs'];
+        if (adminPages.includes(page) && !isAdmin()) {
+            page = 'home';
+            serverId = null;
+            moduleName = null;
+        }
         state.currentPage = page;
         state.currentServerId = serverId;
         state.currentModule = moduleName;
@@ -1835,6 +1846,10 @@
         } else {
             state.user = null;
         }
+    }
+
+    function isAdmin() {
+        return state.user && state.user.is_admin;
     }
 
     async function loadBotInfo() {
@@ -2343,17 +2358,21 @@
                         <div class="nav-item ${state.currentPage === 'home' ? 'active' : ''}" onclick="navigate('home')">
                             <span class="icon">🏠</span> Accueil
                         </div>
+                        ${isAdmin() ? `
                         <div class="nav-item ${state.currentPage === 'global' ? 'active' : ''}" onclick="navigate('global')">
                             <span class="icon">⚙️</span> Config globale
                         </div>
                         <div class="nav-item ${state.currentPage === 'logs' ? 'active' : ''}" onclick="navigate('logs')">
                             <span class="icon">📋</span> Logs
                         </div>
+                        ` : ''}
                     </div>
+                    ${isAdmin() ? `
                     <div class="nav-section">
                         <div class="nav-section-title">Serveurs</div>
                         ${serverItems}
                     </div>
+                    ` : ''}
                 </div>
                 <div class="sidebar-footer">
                     <div class="user-info">
@@ -2386,6 +2405,7 @@
     function renderHomePage() {
         const bi = state.botInfo || {};
         const moduleEntries = Object.entries(state.modules);
+        const admin = isAdmin();
         return `
             <div class="page-header">
                 <h2>Dashboard</h2>
@@ -2407,13 +2427,26 @@
                     <div class="stat-label">Latence</div>
                     <div class="stat-value">${bi.latency != null ? bi.latency + ' ms' : '—'}</div>
                 </div>
+                ${admin ? `
                 <div class="stat-card">
                     <div class="stat-label">Extensions</div>
                     <div class="stat-value">${bi.extensions?.length || 0}</div>
                 </div>
+                ` : ''}
             </div>
 
-            ${bi.extensions?.length ? `
+            ${!admin ? `
+                <div class="card">
+                    <div class="card-header">
+                        <div>
+                            <div class="card-title">Bienvenue, ${state.user.username} !</div>
+                            <div class="card-subtitle">Vous êtes connecté en tant qu'utilisateur. Seuls les administrateurs peuvent modifier la configuration du bot.</div>
+                        </div>
+                    </div>
+                </div>
+            ` : ''}
+
+            ${admin && bi.extensions?.length ? `
                 <div class="card">
                     <div class="card-header">
                         <div>
@@ -2441,6 +2474,7 @@
                 </div>
             ` : ''}
 
+            ${admin && moduleEntries.length ? `
             <div class="card">
                 <div class="card-header">
                     <div>
@@ -2460,6 +2494,7 @@
                     `).join('')}
                 </div>
             </div>
+            ` : ''}
         `;
     }
 
@@ -3149,7 +3184,11 @@
     async function init() {
         await loadUserInfo();
         if (state.user) {
-            await Promise.all([loadBotInfo(), loadServers(), loadModules(), loadSchemas(), loadConfig(), loadLogs()]);
+            const promises = [loadBotInfo()];
+            if (isAdmin()) {
+                promises.push(loadServers(), loadModules(), loadSchemas(), loadConfig(), loadLogs());
+            }
+            await Promise.all(promises);
         }
         render();
 

@@ -100,15 +100,14 @@ class DiscordOAuth:
             expires_at=time.time() + expires_in,
         )
 
-        # Check if user is authorized (admin)
-        if self.admin_user_ids and session.user_id not in self.admin_user_ids:
-            logger.warning(f"Unauthorized user attempted login: {session.username} ({session.user_id})")
-            return None
-
         self.sessions[session.session_token] = session
         self._maybe_cleanup()
         logger.info(f"User logged in: {session.username} ({session.user_id})")
         return session
+
+    def is_admin(self, session: Session) -> bool:
+        """Check if a session user is an admin."""
+        return session.user_id in self.admin_user_ids
 
     def get_session(self, session_token: str) -> Optional[Session]:
         """Retrieve a session by its token."""

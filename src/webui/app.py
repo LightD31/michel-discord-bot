@@ -98,6 +98,12 @@ def create_app(bot=None) -> FastAPI:
             raise HTTPException(status_code=401, detail="Non authentifié")
         return session
 
+    def _require_admin(request: Request) -> Session:
+        session = _require_session(request)
+        if not oauth.is_admin(session):
+            raise HTTPException(status_code=403, detail="Accès réservé aux administrateurs")
+        return session
+
     # ── List known modules from extensions ───────────────────────────
 
     def _discover_modules() -> list[str]:
@@ -215,6 +221,7 @@ def create_app(bot=None) -> FastAPI:
             "username": session.username,
             "avatar": session.avatar,
             "guilds": guilds,
+            "is_admin": oauth.is_admin(session),
         })
 
     # ── Config API routes ────────────────────────────────────────────
@@ -222,14 +229,14 @@ def create_app(bot=None) -> FastAPI:
     @app.get("/api/config")
     async def api_get_config(request: Request):
         """Get the full configuration."""
-        _require_session(request)
+        _require_admin(request)
         data = _get_full_config()
         return JSONResponse(data)
 
     @app.get("/api/modules")
     async def api_get_modules(request: Request):
         """Get all discovered module names with their schemas."""
-        _require_session(request)
+        _require_admin(request)
         discovered = _discover_modules()
         modules = {}
         for mod_name in discovered:
@@ -245,13 +252,13 @@ def create_app(bot=None) -> FastAPI:
     @app.get("/api/schemas/modules")
     async def api_module_schemas(request: Request):
         """Get all module configuration schemas."""
-        _require_session(request)
+        _require_admin(request)
         return JSONResponse(MODULE_SCHEMAS)
 
     @app.get("/api/schemas/modules/{module_name}")
     async def api_module_schema(request: Request, module_name: str):
         """Get schema for a specific module."""
-        _require_session(request)
+        _require_admin(request)
         schema = MODULE_SCHEMAS.get(module_name)
         if not schema:
             return JSONResponse({"fields": {}, "label": module_name})
@@ -260,13 +267,13 @@ def create_app(bot=None) -> FastAPI:
     @app.get("/api/schemas/global")
     async def api_global_schemas(request: Request):
         """Get all global config section schemas."""
-        _require_session(request)
+        _require_admin(request)
         return JSONResponse(GLOBAL_CONFIG_SCHEMAS)
 
     @app.get("/api/servers")
     async def api_get_servers(request: Request):
         """Get servers where both the user and the bot are present."""
-        session = _require_session(request)
+        session = _require_admin(request)
         data = _get_full_config()
         servers = data.get("servers", {})
 
@@ -304,7 +311,7 @@ def create_app(bot=None) -> FastAPI:
     @app.get("/api/servers/{server_id}")
     async def api_get_server(request: Request, server_id: str):
         """Get configuration for a specific server."""
-        _require_session(request)
+        _require_admin(request)
         data = _get_full_config()
         server_config = data.get("servers", {}).get(server_id)
         if server_config is None:
@@ -314,7 +321,7 @@ def create_app(bot=None) -> FastAPI:
     @app.put("/api/servers/{server_id}/modules/{module_name}")
     async def api_update_module(request: Request, server_id: str, module_name: str, body: ConfigUpdate):
         """Update a specific module's config for a server."""
-        _require_session(request)
+        _require_admin(request)
         data = _get_full_config()
 
         # Create server entry if it doesn't exist
@@ -329,7 +336,7 @@ def create_app(bot=None) -> FastAPI:
     @app.post("/api/servers/{server_id}/modules/{module_name}/toggle")
     async def api_toggle_module(request: Request, server_id: str, module_name: str, body: ModuleToggle):
         """Enable or disable a module for a server."""
-        _require_session(request)
+        _require_admin(request)
         data = _get_full_config()
 
         # Create server entry if it doesn't exist
@@ -347,14 +354,14 @@ def create_app(bot=None) -> FastAPI:
     @app.get("/api/global-config")
     async def api_get_global_config(request: Request):
         """Get global (non-server-specific) configuration."""
-        _require_session(request)
+        _require_admin(request)
         data = _get_full_config()
         return JSONResponse(data.get("config", {}))
 
     @app.put("/api/global-config/{section}")
     async def api_update_global_config(request: Request, section: str, body: GlobalConfigUpdate):
         """Update a section of the global configuration."""
-        _require_session(request)
+        _require_admin(request)
         data = _get_full_config()
         data.setdefault("config", {})[section] = body.config
         _save_config(data)
@@ -370,7 +377,7 @@ def create_app(bot=None) -> FastAPI:
         Query params:
             dry_run: if true, return what would be removed without saving.
         """
-        _require_session(request)
+        _require_admin(request)
         data = _get_full_config()
         removed: list[dict] = []
 
@@ -460,7 +467,7 @@ def create_app(bot=None) -> FastAPI:
     @app.post("/api/reload")
     async def api_reload_all(request: Request):
         """Reload all extensions to apply config changes."""
-        _require_session(request)
+        _require_admin(request)
         if not bot:
             raise HTTPException(status_code=503, detail="Bot non disponible")
 
@@ -479,7 +486,7 @@ def create_app(bot=None) -> FastAPI:
     @app.post("/api/reload/{ext_name:path}")
     async def api_reload_one(request: Request, ext_name: str):
         """Reload a single extension by module path (e.g. 'extensions.tricount')."""
-        _require_session(request)
+        _require_admin(request)
         if not bot:
             raise HTTPException(status_code=503, detail="Bot non disponible")
         try:
@@ -494,18 +501,20 @@ def create_app(bot=None) -> FastAPI:
 
     @app.get("/api/bot-info")
     async def api_bot_info(request: Request):
-        """Get bot status information."""
-        _require_session(request)
-        info = {"status": "unknown", "guilds": 0, "extensions": [], "module_extension_map": {}, "bot_guild_ids": []}
+        """Get bot status information (available to all authenticated users, admin gets extra details)."""
+        session = _require_session(request)
+        is_admin = oauth.is_admin(session)
+        info = {"status": "unknown", "guilds": 0}
         if bot:
             try:
                 info["status"] = "online" if bot.is_ready else "starting"
                 info["guilds"] = len(bot.guilds) if bot.guilds else 0
                 info["user"] = str(bot.user) if bot.user else None
-                info["extensions"] = _get_extension_module_paths()
                 info["latency"] = round(bot.latency * 1000) if bot.latency else None
-                info["module_extension_map"] = _build_module_to_extension_map()
-                info["bot_guild_ids"] = [str(g.id) for g in bot.guilds] if bot.guilds else []
+                if is_admin:
+                    info["extensions"] = _get_extension_module_paths()
+                    info["module_extension_map"] = _build_module_to_extension_map()
+                    info["bot_guild_ids"] = [str(g.id) for g in bot.guilds] if bot.guilds else []
             except Exception:
                 info["status"] = "error"
         return JSONResponse(info)
@@ -516,7 +525,7 @@ def create_app(bot=None) -> FastAPI:
     async def api_get_logs(request: Request, count: int = 200, level: str = "",
                            search: str = "", logger_name: str = ""):
         """Get recent log entries with optional filtering."""
-        _require_session(request)
+        _require_admin(request)
         handler = WebUILogHandler.get_instance()
         if not handler:
             return JSONResponse({"logs": []})
@@ -531,7 +540,7 @@ def create_app(bot=None) -> FastAPI:
     @app.get("/api/logs/stream")
     async def api_stream_logs(request: Request):
         """SSE endpoint for real-time log streaming."""
-        _require_session(request)
+        _require_admin(request)
         handler = WebUILogHandler.get_instance()
         if not handler:
             raise HTTPException(status_code=503, detail="Log handler non disponible")
