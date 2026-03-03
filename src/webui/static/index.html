@@ -2485,9 +2485,6 @@
                         <div class="card-subtitle">Toute la config est stockée dans <code>config/config.json</code></div>
                     </div>
                     <div class="card-actions">
-                        <button class="btn btn-ghost btn-sm" onclick="migrateDiscord2Name()" title="Déplace discord2name de la config globale vers les configs par serveur">
-                            👤 Migrer discord2name
-                        </button>
                         <button class="btn btn-danger btn-sm" onclick="cleanupConfig()" title="Supprimer les clés non définies dans les schémas">
                             🧹 Nettoyer la config
                         </button>
@@ -3110,18 +3107,6 @@
 
     function escapeRegExp(string) {
         return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    }
-
-    async function migrateDiscord2Name() {
-        if (!confirm('Déplacer discord2name de la config globale vers les configs par serveur ?\nLes données existantes par serveur seront préservées.')) return;
-        try {
-            const result = await api('/api/migrate-discord2name', { method: 'POST' });
-            if (result) {
-                toast(result.message, 'success');
-                await Promise.all([loadConfig(), loadServers()]);
-                render();
-            }
-        } catch (e) { /* handled */ }
     }
 
     async function cleanupConfig() {

@@ -361,42 +361,6 @@ def create_app(bot=None) -> FastAPI:
         logger.info(f"Updated global config section: {section}")
         return JSONResponse({"status": "ok"})
 
-    # ── Config migration ─────────────────────────────────────────────
-
-    @app.post("/api/migrate-discord2name")
-    async def api_migrate_discord2name(request: Request):
-        """Move discord2name from global config to per-server configs."""
-        _require_session(request)
-        data = _get_full_config()
-        global_d2n = data.get("config", {}).get("discord2name")
-        if not global_d2n or not isinstance(global_d2n, dict):
-            return JSONResponse({
-                "status": "ok",
-                "message": "Rien à migrer : discord2name n'existe pas dans la config globale.",
-                "migrated": 0,
-            })
-
-        migrated = 0
-        for server_id, name_map in global_d2n.items():
-            if isinstance(name_map, dict):
-                data.setdefault("servers", {}).setdefault(server_id, {})
-                existing = data["servers"][server_id].get("discord2name", {})
-                # Merge: per-server values take priority over global
-                merged = {**name_map, **existing}
-                data["servers"][server_id]["discord2name"] = merged
-                migrated += 1
-
-        # Remove from global config
-        del data["config"]["discord2name"]
-        _save_config(data)
-        logger.info("Migrated discord2name to %d server(s)", migrated)
-
-        return JSONResponse({
-            "status": "ok",
-            "message": f"discord2name migré vers {migrated} serveur(s). Supprimé de la config globale.",
-            "migrated": migrated,
-        })
-
     # ── Config cleanup ───────────────────────────────────────────────
 
     @app.post("/api/cleanup-config")
