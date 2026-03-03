@@ -16,7 +16,7 @@ import asyncio
 import re
 import time
 from typing import List, Dict, Any, Optional
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 
 from src.utils import fetch
 from src import logutil
@@ -211,6 +211,9 @@ def expand_round_name(round_str: str) -> str:
     return round_str
 
 
+# L'API VLR.gg renvoie les heures en EST (UTC-5)
+_VLR_TIMEZONE = timezone(timedelta(hours=-5))
+
 # Formats de date courants retournés par l'API VLR.gg
 _DATE_FORMATS = [
     "%Y/%m/%d%I:%M %p",    # 2026/02/1111:00 am (pas d'espace)
@@ -225,6 +228,7 @@ _DATE_FORMATS = [
 def format_vlr_date(date_str: str) -> str:
     """Formate une date VLR.gg en timestamp Discord (affichage local pour chaque utilisateur).
 
+    Les dates de l'API VLR.gg sont en EST (UTC-5).
     Retourne un timestamp Discord <t:UNIX:f> si le parsing réussit,
     sinon retourne la chaîne telle quelle.
     """
@@ -236,6 +240,8 @@ def format_vlr_date(date_str: str) -> str:
     for fmt in _DATE_FORMATS:
         try:
             dt = datetime.strptime(cleaned, fmt)
+            # Attacher le fuseau EST pour un timestamp Unix correct
+            dt = dt.replace(tzinfo=_VLR_TIMEZONE)
             return f"<t:{int(dt.timestamp())}:f>"
         except ValueError:
             continue
@@ -244,7 +250,10 @@ def format_vlr_date(date_str: str) -> str:
     date_only = re.match(r"(\d{4})[/-](\d{2})[/-](\d{2})", cleaned)
     if date_only:
         try:
-            dt = datetime(int(date_only.group(1)), int(date_only.group(2)), int(date_only.group(3)))
+            dt = datetime(
+                int(date_only.group(1)), int(date_only.group(2)), int(date_only.group(3)),
+                tzinfo=_VLR_TIMEZONE,
+            )
             return f"<t:{int(dt.timestamp())}:D>"
         except ValueError:
             pass
