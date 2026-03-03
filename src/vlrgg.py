@@ -353,6 +353,25 @@ def enrich_match_from_details(
             match["score1"] = str(s1)
             match["score2"] = str(s2)
 
+    # Stocker les scores par map pour l'affichage
+    maps_data = details.get("maps", [])
+    if maps_data:
+        maps_summary = []
+        for m in maps_data:
+            map_name = m.get("map_name", m.get("map", ""))
+            if not map_name or map_name.lower() in ("tbd", "n/a"):
+                continue
+            score = m.get("score", {})
+            if isinstance(score, dict):
+                ms1 = score.get("team1", "?")
+                ms2 = score.get("team2", "?")
+            else:
+                ms1 = m.get("team1_score", "?")
+                ms2 = m.get("team2_score", "?")
+            maps_summary.append({"map": map_name, "score1": ms1, "score2": ms2})
+        if maps_summary:
+            match["maps"] = maps_summary
+
     return match
 
 

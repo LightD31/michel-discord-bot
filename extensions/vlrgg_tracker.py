@@ -592,9 +592,46 @@ class VlrggTracker(Extension):
             except (ValueError, TypeError):
                 resultat = ""
 
+        # Déterminer qui a gagné pour le gras
+        try:
+            s1_int, s2_int = int(score1), int(score2)
+            t1_won = s1_int > s2_int
+            t2_won = s2_int > s1_int
+        except (ValueError, TypeError):
+            t1_won = t2_won = False
+
+        # Noms en gras pour le gagnant
+        t1_display = f"**{team1}**" if t1_won else team1
+        t2_display = f"**{team2}**" if t2_won else team2
+        sc1_display = f"**{score1}**" if t1_won else score1
+        sc2_display = f"**{score2}**" if t2_won else score2
+
+        # Scores par map
+        maps_line = ""
+        maps_data = match.get("maps", [])
+        if maps_data:
+            map_parts = []
+            for m in maps_data:
+                name = m.get("map", "?")[:3]  # Abréger le nom (Aby, Cor, Bin...)
+                ms1, ms2 = m.get("score1", "?"), m.get("score2", "?")
+                try:
+                    ms1_int, ms2_int = int(ms1), int(ms2)
+                    if ms1_int > ms2_int:
+                        map_parts.append(f"{name} **{ms1}**-{ms2}")
+                    elif ms2_int > ms1_int:
+                        map_parts.append(f"{name} {ms1}-**{ms2}**")
+                    else:
+                        map_parts.append(f"{name} {ms1}-{ms2}")
+                except (ValueError, TypeError):
+                    map_parts.append(f"{name} {ms1}-{ms2}")
+            maps_line = " | ".join(map_parts)
+
+        value_parts = [event_line, maps_line, time_completed, resultat]
+        value = "\n".join(p for p in value_parts if p)
+
         return {
-            "name": f"{team1} {score1}-{score2} {team2}",
-            "value": f"{event_line}\n{time_completed}\n{resultat}",
+            "name": f"{t1_display} {sc1_display}-{sc2_display} {t2_display}",
+            "value": value,
         }
 
     def _format_vlrgg_live(self, match: Dict[str, Any]) -> Dict[str, str]:
