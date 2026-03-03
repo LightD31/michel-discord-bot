@@ -353,16 +353,31 @@ def enrich_match_from_details(
     if series:
         match["round_info"] = expand_round_name(series)
 
-    # Scores depuis teams[]
+    # Déterminer si l'ordre des équipes est inversé entre /team/matches et /match/details
     teams = details.get("teams", [])
+    swapped = False
+    if len(teams) >= 2:
+        detail_t1 = teams[0].get("name", "").strip().lower()
+        detail_t2 = teams[1].get("name", "").strip().lower()
+        match_t1 = match.get("team1", "").strip().lower()
+        # Si team1 de /team/matches correspond à teams[1] de /match/details, l'ordre est inversé
+        if match_t1 and detail_t2 and match_t1 in detail_t2 or detail_t2 in match_t1:
+            if not (match_t1 in detail_t1 or detail_t1 in match_t1):
+                swapped = True
+
+    # Scores depuis teams[] (en respectant l'ordre)
     if len(teams) >= 2 and match.get("status") == "completed":
-        s1 = teams[0].get("score", "")
-        s2 = teams[1].get("score", "")
+        if swapped:
+            s1 = teams[1].get("score", "")
+            s2 = teams[0].get("score", "")
+        else:
+            s1 = teams[0].get("score", "")
+            s2 = teams[1].get("score", "")
         if s1 and s2:
             match["score1"] = str(s1)
             match["score2"] = str(s2)
 
-    # Stocker les scores par map pour l'affichage
+    # Stocker les scores par map pour l'affichage (en respectant l'ordre)
     maps_data = details.get("maps", [])
     if maps_data:
         maps_summary = []
@@ -372,12 +387,15 @@ def enrich_match_from_details(
                 continue
             score = m.get("score", {})
             if isinstance(score, dict):
-                ms1 = score.get("team1", "?")
-                ms2 = score.get("team2", "?")
+                raw_s1 = score.get("team1", "?")
+                raw_s2 = score.get("team2", "?")
             else:
-                ms1 = m.get("team1_score", "?")
-                ms2 = m.get("team2_score", "?")
-            maps_summary.append({"map": map_name, "score1": ms1, "score2": ms2})
+                raw_s1 = m.get("team1_score", "?")
+                raw_s2 = m.get("team2_score", "?")
+            if swapped:
+                maps_summary.append({"map": map_name, "score1": raw_s2, "score2": raw_s1})
+            else:
+                maps_summary.append({"map": map_name, "score1": raw_s1, "score2": raw_s2})
         if maps_summary:
             match["maps"] = maps_summary
 
