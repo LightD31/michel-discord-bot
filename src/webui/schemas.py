@@ -19,6 +19,7 @@ This is used by the Web UI to render proper forms instead of raw JSON editors.
 # "dict"     — nested object (raw JSON editor)
 # "url"      — URL string
 # "messagelist" — list of messages with linked weight field (form rows)
+# "embedlist" — list of embeds with title, color, and links (form rows)
 
 
 def _field(label: str, field_type: str = "string", required: bool = False,
@@ -409,19 +410,24 @@ MODULE_SCHEMAS: dict[str, dict] = {
         },
     },
 
-    "moduleGuildeux": {
-        "label": "Guildeux",
-        "description": "Gestion des liens de guilde.",
-        "icon": "⚔️",
+    "moduleEmbedManager": {
+        "label": "Gestionnaire d'Embeds",
+        "description": "Création et publication d'embeds personnalisés.",
+        "icon": "📝",
         "fields": {
             "enabled": _field("Activé", "boolean", default=False),
-            "lienChannelId": _field(
-                "Salon des liens", "channel", required=True,
-                description="Salon pour le message des liens de guilde."
+            "channelId": _field(
+                "Salon de publication", "channel", required=True,
+                description="Salon pour publier les embeds."
             ),
-            "lienMessageId": _field(
-                "Message des liens", "message",
-                description="ID du message contenant les liens."
+            "messageId": _field(
+                "Message cible", "message",
+                description="ID du message à mettre à jour avec les embeds."
+            ),
+            "embeds": _field(
+                "Embeds", "embedlist",
+                description="Créez des embeds avec un titre, couleur et liens.",
+                default=[],
             ),
         },
     },

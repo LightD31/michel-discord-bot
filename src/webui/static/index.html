@@ -1481,6 +1481,199 @@
             }
         }
 
+        /* ── Embed List Editor ──────────────────────── */
+        .embedlist-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .embedlist-entry {
+            background: var(--bg-primary);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .embedlist-entry-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .embedlist-entry-title {
+            font-weight: 600;
+            color: var(--text-primary);
+            flex: 1;
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .embedlist-entry-controls {
+            display: flex;
+            gap: 4px;
+            flex-shrink: 0;
+        }
+
+        .embedlist-entry-fields {
+            display: grid;
+            grid-template-columns: 1fr 150px;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+
+        .embedlist-entry-fields .form-input {
+            width: 100%;
+        }
+
+        .embedlist-color-picker {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .embedlist-color-input {
+            width: 50px;
+            height: 36px;
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            cursor: pointer;
+        }
+
+        .embedlist-color-text {
+            flex: 1;
+            padding: 6px 8px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            color: var(--text-primary);
+            font-size: 12px;
+            font-family: 'Consolas', monospace;
+        }
+
+        .embedlist-links {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            padding-top: 8px;
+            border-top: 1px solid var(--border);
+        }
+
+        .embedlist-links-label {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .embedlist-link-entry {
+            display: grid;
+            grid-template-columns: 1fr 2fr auto;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .embedlist-link-entry input {
+            width: 100%;
+            padding: 6px 8px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            color: var(--text-primary);
+            font-size: 12px;
+            outline: none;
+        }
+
+        .embedlist-link-entry input:focus {
+            border-color: var(--accent);
+        }
+
+        .embedlist-link-entry .btn-remove-link {
+            background: none;
+            border: none;
+            color: var(--danger);
+            cursor: pointer;
+            font-size: 16px;
+            padding: 4px 6px;
+            border-radius: var(--radius);
+            line-height: 1;
+        }
+
+        .embedlist-link-entry .btn-remove-link:hover {
+            background: rgba(248, 63, 67, 0.1);
+        }
+
+        .btn-add-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 10px;
+            background: var(--bg-secondary);
+            border: 1px dashed var(--border);
+            border-radius: var(--radius);
+            color: var(--text-secondary);
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.15s;
+        }
+
+        .btn-add-link:hover {
+            border-color: var(--accent);
+            color: var(--accent);
+            background: rgba(88, 101, 242, 0.05);
+        }
+
+        .btn-remove-embed {
+            background: none;
+            border: none;
+            color: var(--danger);
+            cursor: pointer;
+            font-size: 18px;
+            padding: 4px 8px;
+            border-radius: var(--radius);
+            line-height: 1;
+        }
+
+        .btn-remove-embed:hover {
+            background: rgba(248, 63, 67, 0.1);
+        }
+
+        .btn-add-embed {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 14px;
+            background: var(--bg-tertiary);
+            border: 1px dashed var(--border);
+            border-radius: var(--radius);
+            color: var(--text-secondary);
+            cursor: pointer;
+            font-size: 13px;
+            transition: all 0.15s;
+        }
+
+        .btn-add-embed:hover {
+            border-color: var(--accent);
+            color: var(--accent);
+            background: rgba(88, 101, 242, 0.05);
+        }
+
+        @media (max-width: 768px) {
+            .embedlist-entry-fields {
+                grid-template-columns: 1fr;
+            }
+
+            .embedlist-link-entry {
+                grid-template-columns: 1fr;
+            }
+        }
+
         @media (max-width: 768px) {
             .model-entry {
                 grid-template-columns: 1fr;
@@ -2063,6 +2256,56 @@
                     html += `<button type="button" class="btn-add-entry" onclick="addMessageEntry(this)">+ Ajouter un message</button>`;
                     break;
 
+                case 'embedlist':
+                    const embeds = Array.isArray(value) ? value : [];
+                    html += `<div class="embedlist-list" data-field="${key}" data-type="embedlist">`;
+                    embeds.forEach((embed, embedIdx) => {
+                        const embedTitle = embed.title || 'Sans titre';
+                        const embedColor = embed.color || '3498db';
+                        const embedLinks = Array.isArray(embed.links) ? embed.links : [];
+                        
+                        html += `<div class="embedlist-entry" data-embed-idx="${embedIdx}">`;
+                        
+                        // Embed header
+                        html += `<div class="embedlist-entry-header">`;
+                        html += `<div class="embedlist-entry-title" title="${escapeHtml(embedTitle)}">${escapeHtml(embedTitle)}</div>`;
+                        html += `<div class="embedlist-entry-controls">`;
+                        html += `<button class="btn-remove-embed" onclick="this.closest('.embedlist-entry').remove()" title="Supprimer cet embed">✕</button>`;
+                        html += `</div></div>`;
+                        
+                        // Embed fields (title & color)
+                        html += `<div class="embedlist-entry-fields">`;
+                        html += `<div><label style="font-size:11px;color:var(--text-muted)">Titre</label>`;
+                        html += `<input type="text" class="form-input" data-embed-field="title" value="${escapeHtml(embedTitle)}" placeholder="Titre de l'embed" data-bind="">`;
+                        html += `</div>`;
+                        html += `<div><label style="font-size:11px;color:var(--text-muted)">Couleur</label>`;
+                        html += `<div class="embedlist-color-picker">`;
+                        html += `<input type="color" class="embedlist-color-input" data-embed-field="color" value="#${embedColor}" onchange="updateEmbedColorText(this)">`;
+                        html += `<div class="embedlist-color-text">${embedColor}</div>`;
+                        html += `</div></div></div>`;
+                        
+                        // Links section
+                        html += `<div class="embedlist-links">`;
+                        html += `<div class="embedlist-links-label">Liens</div>`;
+                        embedLinks.forEach((link, linkIdx) => {
+                            const linkTitle = link.title || '';
+                            const linkUrl = link.url || '';
+                            html += `
+                                <div class="embedlist-link-entry" data-link-idx="${linkIdx}">
+                                    <input type="text" data-link-field="title" value="${escapeHtml(linkTitle)}" placeholder="Titre du lien" maxlength="256">
+                                    <input type="text" data-link-field="url" value="${escapeHtml(linkUrl)}" placeholder="https://exemple.com" maxlength="2048">
+                                    <button type="button" class="btn-remove-link" onclick="this.closest('.embedlist-link-entry').remove()" title="Supprimer">✕</button>
+                                </div>`;
+                        });
+                        html += `</div>`;
+                        
+                        html += `<button type="button" class="btn-add-link" onclick="addEmbedLink(this)">+ Ajouter un lien</button>`;
+                        html += `</div>`;
+                    });
+                    html += `</div>`;
+                    html += `<button type="button" class="btn-add-embed" onclick="addEmbedEntry(this, '${key}')">+ Ajouter un embed</button>`;
+                    break;
+
                 default: // string
                     html += `<input type="text" class="form-input" data-field="${key}" data-type="string"
                         value="${hasValue ? escapeHtml(String(value)) : ''}"
@@ -2112,6 +2355,9 @@
                     // Handled separately below
                     continue;
                 case 'messagelist':
+                    // Handled separately below
+                    continue;
+                case 'embedlist':
                     // Handled separately below
                     continue;
                 case 'secret':
@@ -2203,6 +2449,42 @@
             }
         }
 
+        // Collect embedlist fields
+        const embedLists = form.querySelectorAll('[data-type="embedlist"]');
+        for (const list of embedLists) {
+            const key = list.dataset.field;
+            const entries = list.querySelectorAll('.embedlist-entry');
+            const embeds = [];
+            for (const entry of entries) {
+                const title = entry.querySelector('[data-embed-field="title"]')?.value?.trim();
+                const colorInput = entry.querySelector('[data-embed-field="color"]');
+                let color = colorInput?.value || '#3498db';
+                if (color.startsWith('#')) {
+                    color = color.substring(1);
+                }
+                const linkEntries = entry.querySelectorAll('.embedlist-link-entry');
+                const links = [];
+                for (const linkEntry of linkEntries) {
+                    const linkTitle = linkEntry.querySelector('[data-link-field="title"]')?.value?.trim();
+                    const linkUrl = linkEntry.querySelector('[data-link-field="url"]')?.value?.trim();
+                    if (linkTitle && linkUrl) {
+                        links.push({ title: linkTitle, url: linkUrl });
+                    }
+                }
+                const embed = {
+                    title: title || 'Embed',
+                    color: color,
+                };
+                if (links.length > 0) {
+                    embed.links = links;
+                }
+                embeds.push(embed);
+            }
+            if (embeds.length > 0) {
+                result[key] = embeds;
+            }
+        }
+
         return result;
     }
 
@@ -2270,6 +2552,69 @@
         `;
         list.appendChild(entry);
         entry.querySelector('input').focus();
+    }
+
+    function addEmbedEntry(btn, fieldKey) {
+        const list = btn.previousElementSibling;
+        if (!list) return;
+        const idx = list.querySelectorAll('.embedlist-entry').length;
+        const entry = document.createElement('div');
+        entry.className = 'embedlist-entry';
+        entry.dataset.embedIdx = idx;
+        entry.innerHTML = `
+            <div class="embedlist-entry-header">
+                <div class="embedlist-entry-title">Nouvel embed</div>
+                <div class="embedlist-entry-controls">
+                    <button class="btn-remove-embed" onclick="this.closest('.embedlist-entry').remove()" title="Supprimer cet embed">✕</button>
+                </div>
+            </div>
+            <div class="embedlist-entry-fields">
+                <div><label style="font-size:11px;color:var(--text-muted)">Titre</label>
+                <input type="text" class="form-input" data-embed-field="title" value="Nouvel embed" placeholder="Titre de l'embed"></div>
+                <div><label style="font-size:11px;color:var(--text-muted)">Couleur</label>
+                <div class="embedlist-color-picker">
+                    <input type="color" class="embedlist-color-input" data-embed-field="color" value="#3498db" onchange="updateEmbedColorText(this)">
+                    <div class="embedlist-color-text">3498db</div>
+                </div></div>
+            </div>
+            <div class="embedlist-links">
+                <div class="embedlist-links-label">Liens</div>
+            </div>
+            <button type="button" class="btn-add-link" onclick="addEmbedLink(this)">+ Ajouter un lien</button>
+        `;
+        list.appendChild(entry);
+
+        // Update title when title input changes
+        const titleInput = entry.querySelector('[data-embed-field="title"]');
+        titleInput.addEventListener('change', (e) => {
+            entry.querySelector('.embedlist-entry-title').textContent = e.target.value || 'Nouvel embed';
+        });
+        titleInput.focus();
+    }
+
+    function addEmbedLink(btn) {
+        const embedEntry = btn.closest('.embedlist-entry');
+        if (!embedEntry) return;
+        const linkContainer = embedEntry.querySelector('.embedlist-links');
+        const idx = linkContainer.querySelectorAll('.embedlist-link-entry').length;
+        const linkEntry = document.createElement('div');
+        linkEntry.className = 'embedlist-link-entry';
+        linkEntry.dataset.linkIdx = idx;
+        linkEntry.innerHTML = `
+            <input type="text" data-link-field="title" value="" placeholder="Titre du lien" maxlength="256">
+            <input type="text" data-link-field="url" value="" placeholder="https://exemple.com" maxlength="2048">
+            <button type="button" class="btn-remove-link" onclick="this.closest('.embedlist-link-entry').remove()" title="Supprimer">✕</button>
+        `;
+        linkContainer.appendChild(linkEntry);
+        linkEntry.querySelector('input').focus();
+    }
+
+    function updateEmbedColorText(input) {
+        const color = input.value.substring(1); // Remove # from color
+        const textDiv = input.nextElementSibling;
+        if (textDiv) {
+            textDiv.textContent = color;
+        }
     }
 
     function togglePasswordVisibility(btn) {
