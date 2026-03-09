@@ -28,6 +28,7 @@ from interactions.api.events import MessageCreate
 from src.utils import CustomPaginator
 
 from src import logutil
+from src.helpers import Colors, pick_weighted_message
 from src.mongodb import mongo_manager
 from src.utils import format_number, load_config
 
@@ -38,7 +39,7 @@ config, module_config, enabled_servers = load_config("moduleXp")
 XP_COOLDOWN_SECONDS = 60
 XP_MIN = 15
 XP_MAX = 25
-EMBED_COLOR = 0x00FF00
+EMBED_COLOR = Colors.SUCCESS
 TIMEZONE = pytz.timezone("Europe/Paris")
 LEADERBOARD_PAGE_SIZE = 10
 RANK_MEDALS = ["🥇", "🥈", "🥉"]
@@ -350,11 +351,10 @@ class XP(Extension):
         logger.debug("%s is now level %d.", user_id, new_level)
         
         guild_config = module_config.get(guild_id, {})
-        level_up_messages = guild_config.get("levelUpMessageList", [DEFAULT_LEVEL_UP_MESSAGE])
-        weights = guild_config.get("levelUpMessageWeights", [1] * len(level_up_messages))
-        
-        chosen_message = random.choices(level_up_messages, weights=weights)[0]
-        formatted_message = chosen_message.format(
+        formatted_message = pick_weighted_message(
+            guild_config,
+            "levelUpMessageList", "levelUpMessageWeights",
+            DEFAULT_LEVEL_UP_MESSAGE,
             mention=message.author.mention,
             lvl=new_level,
         )
@@ -518,7 +518,7 @@ class XP(Extension):
             return [Embed(
                 title="Erreur",
                 description="La base de données n'est pas disponible.",
-                color=0xFF0000,
+                color=Colors.ERROR,
             )]
         
         try:
@@ -529,7 +529,7 @@ class XP(Extension):
             return [Embed(
                 title="Erreur",
                 description="Impossible de récupérer le classement.",
-                color=0xFF0000,
+                color=Colors.ERROR,
             )]
         
         embeds = []

@@ -45,6 +45,7 @@ from twitchAPI.twitch import Twitch
 from twitchAPI.type import AuthScope, TwitchResourceNotFound
 
 from src import logutil
+from src.helpers import Colors
 from src.mongodb import mongo_manager
 from src.utils import load_config
 
@@ -88,7 +89,7 @@ class StreamerInfo:
 class TwitchExt2(Extension):
     # Directory for caching emote images
     EMOTE_CACHE_DIR = "data/emote_cache"
-    DEFAULT_EMBED_COLOR = 0x6441A5
+    DEFAULT_EMBED_COLOR = Colors.TWITCH
 
     def __init__(self, bot: Client):
         self.bot: Client = bot

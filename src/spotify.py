@@ -11,10 +11,13 @@ import re
 import interactions
 import spotipy
 from src import logutil
+from src.helpers import Colors
 from src.utils import load_config
 
 logger = logutil.init_logger(os.path.basename(__file__))
 config,_,_ = load_config()
+
+SPOTIFY_ICON_URL = "https://upload.wikimedia.org/wikipedia/commons/thumb/1/19/Spotify_logo_without_text.svg/200px-Spotify_logo_without_text.svg.png"
 
 def spotify_auth():
     """
@@ -80,7 +83,7 @@ async def embed_song(
     embedtype: EmbedType,
     time: datetime,
     person: str = None,
-    icon: str = "https://upload.wikimedia.org/wikipedia/commons/thumb/1/19/Spotify_logo_without_text.svg/200px-Spotify_logo_without_text.svg.png",
+    icon: str = SPOTIFY_ICON_URL,
 ) -> tuple[interactions.Embed, interactions.File | None]:
     """
     Creates an embed message for a Discord bot that displays information about a song.
@@ -104,7 +107,7 @@ async def embed_song(
         EmbedType.ADD: {
             "title": "Chanson ajoutée à la playlist",
             "footer": f"Ajoutée par {person}",
-            "color": 0x1DB954
+            "color": Colors.SPOTIFY
         },
         EmbedType.DELETE: {
             "title": "Chanson supprimée de la playlist",
@@ -129,7 +132,7 @@ async def embed_song(
         EmbedType.INFOS: {
             "title": "Informations sur la chanson",
             "footer": "",
-            "color": 0x1DB954
+            "color": Colors.SPOTIFY
         },
         EmbedType.VOTE_ADD: {
             "title": f"Vote ouvert jusqu'à {interactions.utils.timestamp_converter(time).format(interactions.TimestampStyles.RelativeTime)}",
@@ -277,7 +280,7 @@ async def embed_message_vote(
     )
     embed.set_footer(
         text="Nettoyeur de Playlist",
-        icon_url="https://upload.wikimedia.org/wikipedia/commons/thumb/1/19/Spotify_logo_without_text.svg/200px-Spotify_logo_without_text.svg.png",
+        icon_url=SPOTIFY_ICON_URL,
     )
     embed.timestamp = interactions.utils.timestamp_converter(datetime.now())
     return embed
@@ -315,7 +318,7 @@ async def embed_message_vote_add(
     embed.add_field(name="\u200b", value=f"Votes de {', '.join(users)}")
     embed.set_footer(
         text="",
-        icon_url="https://upload.wikimedia.org/wikipedia/commons/thumb/1/19/Spotify_logo_without_text.svg/200px-Spotify_logo_without_text.svg.png",
+        icon_url=SPOTIFY_ICON_URL,
     )
     embed.timestamp = interactions.utils.timestamp_converter(datetime.now())
     return embed

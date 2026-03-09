@@ -1,10 +1,10 @@
 import os
-import random
 
 from interactions import Client, Extension, listen
 from interactions.api.events import MemberAdd, MemberRemove
 
 from src import logutil
+from src.helpers import pick_weighted_message
 from src.utils import load_config
 
 logger = logutil.init_logger(os.path.basename(__file__))
@@ -35,13 +35,10 @@ class Welcome(Extension):
             return
         serv_config = module_config.get(str(event.guild.id), {})
 
-        welcome_messages = serv_config.get(
-            "welcomeMessageList",
-            ["Bienvenue {mention} !"],
-        )
-        weights = serv_config.get("welcomeMessageWeights", len(welcome_messages) * [1])
-        message = random.choices(welcome_messages, weights=weights)[0]
-        filled_message = message.format(
+        filled_message = pick_weighted_message(
+            serv_config,
+            "welcomeMessageList", "welcomeMessageWeights",
+            "Bienvenue {mention} !",
             mention=event.member.mention,
         )
         # Get the welcome channel
@@ -73,13 +70,10 @@ class Welcome(Extension):
                     serv_config.get("leaveMessageWeights"),
                     serv_config.get("welcomeChannelId")
                     )
-        leave_messages = serv_config.get(
-            "leaveMessageList",
-            ["Au revoir **{mention}** !"],
-        )
-        weights = serv_config.get("leaveMessageWeights", len(leave_messages) * [1])
-        message = random.choices(leave_messages, weights=weights)[0]
-        filled_message = message.format(
+        filled_message = pick_weighted_message(
+            serv_config,
+            "leaveMessageList", "leaveMessageWeights",
+            "Au revoir **{mention}** !",
             mention=event.member.username,
         )
         # Get the welcome channel

@@ -23,6 +23,7 @@ from interactions import (
     Timestamp,
 )
 from src import logutil
+from src.helpers import Colors, SPACER_FIELD
 from src.utils import load_config
 from src.vlrgg import (
     fetch_all_team_data as vlrgg_fetch_all,
@@ -37,8 +38,8 @@ logger = logutil.init_logger(__name__)
 config, module_configs, enabled_servers = load_config("moduleVlrgg")
 
 # Constants
-DEFAULT_EMBED_COLOR = 0xE04747
-LIVE_EMBED_COLOR = 0x00FF00  # Vert pour les matchs en direct
+DEFAULT_EMBED_COLOR = Colors.VLR
+LIVE_EMBED_COLOR = Colors.SUCCESS
 MAX_PAST_MATCHES = 6
 MAX_UPCOMING_MATCHES = 6
 SCHEDULE_INTERVAL_MINUTES = 5
@@ -524,7 +525,7 @@ class VlrggTracker(Extension):
                     name=field_data["name"], value=field_data["value"], inline=True
                 )
                 if (i + 1) % 2 != 0:
-                    past_embed.add_field(name="\u200b", value="\u200b", inline=True)
+                    past_embed.add_field(**SPACER_FIELD)
             embeds.append(past_embed)
 
         live = vlr_data.get("live", [])
@@ -551,9 +552,7 @@ class VlrggTracker(Extension):
                     name=field_data["name"], value=field_data["value"], inline=True
                 )
                 if (i + 1) % 2 != 0:
-                    upcoming_embed.add_field(
-                        name="\u200b", value="\u200b", inline=True
-                    )
+                    upcoming_embed.add_field(**SPACER_FIELD)
             embeds.append(upcoming_embed)
 
         return embeds
@@ -838,4 +837,4 @@ class VlrggTracker(Extension):
     def _add_alignment_field_if_needed(embed: Embed, count: int) -> None:
         """Ajoute un champ vide pour l'alignement si nécessaire."""
         if count % 2 != 0:
-            embed.add_field(name="\u200b", value="\u200b", inline=True)
+            embed.add_field(**SPACER_FIELD)

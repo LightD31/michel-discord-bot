@@ -15,6 +15,7 @@ import interactions
 from notion_client import AsyncClient, APIResponseError
 
 from src import logutil
+from src.helpers import Colors, format_discord_timestamp
 from src.utils import load_config
 
 logger = logutil.init_logger(os.path.basename(__file__))
@@ -322,7 +323,7 @@ class ConfrerieClass(interactions.Extension):
         """
         embed = interactions.Embed(
             title="Statistiques de la confrérie",
-            color=0x9B462E,
+            color=Colors.CONFRERIE,
             timestamp=stats_data["timestamp"],
         )
         
@@ -444,7 +445,7 @@ class ConfrerieClass(interactions.Extension):
         
         embed = interactions.Embed(
             title=title,
-            color=0x9B462E,
+            color=Colors.CONFRERIE,
             footer=footer,
             timestamp=datetime.now(),
         )
@@ -715,7 +716,7 @@ class ConfrerieClass(interactions.Extension):
         """
         embed = interactions.Embed(
             title="📝 Nouvelle demande d'actualisation",
-            color=0x9B462E,
+            color=Colors.CONFRERIE,
             timestamp=datetime.now(),
         )
         
@@ -746,7 +747,7 @@ class ConfrerieClass(interactions.Extension):
         
         embed.add_field(
             name="📅 Date",
-            value=f"<t:{int(datetime.now().timestamp())}:F>",
+            value=format_discord_timestamp(datetime.now(), "F"),
             inline=True,
         )
         

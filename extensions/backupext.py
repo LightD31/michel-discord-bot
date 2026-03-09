@@ -31,6 +31,7 @@ from interactions import (
 )
 
 from src import logutil
+from src.helpers import Colors
 from src.mongodb import mongo_manager
 from src.utils import load_config
 
@@ -131,7 +132,7 @@ class BackupExtension(Extension):
             embed = Embed(
                 title="✅ Sauvegarde terminée",
                 description=f"Sauvegarde enregistrée dans `{path}`",
-                color=0x2ECC71,
+                color=Colors.BACKUP_SUCCESS,
             )
             embed.add_field(name="Durée", value=f"{elapsed:.1f}s", inline=True)
             embed.add_field(
@@ -143,6 +144,6 @@ class BackupExtension(Extension):
             embed = Embed(
                 title="❌ Erreur de sauvegarde",
                 description=str(e),
-                color=0xE74C3C,
+                color=Colors.BACKUP_ERROR,
             )
             await ctx.send(embed=embed)

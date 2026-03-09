@@ -8,6 +8,7 @@ from interactions import Extension, listen, slash_command, SlashContext, Embed, 
 from interactions.api.events import MessageCreate
 
 from src import logutil
+from src.helpers import require_guild
 from src.mongodb import mongo_manager
 from src.utils import load_config, sanitize_content
 
@@ -159,12 +160,11 @@ class Feur(Extension):
     @slash_command(name="feurstats", description="Affiche les statistiques de feur")
     async def feur_stats(self, ctx: SlashContext):
         """Display feur statistics."""
-        guild_id = str(ctx.guild_id) if ctx.guild_id else None
-        user_id = str(ctx.author.id)
-        
-        if not guild_id:
-            await ctx.send("Cette commande doit être utilisée dans un serveur.", ephemeral=True)
+        if not await require_guild(ctx):
             return
+
+        guild_id = str(ctx.guild_id)
+        user_id = str(ctx.author.id)
         
         # Get stats from the guild's feur_stats collection
         guild_stats = await self._get_stats(guild_id, "guild_total")

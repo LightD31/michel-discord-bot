@@ -20,6 +20,7 @@ from datetime import datetime, timezone, timedelta
 
 from src.utils import fetch
 from src import logutil
+from src.helpers import format_discord_timestamp
 
 logger = logutil.init_logger(__name__)
 
@@ -242,7 +243,7 @@ def format_vlr_date(date_str: str) -> str:
             dt = datetime.strptime(cleaned, fmt)
             # Attacher le fuseau EST pour un timestamp Unix correct
             dt = dt.replace(tzinfo=_VLR_TIMEZONE)
-            return f"<t:{int(dt.timestamp())}:f>"
+            return format_discord_timestamp(dt, "f")
         except ValueError:
             continue
 
@@ -254,7 +255,7 @@ def format_vlr_date(date_str: str) -> str:
                 int(date_only.group(1)), int(date_only.group(2)), int(date_only.group(3)),
                 tzinfo=_VLR_TIMEZONE,
             )
-            return f"<t:{int(dt.timestamp())}:D>"
+            return format_discord_timestamp(dt, "D")
         except ValueError:
             pass
 
