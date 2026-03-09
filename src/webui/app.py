@@ -19,7 +19,7 @@ from src.webui.auth import DiscordOAuth, Session
 from src.webui.log_handler import WebUILogHandler, install_log_handler
 from src.webui.schemas import MODULE_SCHEMAS, GLOBAL_CONFIG_SCHEMAS
 
-logger = logutil.init_logger("webui.app")
+logger = logutil.init_logger(os.path.basename(__file__))
 
 # ── Pydantic models ──────────────────────────────────────────────────
 

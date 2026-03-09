@@ -2,6 +2,7 @@
 Discord OAuth2 authentication for the Web UI.
 """
 
+import os
 import secrets
 import time
 from dataclasses import dataclass, field
@@ -9,7 +10,7 @@ from dataclasses import dataclass, field
 import aiohttp
 from src import logutil
 
-logger = logutil.init_logger("webui.auth")
+logger = logutil.init_logger(os.path.basename(__file__))
 
 DISCORD_API_BASE = "https://discord.com/api/v10"
 DISCORD_OAUTH2_URL = "https://discord.com/api/oauth2/authorize"

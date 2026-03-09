@@ -3,13 +3,15 @@ Web UI server runner.
 Can be started alongside the bot or independently.
 """
 
+import os
 import threading
+
 import uvicorn
 
 from src import logutil
 from src.webui.app import create_app
 
-logger = logutil.init_logger("webui.server")
+logger = logutil.init_logger(os.path.basename(__file__))
 
 
 def start_webui(bot=None, host: str = "0.0.0.0", port: int = 8080):
