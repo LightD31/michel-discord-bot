@@ -77,7 +77,7 @@ groupes = [
 ]
 
 
-class ConfrerieClass(interactions.Extension):
+class ConfrerieExtension(interactions.Extension):
     """Extension Discord pour la gestion de la confrérie littéraire.
     
     Cette extension gère les statistiques, les défis, et les éditeurs
@@ -797,7 +797,7 @@ def load(bot: interactions.Client):
         bot: Instance du bot Discord
     """
     logger.info("Chargement de l'extension Confrérie")
-    ConfrerieClass(bot)
+    ConfrerieExtension(bot)
 
     @interactions.slash_command(
         name="editeur",

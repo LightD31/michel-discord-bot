@@ -1,3 +1,5 @@
+"""Extension Welcome — messages de bienvenue et d'au revoir personnalisés par serveur."""
+
 import os
 
 from interactions import Client, Extension, listen
@@ -12,7 +14,7 @@ logger = logutil.init_logger(os.path.basename(__file__))
 config, module_config, enabled_servers = load_config("moduleWelcome")
 
 
-class Welcome(Extension):
+class WelcomeExtension(Extension):
     def __init__(self, bot: Client):
         self.bot = bot
         # Load config

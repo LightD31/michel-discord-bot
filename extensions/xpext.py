@@ -133,7 +133,7 @@ def create_leaderboard_embed(guild_name: str, is_continuation: bool = False) -> 
     )
 
 
-class XP(Extension):
+class XpExtension(Extension):
     """XP and leveling system extension for Discord."""
 
     def __init__(self, bot: client):

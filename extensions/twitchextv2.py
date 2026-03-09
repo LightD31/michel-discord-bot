@@ -86,7 +86,7 @@ class StreamerInfo:
         self.stream_id: Optional[str] = None
 
 
-class TwitchExt2(Extension):
+class TwitchExtension(Extension):
     # Directory for caching emote images
     EMOTE_CACHE_DIR = "data/emote_cache"
     DEFAULT_EMBED_COLOR = Colors.TWITCH
@@ -274,7 +274,7 @@ class TwitchExt2(Extension):
                 logger.error(f"Error initializing channels for streamer {streamer_key}: {e}")
 
         self.check_new_emotes.start()
-        logger.info("Starting TwitchExt2")
+        logger.info("Starting TwitchExtension")
         # asyncio.create_task(self.run())
         # self.update.start()
 
@@ -290,15 +290,15 @@ class TwitchExt2(Extension):
 
     def stop_on_signal(self, signum, frame):
         """
-        Stop the TwitchExt2 extension when a signal is received.
+        Stop the TwitchExtension extension when a signal is received.
         """
         self.stop = True
-        logger.info("Stopping TwitchExt2")
+        logger.info("Stopping TwitchExtension")
         asyncio.create_task(self.cleanup())
 
     async def cleanup(self):
         """
-        Clean up resources and stop the TwitchExt2 extension.
+        Clean up resources and stop the TwitchExtension extension.
         """
         try:
             await self.eventsub.stop()
@@ -306,7 +306,7 @@ class TwitchExt2(Extension):
         except Exception as e:
             logger.error("Error during cleanup: %s", e)
         else:
-            logger.info("TwitchExt2 stopped")
+            logger.info("TwitchExtension stopped")
             await self.bot.stop()
 
     async def get_stream_data(self, user_id):
@@ -327,7 +327,7 @@ class TwitchExt2(Extension):
 
     async def run(self):
         """
-        Run the TwitchExt2 extension.
+        Run the TwitchExtension extension.
         """
         try:
             # create the api instance and get user auth either from storage or website

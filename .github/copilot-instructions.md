@@ -50,9 +50,10 @@ src/
 
 ### Extension Pattern
 - One extension per file in `extensions/`.
-- Each file defines an `Extension` subclass and a module-level `setup(bot)` function.
+- Each file defines a class named `{Name}Extension` inheriting from `interactions.Extension`. No `setup(bot)` function needed — extensions are auto-discovered.
 - Extensions prefixed with `_` are **not loaded** (archived). Do not delete them.
 - Extensions load their config via `load_config("module_name")` from `src/utils.py`, which returns `(global_config, per_guild_module_config, enabled_guild_ids)`.
+- Logger initialization: `logger = logutil.init_logger(os.path.basename(__file__))`.
 - Use `@interactions.Task.create(IntervalTrigger(...))` or `@interactions.Task.create(TimeTrigger(...))` for scheduled tasks.
 
 ### Database
