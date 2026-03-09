@@ -48,7 +48,6 @@ from interactions.api.events import (
 )
 from interactions.client.utils import timestamp_converter
 from datetime import datetime, timedelta
-from typing import Optional
 from src import logutil
 from src.mongodb import mongo_manager
 from src.utils import format_poll, load_config
@@ -95,7 +94,7 @@ class Utils(Extension):
             await message.add_reaction(emojis[i])
 
     @staticmethod
-    def parse_poll_author_id(footer_text: str) -> Optional[str]:
+    def parse_poll_author_id(footer_text: str) -> str | None:
         """Extract author ID from poll footer text."""
         if not footer_text or len(footer_text.split(" ")) < 5:
             return None
@@ -222,7 +221,7 @@ class Utils(Extension):
         self,
         ctx: SlashContext,
         message: str,
-        channel: Optional[BaseChannel] = None,
+        channel: BaseChannel | None = None,
     ):
         """
         A slash command that sends a message to a channel.
@@ -523,7 +522,7 @@ class Utils(Extension):
         except Exception as e:
             logger.error(f"Failed to load reminders: {e}")
 
-    async def save_reminders(self, guild_id: Optional[str] = None):
+    async def save_reminders(self, guild_id: str | None = None):
         """Save reminders to per-guild MongoDB. If guild_id given, save only that guild."""
         try:
             guilds = [guild_id] if guild_id else list(guild_reminders.keys())
@@ -596,8 +595,8 @@ class Utils(Extension):
         hour: int,
         minute: int,
         task: str,
-        frequency: Optional[str] = None,
-        date: Optional[str] = None,
+        frequency: str | None = None,
+        date: str | None = None,
     ):
         # Create the reminder time from the provided date, hour, and minute
         current_time = datetime.now()

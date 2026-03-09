@@ -1,12 +1,10 @@
 """Storage manager for persisting reminders and event states using MongoDB."""
 
 import os
-from datetime import datetime
-from typing import Optional
 
 from src import logutil
 from src.mongodb import mongo_manager
-from .models import ReminderCollection, EventState, HardcoreSeason
+from .models import EventState, HardcoreSeason, ReminderCollection
 
 logger = logutil.init_logger(os.path.basename(__file__))
 
@@ -14,7 +12,7 @@ logger = logutil.init_logger(os.path.basename(__file__))
 class StorageManager:
     """Manages persistence of reminders and event states via MongoDB."""
     
-    def __init__(self, data_folder: str, guild_id: Optional[str] = None):
+    def __init__(self, data_folder: str, guild_id: str | None = None):
         self.data_folder = data_folder  # kept for backward compat, no longer used
         self._guild_id = guild_id
     
@@ -38,7 +36,7 @@ class StorageManager:
             logger.info("No reminders document found, starting with empty collection")
             return ReminderCollection()
         except Exception as e:
-            logger.error(f"Failed to load reminders: {e}")
+            logger.error("Failed to load reminders: %s", e)
             return ReminderCollection()
     
     async def save_reminders(self, reminders: ReminderCollection) -> None:
@@ -50,7 +48,7 @@ class StorageManager:
                 upsert=True,
             )
         except Exception as e:
-            logger.error(f"Failed to save reminders: {e}")
+            logger.error("Failed to save reminders: %s", e)
     
     # Event state storage
     
@@ -64,7 +62,7 @@ class StorageManager:
             logger.info("No events document found, starting with empty state")
             return EventState()
         except Exception as e:
-            logger.error(f"Failed to load event state: {e}")
+            logger.error("Failed to load event state: %s", e)
             return EventState()
     
     async def save_event_state(self, state: EventState) -> None:
@@ -76,4 +74,4 @@ class StorageManager:
                 upsert=True,
             )
         except Exception as e:
-            logger.error(f"Failed to save event state: {e}")
+            logger.error("Failed to save event state: %s", e)

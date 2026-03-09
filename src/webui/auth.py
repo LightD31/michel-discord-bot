@@ -4,7 +4,6 @@ Discord OAuth2 authentication for the Web UI.
 
 import secrets
 import time
-from typing import Optional
 from dataclasses import dataclass, field
 
 import aiohttp
@@ -22,7 +21,7 @@ class Session:
     """Represents an authenticated user session."""
     user_id: str
     username: str
-    avatar: Optional[str]
+    avatar: str | None
     guilds: list
     access_token: str
     refresh_token: str
@@ -33,7 +32,7 @@ class Session:
 class DiscordOAuth:
     """Handles Discord OAuth2 flow and session management."""
 
-    def __init__(self, client_id: str, client_secret: str, redirect_uri: str, admin_user_ids: Optional[list[str]] = None):
+    def __init__(self, client_id: str, client_secret: str, redirect_uri: str, admin_user_ids: list[str] | None = None):
         self.client_id = client_id
         self.client_secret = client_secret
         self.redirect_uri = redirect_uri
@@ -53,7 +52,7 @@ class DiscordOAuth:
         query = "&".join(f"{k}={v}" for k, v in params.items())
         return f"{DISCORD_OAUTH2_URL}?{query}"
 
-    async def exchange_code(self, code: str) -> Optional[Session]:
+    async def exchange_code(self, code: str) -> Session | None:
         """Exchange an authorization code for tokens and create a session."""
         async with aiohttp.ClientSession() as http:
             # Exchange code for token
@@ -109,7 +108,7 @@ class DiscordOAuth:
         """Check if a session user is an admin."""
         return session.user_id in self.admin_user_ids
 
-    def get_session(self, session_token: str) -> Optional[Session]:
+    def get_session(self, session_token: str) -> Session | None:
         """Retrieve a session by its token."""
         session = self.sessions.get(session_token)
         if session and session.expires_at > time.time():

@@ -8,7 +8,7 @@ via l'intégration avec l'API Notion (version 2025-09-03).
 import os
 from collections import defaultdict
 from datetime import datetime
-from typing import Dict, List, Optional, Any
+from typing import Any
 
 import aiohttp
 import interactions
@@ -86,12 +86,12 @@ class ConfrerieClass(interactions.Extension):
     
     def __init__(self, bot: interactions.Client):
         self.bot: interactions.Client = bot
-        self.data: Dict[str, Any] = {}
+        self.data: dict[str, Any] = {}
         self.notion = AsyncClient(auth=config["notion"]["notionSecret"])
-        self._stats_cache: Dict[str, Any] = {}
-        self._cache_timestamp: Optional[datetime] = None
+        self._stats_cache: dict[str, Any] = {}
+        self._cache_timestamp: datetime | None = None
         self._cache_duration = 300  # 5 minutes cache
-        self._data_source_cache: Dict[str, str] = {}  # database_id -> data_source_id
+        self._data_source_cache: dict[str, str] = {}  # database_id -> data_source_id
 
     @interactions.listen()
     async def on_startup(self):
@@ -159,8 +159,8 @@ class ConfrerieClass(interactions.Extension):
             raise NotionAPIError(f"Unexpected error: {e}")
 
     async def _safe_notion_query(
-        self, database_id: str, filter_params: Dict[str, Any]
-    ) -> List[Dict[str, Any]]:
+        self, database_id: str, filter_params: dict[str, Any]
+    ) -> list[dict[str, Any]]:
         """Query Notion data source with error handling (2025-09-03 API).
         
         Args:
@@ -233,7 +233,7 @@ class ConfrerieClass(interactions.Extension):
         except Exception as e:
             logger.error(f"Erreur lors de la mise à jour des statistiques: {e}")
 
-    async def _fetch_statistics(self) -> Dict[str, Any]:
+    async def _fetch_statistics(self) -> dict[str, Any]:
         """Récupère les statistiques depuis Notion et met à jour le cache.
         
         Returns:
@@ -277,7 +277,7 @@ class ConfrerieClass(interactions.Extension):
         
         return stats_data
 
-    async def _update_statistics_message(self, stats_data: Dict[str, Any]):
+    async def _update_statistics_message(self, stats_data: dict[str, Any]):
         """Met à jour le message des statistiques dans Discord.
         
         Args:
@@ -312,7 +312,7 @@ class ConfrerieClass(interactions.Extension):
             logger.error(f"Erreur lors de la mise à jour du message: {e}")
             raise
 
-    async def _create_statistics_embed(self, stats_data: Dict[str, Any]) -> interactions.Embed:
+    async def _create_statistics_embed(self, stats_data: dict[str, Any]) -> interactions.Embed:
         """Crée l'embed des statistiques.
         
         Args:
@@ -388,7 +388,7 @@ class ConfrerieClass(interactions.Extension):
             logger.error(f"Erreur lors de la mise à jour de la page {page_id}: {e}")
             raise
 
-    async def _safe_notion_page_retrieve(self, page_id: str) -> Dict[str, Any]:
+    async def _safe_notion_page_retrieve(self, page_id: str) -> dict[str, Any]:
         """Récupère une page Notion avec gestion d'erreurs.
         
         Args:
@@ -409,7 +409,7 @@ class ConfrerieClass(interactions.Extension):
             logger.error(f"Erreur inattendue lors de la récupération de la page {page_id}: {e}")
             raise NotionAPIError(f"Erreur inattendue: {e}")
 
-    def _determine_channel_and_title(self, content: Dict[str, Any]) -> Dict[str, str]:
+    def _determine_channel_and_title(self, content: dict[str, Any]) -> dict[str, str]:
         """Détermine le canal et le titre selon le type de contenu.
         
         Args:
@@ -431,7 +431,7 @@ class ConfrerieClass(interactions.Extension):
                 "title": "Texte mis à jour"
             }
 
-    async def _create_update_embed(self, content: Dict[str, Any], title: str) -> interactions.Embed:
+    async def _create_update_embed(self, content: dict[str, Any], title: str) -> interactions.Embed:
         """Crée l'embed pour une mise à jour.
         
         Args:
@@ -483,7 +483,7 @@ class ConfrerieClass(interactions.Extension):
 
         return embed
 
-    def _add_genre_field(self, embed: interactions.Embed, content: Dict[str, Any]):
+    def _add_genre_field(self, embed: interactions.Embed, content: dict[str, Any]):
         """Ajoute le champ Type/Genre à l'embed.
         
         Args:
@@ -509,7 +509,7 @@ class ConfrerieClass(interactions.Extension):
                 inline=False,
             )
 
-    def _add_consultation_links(self, embed: interactions.Embed, content: Dict[str, Any]):
+    def _add_consultation_links(self, embed: interactions.Embed, content: dict[str, Any]):
         """Ajoute les liens de consultation à l'embed.
         
         Args:
@@ -530,7 +530,7 @@ class ConfrerieClass(interactions.Extension):
                 )
                 first_link = False
 
-    def _extract_update_message(self, content: Dict[str, Any]) -> str:
+    def _extract_update_message(self, content: dict[str, Any]) -> str:
         """Extrait le message de mise à jour du contenu Notion.
         
         Args:
@@ -603,7 +603,7 @@ class ConfrerieClass(interactions.Extension):
             logger.error(f"Erreur inattendue lors du marquage de la page {page_id}: {e}")
             raise NotionAPIError(f"Erreur inattendue: {e}")
 
-    def _validate_editor_data(self, data: Dict[str, Any]) -> Dict[str, Any]:
+    def _validate_editor_data(self, data: dict[str, Any]) -> dict[str, Any]:
         """Valide et nettoie les données d'éditeur.
         
         Args:
@@ -1014,8 +1014,8 @@ def load(bot: interactions.Client):
             self.data = {}
 
     async def _build_editor_properties(
-        self, data: Dict[str, Any], commentaire: str, presentation: str
-    ) -> Dict[str, Any]:
+        self, data: dict[str, Any], commentaire: str, presentation: str
+    ) -> dict[str, Any]:
         """Construit les propriétés Notion pour un éditeur.
         
         Args:
@@ -1074,7 +1074,7 @@ def load(bot: interactions.Client):
 
         return properties
 
-    async def _create_notion_editor_page(self, properties: Dict[str, Any]) -> Dict[str, Any]:
+    async def _create_notion_editor_page(self, properties: dict[str, Any]) -> dict[str, Any]:
         """Crée une page éditeur dans Notion.
         
         Args:

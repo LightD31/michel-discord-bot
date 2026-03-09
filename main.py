@@ -24,7 +24,7 @@ WEBUI_HOST = config.get("webui", {}).get("host", "0.0.0.0")
 WEBUI_PORT = config.get("webui", {}).get("port", 8080)
 
 # Configure logging for this main.py handler
-logger = logutil.init_logger("main.py")
+logger = logutil.init_logger(os.path.basename(__file__))
 logger.debug(
     "Debug mode is %s; This is not a warning, \
 just an indicator. You may safely ignore",
@@ -48,7 +48,7 @@ client = interactions.Client(
 @interactions.listen()
 async def on_startup():
     """Called when the bot starts"""
-    logger.info(f"Logged in as {client.user}")
+    logger.info("Logged in as %s", client.user)
 
     # Start Web UI if enabled
     if WEBUI_ENABLED:
@@ -56,7 +56,7 @@ async def on_startup():
             from src.webui.server import start_webui
             start_webui(bot=client, host=WEBUI_HOST, port=WEBUI_PORT)
         except Exception as e:
-            logger.error(f"Failed to start Web UI: {e}")
+            logger.error("Failed to start Web UI: %s", e)
 
 
 # get all python files in "extensions" folder
@@ -68,7 +68,7 @@ extensions = [
 for extension in extensions:
     try:
         client.load_extension(extension)
-        logger.info(f"Loaded extension {extension}")
+        logger.info("Loaded extension %s", extension)
     except interactions.errors.ExtensionLoadException as e:
-        logger.exception(f"Failed to load extension {extension}.", exc_info=e)
+        logger.exception("Failed to load extension %s.", extension, exc_info=e)
 client.start()

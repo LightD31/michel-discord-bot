@@ -1,3 +1,10 @@
+"""
+Spotify Extension - Playlist voting and management for Discord.
+
+This extension allows guild members to collaboratively manage a Spotify playlist
+through slash commands and vote-based song additions.
+"""
+
 import json
 import os
 import random

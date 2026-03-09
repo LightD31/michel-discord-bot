@@ -11,30 +11,33 @@ Configuration par serveur via le dashboard web (moduleVlrgg):
     - channelMessageId: "channelId:messageId" pour le planning (optionnel)
 """
 
-from typing import List, Dict, Any, Tuple, Optional
+import os
 from dataclasses import dataclass, field
+from typing import Any
+
 from interactions import (
-    Task,
-    IntervalTrigger,
-    Extension,
-    listen,
-    Embed,
     Client,
+    Embed,
+    Extension,
+    IntervalTrigger,
+    Task,
     Timestamp,
+    listen,
 )
+
 from src import logutil
 from src.helpers import Colors, SPACER_FIELD
 from src.utils import load_config
 from src.vlrgg import (
+    expand_round_name,
+    extract_match_id_from_url,
     fetch_all_team_data as vlrgg_fetch_all,
     fetch_match_details,
-    extract_match_id_from_url,
-    parse_vlrgg_timestamp,
-    expand_round_name,
     format_vlr_date,
+    parse_vlrgg_timestamp,
 )
 
-logger = logutil.init_logger(__name__)
+logger = logutil.init_logger(os.path.basename(__file__))
 config, module_configs, enabled_servers = load_config("moduleVlrgg")
 
 # Constants
@@ -50,12 +53,12 @@ LIVE_UPDATE_INTERVAL_MINUTES = 1
 class TeamConfig:
     """Configuration d'une équipe à suivre."""
     name: str
-    vlr_team_id: Optional[str] = None
-    channel_id: Optional[str] = None
-    message_id: Optional[str] = None
+    vlr_team_id: str | None = None
+    channel_id: str | None = None
+    message_id: str | None = None
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "TeamConfig":
+    def from_dict(cls, data: dict[str, Any]) -> "TeamConfig":
         """Construit depuis un dict de config."""
         channel_id = None
         message_id = None
@@ -78,17 +81,17 @@ class TeamState:
     team_config: TeamConfig
     schedule_message: Any = None
     notification_channel: Any = None
-    ongoing_matches: Dict[str, Any] = field(default_factory=dict)
-    live_messages: Dict[str, Any] = field(default_factory=dict)
+    ongoing_matches: dict[str, Any] = field(default_factory=dict)
+    live_messages: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
 class ServerState:
     """État de suivi d'un serveur."""
     server_id: str
-    notification_channel_id: Optional[str] = None
+    notification_channel_id: str | None = None
     notification_channel: Any = None
-    teams: Dict[str, TeamState] = field(default_factory=dict)
+    teams: dict[str, TeamState] = field(default_factory=dict)
 
 
 class VlrggTracker(Extension):
@@ -99,7 +102,7 @@ class VlrggTracker(Extension):
 
     def __init__(self, bot: Client) -> None:
         self.bot = bot
-        self._servers: Dict[str, ServerState] = {}
+        self._servers: dict[str, ServerState] = {}
 
     @listen()
     async def on_startup(self) -> None:
@@ -248,7 +251,7 @@ class VlrggTracker(Extension):
     # ── Notifications live ───────────────────────────────────────────
 
     async def _handle_match_transitions(
-        self, ongoing_matches: Dict[str, Any], team_state: TeamState
+        self, ongoing_matches: dict[str, Any], team_state: TeamState
     ) -> None:
         """Gère les transitions de matchs (début/fin)."""
         tc = team_state.team_config
@@ -267,7 +270,7 @@ class VlrggTracker(Extension):
             team_state.ongoing_matches.pop(match_id, None)
 
     async def _send_vlrgg_match_started_notification(
-        self, match: Dict[str, Any], team_state: TeamState
+        self, match: dict[str, Any], team_state: TeamState
     ) -> None:
         """Envoie une notification VLR.gg quand un match commence."""
         channel = team_state.notification_channel
@@ -305,7 +308,7 @@ class VlrggTracker(Extension):
             logger.exception(f"Erreur notification VLR.gg: {e}")
 
     async def _update_vlrgg_live_message(
-        self, match: Dict[str, Any], match_id: str, team_state: TeamState
+        self, match: dict[str, Any], match_id: str, team_state: TeamState
     ) -> None:
         """Met à jour le message de score en direct (VLR.gg)."""
         message = team_state.live_messages.get(match_id)
@@ -475,7 +478,7 @@ class VlrggTracker(Extension):
 
     async def _fetch_team_schedule(
         self, tc: TeamConfig
-    ) -> Tuple[List[Embed], Dict[str, Any]]:
+    ) -> tuple[list[Embed], dict[str, Any]]:
         """Récupère le planning avec suivi des matchs en cours via VLR.gg."""
         vlr_data = await self._fetch_vlrgg_data(tc)
         if not vlr_data:
@@ -486,7 +489,7 @@ class VlrggTracker(Extension):
         ongoing = self._extract_vlrgg_ongoing(vlr_data)
         return embeds, ongoing
 
-    async def _fetch_vlrgg_data(self, tc: TeamConfig) -> Optional[Dict[str, Any]]:
+    async def _fetch_vlrgg_data(self, tc: TeamConfig) -> dict[str, Any] | None:
         """Récupère les données VLR.gg pour une équipe."""
         if not tc.vlr_team_id:
             logger.warning(f"{tc.name}: aucun vlrTeamId configuré")
@@ -509,8 +512,8 @@ class VlrggTracker(Extension):
     # ── Construction des embeds ──────────────────────────────────────
 
     def _build_vlrgg_embeds(
-        self, vlr_data: Dict[str, Any], team: str
-    ) -> List[Embed]:
+        self, vlr_data: dict[str, Any], team: str
+    ) -> list[Embed]:
         """Construit les embeds Discord à partir des données VLR.gg."""
         embeds = []
 
@@ -558,8 +561,8 @@ class VlrggTracker(Extension):
         return embeds
 
     def _format_vlrgg_result(
-        self, match: Dict[str, Any], team: str
-    ) -> Dict[str, str]:
+        self, match: dict[str, Any], team: str
+    ) -> dict[str, str]:
         """Formate un résultat VLR.gg pour l'affichage."""
         team1 = match.get("team1", "???")
         team2 = match.get("team2", "???")
@@ -633,7 +636,7 @@ class VlrggTracker(Extension):
             "value": value,
         }
 
-    def _format_vlrgg_live(self, match: Dict[str, Any]) -> Dict[str, str]:
+    def _format_vlrgg_live(self, match: dict[str, Any]) -> dict[str, str]:
         """Formate un match live VLR.gg pour l'affichage."""
         team1 = match.get("team1", "???")
         team2 = match.get("team2", "???")
@@ -658,7 +661,7 @@ class VlrggTracker(Extension):
             "value": value,
         }
 
-    def _format_vlrgg_upcoming(self, match: Dict[str, Any]) -> Dict[str, str]:
+    def _format_vlrgg_upcoming(self, match: dict[str, Any]) -> dict[str, str]:
         """Formate un match à venir VLR.gg pour l'affichage."""
         team1 = match.get("team1", "???")
         team2 = match.get("team2", "???")
@@ -683,9 +686,9 @@ class VlrggTracker(Extension):
             "value": f"{time_display}\n{event_line}",
         }
 
-    def _extract_vlrgg_ongoing(self, vlr_data: Dict[str, Any]) -> Dict[str, Any]:
+    def _extract_vlrgg_ongoing(self, vlr_data: dict[str, Any]) -> dict[str, Any]:
         """Extrait les matchs en cours depuis les données VLR.gg."""
-        ongoing: Dict[str, Any] = {}
+        ongoing: dict[str, Any] = {}
         for match in vlr_data.get("live", []):
             match_id = self._make_vlr_match_id(match)
             ongoing[match_id] = match
@@ -693,7 +696,7 @@ class VlrggTracker(Extension):
 
     # ── Formatage des détails de match (depuis /match/details) ───────
 
-    def _format_match_details_maps(self, details: Dict[str, Any]) -> Optional[str]:
+    def _format_match_details_maps(self, details: dict[str, Any]) -> str | None:
         """Formate les scores par map depuis les détails d'un match."""
         maps_data = details.get("maps", [])
         if not maps_data:
@@ -733,11 +736,11 @@ class VlrggTracker(Extension):
         return "\n".join(lines) if lines else None
 
     def _format_match_details_top_players(
-        self, details: Dict[str, Any]
-    ) -> Optional[str]:
+        self, details: dict[str, Any]
+    ) -> str | None:
         """Formate les meilleurs joueurs depuis les détails d'un match."""
         # Chercher les stats dans les maps
-        all_players: Dict[str, Dict[str, Any]] = {}
+        all_players: dict[str, dict[str, Any]] = {}
         maps_data = details.get("maps", [])
 
         for map_info in maps_data:
@@ -801,7 +804,7 @@ class VlrggTracker(Extension):
     # ── Utilitaires ──────────────────────────────────────────────────
 
     @staticmethod
-    def _make_vlr_match_id(match: Dict[str, Any]) -> str:
+    def _make_vlr_match_id(match: dict[str, Any]) -> str:
         """Génère un ID unique pour un match VLR.gg."""
         # Préférer l'URL du match si disponible pour un ID plus stable
         match_url = match.get("match_page", "")

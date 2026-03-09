@@ -1,10 +1,16 @@
+"""
+Feur Extension - Automatic "feur" reaction to "quoi" messages.
+
+This extension monitors messages for the word "quoi" and automatically reacts
+with "feur" emoji reactions, tracking stats in MongoDB.
+"""
+
 import os
 import re
 import string
 from datetime import datetime
-from typing import Optional
 
-from interactions import Extension, listen, slash_command, SlashContext, Embed, EmbedFooter
+from interactions import Embed, EmbedFooter, Extension, SlashContext, listen, slash_command
 from interactions.api.events import MessageCreate
 
 from src import logutil
@@ -40,7 +46,7 @@ class Feur(Extension):
             return {k: v for k, v in doc.items() if k != "_id"}
         return {"total": 0, "feur": 0, "pour_feur": 0}
 
-    async def _record_feur(self, user_id: str, guild_id: Optional[str], feur_type: str):
+    async def _record_feur(self, user_id: str, guild_id: str | None, feur_type: str):
         """Record a feur event using atomic MongoDB $inc in the guild's DB."""
         if not guild_id:
             return

@@ -11,10 +11,8 @@ This module provides:
 
 import os
 import random
-from datetime import datetime, timedelta
-
-from typing import Optional
 from datetime import date as date_type
+from datetime import datetime, timedelta
 
 from interactions import (
     ActionRow,
@@ -505,7 +503,7 @@ class ColocExtension(Extension):
     # ==================== Corporation Recap ====================
 
     @Task.create(TimeTrigger(23, 59, 45, utc=False))
-    async def corporation_recap(self, date: Optional[str] = None):
+    async def corporation_recap(self, date: str | None = None):
         """Send daily corporation recap."""
         channel = await self._get_zunivers_channel()
         if not channel:
@@ -549,12 +547,12 @@ class ColocExtension(Extension):
         opt_type=OptionType.STRING,
         required=False,
     )
-    async def corpo_command(self, ctx: SlashContext, date: Optional[str] = None):
+    async def corpo_command(self, ctx: SlashContext, date: str | None = None):
         """Manual corporation recap command."""
         await self.corporation_recap(date=date)
         await ctx.send("Corporation recap envoyé !", ephemeral=True)
 
-    def _parse_date(self, date_str: Optional[str] = None) -> Optional[date_type]:
+    def _parse_date(self, date_str: str | None = None) -> date_type | None:
         """Parse a date string or return today's date."""
         if date_str is None:
             return datetime.today().date()
@@ -603,7 +601,7 @@ class ColocExtension(Extension):
 
     # ==================== Helpers ====================
 
-    async def _get_zunivers_channel(self) -> Optional[GuildText]:
+    async def _get_zunivers_channel(self) -> GuildText | None:
         """Get the configured Zunivers channel."""
         try:
             channel = await self.bot.fetch_channel(module_config["colocZuniversChannelId"])

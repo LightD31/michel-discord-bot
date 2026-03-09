@@ -2,7 +2,6 @@
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Optional
 from enum import Enum
 
 from .constants import ReminderType
@@ -101,8 +100,8 @@ class ZuniversEvent:
     is_active: bool
     begin_date: datetime
     end_date: datetime
-    image_url: Optional[str] = None
-    balance_cost: Optional[int] = None
+    image_url: str | None = None
+    balance_cost: int | None = None
     items: list[dict] = field(default_factory=list)
     
     def to_state_dict(self) -> dict:
@@ -147,7 +146,7 @@ class HardcoreSeason:
         }
     
     @classmethod
-    def from_api_response(cls, data: dict) -> Optional["HardcoreSeason"]:
+    def from_api_response(cls, data: dict) -> "HardcoreSeason" | None:
         """Create a HardcoreSeason from API response data."""
         if data is None:
             return None
@@ -159,7 +158,7 @@ class HardcoreSeason:
         )
     
     @classmethod
-    def from_dict(cls, data: dict) -> Optional["HardcoreSeason"]:
+    def from_dict(cls, data: dict) -> "HardcoreSeason" | None:
         """Create a HardcoreSeason from a stored dictionary."""
         if data is None:
             return None
@@ -176,7 +175,7 @@ class HardcoreSeason:
 class EventState:
     """Manages the state of events and hardcore seasons."""
     events: dict[str, dict[str, dict]] = field(default_factory=dict)  # rule_set -> event_id -> state
-    hardcore_season: Optional[HardcoreSeason] = None
+    hardcore_season: HardcoreSeason | None = None
     
     def to_dict(self) -> dict:
         """Convert to dictionary for JSON serialization."""

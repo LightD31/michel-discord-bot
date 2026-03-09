@@ -3,8 +3,9 @@
 import asyncio
 import io
 import os
-from typing import Optional, Any
-from aiohttp import ClientSession, ClientError, ClientTimeout
+from typing import Any
+
+from aiohttp import ClientError, ClientSession, ClientTimeout
 from interactions import File
 
 from src import logutil
@@ -23,7 +24,7 @@ logger = logutil.init_logger(os.path.basename(__file__))
 
 class ZuniversAPIError(Exception):
     """Custom exception for Zunivers API errors."""
-    def __init__(self, message: str, status_code: Optional[int] = None):
+    def __init__(self, message: str, status_code: int | None = None):
         super().__init__(message)
         self.status_code = status_code
 
@@ -35,7 +36,7 @@ class ZuniversAPIClient:
     MAX_RETRIES = 3
     RETRY_DELAY = 1.0  # seconds
     
-    def __init__(self, session: Optional[ClientSession] = None):
+    def __init__(self, session: ClientSession | None = None):
         self._session = session
         self._owns_session = session is None
     
@@ -54,7 +55,7 @@ class ZuniversAPIClient:
     async def _request(
         self,
         url: str,
-        rule_set: Optional[ReminderType] = None,
+        rule_set: ReminderType | None = None,
         retries: int = MAX_RETRIES,
     ) -> Any:
         """Make a request with retry logic."""
@@ -80,7 +81,7 @@ class ZuniversAPIClient:
                 last_error = e
                 if attempt < retries - 1:
                     await asyncio.sleep(self.RETRY_DELAY * (attempt + 1))
-                    logger.warning(f"Retry {attempt + 1}/{retries} for {url}: {e}")
+                    logger.warning("Retry %d/%d for %s: %s", attempt + 1, retries, url, e)
         
         raise ZuniversAPIError(f"Failed after {retries} retries: {last_error}")
     
@@ -89,7 +90,7 @@ class ZuniversAPIClient:
         result = await self._request(ZUNIVERS_EVENTS_URL, rule_set)
         return result if result else []
     
-    async def get_current_hardcore_season(self) -> Optional[dict]:
+    async def get_current_hardcore_season(self) -> dict | None:
         """Get the current hardcore season."""
         return await self._request(
             ZUNIVERS_HARDCORE_SEASON_URL,
@@ -108,12 +109,12 @@ class ZuniversAPIClient:
         result = await self._request(url, ReminderType.NORMAL)
         return result if isinstance(result, dict) else {}
     
-    async def get_corporation(self, corp_id: str) -> Optional[dict]:
+    async def get_corporation(self, corp_id: str) -> dict | None:
         """Get corporation data."""
         url = ZUNIVERS_CORPORATION_URL_TEMPLATE.format(corp_id=corp_id)
         return await self._request(url, ReminderType.NORMAL)
     
-    async def download_image(self, image_url: str, filename: str = "image.webp") -> Optional[File]:
+    async def download_image(self, image_url: str, filename: str = "image.webp") -> File | None:
         """Download an image and return it as a Discord File object."""
         try:
             session = await self._get_session()
@@ -123,7 +124,7 @@ class ZuniversAPIClient:
                     file_obj = io.BytesIO(image_data)
                     return File(file=file_obj, file_name=filename)
         except Exception as e:
-            logger.warning(f"Error downloading image from {image_url}: {e}")
+            logger.warning("Error downloading image from %s: %s", image_url, e)
         return None
     
     async def check_user_journa_done(

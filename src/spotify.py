@@ -2,14 +2,16 @@
 This module provides functionality for authenticating with the Spotify API and creating embed messages for Discord bots.
 """
 
+import io
 import os
+import re
 from datetime import datetime
 from enum import Enum
-import io
+
 import aiohttp
-import re
 import interactions
 import spotipy
+
 from src import logutil
 from src.helpers import Colors
 from src.utils import load_config

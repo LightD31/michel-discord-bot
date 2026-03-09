@@ -17,7 +17,6 @@ import os
 import re
 import random
 from datetime import datetime
-from typing import Optional
 
 import pymongo
 import pytz
@@ -95,7 +94,7 @@ def _strip_year_from_format(date_format: str) -> str:
     return cleaned.strip(" ,.-/")
 
 
-def _compute_age(birth_date: datetime, reference: Optional[datetime] = None) -> int:
+def _compute_age(birth_date: datetime, reference: datetime | None = None) -> int:
     """Calcule l'âge en années complètes entre *birth_date* et *reference*."""
     if reference is None:
         reference = datetime.now()
@@ -139,7 +138,7 @@ class BirthdayClass(Extension):
     # Database helpers (motor async natif)
     # ------------------------------------------------------------------
 
-    async def _db_find_one(self, guild_id, query: dict) -> Optional[dict]:
+    async def _db_find_one(self, guild_id, query: dict) -> dict | None:
         """Trouve un document."""
         try:
             return await self._get_col(guild_id).find_one(query)
@@ -289,7 +288,7 @@ class BirthdayClass(Extension):
         ctx: SlashContext,
         date: str,
         timezone: str,
-        hideyear: Optional[bool] = False,
+        hideyear: bool | None = False,
     ) -> None:
         """Ajoute ou modifie l'anniversaire d'un utilisateur."""
         if not await require_guild(ctx):

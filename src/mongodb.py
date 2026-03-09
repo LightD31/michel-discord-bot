@@ -26,9 +26,8 @@ import os
 import shutil
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, Union
 
-from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase, AsyncIOMotorCollection
+from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorCollection, AsyncIOMotorDatabase
 
 from src import logutil
 from src.utils import load_config
@@ -43,9 +42,9 @@ GUILD_DB_PREFIX = "guild_"
 class MongoManager:
     """Singleton-style global MongoDB connection manager using motor (async)."""
 
-    _instance: Optional["MongoManager"] = None
-    _client: Optional[AsyncIOMotorClient] = None
-    _url: Optional[str] = None
+    _instance: "MongoManager" | None = None
+    _client: AsyncIOMotorClient | None = None
+    _url: str | None = None
 
     def __new__(cls) -> "MongoManager":
         if cls._instance is None:
@@ -87,12 +86,12 @@ class MongoManager:
 
     # --- Per-guild helpers -------------------------------------------
 
-    def get_guild_db(self, guild_id: Union[str, int]) -> AsyncIOMotorDatabase:
+    def get_guild_db(self, guild_id: str | int) -> AsyncIOMotorDatabase:
         """Return the database for a specific guild."""
         return self.client[f"{GUILD_DB_PREFIX}{guild_id}"]
 
     def get_guild_collection(
-        self, guild_id: Union[str, int], collection_name: str
+        self, guild_id: str | int, collection_name: str
     ) -> AsyncIOMotorCollection:
         """Return a collection inside a guild's database."""
         return self.client[f"{GUILD_DB_PREFIX}{guild_id}"][collection_name]

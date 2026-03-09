@@ -7,7 +7,6 @@ import asyncio
 import json
 import os
 import secrets
-from typing import Optional
 
 from fastapi import FastAPI, Request, Response, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
@@ -86,7 +85,7 @@ def create_app(bot=None) -> FastAPI:
         with open(CONFIG_PATH, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=4, ensure_ascii=False)
 
-    def _get_session(request: Request) -> Optional[Session]:
+    def _get_session(request: Request) -> Session | None:
         token = request.cookies.get(COOKIE_NAME)
         if not token:
             return None

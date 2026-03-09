@@ -11,7 +11,7 @@ import random
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import httpx
 from interactions import (
@@ -271,7 +271,7 @@ class IAExtension(Extension):
     
     def __init__(self, bot: Client):
         self.bot: Client = bot
-        self.openrouter_client: Optional[AsyncOpenAI] = None
+        self.openrouter_client: AsyncOpenAI | None = None
         self.model_prices: dict[str, ModelPricing] = {}
         self.vote_manager = VoteManager()
         self.message_splitter = MessageSplitter()

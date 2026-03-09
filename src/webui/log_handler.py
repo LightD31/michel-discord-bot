@@ -8,7 +8,6 @@ import logging
 import weakref
 from collections import deque
 from dataclasses import dataclass
-from typing import Optional
 
 
 @dataclass
@@ -38,7 +37,7 @@ class WebUILogHandler(logging.Handler):
     and notifies any SSE listeners.
     """
 
-    _instance: Optional["WebUILogHandler"] = None
+    _instance: "WebUILogHandler" | None = None
 
     # Loggers to ignore to prevent feedback loops (SSE logging its own
     # chunks) and reduce noise from infrastructure loggers.
@@ -56,7 +55,7 @@ class WebUILogHandler(logging.Handler):
         WebUILogHandler._instance = self
 
     @classmethod
-    def get_instance(cls) -> Optional["WebUILogHandler"]:
+    def get_instance(cls) -> "WebUILogHandler" | None:
         return cls._instance
 
     def emit(self, record: logging.LogRecord):
@@ -97,8 +96,8 @@ class WebUILogHandler(logging.Handler):
         except Exception:
             self.handleError(record)
 
-    def get_recent(self, count: int = 200, level: Optional[str] = None,
-                   search: Optional[str] = None, logger_name: Optional[str] = None) -> list[dict]:
+    def get_recent(self, count: int = 200, level: str | None = None,
+                   search: str | None = None, logger_name: str | None = None) -> list[dict]:
         """Get recent log entries with optional filtering."""
         entries = list(self.buffer)
 

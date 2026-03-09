@@ -1,23 +1,47 @@
+"""
+Secret Santa Extension for Discord Bot.
+
+This extension manages Secret Santa draw sessions with features including:
+- Creating and joining sessions
+- Automatic draw management
+- Exclusion rules support
+- MongoDB-backed persistence
+"""
+
 import json
+import os
 import random
 import re
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Union
 
 from interactions import (
-    Extension, Client, BrandColors, Embed, OptionType, ComponentContext,
-    SlashContext, slash_command, slash_option, Member, User, Button,
-    ButtonStyle, ActionRow, component_callback, Permissions, spread_to_rows,
-    IntegrationType
+    ActionRow,
+    BrandColors,
+    Button,
+    ButtonStyle,
+    Client,
+    ComponentContext,
+    Embed,
+    Extension,
+    IntegrationType,
+    Member,
+    OptionType,
+    Permissions,
+    SlashContext,
+    User,
+    component_callback,
+    slash_command,
+    slash_option,
+    spread_to_rows,
 )
 
 from src import logutil
 from src.mongodb import mongo_manager
 from src.utils import load_config, load_discord2name
 
-logger = logutil.init_logger(__name__)
+logger = logutil.init_logger(os.path.basename(__file__))
 config, module_config, enabled_servers = load_config("moduleSecretSanta")
 
 # Data directory setup (kept only for human-readable draw files)
@@ -30,13 +54,13 @@ class SecretSantaSession:
     """Represents an active Secret Santa session."""
     context_id: str
     channel_id: int
-    message_id: Optional[int] = None
+    message_id: int | None = None
     created_at: str = ""
     created_by: int = 0
-    participants: List[int] = None
+    participants: list[int] = None
     is_drawn: bool = False
-    budget: Optional[str] = None
-    deadline: Optional[str] = None
+    budget: str | None = None
+    deadline: str | None = None
     
     def __post_init__(self):
         if self.participants is None:
@@ -49,7 +73,7 @@ class SecretSanta(Extension):
     def __init__(self, bot: Client):
         self.bot = bot
 
-    def get_context_id(self, ctx: Union[SlashContext, ComponentContext]) -> str:
+    def get_context_id(self, ctx: SlashContext | ComponentContext) -> str:
         """Get a unique identifier for the context (guild or channel for private groups)."""
         if ctx.guild:
             return f"guild_{ctx.guild.id}"
@@ -82,7 +106,7 @@ class SecretSanta(Extension):
 
     # ========== Session Management ==========
     
-    async def get_session(self, context_id: str) -> Optional[SecretSantaSession]:
+    async def get_session(self, context_id: str) -> SecretSantaSession | None:
         """Get a session by context ID."""
         sessions_col, _, _ = self._get_collections(context_id)
         doc = await sessions_col.find_one({"_id": context_id})
@@ -110,7 +134,7 @@ class SecretSanta(Extension):
 
     # ========== Banned Pairs ==========
     
-    async def read_banned_pairs(self, context_id: str) -> List[Tuple[int, int]]:
+    async def read_banned_pairs(self, context_id: str) -> list[tuple[int, int]]:
         """Read banned pairs for a context."""
         _, _, banned_pairs_col = self._get_collections(context_id)
         doc = await banned_pairs_col.find_one({"_id": context_id})
@@ -118,7 +142,7 @@ class SecretSanta(Extension):
             return [tuple(p) for p in doc.get("pairs", [])]
         return []
 
-    async def write_banned_pairs(self, context_id: str, banned_pairs: List[Tuple[int, int]]) -> None:
+    async def write_banned_pairs(self, context_id: str, banned_pairs: list[tuple[int, int]]) -> None:
         """Write banned pairs for a context."""
         _, _, banned_pairs_col = self._get_collections(context_id)
         await banned_pairs_col.update_one(
@@ -130,7 +154,7 @@ class SecretSanta(Extension):
 
     # ========== Draw Results ==========
     
-    async def save_draw_results(self, context_id: str, draw_results: List[Tuple[int, int]]) -> None:
+    async def save_draw_results(self, context_id: str, draw_results: list[tuple[int, int]]) -> None:
         """Save draw results."""
         _, draw_results_col, _ = self._get_collections(context_id)
         await draw_results_col.update_one(
@@ -143,7 +167,7 @@ class SecretSanta(Extension):
         )
         logger.info(f"Draw results saved for {context_id}")
 
-    async def get_draw_results(self, context_id: str) -> Optional[List[Tuple[int, int]]]:
+    async def get_draw_results(self, context_id: str) -> list[tuple[int, int]] | None:
         """Get draw results for a context."""
         _, draw_results_col, _ = self._get_collections(context_id)
         doc = await draw_results_col.find_one({"_id": context_id})
@@ -154,7 +178,7 @@ class SecretSanta(Extension):
     async def save_human_readable_draw(
         self,
         context_id: str,
-        assignments: List[Tuple[int, int]],
+        assignments: list[tuple[int, int]],
         session: SecretSantaSession,
         context_name: str
     ) -> None:
@@ -211,7 +235,7 @@ class SecretSanta(Extension):
 
     # ========== Assignment Logic ==========
     
-    def is_valid_assignment(self, giver: int, receiver: int, banned_pairs: List[Tuple[int, int]]) -> bool:
+    def is_valid_assignment(self, giver: int, receiver: int, banned_pairs: list[tuple[int, int]]) -> bool:
         """Check if an assignment is valid (not in banned pairs)."""
         return not any(
             (giver == p1 and receiver == p2) or (giver == p2 and receiver == p1)
@@ -220,9 +244,9 @@ class SecretSanta(Extension):
 
     def _build_valid_receivers(
         self, 
-        participant_ids: List[int], 
-        banned_pairs: List[Tuple[int, int]]
-    ) -> Dict[int, List[int]]:
+        participant_ids: list[int], 
+        banned_pairs: list[tuple[int, int]]
+    ) -> dict[int, list[int]]:
         """Build a dict of valid receivers for each giver."""
         valid_receivers = {}
         for giver in participant_ids:
@@ -234,11 +258,11 @@ class SecretSanta(Extension):
 
     def _backtrack_assign(
         self,
-        givers: List[int],
+        givers: list[int],
         index: int,
-        assignments: Dict[int, int],
+        assignments: dict[int, int],
         available_receivers: set,
-        valid_receivers: Dict[int, List[int]]
+        valid_receivers: dict[int, list[int]]
     ) -> bool:
         """Backtracking algorithm to find valid assignments."""
         if index == len(givers):
@@ -268,10 +292,10 @@ class SecretSanta(Extension):
 
     def _has_valid_future(
         self,
-        givers: List[int],
+        givers: list[int],
         start_index: int,
         available_receivers: set,
-        valid_receivers: Dict[int, List[int]]
+        valid_receivers: dict[int, list[int]]
     ) -> bool:
         """Forward checking: verify all future givers have at least one valid receiver."""
         for i in range(start_index, len(givers)):
@@ -282,9 +306,9 @@ class SecretSanta(Extension):
 
     def generate_valid_assignments(
         self, 
-        participant_ids: List[int], 
-        banned_pairs: List[Tuple[int, int]]
-    ) -> Optional[List[Tuple[int, int]]]:
+        participant_ids: list[int], 
+        banned_pairs: list[tuple[int, int]]
+    ) -> list[tuple[int, int]] | None:
         """
         Generate valid Secret Santa assignments using a smart backtracking algorithm.
         
@@ -312,7 +336,7 @@ class SecretSanta(Extension):
         random.shuffle(givers)  # Shuffle first for randomness
         givers.sort(key=lambda g: len(valid_receivers[g]))  # Then sort by constraint level
         
-        assignments: Dict[int, int] = {}
+        assignments: dict[int, int] = {}
         available_receivers = set(participant_ids)
         
         if self._backtrack_assign(givers, 0, assignments, available_receivers, valid_receivers):
@@ -323,9 +347,9 @@ class SecretSanta(Extension):
 
     def generate_assignments_with_subgroups(
         self, 
-        participant_ids: List[int], 
-        banned_pairs: List[Tuple[int, int]]
-    ) -> Optional[Tuple[List[Tuple[int, int]], int]]:
+        participant_ids: list[int], 
+        banned_pairs: list[tuple[int, int]]
+    ) -> tuple[list[tuple[int, int]], int] | None:
         """
         Generate Secret Santa assignments allowing multiple subgroups (cycles).
         
@@ -344,7 +368,7 @@ class SecretSanta(Extension):
                 logger.warning(f"No valid receivers for participant {giver}")
                 return None
         
-        assignments: Dict[int, int] = {}
+        assignments: dict[int, int] = {}
         remaining = set(participant_ids)
         subgroups = 0
         
@@ -394,15 +418,15 @@ class SecretSanta(Extension):
 
     def _retry_subgroup_assignment(
         self, 
-        participant_ids: List[int], 
-        banned_pairs: List[Tuple[int, int]],
+        participant_ids: list[int], 
+        banned_pairs: list[tuple[int, int]],
         max_retries: int = 50
-    ) -> Optional[Tuple[List[Tuple[int, int]], int]]:
+    ) -> tuple[list[tuple[int, int]], int] | None:
         """Retry subgroup assignment with different random starts."""
         valid_receivers = self._build_valid_receivers(participant_ids, banned_pairs)
         
         for _ in range(max_retries):
-            assignments: Dict[int, int] = {}
+            assignments: dict[int, int] = {}
             remaining = set(participant_ids)
             subgroups = 0
             success = True
@@ -441,7 +465,7 @@ class SecretSanta(Extension):
         
         return None
 
-    def _create_join_buttons(self, context_id: str, disabled: bool = False) -> List[ActionRow]:
+    def _create_join_buttons(self, context_id: str, disabled: bool = False) -> list[ActionRow]:
         """Create join/leave buttons for the session."""
         return spread_to_rows(
             Button(
@@ -488,8 +512,8 @@ class SecretSanta(Extension):
     async def create_session(
         self, 
         ctx: SlashContext, 
-        budget: Optional[str] = None,
-        deadline: Optional[str] = None
+        budget: str | None = None,
+        deadline: str | None = None
     ) -> None:
         context_id = self.get_context_id(ctx)
         existing = await self.get_session(context_id)
@@ -1090,7 +1114,7 @@ class SecretSanta(Extension):
         await self._update_session_message(ctx, session)
         await self._send_response(ctx, session, "Vous avez été retiré du Père Noël Secret.")
 
-    async def _send_response(self, ctx: ComponentContext, session: Optional[SecretSantaSession], message: str) -> None:
+    async def _send_response(self, ctx: ComponentContext, session: SecretSantaSession | None, message: str) -> None:
         """
         Send a response to the user. In DM groups, ephemeral messages only work for the session creator,
         so we send a DM to other users instead.

@@ -2,7 +2,7 @@
 
 import random
 from datetime import datetime
-from typing import Any, Callable, Optional
+from typing import Any, Callable
 
 from interactions import AutocompleteContext, Client, SlashContext
 

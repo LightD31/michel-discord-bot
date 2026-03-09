@@ -1,6 +1,5 @@
 import os
 import random
-from typing import Optional
 from interactions import (
     Client,
     Extension,
@@ -38,7 +37,7 @@ class RandomClass(Extension):
         """Retourne un entier aléatoire entre min_val et max_val (inclus)."""
         return random.randint(min_val, max_val)
 
-    def _validate_choices(self, choices: list) -> Optional[str]:
+    def _validate_choices(self, choices: list) -> str | None:
         """Valide la liste des choix et retourne un message d'erreur si nécessaire."""
         if len(choices) <= 1:
             return ERROR_MESSAGES["no_choice"]
@@ -46,7 +45,7 @@ class RandomClass(Extension):
             return ERROR_MESSAGES["too_many_choices"]
         return None
 
-    def _validate_die_faces(self, faces: int) -> Optional[str]:
+    def _validate_die_faces(self, faces: int) -> str | None:
         """Valide le nombre de faces du dé et retourne un message d'erreur si nécessaire."""
         if faces < MIN_DIE_FACES or faces > MAX_DIE_FACES:
             return ERROR_MESSAGES["invalid_die_faces"]

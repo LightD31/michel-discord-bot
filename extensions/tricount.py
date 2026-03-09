@@ -1,6 +1,12 @@
+"""
+Tricount Extension - Shared expense tracking for Discord guilds.
+
+This extension provides group-based shared expense tracking similar to Tricount,
+allowing members to record expenses and calculate debts within named groups.
+"""
+
 import os
 from datetime import datetime
-from typing import Optional, Union
 
 from bson import ObjectId
 from interactions import (
@@ -62,7 +68,7 @@ class TricountClass(Extension):
         self,
         ctx: SlashContext,
         nom: str,
-        description: Optional[str] = None,
+        description: str | None = None,
     ):
         if not await require_guild(ctx):
             return
@@ -254,7 +260,7 @@ class TricountClass(Extension):
         groupe: str,
         montant: float,
         description: str,
-        payeur: Optional[Union[User, Member]] = None,
+        payeur: User | Member | None = None,
     ):
         if not await require_guild(ctx):
             return
@@ -371,9 +377,9 @@ class TricountClass(Extension):
         ctx: SlashContext,
         groupe: str,
         depense_id: str,
-        nouveau_montant: Optional[float] = None,
-        nouvelle_description: Optional[str] = None,
-        nouveau_payeur: Optional[Union[User, Member]] = None,
+        nouveau_montant: float | None = None,
+        nouvelle_description: str | None = None,
+        nouveau_payeur: User | Member | None = None,
     ):
         if not await require_guild(ctx):
             return
@@ -556,7 +562,7 @@ class TricountClass(Extension):
         min_value=1,
         max_value=20,
     )
-    async def liste_depenses(self, ctx: SlashContext, groupe: str, limite: Optional[int] = 10):
+    async def liste_depenses(self, ctx: SlashContext, groupe: str, limite: int | None = 10):
         if not await require_guild(ctx):
             return
             

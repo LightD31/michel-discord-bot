@@ -2,7 +2,6 @@
 
 import os
 from datetime import datetime
-from typing import Optional, Tuple
 
 from interactions import Embed, File
 
@@ -114,7 +113,7 @@ def create_event_embed(
     return embed
 
 
-def set_event_embed_image(embed: Embed, image_url: Optional[str], image_file: Optional[File] = None) -> None:
+def set_event_embed_image(embed: Embed, image_url: str | None, image_file: File | None = None) -> None:
     """Set the image on an event embed, handling URLs without extensions."""
     if not image_url:
         return

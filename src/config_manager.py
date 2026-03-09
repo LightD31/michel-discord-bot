@@ -2,7 +2,7 @@
 
 import json
 import os
-from typing import Tuple
+
 from src import logutil
 
 logger = logutil.init_logger(os.path.basename(__file__))
@@ -28,7 +28,7 @@ def load_full_config() -> dict:
     return _load_config_file()
 
 
-def load_config(module_name: str | None = None) -> Tuple[dict, dict, list[str]]:
+def load_config(module_name: str | None = None) -> tuple[dict, dict, list[str]]:
     """Load the configuration for a specific module."""
     data = load_full_config()
     config = data.get("config", {})

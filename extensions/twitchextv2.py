@@ -1,8 +1,14 @@
+"""
+Twitch Extension v2 - Twitch stream notifications and schedule tracking.
+
+This extension monitors Twitch streamers for live status changes and schedules,
+posting notifications and managing Discord events via the Twitch EventSub API.
+"""
+
 import asyncio
 import os
 import signal
 from datetime import datetime, timedelta
-from typing import Optional, Union, Dict, List
 
 import aiohttp
 import pytz
@@ -20,9 +26,8 @@ from interactions import (
     ScheduledEventStatus,
     ScheduledEventType,
     Task,
-    TimestampStyles,
     TimeTrigger,
-    OrTrigger,
+    TimestampStyles,
     listen,
     utils,
 )
@@ -77,13 +82,13 @@ class StreamerInfo:
         self.notif_channel = None
         self.scheduled_event = None
         # Stream session info (stored when stream starts)
-        self.stream_start_time: Optional[datetime] = None
-        self.stream_title: Optional[str] = None
+        self.stream_start_time: datetime | None = None
+        self.stream_title: str | None = None
         # Last notified title and category (to avoid duplicate notifications)
-        self.last_notified_title: Optional[str] = None
-        self.last_notified_category: Optional[str] = None
-        self.stream_game: Optional[str] = None
-        self.stream_id: Optional[str] = None
+        self.last_notified_title: str | None = None
+        self.last_notified_category: str | None = None
+        self.stream_game: str | None = None
+        self.stream_id: str | None = None
 
 
 class TwitchExt2(Extension):
@@ -98,7 +103,7 @@ class TwitchExt2(Extension):
         self.client_secret = self.config["twitch"]["twitchClientSecret"]
 
         # Initialize data structures for multiple servers and streamers
-        self.streamers: Dict[str, StreamerInfo] = {}
+        self.streamers: dict[str, StreamerInfo] = {}
         self.init_streamers()
 
         self.eventsub = None  # Initialize eventsub here
@@ -110,7 +115,7 @@ class TwitchExt2(Extension):
         os.makedirs(self.EMOTE_CACHE_DIR, exist_ok=True)
 
     @staticmethod
-    def get_display_value(value: Optional[str], fallback: str = "Non renseigné") -> str:
+    def get_display_value(value: str | None, fallback: str = "Non renseigné") -> str:
         """Normalize optional values before displaying them in notifications."""
         if value is None:
             return fallback
@@ -156,7 +161,7 @@ class TwitchExt2(Extension):
                 timestamp=now,
             )
 
-    async def download_emote_image(self, emote_id: str, image_url: str, streamer_id: str) -> Optional[str]:
+    async def download_emote_image(self, emote_id: str, image_url: str, streamer_id: str) -> str | None:
         """
         Download and cache an emote image locally.
 
@@ -189,7 +194,7 @@ class TwitchExt2(Extension):
             logger.error(f"Error downloading emote image {emote_id}: {e}")
             return None
 
-    def get_cached_emote_path(self, emote_id: str, streamer_id: str) -> Optional[str]:
+    def get_cached_emote_path(self, emote_id: str, streamer_id: str) -> str | None:
         """
         Get the path to a cached emote image if it exists.
 
@@ -233,7 +238,7 @@ class TwitchExt2(Extension):
                     config=streamer_config,
                 )
 
-    def get_streamer_by_user_id(self, user_id: str) -> List[StreamerInfo]:
+    def get_streamer_by_user_id(self, user_id: str) -> list[StreamerInfo]:
         """Get all streamers that match the given Twitch user ID"""
         return [s for s in self.streamers.values() if s.user_id == user_id]
 
@@ -488,10 +493,10 @@ class TwitchExt2(Extension):
 
     async def create_stream_embed(
         self,
-        stream: Optional[Stream],
+        stream: Stream | None,
         user_id: str,
         offline: bool = False,
-        data: Optional[ChannelUpdateEvent] = None,
+        data: ChannelUpdateEvent | None = None,
     ) -> Embed:
 
         user_id, title, description, user_login = await self.get_stream_info(
@@ -507,10 +512,10 @@ class TwitchExt2(Extension):
 
     async def get_stream_info(
         self,
-        stream: Optional[Stream],
+        stream: Stream | None,
         user_id: str,
         offline: bool,
-        data: Optional[ChannelUpdateEvent] = None,
+        data: ChannelUpdateEvent | None = None,
     ) -> tuple:
         if data:
             return self.get_stream_info_from_data(data, offline, stream)
@@ -631,7 +636,7 @@ class TwitchExt2(Extension):
         self,
         streamer: StreamerInfo,
         offline: bool = False,
-        data: Optional[Union[ChannelUpdateEvent, StreamOfflineEvent]] = None,
+        data: ChannelUpdateEvent | StreamOfflineEvent | None = None,
     ) -> None:
         """
         Edit the message for a specific streamer.
@@ -639,7 +644,7 @@ class TwitchExt2(Extension):
         Args:
             streamer (StreamerInfo): The streamer info object.
             offline (bool, optional): The offline status. Defaults to False.
-            data (Union[ChannelUpdateEvent, StreamOfflineEvent], optional): Event data. Defaults to None.
+            data (ChannelUpdateEvent | StreamOfflineEvent, optional): Event data. Defaults to None.
         """
         if not streamer.message or not streamer.channel:
             logger.warning(f"Missing message or channel for {streamer.streamer_id} in guild {streamer.guild_id}")
@@ -983,7 +988,7 @@ class TwitchExt2(Extension):
 
         # Group streamers by streamer_id so we only fetch emotes once per unique streamer
         # and send notifications to all guilds following that streamer.
-        streamers_by_id: Dict[str, List[StreamerInfo]] = {}
+        streamers_by_id: dict[str, list[StreamerInfo]] = {}
         for streamer in self.streamers.values():
             if not streamer.user_id or not streamer.notif_channel:
                 continue

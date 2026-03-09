@@ -1,8 +1,15 @@
+"""
+XP Extension - Experience and leveling system for Discord guilds.
+
+This extension provides a per-server XP system where members earn experience
+for activity, with configurable level roles and leaderboards.
+"""
+
 import os
 import random
 import time
 from datetime import datetime
-from typing import Any, Optional, Dict, Tuple
+from typing import Any
 
 import pymongo
 import pytz
@@ -25,12 +32,11 @@ from interactions import (
     slash_option,
 )
 from interactions.api.events import MessageCreate
-from src.utils import CustomPaginator
 
 from src import logutil
 from src.helpers import Colors, pick_weighted_message
 from src.mongodb import mongo_manager
-from src.utils import format_number, load_config
+from src.utils import CustomPaginator, format_number, load_config
 
 logger = logutil.init_logger(os.path.basename(__file__))
 config, module_config, enabled_servers = load_config("moduleXp")
@@ -54,10 +60,10 @@ class TTLCache:
     """Simple TTL cache implementation."""
     
     def __init__(self, ttl: int = 300):
-        self._cache: Dict[str, Tuple[Any, float]] = {}
+        self._cache: dict[str, tuple[Any, float]] = {}
         self._ttl = ttl
     
-    def get(self, key: str) -> Optional[Any]:
+    def get(self, key: str) -> Any | None:
         """Get a value from cache if it exists and is not expired."""
         if key in self._cache:
             value, timestamp = self._cache[key]
@@ -360,7 +366,7 @@ class XP(Extension):
         )
         await message.channel.send(formatted_message)
 
-    async def _get_user_rank(self, guild_id: str, user_id: str) -> Optional[int]:
+    async def _get_user_rank(self, guild_id: str, user_id: str) -> int | None:
         """Get the rank of a user in the guild using MongoDB aggregation.
         
         Returns:
@@ -407,7 +413,7 @@ class XP(Extension):
             # Fallback to old method if aggregation fails
             return await self._get_user_rank_fallback(guild_id, user_id)
 
-    async def _get_user_rank_fallback(self, guild_id: str, user_id: str) -> Optional[int]:
+    async def _get_user_rank_fallback(self, guild_id: str, user_id: str) -> int | None:
         """Fallback method to get user rank without aggregation."""
         try:
             rankings = mongo_manager.get_guild_collection(guild_id, "xp").find({}, {"_id": 1}).sort("xp", -1)
@@ -480,7 +486,7 @@ class XP(Extension):
         embed.set_thumbnail(url=target_user.avatar_url)
         await ctx.send(embed=embed)
 
-    async def _get_member_info(self, guild: Guild, user_id: str) -> Optional[tuple[str, str]]:
+    async def _get_member_info(self, guild: Guild, user_id: str) -> tuple[str, str] | None:
         """Get member display name and username with caching."""
         # Check cache first
         cache_key = f"user_{user_id}"

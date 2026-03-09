@@ -1,14 +1,16 @@
+import asyncio
 import json
 import os
-import emoji
-import string
 import re
+import string
 from collections import defaultdict
 from io import BytesIO
-from typing import Tuple
-import asyncio
-from aiohttp import ClientSession, ClientError
+
+import emoji
+from aiohttp import ClientError, ClientSession
+from interactions import ComponentContext, Message
 from interactions.api.events import MessageReactionAdd, MessageReactionRemove
+from interactions.ext import paginators
 from PIL import Image, ImageDraw, ImageFont
 
 from src import logutil
@@ -34,7 +36,7 @@ def create_dynamic_image(
     font_path: str = "src/Menlo-Regular.ttf",
     image_padding: int = 10,
     background_color: str = "#1E1F22",
-) -> Tuple[Image.Image, BytesIO]:
+) -> tuple[Image.Image, BytesIO]:
     """
     Creates a dynamic image with the specified text.
 
@@ -186,7 +188,7 @@ async def format_poll(event: MessageReactionAdd | MessageReactionRemove):
     return embed
 
 
-def load_config(module_name: str = None) -> Tuple[dict, dict, list[str]]:
+def load_config(module_name: str = None) -> tuple[dict, dict, list[str]]:
     """
     Load the configuration for a specific module.
 
@@ -315,7 +317,7 @@ async def fetch(url, return_type="text", headers=None, params=None, retries=3, p
             async with ClientSession() as session:
                 async with session.get(url, headers=headers, params=params) as response:
                     if response.status != 200:
-                        logger.error(f"Failed to fetch {url}: Status {response.status}")
+                        logger.error("Failed to fetch %s: Status %s", url, response.status)
                         raise Exception(
                             f"Failed to fetch {url}: Status {response.status}"
                         )
@@ -328,7 +330,7 @@ async def fetch(url, return_type="text", headers=None, params=None, retries=3, p
                             "Invalid return_type. Expected 'text' or 'json'."
                         )
         except (ClientError, asyncio.TimeoutError) as e:
-            logger.error(f"Error fetching {url}: {e}")
+            logger.error("Error fetching %s: %s", url, e)
             if i == retries - 1:  # This was the last attempt
                 raise
             else:
@@ -339,17 +341,13 @@ async def fetch(url, return_type="text", headers=None, params=None, retries=3, p
 # Custom Paginator (shared across extensions)
 # ---------------------------------------------------------------------------
 
-from typing import Optional as _Optional
-from interactions import ComponentContext as _ComponentContext, Message as _Message
-from interactions.ext import paginators as _paginators
 
-
-class CustomPaginator(_paginators.Paginator):
+class CustomPaginator(paginators.Paginator):
     """Custom paginator with overridden button handling."""
 
     async def _on_button(
-        self, ctx: _ComponentContext, *args, **kwargs
-    ) -> _Optional[_Message]:
+        self, ctx: ComponentContext, *args, **kwargs
+    ) -> Message | None:
         if self._timeout_task:
             self._timeout_task.ping.set()
         match ctx.custom_id.split("|")[1]:

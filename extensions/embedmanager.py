@@ -13,7 +13,6 @@ Features:
 """
 
 import os
-from typing import Optional
 
 from interactions import (
     Client,
