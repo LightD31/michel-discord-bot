@@ -12,13 +12,6 @@ from src import logutil
 
 logger = logutil.init_logger(os.path.basename(__file__))
 
-def ticks_to_hms(ticks):
-    """Convertit les ticks Minecraft en format heures:minutes:secondes"""
-    seconds = ticks // 20  # Convert ticks to seconds
-    minutes, seconds = divmod(seconds, 60)
-    hours, minutes = divmod(minutes, 60)
-    return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
-
 def format_time_from_ticks(ticks):
     """Convertit les ticks en secondes pour les calculs"""
     return ticks / 20

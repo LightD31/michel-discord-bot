@@ -13,6 +13,7 @@ Configuration par serveur via le dashboard web (moduleVlrgg):
 
 from typing import List, Dict, Any, Tuple, Optional
 from dataclasses import dataclass, field
+import os
 from interactions import (
     Task,
     IntervalTrigger,
@@ -34,7 +35,7 @@ from src.vlrgg import (
     format_vlr_date,
 )
 
-logger = logutil.init_logger(__name__)
+logger = logutil.init_logger(os.path.basename(__file__))
 config, module_configs, enabled_servers = load_config("moduleVlrgg")
 
 # Constants

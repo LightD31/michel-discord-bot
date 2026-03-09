@@ -63,14 +63,6 @@ class CustomFormatter(logging.Formatter):
         return formatter.format(record)
 
 
-def overwrite_ipy_loggers():
-    for k, v in logging.Logger.manager.loggerDict.items():
-        print(k, v)
-        if k in ["mixin", "dispatch", "http", "gateway", "client", "context"]:
-            for h in v.handlers:
-                h.setFormatter(CustomFormatter)
-
-
 def get_logger(name):
     """Function to get a logger
     Useful for modules that have already initialized a logger, such as discord.py

@@ -1,17 +1,21 @@
+import asyncio
 import json
 import os
-import emoji
-import string
 import re
+import string
 from collections import defaultdict
 from io import BytesIO
-from typing import Tuple
-import asyncio
-from aiohttp import ClientSession, ClientError
+from typing import Optional, Tuple
+
+import emoji
+from aiohttp import ClientError, ClientSession
+from interactions import ComponentContext, Message
 from interactions.api.events import MessageReactionAdd, MessageReactionRemove
+from interactions.ext import paginators as _paginators
 from PIL import Image, ImageDraw, ImageFont
 
 from src import logutil
+from src.config_manager import load_config, load_full_config  # noqa: F401 — re-export
 
 logger = logutil.init_logger(os.path.basename(__file__))
 
@@ -105,7 +109,6 @@ name_cache = {}
 
 def load_discord2name(guild_id: str) -> dict:
     """Load the discord2name mapping for a specific guild from its server config."""
-    from src.config_manager import load_full_config
     data = load_full_config()
     return data.get("servers", {}).get(str(guild_id), {}).get("discord2name", {})
 
@@ -184,44 +187,6 @@ async def format_poll(event: MessageReactionAdd | MessageReactionRemove):
 
     embed.description = "\n\n".join(description_list)
     return embed
-
-
-def load_config(module_name: str = None) -> Tuple[dict, dict, list[str]]:
-    """
-    Load the configuration for a specific module.
-
-    Args:
-        module_name (str): The name of the module.
-
-    Returns:
-        A tuple containing the global configuration, the module-specific configuration, and the list of enabled servers.
-    """
-    from src.config_manager import load_full_config
-    data = load_full_config()
-    if not data:
-        return {}, {}, []
-    
-    if module_name is None:
-        return data.get("config", {}), {}, []
-    
-    config = data.get("config", {})
-
-    enabled_servers = [
-        str(server_id)
-        for server_id, server_info in data["servers"].items()
-        if server_info.get(module_name, {}).get("enabled", False)
-    ]
-    module_config = {
-        server_id: server_info.get(module_name, {})
-        for server_id, server_info in data["servers"].items()
-        if str(server_id) in enabled_servers
-    }
-    logger.info(
-        "Loaded config for module %s for servers %s",
-        module_name,
-        enabled_servers,
-    )
-    return config, module_config, enabled_servers
 
 
 def save_config(
@@ -339,17 +304,13 @@ async def fetch(url, return_type="text", headers=None, params=None, retries=3, p
 # Custom Paginator (shared across extensions)
 # ---------------------------------------------------------------------------
 
-from typing import Optional as _Optional
-from interactions import ComponentContext as _ComponentContext, Message as _Message
-from interactions.ext import paginators as _paginators
-
 
 class CustomPaginator(_paginators.Paginator):
     """Custom paginator with overridden button handling."""
 
     async def _on_button(
-        self, ctx: _ComponentContext, *args, **kwargs
-    ) -> _Optional[_Message]:
+        self, ctx: ComponentContext, *args, **kwargs
+    ) -> Optional[Message]:
         if self._timeout_task:
             self._timeout_task.ping.set()
         match ctx.custom_id.split("|")[1]:
