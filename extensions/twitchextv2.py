@@ -88,6 +88,7 @@ class StreamerInfo:
 class TwitchExt2(Extension):
     # Directory for caching emote images
     EMOTE_CACHE_DIR = "data/emote_cache"
+    DEFAULT_EMBED_COLOR = 0x6441A5
 
     def __init__(self, bot: Client):
         self.bot: Client = bot
@@ -106,6 +107,53 @@ class TwitchExt2(Extension):
 
         # Ensure emote cache directory exists
         os.makedirs(self.EMOTE_CACHE_DIR, exist_ok=True)
+
+    @staticmethod
+    def get_display_value(value: Optional[str], fallback: str = "Non renseigné") -> str:
+        """Normalize optional values before displaying them in notifications."""
+        if value is None:
+            return fallback
+        normalized = str(value).strip()
+        return normalized if normalized else fallback
+
+    @staticmethod
+    def get_emote_details(emote) -> str:
+        """Return a normalized text label for the emote source/type."""
+        if emote.emote_type == "subscriptions":
+            tier = "1" if emote.tier == "1000" else "2" if emote.tier == "2000" else "3"
+            return f"Sub tier {tier}"
+        if emote.emote_type == "bitstier":
+            return "Bits"
+        if emote.emote_type == "follower":
+            return "Follower"
+        return "Autre"
+
+    async def create_notification_embed(
+        self,
+        guild_id: int,
+        title: str,
+        description: str,
+        color: int = DEFAULT_EMBED_COLOR,
+    ) -> Embed:
+        """Create a notification embed with a uniform footer/timestamp layout."""
+        now = datetime.now(pytz.UTC)
+        try:
+            bot = await self.bot.fetch_member(self.bot.user.id, guild_id)
+            return Embed(
+                title=title,
+                description=description,
+                color=color,
+                timestamp=now,
+                footer=EmbedFooter(text=bot.display_name, icon_url=bot.avatar_url),
+            )
+        except Exception as e:
+            logger.error("Error creating notification embed for guild %s: %s", guild_id, e)
+            return Embed(
+                title=title,
+                description=description,
+                color=color,
+                timestamp=now,
+            )
 
     async def download_emote_image(self, emote_id: str, image_url: str, streamer_id: str) -> Optional[str]:
         """
@@ -423,7 +471,7 @@ class TwitchExt2(Extension):
                     title="<:TeamBelieve:808056449750138880> Planning <:TeamBelieve:808056449750138880>",
                     description="Aucun stream planifié",
                     color=0x6441A5,
-                    timestamp=datetime.now(),
+                    timestamp=datetime.now(pytz.UTC),
                     footer=EmbedFooter(text=bot.display_name, icon_url=bot.avatar_url),
                 )
                 return embed
@@ -434,7 +482,7 @@ class TwitchExt2(Extension):
                 title="Planning",
                 description="Erreur lors de la récupération du planning",
                 color=0xFF0000,
-                timestamp=datetime.now(),
+                timestamp=datetime.now(pytz.UTC),
             )
 
     async def create_stream_embed(
@@ -554,7 +602,7 @@ class TwitchExt2(Extension):
                     description=description,
                     color=0x6441A5,
                     url=f"https://twitch.tv/{user_login}",
-                    timestamp=datetime.now(),
+                    timestamp=datetime.now(pytz.UTC),
                 )
 
         try:
@@ -565,7 +613,7 @@ class TwitchExt2(Extension):
                 color=0x6441A5,
                 url=f"https://twitch.tv/{user_login}",
                 footer=EmbedFooter(text=bot.display_name, icon_url=bot.avatar_url),
-                timestamp=datetime.now(),
+                timestamp=datetime.now(pytz.UTC),
             )
         except Exception as e:
             logger.error(f"Error creating embed for {user_login} in guild {guild_id}: {e}")
@@ -575,7 +623,7 @@ class TwitchExt2(Extension):
                 description=description,
                 color=0x6441A5,
                 url=f"https://twitch.tv/{user_login}",
-                timestamp=datetime.now(),
+                timestamp=datetime.now(pytz.UTC),
             )
 
     async def edit_message(
@@ -797,19 +845,22 @@ class TwitchExt2(Extension):
                 logger.debug(f"Could not fetch VOD for {streamer.streamer_id}: {e}")
 
             # Create embed for stream end notification
-            bot = await self.bot.fetch_member(self.bot.user.id, streamer.guild_id)
-            
-            embed = Embed(
-                title=f"🔴 {broadcaster_name} a terminé son live !",
-                color=0x9146FF,  # Twitch purple
-                timestamp=end_time,
-                footer=EmbedFooter(text=bot.display_name, icon_url=bot.avatar_url),
+            title = self.get_display_value(streamer.stream_title, "Titre non renseigné")
+            category = self.get_display_value(streamer.stream_game, "Catégorie non renseignée")
+
+            embed = await self.create_notification_embed(
+                streamer.guild_id,
+                title=f"{broadcaster_name} a terminé son live",
+                description="Résumé de la session Twitch",
+                color=0x9146FF,
             )
-            
-            embed.add_field(name="⏱️ Durée", value=duration_str, inline=True)
+
+            embed.add_field(name="Durée", value=duration_str, inline=True)
+            embed.add_field(name="Titre", value=title, inline=False)
+            embed.add_field(name="Catégorie", value=category, inline=False)
             
             if vod_url:
-                embed.add_field(name="📺 VOD", value=f"[Regarder le replay]({vod_url})", inline=False)
+                embed.add_field(name="VOD", value=f"[Regarder le replay]({vod_url})", inline=False)
 
             # Get user info for thumbnail
             try:
@@ -846,8 +897,8 @@ class TwitchExt2(Extension):
                 stream = await self.get_stream_data(user_id)
 
                 # Check if title or category actually changed to avoid duplicate notifications
-                new_title = data.event.title
-                new_category = data.event.category_name
+                new_title = self.get_display_value(data.event.title, "Titre non renseigné")
+                new_category = self.get_display_value(data.event.category_name, "Catégorie non renseignée")
                 
                 title_changed = streamer.last_notified_title != new_title
                 category_changed = streamer.last_notified_category != new_category
@@ -857,13 +908,22 @@ class TwitchExt2(Extension):
                     # Update the last notified values
                     streamer.last_notified_title = new_title
                     streamer.last_notified_category = new_category
-                    
-                    update_msg = f"**{user_name}** a mis à jour le titre ou la catégorie du live.\nTitre : **{new_title}**\nCatégorie : **{new_category}**"
 
+                    update_embed = await self.create_notification_embed(
+                        streamer.guild_id,
+                        title="Mise à jour du live Twitch",
+                        description=f"{user_name} a modifié les informations du live.",
+                    )
+                    update_embed.add_field(name="Titre", value=new_title, inline=False)
+                    update_embed.add_field(name="Catégorie", value=new_category, inline=False)
                     if not stream:
-                        update_msg = f" OMG live ??\n{update_msg}"
+                        update_embed.add_field(
+                            name="Statut",
+                            value="Modification détectée hors live",
+                            inline=False,
+                        )
 
-                    await streamer.notif_channel.send(update_msg)
+                    await streamer.notif_channel.send(embed=update_embed)
                 elif not (title_changed or category_changed):
                     logger.debug(f"Skipping duplicate notification for {streamer.streamer_id} - title and category unchanged")
 
@@ -994,22 +1054,24 @@ class TwitchExt2(Extension):
 
                         # Send notification to all guilds following this streamer
                         for streamer in guild_streamers:
-                            bot = await self.bot.fetch_member(self.bot.user.id, streamer.guild_id)
-                            embed = Embed(
-                                title="Emote remplacé",
-                                description=f"L'emote **{new_emote.name}** a été remplacé sur la chaine de {streamer_id} 🔄",
+                            embed = await self.create_notification_embed(
+                                streamer.guild_id,
+                                title="Mise à jour d'emote",
+                                description=f"L'emote **{new_emote.name}** a été remplacé sur la chaîne de **{streamer_id}**.",
                                 color=0xFFA500,
-                                timestamp=datetime.now(),
-                                thumbnail=new_image_url,
-                                footer=EmbedFooter(text=bot.display_name, icon_url=bot.avatar_url)
                             )
+                            embed.add_field(name="Emote", value=self.get_display_value(new_emote.name), inline=True)
+                            embed.add_field(name="Streamer", value=self.get_display_value(streamer_id), inline=True)
+                            embed.add_field(name="Action", value="Remplacement", inline=True)
+                            if new_image_url:
+                                embed.set_thumbnail(url=new_image_url)
 
                             if old_cached_file:
-                                embed.add_field(name="Ancienne version", value="Voir image ci-dessous", inline=True)
-                                embed.add_field(name="Nouvelle version", value="Voir thumbnail", inline=True)
+                                embed.add_field(name="Ancienne version", value="Image jointe", inline=True)
+                                embed.add_field(name="Nouvelle version", value="Thumbnail de l'embed", inline=True)
                                 await streamer.notif_channel.send(embed=embed, files=[File(old_cached_file, file_name=f"old_{new_emote.name}.png")])
                             else:
-                                embed.add_field(name="Nouvelle version", value="Voir thumbnail", inline=True)
+                                embed.add_field(name="Nouvelle version", value="Thumbnail de l'embed", inline=True)
                                 await streamer.notif_channel.send(embed=embed)
 
                         # Delete old cached file and download new one (once, globally)
@@ -1032,30 +1094,22 @@ class TwitchExt2(Extension):
                         cached_file = await self.download_emote_image(emote.id, image_url, streamer_id)
                         data[emote.id] = {"name": emote.name, "cached_file": cached_file}
 
-                        # Determine emote details
-                        if emote.emote_type == 'subscriptions':
-                            tier = '1' if emote.tier == '1000' else '2' if emote.tier == '2000' else '3'
-                            details = f"Sub tier {tier}"
-                        elif emote.emote_type == 'bitstier':
-                            details = "Bits"
-                        elif emote.emote_type == 'follower':
-                            details = "Follower"
-                        else:
-                            details = "Other"
+                        details = self.get_emote_details(emote)
 
                         logger.info(f"New emote for {streamer_id}: {emote.name}")
 
                         # Send notification to all guilds following this streamer
                         for streamer in guild_streamers:
-                            bot = await self.bot.fetch_member(self.bot.user.id, streamer.guild_id)
-                            embed = Embed(
+                            embed = await self.create_notification_embed(
+                                streamer.guild_id,
                                 title="Nouvel emote ajouté",
-                                description=f"L'emote {emote.name} a été ajouté à la chaine de {streamer_id} ({details})",
-                                color=0x6441A5,
-                                timestamp=datetime.now(),
-                                thumbnail=image_url,
-                                footer=EmbedFooter(text=bot.display_name, icon_url=bot.avatar_url)
+                                description=f"Un nouvel emote est disponible sur la chaine de **{streamer_id}**.",
                             )
+                            embed.add_field(name="Emote", value=self.get_display_value(emote.name), inline=True)
+                            embed.add_field(name="Streamer", value=self.get_display_value(streamer_id), inline=True)
+                            embed.add_field(name="Type", value=details, inline=True)
+                            if image_url:
+                                embed.set_thumbnail(url=image_url)
                             await streamer.notif_channel.send(embed=embed)
 
                 # Process truly deleted emotes
@@ -1070,14 +1124,14 @@ class TwitchExt2(Extension):
 
                         # Send notification to all guilds following this streamer
                         for streamer in guild_streamers:
-                            bot = await self.bot.fetch_member(self.bot.user.id, streamer.guild_id)
-                            embed = Embed(
+                            embed = await self.create_notification_embed(
+                                streamer.guild_id,
                                 title="Emote supprimé",
-                                description=f"L'emote **{emote_name}** a été supprimé de la chaine de {streamer_id} :wave:",
-                                color=0x6441A5,
-                                timestamp=datetime.now(),
-                                footer=EmbedFooter(text=bot.display_name, icon_url=bot.avatar_url)
+                                description=f"L'emote **{emote_name}** a été retiré de la chaîne de **{streamer_id}**.",
                             )
+                            embed.add_field(name="Emote", value=self.get_display_value(emote_name), inline=True)
+                            embed.add_field(name="Streamer", value=self.get_display_value(streamer_id), inline=True)
+                            embed.add_field(name="Action", value="Suppression", inline=True)
 
                             if cached_file:
                                 await streamer.notif_channel.send(embed=embed, files=[File(cached_file, file_name=f"{emote_name}.png")])
