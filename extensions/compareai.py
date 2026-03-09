@@ -266,7 +266,7 @@ class MessageSplitter:
 # Main Extension Class
 # =============================================================================
 
-class IAExtension(Extension):
+class CompareAIExtension(Extension):
     """Discord extension for comparing AI model responses."""
     
     def __init__(self, bot: Client):

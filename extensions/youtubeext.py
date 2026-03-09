@@ -1,3 +1,5 @@
+"""Extension YouTube — notifications automatiques de nouvelles vidéos."""
+
 import datetime
 import os
 
@@ -16,7 +18,7 @@ YOUTUBE_API_KEY = config["youtube"]["youtubeApiKey"]
 YOUTUBE_API_URL = "https://www.googleapis.com/youtube/v3"
 
 
-class YoutubeClass(Extension):
+class YoutubeExtension(Extension):
     def __init__(self, bot: Client):
         self.bot: Client = bot
         self.playlist_cache = {}  # Add a cache for playlists

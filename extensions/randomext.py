@@ -1,3 +1,5 @@
+"""Extension Random — commandes de choix aléatoires et lancés de dés."""
+
 import os
 import random
 from typing import Optional
@@ -30,7 +32,7 @@ ERROR_MESSAGES = {
 }
 
 
-class RandomClass(Extension):
+class RandomExtension(Extension):
     def __init__(self, bot: Client):
         self.bot = bot
 

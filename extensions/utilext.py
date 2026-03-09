@@ -72,7 +72,7 @@ DEFAULT_POLL_OPTIONS = ["Oui", "Non"]
 DEFAULT_POLL_EMOJIS = ["👍", "👎"]
 
 
-class Utils(Extension):
+class UtilExtension(Extension):
     def __init__(self, bot: Client):
         self.bot = bot
         self.lock = asyncio.Lock()

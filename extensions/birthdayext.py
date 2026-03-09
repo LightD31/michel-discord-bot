@@ -105,7 +105,7 @@ def _compute_age(birth_date: datetime, reference: Optional[datetime] = None) -> 
 # Extension
 # ---------------------------------------------------------------------------
 
-class BirthdayClass(Extension):
+class BirthdayExtension(Extension):
     def __init__(self, bot: Client) -> None:
         self.bot = bot
 

@@ -30,7 +30,7 @@ logger = logutil.init_logger(os.path.basename(__file__))
 config, module_config, enabled_servers = load_config("moduleEmbedManager")
 
 
-class EmbedManager(Extension):
+class EmbedManagerExtension(Extension):
     """EmbedManager extension for publishing custom embeds with links."""
 
     def __init__(self, bot: Client):
@@ -139,8 +139,3 @@ class EmbedManager(Extension):
             embeds.append(embed)
 
         return embeds
-
-
-def setup(bot: Client):
-    """Load the extension."""
-    EmbedManager(bot)

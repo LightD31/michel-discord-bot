@@ -1,3 +1,9 @@
+"""Extension Spotify — gestion collaborative de playlists avec système de votes.
+
+Permet l'ajout, la suppression et le vote de morceaux dans des playlists
+Spotify partagées par serveur.
+"""
+
 import json
 import os
 import random
@@ -139,7 +145,7 @@ for _guild_id in ENABLED_SERVERS:
     )
 
 
-class Spotify(interactions.Extension):
+class SpotifyExtension(interactions.Extension):
     def __init__(self, bot: interactions.client):
         self.bot: interactions.Client = bot
 

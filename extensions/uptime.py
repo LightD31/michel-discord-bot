@@ -30,7 +30,7 @@ from src.utils import load_config
 logger = logutil.init_logger(os.path.basename(__file__))
 config, module_config, enabled_servers = load_config("moduleUptime")
 
-class Uptime(Extension):
+class UptimeExtension(Extension):
     """
     A Discord bot extension that sends a status update to a server at a specific time
     and monitors specific sensors for maintenance notifications using SocketIO API.
@@ -948,8 +948,3 @@ class Uptime(Extension):
                     response.raise_for_status()
             except aiohttp.ClientError as error:
                 logger.error("Error sending status update: %s", error)
-
-
-def setup(bot):
-    """Setup function for loading the extension."""
-    Uptime(bot)

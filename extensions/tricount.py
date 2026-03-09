@@ -1,3 +1,5 @@
+"""Extension Tricount — gestion de dépenses partagées entre membres d'un serveur."""
+
 import os
 from datetime import datetime
 from typing import Optional, Union
@@ -24,7 +26,7 @@ logger = logutil.init_logger(os.path.basename(__file__))
 config, module_config, enabled_servers = load_config("moduleTricount")
 
 
-class TricountClass(Extension):
+class TricountExtension(Extension):
     def __init__(self, bot):
         self.bot: Client = bot
 

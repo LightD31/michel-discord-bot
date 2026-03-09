@@ -11,6 +11,7 @@ Configuration par serveur via le dashboard web (moduleVlrgg):
     - channelMessageId: "channelId:messageId" pour le planning (optionnel)
 """
 
+import os
 from typing import List, Dict, Any, Tuple, Optional
 from dataclasses import dataclass, field
 from interactions import (
@@ -33,7 +34,7 @@ from src.vlrgg import (
     format_vlr_date,
 )
 
-logger = logutil.init_logger(__name__)
+logger = logutil.init_logger(os.path.basename(__file__))
 config, module_configs, enabled_servers = load_config("moduleVlrgg")
 
 # Constants
@@ -90,7 +91,7 @@ class ServerState:
     teams: Dict[str, TeamState] = field(default_factory=dict)
 
 
-class VlrggTracker(Extension):
+class VlrggTrackerExtension(Extension):
     """Extension pour le suivi des matchs Valorant via VLR.gg.
 
     Supporte plusieurs serveurs, chacun avec plusieurs équipes à suivre.
