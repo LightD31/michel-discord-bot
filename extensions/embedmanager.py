@@ -24,7 +24,8 @@ from interactions import (
 )
 
 from src import logutil
-from src.utils import load_config
+from src.config_manager import load_config
+from src.helpers import send_error
 
 logger = logutil.init_logger(os.path.basename(__file__))
 config, module_config, enabled_servers = load_config("moduleEmbedManager")
@@ -48,12 +49,12 @@ class EmbedManagerExtension(Extension):
             guild_id = ctx.guild_id
             
             if guild_id not in enabled_servers:
-                await ctx.send("✗ Ce module n'est pas activé sur ce serveur.", ephemeral=True)
+                await send_error(ctx, "Ce module n'est pas activé sur ce serveur.")
                 return
 
             guild_config = module_config.get(guild_id, {})
             if not guild_config.get("enabled"):
-                await ctx.send("✗ Le module EmbedManager n'est pas activé sur ce serveur.", ephemeral=True)
+                await send_error(ctx, "Le module EmbedManager n'est pas activé sur ce serveur.")
                 return
 
             channel_id = guild_config.get("channelId")
@@ -61,18 +62,18 @@ class EmbedManagerExtension(Extension):
             embeds_config = guild_config.get("embeds", [])
 
             if not channel_id or not message_id:
-                await ctx.send("✗ Le salon ou le message cible n'est pas configuré.", ephemeral=True)
+                await send_error(ctx, "Le salon ou le message cible n'est pas configuré.")
                 return
 
             if not embeds_config:
-                await ctx.send("✗ Aucun embed n'a été configuré.", ephemeral=True)
+                await send_error(ctx, "Aucun embed n'a été configuré.")
                 return
 
             # Build Discord embeds from config
             discord_embeds = self._build_embeds(embeds_config)
 
             if not discord_embeds:
-                await ctx.send("✗ Erreur lors de la génération des embeds.", ephemeral=True)
+                await send_error(ctx, "Erreur lors de la génération des embeds.")
                 return
 
             # Fetch and edit the message
@@ -83,11 +84,11 @@ class EmbedManagerExtension(Extension):
                 await ctx.send(f"✓ Embeds publiés avec succès ({len(discord_embeds)} embed(s))!", ephemeral=True)
             except Exception as e:
                 logger.error(f"Failed to update message in channel {channel_id}: {e}")
-                await ctx.send(f"✗ Erreur lors de la mise à jour du message: {e}", ephemeral=True)
+                await send_error(ctx, f"Erreur lors de la mise à jour du message: {e}")
 
         except Exception as e:
             logger.error(f"Error in publish_embeds: {e}", exc_info=True)
-            await ctx.send(f"✗ Erreur: {e}", ephemeral=True)
+            await send_error(ctx, f"Erreur: {e}")
 
     def _build_embeds(self, embeds_config: list[dict]) -> list[Embed]:
         """Build Discord embeds from configuration.

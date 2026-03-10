@@ -24,8 +24,8 @@ from interactions import (
     Timestamp,
 )
 from src import logutil
-from src.helpers import Colors, SPACER_FIELD
-from src.utils import load_config
+from src.helpers import Colors, SPACER_FIELD, format_discord_timestamp
+from src.config_manager import load_config
 from src.vlrgg import (
     fetch_all_team_data as vlrgg_fetch_all,
     fetch_match_details,
@@ -36,7 +36,7 @@ from src.vlrgg import (
 )
 
 logger = logutil.init_logger(os.path.basename(__file__))
-config, module_configs, enabled_servers = load_config("moduleVlrgg")
+config, module_config, enabled_servers = load_config("moduleVlrgg")
 
 # Constants
 DEFAULT_EMBED_COLOR = Colors.VLR
@@ -115,7 +115,7 @@ class VlrggTrackerExtension(Extension):
     async def _initialize_all_servers(self) -> None:
         """Initialise les messages et canaux pour tous les serveurs activés."""
         for server_id in enabled_servers:
-            srv_config = module_configs.get(server_id, {})
+            srv_config = module_config.get(server_id, {})
             teams_raw = srv_config.get("teams", [])
 
             if not teams_raw:
@@ -410,11 +410,11 @@ class VlrggTrackerExtension(Extension):
             if team_won is True:
                 result_emoji = "🎉"
                 result_text = "VICTOIRE"
-                embed_color = 0x00FF00
+                embed_color = Colors.SUCCESS
             elif team_won is False:
                 result_emoji = "😢"
                 result_text = "DÉFAITE"
-                embed_color = 0xFF0000
+                embed_color = Colors.ERROR
             else:
                 result_emoji = "🏁"
                 result_text = "TERMINÉ"
@@ -671,7 +671,7 @@ class VlrggTrackerExtension(Extension):
         timestamp_str = match.get("unix_timestamp", "")
         ts = parse_vlrgg_timestamp(timestamp_str)
         if ts:
-            time_display = f"<t:{int(ts.timestamp())}:R>"
+            time_display = format_discord_timestamp(ts, "R")
         elif match.get("time_until_match"):
             time_display = match["time_until_match"]
 

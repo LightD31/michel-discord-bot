@@ -21,7 +21,7 @@ from interactions import (
 from src import logutil
 from src.helpers import Colors, require_guild, send_error, fetch_user_safe, guild_group_autocomplete
 from src.mongodb import mongo_manager
-from src.utils import load_config
+from src.config_manager import load_config
 
 logger = logutil.init_logger(os.path.basename(__file__))
 config, module_config, enabled_servers = load_config("moduleTricount")
@@ -438,8 +438,7 @@ class TricountExtension(Extension):
             
         if nouveau_payeur is not None:
             modifications["payer"] = nouveau_payeur.id
-            old_payer = await self.bot.fetch_user(expense["payer"])
-            old_payer_name = old_payer.display_name if old_payer else "Utilisateur inconnu"
+            old_payer_name, _ = await fetch_user_safe(self.bot, expense["payer"])
             changes_description.append(f"Payeur: {old_payer_name} → {nouveau_payeur.display_name}")
             
         if not modifications:
@@ -691,18 +690,15 @@ class TricountExtension(Extension):
         # Ajouter les balances
         balance_text = ""
         for member_id, data in balances.items():
-            try:
-                user = await self.bot.fetch_user(member_id)
-                if user:  # Vérifier que l'utilisateur existe
-                    if data["balance"] > 0.01:  # Petit seuil pour éviter les erreurs d'arrondi
-                        balance_text += f"💰 {user.mention}: +{data['balance']:.2f}€ (a payé {data['paid']:.2f}€)\n"
-                    elif data["balance"] < -0.01:
-                        balance_text += f"💸 {user.mention}: {data['balance']:.2f}€ (a payé {data['paid']:.2f}€)\n"
-                    else:
-                        balance_text += f"✅ {user.mention}: 0€ (a payé {data['paid']:.2f}€)\n"
+            _, user = await fetch_user_safe(self.bot, member_id)
+            if user:
+                if data["balance"] > 0.01:  # Petit seuil pour éviter les erreurs d'arrondi
+                    balance_text += f"💰 {user.mention}: +{data['balance']:.2f}€ (a payé {data['paid']:.2f}€)\n"
+                elif data["balance"] < -0.01:
+                    balance_text += f"💸 {user.mention}: {data['balance']:.2f}€ (a payé {data['paid']:.2f}€)\n"
                 else:
-                    balance_text += f"❓ Utilisateur inconnu: {data['balance']:.2f}€\n"
-            except Exception:
+                    balance_text += f"✅ {user.mention}: 0€ (a payé {data['paid']:.2f}€)\n"
+            else:
                 balance_text += f"❓ Utilisateur inconnu: {data['balance']:.2f}€\n"
                 
         embed.add_field(name="Balances", value=balance_text or "Aucune donnée", inline=False)

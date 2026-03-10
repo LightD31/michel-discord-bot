@@ -11,12 +11,32 @@ from datetime import datetime
 from typing import Dict, List, Optional, Any
 
 import aiohttp
-import interactions
+from interactions import (
+    Client,
+    Embed,
+    EmbedFooter,
+    Extension,
+    IntervalTrigger,
+    Modal,
+    ModalContext,
+    OptionType,
+    OrTrigger,
+    ParagraphText,
+    ShortText,
+    SlashCommandChoice,
+    SlashContext,
+    Task,
+    TimeTrigger,
+    listen,
+    modal_callback,
+    slash_command,
+    slash_option,
+)
 from notion_client import AsyncClient, APIResponseError
 
 from src import logutil
-from src.helpers import Colors, format_discord_timestamp
-from src.utils import load_config
+from src.helpers import Colors, fetch_user_safe, format_discord_timestamp, send_error
+from src.config_manager import load_config
 
 logger = logutil.init_logger(os.path.basename(__file__))
 
@@ -47,45 +67,45 @@ class DataSourceNotFoundError(NotionAPIError):
     """Exception raised when no data source is found for a database."""
     pass
 genres = [
-    interactions.SlashCommandChoice(name="Art/Beaux livres", value="Art/Beaux livres"),
-    interactions.SlashCommandChoice(name="Aventure/voyage", value="Aventure/voyage"),
-    interactions.SlashCommandChoice(name="BD/Manga", value="BD/Manga"),
-    interactions.SlashCommandChoice(name="Conte", value="Conte"),
-    interactions.SlashCommandChoice(name="Documentaire", value="Documentaire"),
-    interactions.SlashCommandChoice(name="Essai", value="Essai"),
-    interactions.SlashCommandChoice(name="Fantasy", value="Fantasy"),
-    interactions.SlashCommandChoice(name="Feel good", value="Feel good"),
-    interactions.SlashCommandChoice(name="Historique", value="Historique"),
-    interactions.SlashCommandChoice(name="Horreur", value="Horreur"),
-    interactions.SlashCommandChoice(name="Nouvelles", value="Nouvelles"),
-    interactions.SlashCommandChoice(name="Poésie", value="Poésie"),
-    interactions.SlashCommandChoice(name="Roman", value="Roman"),
-    interactions.SlashCommandChoice(name="Science-fiction", value="Science-fiction"),
+    SlashCommandChoice(name="Art/Beaux livres", value="Art/Beaux livres"),
+    SlashCommandChoice(name="Aventure/voyage", value="Aventure/voyage"),
+    SlashCommandChoice(name="BD/Manga", value="BD/Manga"),
+    SlashCommandChoice(name="Conte", value="Conte"),
+    SlashCommandChoice(name="Documentaire", value="Documentaire"),
+    SlashCommandChoice(name="Essai", value="Essai"),
+    SlashCommandChoice(name="Fantasy", value="Fantasy"),
+    SlashCommandChoice(name="Feel good", value="Feel good"),
+    SlashCommandChoice(name="Historique", value="Historique"),
+    SlashCommandChoice(name="Horreur", value="Horreur"),
+    SlashCommandChoice(name="Nouvelles", value="Nouvelles"),
+    SlashCommandChoice(name="Poésie", value="Poésie"),
+    SlashCommandChoice(name="Roman", value="Roman"),
+    SlashCommandChoice(name="Science-fiction", value="Science-fiction"),
 ]
 # Create liste of publics
 publics = [
-    interactions.SlashCommandChoice(name="Adulte", value="Adulte"),
-    interactions.SlashCommandChoice(name="New Adult", value="New Adult"),
-    interactions.SlashCommandChoice(name="Young Adult", value="Young Adult"),
+    SlashCommandChoice(name="Adulte", value="Adulte"),
+    SlashCommandChoice(name="New Adult", value="New Adult"),
+    SlashCommandChoice(name="Young Adult", value="Young Adult"),
 ]
 # Create liste of groupe éditorial
 groupes = [
-    interactions.SlashCommandChoice(name="Editis", value="Editis"),
-    interactions.SlashCommandChoice(name="Hachette", value="Hachette"),
-    interactions.SlashCommandChoice(name="Indépendant", value="Indépendant"),
-    interactions.SlashCommandChoice(name="Madrigall", value="Madrigall"),
+    SlashCommandChoice(name="Editis", value="Editis"),
+    SlashCommandChoice(name="Hachette", value="Hachette"),
+    SlashCommandChoice(name="Indépendant", value="Indépendant"),
+    SlashCommandChoice(name="Madrigall", value="Madrigall"),
 ]
 
 
-class ConfrerieExtension(interactions.Extension):
+class ConfrerieExtension(Extension):
     """Extension Discord pour la gestion de la confrérie littéraire.
     
     Cette extension gère les statistiques, les défis, et les éditeurs
     via l'intégration avec Notion (API version 2025-09-03).
     """
     
-    def __init__(self, bot: interactions.Client):
-        self.bot: interactions.Client = bot
+    def __init__(self, bot: Client):
+        self.bot: Client = bot
         self.data: Dict[str, Any] = {}
         self.notion = AsyncClient(auth=config["notion"]["notionSecret"])
         self._stats_cache: Dict[str, Any] = {}
@@ -93,7 +113,7 @@ class ConfrerieExtension(interactions.Extension):
         self._cache_duration = 300  # 5 minutes cache
         self._data_source_cache: Dict[str, str] = {}  # database_id -> data_source_id
 
-    @interactions.listen()
+    @listen()
     async def on_startup(self):
         """Initialise les tâches au démarrage du bot."""
         logger.info("Démarrage de l'extension Confrérie")
@@ -190,7 +210,7 @@ class ConfrerieExtension(interactions.Extension):
             logger.error(f"Erreur inattendue lors de la requête Notion: {e}")
             raise NotionAPIError(f"Erreur inattendue: {e}")
 
-    async def _create_embed_footer(self) -> interactions.EmbedFooter:
+    async def _create_embed_footer(self) -> EmbedFooter:
         """Crée un footer standard pour les embeds.
         
         Returns:
@@ -200,13 +220,13 @@ class ConfrerieExtension(interactions.Extension):
             bot = await self.bot.fetch_member(self.bot.user.id, enabled_servers[0])
             guild = await self.bot.fetch_guild(enabled_servers[0])
             
-            return interactions.EmbedFooter(
+            return EmbedFooter(
                 text=bot.display_name if bot else "Michel",
                 icon_url=guild.icon.url if guild and guild.icon else None,
             )
         except Exception as e:
             logger.warning(f"Impossible de créer le footer: {e}")
-            return interactions.EmbedFooter(text="Michel")
+            return EmbedFooter(text="Michel")
 
     def _is_cache_valid(self) -> bool:
         """Vérifie si le cache des statistiques est encore valide."""
@@ -214,7 +234,7 @@ class ConfrerieExtension(interactions.Extension):
             return False
         return (datetime.now() - self._cache_timestamp).total_seconds() < self._cache_duration
 
-    @interactions.Task.create(interactions.TimeTrigger(utc=False))
+    @Task.create(TimeTrigger(utc=False))
     async def confrerie(self):
         """Tâche principale pour mettre à jour les statistiques de la confrérie."""
         logger.debug("Début de la tâche de statistiques de la confrérie")
@@ -312,7 +332,7 @@ class ConfrerieExtension(interactions.Extension):
             logger.error(f"Erreur lors de la mise à jour du message: {e}")
             raise
 
-    async def _create_statistics_embed(self, stats_data: Dict[str, Any]) -> interactions.Embed:
+    async def _create_statistics_embed(self, stats_data: Dict[str, Any]) -> Embed:
         """Crée l'embed des statistiques.
         
         Args:
@@ -321,7 +341,7 @@ class ConfrerieExtension(interactions.Extension):
         Returns:
             Embed formaté
         """
-        embed = interactions.Embed(
+        embed = Embed(
             title="Statistiques de la confrérie",
             color=Colors.CONFRERIE,
             timestamp=stats_data["timestamp"],
@@ -431,7 +451,7 @@ class ConfrerieExtension(interactions.Extension):
                 "title": "Texte mis à jour"
             }
 
-    async def _create_update_embed(self, content: Dict[str, Any], title: str) -> interactions.Embed:
+    async def _create_update_embed(self, content: Dict[str, Any], title: str) -> Embed:
         """Crée l'embed pour une mise à jour.
         
         Args:
@@ -443,7 +463,7 @@ class ConfrerieExtension(interactions.Extension):
         """
         footer = await self._create_embed_footer()
         
-        embed = interactions.Embed(
+        embed = Embed(
             title=title,
             color=Colors.CONFRERIE,
             footer=footer,
@@ -483,7 +503,7 @@ class ConfrerieExtension(interactions.Extension):
 
         return embed
 
-    def _add_genre_field(self, embed: interactions.Embed, content: Dict[str, Any]):
+    def _add_genre_field(self, embed: Embed, content: Dict[str, Any]):
         """Ajoute le champ Type/Genre à l'embed.
         
         Args:
@@ -509,7 +529,7 @@ class ConfrerieExtension(interactions.Extension):
                 inline=False,
             )
 
-    def _add_consultation_links(self, embed: interactions.Embed, content: Dict[str, Any]):
+    def _add_consultation_links(self, embed: Embed, content: Dict[str, Any]):
         """Ajoute les liens de consultation à l'embed.
         
         Args:
@@ -542,15 +562,15 @@ class ConfrerieExtension(interactions.Extension):
         update_data = content["properties"].get("Note de mise à jour", {}).get("rich_text", [])
         return update_data[0]["plain_text"] if update_data else ""
 
-    @interactions.Task.create(
-        interactions.OrTrigger(
-            interactions.TimeTrigger(hour=0, utc=False),
-            interactions.TimeTrigger(hour=8, utc=False),
-            interactions.TimeTrigger(hour=10, utc=False),
-            interactions.TimeTrigger(hour=14, utc=False),
-            interactions.TimeTrigger(hour=18, utc=False),
-            interactions.TimeTrigger(hour=20, utc=False),
-            interactions.TimeTrigger(hour=22, utc=False),
+    @Task.create(
+        OrTrigger(
+            TimeTrigger(hour=0, utc=False),
+            TimeTrigger(hour=8, utc=False),
+            TimeTrigger(hour=10, utc=False),
+            TimeTrigger(hour=14, utc=False),
+            TimeTrigger(hour=18, utc=False),
+            TimeTrigger(hour=20, utc=False),
+            TimeTrigger(hour=22, utc=False),
         )
     )
     async def autoupdate(self):
@@ -646,21 +666,21 @@ class ConfrerieExtension(interactions.Extension):
         
         return data
 
-    @interactions.slash_command(
+    @slash_command(
         name="demande",
         description="Demander à actualiser le site de la confrérie",
         scopes=[int(s) for s in enabled_servers],
     )
-    async def demande(self, ctx: interactions.SlashContext):
+    async def demande(self, ctx: SlashContext):
         """Commande pour faire une demande d'actualisation du site."""
-        modal = interactions.Modal(
-            interactions.ShortText(
+        modal = Modal(
+            ShortText(
                 label="Titre", 
                 custom_id="title",
                 placeholder="Titre court de votre demande",
                 max_length=100
             ),
-            interactions.ParagraphText(
+            ParagraphText(
                 label="Détails", 
                 custom_id="details",
                 placeholder="Décrivez en détail votre demande d'actualisation",
@@ -671,9 +691,9 @@ class ConfrerieExtension(interactions.Extension):
         )
         await ctx.send_modal(modal)
 
-    @interactions.modal_callback("demande")
+    @modal_callback("demande")
     async def demande_callback(
-        self, ctx: interactions.ModalContext, title: str, details: str
+        self, ctx: ModalContext, title: str, details: str
     ):
         """Callback pour traiter une demande d'actualisation.
         
@@ -685,7 +705,7 @@ class ConfrerieExtension(interactions.Extension):
         try:
             # Validation des entrées
             if not title.strip() or not details.strip():
-                await ctx.send("❌ Le titre et les détails sont obligatoires.", ephemeral=True)
+                await send_error(ctx, "Le titre et les détails sont obligatoires.")
                 return
 
             # Créer l'embed de demande
@@ -698,12 +718,12 @@ class ConfrerieExtension(interactions.Extension):
             logger.info(f"Demande d'actualisation envoyée par {ctx.author}: {title}")
             
         except Exception as e:
-            await ctx.send("❌ Une erreur est survenue lors de l'envoi de votre demande.", ephemeral=True)
+            await send_error(ctx, "Une erreur est survenue lors de l'envoi de votre demande.")
             logger.error(f"Erreur lors de l'envoi de la demande: {e}")
 
     async def _create_request_embed(
-        self, ctx: interactions.ModalContext, title: str, details: str
-    ) -> interactions.Embed:
+        self, ctx: ModalContext, title: str, details: str
+    ) -> Embed:
         """Crée l'embed pour une demande d'actualisation.
         
         Args:
@@ -714,7 +734,7 @@ class ConfrerieExtension(interactions.Extension):
         Returns:
             Embed formaté
         """
-        embed = interactions.Embed(
+        embed = Embed(
             title="📝 Nouvelle demande d'actualisation",
             color=Colors.CONFRERIE,
             timestamp=datetime.now(),
@@ -753,7 +773,7 @@ class ConfrerieExtension(interactions.Extension):
         
         return embed
 
-    async def _send_request_to_owners(self, embed: interactions.Embed):
+    async def _send_request_to_owners(self, embed: Embed):
         """Envoie la demande aux propriétaires.
         
         Args:
@@ -768,7 +788,7 @@ class ConfrerieExtension(interactions.Extension):
         try:
             owner_id = module_config.get("confrerieOwnerId")
             if owner_id:
-                user = await self.bot.fetch_user(owner_id)
+                _, user = await fetch_user_safe(self.bot, owner_id)
                 if user:
                     await user.send(embed=embed)
                     owners_sent += 1
@@ -779,7 +799,7 @@ class ConfrerieExtension(interactions.Extension):
         try:
             general_owner_id = config["discord"].get("ownerId")
             if general_owner_id and general_owner_id != module_config.get("confrerieOwnerId"):
-                user2 = await self.bot.fetch_user(general_owner_id)
+                _, user2 = await fetch_user_safe(self.bot, general_owner_id)
                 if user2:
                     await user2.send(embed=embed)
                     owners_sent += 1
@@ -790,7 +810,7 @@ class ConfrerieExtension(interactions.Extension):
             raise ConfrerieError("Aucun propriétaire n'a pu être contacté")
 
 
-def load(bot: interactions.Client):
+def load(bot: Client):
     """Charge l'extension Confrérie dans le bot.
     
     Args:
@@ -799,97 +819,97 @@ def load(bot: interactions.Client):
     logger.info("Chargement de l'extension Confrérie")
     ConfrerieExtension(bot)
 
-    @interactions.slash_command(
+    @slash_command(
         name="editeur",
         description="Ajouter un éditeur à la liste",
         scopes=[int(s) for s in enabled_servers],
     )
-    @interactions.slash_option(
+    @slash_option(
         name="name",
         description="Nom de l'éditeur",
         required=True,
-        opt_type=interactions.OptionType.STRING,
+        opt_type=OptionType.STRING,
     )
-    @interactions.slash_option(
+    @slash_option(
         name="genre_1",
         description="Genre",
         required=True,
-        opt_type=interactions.OptionType.STRING,
+        opt_type=OptionType.STRING,
         choices=genres,
     )
-    @interactions.slash_option(
+    @slash_option(
         name="public_1",
         description="Public visé",
         required=True,
-        opt_type=interactions.OptionType.STRING,
+        opt_type=OptionType.STRING,
         choices=publics,
     )
-    @interactions.slash_option(
+    @slash_option(
         name="genre_2",
         description="Genre",
         required=False,
-        opt_type=interactions.OptionType.STRING,
+        opt_type=OptionType.STRING,
         choices=genres,
     )
-    @interactions.slash_option(
+    @slash_option(
         name="genre_3",
         description="Genre",
         required=False,
-        opt_type=interactions.OptionType.STRING,
+        opt_type=OptionType.STRING,
         choices=genres,
     )
-    @interactions.slash_option(
+    @slash_option(
         name="groupe",
         description="Nom du groupe éditorial",
         required=False,
-        opt_type=interactions.OptionType.STRING,
+        opt_type=OptionType.STRING,
         choices=groupes,
     )
-    @interactions.slash_option(
+    @slash_option(
         name="site",
         description="Site web de l'éditeur",
         required=False,
-        opt_type=interactions.OptionType.STRING,
+        opt_type=OptionType.STRING,
     )
-    @interactions.slash_option(
+    @slash_option(
         name="note",
         description="Note sur 5, entre 0 et 5",
         required=False,
-        opt_type=interactions.OptionType.NUMBER,
+        opt_type=OptionType.NUMBER,
         min_value=0,
         max_value=5,
     )
-    @interactions.slash_option(
+    @slash_option(
         name="public_2",
         description="Public visé",
         required=False,
-        opt_type=interactions.OptionType.STRING,
+        opt_type=OptionType.STRING,
         choices=publics,
     )
-    @interactions.slash_option(
+    @slash_option(
         name="public_3",
         description="Public visé",
         required=False,
-        opt_type=interactions.OptionType.STRING,
+        opt_type=OptionType.STRING,
         choices=publics,
     )
-    @interactions.slash_option(
+    @slash_option(
         name="date",
         description="Date de création de l'éditeur (format : YYYY-MM-DD)",
         required=False,
-        opt_type=interactions.OptionType.STRING,
+        opt_type=OptionType.STRING,
         min_length=10,
         max_length=10,
     )
-    @interactions.slash_option(
+    @slash_option(
         name="taille",
         description="Taille de l'éditeur",
         required=False,
-        opt_type=interactions.OptionType.STRING,
+        opt_type=OptionType.STRING,
     )
     async def ajouterediteur(
         self,
-        ctx: interactions.SlashContext,
+        ctx: SlashContext,
         name: str,
         genre_1: str,
         public_1: str,
@@ -937,14 +957,14 @@ def load(bot: interactions.Client):
             validated_data = self._validate_editor_data(editor_data)
             
             # Créer et afficher le modal
-            modal = interactions.Modal(
-                interactions.ParagraphText(
+            modal = Modal(
+                ParagraphText(
                     label="Présentation",
                     custom_id="presentation",
                     placeholder="Présentation de l'éditeur",
                     required=False,
                 ),
-                interactions.ParagraphText(
+                ParagraphText(
                     label="Commentaire",
                     custom_id="commentaire",
                     placeholder="Commentaire sur l'éditeur",
@@ -959,16 +979,16 @@ def load(bot: interactions.Client):
             await ctx.send_modal(modal)
             
         except ValidationError as e:
-            await ctx.send(f"❌ Erreur de validation: {e}", ephemeral=True)
+            await send_error(ctx, f"Erreur de validation: {e}")
             logger.warning(f"Validation échouée pour l'éditeur {name}: {e}")
         except Exception as e:
-            await ctx.send("❌ Une erreur est survenue lors de la préparation du formulaire.", ephemeral=True)
+            await send_error(ctx, "Une erreur est survenue lors de la préparation du formulaire.")
             logger.error(f"Erreur lors de la préparation du formulaire éditeur: {e}")
 
-    @interactions.modal_callback("ajouterediteur")
+    @modal_callback("ajouterediteur")
     async def ajouterediteur_callback(
         self,
-        ctx: interactions.ModalContext,
+        ctx: ModalContext,
         commentaire: str,
         presentation: str,
     ):
@@ -981,7 +1001,7 @@ def load(bot: interactions.Client):
         """
         try:
             if not self.data:
-                await ctx.send("❌ Données manquantes, veuillez recommencer.", ephemeral=True)
+                await send_error(ctx, "Données manquantes, veuillez recommencer.")
                 return
 
             # Créer les propriétés Notion
@@ -1005,9 +1025,9 @@ def load(bot: interactions.Client):
             logger.info(f"Éditeur {self.data.get('name')} ajouté par {ctx.author}")
             
         except NotionAPIError as e:
-            await ctx.send(f"❌ Erreur lors de l'ajout à Notion: {e}", ephemeral=True)
+            await send_error(ctx, f"Erreur lors de l'ajout à Notion: {e}")
         except Exception as e:
-            await ctx.send("❌ Une erreur est survenue lors de l'ajout de l'éditeur.", ephemeral=True)
+            await send_error(ctx, "Une erreur est survenue lors de l'ajout de l'éditeur.")
             logger.error(f"Erreur lors de l'ajout de l'éditeur: {e}")
         finally:
             # S'assurer que les données temporaires sont nettoyées

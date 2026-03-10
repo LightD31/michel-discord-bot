@@ -11,7 +11,7 @@ import interactions
 
 from config import DEBUG
 from src import logutil
-from src.utils import load_config
+from src.config_manager import load_config
 
 config,_,_ = load_config()
 

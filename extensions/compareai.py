@@ -34,7 +34,9 @@ from interactions.client.errors import CommandOnCooldown
 from openai import AsyncOpenAI
 
 from src import logutil
-from src.utils import load_config, search_dict_by_sentence
+from src.config_manager import load_config
+from src.helpers import fetch_user_safe, send_error, send_success
+from src.utils import search_dict_by_sentence
 
 # =============================================================================
 # Configuration and Constants
@@ -345,19 +347,16 @@ class CompareAIExtension(Extension):
     async def ask_question(self, ctx: SlashContext, question: str) -> None:
         """Main command to ask a question and compare AI responses."""
         if not self.openrouter_client:
-            await ctx.send("❌ Le client OpenRouter n'est pas initialisé", ephemeral=True)
+            await send_error(ctx, "Le client OpenRouter n'est pas initialisé")
             return
-            
+
         try:
             await self._process_question(ctx, question)
         except CommandOnCooldown:
-            await ctx.send(
-                "La commande est en cooldown, veuillez réessayer plus tard",
-                ephemeral=True,
-            )
+            await send_error(ctx, "La commande est en cooldown, veuillez réessayer plus tard")
         except Exception as e:
             logger.error(f"Unexpected error in ask_question: {e}")
-            await ctx.send("❌ Une erreur inattendue s'est produite", ephemeral=True)
+            await send_error(ctx, "Une erreur inattendue s'est produite")
 
     async def _process_question(self, ctx: SlashContext, question: str) -> None:
         """Process a question by getting responses from multiple models."""
@@ -400,10 +399,7 @@ class CompareAIExtension(Extension):
                 responses[provider] = response
             except Exception as e:
                 logger.error(f"Error calling {provider}: {e}")
-                await ctx.send(
-                    f"❌ Erreur avec le modèle {provider}: {e}",
-                    ephemeral=True,
-                )
+                await send_error(ctx, f"Erreur avec le modèle {provider}: {e}")
                 return {}
         
         return responses
@@ -521,7 +517,7 @@ class CompareAIExtension(Extension):
                     if user_id in seen_ids:
                         continue
                         
-                    user = await self.bot.fetch_user(user_id)
+                    _, user = await fetch_user_safe(self.bot, user_id)
                     if user:
                         mentioned_users.append(
                             UserInfo(
@@ -696,20 +692,17 @@ class CompareAIExtension(Extension):
             )
             
             if button_ctx.ctx.author_id != ctx.author.id:
-                await button_ctx.ctx.send(
-                    "Vous n'avez pas le droit de voter sur ce message",
-                    ephemeral=True,
-                )
+                await send_error(button_ctx.ctx, "Vous n'avez pas le droit de voter sur ce message")
                 return
 
             await self._process_vote(ctx, button_ctx, message_info, question, responses)
-            
+
         except TimeoutError:
             await self._handle_vote_timeout(ctx, message_info, question, responses)
         except Exception as e:
             logger.error(f"Unexpected error during voting: {e}")
             try:
-                await ctx.send("❌ Erreur lors du traitement du vote", ephemeral=True)
+                await send_error(ctx, "Erreur lors du traitement du vote")
             except Exception:
                 pass
 
@@ -752,7 +745,7 @@ class CompareAIExtension(Extension):
         vote_counts = self.vote_manager.count_votes()
         logger.info(f"Total votes: {vote_counts}")
 
-        await button_ctx.ctx.send("✅ Vote enregistré avec succès", ephemeral=True)
+        await send_success(button_ctx.ctx, "Vote enregistré avec succès")
 
     async def _handle_vote_timeout(
         self,

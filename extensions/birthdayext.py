@@ -43,9 +43,10 @@ from interactions import (
 )
 
 from src import logutil
-from src.helpers import Colors, require_guild, pick_weighted_message
+from src.helpers import Colors, fetch_user_safe, require_guild, pick_weighted_message
 from src.mongodb import mongo_manager
-from src.utils import CustomPaginator, load_config
+from src.config_manager import load_config
+from src.utils import CustomPaginator
 
 logger = logutil.init_logger(os.path.basename(__file__))
 config, module_config, enabled_servers = load_config("moduleBirthday")
@@ -465,8 +466,8 @@ class BirthdayExtension(Extension):
                     bd_date: datetime = birthday["date"]
                     uid = birthday["user"]
 
-                    # Préfère le cache Discord, fallback sur l'API
-                    user = self.bot.get_user(uid) or await self.bot.fetch_user(uid)
+                    # Fetch user safely (cache → API fallback)
+                    _, user = await fetch_user_safe(self.bot, uid)
                     if not user:
                         logger.warning("Could not fetch user %s", uid)
                         continue

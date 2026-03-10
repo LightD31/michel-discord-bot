@@ -13,9 +13,10 @@ from interactions import Extension, listen, slash_command, SlashContext, Embed, 
 from interactions.api.events import MessageCreate
 
 from src import logutil
-from src.helpers import require_guild
+from src.helpers import Colors, require_guild
 from src.mongodb import mongo_manager
-from src.utils import load_config, sanitize_content
+from src.config_manager import load_config
+from src.utils import sanitize_content
 
 logger = logutil.init_logger(os.path.basename(__file__))
 
@@ -192,7 +193,7 @@ class FeurExtension(Extension):
         
         embed = Embed(
             title="📊 Statistiques Feur",
-            color=0x9B59B6,
+            color=Colors.FEUR,
             timestamp=datetime.now(),
             footer=EmbedFooter(text=f"Demandé par {ctx.author.display_name}")
         )

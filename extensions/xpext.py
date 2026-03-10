@@ -25,12 +25,11 @@ from interactions import (
     slash_option,
 )
 from interactions.api.events import MessageCreate
-from src.utils import CustomPaginator
-
 from src import logutil
-from src.helpers import Colors, pick_weighted_message
+from src.config_manager import load_config
+from src.helpers import Colors, fetch_user_safe, is_guild_enabled, pick_weighted_message, send_error
 from src.mongodb import mongo_manager
-from src.utils import format_number, load_config
+from src.utils import CustomPaginator, format_number
 
 logger = logutil.init_logger(os.path.basename(__file__))
 config, module_config, enabled_servers = load_config("moduleXp")
@@ -254,7 +253,7 @@ class XpExtension(Extension):
         if message.author.bot:
             logger.debug("Message was from a bot.")
             return False
-        if str(message.guild.id) not in enabled_servers:
+        if not is_guild_enabled(message.guild.id, enabled_servers):
             logger.debug("Message was not from a guild with XP enabled.")
             return False
         return True
@@ -440,7 +439,7 @@ class XpExtension(Extension):
     async def rank(self, ctx: SlashContext, utilisateur: User = None):
         """Display the level and XP of a user."""
         if not self._db_connected:
-            await ctx.send("❌ La base de données n'est pas disponible.", ephemeral=True)
+            await send_error(ctx, "La base de données n'est pas disponible.")
             return
         
         target_user = utilisateur or ctx.author
@@ -450,7 +449,7 @@ class XpExtension(Extension):
             stats = await mongo_manager.get_guild_collection(guild_id, "xp").find_one({"_id": str(target_user.id)})
         except pymongo.errors.PyMongoError as e:
             logger.error("Database error in rank command: %s", e)
-            await ctx.send("❌ Erreur lors de la récupération des statistiques.", ephemeral=True)
+            await send_error(ctx, "Erreur lors de la récupération des statistiques.")
             return
         
         if stats is None:
@@ -491,10 +490,10 @@ class XpExtension(Extension):
         try:
             member = guild.get_member(user_id)
             if member is None:
-                member = await self.bot.fetch_user(user_id)
+                _, member = await fetch_user_safe(self.bot, user_id)
             if member is None:
                 return None
-            
+
             result = (member.display_name, member.username)
             self._user_cache.set(cache_key, result)
             return result

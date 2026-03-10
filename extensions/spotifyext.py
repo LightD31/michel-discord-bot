@@ -10,11 +10,36 @@ import random
 import time
 from datetime import datetime, timedelta
 
-import interactions
 import pymongo
 import pytz
 import spotipy
+from interactions import (
+    ActionRow,
+    AutocompleteContext,
+    Button,
+    ButtonStyle,
+    Client,
+    Embed,
+    Extension,
+    IntervalTrigger,
+    MaterialColors,
+    Modal,
+    ModalContext,
+    OptionType,
+    OrTrigger,
+    ParagraphText,
+    ShortText,
+    SlashContext,
+    Task,
+    Timestamp,
+    TimestampStyles,
+    TimeTrigger,
+    listen,
+    slash_command,
+    slash_option,
+)
 from interactions.api.events import Component
+from interactions.client.utils import timestamp_converter
 
 from dict import finishList, startList
 from src import logutil
@@ -28,17 +53,19 @@ from src.spotify import (
     spotifymongoformat,
     embed_message_vote_add,
 )
-from src.utils import milliseconds_to_string, load_config, load_discord2name
+from src.config_manager import load_config, load_discord2name
+from src.helpers import Colors, fetch_user_safe, send_error
+from src.utils import milliseconds_to_string
 
 # Constants and Configuration
-CONFIG, MODULE_CONFIGS, ENABLED_SERVERS = load_config("moduleSpotify")
+config, module_config, enabled_servers = load_config("moduleSpotify")
 
-SPOTIFY_CLIENT_ID = CONFIG["spotify"]["spotifyClientId"]
-SPOTIFY_CLIENT_SECRET = CONFIG["spotify"]["spotifyClientSecret"]
-SPOTIFY_REDIRECT_URI = CONFIG["spotify"]["spotifyRedirectUri"]
-DEV_GUILD = CONFIG["discord"]["devGuildId"]
+SPOTIFY_CLIENT_ID = config["spotify"]["spotifyClientId"]
+SPOTIFY_CLIENT_SECRET = config["spotify"]["spotifyClientSecret"]
+SPOTIFY_REDIRECT_URI = config["spotify"]["spotifyRedirectUri"]
+DEV_GUILD = config["discord"]["devGuildId"]
 COOLDOWN_TIME = 1
-DATA_FOLDER = CONFIG["misc"]["dataFolder"]
+DATA_FOLDER = config["misc"]["dataFolder"]
 
 # Logger setup
 logger = logutil.init_logger(os.path.basename(__file__))
@@ -139,21 +166,21 @@ class ServerData:
 
 # Build per-server data
 SERVERS: dict[str, ServerData] = {}
-for _guild_id in ENABLED_SERVERS:
+for _guild_id in enabled_servers:
     SERVERS[str(_guild_id)] = ServerData(
-        str(_guild_id), MODULE_CONFIGS[_guild_id], CONFIG
+        str(_guild_id), module_config[_guild_id], config
     )
 
 
-class SpotifyExtension(interactions.Extension):
-    def __init__(self, bot: interactions.client):
-        self.bot: interactions.Client = bot
+class SpotifyExtension(Extension):
+    def __init__(self, bot: Client):
+        self.bot: Client = bot
 
     def get_server(self, guild_id) -> ServerData:
         """Get the server data for a given guild ID."""
         return SERVERS[str(guild_id)]
 
-    @interactions.listen()
+    @listen()
     async def on_startup(self):
         for server in SERVERS.values():
             await self.load_voteinfos(server)
@@ -203,25 +230,22 @@ class SpotifyExtension(interactions.Extension):
                 "user_ids": list(user_ids),
             })
 
-    @interactions.slash_command(
+    @slash_command(
         "addsong",
         description="Ajoute une chanson à la playlist.",
-        scopes=ENABLED_SERVERS,
+        scopes=enabled_servers,
     )
-    @interactions.slash_option(
+    @slash_option(
         name="song",
         description="Nom de la chanson à ajouter",
-        opt_type=interactions.OptionType.STRING,
+        opt_type=OptionType.STRING,
         required=True,
         autocomplete=True,
     )
-    async def addsong(self, ctx: interactions.SlashContext, song):
+    async def addsong(self, ctx: SlashContext, song):
         server = self.get_server(ctx.guild_id)
         if str(ctx.channel_id) != str(server.channel_id):
-            await ctx.send(
-                "Vous ne pouvez pas utiliser cette commande dans ce salon.",
-                ephemeral=True,
-            )
+            await send_error(ctx, "Vous ne pouvez pas utiliser cette commande dans ce salon.")
             logger.info(
                 "Commande /addsong utilisée dans un mauvais salon(%s)", ctx.channel.name
             )
@@ -240,7 +264,7 @@ class SpotifyExtension(interactions.Extension):
                 track, ctx.author_id, spotify2discord=server.spotify2discord
             )
         except spotipy.exceptions.SpotifyException:
-            await ctx.send("Cette chanson n'existe pas.", ephemeral=True)
+            await send_error(ctx, "Cette chanson n'existe pas.")
             logger.info("Commande /addsong utilisée avec une chanson inexistante")
             return
 
@@ -252,7 +276,7 @@ class SpotifyExtension(interactions.Extension):
                 song=song_data,
                 track=track,
                 embedtype=EmbedType.ADD,
-                time=interactions.Timestamp.utcnow(),
+                time=Timestamp.utcnow(),
                 person=ctx.author.username,
                 icon=ctx.author.avatar.url,
             )
@@ -263,13 +287,11 @@ class SpotifyExtension(interactions.Extension):
             )
             logger.info("%s ajouté par %s", track["name"], ctx.author.display_name)
         else:
-            await ctx.send(
-                "Cette chanson a déjà été ajoutée à la playlist.", ephemeral=True
-            )
+            await send_error(ctx, "Cette chanson a déjà été ajoutée à la playlist.")
             logger.info("Commande /addsong utilisée avec une chanson déjà présente")
 
     @addsong.autocomplete("song")
-    async def autocomplete_from_spotify(self, ctx: interactions.AutocompleteContext):
+    async def autocomplete_from_spotify(self, ctx: AutocompleteContext):
         if not ctx.input_text:
             choices = [{"name": "Veuillez entrer un nom de chanson", "value": "error"}]
         else:
@@ -290,13 +312,13 @@ class SpotifyExtension(interactions.Extension):
                 ]
         await ctx.send(choices=choices)
 
-    # @interactions.Task.create(
-    #     interactions.OrTrigger(
-    #         interactions.TimeTrigger(hour=20, minute=0, utc=False),
-    #         interactions.TimeTrigger(hour=21, minute=30, utc=False),
+    # @Task.create(
+    #     OrTrigger(
+    #         TimeTrigger(hour=20, minute=0, utc=False),
+    #         TimeTrigger(hour=21, minute=30, utc=False),
     #     )
     # )
-    @interactions.Task.create(interactions.TimeTrigger(hour=20, minute=0, utc=False))
+    @Task.create(TimeTrigger(hour=20, minute=0, utc=False))
     async def randomvote(self):
         for server in SERVERS.values():
             try:
@@ -330,7 +352,7 @@ class SpotifyExtension(interactions.Extension):
         if total_votes < 3:
             new_time = str(self.randomvote.next_run)
             embed_original = message.embeds[0]
-            embed_original.title = f"Vote prolongé jusqu'à {interactions.utils.timestamp_converter(new_time).format(interactions.TimestampStyles.RelativeTime)}"
+            embed_original.title = f"Vote prolongé jusqu'à {timestamp_converter(new_time).format(TimestampStyles.RelativeTime)}"
             embed_original.timestamp = new_time
             await message.edit(
                 content=f"Pas assez de votes ({total_votes}/3), le vote est prolongé de 24h !\nVoulez-vous **conserver** cette chanson dans playlist ? (poke <@{song['added_by']}>)",
@@ -352,7 +374,7 @@ class SpotifyExtension(interactions.Extension):
                 song=song,
                 track=track,
                 embedtype=EmbedType.VOTE_LOSE,
-                time=interactions.Timestamp.now(),
+                time=Timestamp.now(),
             )
             await message.edit(
                 content="La chanson a été supprimée.",
@@ -363,7 +385,7 @@ class SpotifyExtension(interactions.Extension):
                         remove=supprimer,
                         menfou=menfou,
                         users=users,
-                        color=interactions.MaterialColors.DEEP_ORANGE,
+                        color=MaterialColors.DEEP_ORANGE,
                     ),
                 ],
                 components=[],
@@ -382,7 +404,7 @@ class SpotifyExtension(interactions.Extension):
                 song=song,
                 track=track,
                 embedtype=EmbedType.VOTE_WIN,
-                time=interactions.Timestamp.now(),
+                time=Timestamp.now(),
             )
             await message.edit(
                 content="La chanson a été conservée.",
@@ -393,7 +415,7 @@ class SpotifyExtension(interactions.Extension):
                         remove=supprimer,
                         menfou=menfou,
                         users=users,
-                        color=interactions.MaterialColors.LIME,
+                        color=MaterialColors.LIME,
                     ),
                 ],
                 components=[],
@@ -432,28 +454,28 @@ class SpotifyExtension(interactions.Extension):
                 # await embed_message_vote(),
             ],
             components=[
-                interactions.ActionRow(
-                    interactions.Button(
+                ActionRow(
+                    Button(
                         label="Conserver",
-                        style=interactions.ButtonStyle.SUCCESS,
+                        style=ButtonStyle.SUCCESS,
                         emoji="✅",
                         custom_id="conserver",
                     ),
-                    interactions.Button(
+                    Button(
                         label="Supprimer",
-                        style=interactions.ButtonStyle.DANGER,
+                        style=ButtonStyle.DANGER,
                         emoji="🗑️",
                         custom_id="supprimer",
                     ),
-                    interactions.Button(
+                    Button(
                         label="Menfou",
-                        style=interactions.ButtonStyle.SECONDARY,
+                        style=ButtonStyle.SECONDARY,
                         emoji="🤷",
                         custom_id="menfou",
                     ),
-                    interactions.Button(
+                    Button(
                         label="Annuler",
-                        style=interactions.ButtonStyle.SECONDARY,
+                        style=ButtonStyle.SECONDARY,
                         emoji="❌",
                         custom_id="annuler",
                     ),
@@ -478,7 +500,7 @@ class SpotifyExtension(interactions.Extension):
             upsert=True,
         )
 
-    @interactions.listen(Component)
+    @listen(Component)
     async def on_component(self, event: Component):
         """Called when a component is clicked"""
         ctx = event.ctx
@@ -489,9 +511,7 @@ class SpotifyExtension(interactions.Extension):
         # Check if the user has voted recently
         user_id = str(ctx.user.id)
         if user_id in last_votes and time.time() - last_votes[user_id] < COOLDOWN_TIME:
-            await ctx.send(
-                "Tu ne peux voter que toutes les 5 secondes ⚠️", ephemeral=True
-            )
+            await send_error(ctx, "Tu ne peux voter que toutes les 5 secondes.")
             logger.warning("%s a essayé de voter trop rapidement", ctx.user.username)
             return
         last_votes[user_id] = time.time()
@@ -551,7 +571,7 @@ class SpotifyExtension(interactions.Extension):
                     ephemeral=True,
                 )
 
-    @interactions.Task.create(interactions.IntervalTrigger(minutes=1, seconds=0))
+    @Task.create(IntervalTrigger(minutes=1, seconds=0))
     async def check_playlist_changes(self):
         """
         Check for changes in the Spotify playlist and update the Discord message accordingly.
@@ -632,7 +652,7 @@ class SpotifyExtension(interactions.Extension):
                     await server.playlist_items_full.insert_one(song)
                     if not skip_notifications:
                         track = sp.track(track["track"]["id"], market="FR")
-                        dt = interactions.utils.timestamp_converter(
+                        dt = timestamp_converter(
                             datetime.fromisoformat(song["added_at"]).astimezone(
                                 pytz.timezone("Europe/Paris")
                             )
@@ -667,7 +687,7 @@ class SpotifyExtension(interactions.Extension):
                             song=song,
                             track=track,
                             embedtype=EmbedType.DELETE,
-                            time=interactions.Timestamp.utcnow(),
+                            time=Timestamp.utcnow(),
                         )
                         channel = await self.bot.fetch_channel(server.channel_id)
                         await channel.send(
@@ -684,7 +704,7 @@ class SpotifyExtension(interactions.Extension):
             logger.debug("Snapshot mis à jour")
             # Send a message indicating that the playlist has been updated
         if server.recap_channel_id and server.recap_message_id:
-            recap_content = f"Dernière màj de la playlist {interactions.Timestamp.utcnow().format(interactions.TimestampStyles.RelativeTime)}, si c'était il y a plus d'**une minute**, il y a probablement un problème\n`/addsong Titre et artiste de la chanson` pour ajouter une chanson\nIl y a actuellement **{server.snapshot.get('length', 0)}** chansons dans la playlist, pour un total de **{milliseconds_to_string(server.snapshot.get('duration', 0))}**\nDashboard : https://drndvs.link/StatsPlaylist"
+            recap_content = f"Dernière màj de la playlist {Timestamp.utcnow().format(TimestampStyles.RelativeTime)}, si c'était il y a plus d'**une minute**, il y a probablement un problème\n`/addsong Titre et artiste de la chanson` pour ajouter une chanson\nIl y a actuellement **{server.snapshot.get('length', 0)}** chansons dans la playlist, pour un total de **{milliseconds_to_string(server.snapshot.get('duration', 0))}**\nDashboard : https://drndvs.link/StatsPlaylist"
             try:
                 recap_channel = await self.bot.fetch_channel(server.recap_channel_id)
                 recap_message = await recap_channel.fetch_message(server.recap_message_id)
@@ -692,35 +712,35 @@ class SpotifyExtension(interactions.Extension):
             except Exception as e:
                 logger.error("Error while trying to edit recap message: %s", e)
 
-    @interactions.slash_command(
+    @slash_command(
         name="rappelvote",
         sub_cmd_name="set",
         description="Gère les rappels pour voter",
         sub_cmd_description="Ajoute un rappel pour voter pour la chanson du jour",
-        scopes=ENABLED_SERVERS,
+        scopes=enabled_servers,
     )
-    @interactions.slash_option(
+    @slash_option(
         name="heure",
         description="Heure du rappel",
-        opt_type=interactions.OptionType.INTEGER,
+        opt_type=OptionType.INTEGER,
         required=True,
         min_value=0,
         max_value=23,
     )
-    @interactions.slash_option(
+    @slash_option(
         "minute",
         "Minute du rappel",
-        interactions.OptionType.INTEGER,
+        OptionType.INTEGER,
         required=True,
         min_value=0,
         max_value=59,
     )
-    async def setreminder(self, ctx: interactions.SlashContext, heure, minute):
+    async def setreminder(self, ctx: SlashContext, heure, minute):
         """
         Sets a reminder for a user to vote at a specific time.
 
         Args:
-            ctx (interactions.SlashContext): The context of the slash command.
+            ctx (SlashContext): The context of the slash command.
             heure (int): The hour of the reminder.
             minute (int): The minute of the reminder.
         """
@@ -748,9 +768,7 @@ class SpotifyExtension(interactions.Extension):
                 f"Rappel défini à {remind_time.strftime('%H:%M')}.", ephemeral=True
             )
         else:
-            await ctx.send(
-                "Cette commande n'est pas disponible dans ce salon.", ephemeral=True
-            )
+            await send_error(ctx, "Cette commande n'est pas disponible dans ce salon.")
             logger.info(
                 "%s a essayé d'utiliser la commande /rappel dans le salon #%s (%s)",
                 ctx.user.display_name,
@@ -758,7 +776,7 @@ class SpotifyExtension(interactions.Extension):
                 ctx.channel_id,
             )
 
-    @interactions.Task.create(interactions.IntervalTrigger(minutes=1))
+    @Task.create(IntervalTrigger(minutes=1))
     async def reminder_check(self):
         for server in SERVERS.values():
             try:
@@ -775,7 +793,7 @@ class SpotifyExtension(interactions.Extension):
         for remind_time, user_ids in server.reminders.copy().items():
             if current_time >= remind_time:
                 for user_id in user_ids.copy():
-                    user = await self.bot.fetch_user(user_id)
+                    _, user = await fetch_user_safe(self.bot, user_id)
                     if user:
                         vote_doc = await server.votes_db.find_one(
                             {"_id": str(server.vote_infos["track_id"])}
@@ -807,7 +825,7 @@ class SpotifyExtension(interactions.Extension):
         sub_cmd_name="remove",
         sub_cmd_description="Enlève un rappel de vote pour la chanson du jour",
     )
-    async def deletereminder(self, ctx: interactions.SlashContext):
+    async def deletereminder(self, ctx: SlashContext):
         server = self.get_server(ctx.guild_id)
         user_id = ctx.user.id
         # create the list of reminders for the user
@@ -817,9 +835,9 @@ class SpotifyExtension(interactions.Extension):
                 reminders_list.append(remind_time)
         # Create a button for each reminder
         buttons = [
-            interactions.Button(
+            Button(
                 label=remind_time.strftime("%H:%M"),
-                style=interactions.ButtonStyle.SECONDARY,
+                style=ButtonStyle.SECONDARY,
                 custom_id=str(remind_time.timestamp()),
             )
             for remind_time in reminders_list
@@ -827,7 +845,7 @@ class SpotifyExtension(interactions.Extension):
         # Send a message with the buttons
         await ctx.send(
             "Quel rappel veux-tu supprimer ?",
-            components=[interactions.ActionRow(*buttons)],
+            components=[ActionRow(*buttons)],
             ephemeral=True,
         )
         try:
@@ -856,19 +874,17 @@ class SpotifyExtension(interactions.Extension):
                 ctx.user.display_name,
             )
         except TimeoutError:
-            await ctx.send(
-                "Tu n'as pas sélectionné de rappel à supprimer.", ephemeral=True
-            )
+            await send_error(ctx, "Tu n'as pas sélectionné de rappel à supprimer.")
             await button_ctx.ctx.edit_origin(
                 content="Aucun rappel sélectionné.", components=[]
             )
 
-    @interactions.slash_command(
+    @slash_command(
         name="updatetoken",
         description="Met à jour le token de l'application Spotify",
         scopes=[DEV_GUILD],
     )
-    async def updatetoken(self, ctx: interactions.SlashContext):
+    async def updatetoken(self, ctx: SlashContext):
         # Create a SpotifyOAuth object to handle authentication
         sp_oauth = spotipy.SpotifyOAuth(
             client_id=SPOTIFY_CLIENT_ID,
@@ -891,15 +907,15 @@ class SpotifyExtension(interactions.Extension):
         # If the token is invalid or doesn't exist, prompt the user to authenticate
         # Generate the authorization URL and prompt the user to visit it
         auth_url = sp_oauth.get_authorize_url()
-        modal = interactions.Modal(
-            interactions.ShortText(
+        modal = Modal(
+            ShortText(
                 label="Auth URL :", value=auth_url, custom_id="auth_url"
             ),
-            interactions.ParagraphText(label="Answer URL :", custom_id="answer_url"),
+            ParagraphText(label="Answer URL :", custom_id="answer_url"),
             title="Spotify Auth",
         )
         await ctx.send_modal(modal)
-        modal_ctx: interactions.ModalContext = await ctx.bot.wait_for_modal(modal)
+        modal_ctx: ModalContext = await ctx.bot.wait_for_modal(modal)
         # Wait for the user to input the response URL after authenticating
         auth_code = modal_ctx.responses["answer_url"]
         # Exchange the authorization code for an access token and refresh token
@@ -910,20 +926,20 @@ class SpotifyExtension(interactions.Extension):
         # Create a new instance of the Spotify API with the access token
         sp = spotipy.Spotify(auth_manager=sp_oauth, language="fr")
 
-    @interactions.slash_command(
+    @slash_command(
         name="songinfo",
         description="Affiche les informations d'une chanson",
-        scopes=ENABLED_SERVERS,
+        scopes=enabled_servers,
     )
-    @interactions.slash_option(
+    @slash_option(
         name="song",
         description="Nom de la chanson",
-        opt_type=interactions.OptionType.STRING,
+        opt_type=OptionType.STRING,
         required=True,
         autocomplete=True,
         argument_name="song_id",
     )
-    async def songinfo(self, ctx: interactions.SlashContext, song_id):
+    async def songinfo(self, ctx: SlashContext, song_id):
         """
         Displays information about a song from the mongodb database.
         """
@@ -948,7 +964,7 @@ class SpotifyExtension(interactions.Extension):
                 song=song,
                 track=track,
                 embedtype=EmbedType.INFOS,
-                time=interactions.Timestamp.utcnow(),
+                time=Timestamp.utcnow(),
                 person=votes.get("added_by", "Inconnu"),
             )
         if votes:
@@ -959,9 +975,9 @@ class SpotifyExtension(interactions.Extension):
                 # Create a Timestamp object from the date string and a None object if the date is not present
                 date = votes.get("date")
                 if date:
-                    date = interactions.utils.timestamp_converter(
+                    date = timestamp_converter(
                         datetime.strptime(date, "%Y-%m-%d")
-                    ).format(interactions.TimestampStyles.LongDate)
+                    ).format(TimestampStyles.LongDate)
                 embeds = [
                     embed,
                     await embed_message_vote(
@@ -969,27 +985,27 @@ class SpotifyExtension(interactions.Extension):
                         remove=supprimer,
                         menfou=menfou,
                         users=users,
-                        color=0x1DB954,
+                        color=Colors.SPOTIFY,
                         description=f"Vote effectué le {date}\nLa chanson a été **{votes.get('state', '')}**",
                     ),
                 ]
             else:
                 embeds = [
                     embed,
-                    interactions.Embed(
+                    Embed(
                         title="Vote",
                         description=f"La chanson est passée au vote et a été **{votes.get('state', '')}**\nPas de détails sur le vote.",
-                        color=0x1DB954,
+                        color=Colors.SPOTIFY,
                     ),
                 ]
         else:
             embeds = [embed]
         await ctx.send(embeds=embeds, files=[file] if file else None)
         if not song and not votes:
-            await ctx.send("Cette chanson n'existe pas.", ephemeral=True)
+            await send_error(ctx, "Cette chanson n'existe pas.")
 
     @songinfo.autocomplete("song")
-    async def autocomplete_from_db(self, ctx: interactions.AutocompleteContext):
+    async def autocomplete_from_db(self, ctx: AutocompleteContext):
         """
         Autocomplete function for the 'songinfo' command.
         """
@@ -1047,19 +1063,19 @@ class SpotifyExtension(interactions.Extension):
                 logger.debug("choices : %s", choices)
         await ctx.send(choices=choices[0:25])
 
-    @interactions.slash_command(
+    @slash_command(
         name="addwithvote",
         description="Si vous êtes pas sûr d'ajoouter une chanson, vous pouvez la mettre au vote",
-        scopes=ENABLED_SERVERS,
+        scopes=enabled_servers,
     )
-    @interactions.slash_option(
+    @slash_option(
         name="song",
         description="Nom de la chanson",
-        opt_type=interactions.OptionType.STRING,
+        opt_type=OptionType.STRING,
         required=True,
         autocomplete=True,
     )
-    async def addwithvote(self, ctx: interactions.SlashContext, song):
+    async def addwithvote(self, ctx: SlashContext, song):
         server = self.get_server(ctx.guild_id)
         if str(ctx.channel_id) == str(server.channel_id):
             # Get last track IDs from MongoDB
@@ -1077,7 +1093,7 @@ class SpotifyExtension(interactions.Extension):
                     track, ctx.author_id, spotify2discord=server.spotify2discord
                 )
             except spotipy.exceptions.SpotifyException:
-                await ctx.send("Cette chanson n'existe pas.", ephemeral=True)
+                await send_error(ctx, "Cette chanson n'existe pas.")
                 logger.info("Commande /addsong utilisée avec une chanson inexistante")
             data = await server.vote_manager.load_data()
             # List all song_id in data
@@ -1086,22 +1102,22 @@ class SpotifyExtension(interactions.Extension):
                 logger.debug("song : %s", song)
                 # Create and send embed message
                 components = [
-                    interactions.ActionRow(
-                        interactions.Button(
+                    ActionRow(
+                        Button(
                             label="Oui",
-                            style=interactions.ButtonStyle.SUCCESS,
+                            style=ButtonStyle.SUCCESS,
                             emoji="✅",
                             custom_id=f"addwithvote_{song['_id']}_yes",
                         ),
-                        interactions.Button(
+                        Button(
                             label="Non",
-                            style=interactions.ButtonStyle.DANGER,
+                            style=ButtonStyle.DANGER,
                             emoji="🗑️",
                             custom_id=f"addwithvote_{song['_id']}_no",
                         ),
-                        interactions.Button(
+                        Button(
                             label="Annuler",
-                            style=interactions.ButtonStyle.SECONDARY,
+                            style=ButtonStyle.SECONDARY,
                             emoji="❌",
                             custom_id=f"addwithvote_{song['_id']}_annuler",
                         ),
@@ -1142,23 +1158,18 @@ class SpotifyExtension(interactions.Extension):
                     "%s ajouté au vote par %s", track["name"], ctx.author.display_name
                 )
             else:
-                await ctx.send(
-                    "Cette chanson est déjà dans la playlist", ephemeral=True
-                )
+                await send_error(ctx, "Cette chanson est déjà dans la playlist.")
                 logger.info(
                     "Commande /addwithvote utilisée avec une chanson déjà présente"
                 )
         else:
-            await ctx.send(
-                "Vous ne pouvez pas utiliser cette commande dans ce salon.",
-                ephemeral=True,
-            )
+            await send_error(ctx, "Vous ne pouvez pas utiliser cette commande dans ce salon.")
             logger.info(
                 "Commande /addwithvote utilisée dans un mauvais salon(%s)",
                 ctx.channel.name,
             )
 
-    @interactions.listen(Component)
+    @listen(Component)
     async def on_button2(self, event: Component):
         if not event.ctx.custom_id.startswith("addwithvote"):
             return
@@ -1169,9 +1180,7 @@ class SpotifyExtension(interactions.Extension):
         # check if the user has voted recently
         user_id = str(event.ctx.user.id)
         if user_id in last_votes and time.time() - last_votes[user_id] < COOLDOWN_TIME:
-            await event.ctx.send(
-                "Tu ne peux voter que toutes les 5 secondes ⚠️", ephemeral=True
-            )
+            await send_error(event.ctx, "Tu ne peux voter que toutes les 5 secondes.")
             logger.warning(
                 "%s a essayé de voter trop rapidement", event.ctx.user.username
             )
@@ -1208,7 +1217,7 @@ class SpotifyExtension(interactions.Extension):
         logger.info("User %s voted %s", event.ctx.user.username, vote)
 
     @addwithvote.autocomplete("song")
-    async def autocomplete_from_spotify(self, ctx: interactions.AutocompleteContext):
+    async def autocomplete_from_spotify(self, ctx: AutocompleteContext):
         """
         Autocomplete function for the 'addwithvote' command.
         """
@@ -1274,7 +1283,7 @@ class SpotifyExtension(interactions.Extension):
                 song=song,
                 track=track,
                 embedtype=EmbedType.VOTE_WIN,
-                time=interactions.Timestamp.utcnow(),
+                time=Timestamp.utcnow(),
                 person=data[song_id]["author_id"],
             )
             await message.edit(
@@ -1291,7 +1300,7 @@ class SpotifyExtension(interactions.Extension):
                 song=song,
                 track=track,
                 embedtype=EmbedType.VOTE_LOSE,
-                time=interactions.Timestamp.utcnow(),
+                time=Timestamp.utcnow(),
                 person=data[song_id]["author_id"],
             )
             await message.edit(
@@ -1307,9 +1316,9 @@ class SpotifyExtension(interactions.Extension):
         data.pop(song_id)
         await server.vote_manager.save_data(data)
 
-    @interactions.Task.create(
-        interactions.OrTrigger(
-            *[interactions.TimeTrigger(hour=hour) for hour in range(24)]
+    @Task.create(
+        OrTrigger(
+            *[TimeTrigger(hour=hour) for hour in range(24)]
         )
     )
     async def check_for_end(self):
@@ -1332,7 +1341,7 @@ class SpotifyExtension(interactions.Extension):
                     "Error in check_for_end for server %s: %s", server.guild_id, e
                 )
 
-    @interactions.Task.create(interactions.TimeTrigger(hour=4, minute=30, utc=False))
+    @Task.create(TimeTrigger(hour=4, minute=30, utc=False))
     async def new_titles_playlist(self):
         for server in SERVERS.values():
             try:
@@ -1374,12 +1383,12 @@ class SpotifyExtension(interactions.Extension):
 
         sp.playlist_replace_items(server.new_playlist_id, new_tracks)
 
-    @interactions.slash_command(
+    @slash_command(
         name="nextvote",
         description="Force le prochain vote PAS TOUCHE",
         scopes=[DEV_GUILD],
     )
-    async def nextvote(self, ctx: interactions.SlashContext):
+    async def nextvote(self, ctx: SlashContext):
         """
         Force the next vote for the song of the day.
         """

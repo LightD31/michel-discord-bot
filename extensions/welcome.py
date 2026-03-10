@@ -6,8 +6,8 @@ from interactions import Client, Extension, listen
 from interactions.api.events import MemberAdd, MemberRemove
 
 from src import logutil
-from src.helpers import pick_weighted_message
-from src.utils import load_config
+from src.helpers import is_guild_enabled, pick_weighted_message
+from src.config_manager import load_config
 
 logger = logutil.init_logger(os.path.basename(__file__))
 
@@ -32,7 +32,7 @@ class WelcomeExtension(Extension):
         logger.info(
             "Member %s joined the server %s", event.member.username, event.guild.name
         )
-        if str(event.guild.id) not in enabled_servers:
+        if not is_guild_enabled(event.guild.id, enabled_servers):
             logger.info("Server not enabled")
             return
         serv_config = module_config.get(str(event.guild.id), {})
@@ -63,7 +63,7 @@ class WelcomeExtension(Extension):
         logger.info(
             "Member %s left the server %s", event.member.username, event.guild.name
         )
-        if str(event.guild.id) not in enabled_servers:
+        if not is_guild_enabled(event.guild.id, enabled_servers):
             logger.info("Server not enabled")
             return
         serv_config : dict = module_config.get(str(event.guild.id), {})

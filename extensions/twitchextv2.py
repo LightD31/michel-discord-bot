@@ -45,9 +45,9 @@ from twitchAPI.twitch import Twitch
 from twitchAPI.type import AuthScope, TwitchResourceNotFound
 
 from src import logutil
-from src.helpers import Colors
+from src.helpers import Colors, send_error
 from src.mongodb import mongo_manager
-from src.utils import load_config
+from src.config_manager import load_config
 
 logger = logutil.init_logger(os.path.basename(__file__))
 
@@ -454,7 +454,7 @@ class TwitchExtension(Extension):
                 embed = Embed(
                     title=f"<:TeamBelieve:808056449750138880> Planning de {schedule.broadcaster_name} <:TeamBelieve:808056449750138880>",
                     description="Les 5 prochains streams planifiés et dans moins de 10 jours.",
-                    color=0x6441A5,
+                    color=Colors.TWITCH,
                     timestamp=datetime.now(pytz.UTC),
                     footer=EmbedFooter(text=bot.display_name, icon_url=bot.avatar_url),
                 )
@@ -471,7 +471,7 @@ class TwitchExtension(Extension):
                 embed = Embed(
                     title="<:TeamBelieve:808056449750138880> Planning <:TeamBelieve:808056449750138880>",
                     description="Aucun stream planifié",
-                    color=0x6441A5,
+                    color=Colors.TWITCH,
                     timestamp=datetime.now(pytz.UTC),
                     footer=EmbedFooter(text=bot.display_name, icon_url=bot.avatar_url),
                 )
@@ -482,7 +482,7 @@ class TwitchExtension(Extension):
             return Embed(
                 title="Planning",
                 description="Erreur lors de la récupération du planning",
-                color=0xFF0000,
+                color=Colors.ERROR,
                 timestamp=datetime.now(pytz.UTC),
             )
 
@@ -601,7 +601,7 @@ class TwitchExtension(Extension):
                 return Embed(
                     title=title,
                     description=description,
-                    color=0x6441A5,
+                    color=Colors.TWITCH,
                     url=f"https://twitch.tv/{user_login}",
                     timestamp=datetime.now(pytz.UTC),
                 )
@@ -611,7 +611,7 @@ class TwitchExtension(Extension):
             return Embed(
                 title=title,
                 description=description,
-                color=0x6441A5,
+                color=Colors.TWITCH,
                 url=f"https://twitch.tv/{user_login}",
                 footer=EmbedFooter(text=bot.display_name, icon_url=bot.avatar_url),
                 timestamp=datetime.now(pytz.UTC),
@@ -622,7 +622,7 @@ class TwitchExtension(Extension):
             return Embed(
                 title=title,
                 description=description,
-                color=0x6441A5,
+                color=Colors.TWITCH,
                 url=f"https://twitch.tv/{user_login}",
                 timestamp=datetime.now(pytz.UTC),
             )
@@ -853,7 +853,7 @@ class TwitchExtension(Extension):
                 streamer.guild_id,
                 title=f"{broadcaster_name} a terminé son live",
                 description="Résumé de la session Twitch",
-                color=0x9146FF,
+                color=Colors.TWITCH_ALT,
             )
 
             embed.add_field(name="Durée", value=duration_str, inline=True)
@@ -1059,7 +1059,7 @@ class TwitchExtension(Extension):
                                 streamer.guild_id,
                                 title="Mise à jour d'emote",
                                 description=f"L'emote **{new_emote.name}** a été remplacé sur la chaîne de **{streamer_id}**.",
-                                color=0xFFA500,
+                                color=Colors.ORANGE,
                             )
                             embed.add_field(name="Emote", value=self.get_display_value(new_emote.name), inline=True)
                             embed.add_field(name="Streamer", value=self.get_display_value(streamer_id), inline=True)

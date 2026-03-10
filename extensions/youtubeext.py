@@ -9,7 +9,8 @@ from interactions import BaseChannel, Client, Extension, IntervalTrigger, Task, 
 
 from src import logutil
 from src.mongodb import mongo_manager
-from src.utils import load_config, fetch
+from src.config_manager import load_config
+from src.utils import fetch
 
 logger = logutil.init_logger(os.path.basename(__file__))
 config, module_config, enabled_servers = load_config("moduleYoutube")

@@ -33,7 +33,7 @@ from interactions import (
 from src import logutil
 from src.helpers import Colors
 from src.mongodb import mongo_manager
-from src.utils import load_config
+from src.config_manager import load_config
 
 logger = logutil.init_logger(os.path.basename(__file__))
 

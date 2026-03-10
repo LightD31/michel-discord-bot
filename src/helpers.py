@@ -4,7 +4,7 @@ import random
 from datetime import datetime
 from typing import Any, Callable, Optional
 
-from interactions import AutocompleteContext, Client, SlashContext
+from interactions import AutocompleteContext, Client, Embed, SlashContext
 
 
 # ---------------------------------------------------------------------------
@@ -17,11 +17,19 @@ class Colors:
     ERROR = 0xFF0000
     INFO = 0x0099FF
     WARNING = 0xFF9900
+    ORANGE = 0xFFA500
     SPOTIFY = 0x1DB954
     TWITCH = 0x6441A5
+    TWITCH_ALT = 0x9146FF
     VLR = 0xE04747
     CONFRERIE = 0x9B462E
     COLOC = 0x05B600
+    FEUR = 0x9B59B6
+    UTIL = 0x3489EB
+    XP = 0x00FF00
+    SECRET_SANTA = 0xFF0000
+    SECRET_SANTA_SUCCESS = 0x00FF00
+    SECRET_SANTA_ACCENT = 0xFF00FF
     BACKUP_SUCCESS = 0x2ECC71
     BACKUP_ERROR = 0xE74C3C
 
@@ -40,6 +48,11 @@ SPACER_FIELD = {"name": "\u200b", "value": "\u200b", "inline": True}
 async def send_error(ctx: SlashContext, message: str) -> None:
     """Send an ephemeral error message prefixed with a cross emoji."""
     await ctx.send(f"❌ {message}", ephemeral=True)
+
+
+async def send_success(ctx: SlashContext, message: str) -> None:
+    """Send an ephemeral success message prefixed with a check emoji."""
+    await ctx.send(f"✅ {message}", ephemeral=True)
 
 
 async def require_guild(ctx: SlashContext) -> bool:
@@ -144,3 +157,12 @@ async def guild_group_autocomplete(
         if input_text in g["name"].lower()
     ]
     await ctx.send(choices=filtered[:25])
+
+
+# ---------------------------------------------------------------------------
+# Module enabled check
+# ---------------------------------------------------------------------------
+
+def is_guild_enabled(guild_id: int | str, enabled_servers: list[str]) -> bool:
+    """Return True if the guild is in the enabled servers list."""
+    return str(guild_id) in enabled_servers
