@@ -466,7 +466,12 @@ async def fetch_match_details(match_id: str) -> Dict[str, Any]:
 async def fetch_team_info(team_id: str) -> Dict[str, Any]:
     """Récupère le profil d'une équipe par son ID VLR.gg."""
     data = await vlrgg_request("v2/team", {"id": team_id})
-    return data.get("data", data)
+    inner = data.get("data", data)
+    if isinstance(inner, dict):
+        segments = inner.get("segments", [])
+        if segments and isinstance(segments, list):
+            return segments[0]
+    return inner
 
 
 async def fetch_team_matches_by_id(
