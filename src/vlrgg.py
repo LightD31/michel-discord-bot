@@ -9,7 +9,7 @@ Endpoints V2 utilisés:
 - /v2/match/details?match_id=X — détails complets d'un match
 - /v2/team?id=X — profil d'équipe
 
-Note: Un cache avec TTL variable est utilisé pour minimiser le nombre de requêtes.
+Note: Un cache avec TTL court est utilisé (API self-hosted sur vlr.drndvs.fr).
 """
 
 import asyncio
@@ -26,14 +26,14 @@ logger = logutil.init_logger(__name__)
 
 VLRGG_API_URL = "https://vlr.drndvs.fr"
 
-# Cache TTL en secondes par type d'endpoint
+# Cache TTL en secondes par type d'endpoint (valeurs basses, API self-hosted)
 CACHE_TTL = {
-    "live": 30,
-    "upcoming": 120,
-    "results": 300,
-    "details": 120,
-    "team": 600,
-    "default": 120,
+    "live": 10,
+    "upcoming": 30,
+    "results": 60,
+    "details": 30,
+    "team": 120,
+    "default": 30,
 }
 
 # Cache interne : { "endpoint:params_hash" -> (timestamp, data) }
