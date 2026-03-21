@@ -230,6 +230,12 @@ async def fetch(
         try:
             async with ClientSession() as session:
                 async with session.get(url, headers=default_headers, params=params) as response:
+                    if response.status >= 500:
+                        logger.error("Failed to fetch %s: Status %s", url, response.status)
+                        if i < retries - 1:
+                            await asyncio.sleep(pause * (i + 1))
+                            continue
+                        raise Exception(f"Failed to fetch {url}: Status {response.status}")
                     if response.status != 200:
                         logger.error("Failed to fetch %s: Status %s", url, response.status)
                         raise Exception(f"Failed to fetch {url}: Status {response.status}")

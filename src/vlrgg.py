@@ -26,6 +26,9 @@ logger = logutil.init_logger(__name__)
 
 VLRGG_API_URL = "https://vlr.drndvs.fr"
 
+# Limite de requêtes concurrentes vers l'API (éviter les 502 sur le serveur self-hosted)
+_api_semaphore = asyncio.Semaphore(2)
+
 # Cache TTL en secondes par type d'endpoint (valeurs basses, API self-hosted)
 CACHE_TTL = {
     "live": 10,
@@ -87,7 +90,8 @@ async def vlrgg_request(
 
     url = f"{VLRGG_API_URL}/{endpoint}"
     try:
-        data: Dict[str, Any] = await fetch(url, params=params, return_type="json")  # type: ignore[assignment]
+        async with _api_semaphore:
+            data: Dict[str, Any] = await fetch(url, params=params, return_type="json")  # type: ignore[assignment]
         _cache[key] = (time.monotonic(), data)
         return data
     except Exception as e:
