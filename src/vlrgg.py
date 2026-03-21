@@ -1,7 +1,7 @@
 """Client pour l'API non-officielle VLR.gg (V2).
 
 Source unique pour les données de matchs Valorant.
-API: https://vlr.drndvs.fr/ (déploiement custom)
+API: https://vlr.drndvs.fr (déploiement custom)
 
 Endpoints V2 utilisés:
 - /v2/team/matches?id=X — historique des matchs d'une équipe (results + upcoming)
@@ -24,7 +24,7 @@ from src.helpers import format_discord_timestamp
 
 logger = logutil.init_logger(__name__)
 
-VLRGG_API_URL = "https://vlr.drndvs.fr/"
+VLRGG_API_URL = "https://vlr.drndvs.fr"
 
 # Cache TTL en secondes par type d'endpoint
 CACHE_TTL = {
