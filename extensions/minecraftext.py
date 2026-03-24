@@ -241,6 +241,7 @@ class Minecraft(Extension):
         from src.minecraft import get_minecraft_stats_with_retry
         
         try:
+            logger.debug(f"SFTP connection params: host={SFTP_HOST}, port={SFTP_PORT}, username={SFTP_USERNAME}")
             player_stats = await get_minecraft_stats_with_retry(
                 host=SFTP_HOST,
                 port=SFTP_PORT,
@@ -249,9 +250,9 @@ class Minecraft(Extension):
             )
             logger.debug(f"Retrieved stats for {len(player_stats)} players using optimized connection")
             return player_stats
-            
+
         except Exception as e:
-            logger.error(f"Failed to get stats with optimized method: {e}")
+            logger.error(f"Failed to get stats with optimized method (host={SFTP_HOST}, port={SFTP_PORT}, user={SFTP_USERNAME}): {e}")
             return []
 
     def _create_stats_table(self, player_stats):
