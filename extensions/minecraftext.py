@@ -127,7 +127,7 @@ class Minecraft(Extension):
         if coloc_status.players.online > 0:
             players = "\n".join(
                 sorted(
-                    [player.name for player in coloc_status.players.sample],
+                    [player.name.replace("_", r"\_") for player in coloc_status.players.sample],
                     key=str.lower,
                 )
             )
@@ -152,11 +152,10 @@ class Minecraft(Extension):
                     "value": players,
                     "inline": True,
                 },
-                {
+            ] + ([{
                     "name": "État de Michel et du serveur",
                     "value": STATUS_URL,
-                },
-            ],
+                }] if STATUS_URL else []),
             color=BrandColors.GREEN,
             timestamp=Timestamp.utcnow().isoformat(),
         )
@@ -168,12 +167,10 @@ class Minecraft(Extension):
         embed = Embed(
             title="Serveur Hors-ligne",
             description=f"Adresse : `{MINECRAFT_ADDRESS}`",
-            fields=[
-                {
+            fields=[{
                     "name": "État de Michel et du serveur",
                     "value": STATUS_URL,
-                }
-            ],
+                }] if STATUS_URL else [],
             color=BrandColors.RED,
             timestamp=Timestamp.utcnow().isoformat(),
         )
@@ -194,11 +191,10 @@ class Minecraft(Extension):
                     "name": "Latence",
                     "value": "Serveur en veille :sleeping:",
                 },
-                {
+            ] + ([{
                     "name": "État de Michel et du serveur",
-                    "value": STATUS_URL
-                }
-            ],
+                    "value": STATUS_URL,
+                }] if STATUS_URL else []),
             footer=FOOTER_TEXT if FOOTER_TEXT else None,
             timestamp=Timestamp.utcnow().isoformat(),
             color=BrandColors.YELLOW,
