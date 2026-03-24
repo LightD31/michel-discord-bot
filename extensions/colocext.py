@@ -40,7 +40,8 @@ from interactions import (
 from interactions.api.events import Component
 
 from src import logutil
-from src.utils import load_config
+from src.config_manager import load_config
+from src.helpers import fetch_user_safe, send_error
 from src.coloc.api_client import ZuniversAPIClient, ZuniversAPIError
 from src.coloc.constants import (
     ADVENT_CALENDAR_REMINDERS,
@@ -317,9 +318,9 @@ class ColocExtension(Extension):
             return
 
         try:
-            user = await self.bot.fetch_user(user_id)
+            _, user = await fetch_user_safe(self.bot, user_id)
             if not user:
-                logger.warning(f"Could not fetch user {user_id}")
+                logger.warning("Could not fetch user %s", user_id)
                 return
             today = current_time.strftime("%Y-%m-%d")
 
@@ -382,7 +383,7 @@ class ColocExtension(Extension):
             await self._check_zunivers_events()
             await ctx.send("Vérification des événements Zunivers terminée ! 🎉", ephemeral=True)
         except Exception as e:
-            await ctx.send(f"Erreur lors de la vérification: {e}", ephemeral=True)
+            await send_error(ctx, f"Erreur lors de la vérification: {e}")
             logger.error(f"Manual event check failed: {e}")
 
     async def _check_zunivers_events(self) -> None:

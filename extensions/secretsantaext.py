@@ -1,4 +1,5 @@
 import json
+import os
 import random
 import re
 from dataclasses import dataclass, asdict
@@ -7,17 +8,18 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Union
 
 from interactions import (
-    Extension, Client, BrandColors, Embed, OptionType, ComponentContext,
+    Extension, Client, Embed, OptionType, ComponentContext,
     SlashContext, slash_command, slash_option, Member, User, Button,
     ButtonStyle, ActionRow, component_callback, Permissions, spread_to_rows,
     IntegrationType
 )
 
 from src import logutil
+from src.config_manager import load_config, load_discord2name
+from src.helpers import Colors, fetch_user_safe, send_error
 from src.mongodb import mongo_manager
-from src.utils import load_config, load_discord2name
 
-logger = logutil.init_logger(__name__)
+logger = logutil.init_logger(os.path.basename(__file__))
 config, module_config, enabled_servers = load_config("moduleSecretSanta")
 
 # Data directory setup (kept only for human-readable draw files)
@@ -45,7 +47,7 @@ class SecretSantaSession:
             self.created_at = datetime.now().isoformat()
 
 
-class SecretSanta(Extension):
+class SecretSantaExtension(Extension):
     def __init__(self, bot: Client):
         self.bot = bot
 
@@ -70,14 +72,6 @@ class SecretSanta(Extension):
             db["secret_santa_sessions"],
             db["secret_santa_draw_results"],
             db["secret_santa_banned_pairs"],
-        )
-
-    def create_embed(self, title: str, message: str, color=BrandColors.RED) -> Embed:
-        """Create a themed embed."""
-        return Embed(
-            title=f"🎅 {title}",
-            description=message,
-            color=color,
         )
 
     # ========== Session Management ==========
@@ -185,18 +179,12 @@ class SecretSanta(Extension):
         ])
         
         for giver_id, receiver_id in assignments:
-            try:
-                giver = await self.bot.fetch_user(giver_id)
-                giver_name = f"{giver.display_name} (@{giver.username})"
-            except Exception:
-                giver_name = f"Utilisateur #{giver_id}"
-            
-            try:
-                receiver = await self.bot.fetch_user(receiver_id)
-                receiver_name = f"{receiver.display_name} (@{receiver.username})"
-            except Exception:
-                receiver_name = f"Utilisateur #{receiver_id}"
-            
+            _, giver = await fetch_user_safe(self.bot, giver_id)
+            giver_name = f"{giver.display_name} (@{giver.username})" if giver else f"Utilisateur #{giver_id}"
+
+            _, receiver = await fetch_user_safe(self.bot, receiver_id)
+            receiver_name = f"{receiver.display_name} (@{receiver.username})" if receiver else f"Utilisateur #{receiver_id}"
+
             lines.append(f"  🎁 {giver_name}  →  {receiver_name}")
         
         lines.extend([
@@ -495,14 +483,7 @@ class SecretSanta(Extension):
         existing = await self.get_session(context_id)
         
         if existing and not existing.is_drawn:
-            await ctx.send(
-                embed=self.create_embed(
-                    "Session existante",
-                    "Une session de Père Noël Secret est déjà en cours !\n"
-                    "Utilisez `/secretsanta cancel` pour l'annuler d'abord."
-                ),
-                ephemeral=True
-            )
+            await send_error(ctx, "Une session de Père Noël Secret est déjà en cours !\nUtilisez `/secretsanta cancel` pour l'annuler d'abord.")
             return
 
         # Create session
@@ -532,8 +513,8 @@ class SecretSanta(Extension):
         else:
             description += "\nUtilisez `/secretsanta participants` pour voir la liste des inscrits."
         
-        embed = self.create_embed("Père Noël Secret", description, color=BrandColors.GREEN)
-        
+        embed = Embed(title="🎅 Père Noël Secret", description=description, color=Colors.SECRET_SANTA_SUCCESS)
+
         msg = await ctx.send(
             embed=embed,
             components=self._create_join_buttons(context_id)
@@ -553,13 +534,7 @@ class SecretSanta(Extension):
         session = await self.get_session(context_id)
         
         if not session:
-            await ctx.send(
-                embed=self.create_embed(
-                    "Aucune session",
-                    "Il n'y a pas de session de Père Noël Secret en cours."
-                ),
-                ephemeral=True
-            )
+            await send_error(ctx, "Il n'y a pas de session de Père Noël Secret en cours.")
             return
 
         if not session.participants:
@@ -567,19 +542,17 @@ class SecretSanta(Extension):
         else:
             participant_mentions = []
             for user_id in session.participants:
-                try:
-                    user = await self.bot.fetch_user(user_id)
-                    participant_mentions.append(user.mention)
-                except Exception:
-                    participant_mentions.append(f"<@{user_id}>")
+                _, user = await fetch_user_safe(self.bot, user_id)
+                participant_mentions.append(user.mention if user else f"<@{user_id}>")
             
             description = "\n".join(f"• {m}" for m in participant_mentions)
         
         status = "✅ Tirage effectué" if session.is_drawn else "⏳ En attente du tirage"
         
-        embed = self.create_embed(
-            f"Participants ({len(session.participants)})",
-            f"**Statut :** {status}\n\n{description}"
+        embed = Embed(
+            title=f"🎅 Participants ({len(session.participants)})",
+            description=f"**Statut :** {status}\n\n{description}",
+            color=Colors.SECRET_SANTA,
         )
         
         if session.budget:
@@ -606,35 +579,15 @@ class SecretSanta(Extension):
         session = await self.get_session(context_id)
         
         if not session:
-            await ctx.send(
-                embed=self.create_embed(
-                    "Aucune session",
-                    "Il n'y a pas de session de Père Noël Secret en cours.\n"
-                    "Créez-en une avec `/secretsanta create`"
-                ),
-                ephemeral=True
-            )
+            await send_error(ctx, "Il n'y a pas de session de Père Noël Secret en cours.\nCréez-en une avec `/secretsanta create`")
             return
-        
+
         if session.is_drawn:
-            await ctx.send(
-                embed=self.create_embed(
-                    "Déjà tiré",
-                    "Le tirage au sort a déjà été effectué pour cette session !"
-                ),
-                ephemeral=True
-            )
+            await send_error(ctx, "Le tirage au sort a déjà été effectué pour cette session !")
             return
-        
+
         if len(session.participants) < 2:
-            await ctx.send(
-                embed=self.create_embed(
-                    "Pas assez de participants",
-                    f"Il faut au moins 2 participants pour le tirage.\n"
-                    f"Participants actuels : {len(session.participants)}"
-                ),
-                ephemeral=True
-            )
+            await send_error(ctx, f"Il faut au moins 2 participants pour le tirage.\nParticipants actuels : {len(session.participants)}")
             return
 
         # Generate assignments
@@ -658,11 +611,8 @@ class SecretSanta(Extension):
             if not allow_subgroups:
                 error_msg += "\n💡 **Astuce :** Essayez avec l'option `allow_subgroups: True` pour autoriser plusieurs sous-groupes."
             error_msg += "\nVérifiez les paires interdites avec `/secretsanta listbans`"
-            
-            await ctx.send(
-                embed=self.create_embed("Échec du tirage", error_msg),
-                ephemeral=True
-            )
+
+            await send_error(ctx, error_msg)
             return
 
         # Send DMs to participants
@@ -672,19 +622,22 @@ class SecretSanta(Extension):
         failed_dms = []
         for giver_id, receiver_id in assignments:
             try:
-                giver = await self.bot.fetch_user(giver_id)
-                receiver = await self.bot.fetch_user(receiver_id)
+                _, giver = await fetch_user_safe(self.bot, giver_id)
+                _, receiver = await fetch_user_safe(self.bot, receiver_id)
+
+                receiver_name = discord2name_data.get(str(receiver_id), receiver.mention if receiver else f"<@{receiver_id}>")
                 
-                receiver_name = discord2name_data.get(str(receiver_id), receiver.mention)
-                
-                dm_embed = self.create_embed(
-                    "Père Noël Secret",
-                    f"🎄 Ho, ho, ho ! C'est le Père Noël ! 🎄\n\n"
-                    f"Cette année, tu dois offrir un cadeau à **{receiver_name}** !\n"
-                    f"À toi de voir s'il/elle a été sage... 😉\n\n"
-                    + (f"💰 **Budget suggéré :** {session.budget}\n" if session.budget else "")
-                    + (f"📅 **Date limite :** {session.deadline}\n" if session.deadline else "")
-                    + "\n*Signé : Le vrai Père Noël* 🎅"
+                dm_embed = Embed(
+                    title="🎅 Père Noël Secret",
+                    description=(
+                        f"🎄 Ho, ho, ho ! C'est le Père Noël ! 🎄\n\n"
+                        f"Cette année, tu dois offrir un cadeau à **{receiver_name}** !\n"
+                        f"À toi de voir s'il/elle a été sage... 😉\n\n"
+                        + (f"💰 **Budget suggéré :** {session.budget}\n" if session.budget else "")
+                        + (f"📅 **Date limite :** {session.deadline}\n" if session.deadline else "")
+                        + "\n*Signé : Le vrai Père Noël* 🎅"
+                    ),
+                    color=Colors.SECRET_SANTA,
                 )
                 
                 await giver.send(embed=dm_embed)
@@ -704,17 +657,17 @@ class SecretSanta(Extension):
         # Build participant mentions for the announcement
         participant_mentions = []
         for uid in session.participants:
-            try:
-                user = await self.bot.fetch_user(uid)
-                participant_mentions.append(user.mention)
-            except Exception:
-                participant_mentions.append(f"<@{uid}>")
+            _, user = await fetch_user_safe(self.bot, uid)
+            participant_mentions.append(user.mention if user else f"<@{uid}>")
 
-        draw_embed = self.create_embed(
-            "Tirage effectué ! 🎉",
-            f"Le tirage au sort a été effectué pour **{len(session.participants)}** participants !\n\n"
-            f"**Participants :**\n" + "\n".join(f"• {m}" for m in participant_mentions) + "\n\n"
-            "Vérifiez vos messages privés pour découvrir qui vous devez gâter ! 🎁"
+        draw_embed = Embed(
+            title="🎅 Tirage effectué ! 🎉",
+            description=(
+                f"Le tirage au sort a été effectué pour **{len(session.participants)}** participants !\n\n"
+                f"**Participants :**\n" + "\n".join(f"• {m}" for m in participant_mentions) + "\n\n"
+                "Vérifiez vos messages privés pour découvrir qui vous devez gâter ! 🎁"
+            ),
+            color=Colors.SECRET_SANTA,
         )
 
         if ctx.guild:
@@ -744,7 +697,7 @@ class SecretSanta(Extension):
             failed_mentions = [f"<@{uid}>" for uid in failed_dms]
             response_msg += f"\n\n⚠️ Impossible d'envoyer un DM à : {', '.join(failed_mentions)}"
         
-        await ctx.send(embed=self.create_embed("Tirage effectué", response_msg), ephemeral=True)
+        await ctx.send(embed=Embed(title="🎅 Tirage effectué", description=response_msg, color=Colors.SECRET_SANTA), ephemeral=True)
 
     @secret_santa.subcommand(
         sub_cmd_name="cancel",
@@ -755,27 +708,15 @@ class SecretSanta(Extension):
         session = await self.get_session(context_id)
         
         if not session:
-            await ctx.send(
-                embed=self.create_embed(
-                    "Aucune session",
-                    "Il n'y a pas de session à annuler."
-                ),
-                ephemeral=True
-            )
+            await send_error(ctx, "Il n'y a pas de session à annuler.")
             return
-        
+
         # Only creator or admin can cancel
         is_creator = ctx.author.id == session.created_by
         is_admin = ctx.author.has_permission(Permissions.ADMINISTRATOR) if ctx.guild else False
         
         if not is_creator and not is_admin:
-            await ctx.send(
-                embed=self.create_embed(
-                    "Permission refusée",
-                    "Seul le créateur de la session ou un administrateur peut l'annuler."
-                ),
-                ephemeral=True
-            )
+            await send_error(ctx, "Seul le créateur de la session ou un administrateur peut l'annuler.")
             return
         
         # Update original message (only in guilds, not in group DMs)
@@ -784,10 +725,10 @@ class SecretSanta(Extension):
                 channel = self.bot.get_channel(session.channel_id)
                 if channel:
                     message = await channel.fetch_message(session.message_id)
-                    embed = self.create_embed(
-                        "Session annulée",
-                        "Cette session de Père Noël Secret a été annulée.",
-                        color=BrandColors.FUCHSIA
+                    embed = Embed(
+                        title="🎅 Session annulée",
+                        description="Cette session de Père Noël Secret a été annulée.",
+                        color=Colors.SECRET_SANTA_ACCENT,
                     )
                     await message.edit(embed=embed, components=[])
             except Exception as e:
@@ -796,9 +737,10 @@ class SecretSanta(Extension):
         await self.delete_session(context_id)
         
         await ctx.send(
-            embed=self.create_embed(
-                "Session annulée",
-                "La session de Père Noël Secret a été annulée avec succès."
+            embed=Embed(
+                title="🎅 Session annulée",
+                description="La session de Père Noël Secret a été annulée avec succès.",
+                color=Colors.SECRET_SANTA,
             ),
             ephemeral=True
         )
@@ -813,38 +755,29 @@ class SecretSanta(Extension):
         # Check permissions
         is_admin = ctx.author.has_permission(Permissions.ADMINISTRATOR) if ctx.guild else False
         if not is_admin and ctx.guild:
-            await ctx.send(
-                embed=self.create_embed(
-                    "Permission refusée",
-                    "Seul un administrateur peut révéler les attributions."
-                ),
-                ephemeral=True
-            )
+            await send_error(ctx, "Seul un administrateur peut révéler les attributions.")
             return
         
         results = await self.get_draw_results(context_id)
-        
+
         if not results:
-            await ctx.send(
-                embed=self.create_embed(
-                    "Aucun tirage",
-                    "Aucun tirage n'a été effectué pour cette session."
-                ),
-                ephemeral=True
-            )
+            await send_error(ctx, "Aucun tirage n'a été effectué pour cette session.")
             return
 
         description = "**Attributions :**\n\n"
         for giver_id, receiver_id in results:
-            try:
-                giver = await self.bot.fetch_user(giver_id)
-                receiver = await self.bot.fetch_user(receiver_id)
-                description += f"• {giver.mention} → {receiver.mention}\n"
-            except Exception:
-                description += f"• <@{giver_id}> → <@{receiver_id}>\n"
+            _, giver = await fetch_user_safe(self.bot, giver_id)
+            _, receiver = await fetch_user_safe(self.bot, receiver_id)
+            giver_mention = giver.mention if giver else f"<@{giver_id}>"
+            receiver_mention = receiver.mention if receiver else f"<@{receiver_id}>"
+            description += f"• {giver_mention} → {receiver_mention}\n"
         
         await ctx.send(
-            embed=self.create_embed("Révélation des attributions", description),
+            embed=Embed(
+                title="🎅 Révélation des attributions",
+                description=description,
+                color=Colors.SECRET_SANTA,
+            ),
             ephemeral=True
         )
 
@@ -857,15 +790,9 @@ class SecretSanta(Extension):
         results = await self.get_draw_results(context_id)
         
         if not results:
-            await ctx.send(
-                embed=self.create_embed(
-                    "Aucun tirage",
-                    "Aucun tirage n'a été effectué pour cette session."
-                ),
-                ephemeral=True
-            )
+            await send_error(ctx, "Aucun tirage n'a été effectué pour cette session.")
             return
-        
+
         # Find user's assignment
         user_assignment = None
         for giver_id, receiver_id in results:
@@ -874,13 +801,7 @@ class SecretSanta(Extension):
                 break
         
         if not user_assignment:
-            await ctx.send(
-                embed=self.create_embed(
-                    "Non participant",
-                    "Vous n'avez pas participé à ce tirage."
-                ),
-                ephemeral=True
-            )
+            await send_error(ctx, "Vous n'avez pas participé à ce tirage.")
             return
         
         session = await self.get_session(context_id)
@@ -888,30 +809,31 @@ class SecretSanta(Extension):
         discord2name_data = load_discord2name(server) if server else {}
         
         try:
-            receiver = await self.bot.fetch_user(user_assignment)
-            receiver_name = discord2name_data.get(str(user_assignment), receiver.mention)
-            
-            dm_embed = self.create_embed(
-                "Rappel - Père Noël Secret",
-                f"🎄 Rappel : Tu dois offrir un cadeau à **{receiver_name}** ! 🎁\n\n"
-                + (f"💰 **Budget suggéré :** {session.budget}\n" if session and session.budget else "")
-                + (f"📅 **Date limite :** {session.deadline}\n" if session and session.deadline else "")
+            _, receiver = await fetch_user_safe(self.bot, user_assignment)
+            receiver_name = discord2name_data.get(str(user_assignment), receiver.mention if receiver else f"<@{user_assignment}>")
+
+            dm_embed = Embed(
+                title="🎅 Rappel - Père Noël Secret",
+                description=(
+                    f"🎄 Rappel : Tu dois offrir un cadeau à **{receiver_name}** ! 🎁\n\n"
+                    + (f"💰 **Budget suggéré :** {session.budget}\n" if session and session.budget else "")
+                    + (f"📅 **Date limite :** {session.deadline}\n" if session and session.deadline else "")
+                ),
+                color=Colors.SECRET_SANTA,
             )
-            
+
             await ctx.author.send(embed=dm_embed)
             await ctx.send(
-                embed=self.create_embed("Rappel envoyé", "Vérifiez vos messages privés ! 📬"),
+                embed=Embed(
+                    title="🎅 Rappel envoyé",
+                    description="Vérifiez vos messages privés ! 📬",
+                    color=Colors.SECRET_SANTA,
+                ),
                 ephemeral=True
             )
         except Exception as e:
             logger.error(f"Failed to send reminder DM: {e}")
-            await ctx.send(
-                embed=self.create_embed(
-                    "Erreur",
-                    "Impossible d'envoyer le message privé. Vérifiez que vos DMs sont ouverts."
-                ),
-                ephemeral=True
-            )
+            await send_error(ctx, "Impossible d'envoyer le message privé. Vérifiez que vos DMs sont ouverts.")
 
     # ========== Banned Pairs Commands ==========
 
@@ -933,10 +855,7 @@ class SecretSanta(Extension):
     )
     async def ban_pair(self, ctx: SlashContext, user1: Member | User, user2: Member | User) -> None:
         if user1.id == user2.id:
-            await ctx.send(
-                embed=self.create_embed("Erreur", "Vous ne pouvez pas bannir un utilisateur avec lui-même."),
-                ephemeral=True
-            )
+            await send_error(ctx, "Vous ne pouvez pas bannir un utilisateur avec lui-même.")
             return
 
         context_id = self.get_context_id(ctx)
@@ -945,19 +864,17 @@ class SecretSanta(Extension):
         # Check if pair already exists
         for p1, p2 in banned_pairs:
             if (user1.id == p1 and user2.id == p2) or (user1.id == p2 and user2.id == p1):
-                await ctx.send(
-                    embed=self.create_embed("Déjà interdit", "Ces utilisateurs sont déjà interdits de se tirer mutuellement."),
-                    ephemeral=True
-                )
+                await send_error(ctx, "Ces utilisateurs sont déjà interdits de se tirer mutuellement.")
                 return
 
         banned_pairs.append((user1.id, user2.id))
         await self.write_banned_pairs(context_id, banned_pairs)
         
         await ctx.send(
-            embed=self.create_embed(
-                "Paire interdite",
-                f"{user1.mention} et {user2.mention} ne pourront pas se tirer mutuellement."
+            embed=Embed(
+                title="🎅 Paire interdite",
+                description=f"{user1.mention} et {user2.mention} ne pourront pas se tirer mutuellement.",
+                color=Colors.SECRET_SANTA,
             ),
             ephemeral=True
         )
@@ -988,18 +905,16 @@ class SecretSanta(Extension):
         ]
         
         if len(new_pairs) == len(banned_pairs):
-            await ctx.send(
-                embed=self.create_embed("Non trouvé", "Ces utilisateurs ne sont pas interdits de se tirer mutuellement."),
-                ephemeral=True
-            )
+            await send_error(ctx, "Ces utilisateurs ne sont pas interdits de se tirer mutuellement.")
             return
 
         await self.write_banned_pairs(context_id, new_pairs)
         
         await ctx.send(
-            embed=self.create_embed(
-                "Paire autorisée",
-                f"{user1.mention} et {user2.mention} peuvent à nouveau se tirer mutuellement."
+            embed=Embed(
+                title="🎅 Paire autorisée",
+                description=f"{user1.mention} et {user2.mention} peuvent à nouveau se tirer mutuellement.",
+                color=Colors.SECRET_SANTA,
             ),
             ephemeral=True
         )
@@ -1014,22 +929,29 @@ class SecretSanta(Extension):
         
         if not banned_pairs:
             await ctx.send(
-                embed=self.create_embed("Aucune restriction", "Aucune paire d'utilisateurs n'est interdite."),
+                embed=Embed(
+                    title="🎅 Aucune restriction",
+                    description="Aucune paire d'utilisateurs n'est interdite.",
+                    color=Colors.SECRET_SANTA,
+                ),
                 ephemeral=True
             )
             return
 
         description = ""
         for user1_id, user2_id in banned_pairs:
-            try:
-                user1 = await self.bot.fetch_user(user1_id)
-                user2 = await self.bot.fetch_user(user2_id)
-                description += f"• {user1.mention} ↔ {user2.mention}\n"
-            except Exception:
-                description += f"• <@{user1_id}> ↔ <@{user2_id}>\n"
+            _, user1 = await fetch_user_safe(self.bot, user1_id)
+            _, user2 = await fetch_user_safe(self.bot, user2_id)
+            user1_mention = user1.mention if user1 else f"<@{user1_id}>"
+            user2_mention = user2.mention if user2 else f"<@{user2_id}>"
+            description += f"• {user1_mention} ↔ {user2_mention}\n"
 
         await ctx.send(
-            embed=self.create_embed("Paires interdites", description),
+            embed=Embed(
+                title="🎅 Paires interdites",
+                description=description,
+                color=Colors.SECRET_SANTA,
+            ),
             ephemeral=True
         )
 
@@ -1131,11 +1053,8 @@ class SecretSanta(Extension):
             else:
                 participant_mentions = []
                 for user_id in session.participants:
-                    try:
-                        user = await self.bot.fetch_user(user_id)
-                        participant_mentions.append(user.mention)
-                    except Exception:
-                        participant_mentions.append(f"<@{user_id}>")
+                    _, user = await fetch_user_safe(self.bot, user_id)
+                    participant_mentions.append(user.mention if user else f"<@{user_id}>")
                 participant_text = "\n".join(f"• {m}" for m in participant_mentions)
             
             description = (
@@ -1151,8 +1070,8 @@ class SecretSanta(Extension):
             
             description += f"\n**Participants ({len(session.participants)}) :**\n{participant_text}"
             
-            embed = self.create_embed("Père Noël Secret", description, color=BrandColors.GREEN)
-            
+            embed = Embed(title="🎅 Père Noël Secret", description=description, color=Colors.SECRET_SANTA_SUCCESS)
+
             await ctx.message.edit(embed=embed, components=self._create_join_buttons(session.context_id))
         except Exception as e:
             logger.error(f"Failed to update session message: {e}")

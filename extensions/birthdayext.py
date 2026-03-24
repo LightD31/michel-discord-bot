@@ -43,8 +43,10 @@ from interactions import (
 )
 
 from src import logutil
+from src.helpers import Colors, fetch_user_safe, require_guild, pick_weighted_message
 from src.mongodb import mongo_manager
-from src.utils import CustomPaginator, load_config
+from src.config_manager import load_config
+from src.utils import CustomPaginator
 
 logger = logutil.init_logger(os.path.basename(__file__))
 config, module_config, enabled_servers = load_config("moduleBirthday")
@@ -105,7 +107,7 @@ def _compute_age(birth_date: datetime, reference: Optional[datetime] = None) -> 
 # Extension
 # ---------------------------------------------------------------------------
 
-class BirthdayClass(Extension):
+class BirthdayExtension(Extension):
     def __init__(self, bot: Client) -> None:
         self.bot = bot
 
@@ -291,8 +293,7 @@ class BirthdayClass(Extension):
         hideyear: Optional[bool] = False,
     ) -> None:
         """Ajoute ou modifie l'anniversaire d'un utilisateur."""
-        if not ctx.guild:
-            await ctx.send("Cette commande ne peut être utilisée que dans un serveur.", ephemeral=True)
+        if not await require_guild(ctx):
             return
 
         try:
@@ -365,8 +366,7 @@ class BirthdayClass(Extension):
     )
     async def anniversaire_supprimer(self, ctx: SlashContext) -> None:
         """Supprime l'anniversaire de l'utilisateur sur le serveur courant."""
-        if not ctx.guild:
-            await ctx.send("Cette commande ne peut être utilisée que dans un serveur.", ephemeral=True)
+        if not await require_guild(ctx):
             return
 
         try:
@@ -438,8 +438,7 @@ class BirthdayClass(Extension):
     )
     async def anniversaire_liste(self, ctx: SlashContext) -> None:
         """Affiche la liste paginée de tous les anniversaires du serveur."""
-        if not ctx.guild:
-            await ctx.send("Cette commande ne peut être utilisée que dans un serveur.", ephemeral=True)
+        if not await require_guild(ctx):
             return
 
         try:
@@ -467,8 +466,8 @@ class BirthdayClass(Extension):
                     bd_date: datetime = birthday["date"]
                     uid = birthday["user"]
 
-                    # Préfère le cache Discord, fallback sur l'API
-                    user = self.bot.get_user(uid) or await self.bot.fetch_user(uid)
+                    # Fetch user safely (cache → API fallback)
+                    _, user = await fetch_user_safe(self.bot, uid)
                     if not user:
                         logger.warning("Could not fetch user %s", uid)
                         continue
@@ -483,7 +482,7 @@ class BirthdayClass(Extension):
                         lines.append(f"**{user.mention}** : {formatted} ({age} ans)")
 
                     if len(lines) % 25 == 0:
-                        embeds.append(Embed(title="Anniversaires 🎂", description="\n".join(lines), color=0x00FF00))
+                        embeds.append(Embed(title="Anniversaires 🎂", description="\n".join(lines), color=Colors.SUCCESS))
                         lines = []
 
                 except Exception as e:
@@ -491,7 +490,7 @@ class BirthdayClass(Extension):
                     continue
 
             if lines:
-                embeds.append(Embed(title="Anniversaires 🎂", description="\n".join(lines), color=0x00FF00))
+                embeds.append(Embed(title="Anniversaires 🎂", description="\n".join(lines), color=Colors.SUCCESS))
 
             if not embeds:
                 await ctx.send("Impossible de récupérer les anniversaires.", ephemeral=True)
@@ -620,11 +619,13 @@ class BirthdayClass(Extension):
         """Envoie un message d'anniversaire aléatoire dans le salon configuré."""
         try:
             srv_cfg = self._server_config(server_id)
-            messages = srv_cfg.get("birthdayMessageList", ["Joyeux anniversaire {mention} ! 🎉"])
-            weights = srv_cfg.get("birthdayMessageWeights", [1] * len(messages))
-
-            template = random.choices(messages, weights)[0]
-            await channel.send(template.format(mention=member.mention, age=age))
+            text = pick_weighted_message(
+                srv_cfg,
+                "birthdayMessageList", "birthdayMessageWeights",
+                "Joyeux anniversaire {mention} ! 🎉",
+                mention=member.mention, age=age,
+            )
+            await channel.send(text)
             logger.debug("Birthday message sent for %s", member.display_name)
 
         except Exception as e:

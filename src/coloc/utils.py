@@ -7,6 +7,7 @@ from typing import Optional, Tuple
 from interactions import Embed, File
 
 from src import logutil
+from src.helpers import Colors, SPACER_FIELD, format_discord_timestamp
 from .constants import (
     PARIS_TZ,
     RARITY_EMOJIS,
@@ -27,11 +28,6 @@ def parse_zunivers_date(date_str: str) -> datetime:
     if dt.tzinfo is None:
         dt = PARIS_TZ.localize(dt)
     return dt
-
-
-def format_discord_timestamp(dt: datetime, style: str = "F") -> str:
-    """Format a datetime as a Discord timestamp."""
-    return f"<t:{int(dt.timestamp())}:{style}>"
 
 
 def format_event_items(items: list[dict], max_items_per_rarity: int = 3) -> str:
@@ -76,7 +72,7 @@ def create_event_embed(
         Configured Embed object
     """
     is_start = event_type == "start"
-    color = 0x00FF00 if is_start else 0xFF0000
+    color = Colors.SUCCESS if is_start else Colors.ERROR
     emoji = "🎉" if is_start else "⏰"
     action = "Nouvel événement" if is_start else "Fin d'événement"
     description = "Un nouvel événement vient de commencer !" if is_start else "L'événement vient de se terminer."
@@ -198,7 +194,7 @@ def create_corporation_embed(data: dict, currency_emoji: str) -> Embed:
     embed = Embed(
         title=f"{data['name']} Corporation",
         description=data["description"],
-        color=0x05B600,
+        color=Colors.COLOC,
         url=f"https://zunivers.zerator.com/corporation/{data['id']}",
     )
     
@@ -238,7 +234,7 @@ def create_corporation_logs_embed(
     """Create the corporation logs embed."""
     embed = Embed(
         title=f"Journal de la corporation pour le {date}",
-        color=0x05B600,
+        color=Colors.COLOC,
     )
     
     active_members = set()
@@ -266,7 +262,7 @@ def create_corporation_logs_embed(
     )
     
     inactive_members = all_members - active_members
-    embed.add_field(name="\u200b", value="\u200b", inline=True)
+    embed.add_field(**SPACER_FIELD)
     embed.add_field(
         name="Inactifs",
         value=", ".join(inactive_members) if inactive_members else "Aucun",

@@ -51,7 +51,9 @@ from datetime import datetime, timedelta
 from typing import Optional
 from src import logutil
 from src.mongodb import mongo_manager
-from src.utils import format_poll, load_config
+from src.config_manager import load_config
+from src.helpers import Colors, fetch_user_safe, send_error, is_guild_enabled
+from src.utils import format_poll
 
 logger = logutil.init_logger(os.path.basename(__file__))
 config, module_config, enabled_servers = load_config("moduleUtils")
@@ -72,7 +74,7 @@ DEFAULT_POLL_OPTIONS = ["Oui", "Non"]
 DEFAULT_POLL_EMOJIS = ["👍", "👎"]
 
 
-class Utils(Extension):
+class UtilExtension(Extension):
     def __init__(self, bot: Client):
         self.bot = bot
         self.lock = asyncio.Lock()
@@ -85,7 +87,7 @@ class Utils(Extension):
     @staticmethod
     def is_poll_embed(embed: Embed) -> bool:
         """Check if an embed is a poll embed."""
-        return embed.color == 0x3489EB
+        return embed.color == Colors.UTIL
 
     @staticmethod
     async def add_poll_reactions(message, options: list[str], use_default: bool = False):
@@ -239,18 +241,12 @@ class Utils(Extension):
             channel = ctx.channel
         # Check if the channel is a category
         if channel.type == ChannelType.GUILD_CATEGORY:
-            await ctx.send(
-                "Vous ne pouvez pas envoyer de message dans une catégorie",
-                ephemeral=True,
-            )
+            await send_error(ctx, "Vous ne pouvez pas envoyer de message dans une catégorie")
             return
         
         # Ensure channel is a text channel that can send messages
         if not hasattr(channel, 'send'):
-            await ctx.send(
-                "Ce type de channel ne supporte pas l'envoi de messages",
-                ephemeral=True,
-            )
+            await send_error(ctx, "Ce type de channel ne supporte pas l'envoi de messages")
             return
             
         # Type cast to ensure the channel has the send method
@@ -299,10 +295,7 @@ class Utils(Extension):
         else:
             options = [option.strip() for option in options.split(";")]
             if not self.validate_poll_options(options):
-                await ctx.send(
-                    "Vous ne pouvez pas créer un sondage avec plus de 10 options",
-                    ephemeral=True,
-                )
+                await send_error(ctx, "Vous ne pouvez pas créer un sondage avec plus de 10 options")
                 return
             emojis = POLL_EMOJIS
         embed = Embed(
@@ -310,7 +303,7 @@ class Utils(Extension):
             description="\n\n".join(
                 [f"{emojis[i]} {option}" for i, option in enumerate(options)]
             ),
-            color=0x3489EB,
+            color=Colors.UTIL,
         )
         embed.set_footer(
             text=f"Créé par {ctx.user.username} (ID: {ctx.user.id})",
@@ -342,7 +335,7 @@ class Utils(Extension):
             if len(event.message.embeds) == 0:
                 return
             # Check if the message is a poll
-            if event.message.embeds[0].color == 0x3489EB:
+            if event.message.embeds[0].color == Colors.UTIL:
                 # Create the poll embed
                 embed = await format_poll(event)
                 await event.message.edit(embed=embed)
@@ -363,7 +356,7 @@ class Utils(Extension):
             if len(event.message.embeds) == 0:
                 return
             # Check if the message is a poll
-            if event.message.embeds[0].color == 0x3489EB:
+            if event.message.embeds[0].color == Colors.UTIL:
                 # Create the poll embed
                 embed = await format_poll(event)
                 await event.message.edit(embed=embed)
@@ -423,41 +416,26 @@ class Utils(Extension):
         try:
             message = await ctx.channel.fetch_message(message_id)
         except Exception:
-            await ctx.send(
-                "Message introuvable ou inaccessible",
-                ephemeral=True,
-            )
+            await send_error(ctx, "Message introuvable ou inaccessible")
             return
         
         # At this point, message is guaranteed to be not None
         assert message is not None
             
         if message.author != ctx.bot.user:
-            await ctx.send(
-                "Vous ne pouvez modifier que les sondages créés par le bot",
-                ephemeral=True,
-            )
+            await send_error(ctx, "Vous ne pouvez modifier que les sondages créés par le bot")
             return
         if not message.embeds:
-            await ctx.send(
-                "Vous ne pouvez modifier que les sondages créés par le bot",
-                ephemeral=True,
-            )
+            await send_error(ctx, "Vous ne pouvez modifier que les sondages créés par le bot")
             return
         if not self.is_poll_embed(message.embeds[0]):
-            await ctx.send(
-                "Vous ne pouvez modifier que les sondages créés par le bot",
-                ephemeral=True,
-            )
+            await send_error(ctx, "Vous ne pouvez modifier que les sondages créés par le bot")
             return
         # Verify if the author of the poll is the person who made the poll
         footer_text = message.embeds[0].footer.text if message.embeds[0].footer else ""
         author_id = self.parse_poll_author_id(footer_text)
         if not author_id or author_id != str(ctx.user.id):
-            await ctx.send(
-                "Vous ne pouvez modifier que les sondages que vous avez créés" if author_id else "Impossible de vérifier l'auteur de ce sondage",
-                ephemeral=True,
-            )
+            await send_error(ctx, "Vous ne pouvez modifier que les sondages que vous avez créés" if author_id else "Impossible de vérifier l'auteur de ce sondage")
             return
         embed = message.embeds[0]
         if reset_reactions:
@@ -469,10 +447,7 @@ class Utils(Extension):
         if options is not None:
             options = [option.strip() for option in options.split(";")]
             if not self.validate_poll_options(options):
-                await ctx.send(
-                    "Vous ne pouvez pas créer un sondage avec plus de 10 options",
-                    ephemeral=True,
-                )
+                await send_error(ctx, "Vous ne pouvez pas créer un sondage avec plus de 10 options")
                 return
             embed.description = "\n\n".join(
                 [f"{POLL_EMOJIS[i]} {option}" for i, option in enumerate(options)]
@@ -613,9 +588,7 @@ class Utils(Extension):
             try:
                 parseddate = datetime.strptime(date, "%d/%m/%Y")
             except ValueError:
-                await ctx.send(
-                    "Format de date invalide. Utilisez JJ/MM/AAAA", ephemeral=True
-                )
+                await send_error(ctx, "Format de date invalide. Utilisez JJ/MM/AAAA")
                 return
             remind_time = remind_time.replace(
                 year=parseddate.year, month=parseddate.month, day=parseddate.day
@@ -710,7 +683,7 @@ class Utils(Extension):
                     uuid_reminder_map[reminder_id] = (remind_time, reminder)
 
         if not buttons:
-            await ctx.send("Tu n'as aucun rappel", ephemeral=True)
+            await send_error(ctx, "Tu n'as aucun rappel")
             return
 
         # Send message with reminder buttons
@@ -747,7 +720,7 @@ class Utils(Extension):
                     ctx.author.display_name,
                 )
             else:
-                await ctx.send("Rappel introuvable", ephemeral=True)
+                await send_error(ctx, "Rappel introuvable")
         except asyncio.TimeoutError:
             await ctx.edit(message=message,
                 content="Annulé, aucun rappel sélectionné", components=[]
@@ -768,7 +741,7 @@ class Utils(Extension):
                     
                     for user_id, reminder_list in user_reminders.items():
                         try:
-                            user = await self.bot.fetch_user(user_id)
+                            _, user = await fetch_user_safe(self.bot, user_id)
                             if user:
                                 for reminder in reminder_list:
                                     await user.send(reminder["message"])

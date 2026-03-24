@@ -1,3 +1,8 @@
+"""Extension Feur — répond automatiquement aux messages se terminant par certains mots-clés.
+
+Gère les statistiques de feur/pour-feur par serveur et par utilisateur.
+"""
+
 import os
 import re
 import string
@@ -8,8 +13,10 @@ from interactions import Extension, listen, slash_command, SlashContext, Embed, 
 from interactions.api.events import MessageCreate
 
 from src import logutil
+from src.helpers import Colors, require_guild
 from src.mongodb import mongo_manager
-from src.utils import load_config, sanitize_content
+from src.config_manager import load_config
+from src.utils import sanitize_content
 
 logger = logutil.init_logger(os.path.basename(__file__))
 
@@ -23,7 +30,7 @@ POUR_FEUR_EMOJIS = ["🇵", "🇴", "🇺", "🇷", "🇫", "🇪", "⛎", "®�
 # All feur data is per-guild: guild_{guild_id} → feur_stats collection
 
 
-class Feur(Extension):
+class FeurExtension(Extension):
     def __init__(self, bot):
         self.bot = bot
 
@@ -159,12 +166,11 @@ class Feur(Extension):
     @slash_command(name="feurstats", description="Affiche les statistiques de feur")
     async def feur_stats(self, ctx: SlashContext):
         """Display feur statistics."""
-        guild_id = str(ctx.guild_id) if ctx.guild_id else None
-        user_id = str(ctx.author.id)
-        
-        if not guild_id:
-            await ctx.send("Cette commande doit être utilisée dans un serveur.", ephemeral=True)
+        if not await require_guild(ctx):
             return
+
+        guild_id = str(ctx.guild_id)
+        user_id = str(ctx.author.id)
         
         # Get stats from the guild's feur_stats collection
         guild_stats = await self._get_stats(guild_id, "guild_total")
@@ -187,7 +193,7 @@ class Feur(Extension):
         
         embed = Embed(
             title="📊 Statistiques Feur",
-            color=0x9B59B6,
+            color=Colors.FEUR,
             timestamp=datetime.now(),
             footer=EmbedFooter(text=f"Demandé par {ctx.author.display_name}")
         )

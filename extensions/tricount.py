@@ -1,3 +1,5 @@
+"""Extension Tricount — gestion de dépenses partagées entre membres d'un serveur."""
+
 import os
 from datetime import datetime
 from typing import Optional, Union
@@ -17,14 +19,15 @@ from interactions import (
 )
 
 from src import logutil
+from src.helpers import Colors, require_guild, send_error, fetch_user_safe, guild_group_autocomplete
 from src.mongodb import mongo_manager
-from src.utils import load_config
+from src.config_manager import load_config
 
 logger = logutil.init_logger(os.path.basename(__file__))
 config, module_config, enabled_servers = load_config("moduleTricount")
 
 
-class TricountClass(Extension):
+class TricountExtension(Extension):
     def __init__(self, bot):
         self.bot: Client = bot
 
@@ -63,11 +66,9 @@ class TricountClass(Extension):
         nom: str,
         description: Optional[str] = None,
     ):
-        # Vérification de sécurité
-        if not ctx.guild:
-            await ctx.send("❌ Cette commande ne peut être utilisée que dans un serveur.", ephemeral=True)
+        if not await require_guild(ctx):
             return
-            
+
         # Vérifier si un groupe avec ce nom existe déjà sur ce serveur
         existing_group = await self._groups_col(ctx.guild.id).find_one({
             "name": nom
@@ -93,7 +94,7 @@ class TricountClass(Extension):
         embed = Embed(
             title="✅ Groupe créé",
             description=f"Le groupe **{nom}** a été créé avec succès !",
-            color=0x00FF00,
+            color=Colors.SUCCESS,
         )
         embed.add_field(name="ID du groupe", value=str(group_id), inline=True)
         embed.add_field(name="Créateur", value=ctx.author.mention, inline=True)
@@ -121,8 +122,7 @@ class TricountClass(Extension):
         autocomplete=True,
     )
     async def tricount_rejoindre(self, ctx: SlashContext, nom: str):
-        if not ctx.guild:
-            await ctx.send("❌ Cette commande ne peut être utilisée que dans un serveur.", ephemeral=True)
+        if not await require_guild(ctx):
             return
             
         # Trouver le groupe
@@ -149,7 +149,7 @@ class TricountClass(Extension):
         embed = Embed(
             title="✅ Groupe rejoint",
             description=f"Vous avez rejoint le groupe **{nom}** !",
-            color=0x00FF00,
+            color=Colors.SUCCESS,
         )
         
         logger.info(
@@ -163,26 +163,7 @@ class TricountClass(Extension):
 
     @tricount_rejoindre.autocomplete("nom")
     async def groupe_autocomplete(self, ctx: AutocompleteContext):
-        if not ctx.guild:
-            await ctx.send(choices=[])
-            return
-            
-        input_text = ctx.input_text.lower()
-        groups = await self._groups_col(ctx.guild.id).find({
-            "is_active": True
-        }).to_list(length=None)
-        
-        filtered_groups = []
-        for group in groups:
-            if input_text in group["name"].lower():
-                filtered_groups.append({
-                    "name": group["name"],
-                    "value": group["name"]
-                })
-                
-        # Limiter à 25 résultats
-        filtered_groups = filtered_groups[:25]
-        await ctx.send(choices=filtered_groups)
+        await guild_group_autocomplete(ctx, self._groups_col, member_filter=False)
 
     @tricount_groupe.subcommand(
         sub_cmd_name="quitter",
@@ -196,8 +177,7 @@ class TricountClass(Extension):
         autocomplete=True,
     )
     async def tricount_quitter(self, ctx: SlashContext, nom: str):
-        if not ctx.guild:
-            await ctx.send("❌ Cette commande ne peut être utilisée que dans un serveur.", ephemeral=True)
+        if not await require_guild(ctx):
             return
             
         # Trouver le groupe
@@ -224,7 +204,7 @@ class TricountClass(Extension):
         embed = Embed(
             title="✅ Groupe quitté",
             description=f"Vous avez quitté le groupe **{nom}**.",
-            color=0xFF9900,
+            color=Colors.WARNING,
         )
         
         logger.info(
@@ -238,26 +218,7 @@ class TricountClass(Extension):
 
     @tricount_quitter.autocomplete("nom")
     async def groupe_membre_autocomplete(self, ctx: AutocompleteContext):
-        if not ctx.guild:
-            await ctx.send(choices=[])
-            return
-            
-        input_text = ctx.input_text.lower()
-        groups = await self._groups_col(ctx.guild.id).find({
-            "is_active": True,
-            "members": ctx.author.id
-        }).to_list(length=None)
-        
-        filtered_groups = []
-        for group in groups:
-            if input_text in group["name"].lower():
-                filtered_groups.append({
-                    "name": group["name"],
-                    "value": group["name"]
-                })
-                
-        filtered_groups = filtered_groups[:25]
-        await ctx.send(choices=filtered_groups)
+        await guild_group_autocomplete(ctx, self._groups_col)
 
     @slash_command(
         name="depense",
@@ -297,8 +258,7 @@ class TricountClass(Extension):
         description: str,
         payeur: Optional[Union[User, Member]] = None,
     ):
-        if not ctx.guild:
-            await ctx.send("❌ Cette commande ne peut être utilisée que dans un serveur.", ephemeral=True)
+        if not await require_guild(ctx):
             return
             
         if payeur is None:
@@ -346,7 +306,7 @@ class TricountClass(Extension):
         embed = Embed(
             title="✅ Dépense ajoutée",
             description=f"Dépense ajoutée au groupe **{groupe}**",
-            color=0x00FF00,
+            color=Colors.SUCCESS,
         )
         embed.add_field(name="Montant", value=f"{montant:.2f}€", inline=True)
         embed.add_field(name="Payeur", value=payeur.mention, inline=True)
@@ -369,26 +329,7 @@ class TricountClass(Extension):
 
     @depense.autocomplete("groupe")
     async def depense_groupe_autocomplete(self, ctx: AutocompleteContext):
-        if not ctx.guild:
-            await ctx.send(choices=[])
-            return
-            
-        input_text = ctx.input_text.lower()
-        groups = await self._groups_col(ctx.guild.id).find({
-            "is_active": True,
-            "members": ctx.author.id
-        }).to_list(length=None)
-        
-        filtered_groups = []
-        for group in groups:
-            if input_text in group["name"].lower():
-                filtered_groups.append({
-                    "name": group["name"],
-                    "value": group["name"]
-                })
-                
-        filtered_groups = filtered_groups[:25]
-        await ctx.send(choices=filtered_groups)
+        await guild_group_autocomplete(ctx, self._groups_col)
 
     @slash_command(
         name="modifier-depense",
@@ -436,8 +377,7 @@ class TricountClass(Extension):
         nouvelle_description: Optional[str] = None,
         nouveau_payeur: Optional[Union[User, Member]] = None,
     ):
-        if not ctx.guild:
-            await ctx.send("❌ Cette commande ne peut être utilisée que dans un serveur.", ephemeral=True)
+        if not await require_guild(ctx):
             return
             
         # Vérifier que le montant est positif si fourni
@@ -498,8 +438,7 @@ class TricountClass(Extension):
             
         if nouveau_payeur is not None:
             modifications["payer"] = nouveau_payeur.id
-            old_payer = await self.bot.fetch_user(expense["payer"])
-            old_payer_name = old_payer.display_name if old_payer else "Utilisateur inconnu"
+            old_payer_name, _ = await fetch_user_safe(self.bot, expense["payer"])
             changes_description.append(f"Payeur: {old_payer_name} → {nouveau_payeur.display_name}")
             
         if not modifications:
@@ -515,7 +454,7 @@ class TricountClass(Extension):
         embed = Embed(
             title="✅ Dépense modifiée",
             description=f"La dépense dans le groupe **{groupe}** a été modifiée.",
-            color=0x00FF00,
+            color=Colors.SUCCESS,
         )
         embed.add_field(
             name="Modifications",
@@ -535,26 +474,7 @@ class TricountClass(Extension):
 
     @modifier_depense.autocomplete("groupe")
     async def modifier_depense_groupe_autocomplete(self, ctx: AutocompleteContext):
-        if not ctx.guild:
-            await ctx.send(choices=[])
-            return
-            
-        input_text = ctx.input_text.lower()
-        groups = await self._groups_col(ctx.guild.id).find({
-            "is_active": True,
-            "members": ctx.author.id
-        }).to_list(length=None)
-        
-        filtered_groups = []
-        for group in groups:
-            if input_text in group["name"].lower():
-                filtered_groups.append({
-                    "name": group["name"],
-                    "value": group["name"]
-                })
-                
-        filtered_groups = filtered_groups[:25]
-        await ctx.send(choices=filtered_groups)
+        await guild_group_autocomplete(ctx, self._groups_col)
 
     @modifier_depense.autocomplete("depense_id")
     async def modifier_depense_id_autocomplete(self, ctx: AutocompleteContext):
@@ -638,8 +558,7 @@ class TricountClass(Extension):
         max_value=20,
     )
     async def liste_depenses(self, ctx: SlashContext, groupe: str, limite: Optional[int] = 10):
-        if not ctx.guild:
-            await ctx.send("❌ Cette commande ne peut être utilisée que dans un serveur.", ephemeral=True)
+        if not await require_guild(ctx):
             return
             
         # Trouver le groupe
@@ -665,7 +584,7 @@ class TricountClass(Extension):
             embed = Embed(
                 title=f"📋 Dépenses du groupe {groupe}",
                 description="Aucune dépense enregistrée.",
-                color=0x0099FF,
+                color=Colors.INFO,
             )
             await ctx.send(embed=embed)
             return
@@ -673,36 +592,12 @@ class TricountClass(Extension):
         embed = Embed(
             title=f"📋 Dépenses du groupe {groupe}",
             description=f"Dernières {len(expenses)} dépense(s):",
-            color=0x0099FF,
+            color=Colors.INFO,
         )
         
         for i, expense in enumerate(expenses, 1):
-            # Récupérer les informations du payeur
-            payer_name = "Utilisateur inconnu"
-            try:
-                payer = self.bot.get_user(expense["payer"])
-                if payer:
-                    payer_name = payer.display_name
-                else:
-                    # Essayer de fetch l'utilisateur
-                    payer = await self.bot.fetch_user(expense["payer"])
-                    if payer:
-                        payer_name = payer.display_name
-            except Exception:
-                payer_name = f"ID:{expense['payer']}"
-            
-            # Récupérer les informations de qui a ajouté la dépense
-            added_by_name = "Utilisateur inconnu"
-            try:
-                added_by = self.bot.get_user(expense["added_by"])
-                if added_by:
-                    added_by_name = added_by.display_name
-                else:
-                    added_by = await self.bot.fetch_user(expense["added_by"])
-                    if added_by:
-                        added_by_name = added_by.display_name
-            except Exception:
-                added_by_name = f"ID:{expense['added_by']}"
+            payer_name, _ = await fetch_user_safe(self.bot, expense["payer"])
+            added_by_name, _ = await fetch_user_safe(self.bot, expense["added_by"])
             
             # Formater la date
             date_str = expense["date"].strftime("%d/%m/%Y %H:%M")
@@ -724,26 +619,7 @@ class TricountClass(Extension):
 
     @liste_depenses.autocomplete("groupe")
     async def liste_depenses_groupe_autocomplete(self, ctx: AutocompleteContext):
-        if not ctx.guild:
-            await ctx.send(choices=[])
-            return
-            
-        input_text = ctx.input_text.lower()
-        groups = await self._groups_col(ctx.guild.id).find({
-            "is_active": True,
-            "members": ctx.author.id
-        }).to_list(length=None)
-        
-        filtered_groups = []
-        for group in groups:
-            if input_text in group["name"].lower():
-                filtered_groups.append({
-                    "name": group["name"],
-                    "value": group["name"]
-                })
-                
-        filtered_groups = filtered_groups[:25]
-        await ctx.send(choices=filtered_groups)
+        await guild_group_autocomplete(ctx, self._groups_col)
 
     @slash_command(
         name="bilan",
@@ -757,8 +633,7 @@ class TricountClass(Extension):
         autocomplete=True,
     )
     async def bilan(self, ctx: SlashContext, groupe: str):
-        if not ctx.guild:
-            await ctx.send("❌ Cette commande ne peut être utilisée que dans un serveur.", ephemeral=True)
+        if not await require_guild(ctx):
             return
             
         # Trouver le groupe
@@ -783,7 +658,7 @@ class TricountClass(Extension):
             embed = Embed(
                 title=f"📊 Bilan du groupe {groupe}",
                 description="Aucune dépense enregistrée.",
-                color=0x0099FF,
+                color=Colors.INFO,
             )
             await ctx.send(embed=embed)
             return
@@ -809,24 +684,21 @@ class TricountClass(Extension):
         embed = Embed(
             title=f"📊 Bilan du groupe {groupe}",
             description=f"**Total des dépenses:** {total_expenses:.2f}€\n**Coût par personne:** {cost_per_person:.2f}€",
-            color=0x0099FF,
+            color=Colors.INFO,
         )
         
         # Ajouter les balances
         balance_text = ""
         for member_id, data in balances.items():
-            try:
-                user = await self.bot.fetch_user(member_id)
-                if user:  # Vérifier que l'utilisateur existe
-                    if data["balance"] > 0.01:  # Petit seuil pour éviter les erreurs d'arrondi
-                        balance_text += f"💰 {user.mention}: +{data['balance']:.2f}€ (a payé {data['paid']:.2f}€)\n"
-                    elif data["balance"] < -0.01:
-                        balance_text += f"💸 {user.mention}: {data['balance']:.2f}€ (a payé {data['paid']:.2f}€)\n"
-                    else:
-                        balance_text += f"✅ {user.mention}: 0€ (a payé {data['paid']:.2f}€)\n"
+            _, user = await fetch_user_safe(self.bot, member_id)
+            if user:
+                if data["balance"] > 0.01:  # Petit seuil pour éviter les erreurs d'arrondi
+                    balance_text += f"💰 {user.mention}: +{data['balance']:.2f}€ (a payé {data['paid']:.2f}€)\n"
+                elif data["balance"] < -0.01:
+                    balance_text += f"💸 {user.mention}: {data['balance']:.2f}€ (a payé {data['paid']:.2f}€)\n"
                 else:
-                    balance_text += f"❓ Utilisateur inconnu: {data['balance']:.2f}€\n"
-            except Exception:
+                    balance_text += f"✅ {user.mention}: 0€ (a payé {data['paid']:.2f}€)\n"
+            else:
                 balance_text += f"❓ Utilisateur inconnu: {data['balance']:.2f}€\n"
                 
         embed.add_field(name="Balances", value=balance_text or "Aucune donnée", inline=False)
@@ -835,34 +707,14 @@ class TricountClass(Extension):
 
     @bilan.autocomplete("groupe")
     async def bilan_groupe_autocomplete(self, ctx: AutocompleteContext):
-        if not ctx.guild:
-            await ctx.send(choices=[])
-            return
-            
-        input_text = ctx.input_text.lower()
-        groups = await self._groups_col(ctx.guild.id).find({
-            "is_active": True,
-            "members": ctx.author.id
-        }).to_list(length=None)
-        
-        filtered_groups = []
-        for group in groups:
-            if input_text in group["name"].lower():
-                filtered_groups.append({
-                    "name": group["name"],
-                    "value": group["name"]
-                })
-                
-        filtered_groups = filtered_groups[:25]
-        await ctx.send(choices=filtered_groups)
+        await guild_group_autocomplete(ctx, self._groups_col)
 
     @slash_command(
         name="mes-groupes",
         description="Voir tous vos groupes Tricount",
     )
     async def mes_groupes(self, ctx: SlashContext):
-        if not ctx.guild:
-            await ctx.send("❌ Cette commande ne peut être utilisée que dans un serveur.", ephemeral=True)
+        if not await require_guild(ctx):
             return
             
         # Récupérer tous les groupes dont l'utilisateur est membre
@@ -875,7 +727,7 @@ class TricountClass(Extension):
             embed = Embed(
                 title="📝 Mes groupes Tricount",
                 description="Vous n'êtes membre d'aucun groupe.",
-                color=0x0099FF,
+                color=Colors.INFO,
             )
             await ctx.send(embed=embed)
             return
@@ -883,7 +735,7 @@ class TricountClass(Extension):
         embed = Embed(
             title="📝 Mes groupes Tricount",
             description=f"Vous êtes membre de {len(groups)} groupe(s):",
-            color=0x0099FF,
+            color=Colors.INFO,
         )
         
         for group in groups[:10]:  # Limiter à 10 groupes pour éviter les embeds trop longs

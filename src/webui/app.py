@@ -15,7 +15,7 @@ from sse_starlette.sse import EventSourceResponse
 from pydantic import BaseModel
 
 from src import logutil
-from src.utils import load_config as bot_load_config
+from src.config_manager import load_config as bot_load_config
 from src.webui.auth import DiscordOAuth, Session
 from src.webui.log_handler import WebUILogHandler, install_log_handler
 from src.webui.schemas import MODULE_SCHEMAS, GLOBAL_CONFIG_SCHEMAS

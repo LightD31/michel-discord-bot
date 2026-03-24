@@ -1,18 +1,20 @@
+"""Extension Welcome — messages de bienvenue et d'au revoir personnalisés par serveur."""
+
 import os
-import random
 
 from interactions import Client, Extension, listen
 from interactions.api.events import MemberAdd, MemberRemove
 
 from src import logutil
-from src.utils import load_config
+from src.helpers import is_guild_enabled, pick_weighted_message
+from src.config_manager import load_config
 
 logger = logutil.init_logger(os.path.basename(__file__))
 
 config, module_config, enabled_servers = load_config("moduleWelcome")
 
 
-class Welcome(Extension):
+class WelcomeExtension(Extension):
     def __init__(self, bot: Client):
         self.bot = bot
         # Load config
@@ -30,18 +32,15 @@ class Welcome(Extension):
         logger.info(
             "Member %s joined the server %s", event.member.username, event.guild.name
         )
-        if str(event.guild.id) not in enabled_servers:
+        if not is_guild_enabled(event.guild.id, enabled_servers):
             logger.info("Server not enabled")
             return
         serv_config = module_config.get(str(event.guild.id), {})
 
-        welcome_messages = serv_config.get(
-            "welcomeMessageList",
-            ["Bienvenue {mention} !"],
-        )
-        weights = serv_config.get("welcomeMessageWeights", len(welcome_messages) * [1])
-        message = random.choices(welcome_messages, weights=weights)[0]
-        filled_message = message.format(
+        filled_message = pick_weighted_message(
+            serv_config,
+            "welcomeMessageList", "welcomeMessageWeights",
+            "Bienvenue {mention} !",
             mention=event.member.mention,
         )
         # Get the welcome channel
@@ -64,7 +63,7 @@ class Welcome(Extension):
         logger.info(
             "Member %s left the server %s", event.member.username, event.guild.name
         )
-        if str(event.guild.id) not in enabled_servers:
+        if not is_guild_enabled(event.guild.id, enabled_servers):
             logger.info("Server not enabled")
             return
         serv_config : dict = module_config.get(str(event.guild.id), {})
@@ -73,13 +72,10 @@ class Welcome(Extension):
                     serv_config.get("leaveMessageWeights"),
                     serv_config.get("welcomeChannelId")
                     )
-        leave_messages = serv_config.get(
-            "leaveMessageList",
-            ["Au revoir **{mention}** !"],
-        )
-        weights = serv_config.get("leaveMessageWeights", len(leave_messages) * [1])
-        message = random.choices(leave_messages, weights=weights)[0]
-        filled_message = message.format(
+        filled_message = pick_weighted_message(
+            serv_config,
+            "leaveMessageList", "leaveMessageWeights",
+            "Au revoir **{mention}** !",
             mention=event.member.username,
         )
         # Get the welcome channel

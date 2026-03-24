@@ -1,3 +1,5 @@
+"""Extension YouTube — notifications automatiques de nouvelles vidéos."""
+
 import datetime
 import os
 
@@ -7,7 +9,8 @@ from interactions import BaseChannel, Client, Extension, IntervalTrigger, Task, 
 
 from src import logutil
 from src.mongodb import mongo_manager
-from src.utils import load_config, fetch
+from src.config_manager import load_config
+from src.utils import fetch
 
 logger = logutil.init_logger(os.path.basename(__file__))
 config, module_config, enabled_servers = load_config("moduleYoutube")
@@ -16,7 +19,7 @@ YOUTUBE_API_KEY = config["youtube"]["youtubeApiKey"]
 YOUTUBE_API_URL = "https://www.googleapis.com/youtube/v3"
 
 
-class YoutubeClass(Extension):
+class YoutubeExtension(Extension):
     def __init__(self, bot: Client):
         self.bot: Client = bot
         self.playlist_cache = {}  # Add a cache for playlists

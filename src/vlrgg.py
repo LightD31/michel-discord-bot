@@ -1,7 +1,7 @@
 """Client pour l'API non-officielle VLR.gg (V2).
 
 Source unique pour les données de matchs Valorant.
-API: https://vlrggapi.vercel.app (https://github.com/axsddlr/vlrggapi)
+API: https://vlr.drndvs.fr (déploiement custom)
 
 Endpoints V2 utilisés:
 - /v2/team/matches?id=X — historique des matchs d'une équipe (results + upcoming)
@@ -9,7 +9,7 @@ Endpoints V2 utilisés:
 - /v2/match/details?match_id=X — détails complets d'un match
 - /v2/team?id=X — profil d'équipe
 
-Note: Un cache avec TTL variable est utilisé pour minimiser le nombre de requêtes.
+Note: Un cache avec TTL court est utilisé (API self-hosted sur vlr.drndvs.fr).
 """
 
 import asyncio
@@ -20,19 +20,23 @@ from datetime import datetime, timezone, timedelta
 
 from src.utils import fetch
 from src import logutil
+from src.helpers import format_discord_timestamp
 
 logger = logutil.init_logger(__name__)
 
-VLRGG_API_URL = "https://vlrggapi.vercel.app"
+VLRGG_API_URL = "https://vlr.drndvs.fr"
 
-# Cache TTL en secondes par type d'endpoint
+# Limite de requêtes concurrentes vers l'API (éviter les 502 sur le serveur self-hosted)
+_api_semaphore = asyncio.Semaphore(2)
+
+# Cache TTL en secondes par type d'endpoint (valeurs basses, API self-hosted)
 CACHE_TTL = {
-    "live": 30,
-    "upcoming": 120,
-    "results": 300,
-    "details": 120,
-    "team": 600,
-    "default": 120,
+    "live": 10,
+    "upcoming": 30,
+    "results": 60,
+    "details": 30,
+    "team": 120,
+    "default": 30,
 }
 
 # Cache interne : { "endpoint:params_hash" -> (timestamp, data) }
@@ -86,7 +90,8 @@ async def vlrgg_request(
 
     url = f"{VLRGG_API_URL}/{endpoint}"
     try:
-        data: Dict[str, Any] = await fetch(url, params=params, return_type="json")  # type: ignore[assignment]
+        async with _api_semaphore:
+            data: Dict[str, Any] = await fetch(url, params=params, return_type="json")  # type: ignore[assignment]
         _cache[key] = (time.monotonic(), data)
         return data
     except Exception as e:
@@ -242,7 +247,7 @@ def format_vlr_date(date_str: str) -> str:
             dt = datetime.strptime(cleaned, fmt)
             # Attacher le fuseau EST pour un timestamp Unix correct
             dt = dt.replace(tzinfo=_VLR_TIMEZONE)
-            return f"<t:{int(dt.timestamp())}:f>"
+            return format_discord_timestamp(dt, "f")
         except ValueError:
             continue
 
@@ -254,7 +259,7 @@ def format_vlr_date(date_str: str) -> str:
                 int(date_only.group(1)), int(date_only.group(2)), int(date_only.group(3)),
                 tzinfo=_VLR_TIMEZONE,
             )
-            return f"<t:{int(dt.timestamp())}:D>"
+            return format_discord_timestamp(dt, "D")
         except ValueError:
             pass
 
@@ -461,7 +466,12 @@ async def fetch_match_details(match_id: str) -> Dict[str, Any]:
 async def fetch_team_info(team_id: str) -> Dict[str, Any]:
     """Récupère le profil d'une équipe par son ID VLR.gg."""
     data = await vlrgg_request("v2/team", {"id": team_id})
-    return data.get("data", data)
+    inner = data.get("data", data)
+    if isinstance(inner, dict):
+        segments = inner.get("segments", [])
+        if segments and isinstance(segments, list):
+            return segments[0]
+    return inner
 
 
 async def fetch_team_matches_by_id(
@@ -502,43 +512,68 @@ async def fetch_live_matches(team: str) -> List[Dict[str, Any]]:
     return filter_team_matches(team, segments)
 
 
+async def fetch_upcoming_matches(team: str) -> List[Dict[str, Any]]:
+    """Récupère les matchs à venir pour une équipe.
+
+    Utilise l'endpoint global /v2/match?q=upcoming car /v2/team/matches
+    ne retourne que les matchs terminés.
+
+    Args:
+        team: Nom de l'équipe (filtrage par nom, insensible à la casse).
+
+    Returns:
+        Liste des matchs à venir, avec champs normalisés pour l'affichage.
+    """
+    data = await vlrgg_request("v2/match", {"q": "upcoming"})
+    segments = data.get("data", {}).get("segments", [])
+    matches = filter_team_matches(team, segments)
+    # Normaliser les champs pour correspondre au format attendu par le tracker
+    for m in matches:
+        m["round_info"] = expand_round_name(m.get("match_series", ""))
+        m["status"] = "upcoming"
+        m["match_id"] = extract_match_id_from_url(m.get("match_page", ""))
+    return matches
+
+
 async def fetch_all_team_data(team_id: str, team: str) -> Dict[str, Any]:
     """Récupère toutes les données de matchs pour une équipe.
 
-    - Results & upcoming: via /v2/team/matches (par team_id, fiable)
+    - Results: via /v2/team/matches (par team_id, fiable)
+    - Upcoming: via /v2/match?q=upcoming (global, filtré par nom)
     - Live: via /v2/match?q=live_score (global, filtré par nom)
 
     Args:
         team_id: ID VLR.gg de l'équipe.
-        team: Nom de l'équipe (pour le filtrage des matchs live).
+        team: Nom de l'équipe (pour le filtrage des matchs upcoming/live).
 
     Returns:
         Dictionnaire avec 'results', 'upcoming', 'live'.
     """
     result: Dict[str, Any] = {"results": [], "upcoming": [], "live": []}
 
-    # Historique d'équipe (results + upcoming) via /team/matches
+    # Résultats via /team/matches (ne retourne que les matchs terminés)
     try:
         team_matches = await fetch_team_matches_by_id(team_id)
-        normalized = [normalize_team_match(m) for m in team_matches]
-        for m in normalized:
-            status = m.get("status", "completed")
-            if status == "upcoming":
-                result["upcoming"].append(m)
-            else:
-                result["results"].append(m)
+        result["results"] = [normalize_team_match(m) for m in team_matches]
         logger.debug(
-            f"VLR.gg /team/matches: {len(result['results'])} résultats, "
-            f"{len(result['upcoming'])} à venir pour ID {team_id}"
+            f"VLR.gg /team/matches: {len(result['results'])} résultats pour ID {team_id}"
         )
 
         # Enrichir avec /match/details pour dates & rounds plus précis
         result["results"] = await _enrich_matches(result["results"], max_count=6)
-        result["upcoming"] = await _enrich_matches(result["upcoming"], max_count=6)
     except Exception as e:
         logger.warning(f"VLR.gg fetch_team_matches_by_id échoué: {e}")
 
-    # Live via endpoint global (pas d'alternative par team_id)
+    # Upcoming via endpoint global (filtré par nom d'équipe)
+    try:
+        result["upcoming"] = await fetch_upcoming_matches(team)
+        logger.debug(
+            f"VLR.gg /match?q=upcoming: {len(result['upcoming'])} à venir pour {team}"
+        )
+    except Exception as e:
+        logger.warning(f"VLR.gg fetch_upcoming_matches échoué: {e}")
+
+    # Live via endpoint global (filtré par nom d'équipe)
     try:
         result["live"] = await fetch_live_matches(team)
     except Exception as e:

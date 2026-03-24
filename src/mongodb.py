@@ -31,7 +31,7 @@ from typing import Optional, Union
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase, AsyncIOMotorCollection
 
 from src import logutil
-from src.utils import load_config
+from src.config_manager import load_config
 
 logger = logutil.init_logger(os.path.basename(__file__))
 

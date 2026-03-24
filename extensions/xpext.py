@@ -25,11 +25,11 @@ from interactions import (
     slash_option,
 )
 from interactions.api.events import MessageCreate
-from src.utils import CustomPaginator
-
 from src import logutil
+from src.config_manager import load_config
+from src.helpers import Colors, fetch_user_safe, is_guild_enabled, pick_weighted_message, send_error
 from src.mongodb import mongo_manager
-from src.utils import format_number, load_config
+from src.utils import CustomPaginator, format_number
 
 logger = logutil.init_logger(os.path.basename(__file__))
 config, module_config, enabled_servers = load_config("moduleXp")
@@ -38,7 +38,7 @@ config, module_config, enabled_servers = load_config("moduleXp")
 XP_COOLDOWN_SECONDS = 60
 XP_MIN = 15
 XP_MAX = 25
-EMBED_COLOR = 0x00FF00
+EMBED_COLOR = Colors.SUCCESS
 TIMEZONE = pytz.timezone("Europe/Paris")
 LEADERBOARD_PAGE_SIZE = 10
 RANK_MEDALS = ["🥇", "🥈", "🥉"]
@@ -132,7 +132,7 @@ def create_leaderboard_embed(guild_name: str, is_continuation: bool = False) -> 
     )
 
 
-class XP(Extension):
+class XpExtension(Extension):
     """XP and leveling system extension for Discord."""
 
     def __init__(self, bot: client):
@@ -253,7 +253,7 @@ class XP(Extension):
         if message.author.bot:
             logger.debug("Message was from a bot.")
             return False
-        if str(message.guild.id) not in enabled_servers:
+        if not is_guild_enabled(message.guild.id, enabled_servers):
             logger.debug("Message was not from a guild with XP enabled.")
             return False
         return True
@@ -350,11 +350,10 @@ class XP(Extension):
         logger.debug("%s is now level %d.", user_id, new_level)
         
         guild_config = module_config.get(guild_id, {})
-        level_up_messages = guild_config.get("levelUpMessageList", [DEFAULT_LEVEL_UP_MESSAGE])
-        weights = guild_config.get("levelUpMessageWeights", [1] * len(level_up_messages))
-        
-        chosen_message = random.choices(level_up_messages, weights=weights)[0]
-        formatted_message = chosen_message.format(
+        formatted_message = pick_weighted_message(
+            guild_config,
+            "levelUpMessageList", "levelUpMessageWeights",
+            DEFAULT_LEVEL_UP_MESSAGE,
             mention=message.author.mention,
             lvl=new_level,
         )
@@ -440,7 +439,7 @@ class XP(Extension):
     async def rank(self, ctx: SlashContext, utilisateur: User = None):
         """Display the level and XP of a user."""
         if not self._db_connected:
-            await ctx.send("❌ La base de données n'est pas disponible.", ephemeral=True)
+            await send_error(ctx, "La base de données n'est pas disponible.")
             return
         
         target_user = utilisateur or ctx.author
@@ -450,7 +449,7 @@ class XP(Extension):
             stats = await mongo_manager.get_guild_collection(guild_id, "xp").find_one({"_id": str(target_user.id)})
         except pymongo.errors.PyMongoError as e:
             logger.error("Database error in rank command: %s", e)
-            await ctx.send("❌ Erreur lors de la récupération des statistiques.", ephemeral=True)
+            await send_error(ctx, "Erreur lors de la récupération des statistiques.")
             return
         
         if stats is None:
@@ -491,10 +490,10 @@ class XP(Extension):
         try:
             member = guild.get_member(user_id)
             if member is None:
-                member = await self.bot.fetch_user(user_id)
+                _, member = await fetch_user_safe(self.bot, user_id)
             if member is None:
                 return None
-            
+
             result = (member.display_name, member.username)
             self._user_cache.set(cache_key, result)
             return result
@@ -518,7 +517,7 @@ class XP(Extension):
             return [Embed(
                 title="Erreur",
                 description="La base de données n'est pas disponible.",
-                color=0xFF0000,
+                color=Colors.ERROR,
             )]
         
         try:
@@ -529,7 +528,7 @@ class XP(Extension):
             return [Embed(
                 title="Erreur",
                 description="Impossible de récupérer le classement.",
-                color=0xFF0000,
+                color=Colors.ERROR,
             )]
         
         embeds = []

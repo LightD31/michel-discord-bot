@@ -25,12 +25,13 @@ from interactions import (
 
 from src import logutil
 from src.mongodb import mongo_manager
-from src.utils import load_config
+from src.config_manager import load_config
+from src.helpers import Colors, send_error, is_guild_enabled
 
 logger = logutil.init_logger(os.path.basename(__file__))
 config, module_config, enabled_servers = load_config("moduleUptime")
 
-class Uptime(Extension):
+class UptimeExtension(Extension):
     """
     A Discord bot extension that sends a status update to a server at a specific time
     and monitors specific sensors for maintenance notifications using SocketIO API.
@@ -450,12 +451,12 @@ class Uptime(Extension):
         Configure une alerte de maintenance pour un capteur spécifique dans un canal donné.
         """
         if not ctx.guild:
-            await ctx.send("❌ Cette commande ne peut être utilisée que dans un serveur.", ephemeral=True)
+            await send_error(ctx, "Cette commande ne peut être utilisée que dans un serveur.")
             return
 
         # Vérifier si le module est activé sur ce serveur
-        if str(ctx.guild.id) not in enabled_servers:
-            await ctx.send("❌ Le module Uptime n'est pas activé sur ce serveur.", ephemeral=True)
+        if not is_guild_enabled(ctx.guild.id, enabled_servers):
+            await send_error(ctx, "Le module Uptime n'est pas activé sur ce serveur.")
             return
             
         guild_id = str(ctx.guild.id)
@@ -464,20 +465,20 @@ class Uptime(Extension):
         if (not config.get('uptimeKuma', {}).get('uptimeKumaUrl') or 
             not config.get('uptimeKuma', {}).get('uptimeKumaUsername') or 
             not config.get('uptimeKuma', {}).get('uptimeKumaPassword')):
-            await ctx.send("❌ Configuration Uptime Kuma manquante. Vérifiez l'URL, le nom d'utilisateur et le mot de passe.", ephemeral=True)
+            await send_error(ctx, "Configuration Uptime Kuma manquante. Vérifiez l'URL, le nom d'utilisateur et le mot de passe.")
             return
 
         # Convertir le sensor (ID sous forme de string) en int
         try:
             sensor_id = int(sensor)
         except ValueError:
-            await ctx.send("❌ ID de capteur invalide.", ephemeral=True)
+            await send_error(ctx, "ID de capteur invalide.")
             return
 
         # Vérifier si le capteur existe
         sensor_info = await self._get_sensor_info(sensor_id)
         if not sensor_info:
-            await ctx.send(f"❌ Capteur avec l'ID {sensor_id} introuvable.", ephemeral=True)
+            await send_error(ctx, f"Capteur avec l'ID {sensor_id} introuvable.")
             return
 
         # Initialiser la structure si nécessaire
@@ -497,7 +498,7 @@ class Uptime(Extension):
         embed = Embed(
             title="✅ Alerte de maintenance configurée",
             description=f"Les notifications de maintenance pour le capteur **{sensor_info.get('name', f'ID {sensor_id}')}** seront envoyées dans {channel.mention} (Mode: {mode})",
-            color=0x00FF00
+            color=Colors.SUCCESS
         )
         await ctx.send(embed=embed)
 
@@ -522,12 +523,12 @@ class Uptime(Extension):
         Supprime la surveillance de maintenance pour un capteur spécifique.
         """
         if not ctx.guild:
-            await ctx.send("❌ Cette commande ne peut être utilisée que dans un serveur.", ephemeral=True)
+            await send_error(ctx, "Cette commande ne peut être utilisée que dans un serveur.")
             return
 
         # Vérifier si le module est activé sur ce serveur
-        if str(ctx.guild.id) not in enabled_servers:
-            await ctx.send("❌ Le module Uptime n'est pas activé sur ce serveur.", ephemeral=True)
+        if not is_guild_enabled(ctx.guild.id, enabled_servers):
+            await send_error(ctx, "Le module Uptime n'est pas activé sur ce serveur.")
             return
             
         guild_id = str(ctx.guild.id)
@@ -537,12 +538,12 @@ class Uptime(Extension):
             sensor_id = int(sensor)
             sensor_id_str = str(sensor_id)
         except ValueError:
-            await ctx.send("❌ ID de capteur invalide.", ephemeral=True)
+            await send_error(ctx, "ID de capteur invalide.")
             return
 
         if (guild_id not in self.maintenance_monitors or 
             sensor_id_str not in self.maintenance_monitors[guild_id]):
-            await ctx.send(f"❌ Aucune alerte configurée pour le capteur ID {sensor_id}.", ephemeral=True)
+            await send_error(ctx, f"Aucune alerte configurée pour le capteur ID {sensor_id}.")
             return
 
         del self.maintenance_monitors[guild_id][sensor_id_str]
@@ -603,23 +604,23 @@ class Uptime(Extension):
         Liste toutes les alertes de maintenance configurées pour ce serveur.
         """
         if not ctx.guild:
-            await ctx.send("❌ Cette commande ne peut être utilisée que dans un serveur.", ephemeral=True)
+            await send_error(ctx, "Cette commande ne peut être utilisée que dans un serveur.")
             return
 
         # Vérifier si le module est activé sur ce serveur
-        if str(ctx.guild.id) not in enabled_servers:
-            await ctx.send("❌ Le module Uptime n'est pas activé sur ce serveur.", ephemeral=True)
+        if not is_guild_enabled(ctx.guild.id, enabled_servers):
+            await send_error(ctx, "Le module Uptime n'est pas activé sur ce serveur.")
             return
             
         guild_id = str(ctx.guild.id)
 
         if guild_id not in self.maintenance_monitors or not self.maintenance_monitors[guild_id]:
-            await ctx.send("❌ Aucune alerte de maintenance configurée sur ce serveur.", ephemeral=True)
+            await send_error(ctx, "Aucune alerte de maintenance configurée sur ce serveur.")
             return
 
         embed = Embed(
             title="📋 Alertes de maintenance configurées",
-            color=0x0099FF
+            color=Colors.INFO
         )
 
         for sensor_id, config_data in self.maintenance_monitors[guild_id].items():
@@ -826,26 +827,26 @@ class Uptime(Extension):
                     embed = Embed(
                         title="🔧 Maintenance",
                         description=f"**{sensor_name}** est en maintenance",
-                        color=0xFFA500  # Orange
+                        color=Colors.ORANGE  # Orange
                     )
                 else:  # detailed
                     embed = Embed(
                         title="🔧 Maintenance en cours",
                         description=f"Le capteur **{sensor_name}** est actuellement en maintenance.",
-                        color=0xFFA500  # Orange
+                        color=Colors.ORANGE  # Orange
                     )
             elif current_status == 'DOWN' or current_status == 0:
                 if notification_mode == "simple":
                     embed = Embed(
                         title="❌ Hors ligne",
                         description=f"**{sensor_name}** est hors ligne",
-                        color=0xFF0000  # Rouge
+                        color=Colors.ERROR  # Rouge
                     )
                 else:  # detailed
                     embed = Embed(
                         title="❌ Capteur hors ligne",
                         description=f"Le capteur **{sensor_name}** est actuellement hors ligne.",
-                        color=0xFF0000  # Rouge
+                        color=Colors.ERROR  # Rouge
                     )
             elif current_status == 'UP' or current_status == 1:
                 # Différencier selon l'état précédent
@@ -855,26 +856,26 @@ class Uptime(Extension):
                             embed = Embed(
                                 title="✅ Maintenance terminée",
                                 description=f"**{sensor_name}** opérationnel",
-                                color=0x00FF00  # Vert
+                                color=Colors.SUCCESS  # Vert
                             )
                         else:  # detailed
                             embed = Embed(
                                 title="✅ Fin de maintenance",
                                 description=f"Le capteur **{sensor_name}** est de nouveau opérationnel après maintenance.",
-                                color=0x00FF00  # Vert
+                                color=Colors.SUCCESS  # Vert
                             )
                     else:
                         if notification_mode == "simple":
                             embed = Embed(
                                 title="✅ Rétabli",
                                 description=f"**{sensor_name}** est en ligne",
-                                color=0x00FF00  # Vert
+                                color=Colors.SUCCESS  # Vert
                             )
                         else:  # detailed
                             embed = Embed(
                                 title="✅ Capteur rétabli",
                                 description=f"Le capteur **{sensor_name}** est de nouveau en ligne.",
-                                color=0x00FF00  # Vert
+                                color=Colors.SUCCESS  # Vert
                             )
                 else:
                     # Statut UP mais sans changement significatif, ignorer
@@ -948,8 +949,3 @@ class Uptime(Extension):
                     response.raise_for_status()
             except aiohttp.ClientError as error:
                 logger.error("Error sending status update: %s", error)
-
-
-def setup(bot):
-    """Setup function for loading the extension."""
-    Uptime(bot)

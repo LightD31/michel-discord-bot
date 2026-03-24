@@ -11,6 +11,7 @@ Configuration par serveur via le dashboard web (moduleVlrgg):
     - channelMessageId: "channelId:messageId" pour le planning (optionnel)
 """
 
+import os
 from typing import List, Dict, Any, Tuple, Optional
 from dataclasses import dataclass, field
 from interactions import (
@@ -23,7 +24,8 @@ from interactions import (
     Timestamp,
 )
 from src import logutil
-from src.utils import load_config
+from src.helpers import Colors, SPACER_FIELD, format_discord_timestamp
+from src.config_manager import load_config
 from src.vlrgg import (
     fetch_all_team_data as vlrgg_fetch_all,
     fetch_match_details,
@@ -33,16 +35,16 @@ from src.vlrgg import (
     format_vlr_date,
 )
 
-logger = logutil.init_logger(__name__)
-config, module_configs, enabled_servers = load_config("moduleVlrgg")
+logger = logutil.init_logger(os.path.basename(__file__))
+config, module_config, enabled_servers = load_config("moduleVlrgg")
 
 # Constants
-DEFAULT_EMBED_COLOR = 0xE04747
-LIVE_EMBED_COLOR = 0x00FF00  # Vert pour les matchs en direct
+DEFAULT_EMBED_COLOR = Colors.VLR
+LIVE_EMBED_COLOR = Colors.SUCCESS
 MAX_PAST_MATCHES = 6
 MAX_UPCOMING_MATCHES = 6
-SCHEDULE_INTERVAL_MINUTES = 5
-LIVE_UPDATE_INTERVAL_MINUTES = 1
+SCHEDULE_INTERVAL_MINUTES = 2
+LIVE_UPDATE_INTERVAL_MINUTES = 0.5
 
 
 @dataclass
@@ -90,7 +92,7 @@ class ServerState:
     teams: Dict[str, TeamState] = field(default_factory=dict)
 
 
-class VlrggTracker(Extension):
+class VlrggTrackerExtension(Extension):
     """Extension pour le suivi des matchs Valorant via VLR.gg.
 
     Supporte plusieurs serveurs, chacun avec plusieurs équipes à suivre.
@@ -113,7 +115,7 @@ class VlrggTracker(Extension):
     async def _initialize_all_servers(self) -> None:
         """Initialise les messages et canaux pour tous les serveurs activés."""
         for server_id in enabled_servers:
-            srv_config = module_configs.get(server_id, {})
+            srv_config = module_config.get(server_id, {})
             teams_raw = srv_config.get("teams", [])
 
             if not teams_raw:
@@ -408,11 +410,11 @@ class VlrggTracker(Extension):
             if team_won is True:
                 result_emoji = "🎉"
                 result_text = "VICTOIRE"
-                embed_color = 0x00FF00
+                embed_color = Colors.SUCCESS
             elif team_won is False:
                 result_emoji = "😢"
                 result_text = "DÉFAITE"
-                embed_color = 0xFF0000
+                embed_color = Colors.ERROR
             else:
                 result_emoji = "🏁"
                 result_text = "TERMINÉ"
@@ -524,7 +526,7 @@ class VlrggTracker(Extension):
                     name=field_data["name"], value=field_data["value"], inline=True
                 )
                 if (i + 1) % 2 != 0:
-                    past_embed.add_field(name="\u200b", value="\u200b", inline=True)
+                    past_embed.add_field(**SPACER_FIELD)
             embeds.append(past_embed)
 
         live = vlr_data.get("live", [])
@@ -551,9 +553,7 @@ class VlrggTracker(Extension):
                     name=field_data["name"], value=field_data["value"], inline=True
                 )
                 if (i + 1) % 2 != 0:
-                    upcoming_embed.add_field(
-                        name="\u200b", value="\u200b", inline=True
-                    )
+                    upcoming_embed.add_field(**SPACER_FIELD)
             embeds.append(upcoming_embed)
 
         return embeds
@@ -671,7 +671,7 @@ class VlrggTracker(Extension):
         timestamp_str = match.get("unix_timestamp", "")
         ts = parse_vlrgg_timestamp(timestamp_str)
         if ts:
-            time_display = f"<t:{int(ts.timestamp())}:R>"
+            time_display = format_discord_timestamp(ts, "R")
         elif match.get("time_until_match"):
             time_display = match["time_until_match"]
 
@@ -838,4 +838,4 @@ class VlrggTracker(Extension):
     def _add_alignment_field_if_needed(embed: Embed, count: int) -> None:
         """Ajoute un champ vide pour l'alignement si nécessaire."""
         if count % 2 != 0:
-            embed.add_field(name="\u200b", value="\u200b", inline=True)
+            embed.add_field(**SPACER_FIELD)
