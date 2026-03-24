@@ -15,7 +15,7 @@ MINECRAFT_OPTIMIZATION_CONFIG = {
     "max_players_processed": 20,
     
     # Formatting
-    "player_name_max_length": 12,
+    "player_name_max_length": 14,
     "decimal_precision": 1,
 }
 

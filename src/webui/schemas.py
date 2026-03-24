@@ -406,9 +406,41 @@ MODULE_SCHEMAS: dict[str, dict] = {
                 "Mot de passe RCON", "secret",
                 description="Mot de passe RCON du serveur.", secret=True
             ),
+            "minecraftSftpHost": _field(
+                "Hôte SFTP", "string",
+                description="Adresse IP du serveur SFTP (par défaut, même que l'IP du serveur)."
+            ),
+            "minecraftSftpPort": _field(
+                "Port SFTP", "number", default=2225,
+                description="Port du serveur SFTP."
+            ),
+            "minecraftSftpUsername": _field(
+                "Utilisateur SFTP", "string", default="Discord",
+                description="Nom d'utilisateur pour la connexion SFTP."
+            ),
             "minecraftSftpsPassword": _field(
                 "Mot de passe SFTP", "secret",
                 description="Mot de passe SFTP pour l'accès aux fichiers.", secret=True
+            ),
+            "minecraftModpackName": _field(
+                "Nom du modpack", "string",
+                description="Nom du modpack Minecraft."
+            ),
+            "minecraftModpackUrl": _field(
+                "URL du modpack", "string",
+                description="Lien vers la page du modpack."
+            ),
+            "minecraftModpackVersion": _field(
+                "Version du modpack", "string",
+                description="Version actuelle du modpack."
+            ),
+            "minecraftStatusUrl": _field(
+                "URL page de statut", "string",
+                description="Lien vers la page de statut du serveur."
+            ),
+            "minecraftFooterText": _field(
+                "Texte du footer", "string",
+                description="Texte affiché en bas de l'embed en veille."
             ),
         },
     },
