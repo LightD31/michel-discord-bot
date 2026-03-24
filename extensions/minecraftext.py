@@ -87,36 +87,40 @@ class Minecraft(Extension):
             self.serverColoc = JavaServer(MINECRAFT_IP, MINECRAFT_PORT)
             
         logger.debug("Updating Minecraft server status")
-        channel: BaseChannel = await self.bot.fetch_channel(CHANNEL_ID_KUBZ)
-        message: Message = await channel.fetch_message(MESSAGE_ID_KUBZ)
-        
         try:
-            embed2_timestamp = message.embeds[1].timestamp
-        except IndexError:
-            embed2_timestamp = Timestamp.utcnow()
-            
-        embed2 = Embed(
-            title="Stats",
-            description=f"Actualisé toutes les heures\nDernière actualisation : {embed2_timestamp.format(TimestampStyles.RelativeTime)}",
-            images=("attachment://stats.png"),
-            color=BrandColors.BLURPLE,
-            timestamp=embed2_timestamp,
-        )
-        
-        try:
-            # Get Minecraft server status
-            coloc_status = self.serverColoc.status()
-            embed1, name = self._create_online_embed(coloc_status)
-            
-        except (ConnectionResetError, ConnectionRefusedError, TimeoutError, socket.timeout) as e:
-            logger.debug(e)
-            embed1, name = self._create_offline_embed()
-            
-        except BrokenPipeError:
-            embed1, name = self._create_sleeping_embed(message)
+            logger.debug(f"Fetching channel={CHANNEL_ID_KUBZ}, message={MESSAGE_ID_KUBZ}")
+            channel: BaseChannel = await self.bot.fetch_channel(CHANNEL_ID_KUBZ)
+            message: Message = await channel.fetch_message(MESSAGE_ID_KUBZ)
 
-        await message.edit(content="", embeds=[embed1, embed2])
-        await self._update_channel_name(channel, name)
+            try:
+                embed2_timestamp = message.embeds[1].timestamp
+            except IndexError:
+                embed2_timestamp = Timestamp.utcnow()
+
+            embed2 = Embed(
+                title="Stats",
+                description=f"Actualisé toutes les heures\nDernière actualisation : {embed2_timestamp.format(TimestampStyles.RelativeTime)}",
+                images=("attachment://stats.png"),
+                color=BrandColors.BLURPLE,
+                timestamp=embed2_timestamp,
+            )
+
+            try:
+                # Get Minecraft server status
+                coloc_status = self.serverColoc.status()
+                embed1, name = self._create_online_embed(coloc_status)
+
+            except (ConnectionResetError, ConnectionRefusedError, TimeoutError, socket.timeout) as e:
+                logger.debug(e)
+                embed1, name = self._create_offline_embed()
+
+            except BrokenPipeError:
+                embed1, name = self._create_sleeping_embed(message)
+
+            await message.edit(content="", embeds=[embed1, embed2])
+            await self._update_channel_name(channel, name)
+        except Exception as e:
+            logger.error(f"Failed to update Minecraft server status: {e}")
 
     def _create_online_embed(self, coloc_status):
         """Create embed for online server status."""
