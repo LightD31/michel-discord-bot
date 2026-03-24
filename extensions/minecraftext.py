@@ -127,7 +127,7 @@ class Minecraft(Extension):
         if coloc_status.players.online > 0:
             players = "\n".join(
                 sorted(
-                    [player.name for player in coloc_status.players.sample],
+                    [player.name.replace("_", r"\_") for player in coloc_status.players.sample],
                     key=str.lower,
                 )
             )
