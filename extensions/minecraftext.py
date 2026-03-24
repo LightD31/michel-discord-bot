@@ -56,6 +56,7 @@ MODPACK_URL = module_config.get("minecraftModpackUrl", "")
 MODPACK_VERSION = module_config.get("minecraftModpackVersion", "")
 STATUS_URL = module_config.get("minecraftStatusUrl", "")
 FOOTER_TEXT = module_config.get("minecraftFooterText", "")
+SERVER_TYPE = module_config.get("minecraftServerType", "")
 
 
 class Minecraft(Extension):
@@ -157,7 +158,7 @@ class Minecraft(Extension):
             joueurs = "\u200b"
             
         embed = Embed(
-            title=f"Serveur Forge {coloc_status.version.name}",
+            title=f"Serveur {SERVER_TYPE + ' ' if SERVER_TYPE else ''}{coloc_status.version.name}",
             description=f"Adresse : `{MINECRAFT_ADDRESS}`"
             + (f"\nModpack : [{MODPACK_NAME}]({MODPACK_URL})" if MODPACK_NAME and MODPACK_URL else "")
             + (f"\nVersion : **{MODPACK_VERSION}**" if MODPACK_VERSION else ""),

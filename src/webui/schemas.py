@@ -442,6 +442,10 @@ MODULE_SCHEMAS: dict[str, dict] = {
                 "Texte du footer", "string",
                 description="Texte affiché en bas de l'embed en veille."
             ),
+            "minecraftServerType": _field(
+                "Type de serveur", "string",
+                description="Type de serveur affiché dans le titre de l'embed (ex: Forge, Paper, Fabric). Laisser vide pour ne pas afficher."
+            ),
         },
     },
 
