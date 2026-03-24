@@ -28,6 +28,7 @@ from interactions.client.utils import timestamp_converter
 from mcstatus import JavaServer
 
 from src import logutil
+from src.minecraft_config import get_config as get_mc_config
 from src.utils import create_dynamic_image, load_config
 
 # Initialize logger
@@ -44,6 +45,14 @@ MINECRAFT_PORT = int(module_config["minecraftPort"])
 CHANNEL_ID_KUBZ = module_config["minecraftChannelId"]
 MESSAGE_ID_KUBZ = module_config["minecraftMessageId"]
 SFTPS_PASSWORD = module_config["minecraftSftpsPassword"]
+SFTP_HOST = module_config.get("minecraftSftpHost", MINECRAFT_IP)
+SFTP_PORT = int(module_config.get("minecraftSftpPort", 2225))
+SFTP_USERNAME = module_config.get("minecraftSftpUsername", "Discord")
+MODPACK_NAME = module_config.get("minecraftModpackName", "")
+MODPACK_URL = module_config.get("minecraftModpackUrl", "")
+MODPACK_VERSION = module_config.get("minecraftModpackVersion", "")
+STATUS_URL = module_config.get("minecraftStatusUrl", "")
+FOOTER_TEXT = module_config.get("minecraftFooterText", "")
 
 
 class Minecraft(Extension):
@@ -125,7 +134,9 @@ class Minecraft(Extension):
             
         embed = Embed(
             title=f"Serveur Forge {coloc_status.version.name}",
-            description=f"Adresse : `{MINECRAFT_ADDRESS}`\nModpack : [Menagerie - a zoo modpack](https://www.curseforge.com/minecraft/modpacks/menagerie)\nVersion : **2.1.4**",
+            description=f"Adresse : `{MINECRAFT_ADDRESS}`"
+            + (f"\nModpack : [{MODPACK_NAME}]({MODPACK_URL})" if MODPACK_NAME and MODPACK_URL else "")
+            + (f"\nVersion : **{MODPACK_VERSION}**" if MODPACK_VERSION else ""),
             fields=[
                 {
                     "name": "Latence",
@@ -139,7 +150,7 @@ class Minecraft(Extension):
                 },
                 {
                     "name": "État de Michel et du serveur",
-                    "value": "https://status.drndvs.fr/status/coloc",
+                    "value": STATUS_URL,
                 },
             ],
             color=BrandColors.GREEN,
@@ -156,7 +167,7 @@ class Minecraft(Extension):
             fields=[
                 {
                     "name": "État de Michel et du serveur",
-                    "value": "https://status.drndvs.fr/status/coloc",
+                    "value": STATUS_URL,
                 }
             ],
             color=BrandColors.RED,
@@ -181,10 +192,10 @@ class Minecraft(Extension):
                 },
                 {
                     "name": "État de Michel et du serveur",
-                    "value": "https://status.drndvs.fr/status/coloc"
+                    "value": STATUS_URL
                 }
             ],
-            footer="Serveur Minecraft du believe",
+            footer=FOOTER_TEXT if FOOTER_TEXT else None,
             timestamp=Timestamp.utcnow().isoformat(),
             color=BrandColors.YELLOW,
         )
@@ -231,9 +242,9 @@ class Minecraft(Extension):
         
         try:
             player_stats = await get_minecraft_stats_with_retry(
-                host="82.65.116.168",
-                port=2225,
-                username="Discord",
+                host=SFTP_HOST,
+                port=SFTP_PORT,
+                username=SFTP_USERNAME,
                 password=SFTPS_PASSWORD
             )
             logger.debug(f"Retrieved stats for {len(player_stats)} players using optimized connection")
@@ -257,8 +268,8 @@ class Minecraft(Extension):
                 df["Temps de jeu"] = pd.to_timedelta(df["Temps de jeu"], unit="s").dt.round("1s")
                 df.sort_values(by="Temps de jeu", ascending=False, inplace=True)
             
-            # Limit to top 15 players to keep image size manageable
-            df = df.head(15)
+            # Limit to top N players to keep image size manageable
+            df = df.head(get_mc_config("max_players_displayed", 15))
         
         return self._format_table_efficiently(df)
 
@@ -287,9 +298,10 @@ class Minecraft(Extension):
 
     def _optimize_image_cache(self):
         """Clean image cache to prevent memory accumulation."""
-        if len(self.image_cache) > 5:  # Keep only the last 5 images
+        if len(self.image_cache) > get_mc_config("max_image_cache_size", 5):
             # Remove oldest entries (simple FIFO)
-            oldest_keys = list(self.image_cache.keys())[:-5]
+            max_cache = get_mc_config("max_image_cache_size", 5)
+            oldest_keys = list(self.image_cache.keys())[:-max_cache]
             for key in oldest_keys:
                 del self.image_cache[key]
             logger.debug(f"Image cache cleaned, {len(oldest_keys)} entries removed")
@@ -328,7 +340,7 @@ class Minecraft(Extension):
             
         # Truncate long names
         if "Joueur" in df.columns:
-            df["Joueur"] = df["Joueur"].str[:14]  # Limit to 14 characters
+            df["Joueur"] = df["Joueur"].str[:get_mc_config("player_name_max_length", 14)]
         
         # Convert to table
         output = StringIO()
@@ -340,7 +352,8 @@ class Minecraft(Extension):
         table.align["Joueur"] = "l"
         table.set_style(prettytable.SINGLE_BORDER)
         table.padding_width = 1
-        table.title = "Stats Joueurs (Top 15)"
+        max_players = get_mc_config("max_players_displayed", 15)
+        table.title = f"Stats Joueurs (Top {max_players})"
         table.hrules = prettytable.ALL
         
         return table
