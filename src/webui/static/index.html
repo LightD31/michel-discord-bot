@@ -1834,6 +1834,188 @@
                 display: none;
             }
         }
+
+        /* ── Home Hero ──────────────────────────────── */
+        .home-hero {
+            background: linear-gradient(135deg, rgba(88,101,242,0.12) 0%, rgba(88,101,242,0.03) 100%);
+            border: 1px solid rgba(88,101,242,0.3);
+            border-radius: var(--radius-lg);
+            padding: 24px 28px;
+            margin-bottom: 28px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+        .home-hero-bot {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            min-width: 0;
+        }
+        .bot-avatar {
+            width: 52px;
+            height: 52px;
+            border-radius: 50%;
+            background: var(--accent);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 26px;
+            flex-shrink: 0;
+            border: 2px solid rgba(88,101,242,0.5);
+            overflow: hidden;
+        }
+        .bot-avatar img { width: 100%; height: 100%; border-radius: 50%; }
+        .bot-name { font-size: 18px; font-weight: 700; }
+        .bot-tag { font-size: 13px; color: var(--text-muted); margin-top: 3px; }
+        .home-hero-right {
+            display: flex;
+            align-items: center;
+            gap: 28px;
+            flex-wrap: wrap;
+        }
+        .hero-stat { text-align: center; }
+        .hero-stat-value { font-size: 22px; font-weight: 700; line-height: 1; }
+        .hero-stat-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); margin-top: 4px; }
+
+        .status-badge {
+            display: inline-flex; align-items: center; gap: 7px;
+            padding: 6px 14px; border-radius: 20px;
+            font-size: 13px; font-weight: 600;
+        }
+        .status-badge.online {
+            background: rgba(35,165,90,0.15); color: var(--success);
+            border: 1px solid rgba(35,165,90,0.3);
+        }
+        .status-badge.offline {
+            background: rgba(242,63,67,0.12); color: var(--danger);
+            border: 1px solid rgba(242,63,67,0.3);
+        }
+        .status-dot-pulse {
+            width: 8px; height: 8px; border-radius: 50%;
+            background: currentColor;
+            animation: hero-pulse 2.4s ease-in-out infinite;
+        }
+        @keyframes hero-pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.45; transform: scale(1.35); }
+        }
+
+        /* ── Section Label ──────────────────────────── */
+        .section-label {
+            font-size: 11px; font-weight: 700; text-transform: uppercase;
+            letter-spacing: 0.6px; color: var(--text-muted);
+            margin-bottom: 12px;
+        }
+
+        /* ── Server Cards ───────────────────────────── */
+        .server-cards-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+            gap: 12px;
+            margin-bottom: 28px;
+        }
+        .server-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+            padding: 18px 20px;
+            cursor: pointer;
+            transition: border-color 0.2s, transform 0.2s, box-shadow 0.2s, background 0.2s;
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+        }
+        .server-card:hover {
+            border-color: var(--accent);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(88,101,242,0.14);
+            background: rgba(88,101,242,0.04);
+        }
+        .server-card-top {
+            display: flex; align-items: center; gap: 12px;
+        }
+        .server-card-icon {
+            width: 42px; height: 42px; border-radius: 10px;
+            background: var(--accent);
+            display: flex; align-items: center; justify-content: center;
+            font-weight: 700; font-size: 18px; flex-shrink: 0; overflow: hidden;
+        }
+        .server-card-icon img { width: 100%; height: 100%; object-fit: cover; }
+        .server-card-name {
+            font-size: 14px; font-weight: 600;
+            overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        }
+        .server-card-id { font-size: 11px; color: var(--text-muted); font-family: monospace; margin-top: 2px; }
+        .server-card-footer {
+            display: flex; align-items: center; justify-content: space-between;
+        }
+        .server-card-pills { display: flex; gap: 6px; flex-wrap: wrap; }
+        .server-card-pill {
+            font-size: 11px; font-weight: 600; padding: 3px 8px; border-radius: 10px;
+        }
+        .server-card-pill.modules { background: rgba(88,101,242,0.15); color: var(--accent); }
+        .server-card-pill.active  { background: rgba(35,165,90,0.15); color: var(--success); }
+        .server-card-arrow {
+            color: var(--text-muted); font-size: 16px;
+            transition: transform 0.2s, color 0.2s;
+            flex-shrink: 0;
+        }
+        .server-card:hover .server-card-arrow { transform: translateX(4px); color: var(--accent); }
+
+        /* ── Quick Actions ──────────────────────────── */
+        .quick-actions-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
+            gap: 10px;
+            margin-bottom: 28px;
+        }
+        .quick-action-btn {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+            padding: 16px;
+            cursor: pointer;
+            transition: border-color 0.15s, background 0.15s;
+            display: flex; flex-direction: column;
+            align-items: flex-start; gap: 8px;
+            text-align: left; color: var(--text-primary);
+            font-family: inherit;
+        }
+        .quick-action-btn:hover {
+            border-color: var(--accent);
+            background: rgba(88,101,242,0.06);
+        }
+        .quick-action-icon { font-size: 22px; }
+        .quick-action-label { font-size: 13px; font-weight: 600; }
+        .quick-action-sub { font-size: 11px; color: var(--text-muted); }
+
+        /* ── Mini Log Feed ──────────────────────────── */
+        .mini-log-feed { display: flex; flex-direction: column; gap: 1px; }
+        .mini-log-line {
+            display: flex; gap: 8px; align-items: baseline;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 12px; padding: 4px 8px; border-radius: 3px;
+        }
+        .mini-log-line:hover { background: rgba(255,255,255,0.04); }
+        .mini-log-line.has-error   { background: rgba(248,81,73,0.07); }
+        .mini-log-line.has-warning { background: rgba(210,153,34,0.07); }
+        .mini-log-time  { color: var(--text-muted); flex-shrink: 0; font-size: 11px; }
+        .mini-log-level { font-weight: 700; flex-shrink: 0; width: 62px; font-size: 11px; }
+        .mini-log-msg   { color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; }
+
+        @media (max-width: 768px) {
+            .home-hero { padding: 16px 20px; }
+            .server-cards-grid { grid-template-columns: 1fr 1fr; }
+            .quick-actions-grid { grid-template-columns: repeat(3, 1fr); }
+        }
+        @media (max-width: 480px) {
+            .server-cards-grid { grid-template-columns: 1fr; }
+            .quick-actions-grid { grid-template-columns: repeat(2, 1fr); }
+            .home-hero-right { gap: 16px; }
+        }
     </style>
 </head>
 <body>
@@ -3024,98 +3206,174 @@
     // ── Home Page ─────────────────────────────────────
     function renderHomePage() {
         const bi = state.botInfo || {};
-        const moduleEntries = Object.entries(state.modules);
         const admin = isAdmin();
-        return `
-            <div class="page-header">
-                <h2>Dashboard</h2>
-                <p>Vue d'ensemble de Michel Bot</p>
-            </div>
 
-            <div class="stats-grid">
-                <div class="stat-card">
-                    <div class="stat-label">Statut</div>
-                    <div class="stat-value ${bi.status === 'online' ? 'online' : 'error'}">
-                        ${bi.status === 'online' ? '● En ligne' : bi.status || 'Inconnu'}
+        // Latency color coding
+        const lat = bi.latency;
+        const latColor = lat == null ? 'var(--text-primary)'
+            : lat < 100 ? 'var(--success)'
+            : lat < 200 ? 'var(--warning)'
+            : 'var(--danger)';
+
+        // ── Hero ──────────────────────────────────────
+        const heroHtml = `
+            <div class="home-hero">
+                <div class="home-hero-bot">
+                    <div class="bot-avatar">🤖</div>
+                    <div>
+                        <div class="bot-name">${escapeHtml(bi.user || 'Michel Bot')}</div>
+                        ${state.user ? `<div class="bot-tag">Connecté en tant que ${escapeHtml(state.user.username)}</div>` : ''}
                     </div>
                 </div>
-                <div class="stat-card">
-                    <div class="stat-label">Serveurs</div>
-                    <div class="stat-value">${bi.guilds || 0}</div>
+                <div class="home-hero-right">
+                    ${admin ? `
+                    <div class="hero-stat">
+                        <div class="hero-stat-value">${bi.guilds ?? '—'}</div>
+                        <div class="hero-stat-label">Serveurs</div>
+                    </div>
+                    <div class="hero-stat">
+                        <div class="hero-stat-value" style="color:${latColor}">${lat != null ? lat + ' ms' : '—'}</div>
+                        <div class="hero-stat-label">Latence</div>
+                    </div>
+                    <div class="hero-stat">
+                        <div class="hero-stat-value">${bi.extensions?.length ?? '—'}</div>
+                        <div class="hero-stat-label">Extensions</div>
+                    </div>
+                    ` : `
+                    <div class="hero-stat">
+                        <div class="hero-stat-value" style="color:${latColor}">${lat != null ? lat + ' ms' : '—'}</div>
+                        <div class="hero-stat-label">Latence</div>
+                    </div>
+                    `}
+                    <span class="status-badge ${bi.status === 'online' ? 'online' : 'offline'}">
+                        <span class="status-dot-pulse"></span>
+                        ${bi.status === 'online' ? 'En ligne' : bi.status || 'Inconnu'}
+                    </span>
                 </div>
-                <div class="stat-card">
-                    <div class="stat-label">Latence</div>
-                    <div class="stat-value">${bi.latency != null ? bi.latency + ' ms' : '—'}</div>
-                </div>
-                ${admin ? `
-                <div class="stat-card">
-                    <div class="stat-label">Extensions</div>
-                    <div class="stat-value">${bi.extensions?.length || 0}</div>
-                </div>
-                ` : ''}
             </div>
+        `;
 
-            ${!admin ? `
+        // ── Non-admin view ─────────────────────────────
+        if (!admin) {
+            return heroHtml + `
                 <div class="card">
                     <div class="card-header">
                         <div>
-                            <div class="card-title">Bienvenue, ${state.user.username} !</div>
+                            <div class="card-title">Bienvenue, ${escapeHtml(state.user.username)} !</div>
                             <div class="card-subtitle">Vous êtes connecté en tant qu'utilisateur. Seuls les administrateurs peuvent modifier la configuration du bot.</div>
                         </div>
                     </div>
                 </div>
-            ` : ''}
+            `;
+        }
 
-            ${admin && bi.extensions?.length ? `
-                <div class="card">
-                    <div class="card-header">
-                        <div>
-                            <div class="card-title">Extensions chargées</div>
-                            <div class="card-subtitle">${bi.extensions.length} extension(s) active(s)</div>
-                        </div>
-                        <div class="card-actions">
-                            <button class="btn btn-primary btn-sm" onclick="reloadAllExtensions()" id="reload-all-btn">
-                                🔄 Recharger tout
-                            </button>
-                        </div>
-                    </div>
-                    <div class="module-list">
-                        ${bi.extensions.map(ext => `
-                            <div class="module-item">
-                                <div class="module-info">
-                                    <span class="module-name">📦 ${ext}</span>
+        // ── Server Cards ───────────────────────────────
+        const servers = state.servers ? Object.entries(state.servers) : [];
+        const serverCardsHtml = servers.length > 0 ? `
+            <div class="section-label">Serveurs</div>
+            <div class="server-cards-grid">
+                ${servers.map(([id, s]) => {
+                    const iconUrl = s.icon
+                        ? `https://cdn.discordapp.com/icons/${id}/${s.icon}.png?size=128`
+                        : null;
+                    const cfg = s.config || {};
+                    const modCount = Object.keys(cfg).length;
+                    const activeCount = Object.values(cfg).filter(m => m && m.enabled === true).length;
+                    return `
+                        <div class="server-card" onclick="navigate('server', '${id}')">
+                            <div class="server-card-top">
+                                <div class="server-card-icon">
+                                    ${iconUrl ? `<img src="${escapeHtml(iconUrl)}" alt="">` : `<span>${escapeHtml(s.name?.charAt(0) || '?')}</span>`}
                                 </div>
-                                <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation(); reloadExtension('${ext}')" title="Recharger">
-                                    🔄
-                                </button>
+                                <div style="min-width:0;flex:1;">
+                                    <div class="server-card-name" title="${escapeHtml(s.name || id)}">${escapeHtml(s.name || id)}</div>
+                                    <div class="server-card-id">${id}</div>
+                                </div>
                             </div>
-                        `).join('')}
-                    </div>
-                </div>
-            ` : ''}
+                            <div class="server-card-footer">
+                                <div class="server-card-pills">
+                                    <span class="server-card-pill modules">${modCount} module${modCount !== 1 ? 's' : ''}</span>
+                                    ${activeCount > 0 ? `<span class="server-card-pill active">${activeCount} actif${activeCount !== 1 ? 's' : ''}</span>` : ''}
+                                </div>
+                                <span class="server-card-arrow">→</span>
+                            </div>
+                        </div>
+                    `;
+                }).join('')}
+            </div>
+        ` : '';
 
-            ${admin && moduleEntries.length ? `
-            <div class="card">
+        // ── Quick Actions ──────────────────────────────
+        const loadedExts = (state.extensions || []).filter(e => e.loaded).length;
+        const quickActionsHtml = `
+            <div class="section-label">Actions rapides</div>
+            <div class="quick-actions-grid">
+                <button class="quick-action-btn" onclick="navigate('global')">
+                    <span class="quick-action-icon">⚙️</span>
+                    <span class="quick-action-label">Config globale</span>
+                    <span class="quick-action-sub">Tokens, APIs…</span>
+                </button>
+                <button class="quick-action-btn" onclick="navigate('extensions')">
+                    <span class="quick-action-icon">🧩</span>
+                    <span class="quick-action-label">Extensions</span>
+                    <span class="quick-action-sub">${loadedExts} chargée${loadedExts !== 1 ? 's' : ''}</span>
+                </button>
+                <button class="quick-action-btn" id="reload-all-btn" onclick="reloadAllExtensions()">
+                    <span class="quick-action-icon">🔄</span>
+                    <span class="quick-action-label">Recharger tout</span>
+                    <span class="quick-action-sub">Extensions actives</span>
+                </button>
+                <button class="quick-action-btn" onclick="navigate('logs')">
+                    <span class="quick-action-icon">📋</span>
+                    <span class="quick-action-label">Logs</span>
+                    <span class="quick-action-sub">Temps réel</span>
+                </button>
+                <button class="quick-action-btn" onclick="downloadConfig()">
+                    <span class="quick-action-icon">⬇️</span>
+                    <span class="quick-action-label">Exporter</span>
+                    <span class="quick-action-sub">config.json</span>
+                </button>
+                <button class="quick-action-btn" onclick="cleanupConfig()">
+                    <span class="quick-action-icon">🧹</span>
+                    <span class="quick-action-label">Nettoyer</span>
+                    <span class="quick-action-sub">Clés obsolètes</span>
+                </button>
+            </div>
+        `;
+
+        // ── Mini Log Feed ──────────────────────────────
+        const levelColors = { DEBUG: '#8b949e', INFO: '#58a6ff', WARNING: '#d29922', ERROR: '#f85149', CRITICAL: '#ff7b72' };
+        const recentLogs = state.logs.length > 0 ? [...state.logs].reverse().slice(0, 10) : [];
+        const miniLogsHtml = recentLogs.length > 0 ? `
+            <div class="section-label">Activité récente</div>
+            <div class="card" style="margin-bottom:0;">
                 <div class="card-header">
                     <div>
-                        <div class="card-title">Modules configurables</div>
-                        <div class="card-subtitle">${moduleEntries.length} module(s) détecté(s)</div>
+                        <div class="card-title">Dernières entrées de log</div>
+                        <div class="card-subtitle">${state.logs.length} entrée(s) en mémoire</div>
+                    </div>
+                    <button class="btn btn-ghost btn-sm" onclick="navigate('logs')">Voir tout →</button>
+                </div>
+                <div style="background:#0d1117;border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;">
+                    <div class="mini-log-feed">
+                        ${recentLogs.map(entry => {
+                            const time = new Date(entry.timestamp * 1000).toLocaleTimeString('fr-FR', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                            const rowClass = entry.level === 'ERROR' || entry.level === 'CRITICAL' ? 'has-error'
+                                : entry.level === 'WARNING' ? 'has-warning' : '';
+                            return `
+                                <div class="mini-log-line ${rowClass}">
+                                    <span class="mini-log-time">${time}</span>
+                                    <span class="mini-log-level" style="color:${levelColors[entry.level] || '#c9d1d9'}">${entry.level}</span>
+                                    <span class="mini-log-msg" title="${escapeHtml(entry.message)}">${escapeHtml(entry.message)}</span>
+                                </div>
+                            `;
+                        }).join('')}
                     </div>
                 </div>
-                <div class="module-list">
-                    ${moduleEntries.map(([name, info]) => `
-                        <div class="module-item" style="cursor:default">
-                            <div class="module-info">
-                                <span class="module-name">${info.icon || '🧩'} ${info.label || name}</span>
-                                <span class="module-status">${info.description || ''}</span>
-                            </div>
-                            ${info.has_schema ? '<span class="schema-badge">Formulaire</span>' : '<span class="schema-badge no-schema">JSON</span>'}
-                        </div>
-                    `).join('')}
-                </div>
             </div>
-            ` : ''}
-        `;
+        ` : '';
+
+        return heroHtml + serverCardsHtml + quickActionsHtml + miniLogsHtml;
     }
 
     // ── Global Config Page ────────────────────────────
