@@ -645,7 +645,7 @@ def create_app(bot=None, bot_loop=None) -> FastAPI:
     async def api_bot_info(request: Request):
         """Get bot status information (available to all authenticated users, admin gets extra details)."""
         session = _require_session(request)
-        is_admin = oauth.is_admin(session)
+        is_admin = _is_admin_user(session)
         info = {"status": "unknown", "guilds": 0}
         if bot:
             try:
