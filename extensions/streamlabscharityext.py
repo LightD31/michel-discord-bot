@@ -76,6 +76,8 @@ class StreamlabsCharityExtension(Extension):
         }
 
     async def update_live_status(self, members_dict):
+        if self.twitch is None:
+            return
         CHUNK_SIZE = 100
         members_keys = list(members_dict.keys())
         for i in range(0, len(members_keys), CHUNK_SIZE):
