@@ -17,7 +17,15 @@ from twitchAPI.twitch import Twitch
 from dataclasses import dataclass
 
 logger = logutil.init_logger(os.path.basename(__file__))
-config, _, _ = load_config()
+config, _module_config, _enabled_servers = load_config("moduleZevent")
+_cfg = _module_config.get(_enabled_servers[0], {}) if _enabled_servers else {}
+
+
+def _parse_event_dt(iso_str: str, default: datetime) -> datetime:
+    try:
+        return datetime.fromisoformat(iso_str) if iso_str else default
+    except ValueError:
+        return default
 
 @dataclass
 class StreamerInfo:
@@ -45,16 +53,22 @@ def split_streamer_list(streamer_list: str, max_length: int = 1024) -> List[str]
     return chunks
 
 class Zevent(Extension):
-    CHANNEL_ID = 993605590033117214
-    MESSAGE_ID = 1399095553148850176
+    CHANNEL_ID = int(_cfg.get("zeventChannelId", 993605590033117214))
+    MESSAGE_ID = int(_cfg.get("zeventMessageId", 1399095553148850176))
     API_URL = "https://zevent.fr/api/"
     PLANNING_API_URL = "https://zevent-api.gdoc.fr/events"
     STREAMERS_API_URL = "https://zevent-api.gdoc.fr/streamers"
-    STREAMLABS_API_URL = "https://streamlabscharity.com/api/v1/teams/@zevent-2025/zevent-2025"
-    UPDATE_INTERVAL = 30
-    MILESTONE_INTERVAL = 100000  # 100k
-    EVENT_START_DATE = datetime(2025, 9, 4, 17, 55, 0, tzinfo=timezone.utc)  # 4 septembre 2025 à 20h Paris (18h UTC) - Concert pré-événement
-    MAIN_EVENT_START_DATE = datetime(2025, 9, 5, 16, 0, 0, tzinfo=timezone.utc)  # 5 septembre 2025 à 18h Paris (16h UTC) - Zevent principal
+    STREAMLABS_API_URL = _cfg.get("zeventStreamlabsApiUrl", "https://streamlabscharity.com/api/v1/teams/@zevent-2025/zevent-2025")
+    UPDATE_INTERVAL = int(_cfg.get("zeventUpdateInterval", 30))
+    MILESTONE_INTERVAL = int(_cfg.get("zeventMilestoneInterval", 100000))
+    EVENT_START_DATE = _parse_event_dt(
+        _cfg.get("zeventEventStartDate", ""),
+        datetime(2025, 9, 4, 17, 55, 0, tzinfo=timezone.utc),
+    )
+    MAIN_EVENT_START_DATE = _parse_event_dt(
+        _cfg.get("zeventMainEventStartDate", ""),
+        datetime(2025, 9, 5, 16, 0, 0, tzinfo=timezone.utc),
+    )
 
     def __init__(self, client: Client):
         self.client: Client = client
@@ -74,8 +88,8 @@ class Zevent(Extension):
         self.PLANNING_CACHE_TTL = timedelta(minutes=15)
 
     def _get_planning_day(self, now_date: date) -> str:
-        """Return the planning day to request: use 2025-09-04 if current date is before that, else use today."""
-        zevent_start = date(2025, 9, 4)
+        """Return the planning day to request: use event start date if current date is before that, else use today."""
+        zevent_start = self.EVENT_START_DATE.date()
         target = zevent_start if now_date < zevent_start else now_date
         return target.strftime("%Y-%m-%d")
 

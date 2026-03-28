@@ -59,6 +59,7 @@ MODULE_SCHEMAS: dict[str, dict] = {
         "label": "Anniversaires",
         "description": "Envoie des messages d'anniversaire automatiques.",
         "icon": "🎂",
+        "category": "Communauté",
         "fields": {
             "enabled": _field("Activé", "boolean", default=False),
             "birthdayChannelId": _field(
@@ -87,6 +88,7 @@ MODULE_SCHEMAS: dict[str, dict] = {
         "label": "Colocation",
         "description": "Gestion de la colocation et notifications Zunivers.",
         "icon": "🏠",
+        "category": "Communauté",
         "fields": {
             "enabled": _field("Activé", "boolean", default=False),
             "colocZuniversChannelId": _field(
@@ -100,6 +102,7 @@ MODULE_SCHEMAS: dict[str, dict] = {
         "label": "Intelligence Artificielle",
         "description": "Comparaison de modèles IA via OpenRouter.",
         "icon": "🤖",
+        "category": "Outils",
         "fields": {
             "enabled": _field("Activé", "boolean", default=False),
         },
@@ -109,6 +112,7 @@ MODULE_SCHEMAS: dict[str, dict] = {
         "label": "Confrérie",
         "description": "Intégration Notion pour la Confrérie des Traducteurs.",
         "icon": "📚",
+        "category": "Outils",
         "fields": {
             "enabled": _field("Activé", "boolean", default=False),
             "confrerieNotionDbOeuvresId": _field(
@@ -146,6 +150,7 @@ MODULE_SCHEMAS: dict[str, dict] = {
         "label": "Feur",
         "description": "Répond automatiquement « feur » aux messages se terminant par « quoi ».",
         "icon": "😏",
+        "category": "Communauté",
         "fields": {
             "enabled": _field("Activé", "boolean", default=False),
         },
@@ -155,6 +160,7 @@ MODULE_SCHEMAS: dict[str, dict] = {
         "label": "Esport Tracker (VLR.gg)",
         "description": "Suivi automatique des matchs d'équipes Valorant via VLR.gg.",
         "icon": "🎮",
+        "category": "Esport & Jeux",
         "fields": {
             "enabled": _field("Activé", "boolean", default=False),
             "notificationChannelId": _field(
@@ -172,6 +178,7 @@ MODULE_SCHEMAS: dict[str, dict] = {
         "label": "Jeux Olympiques",
         "description": "Alertes médailles des Jeux Olympiques.",
         "icon": "🏅",
+        "category": "Événements",
         "fields": {
             "enabled": _field("Activé", "boolean", default=False),
             "olympicsChannelId": _field(
@@ -185,6 +192,7 @@ MODULE_SCHEMAS: dict[str, dict] = {
         "label": "Satisfactory",
         "description": "Statut et gestion du serveur Satisfactory.",
         "icon": "🏭",
+        "category": "Esport & Jeux",
         "fields": {
             "enabled": _field("Activé", "boolean", default=False),
             "satisfactoryChannelId": _field(
@@ -218,6 +226,7 @@ MODULE_SCHEMAS: dict[str, dict] = {
         "label": "Secret Santa",
         "description": "Organisation du Secret Santa.",
         "icon": "🎅",
+        "category": "Événements",
         "fields": {
             "enabled": _field("Activé", "boolean", default=False),
         },
@@ -227,6 +236,7 @@ MODULE_SCHEMAS: dict[str, dict] = {
         "label": "Spotify",
         "description": "Suivi des écoutes Spotify et playlists collaboratives.",
         "icon": "🎵",
+        "category": "Médias & Streaming",
         "fields": {
             "enabled": _field("Activé", "boolean", default=False),
             "voteEnabled": _field(
@@ -264,6 +274,7 @@ MODULE_SCHEMAS: dict[str, dict] = {
         "label": "Tricount",
         "description": "Gestion des dépenses partagées.",
         "icon": "💰",
+        "category": "Outils",
         "fields": {
             "enabled": _field("Activé", "boolean", default=False),
         },
@@ -273,6 +284,7 @@ MODULE_SCHEMAS: dict[str, dict] = {
         "label": "Twitch",
         "description": "Notifications de live et planning des streamers.",
         "icon": "📺",
+        "category": "Médias & Streaming",
         "fields": {
             "enabled": _field("Activé", "boolean", default=False),
             "twitchStreamerList": _field(
@@ -286,6 +298,7 @@ MODULE_SCHEMAS: dict[str, dict] = {
         "label": "Uptime Kuma",
         "description": "Intégration Uptime Kuma pour le monitoring.",
         "icon": "📡",
+        "category": "Outils",
         "fields": {
             "enabled": _field("Activé", "boolean", default=False),
         },
@@ -295,6 +308,7 @@ MODULE_SCHEMAS: dict[str, dict] = {
         "label": "Utilitaires",
         "description": "Commandes utilitaires : ping, sondages, rappels, suppression de messages.",
         "icon": "🛠️",
+        "category": "Outils",
         "fields": {
             "enabled": _field("Activé", "boolean", default=False),
         },
@@ -304,6 +318,7 @@ MODULE_SCHEMAS: dict[str, dict] = {
         "label": "Bienvenue",
         "description": "Messages de bienvenue et de départ.",
         "icon": "👋",
+        "category": "Communauté",
         "fields": {
             "enabled": _field("Activé", "boolean", default=False),
             "welcomeChannelId": _field(
@@ -331,6 +346,7 @@ MODULE_SCHEMAS: dict[str, dict] = {
         "label": "Système d'XP",
         "description": "Système de niveaux et d'expérience.",
         "icon": "⭐",
+        "category": "Communauté",
         "fields": {
             "enabled": _field("Activé", "boolean", default=False),
             "xpChannelId": _field(
@@ -355,6 +371,7 @@ MODULE_SCHEMAS: dict[str, dict] = {
         "label": "YouTube",
         "description": "Notifications de nouvelles vidéos YouTube.",
         "icon": "▶️",
+        "category": "Médias & Streaming",
         "fields": {
             "enabled": _field("Activé", "boolean", default=False),
             "ChannelId": _field(
@@ -372,6 +389,7 @@ MODULE_SCHEMAS: dict[str, dict] = {
         "label": "Minecraft",
         "description": "Statut et gestion du serveur Minecraft via RCON.",
         "icon": "⛏️",
+        "category": "Esport & Jeux",
         "fields": {
             "enabled": _field("Activé", "boolean", default=False),
             "minecraftChannelId": _field(
@@ -449,10 +467,86 @@ MODULE_SCHEMAS: dict[str, dict] = {
         },
     },
 
+    "moduleZevent": {
+        "label": "Zevent",
+        "description": "Suivi de l'événement Zevent en temps réel (dons, planning, streamers).",
+        "icon": "🎉",
+        "category": "Événements",
+        "fields": {
+            "enabled": _field("Activé", "boolean", default=False),
+            "zeventChannelId": _field(
+                "Salon", "channel", required=True,
+                description="Salon où le message de suivi est posté."
+            ),
+            "zeventMessageId": _field(
+                "Message", "message",
+                description="ID du message de suivi (rempli automatiquement)."
+            ),
+            "zeventStreamlabsApiUrl": _field(
+                "URL Streamlabs", "url",
+                description="URL de l'API Streamlabs Charity pour les dons.",
+                default="https://streamlabscharity.com/api/v1/teams/@zevent-2025/zevent-2025"
+            ),
+            "zeventEventStartDate": _field(
+                "Début de l'événement", "string",
+                description="Date/heure de début du concert pré-événement (ISO 8601, ex: 2025-09-04T17:55:00+00:00).",
+                default="2025-09-04T17:55:00+00:00"
+            ),
+            "zeventMainEventStartDate": _field(
+                "Début du Zevent", "string",
+                description="Date/heure de début du Zevent principal (ISO 8601).",
+                default="2025-09-05T16:00:00+00:00"
+            ),
+            "zeventUpdateInterval": _field(
+                "Intervalle de mise à jour (secondes)", "number",
+                description="Fréquence de mise à jour du message en secondes. Nécessite un redémarrage.",
+                default=30
+            ),
+            "zeventMilestoneInterval": _field(
+                "Intervalle des paliers (dons)", "number",
+                description="Montant entre chaque notification de palier de dons.",
+                default=100000
+            ),
+        },
+    },
+
+    "moduleSpeedons": {
+        "label": "Speedons",
+        "description": "Planning et suivi en temps réel de l'événement Speedons.",
+        "icon": "🏃",
+        "category": "Événements",
+        "fields": {
+            "enabled": _field("Activé", "boolean", default=False),
+            "speedonsChannelId": _field(
+                "Salon", "channel", required=True,
+                description="Salon contenant les messages du planning."
+            ),
+            "speedonsScheduleMessageId": _field(
+                "Message planning", "message", required=True,
+                description="ID du message affichant le programme complet."
+            ),
+            "speedonsLiveMessageId": _field(
+                "Message run en cours", "message", required=True,
+                description="ID du message affichant le run en cours."
+            ),
+            "speedonsApiUrl": _field(
+                "URL API", "url",
+                description="URL de base de l'API Speedons (inclut le slug de la campagne).",
+                default="https://tracker.speedons.fr/api/campaigns?slug=2025"
+            ),
+            "speedonsIconUrl": _field(
+                "URL de l'icône", "url",
+                description="URL de l'icône affichée dans les embeds.",
+                default="https://speedons.fr/static/b476f2d8ad4a19d2393eb4cff9486cc9/c6b81/icon.png"
+            ),
+        },
+    },
+
     "moduleEmbedManager": {
         "label": "Gestionnaire d'Embeds",
         "description": "Création et publication d'embeds personnalisés.",
         "icon": "📝",
+        "category": "Outils",
         "fields": {
             "enabled": _field("Activé", "boolean", default=False),
             "channelId": _field(
@@ -475,6 +569,7 @@ MODULE_SCHEMAS: dict[str, dict] = {
         "label": "Discord → Prénoms",
         "description": "Mapping des IDs Discord vers des prénoms pour ce serveur.",
         "icon": "👤",
+        "category": "Outils",
         "noToggle": True,
         "directValue": True,
         "fields": {

@@ -20,11 +20,15 @@ from interactions import (
 from interactions.ext import paginators
 
 from src import logutil
+from src.config_manager import load_config
 
 logger = logutil.init_logger(os.path.basename(__file__))
 
-BASE_URL = "https://tracker.speedons.fr/api/campaigns?slug=2025"
-ICON_URL = "https://speedons.fr/static/b476f2d8ad4a19d2393eb4cff9486cc9/c6b81/icon.png"
+_, _module_config, _enabled_servers = load_config("moduleSpeedons")
+_cfg = _module_config.get(_enabled_servers[0], {}) if _enabled_servers else {}
+
+BASE_URL = _cfg.get("speedonsApiUrl", "https://tracker.speedons.fr/api/campaigns?slug=2025")
+ICON_URL = _cfg.get("speedonsIconUrl", "https://speedons.fr/static/b476f2d8ad4a19d2393eb4cff9486cc9/c6b81/icon.png")
 COLOR = 0xDBEA2B
 
 
@@ -44,7 +48,9 @@ def get_data(url):
 class SpeedonsExtension(Extension):
     def __init__(self, bot: Client):
         self.bot = bot
-        self.planning_channel_id = int(os.getenv("TWITCH_PLANNING_CHANNEL_ID"))
+        self.planning_channel_id = int(_cfg.get("speedonsChannelId") or os.getenv("TWITCH_PLANNING_CHANNEL_ID", "0"))
+        self.schedule_message_id = int(_cfg.get("speedonsScheduleMessageId", 1212843311300345896))
+        self.live_message_id = int(_cfg.get("speedonsLiveMessageId", 1213553914176348271))
         self.channel: Optional[BaseChannel] = None
         self.message: Optional[Message] = None
         self.message2: Optional[Message] = None
@@ -54,8 +60,8 @@ class SpeedonsExtension(Extension):
         self.channel: BaseChannel = await self.bot.fetch_channel(
             self.planning_channel_id
         )
-        self.message: Message = await self.channel.fetch_message(1212843311300345896)
-        self.message2: Message = await self.channel.fetch_message(1213553914176348271)
+        self.message: Message = await self.channel.fetch_message(self.schedule_message_id)
+        self.message2: Message = await self.channel.fetch_message(self.live_message_id)
         self.get_speedons_schedule.start()
         await self.get_speedons_schedule()
 

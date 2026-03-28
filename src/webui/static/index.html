@@ -364,6 +364,19 @@
             white-space: nowrap;
         }
 
+        .module-category-header {
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--text-muted);
+            padding: 8px 4px 4px;
+            margin-top: 4px;
+        }
+        .module-category-header:first-child {
+            margin-top: 0;
+        }
+
         /* ── Toggle Switch ─────────────────────────── */
         .toggle {
             position: relative;
@@ -3374,6 +3387,19 @@
         ]);
         const moduleNames = [...allModuleNames].sort();
 
+        const CATEGORY_ORDER = ['Communauté', 'Médias & Streaming', 'Esport & Jeux', 'Événements', 'Outils'];
+        const grouped = {};
+        for (const mod of moduleNames) {
+            const cat = state.moduleSchemas[mod]?.category || 'Autre';
+            if (!grouped[cat]) grouped[cat] = [];
+            grouped[cat].push(mod);
+        }
+        const sortedCategories = Object.keys(grouped).sort((a, b) => {
+            const ai = CATEGORY_ORDER.indexOf(a);
+            const bi = CATEGORY_ORDER.indexOf(b);
+            return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+        });
+
         const iconUrl = server.icon
             ? `https://cdn.discordapp.com/icons/${sid}/${server.icon}.png?size=128`
             : null;
@@ -3401,36 +3427,39 @@
                             <h3>Aucun module</h3>
                             <p>Ce serveur n'a aucun module configuré.</p>
                         </div>
-                    ` : moduleNames.map(mod => {
-                        const modConfig = serverConfig[mod] || {};
-                        const schema = state.moduleSchemas[mod];
-                        const noToggle = schema?.noToggle === true;
-                        const enabled = modConfig.enabled === true;
-                        const label = schema?.label || state.modules[mod]?.label || mod;
-                        const icon = schema?.icon || state.modules[mod]?.icon || '🧩';
-                        const desc = schema?.description || '';
-                        const isConfigured = mod in serverConfig;
-                        return `
-                            <div class="module-item" onclick="navigate('module', '${sid}', '${mod}')">
-                                <div class="module-info">
-                                    <span class="module-name">${icon} ${label}</span>
-                                    <span class="module-status">${
-                                        noToggle
-                                            ? (isConfigured && Object.keys(modConfig).length > 0 ? '📝 Configuré' : '⚪ Non configuré')
-                                            : (isConfigured
-                                                ? (enabled ? '✅ Activé' : '❌ Désactivé')
-                                                : '⚪ Non configuré')
-                                    }</span>
+                    ` : sortedCategories.map(cat => {
+                        const mods = grouped[cat];
+                        const modItems = mods.map(mod => {
+                            const modConfig = serverConfig[mod] || {};
+                            const schema = state.moduleSchemas[mod];
+                            const noToggle = schema?.noToggle === true;
+                            const enabled = modConfig.enabled === true;
+                            const label = schema?.label || state.modules[mod]?.label || mod;
+                            const icon = schema?.icon || state.modules[mod]?.icon || '🧩';
+                            const isConfigured = mod in serverConfig;
+                            return `
+                                <div class="module-item" onclick="navigate('module', '${sid}', '${mod}')">
+                                    <div class="module-info">
+                                        <span class="module-name">${icon} ${label}</span>
+                                        <span class="module-status">${
+                                            noToggle
+                                                ? (isConfigured && Object.keys(modConfig).length > 0 ? '📝 Configuré' : '⚪ Non configuré')
+                                                : (isConfigured
+                                                    ? (enabled ? '✅ Activé' : '❌ Désactivé')
+                                                    : '⚪ Non configuré')
+                                        }</span>
+                                    </div>
+                                    ${noToggle ? '' : `
+                                    <label class="toggle" onclick="event.stopPropagation()">
+                                        <input type="checkbox" ${enabled ? 'checked' : ''}
+                                            onchange="toggleModule('${sid}', '${mod}', this.checked)">
+                                        <span class="toggle-slider"></span>
+                                    </label>
+                                    `}
                                 </div>
-                                ${noToggle ? '' : `
-                                <label class="toggle" onclick="event.stopPropagation()">
-                                    <input type="checkbox" ${enabled ? 'checked' : ''} 
-                                        onchange="toggleModule('${sid}', '${mod}', this.checked)">
-                                    <span class="toggle-slider"></span>
-                                </label>
-                                `}
-                            </div>
-                        `;
+                            `;
+                        }).join('');
+                        return `<div class="module-category-header">${cat}</div>${modItems}`;
                     }).join('')}
                 </div>
             </div>
