@@ -46,8 +46,8 @@ class EmbedManagerExtension(Extension):
     async def publish_embeds(self, ctx: SlashContext):
         """Publish configured embeds to the target message."""
         try:
-            guild_id = ctx.guild_id
-            
+            guild_id = str(ctx.guild_id)
+
             if guild_id not in enabled_servers:
                 await send_error(ctx, "Ce module n'est pas activé sur ce serveur.")
                 return
