@@ -462,6 +462,44 @@ def create_app(bot=None) -> FastAPI:
                         paths.append(mod)
         return paths
 
+    # ── EmbedManager publish ─────────────────────────────────────────
+
+    @app.post("/api/servers/{server_id}/modules/moduleEmbedManager/publish")
+    async def api_embedmanager_publish(request: Request, server_id: str):
+        """Publish configured embeds to the target Discord message."""
+        _require_admin(request)
+        if not bot:
+            raise HTTPException(status_code=503, detail="Bot non disponible")
+
+        _, module_config, enabled_servers = bot_load_config("moduleEmbedManager")
+        if server_id not in enabled_servers:
+            raise HTTPException(status_code=400, detail="Module non activé sur ce serveur")
+
+        guild_config = module_config.get(server_id, {})
+        channel_id = guild_config.get("channelId")
+        message_id = guild_config.get("messageId")
+        embeds_config = guild_config.get("embeds", [])
+
+        if not channel_id or not message_id:
+            raise HTTPException(status_code=400, detail="Salon ou message cible non configuré")
+        if not embeds_config:
+            raise HTTPException(status_code=400, detail="Aucun embed configuré")
+
+        from extensions.embedmanager import build_embeds
+        discord_embeds = build_embeds(embeds_config)
+        if not discord_embeds:
+            raise HTTPException(status_code=500, detail="Erreur lors de la génération des embeds")
+
+        try:
+            channel = await bot.fetch_channel(int(channel_id))
+            message = await channel.fetch_message(int(message_id))
+            await message.edit(embeds=discord_embeds)
+        except Exception as e:
+            logger.error(f"EmbedManager publish failed for server {server_id}: {e}")
+            raise HTTPException(status_code=500, detail=str(e))
+
+        return JSONResponse({"status": "ok", "count": len(discord_embeds)})
+
     # ── Extension reload ─────────────────────────────────────────────
 
     @app.post("/api/reload")

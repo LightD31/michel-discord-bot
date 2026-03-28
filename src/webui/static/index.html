@@ -3504,6 +3504,11 @@
                         <button class="btn btn-ghost btn-sm" onclick="saveAndReloadModule('${sid}', '${mod}', '${formId}', ${!!schema})" title="Sauvegarder et recharger l'extension">
                             🔄 Appliquer
                         </button>
+                        ${mod === 'moduleEmbedManager' ? `
+                        <button class="btn btn-primary btn-sm" onclick="publishEmbeds('${sid}')">
+                            📢 Publier
+                        </button>
+                        ` : ''}
                     </div>
                 </div>
                 ${schema
@@ -3694,6 +3699,13 @@
                 toast('Extension non trouvée pour ce module — utilisez "Recharger tout"', 'warning');
             }
         } catch (e) { /* handled */ }
+    }
+
+    async function publishEmbeds(serverId) {
+        try {
+            const result = await api(`/api/servers/${serverId}/modules/moduleEmbedManager/publish`, { method: 'POST' });
+            toast(`✓ ${result.count} embed(s) publié(s) avec succès`, 'success');
+        } catch (e) { /* handled by api() */ }
     }
 
     async function editModuleConfigJson(serverId, moduleName) {
