@@ -33,11 +33,12 @@ class Session:
 class DiscordOAuth:
     """Handles Discord OAuth2 flow and session management."""
 
-    def __init__(self, client_id: str, client_secret: str, redirect_uri: str, admin_user_ids: Optional[list[str]] = None):
+    def __init__(self, client_id: str, client_secret: str, redirect_uri: str, admin_user_ids: Optional[list[str]] = None, developer_user_ids: Optional[list[str]] = None):
         self.client_id = client_id
         self.client_secret = client_secret
         self.redirect_uri = redirect_uri
         self.admin_user_ids = admin_user_ids or []
+        self.developer_user_ids = developer_user_ids or []
         self.sessions: dict[str, Session] = {}
         self._cleanup_counter = 0
 
@@ -108,6 +109,10 @@ class DiscordOAuth:
     def is_admin(self, session: Session) -> bool:
         """Check if a session user is an admin."""
         return session.user_id in self.admin_user_ids
+
+    def is_developer(self, session: Session) -> bool:
+        """Check if a session user is a developer (has access to extensions and logs)."""
+        return session.user_id in self.developer_user_ids
 
     def get_session(self, session_token: str) -> Optional[Session]:
         """Retrieve a session by its token."""

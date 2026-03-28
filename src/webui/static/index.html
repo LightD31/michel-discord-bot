@@ -2178,8 +2178,13 @@
     // ── Navigation ────────────────────────────────────
     function navigate(page, serverId = null, moduleName = null) {
         // Restrict admin-only pages for non-admin users
-        const adminPages = ['global', 'extensions', 'server', 'module', 'logs'];
+        const adminPages = ['global', 'server', 'module'];
+        const developerPages = ['extensions', 'logs'];
         if (adminPages.includes(page) && !isAdmin()) {
+            page = 'home';
+            serverId = null;
+        }
+        if (developerPages.includes(page) && !isDeveloper()) {
             page = 'home';
             serverId = null;
             moduleName = null;
@@ -2382,6 +2387,10 @@
 
     function isAdmin() {
         return state.user && state.user.is_admin;
+    }
+
+    function isDeveloper() {
+        return state.user && state.user.is_developer;
     }
 
     async function loadBotInfo() {
@@ -3160,12 +3169,14 @@
                         <div class="nav-item ${state.currentPage === 'global' ? 'active' : ''}" onclick="navigate('global')">
                             <span class="icon">⚙️</span> Config globale
                         </div>
+                        ${isDeveloper() ? `
                         <div class="nav-item ${state.currentPage === 'extensions' ? 'active' : ''}" onclick="navigate('extensions')">
                             <span class="icon">🧩</span> Extensions
                         </div>
                         <div class="nav-item ${state.currentPage === 'logs' ? 'active' : ''}" onclick="navigate('logs')">
                             <span class="icon">📋</span> Logs
                         </div>
+                        ` : ''}
                         ` : ''}
                     </div>
                     ${isAdmin() ? `
@@ -3313,6 +3324,7 @@
                     <span class="quick-action-label">Config globale</span>
                     <span class="quick-action-sub">Tokens, APIs…</span>
                 </button>
+                ${isDeveloper() ? `
                 <button class="quick-action-btn" onclick="navigate('extensions')">
                     <span class="quick-action-icon">🧩</span>
                     <span class="quick-action-label">Extensions</span>
@@ -3328,6 +3340,7 @@
                     <span class="quick-action-label">Logs</span>
                     <span class="quick-action-sub">Temps réel</span>
                 </button>
+                ` : ''}
                 <button class="quick-action-btn" onclick="downloadConfig()">
                     <span class="quick-action-icon">⬇️</span>
                     <span class="quick-action-label">Exporter</span>
@@ -3343,7 +3356,7 @@
 
         // ── Mini Log Feed ──────────────────────────────
         const levelColors = { DEBUG: '#8b949e', INFO: '#58a6ff', WARNING: '#d29922', ERROR: '#f85149', CRITICAL: '#ff7b72' };
-        const recentLogs = state.logs.length > 0 ? [...state.logs].reverse().slice(0, 10) : [];
+        const recentLogs = isDeveloper() && state.logs.length > 0 ? [...state.logs].reverse().slice(0, 10) : [];
         const miniLogsHtml = recentLogs.length > 0 ? `
             <div class="section-label">Activité récente</div>
             <div class="card" style="margin-bottom:0;">

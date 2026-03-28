@@ -60,11 +60,13 @@ def create_app(bot=None, bot_loop=None) -> FastAPI:
     base_url = webui_config.get("baseUrl", "http://localhost:8080")
     redirect_uri = f"{base_url}/auth/callback"
     admin_user_ids = webui_config.get("adminUserIds", [])
+    developer_user_ids = webui_config.get("developerUserIds", [])
     oauth = DiscordOAuth(
         client_id=client_id,
         client_secret=client_secret,
         redirect_uri=redirect_uri,
         admin_user_ids=admin_user_ids,
+        developer_user_ids=developer_user_ids,
     )
 
     # Install log handler on first app creation
@@ -107,6 +109,12 @@ def create_app(bot=None, bot_loop=None) -> FastAPI:
         session = _require_session(request)
         if not oauth.is_admin(session):
             raise HTTPException(status_code=403, detail="Accès réservé aux administrateurs")
+        return session
+
+    def _require_developer(request: Request) -> Session:
+        session = _require_session(request)
+        if not oauth.is_developer(session):
+            raise HTTPException(status_code=403, detail="Accès réservé au développeur")
         return session
 
     # ── List known modules from extensions ───────────────────────────
@@ -248,6 +256,7 @@ def create_app(bot=None, bot_loop=None) -> FastAPI:
             "avatar": session.avatar,
             "guilds": guilds,
             "is_admin": oauth.is_admin(session),
+            "is_developer": oauth.is_developer(session),
         })
 
     # ── Config API routes ────────────────────────────────────────────
@@ -537,7 +546,7 @@ def create_app(bot=None, bot_loop=None) -> FastAPI:
     @app.post("/api/reload")
     async def api_reload_all(request: Request):
         """Reload all extensions to apply config changes."""
-        _require_admin(request)
+        _require_developer(request)
         if not bot:
             raise HTTPException(status_code=503, detail="Bot non disponible")
 
@@ -556,7 +565,7 @@ def create_app(bot=None, bot_loop=None) -> FastAPI:
     @app.post("/api/reload/{ext_name:path}")
     async def api_reload_one(request: Request, ext_name: str):
         """Reload a single extension by module path (e.g. 'extensions.tricount')."""
-        _require_admin(request)
+        _require_developer(request)
         if not bot:
             raise HTTPException(status_code=503, detail="Bot non disponible")
         try:
@@ -572,7 +581,7 @@ def create_app(bot=None, bot_loop=None) -> FastAPI:
     @app.get("/api/extensions")
     async def api_list_extensions(request: Request):
         """List all available extensions with their enabled/loaded status."""
-        _require_admin(request)
+        _require_developer(request)
         data = _get_full_config()
         ext_config = data.get("config", {}).get("extensions", {})
 
@@ -599,7 +608,7 @@ def create_app(bot=None, bot_loop=None) -> FastAPI:
     @app.post("/api/extensions/{ext_name:path}/toggle")
     async def api_toggle_extension(request: Request, ext_name: str, body: ExtensionToggle):
         """Enable or disable an extension globally (updates config and loads/unloads at runtime)."""
-        _require_admin(request)
+        _require_developer(request)
         data = _get_full_config()
         data.setdefault("config", {}).setdefault("extensions", {})[ext_name] = body.enabled
         _save_config(data)
@@ -652,7 +661,7 @@ def create_app(bot=None, bot_loop=None) -> FastAPI:
     async def api_get_logs(request: Request, count: int = 200, level: str = "",
                            search: str = "", logger_name: str = ""):
         """Get recent log entries with optional filtering."""
-        _require_admin(request)
+        _require_developer(request)
         handler = WebUILogHandler.get_instance()
         if not handler:
             return JSONResponse({"logs": []})
@@ -667,7 +676,7 @@ def create_app(bot=None, bot_loop=None) -> FastAPI:
     @app.get("/api/logs/stream")
     async def api_stream_logs(request: Request):
         """SSE endpoint for real-time log streaming."""
-        _require_admin(request)
+        _require_developer(request)
         handler = WebUILogHandler.get_instance()
         if not handler:
             raise HTTPException(status_code=503, detail="Log handler non disponible")
