@@ -42,7 +42,7 @@ logger = logutil.init_logger(os.path.basename(__file__))
 
 # Configuration loading
 config, module_config, enabled_servers = load_config("moduleConfrerie")
-module_config = module_config[enabled_servers[0]]
+module_config = module_config[enabled_servers[0]] if enabled_servers else {}
 
 # Notion API version
 NOTION_VERSION = "2025-09-03"
@@ -116,6 +116,9 @@ class ConfrerieExtension(Extension):
     @listen()
     async def on_startup(self):
         """Initialise les tâches au démarrage du bot."""
+        if not enabled_servers:
+            logger.warning("moduleConfrerie is not enabled for any server, skipping startup")
+            return
         logger.info("Démarrage de l'extension Confrérie")
         try:
             # Pre-cache data source IDs

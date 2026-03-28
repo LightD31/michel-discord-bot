@@ -39,15 +39,15 @@ logger = logutil.init_logger(os.path.basename(__file__))
 
 # Load configuration
 config, module_config, enabled_servers = load_config("moduleMinecraft")
-module_config = module_config[enabled_servers[0]]
+module_config = module_config[enabled_servers[0]] if enabled_servers else {}
 
 # Configuration constants
-MINECRAFT_ADDRESS = module_config["minecraftUrl"]
-MINECRAFT_IP = module_config["minecraftIp"]
-MINECRAFT_PORT = int(module_config["minecraftPort"])
-CHANNEL_ID_KUBZ = module_config["minecraftChannelId"]
-MESSAGE_ID_KUBZ = module_config["minecraftMessageId"]
-SFTPS_PASSWORD = module_config["minecraftSftpsPassword"]
+MINECRAFT_ADDRESS = module_config.get("minecraftUrl", "")
+MINECRAFT_IP = module_config.get("minecraftIp", "")
+MINECRAFT_PORT = int(module_config.get("minecraftPort", 0))
+CHANNEL_ID_KUBZ = module_config.get("minecraftChannelId")
+MESSAGE_ID_KUBZ = module_config.get("minecraftMessageId")
+SFTPS_PASSWORD = module_config.get("minecraftSftpsPassword", "")
 SFTP_HOST = module_config.get("minecraftSftpHost", MINECRAFT_IP)
 SFTP_PORT = int(module_config.get("minecraftSftpPort", 2225))
 SFTP_USERNAME = module_config.get("minecraftSftpUsername", "Discord")
@@ -72,6 +72,9 @@ class Minecraft(Extension):
     @listen()
     async def on_startup(self):
         """Initialize the extension on bot startup."""
+        if not enabled_servers:
+            logger.warning("moduleMinecraft is not enabled for any server, skipping startup")
+            return
         # Clear caches on startup
         from src.minecraft import stats_cache
         stats_cache.clear()

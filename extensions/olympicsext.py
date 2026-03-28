@@ -31,7 +31,7 @@ from src.utils import load_config
 
 logger = logutil.init_logger(os.path.basename(__file__))
 config, module_config, enabled_servers = load_config("moduleOlympics")
-module_config = module_config[enabled_servers[0]]
+module_config = module_config[enabled_servers[0]] if enabled_servers else {}
 
 # ─── Constantes ───────────────────────────────────────────────────────────────
 BASE_URL = "https://www.olympics.com/wmr-owg2026/competition/api/FRA"
@@ -185,6 +185,9 @@ class Olympics(Extension):
     @listen()
     async def on_startup(self) -> None:
         """Initialise le canal et démarre la tâche de surveillance."""
+        if not enabled_servers:
+            logger.warning("moduleOlympics is not enabled for any server, skipping startup")
+            return
         try:
             await self._load_state()
             channel_id = module_config.get("olympicsChannelId")

@@ -73,7 +73,7 @@ logger = logutil.init_logger(os.path.basename(__file__))
 
 # Load configuration
 config, module_config, enabled_servers = load_config("moduleColoc")
-module_config = module_config[enabled_servers[0]]
+module_config = module_config[enabled_servers[0]] if enabled_servers else {}
 
 
 class ColocExtension(Extension):
@@ -82,7 +82,7 @@ class ColocExtension(Extension):
     def __init__(self, bot: Client):
         self.bot = bot
         self.api_client = ZuniversAPIClient()
-        self.storage = StorageManager(config["misc"]["dataFolder"], guild_id=enabled_servers[0])
+        self.storage = StorageManager(config["misc"]["dataFolder"], guild_id=enabled_servers[0] if enabled_servers else None)
         self.reminders = ReminderCollection()
         self.event_state = EventState()
 
@@ -91,6 +91,9 @@ class ColocExtension(Extension):
     @listen()
     async def on_startup(self):
         """Initialize the extension on bot startup."""
+        if not enabled_servers:
+            logger.warning("moduleColoc is not enabled for any server, skipping startup")
+            return
         # Load persistent data
         self.reminders = await self.storage.load_reminders()
         self.event_state = await self.storage.load_event_state()
