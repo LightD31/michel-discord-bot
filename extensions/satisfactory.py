@@ -1,72 +1,88 @@
-from interactions import (
-    Message,
-    Extension,
-    Task,
-    BaseChannel,
-    listen,
-    IntervalTrigger,
-    Client,
-    Embed,
-)
-from typing import Optional
-from src.utils import load_config
-from pyfactorybridge import API
+import os
 from datetime import datetime
+from typing import Optional
+
+from interactions import (
+    BaseChannel,
+    Embed,
+    Extension,
+    IntervalTrigger,
+    Message,
+    Task,
+    listen,
+)
+from pyfactorybridge import API
+
+from src import logutil
+from src.utils import load_config
+
+logger = logutil.init_logger(os.path.basename(__file__))
 
 config, module_config, enabled_servers = load_config("moduleSatisfactory")
-module_config = module_config[enabled_servers[0]]
 
 
 class Satisfactory(Extension):
-    def init(self, client: Client):
-        self.bot: Client = client
+    def __init__(self, client):
         self.channel: Optional[BaseChannel] = None
         self.message: Optional[Message] = None
         self.api: Optional[API] = None
+        self.server_config: Optional[dict] = None
 
     @listen()
     async def on_startup(self):
-        self.channel = await self.bot.fetch_channel(
-            module_config["satisfactoryChannelId"]
-        )
-        self.message = await self.channel.fetch_message(
-            module_config["satisfactoryMessageId"]
-        )
-        self.api = API(
-            address=f"{module_config['satisfactoryServerIp']}:{module_config['satisfactoryServerPort']}",
-            token=module_config["satisfactoryServerToken"],
-        )
-        self.update_message.start()
-        await self.update_message()
+        if not enabled_servers:
+            logger.warning("moduleSatisfactory is not enabled for any server, skipping startup")
+            return
+
+        self.server_config = module_config[enabled_servers[0]]
+
+        try:
+            self.channel = await self.bot.fetch_channel(
+                self.server_config["satisfactoryChannelId"]
+            )
+            self.message = await self.channel.fetch_message(
+                self.server_config["satisfactoryMessageId"]
+            )
+            self.api = API(
+                address=f"{self.server_config['satisfactoryServerIp']}:{self.server_config['satisfactoryServerPort']}",
+                token=self.server_config["satisfactoryServerToken"],
+            )
+            self.update_message.start()
+            await self.update_message()
+        except Exception as e:
+            logger.error("Failed to initialize Satisfactory extension: %s", e)
 
     @Task.create(IntervalTrigger(minutes=1))
     async def update_message(self):
-        data = self.api.query_server_state()
-        players = data["serverGameState"]["numConnectedPlayers"]  # Nombre de joueurs
-        tier = data["serverGameState"]["techTier"]
+        try:
+            data = self.api.query_server_state()
+            players = data["serverGameState"]["numConnectedPlayers"]
+            tier = data["serverGameState"]["techTier"]
 
-        embed = Embed(
-            title="🏭 Serveur Satisfactory de la Coloc",
-            description="Statut du serveur en temps réel",
-            color=0x00A86B,  # A nice green color
-            timestamp=datetime.now()
-        )
+            embed = Embed(
+                title="🏭 Serveur Satisfactory de la Coloc",
+                description="Statut du serveur en temps réel",
+                color=0x00A86B,
+                timestamp=datetime.now(),
+            )
 
-        # Server Info
-        embed.add_field(
-            name="📡 Informations de Connexion",
-            value=(
-                f"**IP:** `{module_config['satisfactoryServerIp']}`\n"
-                f"**Port:** `{module_config['satisfactoryServerPort']}`\n"
-                f"**Mot de passe:** `{module_config['satisfactoryServerPassword']}`"
-            ),
-            inline=False,
-        )
+            embed.add_field(
+                name="📡 Informations de Connexion",
+                value=(
+                    f"**IP:** `{self.server_config['satisfactoryServerIp']}`\n"
+                    f"**Port:** `{self.server_config['satisfactoryServerPort']}`\n"
+                    f"**Mot de passe:** `{self.server_config['satisfactoryServerPassword']}`"
+                ),
+                inline=False,
+            )
 
-        # Game Info
-        embed.add_field(
-            name="🎮 Statut du Jeu",
-            value=(f"**Tech Tier:** {tier}\n" f"**Joueurs connectés:** {players}"),
-            inline=False,
-        )
-        await self.message.edit(content="", embed=embed)
+            embed.add_field(
+                name="🎮 Statut du Jeu",
+                value=f"**Tech Tier:** {tier}\n**Joueurs connectés:** {players}",
+                inline=False,
+            )
+
+            await self.message.edit(content="", embed=embed)
+            logger.debug("Updated Satisfactory status: %d players, tier %s", players, tier)
+        except Exception as e:
+            logger.error("Failed to update Satisfactory message: %s", e)
