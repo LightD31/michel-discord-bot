@@ -752,8 +752,6 @@ GLOBAL_CONFIG_SCHEMAS: dict[str, dict] = {
                               description="URL publique du dashboard (ex: http://monserveur:8080)."),
             "clientId": _field("Client ID Discord", "string", required=True),
             "clientSecret": _field("Client Secret Discord", "secret", required=True, secret=True),
-            "adminUserIds": _field("Admin User IDs", "list", required=True,
-                                    description="Liste des IDs Discord autorisés à accéder au dashboard."),
             "developerUserIds": _field("Developer User IDs", "list", required=False,
                                        description="IDs Discord autorisés à accéder aux pages Extensions et Logs (réservées au développeur)."),
         },

@@ -59,13 +59,11 @@ def create_app(bot=None, bot_loop=None) -> FastAPI:
     client_secret = webui_config.get("clientSecret", "")
     base_url = webui_config.get("baseUrl", "http://localhost:8080")
     redirect_uri = f"{base_url}/auth/callback"
-    admin_user_ids = webui_config.get("adminUserIds", [])
     developer_user_ids = webui_config.get("developerUserIds", [])
     oauth = DiscordOAuth(
         client_id=client_id,
         client_secret=client_secret,
         redirect_uri=redirect_uri,
-        admin_user_ids=admin_user_ids,
         developer_user_ids=developer_user_ids,
     )
 
@@ -105,9 +103,17 @@ def create_app(bot=None, bot_loop=None) -> FastAPI:
             raise HTTPException(status_code=401, detail="Non authentifié")
         return session
 
+    def _is_admin_user(session: Session) -> bool:
+        """Admin if user has MANAGE_GUILD/ADMINISTRATOR on any bot guild."""
+        if bot and bot.guilds:
+            bot_guild_ids = {str(g.id) for g in bot.guilds}
+            managed = oauth.get_user_managed_guilds(session)
+            return any(g["id"] in bot_guild_ids for g in managed)
+        return False
+
     def _require_admin(request: Request) -> Session:
         session = _require_session(request)
-        if not oauth.is_admin(session):
+        if not _is_admin_user(session):
             raise HTTPException(status_code=403, detail="Accès réservé aux administrateurs")
         return session
 
@@ -255,7 +261,7 @@ def create_app(bot=None, bot_loop=None) -> FastAPI:
             "username": session.username,
             "avatar": session.avatar,
             "guilds": guilds,
-            "is_admin": oauth.is_admin(session),
+            "is_admin": _is_admin_user(session),
             "is_developer": oauth.is_developer(session),
         })
 
