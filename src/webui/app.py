@@ -148,6 +148,27 @@ def create_app(bot=None, bot_loop=None) -> FastAPI:
                         pass
         return mapping
 
+    def _try_reload_extension_for_module(module_name: str) -> dict:
+        """Auto-reload the extension that owns module_name after a config save.
+        Returns {"reloaded": str|None, "error": str|None, "skipped": bool}
+        """
+        SKIP_MODULES = {"discord2name", "moduleEmbedManager"}
+        if module_name in SKIP_MODULES:
+            return {"reloaded": None, "error": None, "skipped": True}
+        if not bot:
+            return {"reloaded": None, "error": "Bot non disponible", "skipped": False}
+        mapping = _build_module_to_extension_map()
+        ext_path = mapping.get(module_name)
+        if not ext_path:
+            return {"reloaded": None, "error": f"Aucune extension trouvée pour {module_name}", "skipped": False}
+        try:
+            bot.reload_extension(ext_path)
+            logger.info(f"Auto-reloaded {ext_path} after config change for {module_name}")
+            return {"reloaded": ext_path, "error": None, "skipped": False}
+        except Exception as e:
+            logger.error(f"Auto-reload failed for {ext_path}: {e}")
+            return {"reloaded": None, "error": str(e), "skipped": False}
+
     # ── Auth routes ──────────────────────────────────────────────────
 
     @app.get("/auth/login")
@@ -333,7 +354,8 @@ def create_app(bot=None, bot_loop=None) -> FastAPI:
         data["servers"][server_id][module_name] = body.config
         _save_config(data)
         logger.info(f"Updated {module_name} config for server {server_id}")
-        return JSONResponse({"status": "ok"})
+        reload_result = _try_reload_extension_for_module(module_name)
+        return JSONResponse({"status": "ok", "reload": reload_result})
 
     @app.post("/api/servers/{server_id}/modules/{module_name}/toggle")
     async def api_toggle_module(request: Request, server_id: str, module_name: str, body: ModuleToggle):
@@ -351,7 +373,8 @@ def create_app(bot=None, bot_loop=None) -> FastAPI:
         data["servers"][server_id][module_name]["enabled"] = body.enabled
         _save_config(data)
         logger.info(f"{'Enabled' if body.enabled else 'Disabled'} {module_name} for server {server_id}")
-        return JSONResponse({"status": "ok", "enabled": body.enabled})
+        reload_result = _try_reload_extension_for_module(module_name)
+        return JSONResponse({"status": "ok", "enabled": body.enabled, "reload": reload_result})
 
     @app.get("/api/global-config")
     async def api_get_global_config(request: Request):

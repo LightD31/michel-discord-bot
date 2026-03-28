@@ -3468,11 +3468,17 @@
 
     async function toggleModule(serverId, moduleName, enabled) {
         try {
-            await api(`/api/servers/${serverId}/modules/${moduleName}/toggle`, {
+            const result = await api(`/api/servers/${serverId}/modules/${moduleName}/toggle`, {
                 method: 'POST',
                 body: JSON.stringify({ module: moduleName, enabled }),
             });
-            toast(`${moduleName} ${enabled ? 'activé' : 'désactivé'}`, 'success');
+            const reloadSuffix = result?.reload?.reloaded
+                ? ' — extension rechargée'
+                : result?.reload?.error
+                    ? ` — rechargement échoué : ${result.reload.error}`
+                    : '';
+            toast(`${moduleName} ${enabled ? 'activé' : 'désactivé'}${reloadSuffix}`,
+                result?.reload?.error ? 'warning' : 'success');
             await loadServers();
             await loadConfig();
             render();
@@ -3530,9 +3536,6 @@
                                 💾 Sauvegarder
                             </button>
                         ` : ''}
-                        <button class="btn btn-ghost btn-sm" onclick="saveAndReloadModule('${sid}', '${mod}', '${formId}', ${!!schema})" title="Sauvegarder et recharger l'extension">
-                            🔄 Appliquer
-                        </button>
                         ${mod === 'moduleEmbedManager' ? `
                         <button class="btn btn-primary btn-sm" onclick="publishEmbeds('${sid}')">
                             📢 Publier
@@ -3704,30 +3707,21 @@
                 const existing = server?.config?.[moduleName] || {};
                 config = { ...existing, ...values };
             }
-            await api(`/api/servers/${serverId}/modules/${moduleName}`, {
+            const result = await api(`/api/servers/${serverId}/modules/${moduleName}`, {
                 method: 'PUT',
                 body: JSON.stringify({ config }),
             });
-            toast('Configuration sauvegardée !', 'success');
+            if (result?.reload?.reloaded) {
+                toast('Configuration sauvegardée et extension rechargée !', 'success');
+            } else if (result?.reload?.skipped || !result?.reload) {
+                toast('Configuration sauvegardée !', 'success');
+            } else {
+                toast(`Configuration sauvegardée, rechargement échoué : ${result.reload.error}`, 'warning');
+            }
             await loadServers();
             await loadConfig();
             render();
         } catch (e) { /* handled by api() */ }
-    }
-
-    async function saveAndReloadModule(serverId, moduleName, formId, hasSchema) {
-        try {
-            if (hasSchema) {
-                await saveModuleForm(serverId, moduleName, formId);
-            }
-            const map = state.botInfo?.module_extension_map || {};
-            const extPath = map[moduleName];
-            if (extPath) {
-                await reloadExtension(extPath);
-            } else {
-                toast('Extension non trouvée pour ce module — utilisez "Recharger tout"', 'warning');
-            }
-        } catch (e) { /* handled */ }
     }
 
     async function publishEmbeds(serverId) {
@@ -3745,10 +3739,17 @@
             <div class="json-error" id="json-error"></div>
         `;
         openModal(`${moduleName} — ${server?.name || serverId}`, modConfig, async (newData) => {
-            await api(`/api/servers/${serverId}/modules/${moduleName}`, {
+            const result = await api(`/api/servers/${serverId}/modules/${moduleName}`, {
                 method: 'PUT',
                 body: JSON.stringify({ config: newData }),
             });
+            if (result?.reload?.reloaded) {
+                toast('Configuration sauvegardée et extension rechargée !', 'success');
+            } else if (result?.reload?.skipped || !result?.reload) {
+                toast('Configuration sauvegardée !', 'success');
+            } else {
+                toast(`Configuration sauvegardée, rechargement échoué : ${result.reload.error}`, 'warning');
+            }
             await loadServers();
             await loadConfig();
             render();
