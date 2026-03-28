@@ -1871,6 +1871,7 @@
         modules: {},
         moduleSchemas: {},
         globalSchemas: {},
+        extensions: [],
         sidebarOpen: false,
         // Log viewer state
         logs: [],
@@ -1995,7 +1996,7 @@
     // ── Navigation ────────────────────────────────────
     function navigate(page, serverId = null, moduleName = null) {
         // Restrict admin-only pages for non-admin users
-        const adminPages = ['global', 'server', 'module', 'logs'];
+        const adminPages = ['global', 'extensions', 'server', 'module', 'logs'];
         if (adminPages.includes(page) && !isAdmin()) {
             page = 'home';
             serverId = null;
@@ -2010,6 +2011,10 @@
             startLogStream();
         } else {
             stopLogStream();
+        }
+
+        if (page === 'extensions') {
+            loadExtensions().then(() => render());
         }
 
         render();
@@ -2202,6 +2207,15 @@
             state.botInfo = await api('/api/bot-info');
         } catch (e) {
             state.botInfo = { status: 'error' };
+        }
+    }
+
+    async function loadExtensions() {
+        try {
+            const data = await api('/api/extensions');
+            state.extensions = data.extensions || [];
+        } catch (e) {
+            state.extensions = [];
         }
     }
 
@@ -2964,6 +2978,9 @@
                         <div class="nav-item ${state.currentPage === 'global' ? 'active' : ''}" onclick="navigate('global')">
                             <span class="icon">⚙️</span> Config globale
                         </div>
+                        <div class="nav-item ${state.currentPage === 'extensions' ? 'active' : ''}" onclick="navigate('extensions')">
+                            <span class="icon">🧩</span> Extensions
+                        </div>
                         <div class="nav-item ${state.currentPage === 'logs' ? 'active' : ''}" onclick="navigate('logs')">
                             <span class="icon">📋</span> Logs
                         </div>
@@ -2996,6 +3013,7 @@
         switch (state.currentPage) {
             case 'home': return renderHomePage();
             case 'global': return renderGlobalConfig();
+            case 'extensions': return renderExtensionsPage();
             case 'server': return renderServerPage();
             case 'module': return renderModulePage();
             case 'logs': return renderLogsPage();
@@ -3166,6 +3184,75 @@
                 `;
             }).join('')}
         `;
+    }
+
+    // ── Extensions Page ───────────────────────────────
+    function renderExtensionsPage() {
+        const exts = state.extensions;
+        return `
+            <div class="page-header">
+                <h2>Extensions</h2>
+                <p>Activez ou désactivez les extensions globalement. Les modifications sont appliquées immédiatement et persistées au redémarrage.</p>
+            </div>
+
+            ${exts.length === 0 ? `
+                <div class="empty-state">
+                    <div class="icon">📭</div>
+                    <h3>Aucune extension trouvée</h3>
+                    <p>Vérifiez le dossier <code>extensions/</code>.</p>
+                </div>
+            ` : `
+                <div class="card">
+                    <div class="card-header">
+                        <div>
+                            <div class="card-title">Extensions disponibles</div>
+                            <div class="card-subtitle">${exts.filter(e => e.loaded).length} chargée(s) / ${exts.length} disponible(s)</div>
+                        </div>
+                    </div>
+                    <div class="module-list">
+                        ${exts.map(ext => {
+                            const isUnderscored = ext.filename.startsWith('_');
+                            return `
+                                <div class="module-item">
+                                    <div class="module-info">
+                                        <span class="module-name">📦 ${ext.filename}</span>
+                                        <span class="module-status">
+                                            ${ext.loaded
+                                                ? '<span style="color:var(--success)">● chargée</span>'
+                                                : '<span style="color:var(--text-muted)">○ non chargée</span>'}
+                                            ${isUnderscored ? ' · désactivée par défaut' : ''}
+                                        </span>
+                                    </div>
+                                    <label class="toggle" onclick="event.stopPropagation()">
+                                        <input type="checkbox" ${ext.enabled ? 'checked' : ''}
+                                            onchange="toggleExtension('${ext.path}', this.checked)">
+                                        <span class="toggle-slider"></span>
+                                    </label>
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
+                </div>
+            `}
+        `;
+    }
+
+    async function toggleExtension(extPath, enabled) {
+        try {
+            const result = await api(`/api/extensions/${extPath}/toggle`, {
+                method: 'POST',
+                body: JSON.stringify({ enabled }),
+            });
+            if (result?.error) {
+                toast(`${extPath} ${enabled ? 'activée' : 'désactivée'} dans la config, mais erreur : ${result.error}`, 'warning');
+            } else {
+                const status = result?.loaded ? 'chargée' : 'déchargée';
+                toast(`${extPath} ${enabled ? 'activée' : 'désactivée'} et ${status}`, 'success');
+            }
+            await loadExtensions();
+            await loadBotInfo();
+            render();
+        } catch (e) { /* handled by api() */ }
     }
 
     function renderSchemaPreview(schema, values) {
@@ -3835,7 +3922,7 @@
         if (state.user) {
             const promises = [loadBotInfo()];
             if (isAdmin()) {
-                promises.push(loadServers(), loadModules(), loadSchemas(), loadConfig(), loadLogs());
+                promises.push(loadServers(), loadModules(), loadSchemas(), loadConfig(), loadLogs(), loadExtensions());
             }
             await Promise.all(promises);
         }

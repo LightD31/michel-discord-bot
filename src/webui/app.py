@@ -35,6 +35,9 @@ class GlobalConfigUpdate(BaseModel):
     section: str
     config: dict
 
+class ExtensionToggle(BaseModel):
+    enabled: bool
+
 # ── App factory ──────────────────────────────────────────────────────
 
 def create_app(bot=None, bot_loop=None) -> FastAPI:
@@ -563,6 +566,63 @@ def create_app(bot=None, bot_loop=None) -> FastAPI:
         except Exception as e:
             logger.error(f"Failed to reload {ext_name}: {e}")
             raise HTTPException(status_code=500, detail=str(e))
+
+    # ── Extension management ─────────────────────────────────────────
+
+    @app.get("/api/extensions")
+    async def api_list_extensions(request: Request):
+        """List all available extensions with their enabled/loaded status."""
+        _require_admin(request)
+        data = _get_full_config()
+        ext_config = data.get("config", {}).get("extensions", {})
+
+        loaded_exts = set(_get_extension_module_paths()) if bot else set()
+
+        result = []
+        ext_dir = "extensions"
+        if os.path.isdir(ext_dir):
+            for fname in sorted(os.listdir(ext_dir)):
+                if not fname.endswith(".py") or fname.startswith("__"):
+                    continue
+                ext_path = f"extensions.{fname[:-3]}"
+                short_name = fname[:-3]
+                default_enabled = not short_name.startswith("_")
+                enabled = ext_config.get(ext_path, default_enabled)
+                result.append({
+                    "path": ext_path,
+                    "filename": fname,
+                    "enabled": enabled,
+                    "loaded": ext_path in loaded_exts,
+                })
+        return JSONResponse({"extensions": result})
+
+    @app.post("/api/extensions/{ext_name:path}/toggle")
+    async def api_toggle_extension(request: Request, ext_name: str, body: ExtensionToggle):
+        """Enable or disable an extension globally (updates config and loads/unloads at runtime)."""
+        _require_admin(request)
+        data = _get_full_config()
+        data.setdefault("config", {}).setdefault("extensions", {})[ext_name] = body.enabled
+        _save_config(data)
+        logger.info(f"{'Enabled' if body.enabled else 'Disabled'} extension {ext_name} in config")
+
+        loaded = ext_name in set(_get_extension_module_paths()) if bot else False
+        error = None
+        if bot:
+            try:
+                if body.enabled:
+                    bot.load_extension(ext_name)
+                    loaded = True
+                    logger.info(f"Loaded extension: {ext_name}")
+                else:
+                    bot.unload_extension(ext_name)
+                    loaded = False
+                    logger.info(f"Unloaded extension: {ext_name}")
+            except Exception as e:
+                error = str(e)
+                logger.error(f"Failed to {'load' if body.enabled else 'unload'} {ext_name}: {e}")
+                loaded = ext_name in set(_get_extension_module_paths())
+
+        return JSONResponse({"status": "ok", "path": ext_name, "enabled": body.enabled, "loaded": loaded, "error": error})
 
     # ── Bot info ─────────────────────────────────────────────────────
 

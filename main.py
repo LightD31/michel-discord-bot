@@ -60,12 +60,20 @@ async def on_startup():
 
 
 # get all python files in "extensions" folder
+# Extension enabled state is controlled via config["extensions"][ext_path] (bool).
+# Default: non-underscore-prefixed extensions are enabled, underscore-prefixed are disabled.
+extension_config = config.get("extensions", {})
 extensions = [
     f"extensions.{f[:-3]}"
     for f in os.listdir("extensions")
-    if f.endswith(".py") and not f.startswith("_")
+    if f.endswith(".py") and not f.startswith("__")
 ]
 for extension in extensions:
+    short_name = extension[len("extensions."):]
+    default_enabled = not short_name.startswith("_")
+    if not extension_config.get(extension, default_enabled):
+        logger.debug(f"Skipping disabled extension {extension}")
+        continue
     try:
         client.load_extension(extension)
         logger.info(f"Loaded extension {extension}")
