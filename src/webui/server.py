@@ -3,6 +3,7 @@ Web UI server runner.
 Can be started alongside the bot or independently.
 """
 
+import asyncio
 import threading
 import uvicorn
 
@@ -15,13 +16,15 @@ logger = logutil.init_logger("webui.server")
 def start_webui(bot=None, host: str = "0.0.0.0", port: int = 8080):
     """
     Start the web UI server in a background thread.
-    
+
     Args:
         bot: The interactions.py Client instance (optional).
         host: Host to bind to.
         port: Port to listen on.
     """
-    app = create_app(bot=bot)
+    # Capture the bot's event loop (we're currently inside it via on_startup)
+    bot_loop = asyncio.get_event_loop() if bot else None
+    app = create_app(bot=bot, bot_loop=bot_loop)
 
     config = uvicorn.Config(
         app,

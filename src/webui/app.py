@@ -37,12 +37,14 @@ class GlobalConfigUpdate(BaseModel):
 
 # ── App factory ──────────────────────────────────────────────────────
 
-def create_app(bot=None) -> FastAPI:
+def create_app(bot=None, bot_loop=None) -> FastAPI:
     """
     Create and configure the FastAPI application.
-    
+
     Args:
         bot: The interactions.py Client instance (optional, for live data).
+        bot_loop: The event loop the bot runs on (required to call bot coroutines
+                  from the WebUI's thread).
     """
     # Load bot config to get OAuth credentials
     config, _, _ = bot_load_config()
@@ -468,7 +470,7 @@ def create_app(bot=None) -> FastAPI:
     async def api_embedmanager_publish(request: Request, server_id: str):
         """Publish configured embeds to the target Discord message."""
         _require_admin(request)
-        if not bot:
+        if not bot or not bot_loop:
             raise HTTPException(status_code=503, detail="Bot non disponible")
 
         _, module_config, enabled_servers = bot_load_config("moduleEmbedManager")
@@ -491,9 +493,13 @@ def create_app(bot=None) -> FastAPI:
             raise HTTPException(status_code=500, detail="Erreur lors de la génération des embeds")
 
         try:
-            channel = await bot.fetch_channel(int(channel_id))
-            message = await channel.fetch_message(int(message_id))
-            await message.edit(embeds=discord_embeds)
+            async def _publish():
+                channel = await bot.fetch_channel(int(channel_id))
+                message = await channel.fetch_message(int(message_id))
+                await message.edit(embeds=discord_embeds)
+
+            future = asyncio.run_coroutine_threadsafe(_publish(), bot_loop)
+            await asyncio.wrap_future(future)
         except Exception as e:
             logger.error(f"EmbedManager publish failed for server {server_id}: {e}")
             raise HTTPException(status_code=500, detail=str(e))
