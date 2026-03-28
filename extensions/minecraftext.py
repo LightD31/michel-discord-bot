@@ -15,9 +15,12 @@ from interactions import (
     Embed,
     Extension,
     File,
+    Guild,
     IntervalTrigger,
     Message,
     OrTrigger,
+    ScheduledEventStatus,
+    ScheduledEventType,
     Task,
     TimeTrigger,
     Timestamp,
@@ -53,6 +56,7 @@ MODPACK_URL = module_config.get("minecraftModpackUrl", "")
 MODPACK_VERSION = module_config.get("minecraftModpackVersion", "")
 STATUS_URL = module_config.get("minecraftStatusUrl", "")
 FOOTER_TEXT = module_config.get("minecraftFooterText", "")
+SERVER_TYPE = module_config.get("minecraftServerType", "")
 
 
 class Minecraft(Extension):
@@ -63,6 +67,7 @@ class Minecraft(Extension):
         self.image_cache = {}
         self.serverColoc = None
         self.channel_edit_timestamp = datetime.fromtimestamp(0)
+        self.scheduled_event = None
 
     @listen()
     async def on_startup(self):
@@ -72,7 +77,20 @@ class Minecraft(Extension):
         stats_cache.clear()
         self.image_cache.clear()
         logger.info("Caches cleared on startup")
-        
+
+        # Recover existing scheduled event created by the bot
+        try:
+            channel = await self.bot.fetch_channel(CHANNEL_ID_KUBZ)
+            guild = channel.guild
+            for event in await guild.list_scheduled_events():
+                creator = await event.creator
+                if creator.id == self.bot.user.id and "Minecraft" in (event.name or ""):
+                    self.scheduled_event = event
+                    logger.info(f"Recovered existing Minecraft scheduled event: {event.name}")
+                    break
+        except Exception as e:
+            logger.error(f"Failed to recover scheduled event: {e}")
+
         self.status.start()
         self.stats.start()
         await self.stats()
@@ -105,10 +123,12 @@ class Minecraft(Extension):
                 timestamp=embed2_timestamp,
             )
 
+            players_online = 0
             try:
                 # Get Minecraft server status
                 coloc_status = self.serverColoc.status()
                 embed1, name = self._create_online_embed(coloc_status)
+                players_online = coloc_status.players.online
 
             except (ConnectionResetError, ConnectionRefusedError, TimeoutError, socket.timeout) as e:
                 logger.debug(e)
@@ -119,6 +139,7 @@ class Minecraft(Extension):
 
             await message.edit(content="", embeds=[embed1, embed2])
             await self._update_channel_name(channel, name)
+            await self._update_scheduled_event(channel, players_online)
         except Exception as e:
             logger.error(f"Failed to update Minecraft server status: {e}")
 
@@ -137,7 +158,7 @@ class Minecraft(Extension):
             joueurs = "\u200b"
             
         embed = Embed(
-            title=f"Serveur Forge {coloc_status.version.name}",
+            title=f"Serveur {SERVER_TYPE + ' ' if SERVER_TYPE else ''}{coloc_status.version.name}",
             description=f"Adresse : `{MINECRAFT_ADDRESS}`"
             + (f"\nModpack : [{MODPACK_NAME}]({MODPACK_URL})" if MODPACK_NAME and MODPACK_URL else "")
             + (f"\nVersion : **{MODPACK_VERSION}**" if MODPACK_VERSION else ""),
@@ -209,6 +230,40 @@ class Minecraft(Extension):
         ):
             await channel.edit(name=name)
             self.channel_edit_timestamp = datetime.now()
+
+    async def _update_scheduled_event(self, channel, players_online):
+        """Create or delete a Discord scheduled event based on player count."""
+        try:
+            guild: Guild = channel.guild
+            if players_online > 0:
+                if not self.scheduled_event:
+                    event_name = f"Minecraft - {players_online} joueur{'s' if players_online > 1 else ''} en ligne"
+                    self.scheduled_event = await guild.create_scheduled_event(
+                        name=event_name,
+                        event_type=ScheduledEventType.EXTERNAL,
+                        external_location=f"Serveur Minecraft : {MINECRAFT_ADDRESS}",
+                        start_time=datetime.now().astimezone() + timedelta(seconds=5),
+                        end_time=datetime.now().astimezone() + timedelta(days=1),
+                        description=f"Des joueurs sont connectés sur le serveur Minecraft !\nAdresse : `{MINECRAFT_ADDRESS}`",
+                    )
+                    await self.scheduled_event.edit(status=ScheduledEventStatus.ACTIVE)
+                    logger.info(f"Created Minecraft scheduled event: {event_name}")
+                else:
+                    event_name = f"Minecraft - {players_online} joueur{'s' if players_online > 1 else ''} en ligne"
+                    if self.scheduled_event.name != event_name:
+                        await self.scheduled_event.edit(
+                            name=event_name,
+                            end_time=datetime.now().astimezone() + timedelta(days=1),
+                        )
+                        logger.debug(f"Updated Minecraft scheduled event: {event_name}")
+            else:
+                if self.scheduled_event:
+                    await self.scheduled_event.delete()
+                    self.scheduled_event = None
+                    logger.info("Deleted Minecraft scheduled event (no players online)")
+        except Exception as e:
+            logger.error(f"Failed to update scheduled event: {e}")
+            self.scheduled_event = None
 
     @Task.create(OrTrigger(*[TimeTrigger(hour=i, minute=10) for i in range(24)]))
     async def stats(self):
