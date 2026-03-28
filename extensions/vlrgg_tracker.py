@@ -26,6 +26,7 @@ from interactions import (
 from src import logutil
 from src.helpers import Colors, SPACER_FIELD, format_discord_timestamp
 from src.config_manager import load_config
+from src.mongodb import mongo_manager
 from src.vlrgg import (
     fetch_all_team_data as vlrgg_fetch_all,
     fetch_match_details,
@@ -77,6 +78,7 @@ class TeamConfig:
 class TeamState:
     """État de suivi d'une équipe."""
     team_config: TeamConfig
+    server_id: str = ""
     schedule_message: Any = None
     notification_channel: Any = None
     ongoing_matches: Dict[str, Any] = field(default_factory=dict)
@@ -143,6 +145,7 @@ class VlrggTrackerExtension(Extension):
                 team_cfg = TeamConfig.from_dict(team_raw)
                 team_state = TeamState(
                     team_config=team_cfg,
+                    server_id=server_id,
                     notification_channel=server_state.notification_channel,
                 )
 
@@ -166,6 +169,10 @@ class VlrggTrackerExtension(Extension):
                 server_state.teams[team_cfg.name] = team_state
 
             self._servers[server_id] = server_state
+
+            # Restaurer les matchs live persistés
+            await self._restore_live_state(server_id, server_state)
+
             logger.info(
                 f"Serveur {server_id}: {len(server_state.teams)} équipe(s) initialisée(s) "
                 f"({', '.join(server_state.teams.keys())})"
@@ -301,6 +308,14 @@ class VlrggTrackerExtension(Extension):
                 embeds=[embed],
             )
             team_state.live_messages[match_id] = message
+            await self._save_live_match(
+                team_state.server_id,
+                team_state.team_config.name,
+                match_id,
+                match,
+                str(channel.id),
+                str(message.id),
+            )
             logger.info(f"Notification VLR.gg envoyée pour {team1} vs {team2}")
         except Exception as e:
             logger.exception(f"Erreur notification VLR.gg: {e}")
@@ -358,6 +373,7 @@ class VlrggTrackerExtension(Extension):
         """Gère la fin d'un match VLR.gg — tente de récupérer les détails."""
         message = team_state.live_messages.pop(match_id, None)
         match_data = team_state.ongoing_matches.pop(match_id, None)
+        await self._delete_live_match(team_state.server_id, match_id)
         if not message:
             return
 
@@ -798,6 +814,68 @@ class VlrggTrackerExtension(Extension):
             lines.append(f"**{name}** — {avg_rating:.1f} rating | {k}/{d}/{a} K/D/A")
 
         return "\n".join(lines) if lines else None
+
+    # ── Persistance MongoDB ──────────────────────────────────────────
+
+    def _live_col(self, server_id: str):
+        return mongo_manager.get_guild_collection(server_id, "vlrgg_live")
+
+    async def _save_live_match(
+        self, server_id: str, team_name: str, match_id: str,
+        match_data: Dict[str, Any], channel_id: str, message_id: str
+    ) -> None:
+        try:
+            await self._live_col(server_id).replace_one(
+                {"_id": match_id},
+                {
+                    "_id": match_id,
+                    "team_name": team_name,
+                    "channel_id": channel_id,
+                    "message_id": message_id,
+                    "match_data": match_data,
+                },
+                upsert=True,
+            )
+        except Exception as e:
+            logger.warning(f"Impossible de persister le match live {match_id}: {e}")
+
+    async def _delete_live_match(self, server_id: str, match_id: str) -> None:
+        try:
+            await self._live_col(server_id).delete_one({"_id": match_id})
+        except Exception as e:
+            logger.warning(f"Impossible de supprimer le match live persisté {match_id}: {e}")
+
+    async def _restore_live_state(self, server_id: str, server_state: "ServerState") -> None:
+        """Restaure les matchs live depuis MongoDB après un redémarrage."""
+        try:
+            docs = await self._live_col(server_id).find({}).to_list(length=None)
+        except Exception as e:
+            logger.warning(f"Serveur {server_id}: impossible de charger l'état live: {e}")
+            return
+
+        for doc in docs:
+            match_id = doc["_id"]
+            team_name = doc.get("team_name", "")
+            channel_id = doc.get("channel_id", "")
+            message_id = doc.get("message_id", "")
+            match_data = doc.get("match_data", {})
+
+            team_state = server_state.teams.get(team_name)
+            if not team_state:
+                logger.warning(f"Serveur {server_id}: équipe '{team_name}' introuvable pour restauration")
+                continue
+
+            try:
+                channel = await self.bot.fetch_channel(channel_id)
+                if not channel or not hasattr(channel, "fetch_message"):
+                    raise ValueError(f"Canal {channel_id} invalide ou sans fetch_message")
+                message = await channel.fetch_message(message_id)
+                team_state.live_messages[match_id] = message
+                team_state.ongoing_matches[match_id] = match_data
+                logger.info(f"Serveur {server_id}: match live {match_id} restauré pour {team_name}")
+            except Exception as e:
+                logger.warning(f"Serveur {server_id}: impossible de restaurer le message {message_id}: {e}")
+                await self._delete_live_match(server_id, match_id)
 
     # ── Utilitaires ──────────────────────────────────────────────────
 
