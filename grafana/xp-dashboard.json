@@ -1,0 +1,344 @@
+{
+  "__inputs": [
+    {
+      "name": "DS_MONGODB",
+      "label": "MongoDB",
+      "description": "MongoDB datasource (grafana-mongodb-datasource)",
+      "type": "datasource",
+      "pluginId": "grafana-mongodb-datasource",
+      "pluginName": "MongoDB"
+    },
+    {
+      "name": "GUILD_ID",
+      "label": "Guild ID",
+      "description": "Discord Guild ID — MongoDB database will be guild_<id>",
+      "type": "constant",
+      "value": ""
+    }
+  ],
+  "__requires": [
+    {
+      "type": "grafana",
+      "id": "grafana",
+      "name": "Grafana",
+      "version": "9.0.0"
+    },
+    {
+      "type": "datasource",
+      "id": "grafana-mongodb-datasource",
+      "name": "MongoDB",
+      "version": "1.0.0"
+    },
+    {
+      "type": "panel",
+      "id": "stat",
+      "name": "Stat",
+      "version": ""
+    },
+    {
+      "type": "panel",
+      "id": "timeseries",
+      "name": "Time series",
+      "version": ""
+    },
+    {
+      "type": "panel",
+      "id": "table",
+      "name": "Table",
+      "version": ""
+    },
+    {
+      "type": "panel",
+      "id": "barchart",
+      "name": "Bar chart",
+      "version": ""
+    }
+  ],
+  "annotations": {
+    "list": []
+  },
+  "editable": true,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Utilisateurs",
+      "description": "Nombre d'utilisateurs ayant au moins un message avec XP",
+      "datasource": {
+        "type": "grafana-mongodb-datasource",
+        "uid": "${DS_MONGODB}"
+      },
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-mongodb-datasource",
+            "uid": "${DS_MONGODB}"
+          },
+          "refId": "A",
+          "queryType": "query",
+          "query": "guild_${GUILD_ID}.xp.find({})",
+          "parsedQuery": "guild_${GUILD_ID}.xp.find({})"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "values": false,
+          "calcs": ["count"],
+          "fields": "/^_id$/"
+        },
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "color": "blue", "value": null }]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "XP Total Distribué",
+      "description": "Somme de tout l'XP distribué depuis le début",
+      "datasource": {
+        "type": "grafana-mongodb-datasource",
+        "uid": "${DS_MONGODB}"
+      },
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 0 },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-mongodb-datasource",
+            "uid": "${DS_MONGODB}"
+          },
+          "refId": "A",
+          "queryType": "query",
+          "query": "guild_${GUILD_ID}.xp_events.aggregate([\n  {\"$group\": {\"_id\": null, \"total\": {\"$sum\": \"$xp_gained\"}}},\n  {\"$project\": {\"_id\": 0, \"total\": 1}}\n])",
+          "parsedQuery": "guild_${GUILD_ID}.xp_events.aggregate([{\"$group\":{\"_id\":null,\"total\":{\"$sum\":\"$xp_gained\"}}},{\"$project\":{\"_id\":0,\"total\":1}}])"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "values": false,
+          "calcs": ["lastNotNull"],
+          "fields": "/^total$/"
+        },
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "color": "green", "value": null }]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Activité Quotidienne",
+      "description": "XP gagné et messages actifs par jour (requires MongoDB 5.0+ for $dateTrunc)",
+      "datasource": {
+        "type": "grafana-mongodb-datasource",
+        "uid": "${DS_MONGODB}"
+      },
+      "gridPos": { "h": 10, "w": 16, "x": 8, "y": 0 },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-mongodb-datasource",
+            "uid": "${DS_MONGODB}"
+          },
+          "refId": "A",
+          "queryType": "query",
+          "query": "guild_${GUILD_ID}.xp_events.aggregate([\n  {\n    \"$group\": {\n      \"_id\": {\"$dateTrunc\": {\"date\": \"$ts\", \"unit\": \"day\", \"timezone\": \"Europe/Paris\"}},\n      \"xp_gained\": {\"$sum\": \"$xp_gained\"},\n      \"messages\": {\"$sum\": 1}\n    }\n  },\n  {\"$sort\": {\"_id\": 1}},\n  {\"$project\": {\"_id\": 0, \"time\": \"$_id\", \"xp_gained\": 1, \"messages\": 1}}\n])",
+          "parsedQuery": "guild_${GUILD_ID}.xp_events.aggregate([{\"$group\":{\"_id\":{\"$dateTrunc\":{\"date\":\"$ts\",\"unit\":\"day\",\"timezone\":\"Europe/Paris\"}},\"xp_gained\":{\"$sum\":\"$xp_gained\"},\"messages\":{\"$sum\":1}}},{\"$sort\":{\"_id\":1}},{\"$project\":{\"_id\":0,\"time\":\"$_id\",\"xp_gained\":1,\"messages\":1}}])"
+        }
+      ],
+      "options": {
+        "legend": {
+          "calcs": ["sum", "max"],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 70,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": false
+          }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "xp_gained" },
+            "properties": [{ "id": "displayName", "value": "XP Gagné" }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "messages" },
+            "properties": [
+              { "id": "displayName", "value": "Messages" },
+              { "id": "custom.drawStyle", "value": "line" },
+              { "id": "custom.axisPlacement", "value": "right" }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": 4,
+      "type": "table",
+      "title": "Classement",
+      "description": "Top 25 utilisateurs classés par XP total",
+      "datasource": {
+        "type": "grafana-mongodb-datasource",
+        "uid": "${DS_MONGODB}"
+      },
+      "gridPos": { "h": 14, "w": 12, "x": 0, "y": 4 },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-mongodb-datasource",
+            "uid": "${DS_MONGODB}"
+          },
+          "refId": "A",
+          "queryType": "query",
+          "query": "guild_${GUILD_ID}.xp.aggregate([\n  {\"$sort\": {\"xp\": -1}},\n  {\"$limit\": 25},\n  {\"$lookup\": {\"from\": \"users\", \"localField\": \"_id\", \"foreignField\": \"_id\", \"as\": \"user_info\"}},\n  {\"$addFields\": {\"user_info\": {\"$arrayElemAt\": [\"$user_info\", 0]}}},\n  {\"$project\": {\"_id\": 0, \"display_name\": {\"$ifNull\": [\"$user_info.display_name\", \"$_id\"]}, \"username\": {\"$ifNull\": [\"$user_info.username\", \"\"]}, \"xp\": 1, \"lvl\": 1, \"msg\": 1}}\n])",
+          "parsedQuery": "guild_${GUILD_ID}.xp.aggregate([{\"$sort\":{\"xp\":-1}},{\"$limit\":25},{\"$lookup\":{\"from\":\"users\",\"localField\":\"_id\",\"foreignField\":\"_id\",\"as\":\"user_info\"}},{\"$addFields\":{\"user_info\":{\"$arrayElemAt\":[\"$user_info\",0]}}},{\"$project\":{\"_id\":0,\"display_name\":{\"$ifNull\":[\"$user_info.display_name\",\"$_id\"]},\"username\":{\"$ifNull\":[\"$user_info.username\",\"\"]},\"xp\":1,\"lvl\":1,\"msg\":1}}])"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {},
+            "indexByName": { "display_name": 0, "username": 1, "lvl": 2, "xp": 3, "msg": 4 },
+            "renameByName": {
+              "display_name": "Nom",
+              "username": "Username",
+              "lvl": "Niveau",
+              "xp": "XP Total",
+              "msg": "Messages"
+            }
+          }
+        }
+      ],
+      "options": {
+        "cellHeight": "sm",
+        "showHeader": true,
+        "sortBy": [{ "desc": true, "displayName": "XP Total" }],
+        "footer": { "show": false, "reducer": ["sum"] }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "custom": { "align": "auto", "cellOptions": { "type": "auto" } },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "color": "green", "value": null }]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "XP Total" },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": { "mode": "gradient", "type": "color-background" }
+              },
+              { "id": "color", "value": { "mode": "continuous-BlYlRd" } }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": 5,
+      "type": "barchart",
+      "title": "Distribution des Niveaux",
+      "description": "Nombre d'utilisateurs par niveau",
+      "datasource": {
+        "type": "grafana-mongodb-datasource",
+        "uid": "${DS_MONGODB}"
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 10 },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-mongodb-datasource",
+            "uid": "${DS_MONGODB}"
+          },
+          "refId": "A",
+          "queryType": "query",
+          "query": "guild_${GUILD_ID}.xp.aggregate([\n  {\"$group\": {\"_id\": \"$lvl\", \"users\": {\"$sum\": 1}}},\n  {\"$sort\": {\"_id\": 1}},\n  {\"$project\": {\"_id\": 0, \"level\": \"$_id\", \"users\": 1}}\n])",
+          "parsedQuery": "guild_${GUILD_ID}.xp.aggregate([{\"$group\":{\"_id\":\"$lvl\",\"users\":{\"$sum\":1}}},{\"$sort\":{\"_id\":1}},{\"$project\":{\"_id\":0,\"level\":\"$_id\",\"users\":1}}])"
+        }
+      ],
+      "options": {
+        "xField": "level",
+        "stacking": "none",
+        "showValue": "auto",
+        "barRadius": 0.05,
+        "barWidth": 0.7,
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": false },
+        "tooltip": { "mode": "single", "sort": "none" }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "continuous-BlYlRd" },
+          "custom": { "fillOpacity": 80, "gradientMode": "scheme", "lineWidth": 1 }
+        },
+        "overrides": []
+      }
+    }
+  ],
+  "refresh": "5m",
+  "schemaVersion": 36,
+  "style": "dark",
+  "tags": ["discord", "xp", "bot"],
+  "templating": {
+    "list": [
+      {
+        "type": "constant",
+        "name": "GUILD_ID",
+        "label": "Guild ID",
+        "description": "Discord Guild ID — MongoDB database: guild_<id>",
+        "query": "${GUILD_ID}",
+        "current": {
+          "selected": false,
+          "text": "${GUILD_ID}",
+          "value": "${GUILD_ID}"
+        },
+        "hide": 2,
+        "skipUrlSync": false
+      }
+    ]
+  },
+  "time": { "from": "now-30d", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Discord XP Stats"
+}
