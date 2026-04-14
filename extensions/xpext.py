@@ -178,6 +178,9 @@ class XpExtension(Extension):
             await collection.create_index([("xp", pymongo.DESCENDING)], background=True)
             # Create index on time field for cooldown checks
             await collection.create_index([("time", pymongo.DESCENDING)], background=True)
+            # Create index on xp_events for graph queries
+            events_collection = mongo_manager.get_guild_collection(guild_id, "xp_events")
+            await events_collection.create_index([("user_id", pymongo.ASCENDING), ("ts", pymongo.ASCENDING)], background=True)
             logger.debug("Ensured indexes for guild %s", guild_id)
         except Exception as e:
             logger.error("Failed to create indexes for guild %s: %s", guild_id, e)
@@ -333,6 +336,16 @@ class XpExtension(Extension):
         except pymongo.errors.PyMongoError as e:
             logger.error("Failed to update XP for %s: %s", user_id, e)
             return
+
+        try:
+            await mongo_manager.get_guild_collection(guild_id, "xp_events").insert_one({
+                "user_id": user_id,
+                "xp_gained": xp_gained,
+                "total_xp": new_xp,
+                "ts": message.created_at,
+            })
+        except pymongo.errors.PyMongoError as e:
+            logger.warning("Failed to log XP event for %s: %s", user_id, e)
         
         new_level, _, _ = calculate_level(new_xp)
         old_level = stats.get("lvl", 0)
