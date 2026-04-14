@@ -8,6 +8,7 @@ import os
 import sys
 
 import interactions
+from interactions import Task, IntervalTrigger
 
 from config import DEBUG
 from src import logutil
@@ -45,10 +46,24 @@ client = interactions.Client(
 )
 
 
+HEALTH_FILE = "/tmp/bot_heartbeat"
+
+
+@Task.create(IntervalTrigger(seconds=45))
+async def _heartbeat_task():
+    """Touch a file so the Docker healthcheck can verify the bot is alive (metadata-only, no disk write)."""
+    from pathlib import Path
+    try:
+        Path(HEALTH_FILE).touch()
+    except OSError:
+        pass
+
+
 @interactions.listen()
 async def on_startup():
     """Called when the bot starts"""
     logger.info(f"Logged in as {client.user}")
+    _heartbeat_task.start()
 
     # Start Web UI if enabled
     if WEBUI_ENABLED:

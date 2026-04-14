@@ -4,6 +4,7 @@ Can be started alongside the bot or independently.
 """
 
 import asyncio
+import logging
 import threading
 import uvicorn
 
@@ -11,6 +12,12 @@ from src import logutil
 from src.webui.app import create_app
 
 logger = logutil.init_logger("webui.server")
+
+
+class _FilterInvalidHTTP(logging.Filter):
+    """Suppress noisy uvicorn warnings caused by non-HTTP traffic (scanners, TLS probes)."""
+    def filter(self, record: logging.LogRecord) -> bool:
+        return "Invalid HTTP request received" not in record.getMessage()
 
 
 def start_webui(bot=None, host: str = "0.0.0.0", port: int = 8080):
@@ -25,6 +32,8 @@ def start_webui(bot=None, host: str = "0.0.0.0", port: int = 8080):
     # Capture the bot's event loop (we're currently inside it via on_startup)
     bot_loop = asyncio.get_event_loop() if bot else None
     app = create_app(bot=bot, bot_loop=bot_loop)
+
+    logging.getLogger("uvicorn.error").addFilter(_FilterInvalidHTTP())
 
     config = uvicorn.Config(
         app,

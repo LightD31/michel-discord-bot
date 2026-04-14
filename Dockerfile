@@ -1,5 +1,5 @@
 # Use a specific Python image
-FROM python:3.12
+FROM python:3.12-slim
 
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -16,6 +16,10 @@ RUN pip install --upgrade pip \
 
 # Copy the rest of the application code
 COPY ./ /app/
+
+# Healthcheck: verify the bot heartbeat file was written within the last 60 seconds
+HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
+    CMD python -c "import os, time; s=os.stat('/tmp/bot_heartbeat'); exit(0 if time.time()-s.st_mtime < 60 else 1)"
 
 # Start the bot
 CMD ["python", "main.py"]

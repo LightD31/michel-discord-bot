@@ -710,6 +710,13 @@ def create_app(bot=None, bot_loop=None) -> FastAPI:
 
         return EventSourceResponse(event_generator())
 
+    # ── Health check ─────────────────────────────────────────────────
+
+    @app.get("/health")
+    async def health():
+        """Unauthenticated liveness probe."""
+        return JSONResponse({"status": "ok"})
+
     # ── Frontend serving ─────────────────────────────────────────────
 
     @app.get("/", response_class=HTMLResponse)
