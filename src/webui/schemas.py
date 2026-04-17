@@ -22,6 +22,7 @@ This is used by the Web UI to render proper forms instead of raw JSON editors.
 # "embedlist" — list of embeds with title, color, and links (form rows)
 # "keyvaluemap" — key-value pairs in a form (customizable key/value labels via key_label, value_label)
 # "spotifymap" — list of Spotify user mappings (spotifyId, name, discordId)
+# "streamermap" — dict keyed by Twitch login; each value has planning/notification channel and pin fields
 
 
 def _field(label: str, field_type: str = "string", required: bool = False,
@@ -307,8 +308,8 @@ MODULE_SCHEMAS: dict[str, dict] = {
         "fields": {
             "enabled": _field("Activé", "boolean", default=False),
             "twitchStreamerList": _field(
-                "Liste des streamers", "dict", required=True,
-                description="Objet JSON. Chaque clé est un nom de streamer, avec les sous-clés : twitchPlanningChannelId, twitchPlanningMessageId, twitchNotificationChannelId."
+                "Streamers suivis", "streamermap", required=True,
+                description="Liste des streamers Twitch à suivre. Renseignez le login Twitch, le salon du planning et le salon des notifications. Le message de planning est créé automatiquement."
             ),
         },
     },
