@@ -856,6 +856,34 @@
         }
         .btn-reveal:hover { opacity: 1; }
 
+        .channel-picker {
+            display: flex;
+            gap: 6px;
+            align-items: center;
+        }
+        .channel-picker .form-input {
+            flex: 1;
+            min-width: 0;
+        }
+        .channel-picker-select {
+            appearance: auto;
+            padding-right: 28px;
+        }
+        .btn-channel-toggle {
+            background: var(--bg-primary);
+            color: var(--text-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius);
+            padding: 6px 10px;
+            cursor: pointer;
+            font-size: 13px;
+            flex-shrink: 0;
+        }
+        .btn-channel-toggle:hover {
+            color: var(--accent);
+            border-color: var(--accent);
+        }
+
         .schema-badge {
             font-size: 11px;
             padding: 2px 8px;
@@ -2468,6 +2496,7 @@
         for (const [key, field] of entries) {
             if (options.excludeEnabled && key === 'enabled') continue;
             if (linkedWeightFields.has(key)) continue;
+            if (field.hidden) continue;
 
             const value = values[key];
             const hasValue = value !== undefined && value !== null;
@@ -2510,15 +2539,28 @@
                     </div>`;
                     break;
 
-                case 'channel':
+                case 'channel': {
+                    const currentVal = hasValue ? String(value) : '';
+                    html += `<div class="channel-picker" data-field="${key}" data-type="channel" data-current="${escapeHtml(currentVal)}">
+                        <select class="form-input channel-picker-select" data-channel-select="${key}">
+                            <option value="">— Chargement des salons… —</option>
+                            ${currentVal ? `<option value="${escapeHtml(currentVal)}" selected>${escapeHtml(currentVal)}</option>` : ''}
+                        </select>
+                        <input type="text" class="form-input channel-picker-manual" data-channel-manual="${key}"
+                            value="${escapeHtml(currentVal)}" placeholder="ID du salon" style="display:none;">
+                        <button type="button" class="btn-channel-toggle" onclick="toggleChannelPickerMode(this)" title="Saisie manuelle">✎</button>
+                    </div>`;
+                    break;
+                }
                 case 'role':
                 case 'message':
-                case 'url':
-                    const typeHint = {channel: 'ID du salon', role: 'ID du rôle', message: 'ID du message', url: 'URL'}[fieldType];
+                case 'url': {
+                    const typeHint = {role: 'ID du rôle', message: 'ID du message', url: 'URL'}[fieldType];
                     html += `<input type="text" class="form-input" data-field="${key}" data-type="${fieldType}"
                         value="${hasValue ? escapeHtml(String(value)) : ''}"
                         placeholder="${typeHint}">`;
                     break;
+                }
 
                 case 'list':
                     const listVal = Array.isArray(value) ? value.join('\n') : (hasValue ? String(value) : '');
@@ -2567,7 +2609,7 @@
                             <div class="team-entry" data-team-idx="${idx}">
                                 <input type="text" data-team-field="name" value="${escapeHtml(t.name || '')}" placeholder="ex: Mandatory">
                                 <input type="text" data-team-field="vlrTeamId" value="${escapeHtml(t.vlrTeamId || '')}" placeholder="ex: 7967">
-                                <input type="text" data-team-field="channelMessageId" value="${escapeHtml(t.channelMessageId || '')}" placeholder="channelId:messageId">
+                                <input type="text" data-team-field="channelMessageId" value="${escapeHtml(t.channelMessageId || '')}" placeholder="ID du salon (message créé auto)" title="Saisir l'ID du salon. Le message est créé automatiquement au premier lancement puis l'ID est sauvegardé ici.">
                                 <button class="btn-remove-team" onclick="this.closest('.team-entry').remove()" title="Supprimer">✕</button>
                             </div>`;
                     });
@@ -2723,6 +2765,14 @@
                 case 'boolean':
                     val = input.checked;
                     break;
+                case 'channel': {
+                    const select = input.querySelector('.channel-picker-select');
+                    const manual = input.querySelector('.channel-picker-manual');
+                    const manualVisible = manual && manual.style.display !== 'none';
+                    const raw = manualVisible ? (manual?.value ?? '') : (select?.value ?? '');
+                    val = raw.trim() || undefined;
+                    break;
+                }
                 case 'number':
                     val = input.value === '' ? undefined : Number(input.value);
                     break;
@@ -3084,6 +3134,105 @@
         input.type = input.type === 'password' ? 'text' : 'password';
     }
 
+    // ── Channel picker ────────────────────────────────
+    const _channelCache = {}; // serverId -> {channels, categories}
+
+    async function fetchServerChannels(serverId) {
+        if (!serverId) return null;
+        if (_channelCache[serverId]) return _channelCache[serverId];
+        try {
+            const data = await api(`/api/servers/${serverId}/channels`);
+            if (data && data.channels) {
+                _channelCache[serverId] = data;
+                return data;
+            }
+        } catch (e) {
+            console.warn('Could not fetch channels', e);
+        }
+        return null;
+    }
+
+    async function populateChannelPickers(container) {
+        const serverId = state.currentServerId;
+        if (!serverId || !container) return;
+        const pickers = container.querySelectorAll('.channel-picker');
+        if (pickers.length === 0) return;
+        const data = await fetchServerChannels(serverId);
+        if (!data) {
+            // Fall back to manual text entry
+            for (const picker of pickers) {
+                toggleChannelPickerMode(picker.querySelector('.btn-channel-toggle'), true);
+                const select = picker.querySelector('select');
+                if (select) select.innerHTML = `<option value="">— Bot hors ligne —</option>`;
+            }
+            return;
+        }
+        const {channels, categories} = data;
+        const catMap = new Map((categories || []).map(c => [c.id, c.name]));
+        // Group channels by parent category
+        const grouped = new Map();
+        for (const c of channels) {
+            const catId = c.parent_id || '__none__';
+            if (!grouped.has(catId)) grouped.set(catId, []);
+            grouped.get(catId).push(c);
+        }
+        // Build the options HTML once
+        let opts = '<option value="">— Choisir un salon —</option>';
+        const orderedCats = [
+            ['__none__', 'Sans catégorie'],
+            ...(categories || []).map(c => [c.id, c.name]),
+        ];
+        for (const [catId, catName] of orderedCats) {
+            const list = grouped.get(catId);
+            if (!list || list.length === 0) continue;
+            opts += `<optgroup label="${escapeHtml(catName)}">`;
+            for (const ch of list) {
+                opts += `<option value="${escapeHtml(ch.id)}">#${escapeHtml(ch.name)}</option>`;
+            }
+            opts += '</optgroup>';
+        }
+        const validIds = new Set(channels.map(c => c.id));
+        for (const picker of pickers) {
+            const select = picker.querySelector('select');
+            const manual = picker.querySelector('.channel-picker-manual');
+            const current = picker.dataset.current || '';
+            select.innerHTML = opts;
+            if (current && validIds.has(current)) {
+                select.value = current;
+            } else if (current) {
+                // Keep the unknown value visible at the top
+                const opt = document.createElement('option');
+                opt.value = current;
+                opt.textContent = `ID inconnu: ${current}`;
+                opt.selected = true;
+                select.insertBefore(opt, select.firstChild.nextSibling);
+            }
+            // Sync manual value with select on change
+            select.addEventListener('change', () => {
+                if (manual) manual.value = select.value;
+            });
+        }
+    }
+
+    function toggleChannelPickerMode(btn, forceManual) {
+        const picker = btn.closest('.channel-picker');
+        if (!picker) return;
+        const select = picker.querySelector('.channel-picker-select');
+        const manual = picker.querySelector('.channel-picker-manual');
+        const showManual = forceManual === true ? true : (manual.style.display === 'none');
+        manual.style.display = showManual ? '' : 'none';
+        select.style.display = showManual ? 'none' : '';
+        btn.textContent = showManual ? '☰' : '✎';
+        btn.title = showManual ? 'Choisir dans la liste' : 'Saisie manuelle';
+        if (showManual && select.value && !manual.value) {
+            manual.value = select.value;
+        } else if (!showManual && manual.value && !select.value) {
+            // Try to set select from manual
+            const opt = select.querySelector(`option[value="${CSS.escape(manual.value)}"]`);
+            if (opt) select.value = manual.value;
+        }
+    }
+
     // ── Render ────────────────────────────────────────
     function render() {
         const app = document.getElementById('app');
@@ -3115,6 +3264,10 @@
                     logContainer.scrollTop = logContainer.scrollHeight;
                 }
             }
+        }
+        // Populate any channel pickers on the current page
+        if (state.currentServerId) {
+            populateChannelPickers(document);
         }
     }
 
@@ -3538,6 +3691,7 @@
         let html = '<div class="schema-preview">';
         for (const [key, field] of Object.entries(fields)) {
             if (linkedWeightFields.has(key)) continue;
+            if (field.hidden) continue;
             const val = values[key];
             const hasVal = val !== undefined && val !== null;
             const isSecret = field.secret || false;

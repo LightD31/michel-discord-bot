@@ -17,6 +17,7 @@ from interactions import (
     EmbedFooter,
     Extension,
     IntervalTrigger,
+    Message,
     Modal,
     ModalContext,
     OptionType,
@@ -35,7 +36,13 @@ from interactions import (
 from notion_client import AsyncClient, APIResponseError
 
 from src import logutil
-from src.helpers import Colors, fetch_user_safe, format_discord_timestamp, send_error
+from src.helpers import (
+    Colors,
+    fetch_or_create_persistent_message,
+    fetch_user_safe,
+    format_discord_timestamp,
+    send_error,
+)
 from src.config_manager import load_config
 
 logger = logutil.init_logger(os.path.basename(__file__))
@@ -112,6 +119,7 @@ class ConfrerieExtension(Extension):
         self._cache_timestamp: Optional[datetime] = None
         self._cache_duration = 300  # 5 minutes cache
         self._data_source_cache: Dict[str, str] = {}  # database_id -> data_source_id
+        self._recap_message: Optional[Message] = None
 
     @listen()
     async def on_startup(self):
@@ -302,22 +310,26 @@ class ConfrerieExtension(Extension):
 
     async def _update_statistics_message(self, stats_data: Dict[str, Any]):
         """Met à jour le message des statistiques dans Discord.
-        
+
         Args:
             stats_data: Données statistiques à afficher
         """
         try:
-            channel = await self.bot.fetch_channel(module_config["confrerieRecapChannelId"])
-            if not channel:
-                raise ConfrerieError("Canal de récapitulatif introuvable")
-                
-            # Vérifier que c'est un canal texte
-            if not hasattr(channel, 'fetch_message'):
-                raise ConfrerieError("Le canal configuré n'est pas un canal texte")
-                
-            message = await channel.fetch_message(module_config["confrerieRecapMessageId"])
-            if not message:
-                raise ConfrerieError("Message de récapitulatif introuvable")
+            if self._recap_message is None:
+                guild_id = enabled_servers[0] if enabled_servers else None
+                self._recap_message = await fetch_or_create_persistent_message(
+                    self.bot,
+                    channel_id=module_config.get("confrerieRecapChannelId"),
+                    message_id=module_config.get("confrerieRecapMessageId"),
+                    module_name="moduleConfrerie",
+                    message_id_key="confrerieRecapMessageId",
+                    guild_id=guild_id,
+                    initial_content="Initialisation du récapitulatif…",
+                    pin=bool(module_config.get("confrerieRecapPinMessage", False)),
+                    logger=logger,
+                )
+                if self._recap_message is None:
+                    raise ConfrerieError("Canal de récapitulatif introuvable ou invalide")
 
             embed = await self._create_statistics_embed(stats_data)
             footer = await self._create_embed_footer()
@@ -325,12 +337,12 @@ class ConfrerieExtension(Extension):
                 text=footer.text,
                 icon_url=footer.icon_url
             )
-            
-            await message.edit(
+
+            await self._recap_message.edit(
                 content="Retrouvez tous les textes en [cliquant ici](https://drndvs.link/Confrerie 'Notion de la confrérie')",
                 embed=embed,
             )
-            
+
         except Exception as e:
             logger.error(f"Erreur lors de la mise à jour du message: {e}")
             raise

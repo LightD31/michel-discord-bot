@@ -14,6 +14,7 @@ from interactions import (
 from pyfactorybridge import API
 
 from src import logutil
+from src.helpers import fetch_or_create_persistent_message
 from src.utils import load_config
 
 logger = logutil.init_logger(os.path.basename(__file__))
@@ -27,6 +28,25 @@ class Satisfactory(Extension):
         self.message: Optional[Message] = None
         self.api: Optional[API] = None
         self.server_config: Optional[dict] = None
+        self.guild_id: Optional[str] = None
+
+    async def _ensure_message(self) -> Optional[Message]:
+        if self.message is not None:
+            return self.message
+        if not self.server_config:
+            return None
+        self.message = await fetch_or_create_persistent_message(
+            self.bot,
+            channel_id=self.server_config.get("satisfactoryChannelId"),
+            message_id=self.server_config.get("satisfactoryMessageId"),
+            module_name="moduleSatisfactory",
+            message_id_key="satisfactoryMessageId",
+            guild_id=self.guild_id,
+            initial_content="Initialisation du statut Satisfactory…",
+            pin=bool(self.server_config.get("satisfactoryPinMessage", False)),
+            logger=logger,
+        )
+        return self.message
 
     @listen()
     async def on_startup(self):
@@ -34,15 +54,11 @@ class Satisfactory(Extension):
             logger.warning("moduleSatisfactory is not enabled for any server, skipping startup")
             return
 
-        self.server_config = module_config[enabled_servers[0]]
+        self.guild_id = enabled_servers[0]
+        self.server_config = module_config[self.guild_id]
 
         try:
-            self.channel = await self.bot.fetch_channel(
-                self.server_config["satisfactoryChannelId"]
-            )
-            self.message = await self.channel.fetch_message(
-                self.server_config["satisfactoryMessageId"]
-            )
+            await self._ensure_message()
             self.api = API(
                 address=f"{self.server_config['satisfactoryServerIp']}:{self.server_config['satisfactoryServerPort']}",
                 token=self.server_config["satisfactoryServerToken"],
@@ -55,6 +71,10 @@ class Satisfactory(Extension):
     @Task.create(IntervalTrigger(minutes=1))
     async def update_message(self):
         try:
+            message = await self._ensure_message()
+            if message is None or self.api is None:
+                logger.debug("Satisfactory message or API not ready; skipping")
+                return
             data = self.api.query_server_state()
             players = data["serverGameState"]["numConnectedPlayers"]
             tier = data["serverGameState"]["techTier"]
@@ -82,7 +102,8 @@ class Satisfactory(Extension):
                 inline=False,
             )
 
-            await self.message.edit(content="", embed=embed)
+            await message.edit(content="", embed=embed)
             logger.debug("Updated Satisfactory status: %d players, tier %s", players, tier)
         except Exception as e:
             logger.error("Failed to update Satisfactory message: %s", e)
+

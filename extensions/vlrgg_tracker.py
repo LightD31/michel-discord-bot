@@ -24,9 +24,14 @@ from interactions import (
     Timestamp,
 )
 from src import logutil
-from src.helpers import Colors, SPACER_FIELD, format_discord_timestamp
-from src.config_manager import load_config
+from src.helpers import (
+    Colors,
+    SPACER_FIELD,
+    format_discord_timestamp,
+)
+from src.config_manager import CONFIG_PATH, load_config
 from src.mongodb import mongo_manager
+import json
 from src.vlrgg import (
     fetch_all_team_data as vlrgg_fetch_all,
     fetch_match_details,
@@ -55,6 +60,7 @@ class TeamConfig:
     vlr_team_id: Optional[str] = None
     channel_id: Optional[str] = None
     message_id: Optional[str] = None
+    pin: bool = False
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "TeamConfig":
@@ -62,16 +68,48 @@ class TeamConfig:
         channel_id = None
         message_id = None
         cm = data.get("channelMessageId", "")
-        if cm and ":" in cm:
-            parts = cm.split(":", 1)
-            channel_id = parts[0]
-            message_id = parts[1]
+        if cm:
+            if ":" in cm:
+                parts = cm.split(":", 1)
+                channel_id = parts[0].strip() or None
+                message_id = parts[1].strip() or None
+            else:
+                channel_id = cm.strip() or None
         return cls(
             name=data.get("name", "Unknown"),
             vlr_team_id=data.get("vlrTeamId") or None,
             channel_id=channel_id,
             message_id=message_id,
+            pin=bool(data.get("pin", False)),
         )
+
+
+def _save_team_channel_message(
+    guild_id: str, team_name: str, channel_id: str, message_id: str
+) -> None:
+    """Update the channelMessageId for a specific team in config.json."""
+    try:
+        with open(CONFIG_PATH, "r", encoding="utf-8") as file:
+            data = json.load(file)
+    except (FileNotFoundError, json.JSONDecodeError) as e:
+        logger.error("Could not read config for vlrgg team save: %s", e)
+        return
+
+    servers = data.setdefault("servers", {})
+    guild = servers.setdefault(str(guild_id), {})
+    mod = guild.setdefault("moduleVlrgg", {})
+    teams = mod.setdefault("teams", [])
+    combined = f"{channel_id}:{message_id}"
+    for team in teams:
+        if team.get("name") == team_name:
+            team["channelMessageId"] = combined
+            break
+    else:
+        teams.append({"name": team_name, "channelMessageId": combined})
+
+    with open(CONFIG_PATH, "w", encoding="utf-8") as file:
+        json.dump(data, file, indent=4)
+    logger.info("Saved channelMessageId for team %s on guild %s", team_name, guild_id)
 
 
 @dataclass
@@ -149,20 +187,40 @@ class VlrggTrackerExtension(Extension):
                     notification_channel=server_state.notification_channel,
                 )
 
-                # Charger le message de planning si configuré
-                if team_cfg.channel_id and team_cfg.message_id:
+                # Charger le message de planning; créer si manquant et channel connu
+                if team_cfg.channel_id:
                     try:
                         channel = await self.bot.fetch_channel(team_cfg.channel_id)
-                        if channel and hasattr(channel, "fetch_message"):
-                            team_state.schedule_message = await channel.fetch_message(
-                                team_cfg.message_id
-                            )
+                        if channel and hasattr(channel, "send"):
+                            msg = None
+                            if team_cfg.message_id:
+                                try:
+                                    msg = await channel.fetch_message(team_cfg.message_id)
+                                except Exception as e:
+                                    logger.warning(
+                                        f"Serveur {server_id}: message {team_cfg.message_id} introuvable pour {team_cfg.name} ({e}); recréation"
+                                    )
+                            if msg is None:
+                                msg = await channel.send(
+                                    f"Initialisation du planning de {team_cfg.name}…"
+                                )
+                                if team_cfg.pin:
+                                    try:
+                                        await msg.pin()
+                                    except Exception as e:
+                                        logger.warning("Impossible d'épingler: %s", e)
+                                _save_team_channel_message(
+                                    server_id, team_cfg.name,
+                                    str(channel.id), str(msg.id),
+                                )
+                                team_cfg.message_id = str(msg.id)
+                            team_state.schedule_message = msg
                             logger.info(
-                                f"Serveur {server_id}: message de planning chargé pour {team_cfg.name}"
+                                f"Serveur {server_id}: message de planning prêt pour {team_cfg.name}"
                             )
                     except Exception as e:
                         logger.warning(
-                            f"Serveur {server_id}: impossible de charger le message de planning "
+                            f"Serveur {server_id}: impossible d'initialiser le message de planning "
                             f"pour {team_cfg.name}: {e}"
                         )
 

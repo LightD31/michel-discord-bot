@@ -1,11 +1,23 @@
-from interactions import Embed, Extension, listen, Task, IntervalTrigger, Client, slash_command
+from interactions import (
+    Client,
+    Embed,
+    Extension,
+    IntervalTrigger,
+    Message,
+    Task,
+    listen,
+    slash_command,
+)
 from babel.numbers import format_currency
 from datetime import datetime
+from typing import Optional
 import asyncio
 from dotenv import load_dotenv
 from aiohttp import ClientError
 from src import logutil
 import os
+from src.config_manager import load_config
+from src.helpers import fetch_or_create_persistent_message, send_error
 from src.utils import fetch, escape_md
 from twitchAPI.oauth import UserAuthenticationStorageHelper
 from twitchAPI.twitch import Twitch
@@ -15,10 +27,15 @@ logger = logutil.init_logger(os.path.basename(__file__))
 load_dotenv()
 
 # Constants
-STREAMLABS_URL = "https://streamlabscharity.com/teams/@streamers-4-palestinians/streamers-4-palestinians"
+DEFAULT_STREAMLABS_URL = "https://streamlabscharity.com/teams/@streamers-4-palestinians/streamers-4-palestinians"
 COLOR = 0x005EA5
-CHANNEL_ID = 1246046086041440287
-MESSAGE_ID = 1246172482537263136
+
+_config, _module_config, _enabled_servers = load_config("moduleStreamlabsCharity")
+_guild_cfg = (
+    _module_config.get(_enabled_servers[0], {}) if _enabled_servers else {}
+)
+STREAMLABS_URL = _guild_cfg.get("streamlabsTeamUrl") or DEFAULT_STREAMLABS_URL
+
 
 class StreamlabsCharityExtension(Extension):
     def __init__(self, bot: Client):
@@ -26,6 +43,27 @@ class StreamlabsCharityExtension(Extension):
         self.twitch = None
         self.client_id = os.getenv("TWITCH_CLIENT_ID")
         self.client_secret = os.getenv("TWITCH_CLIENT_SECRET")
+        self.channel_id: Optional[str] = _guild_cfg.get("streamlabsChannelId")
+        self.message_id: Optional[str] = _guild_cfg.get("streamlabsMessageId")
+        self.pin: bool = bool(_guild_cfg.get("streamlabsPinMessage", False))
+        self.guild_id: Optional[str] = _enabled_servers[0] if _enabled_servers else None
+        self.message: Optional[Message] = None
+
+    async def _get_message(self) -> Optional[Message]:
+        if self.message is not None:
+            return self.message
+        self.message = await fetch_or_create_persistent_message(
+            self.bot,
+            channel_id=self.channel_id,
+            message_id=self.message_id,
+            module_name="moduleStreamlabsCharity",
+            message_id_key="streamlabsMessageId",
+            guild_id=self.guild_id,
+            initial_content="Initialisation Streamlabs Charity…",
+            pin=self.pin,
+            logger=logger,
+        )
+        return self.message
 
     @listen()
     async def on_startup(self):
@@ -44,8 +82,10 @@ class StreamlabsCharityExtension(Extension):
     @Task.create(IntervalTrigger(minutes=1))
     async def streamlabscharity(self):
         try:
-            channel = await self.bot.fetch_channel(CHANNEL_ID)
-            message = await channel.fetch_message(MESSAGE_ID)
+            message = await self._get_message()
+            if message is None:
+                logger.debug("Streamlabs message not configured yet; skipping")
+                return
             campaign_data = await self.fetch_campaign_data()
             members_dict = await self.fetch_members_data(campaign_data["id"])
             await self.update_live_status(members_dict)
@@ -100,11 +140,6 @@ class StreamlabsCharityExtension(Extension):
         await message.edit(content="", embeds=embeds)
 
     def categorize_members(self, members_dict):
-        # online_members = [
-        #     f"[{escape_md(member['display_name'])}](https://twitch.tv/{member['slug']} '{member.get('title', '')}')"
-        #     for member in members_dict.values()
-        #     if member["is_live"]
-        # ]
         online_members = [
             f"[{escape_md(member['display_name'])}](https://twitch.tv/{member['slug']})"
             for member in members_dict.values()
@@ -186,8 +221,10 @@ class StreamlabsCharityExtension(Extension):
     @slash_command("endcharitycount")
     async def endcharitycount(self, ctx):
         await ctx.send("Fin de la collecte de fond", ephemeral=True)
-        channel = await self.bot.fetch_channel(CHANNEL_ID)
-        message = await channel.fetch_message(MESSAGE_ID)
+        message = await self._get_message()
+        if message is None:
+            await send_error(ctx, "Message Streamlabs non configuré.")
+            return
         campaign_data = await self.fetch_campaign_data()
         members_dict = await self.fetch_members_data(campaign_data["id"])
         members_list = self.list_members(members_dict)
@@ -206,3 +243,4 @@ class StreamlabsCharityExtension(Extension):
         embed_streamers = Embed(title="Participants", color=COLOR)
         self.add_embed_fields(embed_streamers, "Merci à tous <3", members_str)
         return embed_streamers
+

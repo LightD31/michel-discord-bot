@@ -7,9 +7,11 @@ import os
 import asyncio
 from interactions import (
     Extension, Client, listen, Message, BaseChannel,
-    Task, IntervalTrigger, Embed, File, TimestampStyles, utils, slash_command, SlashContext
+    Task, IntervalTrigger, Embed, File,
+    TimestampStyles, utils, slash_command, SlashContext,
 )
 from src import logutil
+from src.helpers import fetch_or_create_persistent_message
 from src.utils import fetch, load_config
 from datetime import datetime, timezone, timedelta, date
 from typing import Dict, List, Optional, Any
@@ -53,8 +55,10 @@ def split_streamer_list(streamer_list: str, max_length: int = 1024) -> List[str]
     return chunks
 
 class Zevent(Extension):
-    CHANNEL_ID = int(_cfg.get("zeventChannelId", 993605590033117214))
-    MESSAGE_ID = int(_cfg.get("zeventMessageId", 1399095553148850176))
+    CHANNEL_ID = int(_cfg.get("zeventChannelId") or 0) or None
+    MESSAGE_ID = _cfg.get("zeventMessageId")
+    PIN_MESSAGE = bool(_cfg.get("zeventPinMessage", False))
+    GUILD_ID = _enabled_servers[0] if _enabled_servers else None
     API_URL = "https://zevent.fr/api/"
     PLANNING_API_URL = "https://zevent-api.gdoc.fr/events"
     STREAMERS_API_URL = "https://zevent-api.gdoc.fr/streamers"
@@ -226,13 +230,20 @@ class Zevent(Extension):
     @listen()
     async def on_startup(self):
         try:
-            self.channel = await self.client.fetch_channel(self.CHANNEL_ID)
-            if hasattr(self.channel, 'fetch_message'):
-                self.message = await self.channel.fetch_message(self.MESSAGE_ID)
-            else:
-                logger.error(f"Channel {self.CHANNEL_ID} does not support message fetching")
-                return
-            
+            self.message = await fetch_or_create_persistent_message(
+                self.client,
+                channel_id=self.CHANNEL_ID,
+                message_id=self.MESSAGE_ID,
+                module_name="moduleZevent",
+                message_id_key="zeventMessageId",
+                guild_id=self.GUILD_ID,
+                initial_content="Initialisation Zevent…",
+                pin=self.PIN_MESSAGE,
+                logger=logger,
+            )
+            if self.message is not None:
+                self.channel = self.message.channel
+
             self.twitch = await Twitch(config["twitch"]["twitchClientId"], config["twitch"]["twitchClientSecret"])
             logger.info("Zevent extension initialized successfully")
             self.zevent.start()
@@ -920,7 +931,7 @@ class Zevent(Extension):
         except Exception as e:
             logger.error(f"Error creating top donations embed: {e}")
             return None
-    
+
     @slash_command(name="zevent_finish", description="Créée l'embed final après l'évènement")
     async def end(self, ctx: SlashContext):
         try:

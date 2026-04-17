@@ -21,6 +21,7 @@ from interactions.ext import paginators
 
 from src import logutil
 from src.config_manager import load_config
+from src.helpers import fetch_or_create_persistent_message
 
 logger = logutil.init_logger(os.path.basename(__file__))
 
@@ -48,25 +49,59 @@ def get_data(url):
 class SpeedonsExtension(Extension):
     def __init__(self, bot: Client):
         self.bot = bot
-        self.planning_channel_id = int(_cfg.get("speedonsChannelId") or os.getenv("TWITCH_PLANNING_CHANNEL_ID", "0"))
-        self.schedule_message_id = int(_cfg.get("speedonsScheduleMessageId", 1212843311300345896))
-        self.live_message_id = int(_cfg.get("speedonsLiveMessageId", 1213553914176348271))
+        _raw_channel = _cfg.get("speedonsChannelId") or os.getenv("TWITCH_PLANNING_CHANNEL_ID", "0")
+        self.planning_channel_id = int(_raw_channel) if _raw_channel else 0
+        self.schedule_message_id = _cfg.get("speedonsScheduleMessageId")
+        self.live_message_id = _cfg.get("speedonsLiveMessageId")
+        self.pin_messages = bool(_cfg.get("speedonsPinMessages", False))
+        self.guild_id: Optional[str] = _enabled_servers[0] if _enabled_servers else None
         self.channel: Optional[BaseChannel] = None
         self.message: Optional[Message] = None
         self.message2: Optional[Message] = None
 
+    async def _ensure_messages(self) -> bool:
+        if self.message is None:
+            self.message = await fetch_or_create_persistent_message(
+                self.bot,
+                channel_id=self.planning_channel_id,
+                message_id=self.schedule_message_id,
+                module_name="moduleSpeedons",
+                message_id_key="speedonsScheduleMessageId",
+                guild_id=self.guild_id,
+                initial_content="Initialisation du planning Speedons…",
+                pin=self.pin_messages,
+                logger=logger,
+            )
+        if self.message2 is None:
+            self.message2 = await fetch_or_create_persistent_message(
+                self.bot,
+                channel_id=self.planning_channel_id,
+                message_id=self.live_message_id,
+                module_name="moduleSpeedons",
+                message_id_key="speedonsLiveMessageId",
+                guild_id=self.guild_id,
+                initial_content="Initialisation du run en cours…",
+                pin=self.pin_messages,
+                logger=logger,
+            )
+        return self.message is not None and self.message2 is not None
+
     @listen()
     async def on_startup(self):
-        self.channel: BaseChannel = await self.bot.fetch_channel(
-            self.planning_channel_id
-        )
-        self.message: Message = await self.channel.fetch_message(self.schedule_message_id)
-        self.message2: Message = await self.channel.fetch_message(self.live_message_id)
+        if self.planning_channel_id:
+            try:
+                self.channel = await self.bot.fetch_channel(self.planning_channel_id)
+            except Exception as e:
+                logger.error("Could not fetch Speedons channel: %s", e)
+        await self._ensure_messages()
         self.get_speedons_schedule.start()
         await self.get_speedons_schedule()
 
     @Task.create(IntervalTrigger(minutes=5))
     async def get_speedons_schedule(self):
+        if not await self._ensure_messages():
+            logger.debug("Speedons messages not available yet; skipping update")
+            return
         events_url = get_url("events")
         attendees_url = get_url("attendees")
         amount_url = BASE_URL

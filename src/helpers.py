@@ -1,10 +1,17 @@
 """Shared helpers to avoid code duplication across extensions."""
 
+import logging
 import random
 from datetime import datetime
 from typing import Any, Callable, Optional
 
-from interactions import AutocompleteContext, Client, Embed, SlashContext
+from interactions import (
+    AutocompleteContext,
+    Client,
+    Embed,
+    Message,
+    SlashContext,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -166,3 +173,80 @@ async def guild_group_autocomplete(
 def is_guild_enabled(guild_id: int | str, enabled_servers: list[str]) -> bool:
     """Return True if the guild is in the enabled servers list."""
     return str(guild_id) in enabled_servers
+
+
+# ---------------------------------------------------------------------------
+# Persistent module message (auto-create + pin + persist id)
+# ---------------------------------------------------------------------------
+
+async def fetch_or_create_persistent_message(
+    bot: Client,
+    *,
+    channel_id: int | str | None,
+    message_id: int | str | None,
+    module_name: str,
+    message_id_key: str,
+    guild_id: int | str | None = None,
+    initial_content: str = "Initialisation…",
+    pin: bool = False,
+    logger: Optional[logging.Logger] = None,
+) -> Optional[Message]:
+    """Return the module's persistent Discord message, creating it if missing.
+
+    Flow:
+      1. If ``message_id`` is set, try to fetch it from ``channel_id``.
+      2. On miss (deleted, None, error), send a placeholder in the channel,
+         optionally pin it, and persist the new id in ``config.json`` under
+         ``servers.<guild_id>.<module_name>.<message_id_key>``.
+
+    Callers should store the returned Message and edit it going forward.
+    """
+    if not channel_id:
+        return None
+
+    try:
+        channel = await bot.fetch_channel(int(channel_id))
+    except Exception as e:
+        if logger:
+            logger.error("Could not fetch channel %s: %s", channel_id, e)
+        return None
+    if channel is None or not hasattr(channel, "send"):
+        return None
+
+    if message_id:
+        try:
+            existing = await channel.fetch_message(int(message_id))
+            if existing is not None:
+                return existing
+        except Exception as e:
+            if logger:
+                logger.warning(
+                    "Persistent message %s missing in channel %s (%s); recreating",
+                    message_id, channel_id, e,
+                )
+
+    try:
+        msg = await channel.send(initial_content)
+    except Exception as e:
+        if logger:
+            logger.error("Could not create persistent message in %s: %s", channel_id, e)
+        return None
+
+    if pin:
+        try:
+            await msg.pin()
+        except Exception as e:
+            if logger:
+                logger.warning("Could not pin persistent message %s: %s", msg.id, e)
+
+    if guild_id is not None:
+        try:
+            from src.config_manager import save_module_field
+            save_module_field(module_name, guild_id, message_id_key, str(msg.id))
+        except Exception as e:
+            if logger:
+                logger.error("Could not save message id to config: %s", e)
+
+    return msg
+
+

@@ -349,6 +349,67 @@ def create_app(bot=None, bot_loop=None) -> FastAPI:
 
         return JSONResponse(result)
 
+    @app.get("/api/servers/{server_id}/channels")
+    async def api_get_server_channels(request: Request, server_id: str):
+        """List text/news channels for the given server (for channel-picker dropdowns)."""
+        _require_admin(request)
+        if not bot or not bot_loop:
+            raise HTTPException(status_code=503, detail="Bot non disponible")
+
+        async def _fetch():
+            from interactions import ChannelType
+            try:
+                guild = await bot.fetch_guild(int(server_id))
+            except Exception as e:
+                raise HTTPException(status_code=404, detail=f"Serveur introuvable: {e}")
+            if guild is None:
+                raise HTTPException(status_code=404, detail="Serveur introuvable")
+            try:
+                channels = await guild.fetch_channels()
+            except Exception:
+                channels = getattr(guild, "channels", []) or []
+            allowed = {ChannelType.GUILD_TEXT, ChannelType.GUILD_NEWS, ChannelType.GUILD_ANNOUNCEMENT_THREAD, ChannelType.GUILD_PUBLIC_THREAD}
+            result = []
+            for c in channels:
+                try:
+                    ctype = getattr(c, "type", None)
+                    if ctype not in allowed:
+                        continue
+                    parent_id = None
+                    parent = getattr(c, "parent_id", None) or getattr(c, "category_id", None)
+                    if parent:
+                        parent_id = str(parent)
+                    result.append({
+                        "id": str(c.id),
+                        "name": getattr(c, "name", str(c.id)),
+                        "parent_id": parent_id,
+                        "position": getattr(c, "position", 0) or 0,
+                    })
+                except Exception:
+                    continue
+            # Also include categories so the frontend can group
+            categories = []
+            for c in channels:
+                if getattr(c, "type", None) == ChannelType.GUILD_CATEGORY:
+                    categories.append({
+                        "id": str(c.id),
+                        "name": getattr(c, "name", str(c.id)),
+                        "position": getattr(c, "position", 0) or 0,
+                    })
+            result.sort(key=lambda x: x["position"])
+            categories.sort(key=lambda x: x["position"])
+            return {"channels": result, "categories": categories}
+
+        try:
+            future = asyncio.run_coroutine_threadsafe(_fetch(), bot_loop)
+            data = await asyncio.wrap_future(future)
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Failed to list channels for {server_id}: {e}")
+            raise HTTPException(status_code=500, detail=str(e))
+        return JSONResponse(data)
+
     @app.get("/api/servers/{server_id}")
     async def api_get_server(request: Request, server_id: str):
         """Get configuration for a specific server."""
@@ -521,10 +582,11 @@ def create_app(bot=None, bot_loop=None) -> FastAPI:
         guild_config = module_config.get(server_id, {})
         channel_id = guild_config.get("channelId")
         message_id = guild_config.get("messageId")
+        pin_message = bool(guild_config.get("pinMessage", False))
         embeds_config = guild_config.get("embeds", [])
 
-        if not channel_id or not message_id:
-            raise HTTPException(status_code=400, detail="Salon ou message cible non configuré")
+        if not channel_id:
+            raise HTTPException(status_code=400, detail="Salon de publication non configuré")
         if not embeds_config:
             raise HTTPException(status_code=400, detail="Aucun embed configuré")
 
@@ -535,9 +597,21 @@ def create_app(bot=None, bot_loop=None) -> FastAPI:
 
         try:
             async def _publish():
-                channel = await bot.fetch_channel(int(channel_id))
-                message = await channel.fetch_message(int(message_id))
-                await message.edit(embeds=discord_embeds)
+                from src.helpers import fetch_or_create_persistent_message
+                message = await fetch_or_create_persistent_message(
+                    bot,
+                    channel_id=channel_id,
+                    message_id=message_id,
+                    module_name="moduleEmbedManager",
+                    message_id_key="messageId",
+                    guild_id=server_id,
+                    initial_content="Initialisation…",
+                    pin=pin_message,
+                    logger=logger,
+                )
+                if message is None:
+                    raise RuntimeError("Impossible de créer ou récupérer le message cible")
+                await message.edit(content="", embeds=discord_embeds)
 
             future = asyncio.run_coroutine_threadsafe(_publish(), bot_loop)
             await asyncio.wrap_future(future)

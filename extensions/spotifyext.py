@@ -16,18 +16,22 @@ import spotipy
 from interactions import (
     ActionRow,
     AutocompleteContext,
+    BaseChannel,
     Button,
     ButtonStyle,
+    ChannelType,
     Client,
     Embed,
     Extension,
     IntervalTrigger,
     MaterialColors,
+    Message,
     Modal,
     ModalContext,
     OptionType,
     OrTrigger,
     ParagraphText,
+    Permissions,
     ShortText,
     SlashContext,
     Task,
@@ -36,6 +40,7 @@ from interactions import (
     TimeTrigger,
     listen,
     slash_command,
+    slash_default_member_permission,
     slash_option,
 )
 from interactions.api.events import Component
@@ -54,7 +59,13 @@ from src.spotify import (
     embed_message_vote_add,
 )
 from src.config_manager import load_config, load_discord2name
-from src.helpers import Colors, fetch_user_safe, send_error
+from src.helpers import (
+    Colors,
+    fetch_or_create_persistent_message,
+    fetch_user_safe,
+    send_error,
+    send_success,
+)
 from src.utils import milliseconds_to_string
 
 # Constants and Configuration
@@ -144,6 +155,8 @@ class ServerData:
         self.new_playlist_id = config.get("spotifyNewPlaylistId")
         self.recap_channel_id = config.get("spotifyRecapChannelId")
         self.recap_message_id = config.get("spotifyRecapMessageId")
+        self.recap_pin = bool(config.get("spotifyRecapPinMessage", False))
+        self.recap_message: Message | None = None
 
         # Per-server MongoDB collections (motor async)
         db = mongo_manager.get_guild_db(guild_id)
@@ -703,12 +716,23 @@ class SpotifyExtension(Extension):
             await self.save_snapshot(server)
             logger.debug("Snapshot mis à jour")
             # Send a message indicating that the playlist has been updated
-        if server.recap_channel_id and server.recap_message_id:
+        if server.recap_channel_id:
             recap_content = f"Dernière màj de la playlist {Timestamp.utcnow().format(TimestampStyles.RelativeTime)}, si c'était il y a plus d'**une minute**, il y a probablement un problème\n`/addsong Titre et artiste de la chanson` pour ajouter une chanson\nIl y a actuellement **{server.snapshot.get('length', 0)}** chansons dans la playlist, pour un total de **{milliseconds_to_string(server.snapshot.get('duration', 0))}**\nDashboard : https://drndvs.link/StatsPlaylist"
             try:
-                recap_channel = await self.bot.fetch_channel(server.recap_channel_id)
-                recap_message = await recap_channel.fetch_message(server.recap_message_id)
-                await recap_message.edit(content=recap_content)
+                if server.recap_message is None:
+                    server.recap_message = await fetch_or_create_persistent_message(
+                        self.bot,
+                        channel_id=server.recap_channel_id,
+                        message_id=server.recap_message_id,
+                        module_name="moduleSpotify",
+                        message_id_key="spotifyRecapMessageId",
+                        guild_id=server.guild_id,
+                        initial_content=recap_content,
+                        pin=server.recap_pin,
+                        logger=logger,
+                    )
+                if server.recap_message is not None:
+                    await server.recap_message.edit(content=recap_content)
             except Exception as e:
                 logger.error("Error while trying to edit recap message: %s", e)
 

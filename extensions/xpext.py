@@ -8,6 +8,7 @@ import pymongo
 import pytz
 from interactions import (
     BaseChannel,
+    ChannelType,
     Client,
     ComponentContext,
     Embed,
@@ -15,6 +16,7 @@ from interactions import (
     Guild,
     Message,
     OptionType,
+    Permissions,
     SlashContext,
     Task,
     TimeTrigger,
@@ -22,12 +24,20 @@ from interactions import (
     client,
     listen,
     slash_command,
+    slash_default_member_permission,
     slash_option,
 )
 from interactions.api.events import MessageCreate
 from src import logutil
 from src.config_manager import load_config
-from src.helpers import Colors, fetch_user_safe, is_guild_enabled, pick_weighted_message, send_error
+from src.helpers import (
+    Colors,
+    fetch_or_create_persistent_message,
+    fetch_user_safe,
+    is_guild_enabled,
+    pick_weighted_message,
+    send_error,
+)
 from src.mongodb import mongo_manager
 from src.utils import CustomPaginator, format_number
 
@@ -596,28 +606,35 @@ class XpExtension(Extension):
         """Update the permanent leaderboard for a specific guild."""
         guild_config = module_config.get(guild_id, {})
         channel_id = guild_config.get("xpChannelId")
-        message_id = guild_config.get("xpMessageId")
-        
-        if channel_id is None or message_id is None:
-            logger.debug("No leaderboard message found for %s", guild_id)
+        if not channel_id:
+            logger.debug("No leaderboard channel configured for %s", guild_id)
             return
-        
+
         try:
             guild: Guild = await self.bot.fetch_guild(guild_id)
             if guild is None:
                 logger.error("Could not fetch guild %s", guild_id)
                 return
-            
-            channel = await guild.fetch_channel(channel_id)
-            if channel is None:
-                logger.error("Could not fetch channel %s", channel_id)
+
+            message: Message = await fetch_or_create_persistent_message(
+                self.bot,
+                channel_id=channel_id,
+                message_id=guild_config.get("xpMessageId"),
+                module_name="moduleXp",
+                message_id_key="xpMessageId",
+                guild_id=guild_id,
+                initial_content="Initialisation du leaderboard…",
+                pin=bool(guild_config.get("xpPinMessage", False)),
+                logger=logger,
+            )
+            if message is None:
+                logger.warning("Could not get or create leaderboard message for %s", guild_id)
                 return
-            
-            message: Message = await channel.fetch_message(message_id)
-            
+            guild_config["xpMessageId"] = str(message.id)
+
             embeds = await self._build_leaderboard_embeds(guild)
             paginator = CustomPaginator.create_from_embeds(self.bot, *embeds)
-            
+
             logger.debug("Updating leaderboard for %s", guild.name)
             paginator_dict = paginator.to_dict()
             await message.edit(

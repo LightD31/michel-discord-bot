@@ -91,3 +91,31 @@ def load_discord2name(guild_id: str | int) -> dict:
     """Load the discord2name mapping for a specific guild."""
     data = load_full_config()
     return data.get("servers", {}).get(str(guild_id), {}).get("discord2name", {})
+
+
+def save_module_field(
+    module_name: str, guild_id: str | int, field: str, value
+) -> None:
+    """Update a single field inside servers.<guild_id>.<module_name>.
+
+    Creates intermediate dicts if missing.
+    """
+    try:
+        with open(CONFIG_PATH, "r", encoding="utf-8") as file:
+            data = json.load(file)
+    except FileNotFoundError:
+        data = {}
+    except json.JSONDecodeError as e:
+        logger.error("Invalid JSON in %s: %s", CONFIG_PATH, e)
+        return
+
+    servers = data.setdefault("servers", {})
+    guild = servers.setdefault(str(guild_id), {})
+    module = guild.setdefault(module_name, {})
+    module[field] = value
+
+    with open(CONFIG_PATH, "w", encoding="utf-8") as file:
+        json.dump(data, file, indent=4)
+    logger.info(
+        "Updated config: servers.%s.%s.%s", guild_id, module_name, field
+    )

@@ -7,7 +7,9 @@ from typing import Optional, Union, Dict, List
 import aiohttp
 import pytz
 from interactions import (
+    AutocompleteContext,
     BaseChannel,
+    ChannelType,
     Client,
     Embed,
     EmbedFooter,
@@ -16,16 +18,23 @@ from interactions import (
     Guild,
     IntervalTrigger,
     Message,
+    OptionType,
     OrTrigger,
+    Permissions,
     ScheduledEventStatus,
     ScheduledEventType,
+    SlashContext,
     Task,
     TimestampStyles,
     TimeTrigger,
     OrTrigger,
     listen,
+    slash_command,
+    slash_default_member_permission,
+    slash_option,
     utils,
 )
+import json
 from twitchAPI.eventsub.websocket import EventSubWebsocket
 from twitchAPI.helper import first
 from twitchAPI.oauth import UserAuthenticationStorageHelper
@@ -45,9 +54,29 @@ from twitchAPI.twitch import Twitch
 from twitchAPI.type import AuthScope, TwitchResourceNotFound
 
 from src import logutil
-from src.helpers import Colors, send_error
+from src.helpers import Colors, send_error, send_success
 from src.mongodb import mongo_manager
-from src.config_manager import load_config
+from src.config_manager import CONFIG_PATH, load_config
+
+
+def _save_streamer_channel_message(
+    guild_id: str, streamer_id: str, channel_id: str, message_id: str, pin: bool
+) -> None:
+    """Persist planning channel/message for a specific streamer in config.json."""
+    try:
+        with open(CONFIG_PATH, "r", encoding="utf-8") as file:
+            data = json.load(file)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return
+    guild = data.setdefault("servers", {}).setdefault(str(guild_id), {})
+    mod = guild.setdefault("moduleTwitch", {})
+    streamer_list = mod.setdefault("twitchStreamerList", {})
+    streamer_cfg = streamer_list.setdefault(streamer_id, {})
+    streamer_cfg["twitchPlanningChannelId"] = str(channel_id)
+    streamer_cfg["twitchPlanningMessageId"] = str(message_id)
+    streamer_cfg["twitchPlanningPinMessage"] = pin
+    with open(CONFIG_PATH, "w", encoding="utf-8") as file:
+        json.dump(data, file, indent=4)
 
 logger = logutil.init_logger(os.path.basename(__file__))
 
@@ -71,6 +100,7 @@ class StreamerInfo:
         self.user_id = None
         self.planning_channel_id = int(config.get("twitchPlanningChannelId", 0))
         self.planning_message_id = int(config.get("twitchPlanningMessageId", 0))
+        self.planning_pin = bool(config.get("twitchPlanningPinMessage", False))
         self.notification_channel_id = int(config.get("twitchNotificationChannelId", 0))
         self.channel = None
         self.message = None
@@ -255,8 +285,33 @@ class TwitchExtension(Extension):
                 if streamer.planning_channel_id:
                     streamer.channel = await self.bot.fetch_channel(streamer.planning_channel_id)
 
-                    if streamer.planning_message_id:
-                        streamer.message = await streamer.channel.fetch_message(streamer.planning_message_id)
+                    msg = None
+                    if streamer.planning_message_id and streamer.channel and hasattr(streamer.channel, "fetch_message"):
+                        try:
+                            msg = await streamer.channel.fetch_message(streamer.planning_message_id)
+                        except Exception as e:
+                            logger.warning(
+                                "Streamer %s: could not fetch planning message %s (%s); recreating",
+                                streamer.streamer_id, streamer.planning_message_id, e,
+                            )
+                    if msg is None and streamer.channel and hasattr(streamer.channel, "send"):
+                        msg = await streamer.channel.send(
+                            f"Initialisation du planning de {streamer.streamer_id}…"
+                        )
+                        if streamer.planning_pin:
+                            try:
+                                await msg.pin()
+                            except Exception as e:
+                                logger.warning("Could not pin planning message: %s", e)
+                        _save_streamer_channel_message(
+                            str(streamer.guild_id),
+                            streamer.streamer_id,
+                            str(streamer.channel.id),
+                            str(msg.id),
+                            streamer.planning_pin,
+                        )
+                        streamer.planning_message_id = int(msg.id)
+                    streamer.message = msg
 
                 if streamer.notification_channel_id:
                     streamer.notif_channel = await self.bot.fetch_channel(streamer.notification_channel_id)
@@ -1168,3 +1223,76 @@ class TwitchExtension(Extension):
 
             except Exception as e:
                 logger.error(f"Error checking emotes for {streamer_id}: {e}")
+
+    @slash_command(
+        name="twitch-planning-setup",
+        description="Créer/attacher le message de planning Twitch d'un streamer",
+    )
+    @slash_option(
+        name="streamer",
+        description="ID du streamer configuré",
+        opt_type=OptionType.STRING,
+        required=True,
+        autocomplete=True,
+    )
+    @slash_option(
+        name="channel",
+        description="Canal où créer le message de planning",
+        opt_type=OptionType.CHANNEL,
+        required=True,
+        channel_types=[ChannelType.GUILD_TEXT, ChannelType.GUILD_NEWS],
+    )
+    @slash_option(
+        name="pin",
+        description="Épingler le message",
+        opt_type=OptionType.BOOLEAN,
+        required=False,
+    )
+    @slash_default_member_permission(Permissions.MANAGE_GUILD)
+    async def twitch_planning_setup(
+        self,
+        ctx: SlashContext,
+        streamer: str,
+        channel: BaseChannel,
+        pin: bool = False,
+    ):
+        if not ctx.guild:
+            await send_error(ctx, "Commande utilisable uniquement dans un serveur.")
+            return
+        streamer_key = self.get_streamer_key(int(ctx.guild.id), streamer)
+        streamer_info = self.streamers.get(streamer_key)
+        if streamer_info is None:
+            await send_error(ctx, f"Streamer '{streamer}' non trouvé pour ce serveur.")
+            return
+        msg = await channel.send(f"Initialisation du planning de {streamer}…")
+        if pin:
+            try:
+                await msg.pin()
+            except Exception as e:
+                logger.warning("Could not pin planning message: %s", e)
+        _save_streamer_channel_message(
+            str(ctx.guild.id), streamer, str(channel.id), str(msg.id), pin
+        )
+        streamer_info.planning_channel_id = int(channel.id)
+        streamer_info.planning_message_id = int(msg.id)
+        streamer_info.planning_pin = pin
+        streamer_info.channel = channel
+        streamer_info.message = msg
+        await send_success(
+            ctx,
+            f"Message de planning créé pour **{streamer}** dans {channel.mention}{' et épinglé' if pin else ''}.",
+        )
+
+    @twitch_planning_setup.autocomplete("streamer")
+    async def twitch_planning_setup_streamer_autocomplete(self, ctx: AutocompleteContext):
+        if not ctx.guild:
+            await ctx.send(choices=[])
+            return
+        guild_id = int(ctx.guild.id)
+        query = (ctx.input_text or "").lower()
+        choices = [
+            {"name": s.streamer_id, "value": s.streamer_id}
+            for s in self.streamers.values()
+            if s.guild_id == guild_id and query in s.streamer_id.lower()
+        ][:25]
+        await ctx.send(choices=choices)

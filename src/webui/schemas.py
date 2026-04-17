@@ -27,7 +27,7 @@ This is used by the Web UI to render proper forms instead of raw JSON editors.
 def _field(label: str, field_type: str = "string", required: bool = False,
            description: str = "", default=None, secret: bool = False,
            weight_field: str = "", variables: str = "", key_label: str = "",
-           value_label: str = ""):
+           value_label: str = "", hidden: bool = False):
     """Helper to create a field definition."""
     f = {
         "label": label,
@@ -48,6 +48,8 @@ def _field(label: str, field_type: str = "string", required: bool = False,
         f["keyLabel"] = key_label
     if value_label:
         f["valueLabel"] = value_label
+    if hidden:
+        f["hidden"] = True
     return f
 
 
@@ -125,11 +127,15 @@ MODULE_SCHEMAS: dict[str, dict] = {
             ),
             "confrerieRecapChannelId": _field(
                 "Salon récap", "channel",
-                description="Salon pour le message de récapitulatif."
+                description="Salon pour le message de récapitulatif (créé automatiquement)."
+            ),
+            "confrerieRecapPinMessage": _field(
+                "Épingler le message récap", "boolean", default=False,
+                description="Épingler automatiquement le message de récap."
             ),
             "confrerieRecapMessageId": _field(
-                "Message récap", "message",
-                description="ID du message de récap (mis à jour automatiquement)."
+                "Message récap", "message", hidden=True,
+                description="ID interne (géré automatiquement)."
             ),
             "confrerieDefiChannelId": _field(
                 "Salon défis", "channel",
@@ -197,11 +203,15 @@ MODULE_SCHEMAS: dict[str, dict] = {
             "enabled": _field("Activé", "boolean", default=False),
             "satisfactoryChannelId": _field(
                 "Salon statut", "channel", required=True,
-                description="Salon pour le message de statut du serveur."
+                description="Salon pour le message de statut (créé automatiquement)."
+            ),
+            "satisfactoryPinMessage": _field(
+                "Épingler le message de statut", "boolean", default=False,
+                description="Épingler automatiquement le message de statut."
             ),
             "satisfactoryMessageId": _field(
-                "Message statut", "message",
-                description="ID du message de statut (rempli automatiquement)."
+                "Message statut", "message", hidden=True,
+                description="ID interne (géré automatiquement)."
             ),
             "satisfactoryServerIp": _field(
                 "IP du serveur", "string", required=True,
@@ -257,11 +267,15 @@ MODULE_SCHEMAS: dict[str, dict] = {
             ),
             "spotifyRecapChannelId": _field(
                 "Salon message récap", "channel",
-                description="Salon où se trouve le message de récap de la playlist."
+                description="Salon où le message de récap est publié (créé automatiquement)."
+            ),
+            "spotifyRecapPinMessage": _field(
+                "Épingler le message récap", "boolean", default=False,
+                description="Épingler automatiquement le message de récap de la playlist."
             ),
             "spotifyRecapMessageId": _field(
-                "ID message récap", "message",
-                description="ID du message de récap dans le salon."
+                "ID message récap", "message", hidden=True,
+                description="ID interne (géré automatiquement)."
             ),
             "spotifyUsers": _field(
                 "Mapping Spotify (ID, Nom, Discord)", "spotifymap",
@@ -351,11 +365,15 @@ MODULE_SCHEMAS: dict[str, dict] = {
             "enabled": _field("Activé", "boolean", default=False),
             "xpChannelId": _field(
                 "Salon leaderboard", "channel",
-                description="Salon pour le leaderboard permanent."
+                description="Salon pour le leaderboard permanent (créé automatiquement)."
+            ),
+            "xpPinMessage": _field(
+                "Épingler le leaderboard", "boolean", default=False,
+                description="Épingler automatiquement le message du leaderboard."
             ),
             "xpMessageId": _field(
-                "Message leaderboard", "message",
-                description="ID du message de leaderboard (rempli automatiquement)."
+                "Message leaderboard", "message", hidden=True,
+                description="ID interne (géré automatiquement)."
             ),
             "levelUpMessageList": _field(
                 "Messages de level-up", "messagelist",
@@ -394,11 +412,15 @@ MODULE_SCHEMAS: dict[str, dict] = {
             "enabled": _field("Activé", "boolean", default=False),
             "minecraftChannelId": _field(
                 "Salon statut", "channel", required=True,
-                description="Salon pour le message de statut du serveur."
+                description="Salon pour le message de statut (créé automatiquement)."
+            ),
+            "minecraftPinMessage": _field(
+                "Épingler le message de statut", "boolean", default=False,
+                description="Épingler automatiquement le message de statut."
             ),
             "minecraftMessageId": _field(
-                "Message statut", "message",
-                description="ID du message de statut (rempli automatiquement)."
+                "Message statut", "message", hidden=True,
+                description="ID interne (géré automatiquement)."
             ),
             "minecraftUrl": _field(
                 "URL publique", "string",
@@ -476,11 +498,15 @@ MODULE_SCHEMAS: dict[str, dict] = {
             "enabled": _field("Activé", "boolean", default=False),
             "zeventChannelId": _field(
                 "Salon", "channel", required=True,
-                description="Salon où le message de suivi est posté."
+                description="Salon où le message de suivi est posté (créé automatiquement)."
+            ),
+            "zeventPinMessage": _field(
+                "Épingler le message de suivi", "boolean", default=False,
+                description="Épingler automatiquement le message de suivi."
             ),
             "zeventMessageId": _field(
-                "Message", "message",
-                description="ID du message de suivi (rempli automatiquement)."
+                "Message", "message", hidden=True,
+                description="ID interne (géré automatiquement)."
             ),
             "zeventStreamlabsApiUrl": _field(
                 "URL Streamlabs", "url",
@@ -519,15 +545,19 @@ MODULE_SCHEMAS: dict[str, dict] = {
             "enabled": _field("Activé", "boolean", default=False),
             "speedonsChannelId": _field(
                 "Salon", "channel", required=True,
-                description="Salon contenant les messages du planning."
+                description="Salon contenant les messages du planning (créés automatiquement)."
+            ),
+            "speedonsPinMessages": _field(
+                "Épingler les messages", "boolean", default=False,
+                description="Épingler automatiquement les messages planning et live."
             ),
             "speedonsScheduleMessageId": _field(
-                "Message planning", "message", required=True,
-                description="ID du message affichant le programme complet."
+                "Message planning", "message", hidden=True,
+                description="ID interne (géré automatiquement)."
             ),
             "speedonsLiveMessageId": _field(
-                "Message run en cours", "message", required=True,
-                description="ID du message affichant le run en cours."
+                "Message run en cours", "message", hidden=True,
+                description="ID interne (géré automatiquement)."
             ),
             "speedonsApiUrl": _field(
                 "URL API", "url",
@@ -542,6 +572,33 @@ MODULE_SCHEMAS: dict[str, dict] = {
         },
     },
 
+    "moduleStreamlabsCharity": {
+        "label": "Streamlabs Charity",
+        "description": "Suivi d'une campagne Streamlabs Charity en direct.",
+        "icon": "❤️",
+        "category": "Événements",
+        "fields": {
+            "enabled": _field("Activé", "boolean", default=False),
+            "streamlabsChannelId": _field(
+                "Salon", "channel", required=True,
+                description="Salon pour le message de suivi (créé automatiquement)."
+            ),
+            "streamlabsPinMessage": _field(
+                "Épingler le message", "boolean", default=False,
+                description="Épingler automatiquement le message de suivi."
+            ),
+            "streamlabsTeamUrl": _field(
+                "URL de la team", "url",
+                default="https://streamlabscharity.com/teams/@streamers-4-palestinians/streamers-4-palestinians",
+                description="URL publique de la team Streamlabs Charity."
+            ),
+            "streamlabsMessageId": _field(
+                "Message suivi", "message", hidden=True,
+                description="ID interne (géré automatiquement)."
+            ),
+        },
+    },
+
     "moduleEmbedManager": {
         "label": "Gestionnaire d'Embeds",
         "description": "Création et publication d'embeds personnalisés.",
@@ -551,11 +608,15 @@ MODULE_SCHEMAS: dict[str, dict] = {
             "enabled": _field("Activé", "boolean", default=False),
             "channelId": _field(
                 "Salon de publication", "channel", required=True,
-                description="Salon pour publier les embeds."
+                description="Salon pour publier les embeds (message créé automatiquement)."
+            ),
+            "pinMessage": _field(
+                "Épingler le message", "boolean", default=False,
+                description="Épingler automatiquement le message publié."
             ),
             "messageId": _field(
-                "Message cible", "message",
-                description="ID du message à mettre à jour avec les embeds."
+                "Message cible", "message", hidden=True,
+                description="ID interne (géré automatiquement)."
             ),
             "embeds": _field(
                 "Embeds", "embedlist",

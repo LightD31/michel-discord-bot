@@ -12,25 +12,36 @@ import prettytable
 from interactions import (
     BaseChannel,
     BrandColors,
+    ChannelType,
     Embed,
     Extension,
     File,
     Guild,
     IntervalTrigger,
     Message,
+    OptionType,
     OrTrigger,
+    Permissions,
     ScheduledEventStatus,
     ScheduledEventType,
+    SlashContext,
     Task,
     TimeTrigger,
     Timestamp,
     TimestampStyles,
     listen,
+    slash_command,
+    slash_default_member_permission,
+    slash_option,
 )
 from interactions.client.utils import timestamp_converter
 from mcstatus import JavaServer
 
 from src import logutil
+from src.helpers import (
+    fetch_or_create_persistent_message,
+    send_error,
+)
 from src.minecraft_config import get_config as get_mc_config
 from src.utils import create_dynamic_image, load_config
 
@@ -47,6 +58,8 @@ MINECRAFT_IP = module_config.get("minecraftIp", "")
 MINECRAFT_PORT = int(module_config.get("minecraftPort", 0))
 CHANNEL_ID_KUBZ = module_config.get("minecraftChannelId")
 MESSAGE_ID_KUBZ = module_config.get("minecraftMessageId")
+MINECRAFT_GUILD_ID = enabled_servers[0] if enabled_servers else None
+PIN_STATUS_MESSAGE = bool(module_config.get("minecraftPinMessage", False))
 SFTPS_PASSWORD = module_config.get("minecraftSftpsPassword", "")
 SFTP_HOST = module_config.get("minecraftSftpHost", MINECRAFT_IP)
 SFTP_PORT = int(module_config.get("minecraftSftpPort", 2225))
@@ -68,6 +81,24 @@ class Minecraft(Extension):
         self.serverColoc = None
         self.channel_edit_timestamp = datetime.fromtimestamp(0)
         self.scheduled_event = None
+        self.status_message: Message | None = None
+
+    async def _get_status_message(self) -> Message | None:
+        """Return the persistent status message, creating it on first access."""
+        if self.status_message is not None:
+            return self.status_message
+        self.status_message = await fetch_or_create_persistent_message(
+            self.bot,
+            channel_id=CHANNEL_ID_KUBZ,
+            message_id=MESSAGE_ID_KUBZ,
+            module_name="moduleMinecraft",
+            message_id_key="minecraftMessageId",
+            guild_id=MINECRAFT_GUILD_ID,
+            initial_content="Initialisation du statut Minecraft…",
+            pin=PIN_STATUS_MESSAGE,
+            logger=logger,
+        )
+        return self.status_message
 
     @listen()
     async def on_startup(self):
@@ -109,9 +140,11 @@ class Minecraft(Extension):
             
         logger.debug("Updating Minecraft server status")
         try:
-            logger.debug(f"Fetching channel={CHANNEL_ID_KUBZ}, message={MESSAGE_ID_KUBZ}")
-            channel: BaseChannel = await self.bot.fetch_channel(CHANNEL_ID_KUBZ)
-            message: Message = await channel.fetch_message(MESSAGE_ID_KUBZ)
+            message = await self._get_status_message()
+            if message is None:
+                logger.debug("No status message configured yet; skipping")
+                return
+            channel: BaseChannel = message.channel
 
             try:
                 embed2_timestamp = message.embeds[1].timestamp
@@ -272,9 +305,11 @@ class Minecraft(Extension):
     async def stats(self):
         """Update Minecraft server statistics every hour at X:10."""
         logger.debug("Updating Minecraft server stats")
-        channel = await self.bot.fetch_channel(CHANNEL_ID_KUBZ)
-        message = await channel.fetch_message(MESSAGE_ID_KUBZ)
-        embed1 = message.embeds[0]
+        message = await self._get_status_message()
+        if message is None:
+            logger.debug("No status message configured yet; skipping stats")
+            return
+        embed1 = message.embeds[0] if message.embeds else Embed(title="Minecraft")
 
         # Get player statistics using optimized SFTP connection
         player_stats = await self._get_player_stats()
