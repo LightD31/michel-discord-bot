@@ -368,7 +368,12 @@ def create_app(bot=None, bot_loop=None) -> FastAPI:
                 channels = await guild.fetch_channels()
             except Exception:
                 channels = getattr(guild, "channels", []) or []
-            allowed = {ChannelType.GUILD_TEXT, ChannelType.GUILD_NEWS, ChannelType.GUILD_ANNOUNCEMENT_THREAD, ChannelType.GUILD_PUBLIC_THREAD}
+            allowed = {
+                ChannelType.GUILD_TEXT,
+                ChannelType.GUILD_NEWS,
+                ChannelType.GUILD_NEWS_THREAD,
+                ChannelType.GUILD_PUBLIC_THREAD,
+            }
             result = []
             for c in channels:
                 try:
