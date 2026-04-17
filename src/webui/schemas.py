@@ -309,27 +309,7 @@ MODULE_SCHEMAS: dict[str, dict] = {
             "enabled": _field("Activé", "boolean", default=False),
             "twitchStreamerList": _field(
                 "Streamers suivis", "streamermap", required=True,
-                description="Liste des streamers Twitch à suivre. Renseignez le login Twitch, le salon du planning et le salon des notifications. Le message de planning est créé automatiquement."
-            ),
-            "notifyStreamStart": _field(
-                "Début de live", "boolean", default=False,
-                description="Envoyer une notification quand un stream démarre."
-            ),
-            "notifyStreamUpdate": _field(
-                "Changements de live", "boolean", default=False,
-                description="Envoyer une notification quand le titre ou la catégorie du live change."
-            ),
-            "notifyStreamEnd": _field(
-                "Résumé de fin de live", "boolean", default=False,
-                description="Envoyer un résumé (durée, catégories jouées, VOD) à la fin du live."
-            ),
-            "notifyEmoteChanges": _field(
-                "Changements d'emotes", "boolean", default=False,
-                description="Notifier les ajouts, suppressions et remplacements d'emotes sur la chaîne."
-            ),
-            "manageDiscordEvents": _field(
-                "Événements Discord", "boolean", default=False,
-                description="Créer et mettre à jour automatiquement un événement Discord programmé pendant le live."
+                description="Liste des streamers Twitch à suivre. Chaque streamer a ses propres salons et préférences de notifications."
             ),
         },
     },

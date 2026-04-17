@@ -1448,46 +1448,55 @@
         .streamers-list {
             display: flex;
             flex-direction: column;
-            gap: 8px;
-        }
-
-        .streamers-header,
-        .streamer-entry {
-            display: grid;
-            grid-template-columns: 1fr 1.3fr 1.3fr 70px auto;
-            gap: 8px;
-            align-items: center;
-        }
-
-        .streamers-header {
-            padding: 0 12px;
-            font-size: 11px;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            color: var(--text-muted);
+            gap: 10px;
         }
 
         .streamer-entry {
-            padding: 10px 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            padding: 12px;
             background: var(--bg-primary);
             border: 1px solid var(--border);
             border-radius: var(--radius);
         }
 
-        .streamer-entry input[type="text"] {
-            width: 100%;
+        .streamer-entry-header {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .streamer-entry-header input[type="text"] {
+            flex: 1;
             padding: 6px 8px;
             background: var(--bg-secondary);
             border: 1px solid var(--border);
             border-radius: var(--radius);
             color: var(--text-primary);
-            font-size: 13px;
+            font-size: 14px;
+            font-weight: 600;
             outline: none;
         }
 
-        .streamer-entry input[type="text"]:focus {
+        .streamer-entry-header input[type="text"]:focus {
             border-color: var(--accent);
+        }
+
+        .streamer-entry-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+
+        .streamer-field label {
+            display: block;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-muted);
+            margin-bottom: 4px;
         }
 
         .streamer-entry .channel-picker {
@@ -1520,8 +1529,28 @@
             border-color: var(--accent);
         }
 
-        .streamer-entry .streamer-pin {
-            justify-self: center;
+        .streamer-toggles {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px 14px;
+            padding-top: 8px;
+            border-top: 1px solid var(--border);
+        }
+
+        .streamer-toggle-inline {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 13px;
+            color: var(--text-secondary);
+            cursor: pointer;
+        }
+
+        .streamer-toggle-inline input[type="checkbox"] {
+            width: 15px;
+            height: 15px;
+            accent-color: var(--accent);
+            cursor: pointer;
         }
 
         .streamer-entry .btn-remove-streamer {
@@ -1540,11 +1569,8 @@
         }
 
         @media (max-width: 768px) {
-            .streamer-entry {
+            .streamer-entry-grid {
                 grid-template-columns: 1fr;
-            }
-            .streamers-header {
-                display: none;
             }
         }
 
@@ -2861,38 +2887,8 @@
                 case 'streamermap': {
                     const streamerMap = (typeof value === 'object' && value !== null && !Array.isArray(value)) ? value : {};
                     html += `<div class="streamers-list" data-field="${key}" data-type="streamermap">`;
-                    html += `<div class="streamers-header"><span>Login Twitch</span><span>Salon planning</span><span>Salon notifications</span><span>Épingler</span><span></span></div>`;
                     Object.entries(streamerMap).forEach(([login, cfg]) => {
-                        const planningChan = cfg && cfg.twitchPlanningChannelId ? String(cfg.twitchPlanningChannelId) : '';
-                        const notifChan = cfg && cfg.twitchNotificationChannelId ? String(cfg.twitchNotificationChannelId) : '';
-                        const planningMsg = cfg && cfg.twitchPlanningMessageId ? String(cfg.twitchPlanningMessageId) : '';
-                        const pin = !!(cfg && cfg.twitchPlanningPinMessage);
-                        html += `
-                            <div class="streamer-entry">
-                                <input type="text" data-streamer-field="login" value="${escapeHtml(login)}" placeholder="ex: zerator">
-                                <div class="channel-picker" data-streamer-field="twitchPlanningChannelId" data-current="${escapeHtml(planningChan)}">
-                                    <select class="form-input channel-picker-select">
-                                        <option value="">— Chargement des salons… —</option>
-                                        ${planningChan ? `<option value="${escapeHtml(planningChan)}" selected>${escapeHtml(planningChan)}</option>` : ''}
-                                    </select>
-                                    <input type="text" class="form-input channel-picker-manual" value="${escapeHtml(planningChan)}" placeholder="ID du salon" style="display:none;">
-                                    <button type="button" class="btn-channel-toggle" onclick="toggleChannelPickerMode(this)" title="Saisie manuelle">✎</button>
-                                </div>
-                                <div class="channel-picker" data-streamer-field="twitchNotificationChannelId" data-current="${escapeHtml(notifChan)}">
-                                    <select class="form-input channel-picker-select">
-                                        <option value="">— Chargement des salons… —</option>
-                                        ${notifChan ? `<option value="${escapeHtml(notifChan)}" selected>${escapeHtml(notifChan)}</option>` : ''}
-                                    </select>
-                                    <input type="text" class="form-input channel-picker-manual" value="${escapeHtml(notifChan)}" placeholder="ID du salon" style="display:none;">
-                                    <button type="button" class="btn-channel-toggle" onclick="toggleChannelPickerMode(this)" title="Saisie manuelle">✎</button>
-                                </div>
-                                <label class="toggle streamer-pin">
-                                    <input type="checkbox" data-streamer-field="twitchPlanningPinMessage" ${pin ? 'checked' : ''}>
-                                    <span class="toggle-slider"></span>
-                                </label>
-                                <input type="hidden" data-streamer-field="twitchPlanningMessageId" value="${escapeHtml(planningMsg)}">
-                                <button class="btn-remove-streamer" onclick="this.closest('.streamer-entry').remove()" title="Supprimer">✕</button>
-                            </div>`;
+                        html += renderStreamerEntry(login, cfg || {});
                     });
                     html += `</div>`;
                     html += `<button type="button" class="btn-add-entry" onclick="addStreamerEntry(this)">+ Ajouter un streamer</button>`;
@@ -3184,13 +3180,15 @@
                 };
                 const planningChan = pickValue(planningPicker);
                 const notifChan = pickValue(notifPicker);
-                const pin = entry.querySelector('[data-streamer-field="twitchPlanningPinMessage"]')?.checked === true;
                 const messageId = entry.querySelector('[data-streamer-field="twitchPlanningMessageId"]')?.value?.trim() || '';
                 const cfg = {};
                 if (planningChan) cfg.twitchPlanningChannelId = planningChan;
                 if (messageId) cfg.twitchPlanningMessageId = messageId;
-                if (pin) cfg.twitchPlanningPinMessage = true;
                 if (notifChan) cfg.twitchNotificationChannelId = notifChan;
+                for (const t of STREAMER_TOGGLE_FIELDS) {
+                    const cb = entry.querySelector(`[data-streamer-field="${t.key}"]`);
+                    if (cb && cb.checked) cfg[t.key] = true;
+                }
                 streamerMap[login] = cfg;
             }
             result[key] = streamerMap;
@@ -3302,34 +3300,65 @@
         entry.querySelector('input').focus();
     }
 
+    const STREAMER_TOGGLE_FIELDS = [
+        {key: 'twitchPlanningPinMessage', label: 'Épingler le planning'},
+        {key: 'notifyStreamStart', label: 'Début de live'},
+        {key: 'notifyStreamUpdate', label: 'Changements live'},
+        {key: 'notifyStreamEnd', label: 'Fin de live'},
+        {key: 'notifyEmoteChanges', label: 'Emotes'},
+        {key: 'manageDiscordEvents', label: 'Événement Discord'},
+    ];
+
+    function renderStreamerEntry(login, cfg) {
+        const planningChan = cfg.twitchPlanningChannelId ? String(cfg.twitchPlanningChannelId) : '';
+        const notifChan = cfg.twitchNotificationChannelId ? String(cfg.twitchNotificationChannelId) : '';
+        const planningMsg = cfg.twitchPlanningMessageId ? String(cfg.twitchPlanningMessageId) : '';
+        const toggles = STREAMER_TOGGLE_FIELDS.map(t => `
+            <label class="streamer-toggle-inline">
+                <input type="checkbox" data-streamer-field="${t.key}" ${cfg[t.key] ? 'checked' : ''}>
+                <span>${escapeHtml(t.label)}</span>
+            </label>`).join('');
+        return `
+            <div class="streamer-entry">
+                <div class="streamer-entry-header">
+                    <input type="text" data-streamer-field="login" value="${escapeHtml(login || '')}" placeholder="Login Twitch (ex: zerator)">
+                    <button class="btn-remove-streamer" onclick="this.closest('.streamer-entry').remove()" title="Supprimer">✕</button>
+                </div>
+                <div class="streamer-entry-grid">
+                    <div class="streamer-field">
+                        <label>Salon planning</label>
+                        <div class="channel-picker" data-streamer-field="twitchPlanningChannelId" data-current="${escapeHtml(planningChan)}">
+                            <select class="form-input channel-picker-select">
+                                <option value="">— Chargement des salons… —</option>
+                                ${planningChan ? `<option value="${escapeHtml(planningChan)}" selected>${escapeHtml(planningChan)}</option>` : ''}
+                            </select>
+                            <input type="text" class="form-input channel-picker-manual" value="${escapeHtml(planningChan)}" placeholder="ID du salon" style="display:none;">
+                            <button type="button" class="btn-channel-toggle" onclick="toggleChannelPickerMode(this)" title="Saisie manuelle">✎</button>
+                        </div>
+                    </div>
+                    <div class="streamer-field">
+                        <label>Salon notifications</label>
+                        <div class="channel-picker" data-streamer-field="twitchNotificationChannelId" data-current="${escapeHtml(notifChan)}">
+                            <select class="form-input channel-picker-select">
+                                <option value="">— Chargement des salons… —</option>
+                                ${notifChan ? `<option value="${escapeHtml(notifChan)}" selected>${escapeHtml(notifChan)}</option>` : ''}
+                            </select>
+                            <input type="text" class="form-input channel-picker-manual" value="${escapeHtml(notifChan)}" placeholder="ID du salon" style="display:none;">
+                            <button type="button" class="btn-channel-toggle" onclick="toggleChannelPickerMode(this)" title="Saisie manuelle">✎</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="streamer-toggles">${toggles}</div>
+                <input type="hidden" data-streamer-field="twitchPlanningMessageId" value="${escapeHtml(planningMsg)}">
+            </div>`;
+    }
+
     function addStreamerEntry(btn) {
         const list = btn.previousElementSibling;
         if (!list || !list.classList.contains('streamers-list')) return;
-        const entry = document.createElement('div');
-        entry.className = 'streamer-entry';
-        entry.innerHTML = `
-            <input type="text" data-streamer-field="login" value="" placeholder="ex: zerator">
-            <div class="channel-picker" data-streamer-field="twitchPlanningChannelId" data-current="">
-                <select class="form-input channel-picker-select">
-                    <option value="">— Chargement des salons… —</option>
-                </select>
-                <input type="text" class="form-input channel-picker-manual" value="" placeholder="ID du salon" style="display:none;">
-                <button type="button" class="btn-channel-toggle" onclick="toggleChannelPickerMode(this)" title="Saisie manuelle">✎</button>
-            </div>
-            <div class="channel-picker" data-streamer-field="twitchNotificationChannelId" data-current="">
-                <select class="form-input channel-picker-select">
-                    <option value="">— Chargement des salons… —</option>
-                </select>
-                <input type="text" class="form-input channel-picker-manual" value="" placeholder="ID du salon" style="display:none;">
-                <button type="button" class="btn-channel-toggle" onclick="toggleChannelPickerMode(this)" title="Saisie manuelle">✎</button>
-            </div>
-            <label class="toggle streamer-pin">
-                <input type="checkbox" data-streamer-field="twitchPlanningPinMessage">
-                <span class="toggle-slider"></span>
-            </label>
-            <input type="hidden" data-streamer-field="twitchPlanningMessageId" value="">
-            <button class="btn-remove-streamer" onclick="this.closest('.streamer-entry').remove()" title="Supprimer">✕</button>
-        `;
+        const wrapper = document.createElement('div');
+        wrapper.innerHTML = renderStreamerEntry('', {}).trim();
+        const entry = wrapper.firstElementChild;
         list.appendChild(entry);
         populateChannelPickers(entry);
         entry.querySelector('input[type="text"]').focus();

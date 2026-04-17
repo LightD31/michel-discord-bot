@@ -102,6 +102,12 @@ class StreamerInfo:
         self.planning_message_id = int(config.get("twitchPlanningMessageId", 0))
         self.planning_pin = bool(config.get("twitchPlanningPinMessage", False))
         self.notification_channel_id = int(config.get("twitchNotificationChannelId", 0))
+        # Per-streamer notification settings
+        self.notify_stream_start = bool(config.get("notifyStreamStart", False))
+        self.notify_stream_update = bool(config.get("notifyStreamUpdate", False))
+        self.notify_stream_end = bool(config.get("notifyStreamEnd", False))
+        self.notify_emote_changes = bool(config.get("notifyEmoteChanges", False))
+        self.manage_discord_events = bool(config.get("manageDiscordEvents", False))
         self.channel = None
         self.message = None
         self.notif_channel = None
@@ -267,12 +273,6 @@ class TwitchExtension(Extension):
     def get_streamer_by_user_id(self, user_id: str) -> List[StreamerInfo]:
         """Get all streamers that match the given Twitch user ID"""
         return [s for s in self.streamers.values() if s.user_id == user_id]
-
-    def _notification_enabled(self, guild_id: int, key: str, default: bool = False) -> bool:
-        """Return whether a notification type is enabled for a given guild."""
-        cfg = self.module_config.get(str(guild_id), {})
-        val = cfg.get(key)
-        return default if val is None else bool(val)
 
     @staticmethod
     def _streamer_state_collection():
@@ -774,8 +774,7 @@ class TwitchExtension(Extension):
 
             title100 = title if len(title) <= 100 else f"{title[:97]}..."
 
-            manage_events = self._notification_enabled(streamer.guild_id, "manageDiscordEvents")
-            if manage_events:
+            if streamer.manage_discord_events:
                 try:
                     if streamer.scheduled_event:
                         await streamer.scheduled_event.edit(
@@ -948,7 +947,7 @@ class TwitchExtension(Extension):
         """Send a notification message when a stream starts."""
         if not streamer.notif_channel:
             return
-        if not self._notification_enabled(streamer.guild_id, "notifyStreamStart"):
+        if not streamer.notify_stream_start:
             return
 
         try:
@@ -1003,7 +1002,7 @@ class TwitchExtension(Extension):
         """
         if not streamer.notif_channel:
             return
-        if not self._notification_enabled(streamer.guild_id, "notifyStreamEnd"):
+        if not streamer.notify_stream_end:
             return
 
         try:
@@ -1111,8 +1110,7 @@ class TwitchExtension(Extension):
                 category_changed = streamer.last_notified_category != new_category
                 
                 # Send notification only if something actually changed
-                notify_update = self._notification_enabled(streamer.guild_id, "notifyStreamUpdate")
-                if streamer.notif_channel and notify_update and (title_changed or category_changed):
+                if streamer.notif_channel and streamer.notify_stream_update and (title_changed or category_changed):
                     # Update the last notified values
                     streamer.last_notified_title = new_title
                     streamer.last_notified_category = new_category
@@ -1265,7 +1263,7 @@ class TwitchExtension(Extension):
 
                         # Send notification to all guilds following this streamer
                         for streamer in guild_streamers:
-                            if not self._notification_enabled(streamer.guild_id, "notifyEmoteChanges"):
+                            if not streamer.notify_emote_changes:
                                 continue
                             embed = await self.create_notification_embed(
                                 streamer.guild_id,
@@ -1313,7 +1311,7 @@ class TwitchExtension(Extension):
 
                         # Send notification to all guilds following this streamer
                         for streamer in guild_streamers:
-                            if not self._notification_enabled(streamer.guild_id, "notifyEmoteChanges"):
+                            if not streamer.notify_emote_changes:
                                 continue
                             embed = await self.create_notification_embed(
                                 streamer.guild_id,
@@ -1339,7 +1337,7 @@ class TwitchExtension(Extension):
 
                         # Send notification to all guilds following this streamer
                         for streamer in guild_streamers:
-                            if not self._notification_enabled(streamer.guild_id, "notifyEmoteChanges"):
+                            if not streamer.notify_emote_changes:
                                 continue
                             embed = await self.create_notification_embed(
                                 streamer.guild_id,
