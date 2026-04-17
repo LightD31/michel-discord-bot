@@ -268,6 +268,12 @@ class TwitchExtension(Extension):
         """Get all streamers that match the given Twitch user ID"""
         return [s for s in self.streamers.values() if s.user_id == user_id]
 
+    def _notification_enabled(self, guild_id: int, key: str, default: bool = False) -> bool:
+        """Return whether a notification type is enabled for a given guild."""
+        cfg = self.module_config.get(str(guild_id), {})
+        val = cfg.get(key)
+        return default if val is None else bool(val)
+
     @staticmethod
     def _streamer_state_collection():
         return mongo_manager.get_global_collection("twitch_streamer_state")
@@ -768,26 +774,34 @@ class TwitchExtension(Extension):
 
             title100 = title if len(title) <= 100 else f"{title[:97]}..."
 
-            # Handle scheduled event
-            try:
-                if streamer.scheduled_event:
-                    await streamer.scheduled_event.edit(
-                        name=title100,
-                        description=f"**{title}**\n\n{description}",
-                        end_time=datetime.now(self.timezone) + timedelta(days=1),
-                    )
-                else:
-                    streamer.scheduled_event = await guild.create_scheduled_event(
-                        name=title100,
-                        event_type=ScheduledEventType.EXTERNAL,
-                        external_location=f"https://twitch.tv/{user_login}",
-                        start_time=datetime.now(self.timezone) + timedelta(seconds=5),
-                        end_time=datetime.now(self.timezone) + timedelta(days=1),
-                        description=f"**{title}**\n\n{description}",
-                    )
-                    await streamer.scheduled_event.edit(status=ScheduledEventStatus.ACTIVE)
-            except Exception as e:
-                logger.error(f"Error handling scheduled event for {streamer.streamer_id}: {e}")
+            manage_events = self._notification_enabled(streamer.guild_id, "manageDiscordEvents")
+            if manage_events:
+                try:
+                    if streamer.scheduled_event:
+                        await streamer.scheduled_event.edit(
+                            name=title100,
+                            description=f"**{title}**\n\n{description}",
+                            end_time=datetime.now(self.timezone) + timedelta(days=1),
+                        )
+                    else:
+                        streamer.scheduled_event = await guild.create_scheduled_event(
+                            name=title100,
+                            event_type=ScheduledEventType.EXTERNAL,
+                            external_location=f"https://twitch.tv/{user_login}",
+                            start_time=datetime.now(self.timezone) + timedelta(seconds=5),
+                            end_time=datetime.now(self.timezone) + timedelta(days=1),
+                            description=f"**{title}**\n\n{description}",
+                        )
+                        await streamer.scheduled_event.edit(status=ScheduledEventStatus.ACTIVE)
+                except Exception as e:
+                    logger.error(f"Error handling scheduled event for {streamer.streamer_id}: {e}")
+            elif streamer.scheduled_event:
+                # Setting turned off while an event is live — clean it up
+                try:
+                    await streamer.scheduled_event.delete()
+                except Exception as e:
+                    logger.error(f"Error deleting scheduled event for {streamer.streamer_id}: {e}")
+                streamer.scheduled_event = None
 
             try:
                 await streamer.message.edit(
@@ -853,7 +867,8 @@ class TwitchExtension(Extension):
             data (StreamOnlineEvent): The event data.
         """
         user_id = data.event.broadcaster_user_id
-        logger.info("Stream is live: %s", data.event.broadcaster_user_name)
+        broadcaster_name = data.event.broadcaster_user_name
+        logger.info("Stream is live: %s", broadcaster_name)
 
         # Find all streamers matching this user_id
         streamers = self.get_streamer_by_user_id(user_id)
@@ -867,6 +882,8 @@ class TwitchExtension(Extension):
                     streamer.stream_id = stream.id
                     streamer.stream_categories = [stream.game_name] if stream.game_name else []
                     logger.info(f"Stored stream info for {streamer.streamer_id}: started at {streamer.stream_start_time}")
+
+                await self.send_stream_start_notification(streamer, broadcaster_name, stream)
 
                 # For each server tracking this streamer, update the message
                 await self.edit_message(streamer, offline=False)
@@ -922,6 +939,60 @@ class TwitchExtension(Extension):
             )
         )
 
+    async def send_stream_start_notification(
+        self,
+        streamer: StreamerInfo,
+        broadcaster_name: str,
+        stream: Optional[Stream],
+    ) -> None:
+        """Send a notification message when a stream starts."""
+        if not streamer.notif_channel:
+            return
+        if not self._notification_enabled(streamer.guild_id, "notifyStreamStart"):
+            return
+
+        try:
+            title = self.get_display_value(
+                stream.title if stream else None, "Titre non renseigné"
+            )
+            category = self.get_display_value(
+                stream.game_name if stream else None, "Catégorie non renseignée"
+            )
+
+            embed = await self.create_notification_embed(
+                streamer.guild_id,
+                title=f"{broadcaster_name} est en live !",
+                description=f"[Rejoindre le stream](https://twitch.tv/{streamer.streamer_id})",
+                color=Colors.TWITCH,
+            )
+            embed.add_field(name="Titre", value=title, inline=False)
+            embed.add_field(name="Catégorie", value=category, inline=True)
+            if stream and stream.viewer_count is not None:
+                embed.add_field(name="Viewers", value=str(stream.viewer_count), inline=True)
+
+            if stream and stream.thumbnail_url:
+                embed.set_image(
+                    url=f"{stream.thumbnail_url.format(width=1280, height=720)}?{datetime.now().timestamp()}"
+                )
+
+            try:
+                user: TwitchUser = await first(self.twitch.get_users(user_ids=[streamer.user_id]))
+                if user:
+                    embed.set_thumbnail(url=user.profile_image_url)
+            except Exception as e:
+                logger.debug(f"Could not fetch user info for thumbnail: {e}")
+
+            await streamer.notif_channel.send(embed=embed)
+            logger.info(
+                "Sent stream start notification for %s in guild %s",
+                streamer.streamer_id, streamer.guild_id,
+            )
+        except Exception as e:
+            logger.error(
+                "Error sending stream start notification for %s: %s",
+                streamer.streamer_id, e,
+            )
+
     async def send_stream_end_notification(self, streamer: StreamerInfo, broadcaster_name: str):
         """
         Send a notification message when a stream ends with stream summary.
@@ -931,6 +1002,8 @@ class TwitchExtension(Extension):
             broadcaster_name (str): The broadcaster's display name.
         """
         if not streamer.notif_channel:
+            return
+        if not self._notification_enabled(streamer.guild_id, "notifyStreamEnd"):
             return
 
         try:
@@ -1038,7 +1111,8 @@ class TwitchExtension(Extension):
                 category_changed = streamer.last_notified_category != new_category
                 
                 # Send notification only if something actually changed
-                if streamer.notif_channel and (title_changed or category_changed):
+                notify_update = self._notification_enabled(streamer.guild_id, "notifyStreamUpdate")
+                if streamer.notif_channel and notify_update and (title_changed or category_changed):
                     # Update the last notified values
                     streamer.last_notified_title = new_title
                     streamer.last_notified_category = new_category
@@ -1191,6 +1265,8 @@ class TwitchExtension(Extension):
 
                         # Send notification to all guilds following this streamer
                         for streamer in guild_streamers:
+                            if not self._notification_enabled(streamer.guild_id, "notifyEmoteChanges"):
+                                continue
                             embed = await self.create_notification_embed(
                                 streamer.guild_id,
                                 title="Mise à jour d'emote",
@@ -1237,6 +1313,8 @@ class TwitchExtension(Extension):
 
                         # Send notification to all guilds following this streamer
                         for streamer in guild_streamers:
+                            if not self._notification_enabled(streamer.guild_id, "notifyEmoteChanges"):
+                                continue
                             embed = await self.create_notification_embed(
                                 streamer.guild_id,
                                 title="Nouvel emote ajouté",
@@ -1261,6 +1339,8 @@ class TwitchExtension(Extension):
 
                         # Send notification to all guilds following this streamer
                         for streamer in guild_streamers:
+                            if not self._notification_enabled(streamer.guild_id, "notifyEmoteChanges"):
+                                continue
                             embed = await self.create_notification_embed(
                                 streamer.guild_id,
                                 title="Emote supprimé",
