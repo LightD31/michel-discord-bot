@@ -27,7 +27,7 @@ This is used by the Web UI to render proper forms instead of raw JSON editors.
 def _field(label: str, field_type: str = "string", required: bool = False,
            description: str = "", default=None, secret: bool = False,
            weight_field: str = "", variables: str = "", key_label: str = "",
-           value_label: str = "", hidden: bool = False):
+           value_label: str = "", hidden: bool = False, channel_field: str = ""):
     """Helper to create a field definition."""
     f = {
         "label": label,
@@ -50,6 +50,8 @@ def _field(label: str, field_type: str = "string", required: bool = False,
         f["valueLabel"] = value_label
     if hidden:
         f["hidden"] = True
+    if channel_field:
+        f["channelField"] = channel_field
     return f
 
 
@@ -135,6 +137,7 @@ MODULE_SCHEMAS: dict[str, dict] = {
             ),
             "confrerieRecapMessageId": _field(
                 "Message récap", "message", hidden=True,
+                channel_field="confrerieRecapChannelId",
                 description="ID interne (géré automatiquement)."
             ),
             "confrerieDefiChannelId": _field(
@@ -211,6 +214,7 @@ MODULE_SCHEMAS: dict[str, dict] = {
             ),
             "satisfactoryMessageId": _field(
                 "Message statut", "message", hidden=True,
+                channel_field="satisfactoryChannelId",
                 description="ID interne (géré automatiquement)."
             ),
             "satisfactoryServerIp": _field(
@@ -275,6 +279,7 @@ MODULE_SCHEMAS: dict[str, dict] = {
             ),
             "spotifyRecapMessageId": _field(
                 "ID message récap", "message", hidden=True,
+                channel_field="spotifyRecapChannelId",
                 description="ID interne (géré automatiquement)."
             ),
             "spotifyUsers": _field(
@@ -373,6 +378,7 @@ MODULE_SCHEMAS: dict[str, dict] = {
             ),
             "xpMessageId": _field(
                 "Message leaderboard", "message", hidden=True,
+                channel_field="xpChannelId",
                 description="ID interne (géré automatiquement)."
             ),
             "levelUpMessageList": _field(
@@ -420,6 +426,7 @@ MODULE_SCHEMAS: dict[str, dict] = {
             ),
             "minecraftMessageId": _field(
                 "Message statut", "message", hidden=True,
+                channel_field="minecraftChannelId",
                 description="ID interne (géré automatiquement)."
             ),
             "minecraftUrl": _field(
@@ -506,6 +513,7 @@ MODULE_SCHEMAS: dict[str, dict] = {
             ),
             "zeventMessageId": _field(
                 "Message", "message", hidden=True,
+                channel_field="zeventChannelId",
                 description="ID interne (géré automatiquement)."
             ),
             "zeventStreamlabsApiUrl": _field(
@@ -553,10 +561,12 @@ MODULE_SCHEMAS: dict[str, dict] = {
             ),
             "speedonsScheduleMessageId": _field(
                 "Message planning", "message", hidden=True,
+                channel_field="speedonsChannelId",
                 description="ID interne (géré automatiquement)."
             ),
             "speedonsLiveMessageId": _field(
                 "Message run en cours", "message", hidden=True,
+                channel_field="speedonsChannelId",
                 description="ID interne (géré automatiquement)."
             ),
             "speedonsApiUrl": _field(
@@ -594,6 +604,7 @@ MODULE_SCHEMAS: dict[str, dict] = {
             ),
             "streamlabsMessageId": _field(
                 "Message suivi", "message", hidden=True,
+                channel_field="streamlabsChannelId",
                 description="ID interne (géré automatiquement)."
             ),
         },
@@ -616,6 +627,7 @@ MODULE_SCHEMAS: dict[str, dict] = {
             ),
             "messageId": _field(
                 "Message cible", "message", hidden=True,
+                channel_field="channelId",
                 description="ID interne (géré automatiquement)."
             ),
             "embeds": _field(
