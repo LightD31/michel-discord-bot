@@ -10,23 +10,21 @@ as a lookup source in MongoDB aggregations:
 The collection schema is:
     { "_id": "<user_id>", "username": "<username>", "display_name": "<display_name>" }
 
-Updates are triggered on every message so display names stay reasonably fresh.
+On startup, all guild members are fetched and bulk-upserted. After that,
+member join / leave / update events keep the collection current.
 """
 
 import os
 
 import pymongo
-from interactions import Client, Extension, Message, listen
-from interactions.api.events import MessageCreate
+import pymongo.errors
+from interactions import Client, Extension, listen
+from interactions.api.events import MemberAdd, MemberRemove, MemberUpdate
 
 from src import logutil
-from src.helpers import is_guild_enabled
 from src.mongodb import mongo_manager
 
 logger = logutil.init_logger(os.path.basename(__file__))
-
-# Collect user info for all guilds the bot is active in.
-# Since this is a cross-module utility, no module-specific config is needed.
 
 
 class UserInfoExtension(Extension):
@@ -36,25 +34,92 @@ class UserInfoExtension(Extension):
         self.bot: Client = bot
 
     @listen()
-    async def on_message(self, event: MessageCreate):
-        message: Message = event.message
+    async def on_startup(self):
+        """Fetch every member of every guild and bulk-upsert into MongoDB."""
+        for guild in self.bot.guilds:
+            guild_id = str(guild.id)
+            collection = mongo_manager.get_guild_collection(guild_id, "users")
 
-        if message.guild is None:
-            return
-        if message.author.bot:
+            members = guild.members  # already cached after gateway READY
+            if not members:
+                continue
+
+            ops = []
+            for member in members:
+                if member.bot:
+                    continue
+                ops.append(
+                    pymongo.UpdateOne(
+                        {"_id": str(member.id)},
+                        {"$set": {
+                            "username": member.username,
+                            "display_name": member.display_name,
+                        }},
+                        upsert=True,
+                    )
+                )
+
+            if ops:
+                try:
+                    await collection.bulk_write(ops, ordered=False)
+                    logger.info("Synced %d users for guild %s", len(ops), guild_id)
+                except pymongo.errors.PyMongoError as e:
+                    logger.warning("Failed to bulk-sync users for guild %s: %s", guild_id, e)
+
+    @listen()
+    async def on_member_add(self, event: MemberAdd):
+        member = event.member
+        if member.bot:
             return
 
-        guild_id = str(message.guild.id)
-        user_id = str(message.author.id)
+        guild_id = str(event.guild_id)
+        user_id = str(member.id)
 
         try:
             await mongo_manager.get_guild_collection(guild_id, "users").update_one(
                 {"_id": user_id},
                 {"$set": {
-                    "username": message.author.username,
-                    "display_name": message.author.display_name,
+                    "username": member.username,
+                    "display_name": member.display_name,
                 }},
                 upsert=True,
             )
         except pymongo.errors.PyMongoError as e:
             logger.warning("Failed to upsert user info for %s in guild %s: %s", user_id, guild_id, e)
+
+    @listen()
+    async def on_member_remove(self, event: MemberRemove):
+        member = event.member
+        if member.bot:
+            return
+
+        guild_id = str(event.guild_id)
+        user_id = str(member.id)
+
+        try:
+            await mongo_manager.get_guild_collection(guild_id, "users").delete_one(
+                {"_id": user_id},
+            )
+        except pymongo.errors.PyMongoError as e:
+            logger.warning("Failed to remove user info for %s in guild %s: %s", user_id, guild_id, e)
+
+    @listen()
+    async def on_member_update(self, event: MemberUpdate):
+        member = event.after
+        if member.bot:
+            return
+
+        guild_id = str(event.guild_id)
+        user_id = str(member.id)
+
+        try:
+            await mongo_manager.get_guild_collection(guild_id, "users").update_one(
+                {"_id": user_id},
+                {"$set": {
+                    "username": member.username,
+                    "display_name": member.display_name,
+                }},
+                upsert=True,
+            )
+        except pymongo.errors.PyMongoError as e:
+            logger.warning("Failed to update user info for %s in guild %s: %s", user_id, guild_id, e)
