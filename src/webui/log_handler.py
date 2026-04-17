@@ -5,7 +5,6 @@ Captures log records into a ring buffer and supports SSE streaming.
 
 import asyncio
 import logging
-import weakref
 from collections import deque
 from dataclasses import dataclass
 from typing import Optional
@@ -68,7 +67,9 @@ class WebUILogHandler(logging.Handler):
                 timestamp=record.created,
                 level=record.levelname,
                 logger_name=record.name,
-                message=self.format(record) if self.formatter else record.getMessage(),
+                # Store only the raw message — the UI renders its own columns
+                # (time/level/logger/lineno) so any prefix here would duplicate them.
+                message=record.getMessage(),
                 lineno=record.lineno,
                 filename=record.filename,
             )
@@ -145,60 +146,16 @@ class WebUILogHandler(logging.Handler):
 
 def install_log_handler(max_entries: int = 2000) -> WebUILogHandler:
     """
-    Install the WebUI log handler on the root logger AND on all existing
-    loggers (including standalone ones created via logging.Logger() directly).
+    Install the WebUI log handler on every logger configured by logutil.
 
-    Also monkey-patches logutil.init_logger and logutil.get_logger so any
-    logger created *after* this call automatically gets the WebUI handler.
+    Since logutil loggers have propagate=False, the handler must be attached to each
+    one directly. New loggers created later via logutil.init_logger/get_logger will
+    auto-attach because _configure_logger calls _attach_webui_handler.
     """
     handler = WebUILogHandler(max_entries=max_entries)
-    formatter = logging.Formatter(
-        "[%(asctime)s][%(levelname)-7s][%(name)s] %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-    )
-    handler.setFormatter(formatter)
 
-    # 1) Attach to root logger (captures standard-hierarchy loggers)
-    root_logger = logging.getLogger()
-    root_logger.addHandler(handler)
-    if root_logger.level > logging.DEBUG:
-        root_logger.setLevel(logging.DEBUG)
-
-    # 2) Attach to ALL existing loggers in the manager dict
-    #    This catches loggers created via logging.getLogger(name)
-    for name, logger_ref in logging.Logger.manager.loggerDict.items():
-        if isinstance(logger_ref, logging.Logger):
-            if handler not in logger_ref.handlers:
-                logger_ref.addHandler(handler)
-
-    # 3) Monkey-patch logutil to inject our handler into every future logger.
-    #    Use a weakref to avoid preventing handler GC if the module is torn down.
-    handler_ref = weakref.ref(handler)
-
-    try:
-        from src import logutil as _logutil
-
-        _orig_init_logger = _logutil.init_logger
-        _orig_get_logger = _logutil.get_logger
-
-        def _patched_init_logger(name="root"):
-            lgr = _orig_init_logger(name)
-            h = handler_ref()
-            if h is not None and h not in lgr.handlers:
-                lgr.addHandler(h)
-            return lgr
-
-        def _patched_get_logger(name):
-            lgr = _orig_get_logger(name)
-            h = handler_ref()
-            if h is not None and h not in lgr.handlers:
-                lgr.addHandler(h)
-            return lgr
-
-        _logutil.init_logger = _patched_init_logger
-        _logutil.get_logger = _patched_get_logger
-
-    except ImportError:
-        pass
+    for logger_ref in logging.Logger.manager.loggerDict.values():
+        if isinstance(logger_ref, logging.Logger) and handler not in logger_ref.handlers:
+            logger_ref.addHandler(handler)
 
     return handler

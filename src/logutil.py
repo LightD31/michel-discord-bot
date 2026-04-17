@@ -63,6 +63,42 @@ class CustomFormatter(logging.Formatter):
         return formatter.format(record)
 
 
+_CONFIGURED_ATTR = "_michel_configured"
+
+
+def _attach_webui_handler(lgr: logging.Logger) -> None:
+    """Attach the WebUI log handler to a logger if it exists and isn't already attached."""
+    try:
+        from src.webui.log_handler import WebUILogHandler
+    except ImportError:
+        return
+    webui = WebUILogHandler.get_instance()
+    if webui is not None and webui not in lgr.handlers:
+        lgr.addHandler(webui)
+
+
+def _configure_logger(name: str) -> logging.Logger:
+    """Configure (or return) a logger with the Docker-style StreamHandler plus the WebUI handler.
+
+    Uses logging.getLogger so every logger is part of the standard hierarchy — this lets the
+    WebUI handler find and attach to all of them. propagate=False preserves the "each module
+    has its own handler" layout so stdout output isn't duplicated via root.
+    """
+    lgr = logging.getLogger(name)
+    if not getattr(lgr, _CONFIGURED_ATTR, False):
+        # Keep the logger itself at DEBUG so WebUI (which may want DEBUG) always sees records;
+        # the StreamHandler does its own level filtering for stdout.
+        lgr.setLevel(logging.DEBUG)
+        lgr.propagate = False
+        ch = logging.StreamHandler()
+        ch.setLevel(logging.DEBUG if DEBUG else logging.INFO)
+        ch.setFormatter(CustomFormatter())
+        lgr.addHandler(ch)
+        setattr(lgr, _CONFIGURED_ATTR, True)
+    _attach_webui_handler(lgr)
+    return lgr
+
+
 def overwrite_ipy_loggers():
     for k, v in logging.Logger.manager.loggerDict.items():
         print(k, v)
@@ -75,19 +111,9 @@ def get_logger(name):
     """Function to get a logger
     Useful for modules that have already initialized a logger, such as discord.py
     """
-    __logger = logging.getLogger(name)
-    __logger.setLevel(logging.DEBUG if DEBUG else logging.INFO)
-    __ch = logging.StreamHandler()
-    __ch.setFormatter(CustomFormatter())
-    __logger.addHandler(__ch)
-    return __logger
+    return _configure_logger(name)
 
 
 def init_logger(name="root"):
     """Function to create a designated logger for separate modules"""
-    __logger = logging.Logger(name)
-    __ch = logging.StreamHandler()
-    __ch.setLevel(logging.DEBUG if DEBUG else logging.INFO)
-    __ch.setFormatter(CustomFormatter())
-    __logger.addHandler(__ch)
-    return __logger
+    return _configure_logger(name)

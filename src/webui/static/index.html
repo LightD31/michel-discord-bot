@@ -1072,6 +1072,25 @@
             font-size: 11px;
         }
 
+        .log-lineno {
+            color: #7ee787;
+            flex-shrink: 0;
+            max-width: 220px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            font-size: 11px;
+        }
+
+        .log-toolbar label.verbose-toggle {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            color: var(--text-secondary);
+            font-size: 12px;
+            cursor: pointer;
+            user-select: none;
+        }
+
         .log-msg {
             color: #c9d1d9;
             flex: 1;
@@ -2242,6 +2261,7 @@
         logSearch: '',
         logAutoScroll: true,
         logStreaming: false,
+        logVerbose: false,
     };
 
     let modalSaveCallback = null;
@@ -2477,7 +2497,22 @@
             const regex = new RegExp(`(${escapeRegExp(state.logSearch)})`, 'gi');
             msg = msg.replace(regex, '<span class="log-search-highlight">$1</span>');
         }
-        return `<span class="log-time">${time}</span><span class="log-level ${entry.level}">${entry.level.padEnd(8)}</span><span class="log-logger" title="${escapeHtml(entry.logger)}">${escapeHtml(entry.logger)}</span><span class="log-msg">${msg}</span>`;
+        const parts = [
+            `<span class="log-time">${time}</span>`,
+            `<span class="log-level ${entry.level}">${entry.level.padEnd(8)}</span>`,
+        ];
+        if (state.logVerbose) {
+            parts.push(`<span class="log-logger" title="${escapeHtml(entry.logger)}">${escapeHtml(entry.logger)}</span>`);
+            const loc = entry.filename ? `${entry.filename}:${entry.lineno}` : `:${entry.lineno}`;
+            parts.push(`<span class="log-lineno" title="${escapeHtml(loc)}">${escapeHtml(loc)}</span>`);
+        }
+        parts.push(`<span class="log-msg">${msg}</span>`);
+        return parts.join('');
+    }
+
+    function onLogVerboseChange(checked) {
+        state.logVerbose = checked;
+        renderLogLines();
     }
 
     function escapeRegExp(string) {
@@ -4497,6 +4532,11 @@
                     <input type="text" placeholder="🔍 Rechercher dans les logs..."
                         value="${escapeHtml(state.logSearch)}"
                         oninput="onLogSearchInput(this.value)">
+                    <label class="verbose-toggle" title="Afficher le nom du logger et l'emplacement (fichier:ligne)">
+                        <input type="checkbox" ${state.logVerbose ? 'checked' : ''}
+                            onchange="onLogVerboseChange(this.checked)">
+                        Verbose
+                    </label>
                 </div>
 
                 <div class="log-container" id="log-container">

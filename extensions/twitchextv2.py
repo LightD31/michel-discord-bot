@@ -109,11 +109,12 @@ class StreamerInfo:
         # Stream session info (stored when stream starts)
         self.stream_start_time: Optional[datetime] = None
         self.stream_title: Optional[str] = None
+        self.stream_id: Optional[str] = None
         # Last notified title and category (to avoid duplicate notifications)
         self.last_notified_title: Optional[str] = None
         self.last_notified_category: Optional[str] = None
-        self.stream_game: Optional[str] = None
-        self.stream_id: Optional[str] = None
+        # Ordered list of categories played during the current live session
+        self.stream_categories: List[str] = []
 
 
 class TwitchExtension(Extension):
@@ -267,6 +268,56 @@ class TwitchExtension(Extension):
         """Get all streamers that match the given Twitch user ID"""
         return [s for s in self.streamers.values() if s.user_id == user_id]
 
+    @staticmethod
+    def _streamer_state_collection():
+        return mongo_manager.get_global_collection("twitch_streamer_state")
+
+    async def _load_streamer_states(self) -> None:
+        """Hydrate StreamerInfo session fields from MongoDB at startup."""
+        try:
+            states: Dict[str, dict] = {}
+            async for doc in self._streamer_state_collection().find():
+                states[doc["_id"]] = doc
+        except Exception as e:
+            logger.error("Failed to load Twitch streamer states: %s", e)
+            return
+
+        for streamer in self.streamers.values():
+            doc = states.get(streamer.streamer_id)
+            if not doc:
+                continue
+            start = doc.get("stream_start_time")
+            streamer.stream_start_time = ensure_utc(start) if start else None
+            streamer.stream_title = doc.get("stream_title")
+            streamer.stream_id = doc.get("stream_id")
+            streamer.last_notified_title = doc.get("last_notified_title")
+            streamer.last_notified_category = doc.get("last_notified_category")
+            stored_categories = doc.get("stream_categories")
+            streamer.stream_categories = list(stored_categories) if isinstance(stored_categories, list) else []
+
+    async def _save_streamer_state(self, streamer_id: str) -> None:
+        """Persist the session fields of a streamer (shared across guilds)."""
+        ref = next(
+            (s for s in self.streamers.values() if s.streamer_id == streamer_id),
+            None,
+        )
+        if ref is None:
+            return
+        doc = {
+            "stream_start_time": ref.stream_start_time,
+            "stream_title": ref.stream_title,
+            "stream_id": ref.stream_id,
+            "last_notified_title": ref.last_notified_title,
+            "last_notified_category": ref.last_notified_category,
+            "stream_categories": list(ref.stream_categories),
+        }
+        try:
+            await self._streamer_state_collection().update_one(
+                {"_id": streamer_id}, {"$set": doc}, upsert=True
+            )
+        except Exception as e:
+            logger.error("Failed to save Twitch state for %s: %s", streamer_id, e)
+
     def get_streamer_key(self, guild_id: int, streamer_id: str) -> str:
         """Get the unique key for a streamer"""
         return f"{guild_id}_{streamer_id}"
@@ -278,6 +329,9 @@ class TwitchExtension(Extension):
         """
         logger.info("Waiting for bot to be ready")
         await self.bot.wait_until_ready()
+
+        # Restore persisted stream session state before reacting to any events
+        await self._load_streamer_states()
 
         # Initialize channels and messages for all streamers
         for streamer_key, streamer in self.streamers.items():
@@ -810,14 +864,17 @@ class TwitchExtension(Extension):
                 if stream:
                     streamer.stream_start_time = ensure_utc(stream.started_at)
                     streamer.stream_title = stream.title
-                    streamer.stream_game = stream.game_name
                     streamer.stream_id = stream.id
+                    streamer.stream_categories = [stream.game_name] if stream.game_name else []
                     logger.info(f"Stored stream info for {streamer.streamer_id}: started at {streamer.stream_start_time}")
-                
+
                 # For each server tracking this streamer, update the message
                 await self.edit_message(streamer, offline=False)
             except Exception as e:
                 logger.error(f"Error handling live start for {streamer.streamer_id} in guild {streamer.guild_id}: {e}")
+
+        for streamer_id in {s.streamer_id for s in streamers}:
+            await self._save_streamer_state(streamer_id)
 
         self.update.reschedule(IntervalTrigger(minutes=15))
 
@@ -845,11 +902,14 @@ class TwitchExtension(Extension):
                 # Clear stream session info
                 streamer.stream_start_time = None
                 streamer.stream_title = None
-                streamer.stream_game = None
                 streamer.stream_id = None
+                streamer.stream_categories = []
                 # Keep last_notified_title and last_notified_category to track changes even when offline
             except Exception as e:
                 logger.error(f"Error handling live end for {streamer.streamer_id} in guild {streamer.guild_id}: {e}")
+
+        for streamer_id in {s.streamer_id for s in streamers}:
+            await self._save_streamer_state(streamer_id)
 
         self.update.reschedule(
             OrTrigger(
@@ -902,7 +962,19 @@ class TwitchExtension(Extension):
 
             # Create embed for stream end notification
             title = self.get_display_value(streamer.stream_title, "Titre non renseigné")
-            category = self.get_display_value(streamer.stream_game, "Catégorie non renseignée")
+
+            # Build the list of categories played during the session (deduplicated while preserving order)
+            categories: List[str] = []
+            for cat in streamer.stream_categories:
+                if cat and (not categories or categories[-1] != cat):
+                    categories.append(cat)
+
+            if len(categories) > 1:
+                category_label = "Catégories"
+                category_value = "\n".join(f"• {c}" for c in categories)
+            else:
+                category_label = "Catégorie"
+                category_value = categories[0] if categories else "Catégorie non renseignée"
 
             embed = await self.create_notification_embed(
                 streamer.guild_id,
@@ -913,7 +985,7 @@ class TwitchExtension(Extension):
 
             embed.add_field(name="Durée", value=duration_str, inline=True)
             embed.add_field(name="Titre", value=title, inline=False)
-            embed.add_field(name="Catégorie", value=category, inline=False)
+            embed.add_field(name=category_label, value=category_value, inline=False)
             
             if vod_url:
                 embed.add_field(name="VOD", value=f"[Regarder le replay]({vod_url})", inline=False)
@@ -948,14 +1020,20 @@ class TwitchExtension(Extension):
 
         # Find all streamers matching this user_id
         streamers = self.get_streamer_by_user_id(user_id)
+        raw_category = (data.event.category_name or "").strip()
         for streamer in streamers:
             try:
                 stream = await self.get_stream_data(user_id)
 
+                # Track category changes during the live session
+                if stream is not None and raw_category:
+                    if not streamer.stream_categories or streamer.stream_categories[-1] != raw_category:
+                        streamer.stream_categories.append(raw_category)
+
                 # Check if title or category actually changed to avoid duplicate notifications
                 new_title = self.get_display_value(data.event.title, "Titre non renseigné")
                 new_category = self.get_display_value(data.event.category_name, "Catégorie non renseignée")
-                
+
                 title_changed = streamer.last_notified_title != new_title
                 category_changed = streamer.last_notified_category != new_category
                 
@@ -991,6 +1069,9 @@ class TwitchExtension(Extension):
                 )
             except Exception as e:
                 logger.error(f"Error handling update for {streamer.streamer_id} in guild {streamer.guild_id}: {e}")
+
+        for streamer_id in {s.streamer_id for s in streamers}:
+            await self._save_streamer_state(streamer_id)
 
         # Check if any streamer is live to reschedule update task
         stream_checks = []
