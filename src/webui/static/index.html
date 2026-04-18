@@ -2924,7 +2924,7 @@
                                     <button type="button" class="btn-member-toggle" onclick="toggleMemberPickerMode(this)" title="Saisie manuelle">✎</button>
                                 </div>
                                 <input type="text" data-namemap-field="name" value="${escapeHtml(String(name))}" placeholder="ex: Jean">
-                                <button class="btn-remove-entry" onclick="this.closest('.namemap-entry').remove()" title="Supprimer">✕</button>
+                                <button class="btn-remove-entry" onclick="removeNameMapEntry(this)" title="Supprimer">✕</button>
                             </div>`;
                     });
                     html += `</div>`;
@@ -3372,10 +3372,12 @@
                 <button type="button" class="btn-member-toggle" onclick="toggleMemberPickerMode(this)" title="Saisie manuelle">✎</button>
             </div>
             <input type="text" data-namemap-field="name" value="" placeholder="ex: Jean">
-            <button class="btn-remove-entry" onclick="this.closest('.namemap-entry').remove()" title="Supprimer">✕</button>
+            <button class="btn-remove-entry" onclick="removeNameMapEntry(this)" title="Supprimer">✕</button>
         `;
         list.appendChild(entry);
-        populateMemberPickers(entry);
+        // Populate (fetches if not cached) then refresh the whole list so the new
+        // picker excludes already-used IDs and so do siblings
+        populateMemberPickers(entry).then(() => refreshNameMapListOptions(list));
         const select = entry.querySelector('.member-picker-select');
         if (select) select.focus();
     }
@@ -3882,6 +3884,62 @@
         return `${display}${uname} — ${m.id}`;
     }
 
+    function getPickerSelectedId(picker) {
+        const manual = picker.querySelector('.member-picker-manual');
+        const select = picker.querySelector('.member-picker-select');
+        const manualVisible = manual && manual.style.display !== 'none';
+        const val = manualVisible ? (manual?.value ?? '') : (select?.value ?? '');
+        return (val || picker.dataset.current || '').trim();
+    }
+
+    function refreshMemberPickerGroup(pickers, members) {
+        if (!members) return;
+        const validIds = new Set(members.map(m => m.id));
+        const currentIds = new Map();
+        for (const p of pickers) currentIds.set(p, getPickerSelectedId(p));
+        for (const picker of pickers) {
+            const select = picker.querySelector('select');
+            if (!select) continue;
+            const ownId = currentIds.get(picker) || '';
+            const excludeIds = new Set();
+            for (const p of pickers) {
+                if (p === picker) continue;
+                const id = currentIds.get(p);
+                if (id) excludeIds.add(id);
+            }
+            let opts = '<option value="">— Choisir un membre —</option>';
+            for (const m of members) {
+                if (excludeIds.has(m.id)) continue;
+                opts += `<option value="${escapeHtml(m.id)}">${escapeHtml(memberOptionLabel(m))}</option>`;
+            }
+            select.innerHTML = opts;
+            if (ownId && validIds.has(ownId)) {
+                if (!select.querySelector(`option[value="${CSS.escape(ownId)}"]`)) {
+                    const m = members.find(x => x.id === ownId);
+                    const opt = document.createElement('option');
+                    opt.value = ownId;
+                    opt.textContent = m ? memberOptionLabel(m) : ownId;
+                    select.insertBefore(opt, select.firstChild.nextSibling);
+                }
+                select.value = ownId;
+            } else if (ownId) {
+                const opt = document.createElement('option');
+                opt.value = ownId;
+                opt.textContent = `ID inconnu: ${ownId}`;
+                opt.selected = true;
+                select.insertBefore(opt, select.firstChild.nextSibling);
+            }
+        }
+    }
+
+    function refreshNameMapListOptions(list) {
+        if (!list) return;
+        const members = _memberCache[state.currentServerId];
+        if (!members) return;
+        const pickers = list.querySelectorAll('.member-picker');
+        refreshMemberPickerGroup(pickers, members);
+    }
+
     async function populateMemberPickers(container) {
         const serverId = state.currentServerId;
         if (!serverId || !container) return;
@@ -3896,24 +3954,23 @@
             }
             return;
         }
-        let opts = '<option value="">— Choisir un membre —</option>';
-        for (const m of members) {
-            opts += `<option value="${escapeHtml(m.id)}">${escapeHtml(memberOptionLabel(m))}</option>`;
-        }
-        const validIds = new Set(members.map(m => m.id));
+        // Group pickers by their containing namemap-list so siblings can exclude each other
+        const byList = new Map();
+        const standalone = [];
         for (const picker of pickers) {
-            const select = picker.querySelector('select');
-            const current = picker.dataset.current || '';
-            select.innerHTML = opts;
-            if (current && validIds.has(current)) {
-                select.value = current;
-            } else if (current) {
-                const opt = document.createElement('option');
-                opt.value = current;
-                opt.textContent = `ID inconnu: ${current}`;
-                opt.selected = true;
-                select.insertBefore(opt, select.firstChild.nextSibling);
+            const list = picker.closest('.namemap-list');
+            if (list) {
+                if (!byList.has(list)) byList.set(list, []);
+                byList.get(list).push(picker);
+            } else {
+                standalone.push(picker);
             }
+        }
+        for (const [, group] of byList) {
+            refreshMemberPickerGroup(group, members);
+        }
+        if (standalone.length) {
+            refreshMemberPickerGroup(standalone, members);
         }
     }
 
@@ -3932,6 +3989,17 @@
                 if (match) nameInput.value = match.display_name || match.username || '';
             }
         }
+        // Update sibling pickers so the newly-picked member is removed from their dropdowns
+        const list = picker.closest('.namemap-list');
+        if (list) refreshNameMapListOptions(list);
+    }
+
+    function removeNameMapEntry(btn) {
+        const entry = btn.closest('.namemap-entry');
+        if (!entry) return;
+        const list = entry.closest('.namemap-list');
+        entry.remove();
+        if (list) refreshNameMapListOptions(list);
     }
 
     function toggleMemberPickerMode(btn, forceManual) {
