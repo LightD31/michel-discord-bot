@@ -445,6 +445,82 @@ def create_app(bot=None, bot_loop=None) -> FastAPI:
             raise HTTPException(status_code=500, detail=str(e))
         return JSONResponse(data)
 
+    @app.get("/api/servers/{server_id}/members")
+    async def api_get_server_members(request: Request, server_id: str):
+        """List members of the given server (for member-picker dropdowns).
+
+        Pulls from the `users` MongoDB collection maintained by userinfoext;
+        falls back to the live guild member cache if the collection is empty.
+        """
+        _require_admin(request)
+        if not bot or not bot_loop:
+            raise HTTPException(status_code=503, detail="Bot non disponible")
+
+        async def _fetch():
+            from src.mongodb import mongo_manager
+
+            members: list[dict] = []
+            seen: set[str] = set()
+
+            # Primary source: userinfoext users collection
+            try:
+                collection = mongo_manager.get_guild_collection(server_id, "users")
+                cursor = collection.find(
+                    {},
+                    {"_id": 1, "username": 1, "display_name": 1},
+                )
+                async for doc in cursor:
+                    uid = str(doc.get("_id", ""))
+                    if not uid or uid in seen:
+                        continue
+                    seen.add(uid)
+                    username = doc.get("username") or ""
+                    display = doc.get("display_name") or username or uid
+                    members.append({
+                        "id": uid,
+                        "username": username,
+                        "display_name": display,
+                    })
+            except Exception as e:
+                logger.debug(f"Could not read users collection for {server_id}: {e}")
+
+            # Fallback / supplement: live guild member cache
+            try:
+                guild = await bot.fetch_guild(int(server_id))
+            except Exception:
+                guild = None
+            if guild is not None:
+                for m in getattr(guild, "members", []) or []:
+                    try:
+                        uid = str(m.id)
+                        if uid in seen:
+                            continue
+                        if getattr(m, "bot", False):
+                            continue
+                        seen.add(uid)
+                        username = getattr(m, "username", "") or ""
+                        display = getattr(m, "display_name", None) or username or uid
+                        members.append({
+                            "id": uid,
+                            "username": username,
+                            "display_name": display,
+                        })
+                    except Exception:
+                        continue
+
+            members.sort(key=lambda x: (x.get("display_name") or x.get("username") or "").lower())
+            return {"members": members}
+
+        try:
+            future = asyncio.run_coroutine_threadsafe(_fetch(), bot_loop)
+            data = await asyncio.wrap_future(future)
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Failed to list members for {server_id}: {e}")
+            raise HTTPException(status_code=500, detail=str(e))
+        return JSONResponse(data)
+
     @app.get("/api/servers/{server_id}")
     async def api_get_server(request: Request, server_id: str):
         """Get configuration for a specific server."""

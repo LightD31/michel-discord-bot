@@ -884,6 +884,35 @@
             border-color: var(--accent);
         }
 
+        .member-picker {
+            display: flex;
+            gap: 6px;
+            align-items: center;
+        }
+        .member-picker .form-input {
+            flex: 1;
+            min-width: 0;
+            font-family: inherit;
+        }
+        .member-picker-select {
+            appearance: auto;
+            padding-right: 28px;
+        }
+        .btn-member-toggle {
+            background: var(--bg-primary);
+            color: var(--text-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius);
+            padding: 6px 10px;
+            cursor: pointer;
+            font-size: 13px;
+            flex-shrink: 0;
+        }
+        .btn-member-toggle:hover {
+            color: var(--accent);
+            border-color: var(--accent);
+        }
+
         .message-status {
             display: flex;
             align-items: center;
@@ -2881,11 +2910,19 @@
                 case 'discord2name':
                     const nameMap = (typeof value === 'object' && value !== null && !Array.isArray(value)) ? value : {};
                     html += `<div class="namemap-list" data-field="${key}" data-type="discord2name">`;
-                    html += `<div class="namemap-header"><span>ID Discord</span><span>Prénom</span><span></span></div>`;
+                    html += `<div class="namemap-header"><span>Membre Discord</span><span>Prénom</span><span></span></div>`;
                     Object.entries(nameMap).forEach(([discordId, name]) => {
+                        const safeId = escapeHtml(discordId);
                         html += `
                             <div class="namemap-entry">
-                                <input type="text" data-namemap-field="discord_id" value="${escapeHtml(discordId)}" placeholder="ex: 123456789012345678">
+                                <div class="member-picker" data-current="${safeId}">
+                                    <select class="form-input member-picker-select" onchange="onMemberPickerChange(this)">
+                                        <option value="">— Chargement des membres… —</option>
+                                        ${discordId ? `<option value="${safeId}" selected>${safeId}</option>` : ''}
+                                    </select>
+                                    <input type="text" class="form-input member-picker-manual" data-namemap-field="discord_id" value="${safeId}" placeholder="ex: 123456789012345678" style="display:none;">
+                                    <button type="button" class="btn-member-toggle" onclick="toggleMemberPickerMode(this)" title="Saisie manuelle">✎</button>
+                                </div>
                                 <input type="text" data-namemap-field="name" value="${escapeHtml(String(name))}" placeholder="ex: Jean">
                                 <button class="btn-remove-entry" onclick="this.closest('.namemap-entry').remove()" title="Supprimer">✕</button>
                             </div>`;
@@ -3154,7 +3191,16 @@
             const entries = list.querySelectorAll('.namemap-entry');
             const nameMap = {};
             for (const entry of entries) {
-                const discordId = entry.querySelector('[data-namemap-field="discord_id"]')?.value?.trim();
+                const picker = entry.querySelector('.member-picker');
+                let discordId = '';
+                if (picker) {
+                    const manual = picker.querySelector('.member-picker-manual');
+                    const select = picker.querySelector('.member-picker-select');
+                    const manualVisible = manual && manual.style.display !== 'none';
+                    discordId = (manualVisible ? (manual?.value ?? '') : (select?.value ?? '')).trim();
+                } else {
+                    discordId = entry.querySelector('[data-namemap-field="discord_id"]')?.value?.trim() || '';
+                }
                 const name = entry.querySelector('[data-namemap-field="name"]')?.value?.trim();
                 if (discordId && name) {
                     nameMap[discordId] = name;
@@ -3318,12 +3364,20 @@
         const entry = document.createElement('div');
         entry.className = 'namemap-entry';
         entry.innerHTML = `
-            <input type="text" data-namemap-field="discord_id" value="" placeholder="ex: 123456789012345678">
+            <div class="member-picker" data-current="">
+                <select class="form-input member-picker-select" onchange="onMemberPickerChange(this)">
+                    <option value="">— Chargement des membres… —</option>
+                </select>
+                <input type="text" class="form-input member-picker-manual" data-namemap-field="discord_id" value="" placeholder="ex: 123456789012345678" style="display:none;">
+                <button type="button" class="btn-member-toggle" onclick="toggleMemberPickerMode(this)" title="Saisie manuelle">✎</button>
+            </div>
             <input type="text" data-namemap-field="name" value="" placeholder="ex: Jean">
             <button class="btn-remove-entry" onclick="this.closest('.namemap-entry').remove()" title="Supprimer">✕</button>
         `;
         list.appendChild(entry);
-        entry.querySelector('input').focus();
+        populateMemberPickers(entry);
+        const select = entry.querySelector('.member-picker-select');
+        if (select) select.focus();
     }
 
     function addKeyValueMapEntry(btn) {
@@ -3804,6 +3858,100 @@
         }
     }
 
+    // ── Member picker ─────────────────────────────────
+    const _memberCache = {}; // serverId -> [{id, username, display_name}]
+
+    async function fetchServerMembers(serverId) {
+        if (!serverId) return null;
+        if (_memberCache[serverId]) return _memberCache[serverId];
+        try {
+            const data = await api(`/api/servers/${serverId}/members`);
+            if (data && Array.isArray(data.members)) {
+                _memberCache[serverId] = data.members;
+                return data.members;
+            }
+        } catch (e) {
+            console.warn('Could not fetch members', e);
+        }
+        return null;
+    }
+
+    function memberOptionLabel(m) {
+        const display = m.display_name || m.username || m.id;
+        const uname = m.username && m.username !== display ? ` (${m.username})` : '';
+        return `${display}${uname} — ${m.id}`;
+    }
+
+    async function populateMemberPickers(container) {
+        const serverId = state.currentServerId;
+        if (!serverId || !container) return;
+        const pickers = container.querySelectorAll('.member-picker');
+        if (pickers.length === 0) return;
+        const members = await fetchServerMembers(serverId);
+        if (!members) {
+            for (const picker of pickers) {
+                toggleMemberPickerMode(picker.querySelector('.btn-member-toggle'), true);
+                const select = picker.querySelector('select');
+                if (select) select.innerHTML = `<option value="">— Membres indisponibles —</option>`;
+            }
+            return;
+        }
+        let opts = '<option value="">— Choisir un membre —</option>';
+        for (const m of members) {
+            opts += `<option value="${escapeHtml(m.id)}">${escapeHtml(memberOptionLabel(m))}</option>`;
+        }
+        const validIds = new Set(members.map(m => m.id));
+        for (const picker of pickers) {
+            const select = picker.querySelector('select');
+            const current = picker.dataset.current || '';
+            select.innerHTML = opts;
+            if (current && validIds.has(current)) {
+                select.value = current;
+            } else if (current) {
+                const opt = document.createElement('option');
+                opt.value = current;
+                opt.textContent = `ID inconnu: ${current}`;
+                opt.selected = true;
+                select.insertBefore(opt, select.firstChild.nextSibling);
+            }
+        }
+    }
+
+    function onMemberPickerChange(select) {
+        const picker = select.closest('.member-picker');
+        if (!picker) return;
+        const manual = picker.querySelector('.member-picker-manual');
+        if (manual) manual.value = select.value;
+        // Auto-fill the adjacent name field if empty
+        const entry = picker.closest('.namemap-entry');
+        if (entry) {
+            const nameInput = entry.querySelector('[data-namemap-field="name"]');
+            if (nameInput && !nameInput.value.trim()) {
+                const members = _memberCache[state.currentServerId] || [];
+                const match = members.find(m => m.id === select.value);
+                if (match) nameInput.value = match.display_name || match.username || '';
+            }
+        }
+    }
+
+    function toggleMemberPickerMode(btn, forceManual) {
+        const picker = btn.closest('.member-picker');
+        if (!picker) return;
+        const select = picker.querySelector('.member-picker-select');
+        const manual = picker.querySelector('.member-picker-manual');
+        const showManual = forceManual === true ? true : (manual.style.display === 'none');
+        manual.style.display = showManual ? '' : 'none';
+        select.style.display = showManual ? 'none' : '';
+        btn.textContent = showManual ? '☰' : '✎';
+        btn.title = showManual ? 'Choisir dans la liste' : 'Saisie manuelle';
+        if (showManual && select.value && !manual.value) {
+            manual.value = select.value;
+        } else if (!showManual && manual.value && !select.value) {
+            const opt = select.querySelector(`option[value="${CSS.escape(manual.value)}"]`);
+            if (opt) select.value = manual.value;
+        }
+    }
+
     // ── Render ────────────────────────────────────────
     function render() {
         const app = document.getElementById('app');
@@ -3836,9 +3984,10 @@
                 }
             }
         }
-        // Populate any channel pickers on the current page
+        // Populate any channel / member pickers on the current page
         if (state.currentServerId) {
             populateChannelPickers(document);
+            populateMemberPickers(document);
         }
     }
 
