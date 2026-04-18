@@ -1,6 +1,6 @@
 """Constants for the Coloc module."""
 
-from enum import Enum
+from enum import StrEnum
 from typing import Final
 
 import pytz
@@ -9,7 +9,7 @@ import pytz
 PARIS_TZ: Final = pytz.timezone("Europe/Paris")
 
 
-class ReminderType(str, Enum):
+class ReminderType(StrEnum):
     """Types of reminders available."""
 
     NORMAL = "NORMAL"

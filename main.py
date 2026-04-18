@@ -4,6 +4,7 @@ Main script to run
 This script initializes extensions and starts the bot
 """
 
+import contextlib
 import os
 import sys
 
@@ -54,10 +55,8 @@ async def _heartbeat_task():
     """Touch a file so the Docker healthcheck can verify the bot is alive (metadata-only, no disk write)."""
     from pathlib import Path
 
-    try:
+    with contextlib.suppress(OSError):
         Path(HEALTH_FILE).touch()
-    except OSError:
-        pass
 
 
 @interactions.listen()

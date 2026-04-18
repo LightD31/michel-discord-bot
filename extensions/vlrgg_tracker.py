@@ -14,7 +14,7 @@ Configuration par serveur via le dashboard web (moduleVlrgg):
 import json
 import os
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Optional
 
 from interactions import (
     Client,

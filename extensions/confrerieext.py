@@ -659,8 +659,8 @@ class ConfrerieExtension(Extension):
                 note = float(note)
                 if not (0 <= note <= 5):
                     raise ValidationError("La note doit être comprise entre 0 et 5")
-            except (ValueError, TypeError):
-                raise ValidationError("La note doit être un nombre valide")
+            except (ValueError, TypeError) as e:
+                raise ValidationError("La note doit être un nombre valide") from e
 
         # Validation de la date
         date_str = data.get("date", "").strip()
@@ -668,8 +668,8 @@ class ConfrerieExtension(Extension):
             try:
                 # Vérifier le format YYYY-MM-DD
                 datetime.strptime(date_str, "%Y-%m-%d")
-            except ValueError:
-                raise ValidationError("La date doit être au format YYYY-MM-DD")
+            except ValueError as e:
+                raise ValidationError("La date doit être au format YYYY-MM-DD") from e
 
         # Validation de l'URL du site
         site = data.get("site", "").strip()
@@ -1121,7 +1121,7 @@ def load(bot: Client):
             )
         except APIResponseError as e:
             logger.error(f"Erreur API Notion lors de la création de l'éditeur: {e}")
-            raise NotionAPIError(f"Impossible de créer l'éditeur dans Notion: {e}")
+            raise NotionAPIError(f"Impossible de créer l'éditeur dans Notion: {e}") from e
         except Exception as e:
             logger.error(f"Erreur inattendue lors de la création de l'éditeur: {e}")
-            raise NotionAPIError(f"Erreur inattendue: {e}")
+            raise NotionAPIError(f"Erreur inattendue: {e}") from e

@@ -218,9 +218,12 @@ async def get_player_stats(sftp: asyncssh.SFTPClient, file, nbtfile=None):
 
 
 async def create_sftp_connection(host, port, username, password):
-    async with asyncssh.connect(
-        host, port=port, username=username, password=password, known_hosts=None
-    ) as conn, conn.start_sftp_client() as sftp:
+    async with (
+        asyncssh.connect(
+            host, port=port, username=username, password=password, known_hosts=None
+        ) as conn,
+        conn.start_sftp_client() as sftp,
+    ):
         return sftp
 
 

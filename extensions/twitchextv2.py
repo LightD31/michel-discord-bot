@@ -3,7 +3,7 @@ import json
 import os
 import signal
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Union
+from typing import Optional, Union
 
 import aiohttp
 import pytz
@@ -213,19 +213,18 @@ class TwitchExtension(Extension):
         file_path = os.path.join(self.EMOTE_CACHE_DIR, f"{streamer_id}_{emote_id}.png")
 
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(image_url) as response:
-                    if response.status == 200:
-                        content = await response.read()
-                        with open(file_path, "wb") as f:
-                            f.write(content)
-                        logger.debug(f"Cached emote image: {file_path}")
-                        return file_path
-                    else:
-                        logger.error(
-                            f"Failed to download emote image {emote_id}: HTTP {response.status}"
-                        )
-                        return None
+            async with aiohttp.ClientSession() as session, session.get(image_url) as response:
+                if response.status == 200:
+                    content = await response.read()
+                    with open(file_path, "wb") as f:
+                        f.write(content)
+                    logger.debug(f"Cached emote image: {file_path}")
+                    return file_path
+                else:
+                    logger.error(
+                        f"Failed to download emote image {emote_id}: HTTP {response.status}"
+                    )
+                    return None
         except Exception as e:
             logger.error(f"Error downloading emote image {emote_id}: {e}")
             return None
@@ -478,7 +477,7 @@ class TwitchExtension(Extension):
             self.eventsub.start()
 
             # Subscribe to events for all streamers
-            for streamer_key, streamer in self.streamers.items():
+            for _, streamer in self.streamers.items():
                 try:
                     # Get the Twitch user ID for this streamer
                     user = await first(self.twitch.get_users(logins=[streamer.streamer_id]))
@@ -1105,12 +1104,15 @@ class TwitchExtension(Extension):
                 stream = await self.get_stream_data(user_id)
 
                 # Track category changes during the live session
-                if stream is not None and raw_category:
-                    if (
+                if (
+                    stream is not None
+                    and raw_category
+                    and (
                         not streamer.stream_categories
                         or streamer.stream_categories[-1] != raw_category
-                    ):
-                        streamer.stream_categories.append(raw_category)
+                    )
+                ):
+                    streamer.stream_categories.append(raw_category)
 
                 # Check if title or category actually changed to avoid duplicate notifications
                 new_title = self.get_display_value(data.event.title, "Titre non renseigné")
@@ -1193,7 +1195,7 @@ class TwitchExtension(Extension):
             await self.on_startup()
 
         # Update all streamers
-        for streamer_key, streamer in self.streamers.items():
+        for _, streamer in self.streamers.items():
             if streamer.user_id:
                 try:
                     stream = await self.get_stream_data(streamer.user_id)

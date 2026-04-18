@@ -8,7 +8,7 @@ import inspect
 import os
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Optional
 
 from interactions import (
     BaseChannel,
@@ -325,7 +325,7 @@ class Zevent(Extension):
             if not self.twitch:
                 return False
 
-            async for stream in self.twitch.get_streams(user_login=["zevent"]):
+            async for _ in self.twitch.get_streams(user_login=["zevent"]):
                 return True  # If we find a stream, the channel is live
             return False  # No stream found
         except Exception as e:
@@ -1061,7 +1061,7 @@ class Zevent(Extension):
             leaderboard_text = ""
             max_streamers = 5  # Start with 20, but reduce if needed
 
-            for attempt in range(3):  # Try up to 3 times with fewer streamers
+            for _ in range(3):  # Try up to 3 times with fewer streamers
                 leaderboard_text = ""
                 current_top = top_streamers[:max_streamers]
 

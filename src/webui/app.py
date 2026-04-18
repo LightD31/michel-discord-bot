@@ -378,7 +378,7 @@ def create_app(bot=None, bot_loop=None) -> FastAPI:
             try:
                 guild = await bot.fetch_guild(int(server_id))
             except Exception as e:
-                raise HTTPException(status_code=404, detail=f"Serveur introuvable: {e}")
+                raise HTTPException(status_code=404, detail=f"Serveur introuvable: {e}") from e
             if guild is None:
                 raise HTTPException(status_code=404, detail="Serveur introuvable")
             try:
@@ -465,7 +465,7 @@ def create_app(bot=None, bot_loop=None) -> FastAPI:
             raise
         except Exception as e:
             logger.error(f"Failed to list channels for {server_id}: {e}")
-            raise HTTPException(status_code=500, detail=str(e))
+            raise HTTPException(status_code=500, detail=str(e)) from e
         return JSONResponse(data)
 
     @app.get("/api/servers/{server_id}/members")
@@ -545,7 +545,7 @@ def create_app(bot=None, bot_loop=None) -> FastAPI:
             raise
         except Exception as e:
             logger.error(f"Failed to list members for {server_id}: {e}")
-            raise HTTPException(status_code=500, detail=str(e))
+            raise HTTPException(status_code=500, detail=str(e)) from e
         return JSONResponse(data)
 
     @app.get("/api/servers/{server_id}")
@@ -704,7 +704,7 @@ def create_app(bot=None, bot_loop=None) -> FastAPI:
         """Get the module paths (e.g. 'extensions.tricount') for all loaded extensions."""
         paths = []
         if bot and hasattr(bot, "ext"):
-            for class_name, ext_instance in bot.ext.items():
+            for _, ext_instance in bot.ext.items():
                 # interactions.py Extension stores the module name in extension_name
                 module_path = getattr(ext_instance, "extension_name", None)
                 if module_path:
@@ -770,7 +770,7 @@ def create_app(bot=None, bot_loop=None) -> FastAPI:
             await asyncio.wrap_future(future)
         except Exception as e:
             logger.error(f"EmbedManager publish failed for server {server_id}: {e}")
-            raise HTTPException(status_code=500, detail=str(e))
+            raise HTTPException(status_code=500, detail=str(e)) from e
 
         return JSONResponse({"status": "ok", "count": len(discord_embeds)})
 
@@ -807,7 +807,7 @@ def create_app(bot=None, bot_loop=None) -> FastAPI:
             return JSONResponse({"status": "ok", "extension": ext_name})
         except Exception as e:
             logger.error(f"Failed to reload {ext_name}: {e}")
-            raise HTTPException(status_code=500, detail=str(e))
+            raise HTTPException(status_code=500, detail=str(e)) from e
 
     # ── Extension management ─────────────────────────────────────────
 

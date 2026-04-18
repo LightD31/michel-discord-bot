@@ -4,6 +4,7 @@ Captures log records into a ring buffer and supports SSE streaming.
 """
 
 import asyncio
+import contextlib
 import logging
 from collections import deque
 from dataclasses import dataclass
@@ -94,10 +95,8 @@ class WebUILogHandler(logging.Handler):
                     dead.append(queue)
             # Remove dead queues
             for q in dead:
-                try:
+                with contextlib.suppress(ValueError):
                     self._listeners.remove(q)
-                except ValueError:
-                    pass
         except Exception:
             self.handleError(record)
 
@@ -138,10 +137,8 @@ class WebUILogHandler(logging.Handler):
 
     def unsubscribe(self, queue: asyncio.Queue):
         """Remove an SSE listener queue."""
-        try:
+        with contextlib.suppress(ValueError):
             self._listeners.remove(queue)
-        except ValueError:
-            pass
         # Drain the queue to release any held LogEntry references
         while not queue.empty():
             try:

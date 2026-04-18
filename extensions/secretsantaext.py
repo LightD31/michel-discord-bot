@@ -1,3 +1,4 @@
+import contextlib
 import json
 import os
 import random
@@ -5,7 +6,7 @@ import re
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Optional, Union
 
 from interactions import (
     ActionRow,
@@ -276,11 +277,12 @@ class SecretSantaExtension(Extension):
             available_receivers.remove(receiver)
 
             # Forward checking: ensure remaining givers still have valid options
-            if self._has_valid_future(givers, index + 1, available_receivers, valid_receivers):
-                if self._backtrack_assign(
-                    givers, index + 1, assignments, available_receivers, valid_receivers
-                ):
-                    return True
+            if self._has_valid_future(
+                givers, index + 1, available_receivers, valid_receivers
+            ) and self._backtrack_assign(
+                givers, index + 1, assignments, available_receivers, valid_receivers
+            ):
+                return True
 
             # Backtrack
             available_receivers.add(receiver)
@@ -1111,10 +1113,8 @@ class SecretSantaExtension(Extension):
             except Exception as e:
                 logger.error(f"Failed to send DM to {ctx.author.id}: {e}")
                 # Fallback: try ephemeral anyway (might fail but at least we tried)
-                try:
+                with contextlib.suppress(Exception):
                     await ctx.send(message, ephemeral=True)
-                except Exception:
-                    pass
 
     async def _update_session_message(
         self, ctx: ComponentContext, session: SecretSantaSession

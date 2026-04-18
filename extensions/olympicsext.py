@@ -8,7 +8,7 @@ import asyncio
 import os
 from datetime import datetime
 from functools import partial
-from typing import Any, Dict, List, Optional
+from typing import Any, Optional
 
 from curl_cffi import requests as cffi_requests
 from interactions import (

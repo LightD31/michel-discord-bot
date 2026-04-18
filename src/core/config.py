@@ -9,6 +9,7 @@ Writes are atomic (tempfile + ``os.replace`` + ``fsync``) and serialized by a
 in a separate uvicorn thread, so a thread-aware primitive is required.
 """
 
+import contextlib
 import json
 import os
 import tempfile
@@ -62,10 +63,8 @@ def _atomic_write(data: dict) -> None:
             os.fsync(tmp.fileno())
         os.replace(tmp_path, CONFIG_PATH)
     except Exception:
-        try:
+        with contextlib.suppress(OSError):
             Path(tmp_path).unlink()
-        except OSError:
-            pass
         raise
 
 
@@ -157,11 +156,8 @@ class ConfigStore:
             self._subscribers.append(callback)
 
         def unsubscribe() -> None:
-            with self._state_lock:
-                try:
-                    self._subscribers.remove(callback)
-                except ValueError:
-                    pass
+            with self._state_lock, contextlib.suppress(ValueError):
+                self._subscribers.remove(callback)
 
         return unsubscribe
 

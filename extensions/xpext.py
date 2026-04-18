@@ -2,7 +2,7 @@ import os
 import random
 import time
 from datetime import datetime
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Optional
 
 import pymongo
 import pytz

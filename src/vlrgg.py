@@ -363,9 +363,10 @@ def enrich_match_from_details(match: dict[str, Any], details: dict[str, Any]) ->
         detail_t2 = teams[1].get("name", "").strip().lower()
         match_t1 = match.get("team1", "").strip().lower()
         # Si team1 de /team/matches correspond à teams[1] de /match/details, l'ordre est inversé
-        if match_t1 and detail_t2 and match_t1 in detail_t2 or detail_t2 in match_t1:
-            if not (match_t1 in detail_t1 or detail_t1 in match_t1):
-                swapped = True
+        if (match_t1 and detail_t2 and match_t1 in detail_t2 or detail_t2 in match_t1) and not (
+            match_t1 in detail_t1 or detail_t1 in match_t1
+        ):
+            swapped = True
 
     # Scores depuis teams[] (en respectant l'ordre)
     if len(teams) >= 2 and match.get("status") == "completed":
@@ -424,7 +425,7 @@ async def _enrich_matches(
     tasks = [fetch_match_details(mid) for _, mid in to_enrich]
     details_list = await asyncio.gather(*tasks, return_exceptions=True)
 
-    for (idx, _match_id), details in zip(to_enrich, details_list):
+    for (idx, _match_id), details in zip(to_enrich, details_list, strict=False):
         if isinstance(details, Exception):
             logger.warning(f"Échec enrichissement match {_match_id}: {details}")
             continue

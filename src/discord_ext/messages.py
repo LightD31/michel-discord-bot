@@ -7,6 +7,7 @@ previously lived in every extension.
 
 from __future__ import annotations
 
+import contextlib
 import logging
 from typing import Any
 
@@ -58,10 +59,8 @@ async def fetch_user_safe(bot: Client, user_id) -> tuple[str, Any]:
     """
     user = bot.get_user(user_id)
     if not user:
-        try:
+        with contextlib.suppress(Exception):  # noqa: BLE001 — graceful fallback
             user = await bot.fetch_user(user_id)
-        except Exception:  # noqa: BLE001 — graceful fallback
-            pass
     name = user.display_name if user else f"ID:{user_id}"
     return name, user
 

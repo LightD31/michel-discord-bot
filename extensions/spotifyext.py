@@ -920,8 +920,6 @@ class SpotifyExtension(Extension):
             sp_oauth.parse_response_code(auth_code), as_dict=False
         )
         await modal_ctx.send("Token mis à jour !", ephemeral=True)
-        # Create a new instance of the Spotify API with the access token
-        sp = spotipy.Spotify(auth_manager=sp_oauth, language="fr")
 
     @slash_command(
         name="songinfo",
@@ -1204,7 +1202,7 @@ class SpotifyExtension(Extension):
         logger.info("User %s voted %s", event.ctx.user.username, vote)
 
     @addwithvote.autocomplete("song")
-    async def autocomplete_from_spotify(self, ctx: AutocompleteContext):
+    async def autocomplete_from_spotify_addwithvote(self, ctx: AutocompleteContext):
         """
         Autocomplete function for the 'addwithvote' command.
         """

@@ -612,7 +612,7 @@ class UptimeExtension(Extension):
             monitored_sensors = []
             query = ctx.input_text.lower() if ctx.input_text else ""
 
-            for sensor_id_str in self.maintenance_monitors[guild_id].keys():
+            for sensor_id_str in self.maintenance_monitors[guild_id]:
                 try:
                     sensor_id = int(sensor_id_str)
                     sensor_info = await self._get_sensor_info(sensor_id)

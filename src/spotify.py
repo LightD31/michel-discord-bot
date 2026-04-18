@@ -330,7 +330,7 @@ def count_votes(votes, discord2name):
             vote_counts[vote] += 1
         else:
             vote_counts[vote] = 1
-    for user in votes.keys():
+    for user in votes:
         users.append(discord2name.get(user, user))
     conserver = vote_counts.get("conserver", 0)
     supprimer = vote_counts.get("supprimer", 0)

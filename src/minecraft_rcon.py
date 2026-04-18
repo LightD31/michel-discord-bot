@@ -5,6 +5,7 @@ Remplace l'approche SSH/SFTP par des commandes RCON plus rapides
 
 import asyncio
 import os
+import re
 import socket
 import struct
 
@@ -68,9 +69,8 @@ class MinecraftRCON:
 
     async def execute_command(self, command):
         """Exécute une commande RCON"""
-        if not self.socket:
-            if not await self.connect():
-                return None
+        if not self.socket and not await self.connect():
+            return None
 
         try:
             await self._send_packet(2, command)  # Type 2 = COMMAND
@@ -185,7 +185,7 @@ async def get_player_stats_rcon(rcon_client, player_name):
 
                     if response and "has the following entity data:" in response:
                         value_str = response.split("has the following entity data:")[1].strip()
-                        value_str = value_str.rstrip("dflLbsif")
+                        value_str = re.sub(r"[dflLbsif]+$", "", value_str)
                         try:
                             value = float(value_str)
                             stats[stat_name] = int(value) if value.is_integer() else value
@@ -274,15 +274,14 @@ async def get_all_players_from_scoreboard(rcon_client):
             response = await rcon_client.execute_command(f"scoreboard players list * {scoreboard}")
             logger.debug(f"Réponse scoreboard {scoreboard}: {response}")
 
-            if response and "players" in response.lower():
+            if response and "players" in response.lower() and ":" in response:
                 # Extraire les noms des joueurs de la réponse
                 # Format typique: "Showing X tracked players: player1, player2, player3"
-                if ":" in response:
-                    players_part = response.split(":")[-1].strip()
-                    if players_part and players_part != "none":
-                        players = [name.strip() for name in players_part.split(",")]
-                        all_players.update(players)
-                        logger.debug(f"Joueurs trouvés dans {scoreboard}: {players}")
+                players_part = response.split(":")[-1].strip()
+                if players_part and players_part != "none":
+                    players = [name.strip() for name in players_part.split(",")]
+                    all_players.update(players)
+                    logger.debug(f"Joueurs trouvés dans {scoreboard}: {players}")
         except Exception as e:
             logger.debug(
                 f"Erreur lors de la récupération des joueurs du scoreboard {scoreboard}: {e}"
