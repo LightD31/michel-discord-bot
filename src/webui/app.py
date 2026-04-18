@@ -368,17 +368,20 @@ def create_app(bot=None, bot_loop=None) -> FastAPI:
                 channels = await guild.fetch_channels()
             except Exception:
                 channels = getattr(guild, "channels", []) or []
-            allowed = {
+            text_channel_types = {
                 ChannelType.GUILD_TEXT,
                 ChannelType.GUILD_NEWS,
+            }
+            thread_channel_types = {
                 ChannelType.GUILD_NEWS_THREAD,
                 ChannelType.GUILD_PUBLIC_THREAD,
+                ChannelType.GUILD_PRIVATE_THREAD,
             }
             result = []
             for c in channels:
                 try:
                     ctype = getattr(c, "type", None)
-                    if ctype not in allowed:
+                    if ctype not in text_channel_types and ctype not in thread_channel_types:
                         continue
                     parent_id = None
                     parent = getattr(c, "parent_id", None) or getattr(c, "category_id", None)
@@ -389,7 +392,34 @@ def create_app(bot=None, bot_loop=None) -> FastAPI:
                         "name": getattr(c, "name", str(c.id)),
                         "parent_id": parent_id,
                         "position": getattr(c, "position", 0) or 0,
+                        "is_thread": ctype in thread_channel_types,
+                        "archived": bool(getattr(c, "archived", False)),
                     })
+                except Exception:
+                    continue
+            # Fetch active threads (including private ones the bot can see)
+            try:
+                thread_list = await guild.fetch_active_threads()
+                active_threads = getattr(thread_list, "threads", None) or []
+            except Exception as e:
+                logger.debug(f"Could not fetch active threads for {server_id}: {e}")
+                active_threads = []
+            known_ids = {c["id"] for c in result}
+            for t in active_threads:
+                try:
+                    tid = str(t.id)
+                    if tid in known_ids:
+                        continue
+                    parent_id = getattr(t, "parent_id", None)
+                    result.append({
+                        "id": tid,
+                        "name": getattr(t, "name", tid),
+                        "parent_id": str(parent_id) if parent_id else None,
+                        "position": 0,
+                        "is_thread": True,
+                        "archived": bool(getattr(t, "archived", False)),
+                    })
+                    known_ids.add(tid)
                 except Exception:
                     continue
             # Also include categories so the frontend can group
@@ -401,7 +431,7 @@ def create_app(bot=None, bot_loop=None) -> FastAPI:
                         "name": getattr(c, "name", str(c.id)),
                         "position": getattr(c, "position", 0) or 0,
                     })
-            result.sort(key=lambda x: x["position"])
+            result.sort(key=lambda x: (x["position"], x["name"]))
             categories.sort(key=lambda x: x["position"])
             return {"channels": result, "categories": categories}
 

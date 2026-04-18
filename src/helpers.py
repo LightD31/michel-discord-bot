@@ -11,6 +11,7 @@ from interactions import (
     Embed,
     Message,
     SlashContext,
+    ThreadChannel,
 )
 
 
@@ -176,6 +177,30 @@ def is_guild_enabled(guild_id: int | str, enabled_servers: list[str]) -> bool:
 
 
 # ---------------------------------------------------------------------------
+# Thread unarchive helper
+# ---------------------------------------------------------------------------
+
+async def unarchive_if_thread(
+    channel: Any,
+    logger: Optional[logging.Logger] = None,
+) -> None:
+    """Unarchive the channel if it is an archived thread. No-op otherwise.
+
+    Discord rejects sends/edits against archived threads, so call this before
+    any send_message/edit_message when the target could be a thread.
+    """
+    if not isinstance(channel, ThreadChannel):
+        return
+    if not getattr(channel, "archived", False):
+        return
+    try:
+        await channel.edit(archived=False, reason="Auto-unarchive before send/edit")
+    except Exception as e:
+        if logger:
+            logger.warning("Could not unarchive thread %s: %s", getattr(channel, "id", "?"), e)
+
+
+# ---------------------------------------------------------------------------
 # Persistent module message (auto-create + pin + persist id)
 # ---------------------------------------------------------------------------
 
@@ -212,6 +237,8 @@ async def fetch_or_create_persistent_message(
         return None
     if channel is None or not hasattr(channel, "send"):
         return None
+
+    await unarchive_if_thread(channel, logger=logger)
 
     if message_id:
         try:

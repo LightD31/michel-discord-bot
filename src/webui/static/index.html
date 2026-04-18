@@ -3704,10 +3704,21 @@
             return;
         }
         const {channels, categories} = data;
-        const catMap = new Map((categories || []).map(c => [c.id, c.name]));
-        // Group channels by parent category
-        const grouped = new Map();
+        // Split top-level channels from threads and index threads by their parent text channel
+        const topLevel = [];
+        const threadsByParent = new Map();
         for (const c of channels) {
+            if (c.is_thread) {
+                const pid = c.parent_id || '__orphan__';
+                if (!threadsByParent.has(pid)) threadsByParent.set(pid, []);
+                threadsByParent.get(pid).push(c);
+            } else {
+                topLevel.push(c);
+            }
+        }
+        // Group top-level channels by parent category
+        const grouped = new Map();
+        for (const c of topLevel) {
             const catId = c.parent_id || '__none__';
             if (!grouped.has(catId)) grouped.set(catId, []);
             grouped.get(catId).push(c);
@@ -3718,12 +3729,36 @@
             ['__none__', 'Sans catégorie'],
             ...(categories || []).map(c => [c.id, c.name]),
         ];
+        const renderThreadOption = (t) => {
+            const prefix = t.archived ? '🗄️ ' : '🧵 ';
+            return `<option value="${escapeHtml(t.id)}">&nbsp;&nbsp;↳ ${prefix}${escapeHtml(t.name)}</option>`;
+        };
         for (const [catId, catName] of orderedCats) {
             const list = grouped.get(catId);
             if (!list || list.length === 0) continue;
             opts += `<optgroup label="${escapeHtml(catName)}">`;
             for (const ch of list) {
                 opts += `<option value="${escapeHtml(ch.id)}">#${escapeHtml(ch.name)}</option>`;
+                const threads = threadsByParent.get(ch.id);
+                if (threads && threads.length) {
+                    for (const t of threads) {
+                        opts += renderThreadOption(t);
+                    }
+                    threadsByParent.delete(ch.id);
+                }
+            }
+            opts += '</optgroup>';
+        }
+        // Any threads whose parent isn't in the visible channel list (e.g. no perms on parent)
+        const orphanThreads = [];
+        for (const list of threadsByParent.values()) {
+            for (const t of list) orphanThreads.push(t);
+        }
+        if (orphanThreads.length) {
+            opts += `<optgroup label="Fils (autres)">`;
+            for (const t of orphanThreads) {
+                const prefix = t.archived ? '🗄️ ' : '🧵 ';
+                opts += `<option value="${escapeHtml(t.id)}">${prefix}${escapeHtml(t.name)}</option>`;
             }
             opts += '</optgroup>';
         }
