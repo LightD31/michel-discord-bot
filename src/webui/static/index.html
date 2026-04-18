@@ -1382,30 +1382,33 @@
             gap: 8px;
         }
 
-        .teams-header {
-            display: grid;
-            grid-template-columns: 1.2fr 0.8fr 1fr 1fr 1fr auto;
-            gap: 8px;
-            padding: 0 12px;
-            font-size: 11px;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            color: var(--text-muted);
-        }
-
         .team-entry {
-            display: grid;
-            grid-template-columns: 1.2fr 0.8fr 1fr 1fr 1fr auto;
-            gap: 8px;
-            align-items: center;
-            padding: 10px 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            padding: 12px;
             background: var(--bg-primary);
             border: 1px solid var(--border);
             border-radius: var(--radius);
         }
 
-        .team-entry input, .team-entry select {
+        .team-entry-grid {
+            display: grid;
+            grid-template-columns: 1.2fr 0.8fr 1.2fr;
+            gap: 10px;
+        }
+
+        .team-field label {
+            display: block;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-muted);
+            margin-bottom: 4px;
+        }
+
+        .team-entry input[type="text"], .team-entry select {
             width: 100%;
             padding: 6px 8px;
             background: var(--bg-secondary);
@@ -1416,8 +1419,21 @@
             outline: none;
         }
 
-        .team-entry input:focus, .team-entry select:focus {
+        .team-entry input[type="text"]:focus, .team-entry select:focus {
             border-color: var(--accent);
+        }
+
+        .team-entry-footer {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            flex-wrap: wrap;
+            padding-top: 8px;
+            border-top: 1px solid var(--border);
+        }
+        .team-entry-footer .message-status {
+            flex: 1;
+            min-width: 200px;
         }
 
         .team-entry .btn-remove-team {
@@ -1436,11 +1452,8 @@
         }
 
         @media (max-width: 768px) {
-            .team-entry {
+            .team-entry-grid {
                 grid-template-columns: 1fr;
-            }
-            .teams-header {
-                display: none;
             }
         }
 
@@ -2833,22 +2846,16 @@
                     html += `<button type="button" class="btn-add-model" onclick="addModelEntry(this)">+ Ajouter un modèle</button>`;
                     break;
 
-                case 'teams':
+                case 'teams': {
                     const teams = Array.isArray(value) ? value : [];
                     html += `<div class="teams-list" data-field="${key}" data-type="teams">`;
-                    html += `<div class="teams-header"><span>Nom</span><span>ID VLR.gg</span><span>Salon / Message</span><span></span></div>`;
                     teams.forEach((t, idx) => {
-                        html += `
-                            <div class="team-entry" data-team-idx="${idx}">
-                                <input type="text" data-team-field="name" value="${escapeHtml(t.name || '')}" placeholder="ex: Mandatory">
-                                <input type="text" data-team-field="vlrTeamId" value="${escapeHtml(t.vlrTeamId || '')}" placeholder="ex: 7967">
-                                <input type="text" data-team-field="channelMessageId" value="${escapeHtml(t.channelMessageId || '')}" placeholder="ID du salon (message créé auto)" title="Saisir l'ID du salon. Le message est créé automatiquement au premier lancement puis l'ID est sauvegardé ici.">
-                                <button class="btn-remove-team" onclick="this.closest('.team-entry').remove()" title="Supprimer">✕</button>
-                            </div>`;
+                        html += renderTeamEntry(t, idx);
                     });
                     html += `</div>`;
                     html += `<button type="button" class="btn-add-entry" onclick="addTeamEntry(this)">+ Ajouter une équipe</button>`;
                     break;
+                }
 
                 case 'discord2name':
                     const nameMap = (typeof value === 'object' && value !== null && !Array.isArray(value)) ? value : {};
@@ -3097,11 +3104,22 @@
             for (const entry of entries) {
                 const name = entry.querySelector('[data-team-field="name"]')?.value?.trim();
                 const vlrTeamId = entry.querySelector('[data-team-field="vlrTeamId"]')?.value?.trim();
-                const channelMessageId = entry.querySelector('[data-team-field="channelMessageId"]')?.value?.trim();
+                const chanPicker = entry.querySelector('.channel-picker[data-team-field="channelId"]');
+                let chan = '';
+                if (chanPicker) {
+                    const manual = chanPicker.querySelector('.channel-picker-manual');
+                    const select = chanPicker.querySelector('.channel-picker-select');
+                    const manualVisible = manual && manual.style.display !== 'none';
+                    chan = (manualVisible ? (manual?.value ?? '') : (select?.value ?? '')).trim();
+                }
+                const msg = entry.querySelector('input[data-team-field="messageId"]')?.value?.trim() || '';
+                const pinCb = entry.querySelector('input[type="checkbox"][data-team-field="pin"]');
+                const pin = !!(pinCb && pinCb.checked);
                 if (name) {
                     const team = { name };
                     if (vlrTeamId) team.vlrTeamId = vlrTeamId;
-                    if (channelMessageId) team.channelMessageId = channelMessageId;
+                    if (chan) team.channelMessageId = msg ? `${chan}:${msg}` : chan;
+                    if (pin) team.pin = true;
                     teams.push(team);
                 }
             }
@@ -3349,8 +3367,41 @@
                     </div>
                 </div>
                 <div class="streamer-toggles">${toggles}</div>
+                <div class="message-status ${planningMsg ? 'configured' : 'pending'}" data-streamer-status>
+                    ${renderStreamerMessageStatusBody(planningMsg, planningChan)}
+                </div>
                 <input type="hidden" data-streamer-field="twitchPlanningMessageId" value="${escapeHtml(planningMsg)}">
             </div>`;
+    }
+
+    function renderStreamerMessageStatusBody(msgId, channelId) {
+        if (!msgId) {
+            return `<span class="status-icon">⏳</span>
+                    <span class="status-text">Message de planning pas encore créé</span>`;
+        }
+        const serverId = state.currentServerId;
+        const link = (serverId && channelId)
+            ? `https://discord.com/channels/${serverId}/${channelId}/${msgId}`
+            : '';
+        return `<span class="status-icon">✅</span>
+                <span class="status-text">Planning <code>${escapeHtml(msgId)}</code></span>
+                ${link ? `<a class="status-link" href="${link}" target="_blank" rel="noreferrer">↗ voir</a>` : ''}
+                <button type="button" class="btn-status-reset" onclick="clearStreamerMessageId(this)"
+                        title="Vider l'ID pour que le bot recrée le message">🔄 Recréer</button>`;
+    }
+
+    function clearStreamerMessageId(btn) {
+        const entry = btn.closest('.streamer-entry');
+        if (!entry) return;
+        const hidden = entry.querySelector('input[data-streamer-field="twitchPlanningMessageId"]');
+        if (hidden) hidden.value = '';
+        const status = entry.querySelector('[data-streamer-status]');
+        if (status) {
+            status.classList.remove('configured');
+            status.classList.add('pending');
+            status.innerHTML = `<span class="status-icon">⏳</span>
+                <span class="status-text">Vidé — sauvegardez pour recréer</span>`;
+        }
     }
 
     function addStreamerEntry(btn) {
@@ -3378,24 +3429,94 @@
         entry.querySelector('input').focus();
     }
 
+    function renderTeamEntry(t, idx) {
+        t = t || {};
+        let chan = '', msg = '';
+        const cm = t.channelMessageId || '';
+        if (cm.includes(':')) {
+            const parts = cm.split(':', 2);
+            chan = (parts[0] || '').trim();
+            msg = (parts[1] || '').trim();
+        } else if (cm) {
+            chan = cm.trim();
+        }
+        const pin = !!t.pin;
+        return `
+            <div class="team-entry" data-team-idx="${idx}">
+                <div class="team-entry-grid">
+                    <div class="team-field">
+                        <label>Nom</label>
+                        <input type="text" data-team-field="name" value="${escapeHtml(t.name || '')}" placeholder="ex: Mandatory">
+                    </div>
+                    <div class="team-field">
+                        <label>ID VLR.gg</label>
+                        <input type="text" data-team-field="vlrTeamId" value="${escapeHtml(t.vlrTeamId || '')}" placeholder="ex: 7967">
+                    </div>
+                    <div class="team-field team-field-channel">
+                        <label>Salon planning</label>
+                        <div class="channel-picker" data-team-field="channelId" data-current="${escapeHtml(chan)}">
+                            <select class="form-input channel-picker-select">
+                                <option value="">— Chargement des salons… —</option>
+                                ${chan ? `<option value="${escapeHtml(chan)}" selected>${escapeHtml(chan)}</option>` : ''}
+                            </select>
+                            <input type="text" class="form-input channel-picker-manual" value="${escapeHtml(chan)}" placeholder="ID du salon" style="display:none;">
+                            <button type="button" class="btn-channel-toggle" onclick="toggleChannelPickerMode(this)" title="Saisie manuelle">✎</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="team-entry-footer">
+                    <label class="streamer-toggle-inline">
+                        <input type="checkbox" data-team-field="pin" ${pin ? 'checked' : ''}>
+                        <span>Épingler le message</span>
+                    </label>
+                    <div class="message-status ${msg ? 'configured' : 'pending'}" data-team-status>
+                        ${renderTeamMessageStatusBody(msg, chan)}
+                    </div>
+                    <button class="btn-remove-team" onclick="this.closest('.team-entry').remove()" title="Supprimer">✕</button>
+                </div>
+                <input type="hidden" data-team-field="messageId" value="${escapeHtml(msg)}">
+            </div>`;
+    }
+
+    function renderTeamMessageStatusBody(msgId, channelId) {
+        if (!msgId) {
+            return `<span class="status-icon">⏳</span>
+                    <span class="status-text">Message pas encore créé</span>`;
+        }
+        const serverId = state.currentServerId;
+        const link = (serverId && channelId)
+            ? `https://discord.com/channels/${serverId}/${channelId}/${msgId}`
+            : '';
+        return `<span class="status-icon">✅</span>
+                <span class="status-text">Message <code>${escapeHtml(msgId)}</code></span>
+                ${link ? `<a class="status-link" href="${link}" target="_blank" rel="noreferrer">↗ voir</a>` : ''}
+                <button type="button" class="btn-status-reset" onclick="clearTeamMessageId(this)"
+                        title="Vider l'ID pour que le bot recrée le message">🔄 Recréer</button>`;
+    }
+
+    function clearTeamMessageId(btn) {
+        const entry = btn.closest('.team-entry');
+        if (!entry) return;
+        const hidden = entry.querySelector('input[data-team-field="messageId"]');
+        if (hidden) hidden.value = '';
+        const status = entry.querySelector('[data-team-status]');
+        if (status) {
+            status.classList.remove('configured');
+            status.classList.add('pending');
+            status.innerHTML = `<span class="status-icon">⏳</span>
+                <span class="status-text">Vidé — sauvegardez pour recréer</span>`;
+        }
+    }
+
     function addTeamEntry(btn) {
         const list = btn.previousElementSibling;
-        // Skip the variables hint div if present
-        if (list.classList.contains('messagelist-variables')) {
-            // shouldn't happen for teams, but safety
-        }
         const idx = list.querySelectorAll('.team-entry').length;
-        const entry = document.createElement('div');
-        entry.className = 'team-entry';
-        entry.dataset.teamIdx = idx;
-        entry.innerHTML = `
-            <input type="text" data-team-field="name" value="" placeholder="ex: Mandatory">
-            <input type="text" data-team-field="vlrTeamId" value="" placeholder="ex: 7967">
-            <input type="text" data-team-field="channelMessageId" value="" placeholder="channelId:messageId">
-            <button class="btn-remove-team" onclick="this.closest('.team-entry').remove()" title="Supprimer">✕</button>
-        `;
+        const wrapper = document.createElement('div');
+        wrapper.innerHTML = renderTeamEntry({}, idx).trim();
+        const entry = wrapper.firstElementChild;
         list.appendChild(entry);
-        entry.querySelector('input').focus();
+        populateChannelPickers(entry);
+        entry.querySelector('input[data-team-field="name"]').focus();
     }
 
     function addMessageEntry(btn) {
