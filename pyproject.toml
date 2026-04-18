@@ -1,0 +1,129 @@
+[project]
+name = "michel-discord-bot"
+version = "0.1.0"
+description = "Michel — modular multi-guild Discord bot (interactions.py + MongoDB + optional FastAPI dashboard)."
+requires-python = ">=3.12"
+license = { file = "LICENSE" }
+readme = "README.md"
+
+# Runtime dependencies — keep in sync with requirements.txt until the Dockerfile
+# is migrated to install from pyproject.toml. See Phase 0 notes.
+dependencies = [
+    # Bot framework & core
+    "discord-py-interactions",
+    "python-dotenv",
+    "aiohttp",
+    "curl_cffi",
+    "uvloop; platform_system != 'Windows'",
+
+    # Datastore
+    "motor",
+
+    # Integrations
+    "spotipy",
+    "twitchAPI",
+    "notion-client>=2.7.0",
+    "anthropic",
+    "openai",
+    "mcstatus",
+    "asyncssh",
+    "nbtlib==1.12.1",
+    "pyfactorybridge",
+    "pykuma",
+    "python-socketio",
+    "rdoclient",
+
+    # Utilities
+    "pytz",
+    "babel",
+    "isodate",
+    "emoji",
+    "beautifulsoup4",
+    "Pillow",
+    "prettytable",
+    "pandas",
+
+    # Optional Web UI
+    "fastapi",
+    "uvicorn[standard]",
+    "sse-starlette",
+]
+
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.6",
+    "mypy>=1.10",
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "detect-secrets>=1.5",
+    "pre-commit>=3.7",
+]
+
+# ─── ruff ──────────────────────────────────────────────────────────────
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+extend-exclude = [
+    "extensions/_*",  # archived/disabled extensions
+    "grafana",
+    "data",
+    "logs",
+]
+
+[tool.ruff.lint]
+# Start permissive — this is a large legacy codebase. Tighten over time.
+select = [
+    "E",    # pycodestyle errors
+    "F",    # pyflakes
+    "W",    # pycodestyle warnings
+    "I",    # isort
+    "B",    # flake8-bugbear
+    "UP",   # pyupgrade
+    "SIM",  # flake8-simplify
+]
+ignore = [
+    "E501",  # line too long — handled by formatter
+    "B008",  # function-call-in-default-argument (common interactions.py pattern)
+    "B023",  # function-uses-loop-variable (triggers too many false positives in event handlers)
+    "SIM108", # ternary-in-if (not always clearer)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"extensions/*.py" = ["F401"]  # extensions may re-export without using
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+# ─── mypy ──────────────────────────────────────────────────────────────
+[tool.mypy]
+python_version = "3.12"
+# Incremental adoption: strict on new core modules, lenient everywhere else.
+# Raise the floor as modules get typed.
+ignore_missing_imports = true
+check_untyped_defs = false
+warn_unused_ignores = true
+warn_redundant_casts = true
+exclude = [
+    "^extensions/_",
+    "^grafana/",
+    "^data/",
+    "^logs/",
+]
+
+[[tool.mypy.overrides]]
+module = "src.core.*"
+strict = true
+
+# ─── pytest ────────────────────────────────────────────────────────────
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+asyncio_mode = "auto"
+filterwarnings = [
+    "error",
+    "ignore::DeprecationWarning",  # third-party libs
+]
+
+# ─── detect-secrets ────────────────────────────────────────────────────
+# Baseline lives at .secrets.baseline; configured via .pre-commit-config.yaml.

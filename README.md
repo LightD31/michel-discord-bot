@@ -123,13 +123,19 @@ cd michel-discord-bot
 python -m venv .venv
 # Windows
 .venv\Scripts\Activate.ps1
-pip install -r "requirements win.txt"
 # Linux / macOS
 source .venv/bin/activate
-pip install -r requirements.txt
+
+# Install runtime + dev tooling (ruff, mypy, pytest, pre-commit, detect-secrets)
+pip install -e ".[dev]"
+pre-commit install
 
 python main.py
 ```
+
+Runtime dependencies are declared in `pyproject.toml`. `requirements.txt` is
+kept in sync for the Docker image until the Dockerfile is migrated to install
+from the pyproject.
 
 ---
 
