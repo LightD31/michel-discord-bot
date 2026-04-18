@@ -1550,6 +1550,27 @@
             border-top: 1px solid var(--border);
         }
 
+        .streamer-planning-toggle {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 13px;
+            color: var(--text-secondary);
+            cursor: pointer;
+            padding: 4px 0;
+        }
+
+        .streamer-planning-toggle input[type="checkbox"] {
+            width: 15px;
+            height: 15px;
+            accent-color: var(--accent);
+            cursor: pointer;
+        }
+
+        .streamer-entry.planning-disabled .planning-only {
+            display: none !important;
+        }
+
         .streamer-toggle-inline {
             display: inline-flex;
             align-items: center;
@@ -3199,11 +3220,13 @@
                 const planningChan = pickValue(planningPicker);
                 const notifChan = pickValue(notifPicker);
                 const messageId = entry.querySelector('[data-streamer-field="twitchPlanningMessageId"]')?.value?.trim() || '';
+                const planningEnabled = !!entry.querySelector('[data-streamer-planning-enabled]')?.checked;
                 const cfg = {};
-                if (planningChan) cfg.twitchPlanningChannelId = planningChan;
-                if (messageId) cfg.twitchPlanningMessageId = messageId;
+                if (planningEnabled && planningChan) cfg.twitchPlanningChannelId = planningChan;
+                if (planningEnabled && messageId) cfg.twitchPlanningMessageId = messageId;
                 if (notifChan) cfg.twitchNotificationChannelId = notifChan;
                 for (const t of STREAMER_TOGGLE_FIELDS) {
+                    if (t.planningOnly && !planningEnabled) continue;
                     const cb = entry.querySelector(`[data-streamer-field="${t.key}"]`);
                     if (cb && cb.checked) cfg[t.key] = true;
                 }
@@ -3319,7 +3342,7 @@
     }
 
     const STREAMER_TOGGLE_FIELDS = [
-        {key: 'twitchPlanningPinMessage', label: 'Épingler le planning'},
+        {key: 'twitchPlanningPinMessage', label: 'Épingler le planning', planningOnly: true},
         {key: 'notifyStreamStart', label: 'Début de live'},
         {key: 'notifyStreamUpdate', label: 'Changements live'},
         {key: 'notifyStreamEnd', label: 'Fin de live'},
@@ -3331,19 +3354,24 @@
         const planningChan = cfg.twitchPlanningChannelId ? String(cfg.twitchPlanningChannelId) : '';
         const notifChan = cfg.twitchNotificationChannelId ? String(cfg.twitchNotificationChannelId) : '';
         const planningMsg = cfg.twitchPlanningMessageId ? String(cfg.twitchPlanningMessageId) : '';
+        const planningEnabled = !!(planningChan || planningMsg);
         const toggles = STREAMER_TOGGLE_FIELDS.map(t => `
-            <label class="streamer-toggle-inline">
+            <label class="streamer-toggle-inline${t.planningOnly ? ' planning-only' : ''}">
                 <input type="checkbox" data-streamer-field="${t.key}" ${cfg[t.key] ? 'checked' : ''}>
                 <span>${escapeHtml(t.label)}</span>
             </label>`).join('');
         return `
-            <div class="streamer-entry">
+            <div class="streamer-entry${planningEnabled ? '' : ' planning-disabled'}">
                 <div class="streamer-entry-header">
                     <input type="text" data-streamer-field="login" value="${escapeHtml(login || '')}" placeholder="Login Twitch (ex: zerator)">
                     <button class="btn-remove-streamer" onclick="this.closest('.streamer-entry').remove()" title="Supprimer">✕</button>
                 </div>
+                <label class="streamer-planning-toggle">
+                    <input type="checkbox" data-streamer-planning-enabled ${planningEnabled ? 'checked' : ''} onchange="toggleStreamerPlanning(this)">
+                    <span>Activer le message de planning</span>
+                </label>
                 <div class="streamer-entry-grid">
-                    <div class="streamer-field">
+                    <div class="streamer-field planning-only">
                         <label>Salon planning</label>
                         <div class="channel-picker" data-streamer-field="twitchPlanningChannelId" data-current="${escapeHtml(planningChan)}">
                             <select class="form-input channel-picker-select">
@@ -3367,11 +3395,17 @@
                     </div>
                 </div>
                 <div class="streamer-toggles">${toggles}</div>
-                <div class="message-status ${planningMsg ? 'configured' : 'pending'}" data-streamer-status>
+                <div class="message-status planning-only ${planningMsg ? 'configured' : 'pending'}" data-streamer-status>
                     ${renderStreamerMessageStatusBody(planningMsg, planningChan)}
                 </div>
                 <input type="hidden" data-streamer-field="twitchPlanningMessageId" value="${escapeHtml(planningMsg)}">
             </div>`;
+    }
+
+    function toggleStreamerPlanning(checkbox) {
+        const entry = checkbox.closest('.streamer-entry');
+        if (!entry) return;
+        entry.classList.toggle('planning-disabled', !checkbox.checked);
     }
 
     function renderStreamerMessageStatusBody(msgId, channelId) {

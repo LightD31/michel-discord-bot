@@ -749,81 +749,74 @@ class TwitchExtension(Extension):
         data: Optional[Union[ChannelUpdateEvent, StreamOfflineEvent]] = None,
     ) -> None:
         """
-        Edit the message for a specific streamer.
-
-        Args:
-            streamer (StreamerInfo): The streamer info object.
-            offline (bool, optional): The offline status. Defaults to False.
-            data (Union[ChannelUpdateEvent, StreamOfflineEvent], optional): Event data. Defaults to None.
+        Update the planning message (if configured) and manage the scheduled
+        Discord event for a streamer. The planning message is optional — when
+        it isn't set up, scheduled events are still handled normally.
         """
-        if not streamer.message or not streamer.channel:
-            logger.warning(f"Missing message or channel for {streamer.streamer_id} in guild {streamer.guild_id}")
-            return
-
-        embed = await self.fetch_schedule(streamer.user_id, streamer.guild_id)
+        has_message = bool(streamer.message and streamer.channel)
 
         if offline is False:
             stream = await self.get_stream_data(streamer.user_id)
-            live_embed = await self.create_stream_embed(
-                stream, streamer.user_id, offline=False, data=data
-            )
-            guild: Guild = await self.bot.fetch_guild(streamer.guild_id)
-            user_id, title, description, user_login = await self.get_stream_info(
-                stream, streamer.user_id, offline, data
-            )
 
-            title100 = title if len(title) <= 100 else f"{title[:97]}..."
-
-            if streamer.manage_discord_events:
+            if streamer.manage_discord_events or streamer.scheduled_event:
                 try:
-                    if streamer.scheduled_event:
-                        await streamer.scheduled_event.edit(
-                            name=title100,
-                            description=f"**{title}**\n\n{description}",
-                            end_time=datetime.now(self.timezone) + timedelta(days=1),
-                        )
-                    else:
-                        streamer.scheduled_event = await guild.create_scheduled_event(
-                            name=title100,
-                            event_type=ScheduledEventType.EXTERNAL,
-                            external_location=f"https://twitch.tv/{user_login}",
-                            start_time=datetime.now(self.timezone) + timedelta(seconds=5),
-                            end_time=datetime.now(self.timezone) + timedelta(days=1),
-                            description=f"**{title}**\n\n{description}",
-                        )
-                        await streamer.scheduled_event.edit(status=ScheduledEventStatus.ACTIVE)
+                    guild: Guild = await self.bot.fetch_guild(streamer.guild_id)
+                    _, title, description, user_login = await self.get_stream_info(
+                        stream, streamer.user_id, offline, data
+                    )
+                    title100 = title if len(title) <= 100 else f"{title[:97]}..."
+
+                    if streamer.manage_discord_events:
+                        if streamer.scheduled_event:
+                            await streamer.scheduled_event.edit(
+                                name=title100,
+                                description=f"**{title}**\n\n{description}",
+                                end_time=datetime.now(self.timezone) + timedelta(days=1),
+                            )
+                        else:
+                            streamer.scheduled_event = await guild.create_scheduled_event(
+                                name=title100,
+                                event_type=ScheduledEventType.EXTERNAL,
+                                external_location=f"https://twitch.tv/{user_login}",
+                                start_time=datetime.now(self.timezone) + timedelta(seconds=5),
+                                end_time=datetime.now(self.timezone) + timedelta(days=1),
+                                description=f"**{title}**\n\n{description}",
+                            )
+                            await streamer.scheduled_event.edit(status=ScheduledEventStatus.ACTIVE)
+                    elif streamer.scheduled_event:
+                        await streamer.scheduled_event.delete()
+                        streamer.scheduled_event = None
                 except Exception as e:
                     logger.error(f"Error handling scheduled event for {streamer.streamer_id}: {e}")
-            elif streamer.scheduled_event:
-                # Setting turned off while an event is live — clean it up
+
+            if has_message:
+                try:
+                    embed = await self.fetch_schedule(streamer.user_id, streamer.guild_id)
+                    live_embed = await self.create_stream_embed(
+                        stream, streamer.user_id, offline=False, data=data
+                    )
+                    await streamer.message.edit(
+                        content="", embed=[embed, live_embed], components=[]
+                    )
+                except Exception as e:
+                    logger.error(f"Error editing message for {streamer.streamer_id}: {e}")
+        else:
+            if streamer.scheduled_event:
                 try:
                     await streamer.scheduled_event.delete()
+                    streamer.scheduled_event = None
                 except Exception as e:
                     logger.error(f"Error deleting scheduled event for {streamer.streamer_id}: {e}")
-                streamer.scheduled_event = None
 
-            try:
-                await streamer.message.edit(
-                    content="", embed=[embed, live_embed], components=[]
-                )
-            except Exception as e:
-                logger.error(f"Error editing message for {streamer.streamer_id}: {e}")
-        else:
-            offline_embed = await self.create_stream_embed(
-                None, streamer.user_id, offline=True, data=data
-            )
-
-            try:
-                if streamer.scheduled_event:
-                    await streamer.scheduled_event.delete()
-                    streamer.scheduled_event = None
-            except Exception as e:
-                logger.error(f"Error deleting scheduled event for {streamer.streamer_id}: {e}")
-
-            try:
-                await streamer.message.edit(content="", embed=[embed, offline_embed])
-            except Exception as e:
-                logger.error(f"Error editing message for {streamer.streamer_id}: {e}")
+            if has_message:
+                try:
+                    embed = await self.fetch_schedule(streamer.user_id, streamer.guild_id)
+                    offline_embed = await self.create_stream_embed(
+                        None, streamer.user_id, offline=True, data=data
+                    )
+                    await streamer.message.edit(content="", embed=[embed, offline_embed])
+                except Exception as e:
+                    logger.error(f"Error editing message for {streamer.streamer_id}: {e}")
 
     async def add_user(
         self, embed: Embed, user_id: str, offline: bool = False
