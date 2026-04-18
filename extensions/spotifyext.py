@@ -133,22 +133,18 @@ class ServerData:
     def __init__(self, guild_id: str, config: dict, global_config: dict):
         self.guild_id = guild_id
         self.discord2name = load_discord2name(guild_id)
-        
-        # Convert spotifyUsers array to spotify2discord and spotify2name dicts
+
+        # Convert spotifyUsers array to spotify2discord. Display names come from
+        # userinfoext (users collection) / discord2name — not stored here.
         spotify_users = config.get("spotifyUsers", [])
         self.spotify2discord = {}
-        self.spotify2name = {}
         if isinstance(spotify_users, list):
             for user in spotify_users:
-                if isinstance(user, dict) and user.get("spotifyId"):
-                    self.spotify2discord[user["spotifyId"]] = user.get("discordId")
-                    self.spotify2name[user["spotifyId"]] = user.get("name")
-        
-        # Fallback to old format if spotifyUsers is not present
+                if isinstance(user, dict) and user.get("spotifyId") and user.get("discordId"):
+                    self.spotify2discord[user["spotifyId"]] = user["discordId"]
+
         if not self.spotify2discord:
             self.spotify2discord = config.get("spotifyIdToDiscordId", {})
-        if not self.spotify2name:
-            self.spotify2name = config.get("spotifyIdToName", {})
             
         self.channel_id = config.get("spotifyChannelId")
         self.playlist_id = config.get("spotifyPlaylistId")

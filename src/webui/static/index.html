@@ -1786,7 +1786,7 @@
 
         .spotifymap-header {
             display: grid;
-            grid-template-columns: 1fr 1fr 1fr auto;
+            grid-template-columns: 1fr 2fr auto;
             gap: 8px;
             padding: 0 12px;
             font-size: 11px;
@@ -1798,7 +1798,7 @@
 
         .spotifymap-entry {
             display: grid;
-            grid-template-columns: 1fr 1fr 1fr auto;
+            grid-template-columns: 1fr 2fr auto;
             gap: 8px;
             align-items: center;
             padding: 10px 12px;
@@ -2963,14 +2963,21 @@
                 case 'spotifymap':
                     const spotifyUsers = Array.isArray(value) ? value : [];
                     html += `<div class="spotifymap-list" data-field="${key}" data-type="spotifymap">`;
-                    html += `<div class="spotifymap-header"><span>Spotify ID</span><span>Nom</span><span>Discord ID</span><span></span></div>`;
+                    html += `<div class="spotifymap-header"><span>Spotify ID</span><span>Membre Discord</span><span></span></div>`;
                     spotifyUsers.forEach((user, idx) => {
+                        const safeDid = escapeHtml(user.discordId || '');
                         html += `
                             <div class="spotifymap-entry" data-user-idx="${idx}">
                                 <input type="text" data-spotifymap-field="spotifyId" value="${escapeHtml(user.spotifyId || '')}" placeholder="ex: exemple123">
-                                <input type="text" data-spotifymap-field="name" value="${escapeHtml(user.name || '')}" placeholder="ex: Jean">
-                                <input type="text" data-spotifymap-field="discordId" value="${escapeHtml(user.discordId || '')}" placeholder="ex: 123456789012345678">
-                                <button class="btn-remove-entry" onclick="this.closest('.spotifymap-entry').remove()" title="Supprimer">✕</button>
+                                <div class="member-picker" data-current="${safeDid}">
+                                    <select class="form-input member-picker-select" onchange="onMemberPickerChange(this)">
+                                        <option value="">— Chargement des membres… —</option>
+                                        ${user.discordId ? `<option value="${safeDid}" selected>${safeDid}</option>` : ''}
+                                    </select>
+                                    <input type="text" class="form-input member-picker-manual" data-spotifymap-field="discordId" value="${safeDid}" placeholder="ex: 123456789012345678" style="display:none;">
+                                    <button type="button" class="btn-member-toggle" onclick="toggleMemberPickerMode(this)" title="Saisie manuelle">✎</button>
+                                </div>
+                                <button class="btn-remove-entry" onclick="removeSpotifyMapEntry(this)" title="Supprimer">✕</button>
                             </div>`;
                     });
                     html += `</div>`;
@@ -3233,10 +3240,16 @@
             const spotifyUsers = [];
             for (const entry of entries) {
                 const spotifyId = entry.querySelector('[data-spotifymap-field="spotifyId"]')?.value?.trim();
-                const name = entry.querySelector('[data-spotifymap-field="name"]')?.value?.trim();
-                const discordId = entry.querySelector('[data-spotifymap-field="discordId"]')?.value?.trim();
-                if (spotifyId && name && discordId) {
-                    spotifyUsers.push({ spotifyId, name, discordId });
+                const picker = entry.querySelector('.member-picker');
+                let discordId = '';
+                if (picker) {
+                    const manual = picker.querySelector('.member-picker-manual');
+                    const select = picker.querySelector('.member-picker-select');
+                    const manualVisible = manual && manual.style.display !== 'none';
+                    discordId = (manualVisible ? (manual?.value ?? '') : (select?.value ?? '')).trim();
+                }
+                if (spotifyId && discordId) {
+                    spotifyUsers.push({ spotifyId, discordId });
                 }
             }
             if (spotifyUsers.length > 0) {
@@ -3511,12 +3524,34 @@
         entry.className = 'spotifymap-entry';
         entry.innerHTML = `
             <input type="text" data-spotifymap-field="spotifyId" value="" placeholder="ex: exemple123">
-            <input type="text" data-spotifymap-field="name" value="" placeholder="ex: Jean">
-            <input type="text" data-spotifymap-field="discordId" value="" placeholder="ex: 123456789012345678">
-            <button class="btn-remove-entry" onclick="this.closest('.spotifymap-entry').remove()" title="Supprimer">✕</button>
+            <div class="member-picker" data-current="">
+                <select class="form-input member-picker-select" onchange="onMemberPickerChange(this)">
+                    <option value="">— Chargement des membres… —</option>
+                </select>
+                <input type="text" class="form-input member-picker-manual" data-spotifymap-field="discordId" value="" placeholder="ex: 123456789012345678" style="display:none;">
+                <button type="button" class="btn-member-toggle" onclick="toggleMemberPickerMode(this)" title="Saisie manuelle">✎</button>
+            </div>
+            <button class="btn-remove-entry" onclick="removeSpotifyMapEntry(this)" title="Supprimer">✕</button>
         `;
         list.appendChild(entry);
+        populateMemberPickers(entry).then(() => refreshSpotifyMapListOptions(list));
         entry.querySelector('input').focus();
+    }
+
+    function removeSpotifyMapEntry(btn) {
+        const entry = btn.closest('.spotifymap-entry');
+        if (!entry) return;
+        const list = entry.closest('.spotifymap-list');
+        entry.remove();
+        if (list) refreshSpotifyMapListOptions(list);
+    }
+
+    function refreshSpotifyMapListOptions(list) {
+        if (!list) return;
+        const members = _memberCache[state.currentServerId];
+        if (!members) return;
+        const pickers = list.querySelectorAll('.member-picker');
+        refreshMemberPickerGroup(pickers, members);
     }
 
     function renderTeamEntry(t, idx) {
@@ -3878,8 +3913,16 @@
         return null;
     }
 
+    function getDiscord2NameMap() {
+        const sid = state.currentServerId;
+        const map = state.servers?.[sid]?.config?.discord2name;
+        return (map && typeof map === 'object' && !Array.isArray(map)) ? map : {};
+    }
+
     function memberOptionLabel(m) {
-        const display = m.display_name || m.username || m.id;
+        const prenom = getDiscord2NameMap()[m.id];
+        const fallback = m.display_name || m.username || m.id;
+        const display = prenom || fallback;
         const uname = m.username && m.username !== display ? ` (${m.username})` : '';
         return `${display}${uname} — ${m.id}`;
     }
@@ -3954,11 +3997,11 @@
             }
             return;
         }
-        // Group pickers by their containing namemap-list so siblings can exclude each other
+        // Group pickers by their containing list so siblings can exclude each other
         const byList = new Map();
         const standalone = [];
         for (const picker of pickers) {
-            const list = picker.closest('.namemap-list');
+            const list = picker.closest('.namemap-list, .spotifymap-list');
             if (list) {
                 if (!byList.has(list)) byList.set(list, []);
                 byList.get(list).push(picker);
@@ -3979,10 +4022,10 @@
         if (!picker) return;
         const manual = picker.querySelector('.member-picker-manual');
         if (manual) manual.value = select.value;
-        // Auto-fill the adjacent name field if empty
-        const entry = picker.closest('.namemap-entry');
-        if (entry) {
-            const nameInput = entry.querySelector('[data-namemap-field="name"]');
+        // Auto-fill the adjacent name field if empty (namemap entries only)
+        const namemapEntry = picker.closest('.namemap-entry');
+        if (namemapEntry) {
+            const nameInput = namemapEntry.querySelector('[data-namemap-field="name"]');
             if (nameInput && !nameInput.value.trim()) {
                 const members = _memberCache[state.currentServerId] || [];
                 const match = members.find(m => m.id === select.value);
@@ -3990,8 +4033,10 @@
             }
         }
         // Update sibling pickers so the newly-picked member is removed from their dropdowns
-        const list = picker.closest('.namemap-list');
-        if (list) refreshNameMapListOptions(list);
+        const namemapList = picker.closest('.namemap-list');
+        if (namemapList) refreshNameMapListOptions(namemapList);
+        const spotifymapList = picker.closest('.spotifymap-list');
+        if (spotifymapList) refreshSpotifyMapListOptions(spotifymapList);
     }
 
     function removeNameMapEntry(btn) {
@@ -4561,6 +4606,14 @@
             }
 
             if (fieldType === 'spotifymap' && Array.isArray(val) && val.length > 0) {
+                const nameMap = getDiscord2NameMap();
+                const members = _memberCache[state.currentServerId] || [];
+                const resolveName = (u) => {
+                    if (u.name) return u.name;
+                    if (u.discordId && nameMap[u.discordId]) return nameMap[u.discordId];
+                    const m = members.find(mm => mm.id === u.discordId);
+                    return m ? (m.display_name || m.username || '') : '';
+                };
                 html += `
                     <div class="preview-row" style="flex-direction:column;gap:6px;">
                         <span class="preview-label">${field.label || key} (${val.length})</span>
@@ -4568,7 +4621,7 @@
                             ${val.map(u => `
                                 <div style="display:flex;gap:8px;align-items:center;padding:4px 8px;background:var(--bg-primary);border-radius:var(--radius);font-size:13px;">
                                     <span style="color:var(--text-muted);font-family:Consolas,monospace;min-width:120px;">${escapeHtml(u.spotifyId || '???')}</span>
-                                    <span style="font-weight:600;color:var(--accent);min-width:100px;">${escapeHtml(u.name || '')}</span>
+                                    <span style="font-weight:600;color:var(--accent);min-width:100px;">${escapeHtml(resolveName(u))}</span>
                                     <span style="color:var(--text-secondary);font-family:Consolas,monospace;">${escapeHtml(u.discordId || '')}</span>
                                 </div>
                             `).join('')}

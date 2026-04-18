@@ -21,7 +21,7 @@ This is used by the Web UI to render proper forms instead of raw JSON editors.
 # "messagelist" — list of messages with linked weight field (form rows)
 # "embedlist" — list of embeds with title, color, and links (form rows)
 # "keyvaluemap" — key-value pairs in a form (customizable key/value labels via key_label, value_label)
-# "spotifymap" — list of Spotify user mappings (spotifyId, name, discordId)
+# "spotifymap" — list of Spotify user mappings (spotifyId → discordId; name resolved from discord2name / users collection)
 # "streamermap" — dict keyed by Twitch login; each value has planning/notification channel and pin fields
 
 
@@ -284,8 +284,8 @@ MODULE_SCHEMAS: dict[str, dict] = {
                 description="ID interne (géré automatiquement)."
             ),
             "spotifyUsers": _field(
-                "Mapping Spotify (ID, Nom, Discord)", "spotifymap",
-                description="Liste des utilisateurs Spotify avec nom et ID Discord associés."
+                "Mapping Spotify → Discord", "spotifymap",
+                description="Associe un ID Spotify à un membre Discord. Le prénom affiché vient du mapping « Discord → Prénoms »."
             ),
         },
     },
