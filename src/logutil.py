@@ -1,119 +1,23 @@
+"""Deprecated: use :mod:`src.core.logging`.
+
+This module is kept as a re-export shim for one release so existing
+``from src import logutil`` imports keep working. New code should import
+``init_logger``/``get_logger`` directly from ``src.core.logging``.
 """
-Custom logging script
 
-Code taken from my contributions in:
-https://github.com/savioxavier/repo-finder-bot/
-Additional thanks to savioxavier
-"""
+from src.core.logging import (  # noqa: F401 — re-exported for backward compat
+    _attach_webui_handler,
+    _configure_logger,
+    _CONFIGURED_ATTR,
+    CustomFormatter,
+    get_logger,
+    init_logger,
+    overwrite_ipy_loggers,
+)
 
-import logging
-from config import DEBUG  # pylint: disable=import-error # This works fine?
-
-
-class CustomFormatter(logging.Formatter):
-    """Custom formatter class"""
-
-    grey = "\x1b[38;1m"
-    green = "\x1b[42;1m"
-    yellow = "\x1b[43;1m"
-    red = "\x1b[41;1m"
-    bold_red = "\x1b[31;1m"
-    reset = "\x1b[0m"
-
-    # format = "[%(asctime)s][%(levelname)-7s][%(name)-14s][%(lineno)4s] %(message)s"
-    FORMATS = (
-        {
-            logging.DEBUG: green
-            + f"{reset}[%(asctime)s]{green}[%(levelname)-7s][%(name)-14s]\
-{reset}[{red}%(lineno)4s{reset}] %(message)s"
-            + reset,
-            logging.INFO: grey
-            + f"{reset}[%(asctime)s]{grey}[%(levelname)-7s][%(name)-14s]\
-{reset}[{red}%(lineno)4s{reset}] %(message)s"
-            + reset,
-            logging.WARNING: yellow
-            + f"[%(asctime)s][%(levelname)-7s][%(name)-14s]\
-[{red}%(lineno)4s{reset}{yellow}] %(message)s"
-            + reset,
-            logging.ERROR: red
-            + "[%(asctime)s][%(levelname)-7s][%(name)-14s]\
-[%(lineno)4s] %(message)s"
-            + reset,
-            logging.CRITICAL: bold_red
-            + "[%(asctime)s][%(levelname)-7s][%(name)-14s][%(lineno)4s] %(message)s"
-            + reset,
-        }
-        if DEBUG
-        else {
-            logging.DEBUG: reset,
-            logging.INFO: grey + "[%(asctime)s][%(levelname)7s] %(message)s" + reset,
-            logging.WARNING: yellow
-            + "[%(asctime)s][%(levelname)7s] %(message)s"
-            + reset,
-            logging.ERROR: red + "[%(asctime)s][%(levelname)7s] %(message)s" + reset,
-            logging.CRITICAL: bold_red
-            + "[%(asctime)s][%(levelname)7s] %(message)s"
-            + reset,
-        }
-    )
-
-    def format(self, record):
-        log_fmt = self.FORMATS.get(record.levelno)
-        formatter = logging.Formatter(log_fmt, datefmt="%Y-%m-%d %H:%M:%S")
-        return formatter.format(record)
-
-
-_CONFIGURED_ATTR = "_michel_configured"
-
-
-def _attach_webui_handler(lgr: logging.Logger) -> None:
-    """Attach the WebUI log handler to a logger if it exists and isn't already attached."""
-    try:
-        from src.webui.log_handler import WebUILogHandler
-    except ImportError:
-        return
-    webui = WebUILogHandler.get_instance()
-    if webui is not None and webui not in lgr.handlers:
-        lgr.addHandler(webui)
-
-
-def _configure_logger(name: str) -> logging.Logger:
-    """Configure (or return) a logger with the Docker-style StreamHandler plus the WebUI handler.
-
-    Uses logging.getLogger so every logger is part of the standard hierarchy — this lets the
-    WebUI handler find and attach to all of them. propagate=False preserves the "each module
-    has its own handler" layout so stdout output isn't duplicated via root.
-    """
-    lgr = logging.getLogger(name)
-    if not getattr(lgr, _CONFIGURED_ATTR, False):
-        # Keep the logger itself at DEBUG so WebUI (which may want DEBUG) always sees records;
-        # the StreamHandler does its own level filtering for stdout.
-        lgr.setLevel(logging.DEBUG)
-        lgr.propagate = False
-        ch = logging.StreamHandler()
-        ch.setLevel(logging.DEBUG if DEBUG else logging.INFO)
-        ch.setFormatter(CustomFormatter())
-        lgr.addHandler(ch)
-        setattr(lgr, _CONFIGURED_ATTR, True)
-    _attach_webui_handler(lgr)
-    return lgr
-
-
-def overwrite_ipy_loggers():
-    for k, v in logging.Logger.manager.loggerDict.items():
-        print(k, v)
-        if k in ["mixin", "dispatch", "http", "gateway", "client", "context"]:
-            for h in v.handlers:
-                h.setFormatter(CustomFormatter)
-
-
-def get_logger(name):
-    """Function to get a logger
-    Useful for modules that have already initialized a logger, such as discord.py
-    """
-    return _configure_logger(name)
-
-
-def init_logger(name="root"):
-    """Function to create a designated logger for separate modules"""
-    return _configure_logger(name)
+__all__ = [
+    "CustomFormatter",
+    "get_logger",
+    "init_logger",
+    "overwrite_ipy_loggers",
+]
