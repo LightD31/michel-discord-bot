@@ -3,13 +3,11 @@
 import os
 import re
 import string
-import asyncio
 from collections import defaultdict
 from io import BytesIO
 from typing import Optional, Tuple
 
 import emoji
-from aiohttp import ClientSession, ClientError
 from interactions import ComponentContext, Message
 from interactions.api.events import MessageReactionAdd, MessageReactionRemove
 from interactions.ext import paginators
@@ -17,6 +15,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 from src import logutil
 from src.config_manager import load_config, load_discord2name, save_config  # re-export
+from src.core.http import fetch  # re-export — implementation moved in Phase 1
 
 logger = logutil.init_logger(os.path.basename(__file__))
 
@@ -205,51 +204,9 @@ async def format_poll(event: MessageReactionAdd | MessageReactionRemove):
 
 
 # ---------------------------------------------------------------------------
-# HTTP fetch with retry
+# HTTP fetch with retry — re-exported from ``src.core.http`` (see import above).
+# The function signature and behaviour are preserved.
 # ---------------------------------------------------------------------------
-
-async def fetch(
-    url: str,
-    return_type: str = "text",
-    headers: dict | None = None,
-    params: dict | None = None,
-    retries: int = 3,
-    pause: int = 1,
-):
-    """Fetch a URL with retry logic. Returns text or JSON."""
-    default_headers = {
-        "User-Agent": (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-            "(KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
-        )
-    }
-    if headers:
-        default_headers.update(headers)
-
-    for i in range(retries):
-        try:
-            async with ClientSession() as session:
-                async with session.get(url, headers=default_headers, params=params) as response:
-                    if response.status >= 500:
-                        logger.error("Failed to fetch %s: Status %s", url, response.status)
-                        if i < retries - 1:
-                            await asyncio.sleep(pause * (i + 1))
-                            continue
-                        raise Exception(f"Failed to fetch {url}: Status {response.status}")
-                    if response.status != 200:
-                        logger.error("Failed to fetch %s: Status %s", url, response.status)
-                        raise Exception(f"Failed to fetch {url}: Status {response.status}")
-                    if return_type == "text":
-                        return await response.text()
-                    elif return_type == "json":
-                        return await response.json()
-                    else:
-                        raise ValueError("Invalid return_type. Expected 'text' or 'json'.")
-        except (ClientError, asyncio.TimeoutError) as e:
-            logger.error("Error fetching %s: %s", url, e)
-            if i == retries - 1:
-                raise
-            await asyncio.sleep(pause)
 
 
 # ---------------------------------------------------------------------------
