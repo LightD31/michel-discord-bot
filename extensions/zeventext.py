@@ -5,6 +5,7 @@ Extension Discord pour le Zevent - Version améliorée
 
 import os
 import asyncio
+import inspect
 from interactions import (
     Extension, Client, listen, Message, BaseChannel,
     Task, IntervalTrigger, Embed, File,
@@ -580,26 +581,41 @@ class Zevent(Extension):
         
         return categorized
     
+    async def _follower_count(self, broadcaster_id: str) -> int:
+        """Return the follower count for a broadcaster.
+
+        twitchAPI 4.x returns a ``ChannelFollowersResult`` with ``.total``; older
+        versions returned an async generator with no cheap total. Handle both.
+        """
+        call = self.twitch.get_channel_followers(broadcaster_id=broadcaster_id, first=1)
+        if inspect.isasyncgen(call):
+            count = 0
+            try:
+                async for _ in call:
+                    count += 1
+            except Exception:
+                pass
+            return count
+        result = await call
+        return int(getattr(result, "total", 0) or 0)
+
     async def _get_streamers_with_followers(self, streamers: List[StreamerInfo], user_ids: Dict[str, str]) -> List[StreamerInfo]:
         """Get follower counts for offline streamers and return them sorted by follower count"""
         streamers_with_counts = []
-        
+
         try:
             # Get follower counts for offline streamers using existing user IDs
             for streamer in streamers:
                 try:
                     user_id = user_ids.get(streamer.twitch_name.lower())
                     if user_id:
-                        followers = await self.twitch.get_channel_followers(broadcaster_id=user_id)
-                        follower_count = followers.total if hasattr(followers, 'total') else 0
+                        follower_count = await self._follower_count(user_id)
                         streamers_with_counts.append((streamer, follower_count))
                     else:
                         # If no user ID available, get it from get_users as fallback
-                        users = await self.twitch.get_users(logins=[streamer.twitch_name])
-                        user_list = [user async for user in users]
+                        user_list = [user async for user in self.twitch.get_users(logins=[streamer.twitch_name])]
                         if user_list:
-                            followers = await self.twitch.get_channel_followers(broadcaster_id=user_list[0].id)
-                            follower_count = followers.total if hasattr(followers, 'total') else 0
+                            follower_count = await self._follower_count(user_list[0].id)
                             streamers_with_counts.append((streamer, follower_count))
                         else:
                             streamers_with_counts.append((streamer, 0))
