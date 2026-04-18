@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import asyncio
 import os
-from typing import Any, Optional
+from typing import Any
 
 from aiohttp import ClientError, ClientSession, ClientTimeout
 
@@ -47,9 +47,9 @@ class HttpClient:
     should not close it — :meth:`close` is intended for shutdown hooks.
     """
 
-    _instance: Optional["HttpClient"] = None
+    _instance: HttpClient | None = None
 
-    def __new__(cls) -> "HttpClient":
+    def __new__(cls) -> HttpClient:
         if cls._instance is None:
             cls._instance = super().__new__(cls)
             cls._instance._session = None  # type: ignore[attr-defined]
@@ -120,9 +120,7 @@ async def fetch(
             async with session.get(url, headers=merged_headers, params=params) as response:
                 last_status = response.status
                 if response.status >= 500:
-                    logger.error(
-                        "Failed to fetch %s: Status %s", url, response.status
-                    )
+                    logger.error("Failed to fetch %s: Status %s", url, response.status)
                     if attempt < retries - 1:
                         await asyncio.sleep(pause * (attempt + 1))
                         continue
@@ -132,9 +130,7 @@ async def fetch(
                         status=response.status,
                     )
                 if response.status != 200:
-                    logger.error(
-                        "Failed to fetch %s: Status %s", url, response.status
-                    )
+                    logger.error("Failed to fetch %s: Status %s", url, response.status)
                     raise HttpError(
                         f"Failed to fetch {url}",
                         url=url,
@@ -143,7 +139,7 @@ async def fetch(
                 if return_type == "text":
                     return await response.text()
                 return await response.json()
-        except (ClientError, asyncio.TimeoutError) as e:
+        except (TimeoutError, ClientError) as e:
             logger.error("Error fetching %s: %s", url, e)
             if attempt == retries - 1:
                 raise HttpError(

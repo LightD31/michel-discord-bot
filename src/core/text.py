@@ -17,6 +17,7 @@ import emoji
 # Duration & number formatting
 # ---------------------------------------------------------------------------
 
+
 def milliseconds_to_string(duration_ms) -> str:
     """Convert milliseconds to a French human-readable duration string."""
     duration_ms = int(duration_ms)
@@ -43,6 +44,7 @@ def format_number(num) -> str:
 # ---------------------------------------------------------------------------
 # Text processing
 # ---------------------------------------------------------------------------
+
 
 def escape_md(text: str) -> str:
     """Escape Markdown special characters."""
@@ -87,6 +89,7 @@ def extract_answer(text: str) -> str | None:
 # ---------------------------------------------------------------------------
 # Weighted random message picker
 # ---------------------------------------------------------------------------
+
 
 def pick_weighted_message(
     config: dict,

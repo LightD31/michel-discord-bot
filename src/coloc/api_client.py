@@ -3,18 +3,19 @@
 import asyncio
 import io
 import os
-from typing import Optional, Any
-from aiohttp import ClientSession, ClientError, ClientTimeout
+from typing import Any
+
+from aiohttp import ClientError, ClientSession, ClientTimeout
 from interactions import File
 
 from src import logutil
+
 from .constants import (
-    ZUNIVERS_API_BASE,
+    ZUNIVERS_CALENDAR_URL_TEMPLATE,
+    ZUNIVERS_CORPORATION_URL_TEMPLATE,
     ZUNIVERS_EVENTS_URL,
     ZUNIVERS_HARDCORE_SEASON_URL,
     ZUNIVERS_LOOT_URL_TEMPLATE,
-    ZUNIVERS_CALENDAR_URL_TEMPLATE,
-    ZUNIVERS_CORPORATION_URL_TEMPLATE,
     ReminderType,
 )
 
@@ -23,48 +24,49 @@ logger = logutil.init_logger(os.path.basename(__file__))
 
 class ZuniversAPIError(Exception):
     """Custom exception for Zunivers API errors."""
-    def __init__(self, message: str, status_code: Optional[int] = None):
+
+    def __init__(self, message: str, status_code: int | None = None):
         super().__init__(message)
         self.status_code = status_code
 
 
 class ZuniversAPIClient:
     """Client for interacting with the Zunivers API."""
-    
+
     DEFAULT_TIMEOUT = ClientTimeout(total=30)
     MAX_RETRIES = 3
     RETRY_DELAY = 1.0  # seconds
-    
-    def __init__(self, session: Optional[ClientSession] = None):
+
+    def __init__(self, session: ClientSession | None = None):
         self._session = session
         self._owns_session = session is None
-    
+
     async def _get_session(self) -> ClientSession:
         """Get or create an aiohttp session."""
         if self._session is None or self._session.closed:
             self._session = ClientSession(timeout=self.DEFAULT_TIMEOUT)
             self._owns_session = True
         return self._session
-    
+
     async def close(self) -> None:
         """Close the session if we own it."""
         if self._owns_session and self._session and not self._session.closed:
             await self._session.close()
-    
+
     async def _request(
         self,
         url: str,
-        rule_set: Optional[ReminderType] = None,
+        rule_set: ReminderType | None = None,
         retries: int = MAX_RETRIES,
     ) -> Any:
         """Make a request with retry logic."""
         headers = {}
         if rule_set:
             headers["X-ZUnivers-RuleSetType"] = rule_set.value
-        
+
         session = await self._get_session()
         last_error = None
-        
+
         for attempt in range(retries):
             try:
                 async with session.get(url, headers=headers) as response:
@@ -72,8 +74,7 @@ class ZuniversAPIClient:
                         return None
                     if response.status >= 400:
                         raise ZuniversAPIError(
-                            f"API error: {response.status}",
-                            status_code=response.status
+                            f"API error: {response.status}", status_code=response.status
                         )
                     return await response.json()
             except ClientError as e:
@@ -81,39 +82,36 @@ class ZuniversAPIClient:
                 if attempt < retries - 1:
                     await asyncio.sleep(self.RETRY_DELAY * (attempt + 1))
                     logger.warning(f"Retry {attempt + 1}/{retries} for {url}: {e}")
-        
+
         raise ZuniversAPIError(f"Failed after {retries} retries: {last_error}")
-    
+
     async def get_current_events(self, rule_set: ReminderType) -> list[dict]:
         """Get current events for a specific rule set."""
         result = await self._request(ZUNIVERS_EVENTS_URL, rule_set)
         return result if result else []
-    
-    async def get_current_hardcore_season(self) -> Optional[dict]:
+
+    async def get_current_hardcore_season(self) -> dict | None:
         """Get the current hardcore season."""
-        return await self._request(
-            ZUNIVERS_HARDCORE_SEASON_URL,
-            ReminderType.HARDCORE
-        )
-    
+        return await self._request(ZUNIVERS_HARDCORE_SEASON_URL, ReminderType.HARDCORE)
+
     async def get_user_loot(self, username: str, rule_set: ReminderType) -> dict:
         """Get a user's loot data."""
         url = ZUNIVERS_LOOT_URL_TEMPLATE.format(username=username)
         result = await self._request(url, rule_set)
         return result if result else {}
-    
+
     async def get_user_calendar(self, username: str) -> dict:
         """Get a user's advent calendar data."""
         url = ZUNIVERS_CALENDAR_URL_TEMPLATE.format(username=username)
         result = await self._request(url, ReminderType.NORMAL)
         return result if isinstance(result, dict) else {}
-    
-    async def get_corporation(self, corp_id: str) -> Optional[dict]:
+
+    async def get_corporation(self, corp_id: str) -> dict | None:
         """Get corporation data."""
         url = ZUNIVERS_CORPORATION_URL_TEMPLATE.format(corp_id=corp_id)
         return await self._request(url, ReminderType.NORMAL)
-    
-    async def download_image(self, image_url: str, filename: str = "image.webp") -> Optional[File]:
+
+    async def download_image(self, image_url: str, filename: str = "image.webp") -> File | None:
         """Download an image and return it as a Discord File object."""
         try:
             session = await self._get_session()
@@ -125,7 +123,7 @@ class ZuniversAPIClient:
         except Exception as e:
             logger.warning(f"Error downloading image from {image_url}: {e}")
         return None
-    
+
     async def check_user_journa_done(
         self,
         username: str,
@@ -140,7 +138,7 @@ class ZuniversAPIClient:
             return False
         except ZuniversAPIError:
             return False  # Assume not done if we can't check
-    
+
     async def get_unopened_calendar_days(
         self,
         username: str,
@@ -150,13 +148,17 @@ class ZuniversAPIClient:
         try:
             calendar_data = await self.get_user_calendar(username)
             # API returns a dict with "calendars" array where index is 0-based (index 0 = day 1)
-            calendars = calendar_data.get("calendars", []) if isinstance(calendar_data, dict) else calendar_data
-            
+            calendars = (
+                calendar_data.get("calendars", [])
+                if isinstance(calendar_data, dict)
+                else calendar_data
+            )
+
             opened_indices = set()
             for entry in calendars:
                 if entry.get("openedDate") is not None:
                     opened_indices.add(entry.get("index"))
-            
+
             # Check days up to 'day' (indices 0 to day-1)
             unopened = []
             for i in range(day):

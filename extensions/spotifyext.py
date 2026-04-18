@@ -48,16 +48,6 @@ from interactions.client.utils import timestamp_converter
 
 from dict import finishList, startList
 from src import logutil
-from src.mongodb import mongo_manager
-from src.spotify import (
-    EmbedType,
-    count_votes,
-    embed_message_vote,
-    embed_song,
-    spotify_auth,
-    spotifymongoformat,
-    embed_message_vote_add,
-)
 from src.config_manager import load_config, load_discord2name
 from src.helpers import (
     Colors,
@@ -65,6 +55,16 @@ from src.helpers import (
     fetch_user_safe,
     send_error,
     send_success,
+)
+from src.mongodb import mongo_manager
+from src.spotify import (
+    EmbedType,
+    count_votes,
+    embed_message_vote,
+    embed_message_vote_add,
+    embed_song,
+    spotify_auth,
+    spotifymongoformat,
 )
 from src.utils import milliseconds_to_string
 
@@ -103,9 +103,7 @@ class VoteManager:
 
     async def save_data(self, data):
         for song_id, song_data in data.items():
-            await self.collection.update_one(
-                {"_id": song_id}, {"$set": song_data}, upsert=True
-            )
+            await self.collection.update_one({"_id": song_id}, {"$set": song_data}, upsert=True)
 
     def count_votes(self, data, song):
         song_data = data[song]
@@ -122,9 +120,7 @@ class VoteManager:
 
     async def save_vote(self, author_id, vote, song):
         logger.info("%s voted %s to add %s", author_id, vote, song)
-        await self.collection.update_one(
-            {"_id": song}, {"$set": {f"votes.{author_id}": vote}}
-        )
+        await self.collection.update_one({"_id": song}, {"$set": {f"votes.{author_id}": vote}})
 
 
 class ServerData:
@@ -145,7 +141,7 @@ class ServerData:
 
         if not self.spotify2discord:
             self.spotify2discord = config.get("spotifyIdToDiscordId", {})
-            
+
         self.channel_id = config.get("spotifyChannelId")
         self.playlist_id = config.get("spotifyPlaylistId")
         self.new_playlist_id = config.get("spotifyNewPlaylistId")
@@ -176,9 +172,7 @@ class ServerData:
 # Build per-server data
 SERVERS: dict[str, ServerData] = {}
 for _guild_id in enabled_servers:
-    SERVERS[str(_guild_id)] = ServerData(
-        str(_guild_id), module_config[_guild_id], config
-    )
+    SERVERS[str(_guild_id)] = ServerData(str(_guild_id), module_config[_guild_id], config)
 
 
 class SpotifyExtension(Extension):
@@ -234,10 +228,12 @@ class SpotifyExtension(Extension):
         # Clear and rewrite all reminders
         await server.reminders_col.delete_many({})
         for remind_time, user_ids in server.reminders.items():
-            await server.reminders_col.insert_one({
-                "_id": remind_time.strftime("%Y-%m-%d %H:%M:%S"),
-                "user_ids": list(user_ids),
-            })
+            await server.reminders_col.insert_one(
+                {
+                    "_id": remind_time.strftime("%Y-%m-%d %H:%M:%S"),
+                    "user_ids": list(user_ids),
+                }
+            )
 
     @slash_command(
         "addsong",
@@ -255,9 +251,7 @@ class SpotifyExtension(Extension):
         server = self.get_server(ctx.guild_id)
         if str(ctx.channel_id) != str(server.channel_id):
             await send_error(ctx, "Vous ne pouvez pas utiliser cette commande dans ce salon.")
-            logger.info(
-                "Commande /addsong utilisée dans un mauvais salon(%s)", ctx.channel.name
-            )
+            logger.info("Commande /addsong utilisée dans un mauvais salon(%s)", ctx.channel.name)
             return
 
         logger.info(
@@ -304,9 +298,9 @@ class SpotifyExtension(Extension):
         if not ctx.input_text:
             choices = [{"name": "Veuillez entrer un nom de chanson", "value": "error"}]
         else:
-            items = sp.search(ctx.input_text, limit=10, type="track", market="FR")[
-                "tracks"
-            ]["items"]
+            items = sp.search(ctx.input_text, limit=10, type="track", market="FR")["tracks"][
+                "items"
+            ]
             if not items:
                 choices = [{"name": "Aucun résultat", "value": "error"}]
             else:
@@ -442,9 +436,7 @@ class SpotifyExtension(Extension):
         track_id = random.choice(list(track_ids))
         logger.debug("track_id choisie : %s", track_id)
         while track_id in pollhistory:
-            logger.warning(
-                "Chanson déjà votée, nouvelle chanson tirée au sort (%s)", track_id
-            )
+            logger.warning("Chanson déjà votée, nouvelle chanson tirée au sort (%s)", track_id)
             track_id = random.choice(list(track_ids))
         logger.info("Chanson tirée au sort : %s", track_id)
         song = await server.playlist_items_full.find_one({"_id": track_id})
@@ -545,9 +537,7 @@ class SpotifyExtension(Extension):
                 )
             logger.info("User %s voted %s", ctx.user.username, ctx.custom_id)
             # Count the votes
-            conserver, supprimer, menfou, users = count_votes(
-                votes["votes"], server.discord2name
-            )
+            conserver, supprimer, menfou, users = count_votes(votes["votes"], server.discord2name)
             users = ", ".join(users)
             logger.info(
                 "Votes : %s conserver, %s supprimer, %s menfou",
@@ -555,9 +545,9 @@ class SpotifyExtension(Extension):
                 supprimer,
                 menfou,
             )
-            embed_original.fields[4].value = (
-                f"{conserver+supprimer+menfou} vote{'s' if conserver+supprimer+menfou>1 else ''} ({users})"
-            )
+            embed_original.fields[
+                4
+            ].value = f"{conserver + supprimer + menfou} vote{'s' if conserver + supprimer + menfou > 1 else ''} ({users})"
             # await ctx.message.edit(content=f"Voulez-vous conserver cette chanson dans playlist ?")
             # Update the message with the vote counts
 
@@ -619,9 +609,7 @@ class SpotifyExtension(Extension):
         if new_snap != server.snapshot.get("snapshot"):
             # Retrieve the tracks of the playlist
             try:
-                results = sp.playlist_tracks(
-                    playlist_id=server.playlist_id, limit=100, offset=0
-                )
+                results = sp.playlist_tracks(playlist_id=server.playlist_id, limit=100, offset=0)
             except spotipy.SpotifyException as e:
                 logger.error("Spotify API Error : %s", e)
                 return
@@ -647,7 +635,8 @@ class SpotifyExtension(Extension):
             if skip_notifications:
                 logger.warning(
                     "Initial playlist sync for server %s: %d tracks – skipping notifications",
-                    server.guild_id, len(added_track_ids),
+                    server.guild_id,
+                    len(added_track_ids),
                 )
 
             for track in tracks:
@@ -766,9 +755,7 @@ class SpotifyExtension(Extension):
         """
         server = self.get_server(ctx.guild_id)
         if str(ctx.channel_id) == str(server.channel_id):
-            logger.info(
-                "%s a ajouté un rappel à %s:%s", ctx.user.display_name, heure, minute
-            )
+            logger.info("%s a ajouté un rappel à %s:%s", ctx.user.display_name, heure, minute)
             remind_time = datetime.strptime(f"{heure}:{minute}", "%H:%M")
             current_time = datetime.now()
             remind_time = current_time.replace(
@@ -784,9 +771,7 @@ class SpotifyExtension(Extension):
             server.reminders[remind_time].add(ctx.user.id)
             await self.save_reminders(server)
 
-            await ctx.send(
-                f"Rappel défini à {remind_time.strftime('%H:%M')}.", ephemeral=True
-            )
+            await ctx.send(f"Rappel défini à {remind_time.strftime('%H:%M')}.", ephemeral=True)
         else:
             await send_error(ctx, "Cette commande n'est pas disponible dans ce salon.")
             logger.info(
@@ -802,9 +787,7 @@ class SpotifyExtension(Extension):
             try:
                 await self._reminder_check_for_server(server)
             except Exception as e:
-                logger.error(
-                    "Error in reminder_check for server %s: %s", server.guild_id, e
-                )
+                logger.error("Error in reminder_check for server %s: %s", server.guild_id, e)
 
     async def _reminder_check_for_server(self, server: ServerData):
         logger.debug("reminder_check lancé pour le serveur %s", server.guild_id)
@@ -871,9 +854,7 @@ class SpotifyExtension(Extension):
         try:
             # Wait for the user to click a button
             button_ctx: Component = await self.bot.wait_for_component(
-                components=[
-                    str(remind_time.timestamp()) for remind_time in reminders_list
-                ],
+                components=[str(remind_time.timestamp()) for remind_time in reminders_list],
                 timeout=60,
             )
             # Remove the reminder from the reminders dictionary
@@ -895,9 +876,7 @@ class SpotifyExtension(Extension):
             )
         except TimeoutError:
             await send_error(ctx, "Tu n'as pas sélectionné de rappel à supprimer.")
-            await button_ctx.ctx.edit_origin(
-                content="Aucun rappel sélectionné.", components=[]
-            )
+            await button_ctx.ctx.edit_origin(content="Aucun rappel sélectionné.", components=[])
 
     @slash_command(
         name="updatetoken",
@@ -928,9 +907,7 @@ class SpotifyExtension(Extension):
         # Generate the authorization URL and prompt the user to visit it
         auth_url = sp_oauth.get_authorize_url()
         modal = Modal(
-            ShortText(
-                label="Auth URL :", value=auth_url, custom_id="auth_url"
-            ),
+            ShortText(label="Auth URL :", value=auth_url, custom_id="auth_url"),
             ParagraphText(label="Answer URL :", custom_id="answer_url"),
             title="Spotify Auth",
         )
@@ -995,9 +972,9 @@ class SpotifyExtension(Extension):
                 # Create a Timestamp object from the date string and a None object if the date is not present
                 date = votes.get("date")
                 if date:
-                    date = timestamp_converter(
-                        datetime.strptime(date, "%Y-%m-%d")
-                    ).format(TimestampStyles.LongDate)
+                    date = timestamp_converter(datetime.strptime(date, "%Y-%m-%d")).format(
+                        TimestampStyles.LongDate
+                    )
                 embeds = [
                     embed,
                     await embed_message_vote(
@@ -1073,9 +1050,7 @@ class SpotifyExtension(Extension):
                             f"{', '.join(result['artists'])} - {result['name']}"
                             if result.get("artists")
                             else f"{result['name']}"
-                        )[
-                            :100
-                        ],  # limit the entire string to 100 characters
+                        )[:100],  # limit the entire string to 100 characters
                         "value": result["_id"],
                     }
                     for songresult_id, result in results.items()
@@ -1174,14 +1149,10 @@ class SpotifyExtension(Extension):
                     },
                 }
                 await server.vote_manager.save_data(data)
-                logger.info(
-                    "%s ajouté au vote par %s", track["name"], ctx.author.display_name
-                )
+                logger.info("%s ajouté au vote par %s", track["name"], ctx.author.display_name)
             else:
                 await send_error(ctx, "Cette chanson est déjà dans la playlist.")
-                logger.info(
-                    "Commande /addwithvote utilisée avec une chanson déjà présente"
-                )
+                logger.info("Commande /addwithvote utilisée avec une chanson déjà présente")
         else:
             await send_error(ctx, "Vous ne pouvez pas utiliser cette commande dans ce salon.")
             logger.info(
@@ -1201,9 +1172,7 @@ class SpotifyExtension(Extension):
         user_id = str(event.ctx.user.id)
         if user_id in last_votes and time.time() - last_votes[user_id] < COOLDOWN_TIME:
             await send_error(event.ctx, "Tu ne peux voter que toutes les 5 secondes.")
-            logger.warning(
-                "%s a essayé de voter trop rapidement", event.ctx.user.username
-            )
+            logger.warning("%s a essayé de voter trop rapidement", event.ctx.user.username)
             return
         last_votes[user_id] = time.time()
         # check if the user has already voted and update their vote if necessary
@@ -1219,9 +1188,7 @@ class SpotifyExtension(Extension):
         # update the message with the vote counts
         users = ", ".join(users)
         embed_original = event.ctx.message.embeds[0]
-        embed_original.fields[4].value = (
-            f"{yes+no} vote{'s' if yes+no>1 else ''} ({users})"
-        )
+        embed_original.fields[4].value = f"{yes + no} vote{'s' if yes + no > 1 else ''} ({users})"
         await event.ctx.message.edit(embeds=[embed_original])
         # send a message to the user informing them that their vote has been counted
         if vote == "annuler":
@@ -1250,9 +1217,9 @@ class SpotifyExtension(Extension):
             ]
         else:
             # Search for tracks on Spotify
-            items = sp.search(ctx.input_text, limit=10, type="track", market="FR")[
-                "tracks"
-            ]["items"]
+            items = sp.search(ctx.input_text, limit=10, type="track", market="FR")["tracks"][
+                "items"
+            ]
             if not items:
                 choices = [
                     {
@@ -1336,11 +1303,7 @@ class SpotifyExtension(Extension):
         data.pop(song_id)
         await server.vote_manager.save_data(data)
 
-    @Task.create(
-        OrTrigger(
-            *[TimeTrigger(hour=hour) for hour in range(24)]
-        )
-    )
+    @Task.create(OrTrigger(*[TimeTrigger(hour=hour) for hour in range(24)]))
     async def check_for_end(self):
         """
         Check if the vote has ended for each song and end it if necessary.
@@ -1357,9 +1320,7 @@ class SpotifyExtension(Extension):
                     data.pop(song_id)
                 await server.vote_manager.save_data(data)
             except Exception as e:
-                logger.error(
-                    "Error in check_for_end for server %s: %s", server.guild_id, e
-                )
+                logger.error("Error in check_for_end for server %s: %s", server.guild_id, e)
 
     @Task.create(TimeTrigger(hour=4, minute=30, utc=False))
     async def new_titles_playlist(self):

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from io import BytesIO
-from typing import Tuple
 
 from PIL import Image, ImageDraw, ImageFont
 
@@ -14,7 +13,7 @@ def create_dynamic_image(
     font_path: str = "src/Menlo-Regular.ttf",
     image_padding: int = 10,
     background_color: str = "#1E1F22",
-) -> Tuple[Image.Image, BytesIO]:
+) -> tuple[Image.Image, BytesIO]:
     """Render *text* centered on a dark-themed rectangle.
 
     Returns ``(pillow_image, bytes_io)``; the caller can feed ``bytes_io`` into

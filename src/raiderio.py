@@ -1,5 +1,6 @@
 from src.utils import fetch
 
+
 def ms_to_time(ms, hours=False):
     total_hours = ms // (1000 * 60 * 60)
     ms = ms % (1000 * 60 * 60)
@@ -7,11 +8,12 @@ def ms_to_time(ms, hours=False):
     ms = ms % (1000 * 60)
     seconds = ms // 1000
     milliseconds = ms % 1000
-    
+
     if hours:
         return f"{total_hours:02}:{minutes:02}:{seconds:02}.{milliseconds:03}"
     else:
         return f"{minutes:02}:{seconds:02}.{milliseconds:03}"
+
 
 async def get_table_data():
     url = "https://raider.io/api/mythic-plus/rankings/teams?region=world&page=0&eventId=1000080&season=season-df-4-tr"
@@ -20,7 +22,10 @@ async def get_table_data():
     dungeons_data = await fetch(dungeons_url, "json")
 
     # Create the dungeons dictionary dynamically from the fetched data
-    dungeons = {dungeon["dungeon"]["id"]: dungeon["dungeon"]["short_name"] for dungeon in dungeons_data["bracket"]["dungeons"]}
+    dungeons = {
+        dungeon["dungeon"]["id"]: dungeon["dungeon"]["short_name"]
+        for dungeon in dungeons_data["bracket"]["dungeons"]
+    }
     # Define the longest name in the dungeons dictionary
     longest_dungeon_name = max(len(name) for name in dungeons.values())
     # Get the dungeon names long list
@@ -35,7 +40,9 @@ async def get_table_data():
         rank = team_data["rank"]
 
         # Initialize an empty dictionary to store dungeon info
-        dungeon_info = {dungeon_id: {"level": 0, "time": "", "clearTimeMs": 0} for dungeon_id in dungeons.keys()}
+        dungeon_info = {
+            dungeon_id: {"level": 0, "time": "", "clearTimeMs": 0} for dungeon_id in dungeons
+        }
 
         # Process runs to get time in mm:ss.cent format
         for run in team_data["runs"]:
@@ -64,11 +71,12 @@ async def get_table_data():
         for zone_id, dungeon_name in dungeons.items():
             dungeon = dungeon_info[zone_id]
             if dungeon["clearTimeMs"] > 0:
-                team_row += f"\n\u001b[0;{color}m{'':5} | {dungeon_name:{longest_dungeon_name}} | {f'{dungeon['level']} (+{dungeon['numChests']})':7} | {dungeon['time']:9} |\u001b[0m"
+                team_row += f"\n\u001b[0;{color}m{'':5} | {dungeon_name:{longest_dungeon_name}} | {f'{dungeon["level"]} (+{dungeon["numChests"]})':7} | {dungeon['time']:9} |\u001b[0m"
 
         table_rows.append(team_row)
 
     return table_rows, dungeons_str
+
 
 def ensure_six_elements(lst, fill_value="fill"):
     while len(lst) < 6:

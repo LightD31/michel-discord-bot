@@ -4,25 +4,25 @@ Cette extension surveille les nouvelles médailles françaises et envoie
 des alertes automatiques dans un canal Discord configuré.
 """
 
-import os
 import asyncio
+import os
 from datetime import datetime
-from typing import Dict, List, Optional, Any
 from functools import partial
+from typing import Any, Dict, List, Optional
 
 from curl_cffi import requests as cffi_requests
 from interactions import (
-    Extension,
     Client,
-    Task,
-    IntervalTrigger,
-    listen,
     Embed,
-    Timestamp,
-    slash_command,
-    SlashContext,
-    slash_option,
+    Extension,
+    IntervalTrigger,
     OptionType,
+    SlashContext,
+    Task,
+    Timestamp,
+    listen,
+    slash_command,
+    slash_option,
 )
 
 from src import logutil
@@ -38,7 +38,9 @@ BASE_URL = "https://www.olympics.com/wmr-owg2026/competition/api/FRA"
 MEDALS_URL = f"{BASE_URL}/medals"
 MEDALLISTS_URL = f"{BASE_URL}/medallists"
 EVENT_MEDALS_URL = f"{BASE_URL}/eventmedals"
-SCHEDULE_URL_TEMPLATE = f"{BASE_URL.replace('/competition/', '/schedules/')}/schedule/lite/day/{{date}}"
+SCHEDULE_URL_TEMPLATE = (
+    f"{BASE_URL.replace('/competition/', '/schedules/')}/schedule/lite/day/{{date}}"
+)
 
 POLL_INTERVAL_MINUTES = 3
 COUNTRY_CODE = "FRA"
@@ -80,11 +82,30 @@ MEDAL_COLORS = {
 
 # Drapeaux des pays fréquents
 COUNTRY_FLAGS = {
-    "FRA": "🇫🇷", "USA": "🇺🇸", "GER": "🇩🇪", "NOR": "🇳🇴", "ITA": "🇮🇹",
-    "SWE": "🇸🇪", "SUI": "🇨🇭", "AUT": "🇦🇹", "CAN": "🇨🇦", "JPN": "🇯🇵",
-    "KOR": "🇰🇷", "CHN": "🇨🇳", "GBR": "🇬🇧", "NED": "🇳🇱", "AUS": "🇦🇺",
-    "CZE": "🇨🇿", "SLO": "🇸🇮", "FIN": "🇫🇮", "POL": "🇵🇱", "ESP": "🇪🇸",
-    "BEL": "🇧🇪", "RUS": "🇷🇺", "BUL": "🇧🇬", "ROC": "🏳️",
+    "FRA": "🇫🇷",
+    "USA": "🇺🇸",
+    "GER": "🇩🇪",
+    "NOR": "🇳🇴",
+    "ITA": "🇮🇹",
+    "SWE": "🇸🇪",
+    "SUI": "🇨🇭",
+    "AUT": "🇦🇹",
+    "CAN": "🇨🇦",
+    "JPN": "🇯🇵",
+    "KOR": "🇰🇷",
+    "CHN": "🇨🇳",
+    "GBR": "🇬🇧",
+    "NED": "🇳🇱",
+    "AUS": "🇦🇺",
+    "CZE": "🇨🇿",
+    "SLO": "🇸🇮",
+    "FIN": "🇫🇮",
+    "POL": "🇵🇱",
+    "ESP": "🇪🇸",
+    "BEL": "🇧🇪",
+    "RUS": "🇷🇺",
+    "BUL": "🇧🇬",
+    "ROC": "🏳️",
 }
 
 EMBED_COLOR_FRANCE = 0x002395  # Bleu France
@@ -151,7 +172,7 @@ class Olympics(Extension):
                 logger.warning(f"Olympics API erreur: {e} (tentative {attempt + 1}/{retries})")
 
             if attempt < retries - 1:
-                await asyncio.sleep(2 ** attempt)  # Backoff exponentiel
+                await asyncio.sleep(2**attempt)  # Backoff exponentiel
 
         raise Exception(f"Impossible de récupérer {url} après {retries} tentatives")
 
@@ -216,7 +237,9 @@ class Olympics(Extension):
                 key = self._medal_key(medal)
                 self.known_medals.add(key)
             await self._save_state()
-            logger.info(f"Initialisation : {len(self.known_medals)} médailles FRA existantes enregistrées")
+            logger.info(
+                f"Initialisation : {len(self.known_medals)} médailles FRA existantes enregistrées"
+            )
         except Exception as e:
             logger.error(f"Erreur lors de l'initialisation des médailles : {e}")
 
@@ -237,7 +260,9 @@ class Olympics(Extension):
                     self.known_medals.add(key)
 
             if new_medals:
-                logger.info(f"{len(new_medals)} nouvelle(s) médaille(s) détectée(s) pour la France !")
+                logger.info(
+                    f"{len(new_medals)} nouvelle(s) médaille(s) détectée(s) pour la France !"
+                )
                 await self._save_state()
 
                 # Récupérer le classement à jour pour le contexte
@@ -257,7 +282,7 @@ class Olympics(Extension):
 
     # ─── Récupération de données ──────────────────────────────────────────────
 
-    async def _fetch_france_medals(self) -> List[Dict[str, Any]]:
+    async def _fetch_france_medals(self) -> list[dict[str, Any]]:
         """Récupère toutes les médailles de la France via l'API.
 
         Returns:
@@ -278,7 +303,7 @@ class Olympics(Extension):
 
         return []
 
-    async def _fetch_medal_standings(self) -> List[Dict[str, Any]]:
+    async def _fetch_medal_standings(self) -> list[dict[str, Any]]:
         """Récupère le classement complet des médailles.
 
         Returns:
@@ -287,7 +312,7 @@ class Olympics(Extension):
         data = await self._olympics_fetch(MEDALS_URL)
         return data.get("medalStandings", {}).get("medalsTable", [])
 
-    async def _fetch_all_medallists(self) -> List[Dict[str, Any]]:
+    async def _fetch_all_medallists(self) -> list[dict[str, Any]]:
         """Récupère la liste de tous les médaillés.
 
         Returns:
@@ -296,7 +321,7 @@ class Olympics(Extension):
         data = await self._olympics_fetch(MEDALLISTS_URL)
         return data.get("athletes", [])
 
-    async def _fetch_event_medals(self) -> Dict[str, Any]:
+    async def _fetch_event_medals(self) -> dict[str, Any]:
         """Récupère les médailles par épreuve.
 
         Returns:
@@ -308,7 +333,7 @@ class Olympics(Extension):
     # ─── Helpers ──────────────────────────────────────────────────────────────
 
     @staticmethod
-    def _medal_key(medal: Dict[str, Any]) -> str:
+    def _medal_key(medal: dict[str, Any]) -> str:
         """Génère une clé unique pour identifier une médaille."""
         return (
             f"{medal.get('eventCode', '')}_{medal.get('medalType', '')}"
@@ -317,8 +342,8 @@ class Olympics(Extension):
 
     @staticmethod
     def _get_country_standing(
-        standings: List[Dict[str, Any]], country_code: str
-    ) -> Optional[Dict[str, Any]]:
+        standings: list[dict[str, Any]], country_code: str
+    ) -> dict[str, Any] | None:
         """Retourne le classement d'un pays spécifique."""
         for country in standings:
             if country.get("organisation") == country_code:
@@ -328,7 +353,7 @@ class Olympics(Extension):
     # ─── Embeds ───────────────────────────────────────────────────────────────
 
     def _build_medal_alert_embed(
-        self, medal: Dict[str, Any], france_standing: Optional[Dict[str, Any]]
+        self, medal: dict[str, Any], france_standing: dict[str, Any] | None
     ) -> Embed:
         """Construit l'embed d'alerte pour une nouvelle médaille française.
 
@@ -402,13 +427,13 @@ class Olympics(Extension):
                 )
 
         embed.set_footer(text="JO d'hiver Milan-Cortina 2026")
-        embed.set_thumbnail(url="https://stillmed.olympics.com/media/Images/OlympicOrg/Games/Winter/Milano-Cortina-2026/Milano-Cortina-2026-Logo.png")
+        embed.set_thumbnail(
+            url="https://stillmed.olympics.com/media/Images/OlympicOrg/Games/Winter/Milano-Cortina-2026/Milano-Cortina-2026-Logo.png"
+        )
 
         return embed
 
-    def _build_standings_embed(
-        self, standings: List[Dict[str, Any]], top_n: int = 15
-    ) -> Embed:
+    def _build_standings_embed(self, standings: list[dict[str, Any]], top_n: int = 15) -> Embed:
         """Construit l'embed du tableau des médailles.
 
         Args:
@@ -455,9 +480,7 @@ class Olympics(Extension):
         embed.description = "\n".join(lines)
 
         # Trouver les infos de France si pas dans le top_n
-        france_in_list = any(
-            c.get("organisation") == COUNTRY_CODE for c in standings[:top_n]
-        )
+        france_in_list = any(c.get("organisation") == COUNTRY_CODE for c in standings[:top_n])
         if not france_in_list:
             france = self._get_country_standing(standings, COUNTRY_CODE)
             if france:
@@ -484,7 +507,7 @@ class Olympics(Extension):
         return embed
 
     def _build_france_medals_embed(
-        self, medals: List[Dict[str, Any]], france_standing: Optional[Dict[str, Any]]
+        self, medals: list[dict[str, Any]], france_standing: dict[str, Any] | None
     ) -> Embed:
         """Construit l'embed détaillé des médailles françaises.
 
@@ -585,7 +608,9 @@ class Olympics(Extension):
         try:
             standings = await self._fetch_medal_standings()
             if not standings:
-                await ctx.send("❌ Impossible de récupérer le tableau des médailles.", ephemeral=True)
+                await ctx.send(
+                    "❌ Impossible de récupérer le tableau des médailles.", ephemeral=True
+                )
                 return
 
             embed = self._build_standings_embed(standings, top_n=top)

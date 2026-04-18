@@ -6,10 +6,10 @@ This module is kept as a re-export shim for one release so existing
 """
 
 from src.core.logging import (  # noqa: F401 — re-exported for backward compat
-    _attach_webui_handler,
-    _configure_logger,
     _CONFIGURED_ATTR,
     CustomFormatter,
+    _attach_webui_handler,
+    _configure_logger,
     get_logger,
     init_logger,
     overwrite_ipy_loggers,

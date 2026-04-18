@@ -8,13 +8,13 @@ import os
 import sys
 
 import interactions
-from interactions import Task, IntervalTrigger
+from interactions import IntervalTrigger, Task
 
 from config import DEBUG
 from src import logutil
 from src.config_manager import load_config
 
-config,_,_ = load_config()
+config, _, _ = load_config()
 
 DEV_GUILD = config["discord"]["devGuildId"]
 TOKEN = config["discord"]["botToken"]
@@ -53,6 +53,7 @@ HEALTH_FILE = "/tmp/bot_heartbeat"
 async def _heartbeat_task():
     """Touch a file so the Docker healthcheck can verify the bot is alive (metadata-only, no disk write)."""
     from pathlib import Path
+
     try:
         Path(HEALTH_FILE).touch()
     except OSError:
@@ -69,6 +70,7 @@ async def on_startup():
     if WEBUI_ENABLED:
         try:
             from src.webui.server import start_webui
+
             start_webui(bot=client, host=WEBUI_HOST, port=WEBUI_PORT)
         except Exception as e:
             logger.error(f"Failed to start Web UI: {e}")
@@ -84,7 +86,7 @@ extensions = [
     if f.endswith(".py") and not f.startswith("__")
 ]
 for extension in extensions:
-    short_name = extension[len("extensions."):]
+    short_name = extension[len("extensions.") :]
     default_enabled = not short_name.startswith("_")
     if not extension_config.get(extension, default_enabled):
         logger.debug(f"Skipping disabled extension {extension}")

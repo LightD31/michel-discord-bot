@@ -8,7 +8,7 @@ via l'intégration avec l'API Notion (version 2025-09-03).
 import os
 from collections import defaultdict
 from datetime import datetime
-from typing import Dict, List, Optional, Any
+from typing import Any, Optional
 
 import aiohttp
 from interactions import (
@@ -33,9 +33,10 @@ from interactions import (
     slash_command,
     slash_option,
 )
-from notion_client import AsyncClient, APIResponseError
+from notion_client import APIResponseError, AsyncClient
 
 from src import logutil
+from src.config_manager import load_config
 from src.helpers import (
     Colors,
     fetch_or_create_persistent_message,
@@ -43,7 +44,6 @@ from src.helpers import (
     format_discord_timestamp,
     send_error,
 )
-from src.config_manager import load_config
 
 logger = logutil.init_logger(os.path.basename(__file__))
 
@@ -57,22 +57,28 @@ NOTION_VERSION = "2025-09-03"
 
 class ConfrerieError(Exception):
     """Base exception for Confrérie extension errors."""
+
     pass
 
 
 class NotionAPIError(ConfrerieError):
     """Exception raised when Notion API calls fail."""
+
     pass
 
 
 class ValidationError(ConfrerieError):
     """Exception raised when data validation fails."""
+
     pass
 
 
 class DataSourceNotFoundError(NotionAPIError):
     """Exception raised when no data source is found for a database."""
+
     pass
+
+
 genres = [
     SlashCommandChoice(name="Art/Beaux livres", value="Art/Beaux livres"),
     SlashCommandChoice(name="Aventure/voyage", value="Aventure/voyage"),
@@ -106,20 +112,20 @@ groupes = [
 
 class ConfrerieExtension(Extension):
     """Extension Discord pour la gestion de la confrérie littéraire.
-    
+
     Cette extension gère les statistiques, les défis, et les éditeurs
     via l'intégration avec Notion (API version 2025-09-03).
     """
-    
+
     def __init__(self, bot: Client):
         self.bot: Client = bot
-        self.data: Dict[str, Any] = {}
+        self.data: dict[str, Any] = {}
         self.notion = AsyncClient(auth=config["notion"]["notionSecret"])
-        self._stats_cache: Dict[str, Any] = {}
-        self._cache_timestamp: Optional[datetime] = None
+        self._stats_cache: dict[str, Any] = {}
+        self._cache_timestamp: datetime | None = None
         self._cache_duration = 300  # 5 minutes cache
-        self._data_source_cache: Dict[str, str] = {}  # database_id -> data_source_id
-        self._recap_message: Optional[Message] = None
+        self._data_source_cache: dict[str, str] = {}  # database_id -> data_source_id
+        self._recap_message: Message | None = None
 
     @listen()
     async def on_startup(self):
@@ -152,85 +158,82 @@ class ConfrerieExtension(Extension):
 
     async def _get_data_source_id(self, database_id: str) -> str:
         """Get the data source ID for a database (required for 2025-09-03 API).
-        
+
         Args:
             database_id: The Notion database ID
-            
+
         Returns:
             The data source ID for the database
-            
+
         Raises:
             DataSourceNotFoundError: If no data source is found
         """
         # Check cache first
         if database_id in self._data_source_cache:
             return self._data_source_cache[database_id]
-        
+
         try:
             # Retrieve database to get data sources list
             database = await self.notion.databases.retrieve(database_id=database_id)
             data_sources = database.get("data_sources", [])
-            
+
             if not data_sources:
-                raise DataSourceNotFoundError(
-                    f"No data sources found for database {database_id}"
-                )
-            
+                raise DataSourceNotFoundError(f"No data sources found for database {database_id}")
+
             # Use the first data source (most databases have only one)
             data_source_id = data_sources[0]["id"]
             self._data_source_cache[database_id] = data_source_id
             logger.debug(f"Cached data_source_id {data_source_id} for database {database_id}")
             return data_source_id
-            
+
         except APIResponseError as e:
             logger.error(f"API error retrieving database {database_id}: {e}")
-            raise NotionAPIError(f"Failed to retrieve database: {e}")
+            raise NotionAPIError(f"Failed to retrieve database: {e}") from e
         except Exception as e:
             logger.error(f"Unexpected error getting data source for {database_id}: {e}")
-            raise NotionAPIError(f"Unexpected error: {e}")
+            raise NotionAPIError(f"Unexpected error: {e}") from e
 
     async def _safe_notion_query(
-        self, database_id: str, filter_params: Dict[str, Any]
-    ) -> List[Dict[str, Any]]:
+        self, database_id: str, filter_params: dict[str, Any]
+    ) -> list[dict[str, Any]]:
         """Query Notion data source with error handling (2025-09-03 API).
-        
+
         Args:
             database_id: ID de la base de données Notion
             filter_params: Paramètres de filtrage
-            
+
         Returns:
             Liste des résultats
-            
+
         Raises:
             NotionAPIError: En cas d'erreur API Notion
         """
         try:
             # Get the data source ID for this database
             data_source_id = await self._get_data_source_id(database_id)
-            
+
             # Use the new data_sources.query endpoint
             response = await self.notion.data_sources.query(
-                data_source_id=data_source_id,
-                filter=filter_params
+                data_source_id=data_source_id, filter=filter_params
             )
             return response.get("results", [])
         except APIResponseError as e:
             logger.error(f"Erreur API Notion: {e}")
-            raise NotionAPIError(f"Erreur lors de la requête Notion: {e}")
+            raise NotionAPIError(f"Erreur lors de la requête Notion: {e}") from e
         except Exception as e:
             logger.error(f"Erreur inattendue lors de la requête Notion: {e}")
-            raise NotionAPIError(f"Erreur inattendue: {e}")
+            raise NotionAPIError(f"Erreur inattendue: {e}") from e
 
     async def _create_embed_footer(self) -> EmbedFooter:
         """Crée un footer standard pour les embeds.
-        
+
         Returns:
             Footer d'embed configuré
         """
         try:
             bot = await self.bot.fetch_member(self.bot.user.id, enabled_servers[0])
             guild = await self.bot.fetch_guild(enabled_servers[0])
-            
+
             return EmbedFooter(
                 text=bot.display_name if bot else "Michel",
                 icon_url=guild.icon.url if guild and guild.icon else None,
@@ -249,7 +252,7 @@ class ConfrerieExtension(Extension):
     async def confrerie(self):
         """Tâche principale pour mettre à jour les statistiques de la confrérie."""
         logger.debug("Début de la tâche de statistiques de la confrérie")
-        
+
         try:
             # Utiliser le cache si disponible
             if self._is_cache_valid():
@@ -257,27 +260,27 @@ class ConfrerieExtension(Extension):
                 stats_data = self._stats_cache
             else:
                 stats_data = await self._fetch_statistics()
-                
+
             await self._update_statistics_message(stats_data)
             logger.debug("Statistiques de la confrérie mises à jour avec succès")
-            
+
         except Exception as e:
             logger.error(f"Erreur lors de la mise à jour des statistiques: {e}")
 
-    async def _fetch_statistics(self) -> Dict[str, Any]:
+    async def _fetch_statistics(self) -> dict[str, Any]:
         """Récupère les statistiques depuis Notion et met à jour le cache.
-        
+
         Returns:
             Dictionnaire contenant les statistiques
         """
         logger.debug("Récupération des statistiques depuis Notion")
-        
+
         # Récupérer les données depuis Notion
         results = await self._safe_notion_query(
             database_id=module_config["confrerieNotionDbOeuvresId"],
-            filter_params={"property": "Défi", "select": {"is_not_empty": True}}
+            filter_params={"property": "Défi", "select": {"is_not_empty": True}},
         )
-        
+
         # Traitement des données
         authors = defaultdict(int)
         defis = defaultdict(int)
@@ -286,7 +289,7 @@ class ConfrerieExtension(Extension):
             # Compter les auteurs
             for author in result["properties"]["Auteur"]["multi_select"]:
                 authors[author["name"]] += 1
-            
+
             # Compter les défis (avec vérification de sécurité)
             defi_data = result["properties"]["Défi"]["select"]
             if defi_data:
@@ -295,20 +298,16 @@ class ConfrerieExtension(Extension):
         # Trier les données
         sorted_authors = sorted(authors.items(), key=lambda x: x[1], reverse=True)
         sorted_defis = sorted(defis.items(), key=lambda x: x[1], reverse=True)
-        
+
         # Mettre à jour le cache
-        stats_data = {
-            "authors": sorted_authors,
-            "defis": sorted_defis,
-            "timestamp": datetime.now()
-        }
-        
+        stats_data = {"authors": sorted_authors, "defis": sorted_defis, "timestamp": datetime.now()}
+
         self._stats_cache = stats_data
         self._cache_timestamp = datetime.now()
-        
+
         return stats_data
 
-    async def _update_statistics_message(self, stats_data: Dict[str, Any]):
+    async def _update_statistics_message(self, stats_data: dict[str, Any]):
         """Met à jour le message des statistiques dans Discord.
 
         Args:
@@ -333,10 +332,7 @@ class ConfrerieExtension(Extension):
 
             embed = await self._create_statistics_embed(stats_data)
             footer = await self._create_embed_footer()
-            embed.set_footer(
-                text=footer.text,
-                icon_url=footer.icon_url
-            )
+            embed.set_footer(text=footer.text, icon_url=footer.icon_url)
 
             await self._recap_message.edit(
                 content="Retrouvez tous les textes en [cliquant ici](https://drndvs.link/Confrerie 'Notion de la confrérie')",
@@ -347,12 +343,12 @@ class ConfrerieExtension(Extension):
             logger.error(f"Erreur lors de la mise à jour du message: {e}")
             raise
 
-    async def _create_statistics_embed(self, stats_data: Dict[str, Any]) -> Embed:
+    async def _create_statistics_embed(self, stats_data: dict[str, Any]) -> Embed:
         """Crée l'embed des statistiques.
-        
+
         Args:
             stats_data: Données statistiques
-            
+
         Returns:
             Embed formaté
         """
@@ -361,19 +357,21 @@ class ConfrerieExtension(Extension):
             color=Colors.CONFRERIE,
             timestamp=stats_data["timestamp"],
         )
-        
+
         # Formater les auteurs
         authors_text = "\n".join(
             f"{author} : **{count}** défi{'s' if count > 1 else ''}"
-            for author, count in stats_data["authors"][:10]  # Limiter à 10 pour éviter les messages trop longs
+            for author, count in stats_data["authors"][
+                :10
+            ]  # Limiter à 10 pour éviter les messages trop longs
         )
-        
+
         # Formater les défis
         defis_text = "\n".join(
             f"{defi} : **{count}** texte{'s' if count > 1 else ''}"
             for defi, count in stats_data["defis"][:10]  # Limiter à 10
         )
-        
+
         embed.add_field(
             name="Auteurs les plus prolifiques",
             value=authors_text or "Aucun auteur trouvé",
@@ -385,7 +383,7 @@ class ConfrerieExtension(Extension):
             value=defis_text or "Aucun défi trouvé",
             inline=True,
         )
-        
+
         return embed
 
     async def update(self, page_id: str):
@@ -393,7 +391,7 @@ class ConfrerieExtension(Extension):
 
         Args:
             page_id: L'ID de la page Notion à récupérer
-            
+
         Raises:
             NotionAPIError: En cas d'erreur lors de l'accès à Notion
             ConfrerieError: En cas d'erreur de configuration ou de validation
@@ -401,37 +399,37 @@ class ConfrerieExtension(Extension):
         try:
             # Récupérer le contenu de la page Notion
             content = await self._safe_notion_page_retrieve(page_id)
-            
+
             # Déterminer le canal et le titre
             channel_info = self._determine_channel_and_title(content)
             channel = await self.bot.fetch_channel(channel_info["channel_id"])
-            
-            if not channel or not hasattr(channel, 'send'):
+
+            if not channel or not hasattr(channel, "send"):
                 raise ConfrerieError(f"Canal introuvable ou invalide: {channel_info['channel_id']}")
 
             # Créer l'embed
             embed = await self._create_update_embed(content, channel_info["title"])
-            
+
             # Récupérer le message de mise à jour si présent
             update_message = self._extract_update_message(content)
-            
+
             # Envoyer le message
             await channel.send(update_message, embed=embed)
             logger.info(f"Message de mise à jour envoyé pour la page {page_id}")
-            
+
         except Exception as e:
             logger.error(f"Erreur lors de la mise à jour de la page {page_id}: {e}")
             raise
 
-    async def _safe_notion_page_retrieve(self, page_id: str) -> Dict[str, Any]:
+    async def _safe_notion_page_retrieve(self, page_id: str) -> dict[str, Any]:
         """Récupère une page Notion avec gestion d'erreurs.
-        
+
         Args:
             page_id: ID de la page Notion
-            
+
         Returns:
             Contenu de la page
-            
+
         Raises:
             NotionAPIError: En cas d'erreur API
         """
@@ -439,45 +437,45 @@ class ConfrerieExtension(Extension):
             return await self.notion.pages.retrieve(page_id=page_id)
         except APIResponseError as e:
             logger.error(f"Erreur API Notion lors de la récupération de la page {page_id}: {e}")
-            raise NotionAPIError(f"Impossible de récupérer la page: {e}")
+            raise NotionAPIError(f"Impossible de récupérer la page: {e}") from e
         except Exception as e:
             logger.error(f"Erreur inattendue lors de la récupération de la page {page_id}: {e}")
-            raise NotionAPIError(f"Erreur inattendue: {e}")
+            raise NotionAPIError(f"Erreur inattendue: {e}") from e
 
-    def _determine_channel_and_title(self, content: Dict[str, Any]) -> Dict[str, str]:
+    def _determine_channel_and_title(self, content: dict[str, Any]) -> dict[str, str]:
         """Détermine le canal et le titre selon le type de contenu.
-        
+
         Args:
             content: Contenu de la page Notion
-            
+
         Returns:
             Dictionnaire avec channel_id et title
         """
         defi_data = content["properties"].get("Défi", {}).get("select")
-        
+
         if defi_data:
             return {
                 "channel_id": module_config["confrerieDefiChannelId"],
-                "title": f"Nouvelle participation au {defi_data['name']}"
+                "title": f"Nouvelle participation au {defi_data['name']}",
             }
         else:
             return {
                 "channel_id": module_config["confrerieNewTextChannelId"],
-                "title": "Texte mis à jour"
+                "title": "Texte mis à jour",
             }
 
-    async def _create_update_embed(self, content: Dict[str, Any], title: str) -> Embed:
+    async def _create_update_embed(self, content: dict[str, Any], title: str) -> Embed:
         """Crée l'embed pour une mise à jour.
-        
+
         Args:
             content: Contenu de la page Notion
             title: Titre de l'embed
-            
+
         Returns:
             Embed formaté
         """
         footer = await self._create_embed_footer()
-        
+
         embed = Embed(
             title=title,
             color=Colors.CONFRERIE,
@@ -518,25 +516,25 @@ class ConfrerieExtension(Extension):
 
         return embed
 
-    def _add_genre_field(self, embed: Embed, content: Dict[str, Any]):
+    def _add_genre_field(self, embed: Embed, content: dict[str, Any]):
         """Ajoute le champ Type/Genre à l'embed.
-        
+
         Args:
             embed: Embed à modifier
             content: Contenu de la page Notion
         """
         genre_texte = ""
-        
+
         # Ajouter le type
         type_data = content["properties"].get("Type", {}).get("select")
         if type_data:
             genre_texte = type_data["name"] + " "
-        
+
         # Ajouter les genres
         genres_data = content["properties"].get("Genre", {}).get("multi_select", [])
         if genres_data:
             genre_texte += ", ".join(genre["name"] for genre in genres_data)
-        
+
         if genre_texte.strip():
             embed.add_field(
                 name="Type / Genre",
@@ -544,16 +542,16 @@ class ConfrerieExtension(Extension):
                 inline=False,
             )
 
-    def _add_consultation_links(self, embed: Embed, content: Dict[str, Any]):
+    def _add_consultation_links(self, embed: Embed, content: dict[str, Any]):
         """Ajoute les liens de consultation à l'embed.
-        
+
         Args:
             embed: Embed à modifier
             content: Contenu de la page Notion
         """
         files_data = content["properties"].get("Lien / Fichier", {}).get("files", [])
         first_link = True
-        
+
         for file in files_data:
             external_data = file.get("external")
             if external_data:
@@ -565,12 +563,12 @@ class ConfrerieExtension(Extension):
                 )
                 first_link = False
 
-    def _extract_update_message(self, content: Dict[str, Any]) -> str:
+    def _extract_update_message(self, content: dict[str, Any]) -> str:
         """Extrait le message de mise à jour du contenu Notion.
-        
+
         Args:
             content: Contenu de la page Notion
-            
+
         Returns:
             Message de mise à jour ou chaîne vide
         """
@@ -591,20 +589,20 @@ class ConfrerieExtension(Extension):
     async def autoupdate(self):
         """Tâche de mise à jour automatique des textes marqués pour update."""
         logger.debug("Début de la tâche de mise à jour automatique")
-        
+
         try:
             # Récupérer les pages marquées pour mise à jour
             updated_pages = await self._safe_notion_query(
                 database_id=module_config["confrerieNotionDbOeuvresId"],
-                filter_params={"property": "Update", "checkbox": {"equals": True}}
+                filter_params={"property": "Update", "checkbox": {"equals": True}},
             )
-            
+
             if not updated_pages:
                 logger.debug("Aucune page à mettre à jour")
                 return
-            
+
             logger.info(f"Traitement de {len(updated_pages)} page(s) à mettre à jour")
-            
+
             # Traiter chaque page
             for page in updated_pages:
                 try:
@@ -613,40 +611,39 @@ class ConfrerieExtension(Extension):
                     logger.debug(f"Page {page['id']} mise à jour avec succès")
                 except Exception as e:
                     logger.error(f"Erreur lors de la mise à jour de la page {page['id']}: {e}")
-                    
+
         except Exception as e:
             logger.error(f"Erreur lors de la tâche d'auto-update: {e}")
 
     async def _mark_page_as_updated(self, page_id: str):
         """Marque une page comme mise à jour dans Notion.
-        
+
         Args:
             page_id: ID de la page à marquer
-            
+
         Raises:
             NotionAPIError: En cas d'erreur API
         """
         try:
             await self.notion.pages.update(
-                page_id=page_id, 
-                properties={"Update": {"checkbox": False}}
+                page_id=page_id, properties={"Update": {"checkbox": False}}
             )
         except APIResponseError as e:
             logger.error(f"Erreur lors du marquage de la page {page_id}: {e}")
-            raise NotionAPIError(f"Impossible de marquer la page comme mise à jour: {e}")
+            raise NotionAPIError(f"Impossible de marquer la page comme mise à jour: {e}") from e
         except Exception as e:
             logger.error(f"Erreur inattendue lors du marquage de la page {page_id}: {e}")
-            raise NotionAPIError(f"Erreur inattendue: {e}")
+            raise NotionAPIError(f"Erreur inattendue: {e}") from e
 
-    def _validate_editor_data(self, data: Dict[str, Any]) -> Dict[str, Any]:
+    def _validate_editor_data(self, data: dict[str, Any]) -> dict[str, Any]:
         """Valide et nettoie les données d'éditeur.
-        
+
         Args:
             data: Données de l'éditeur à valider
-            
+
         Returns:
             Données validées et nettoyées
-            
+
         Raises:
             ValidationError: Si les données sont invalides
         """
@@ -654,7 +651,7 @@ class ConfrerieExtension(Extension):
         name = data.get("name", "").strip()
         if not name:
             raise ValidationError("Le nom de l'éditeur est obligatoire")
-        
+
         # Validation de la note
         note = data.get("note", -1)
         if note != -1:
@@ -664,7 +661,7 @@ class ConfrerieExtension(Extension):
                     raise ValidationError("La note doit être comprise entre 0 et 5")
             except (ValueError, TypeError):
                 raise ValidationError("La note doit être un nombre valide")
-        
+
         # Validation de la date
         date_str = data.get("date", "").strip()
         if date_str:
@@ -673,12 +670,12 @@ class ConfrerieExtension(Extension):
                 datetime.strptime(date_str, "%Y-%m-%d")
             except ValueError:
                 raise ValidationError("La date doit être au format YYYY-MM-DD")
-        
+
         # Validation de l'URL du site
         site = data.get("site", "").strip()
         if site and not (site.startswith("http://") or site.startswith("https://")):
             data["site"] = f"https://{site}"
-        
+
         return data
 
     @slash_command(
@@ -690,16 +687,16 @@ class ConfrerieExtension(Extension):
         """Commande pour faire une demande d'actualisation du site."""
         modal = Modal(
             ShortText(
-                label="Titre", 
+                label="Titre",
                 custom_id="title",
                 placeholder="Titre court de votre demande",
-                max_length=100
+                max_length=100,
             ),
             ParagraphText(
-                label="Détails", 
+                label="Détails",
                 custom_id="details",
                 placeholder="Décrivez en détail votre demande d'actualisation",
-                max_length=1000
+                max_length=1000,
             ),
             title="Demande d'actualisation",
             custom_id="demande",
@@ -707,11 +704,9 @@ class ConfrerieExtension(Extension):
         await ctx.send_modal(modal)
 
     @modal_callback("demande")
-    async def demande_callback(
-        self, ctx: ModalContext, title: str, details: str
-    ):
+    async def demande_callback(self, ctx: ModalContext, title: str, details: str):
         """Callback pour traiter une demande d'actualisation.
-        
+
         Args:
             ctx: Contexte du modal
             title: Titre de la demande
@@ -725,27 +720,28 @@ class ConfrerieExtension(Extension):
 
             # Créer l'embed de demande
             embed = await self._create_request_embed(ctx, title.strip(), details.strip())
-            
+
             # Envoyer aux propriétaires
             await self._send_request_to_owners(embed)
-            
-            await ctx.send("✅ Demande envoyée avec succès ! Vous recevrez une réponse prochainement.", ephemeral=True)
+
+            await ctx.send(
+                "✅ Demande envoyée avec succès ! Vous recevrez une réponse prochainement.",
+                ephemeral=True,
+            )
             logger.info(f"Demande d'actualisation envoyée par {ctx.author}: {title}")
-            
+
         except Exception as e:
             await send_error(ctx, "Une erreur est survenue lors de l'envoi de votre demande.")
             logger.error(f"Erreur lors de l'envoi de la demande: {e}")
 
-    async def _create_request_embed(
-        self, ctx: ModalContext, title: str, details: str
-    ) -> Embed:
+    async def _create_request_embed(self, ctx: ModalContext, title: str, details: str) -> Embed:
         """Crée l'embed pour une demande d'actualisation.
-        
+
         Args:
             ctx: Contexte du modal
             title: Titre de la demande
             details: Détails de la demande
-            
+
         Returns:
             Embed formaté
         """
@@ -754,51 +750,51 @@ class ConfrerieExtension(Extension):
             color=Colors.CONFRERIE,
             timestamp=datetime.now(),
         )
-        
+
         embed.add_field(
             name="👤 Auteur",
             value=f"{ctx.author.mention} ({ctx.author.username})",
             inline=False,
         )
-        
+
         embed.add_field(
             name="📋 Titre",
             value=title,
             inline=False,
         )
-        
+
         embed.add_field(
             name="📝 Détails",
             value=details,
             inline=False,
         )
-        
+
         # Ajouter des informations contextuelles
         embed.add_field(
             name="🌐 Serveur",
             value=ctx.guild.name if ctx.guild else "Inconnu",
             inline=True,
         )
-        
+
         embed.add_field(
             name="📅 Date",
             value=format_discord_timestamp(datetime.now(), "F"),
             inline=True,
         )
-        
+
         return embed
 
     async def _send_request_to_owners(self, embed: Embed):
         """Envoie la demande aux propriétaires.
-        
+
         Args:
             embed: Embed de la demande
-            
+
         Raises:
             ConfrerieError: Si aucun propriétaire n'est trouvé
         """
         owners_sent = 0
-        
+
         # Envoyer au propriétaire de la confrérie
         try:
             owner_id = module_config.get("confrerieOwnerId")
@@ -827,7 +823,7 @@ class ConfrerieExtension(Extension):
 
 def load(bot: Client):
     """Charge l'extension Confrérie dans le bot.
-    
+
     Args:
         bot: Instance du bot Discord
     """
@@ -939,7 +935,7 @@ def load(bot: Client):
         taille: str = "",
     ):
         """Commande pour ajouter un éditeur à la base de données.
-        
+
         Args:
             ctx: Contexte de la commande
             name: Nom de l'éditeur
@@ -967,10 +963,10 @@ def load(bot: Client):
                 "date": date,
                 "taille": taille,
             }
-            
+
             # Valider les données
             validated_data = self._validate_editor_data(editor_data)
-            
+
             # Créer et afficher le modal
             modal = Modal(
                 ParagraphText(
@@ -988,11 +984,11 @@ def load(bot: Client):
                 title=f"Ajout de {name}",
                 custom_id="ajouterediteur",
             )
-            
+
             # Sauvegarder les données temporairement
             self.data = validated_data
             await ctx.send_modal(modal)
-            
+
         except ValidationError as e:
             await send_error(ctx, f"Erreur de validation: {e}")
             logger.warning(f"Validation échouée pour l'éditeur {name}: {e}")
@@ -1008,7 +1004,7 @@ def load(bot: Client):
         presentation: str,
     ):
         """Callback pour traiter les données du modal d'ajout d'éditeur.
-        
+
         Args:
             ctx: Contexte du modal
             commentaire: Commentaire sur l'éditeur
@@ -1020,25 +1016,23 @@ def load(bot: Client):
                 return
 
             # Créer les propriétés Notion
-            properties = await self._build_editor_properties(
-                self.data, commentaire, presentation
-            )
-            
+            properties = await self._build_editor_properties(self.data, commentaire, presentation)
+
             # Créer la page dans Notion
             page = await self._create_notion_editor_page(properties)
-            
+
             # Nettoyer les données temporaires
             self.data = {}
-            
+
             # Confirmer l'ajout
             await ctx.send(
                 f"✅ Éditeur **{self.data.get('name', 'Inconnu')}** ajouté avec succès !\n"
-                f"📋 [Voir dans Notion]({page['public_url']})", 
-                ephemeral=True
+                f"📋 [Voir dans Notion]({page['public_url']})",
+                ephemeral=True,
             )
-            
+
             logger.info(f"Éditeur {self.data.get('name')} ajouté par {ctx.author}")
-            
+
         except NotionAPIError as e:
             await send_error(ctx, f"Erreur lors de l'ajout à Notion: {e}")
         except Exception as e:
@@ -1049,15 +1043,15 @@ def load(bot: Client):
             self.data = {}
 
     async def _build_editor_properties(
-        self, data: Dict[str, Any], commentaire: str, presentation: str
-    ) -> Dict[str, Any]:
+        self, data: dict[str, Any], commentaire: str, presentation: str
+    ) -> dict[str, Any]:
         """Construit les propriétés Notion pour un éditeur.
-        
+
         Args:
             data: Données de l'éditeur
             commentaire: Commentaire
             presentation: Présentation
-            
+
         Returns:
             Propriétés formatées pour Notion
         """
@@ -1065,9 +1059,7 @@ def load(bot: Client):
             "Nom": {"title": [{"text": {"content": data["name"]}}]},
             "Genre(s)": {
                 "multi_select": [
-                    {"name": genre.strip()}
-                    for genre in data["genres"].split(",")
-                    if genre.strip()
+                    {"name": genre.strip()} for genre in data["genres"].split(",") if genre.strip()
                 ]
             },
             "Publics": {
@@ -1082,42 +1074,38 @@ def load(bot: Client):
         # Ajouter les champs optionnels
         if data.get("groupe"):
             properties["Groupe éditorial"] = {"select": {"name": data["groupe"]}}
-            
+
         if data.get("site"):
             properties["Site"] = {"url": data["site"]}
-            
+
         if data.get("note", -1) != -1:
             properties["Note"] = {"number": data["note"]}
-            
+
         if commentaire.strip():
-            properties["Commentaire"] = {
-                "rich_text": [{"text": {"content": commentaire.strip()}}]
-            }
-            
+            properties["Commentaire"] = {"rich_text": [{"text": {"content": commentaire.strip()}}]}
+
         if presentation.strip():
             properties["Présentation"] = {
                 "rich_text": [{"text": {"content": presentation.strip()}}]
             }
-            
+
         if data.get("taille"):
-            properties["Taille"] = {
-                "rich_text": [{"text": {"content": data["taille"]}}]
-            }
-            
+            properties["Taille"] = {"rich_text": [{"text": {"content": data["taille"]}}]}
+
         if data.get("date"):
             properties["Date création"] = {"date": {"start": data["date"]}}
 
         return properties
 
-    async def _create_notion_editor_page(self, properties: Dict[str, Any]) -> Dict[str, Any]:
+    async def _create_notion_editor_page(self, properties: dict[str, Any]) -> dict[str, Any]:
         """Crée une page éditeur dans Notion.
-        
+
         Args:
             properties: Propriétés de la page
-            
+
         Returns:
             Page créée
-            
+
         Raises:
             NotionAPIError: En cas d'erreur API
         """
@@ -1125,7 +1113,7 @@ def load(bot: Client):
             # Get data source ID for the editors database
             database_id = module_config["confrerieNotionDbIdEditorsId"]
             data_source_id = await self._get_data_source_id(database_id)
-            
+
             # Use data_source_id as parent (2025-09-03 API requirement)
             return await self.notion.pages.create(
                 parent={"type": "data_source_id", "data_source_id": data_source_id},

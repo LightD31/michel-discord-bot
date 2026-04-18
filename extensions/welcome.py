@@ -6,8 +6,8 @@ from interactions import Client, Extension, listen
 from interactions.api.events import MemberAdd, MemberRemove
 
 from src import logutil
-from src.helpers import is_guild_enabled, pick_weighted_message
 from src.config_manager import load_config
+from src.helpers import is_guild_enabled, pick_weighted_message
 
 logger = logutil.init_logger(os.path.basename(__file__))
 
@@ -29,9 +29,7 @@ class WelcomeExtension(Extension):
         event : interactions.Member
             The member that joined the guild.
         """
-        logger.info(
-            "Member %s joined the server %s", event.member.username, event.guild.name
-        )
+        logger.info("Member %s joined the server %s", event.member.username, event.guild.name)
         if not is_guild_enabled(event.guild.id, enabled_servers):
             logger.info("Server not enabled")
             return
@@ -39,7 +37,8 @@ class WelcomeExtension(Extension):
 
         filled_message = pick_weighted_message(
             serv_config,
-            "welcomeMessageList", "welcomeMessageWeights",
+            "welcomeMessageList",
+            "welcomeMessageWeights",
             "Bienvenue {mention} !",
             mention=event.member.mention,
         )
@@ -60,21 +59,21 @@ class WelcomeExtension(Extension):
         event : interactions.Member
             The member that left the guild.
         """
-        logger.info(
-            "Member %s left the server %s", event.member.username, event.guild.name
-        )
+        logger.info("Member %s left the server %s", event.member.username, event.guild.name)
         if not is_guild_enabled(event.guild.id, enabled_servers):
             logger.info("Server not enabled")
             return
-        serv_config : dict = module_config.get(str(event.guild.id), {})
-        logger.debug("Message : %s\n, Weights : %s\nChannel : %s",
-                    serv_config.get("leaveMessageList"),
-                    serv_config.get("leaveMessageWeights"),
-                    serv_config.get("welcomeChannelId")
-                    )
+        serv_config: dict = module_config.get(str(event.guild.id), {})
+        logger.debug(
+            "Message : %s\n, Weights : %s\nChannel : %s",
+            serv_config.get("leaveMessageList"),
+            serv_config.get("leaveMessageWeights"),
+            serv_config.get("welcomeChannelId"),
+        )
         filled_message = pick_weighted_message(
             serv_config,
-            "leaveMessageList", "leaveMessageWeights",
+            "leaveMessageList",
+            "leaveMessageWeights",
             "Au revoir **{mention}** !",
             mention=event.member.username,
         )

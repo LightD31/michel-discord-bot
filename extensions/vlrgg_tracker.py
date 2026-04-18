@@ -11,34 +11,38 @@ Configuration par serveur via le dashboard web (moduleVlrgg):
     - channelMessageId: "channelId:messageId" pour le planning (optionnel)
 """
 
+import json
 import os
-from typing import List, Dict, Any, Tuple, Optional
 from dataclasses import dataclass, field
+from typing import Any, Dict, List, Optional, Tuple
+
 from interactions import (
-    Task,
-    IntervalTrigger,
-    Extension,
-    listen,
-    Embed,
     Client,
+    Embed,
+    Extension,
+    IntervalTrigger,
+    Task,
     Timestamp,
+    listen,
 )
+
 from src import logutil
+from src.config_manager import CONFIG_PATH, load_config
 from src.helpers import (
-    Colors,
     SPACER_FIELD,
+    Colors,
     format_discord_timestamp,
 )
-from src.config_manager import CONFIG_PATH, load_config
 from src.mongodb import mongo_manager
-import json
+from src.vlrgg import (
+    expand_round_name,
+    extract_match_id_from_url,
+    fetch_match_details,
+    format_vlr_date,
+    parse_vlrgg_timestamp,
+)
 from src.vlrgg import (
     fetch_all_team_data as vlrgg_fetch_all,
-    fetch_match_details,
-    extract_match_id_from_url,
-    parse_vlrgg_timestamp,
-    expand_round_name,
-    format_vlr_date,
 )
 
 logger = logutil.init_logger(os.path.basename(__file__))
@@ -56,14 +60,15 @@ LIVE_UPDATE_INTERVAL_MINUTES = 0.5
 @dataclass
 class TeamConfig:
     """Configuration d'une équipe à suivre."""
+
     name: str
-    vlr_team_id: Optional[str] = None
-    channel_id: Optional[str] = None
-    message_id: Optional[str] = None
+    vlr_team_id: str | None = None
+    channel_id: str | None = None
+    message_id: str | None = None
     pin: bool = False
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "TeamConfig":
+    def from_dict(cls, data: dict[str, Any]) -> "TeamConfig":
         """Construit depuis un dict de config."""
         channel_id = None
         message_id = None
@@ -89,7 +94,7 @@ def _save_team_channel_message(
 ) -> None:
     """Update the channelMessageId for a specific team in config.json."""
     try:
-        with open(CONFIG_PATH, "r", encoding="utf-8") as file:
+        with open(CONFIG_PATH, encoding="utf-8") as file:
             data = json.load(file)
     except (FileNotFoundError, json.JSONDecodeError) as e:
         logger.error("Could not read config for vlrgg team save: %s", e)
@@ -115,21 +120,23 @@ def _save_team_channel_message(
 @dataclass
 class TeamState:
     """État de suivi d'une équipe."""
+
     team_config: TeamConfig
     server_id: str = ""
     schedule_message: Any = None
     notification_channel: Any = None
-    ongoing_matches: Dict[str, Any] = field(default_factory=dict)
-    live_messages: Dict[str, Any] = field(default_factory=dict)
+    ongoing_matches: dict[str, Any] = field(default_factory=dict)
+    live_messages: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
 class ServerState:
     """État de suivi d'un serveur."""
+
     server_id: str
-    notification_channel_id: Optional[str] = None
+    notification_channel_id: str | None = None
     notification_channel: Any = None
-    teams: Dict[str, TeamState] = field(default_factory=dict)
+    teams: dict[str, TeamState] = field(default_factory=dict)
 
 
 class VlrggTrackerExtension(Extension):
@@ -140,7 +147,7 @@ class VlrggTrackerExtension(Extension):
 
     def __init__(self, bot: Client) -> None:
         self.bot = bot
-        self._servers: Dict[str, ServerState] = {}
+        self._servers: dict[str, ServerState] = {}
 
     @listen()
     async def on_startup(self) -> None:
@@ -210,8 +217,10 @@ class VlrggTrackerExtension(Extension):
                                     except Exception as e:
                                         logger.warning("Impossible d'épingler: %s", e)
                                 _save_team_channel_message(
-                                    server_id, team_cfg.name,
-                                    str(channel.id), str(msg.id),
+                                    server_id,
+                                    team_cfg.name,
+                                    str(channel.id),
+                                    str(msg.id),
                                 )
                                 team_cfg.message_id = str(msg.id)
                             team_state.schedule_message = msg
@@ -247,9 +256,7 @@ class VlrggTrackerExtension(Extension):
                 try:
                     await self._update_team_schedule(team_state)
                 except Exception as e:
-                    logger.exception(
-                        f"Erreur schedule pour {team_name} (serveur {server_id}): {e}"
-                    )
+                    logger.exception(f"Erreur schedule pour {team_name} (serveur {server_id}): {e}")
 
     @Task.create(IntervalTrigger(minutes=LIVE_UPDATE_INTERVAL_MINUTES))
     async def live_update(self) -> None:
@@ -294,19 +301,14 @@ class VlrggTrackerExtension(Extension):
             vlr_live = vlr_data.get("live", [])
 
             for match_id in list(team_state.ongoing_matches.keys()):
-                still_live = any(
-                    self._make_vlr_match_id(m) == match_id
-                    for m in vlr_live
-                )
+                still_live = any(self._make_vlr_match_id(m) == match_id for m in vlr_live)
                 if not still_live:
                     # Match terminé — essayer de récupérer les détails pour un embed final
                     await self._handle_vlr_match_ended(match_id, team_state)
                 else:
                     for m in vlr_live:
                         if self._make_vlr_match_id(m) == match_id:
-                            await self._update_vlrgg_live_message(
-                                m, match_id, team_state
-                            )
+                            await self._update_vlrgg_live_message(m, match_id, team_state)
                             break
         except Exception as e:
             logger.warning(f"Échec de la mise à jour live VLR.gg pour {tc.name}: {e}")
@@ -314,7 +316,7 @@ class VlrggTrackerExtension(Extension):
     # ── Notifications live ───────────────────────────────────────────
 
     async def _handle_match_transitions(
-        self, ongoing_matches: Dict[str, Any], team_state: TeamState
+        self, ongoing_matches: dict[str, Any], team_state: TeamState
     ) -> None:
         """Gère les transitions de matchs (début/fin)."""
         tc = team_state.team_config
@@ -333,7 +335,7 @@ class VlrggTrackerExtension(Extension):
             team_state.ongoing_matches.pop(match_id, None)
 
     async def _send_vlrgg_match_started_notification(
-        self, match: Dict[str, Any], team_state: TeamState
+        self, match: dict[str, Any], team_state: TeamState
     ) -> None:
         """Envoie une notification VLR.gg quand un match commence."""
         channel = team_state.notification_channel
@@ -379,7 +381,7 @@ class VlrggTrackerExtension(Extension):
             logger.exception(f"Erreur notification VLR.gg: {e}")
 
     async def _update_vlrgg_live_message(
-        self, match: Dict[str, Any], match_id: str, team_state: TeamState
+        self, match: dict[str, Any], match_id: str, team_state: TeamState
     ) -> None:
         """Met à jour le message de score en direct (VLR.gg)."""
         message = team_state.live_messages.get(match_id)
@@ -425,9 +427,7 @@ class VlrggTrackerExtension(Extension):
         except Exception as e:
             logger.exception(f"Erreur mise à jour VLR.gg message live: {e}")
 
-    async def _handle_vlr_match_ended(
-        self, match_id: str, team_state: TeamState
-    ) -> None:
+    async def _handle_vlr_match_ended(self, match_id: str, team_state: TeamState) -> None:
         """Gère la fin d'un match VLR.gg — tente de récupérer les détails."""
         message = team_state.live_messages.pop(match_id, None)
         match_data = team_state.ongoing_matches.pop(match_id, None)
@@ -445,7 +445,9 @@ class VlrggTrackerExtension(Extension):
                 try:
                     details = await fetch_match_details(vlr_match_id)
                 except Exception as e:
-                    logger.warning(f"Impossible de récupérer les détails du match {vlr_match_id}: {e}")
+                    logger.warning(
+                        f"Impossible de récupérer les détails du match {vlr_match_id}: {e}"
+                    )
 
             # Extraire noms et scores depuis les détails si disponibles
             if details and details.get("teams"):
@@ -499,6 +501,7 @@ class VlrggTrackerExtension(Extension):
             round_info = ""
             if details and isinstance(details.get("event"), dict):
                 from src.vlrgg import _clean_vlr_text, expand_round_name
+
                 event_obj = details["event"]
                 series = _clean_vlr_text(event_obj.get("series", ""))
                 full_name = _clean_vlr_text(event_obj.get("name", ""))
@@ -508,7 +511,9 @@ class VlrggTrackerExtension(Extension):
                     event_name = full_name
                 round_info = expand_round_name(series) if series else ""
             if not event_name:
-                event_name = (match_data or {}).get("match_event", "") or (match_data or {}).get("tournament_name", "Tournoi")
+                event_name = (match_data or {}).get("match_event", "") or (match_data or {}).get(
+                    "tournament_name", "Tournoi"
+                )
 
             description = f"**{event_name}**"
             if round_info:
@@ -548,9 +553,7 @@ class VlrggTrackerExtension(Extension):
 
     # ── Récupération des données ─────────────────────────────────────
 
-    async def _fetch_team_schedule(
-        self, tc: TeamConfig
-    ) -> Tuple[List[Embed], Dict[str, Any]]:
+    async def _fetch_team_schedule(self, tc: TeamConfig) -> tuple[list[Embed], dict[str, Any]]:
         """Récupère le planning avec suivi des matchs en cours via VLR.gg."""
         vlr_data = await self._fetch_vlrgg_data(tc)
         if not vlr_data:
@@ -561,7 +564,7 @@ class VlrggTrackerExtension(Extension):
         ongoing = self._extract_vlrgg_ongoing(vlr_data)
         return embeds, ongoing
 
-    async def _fetch_vlrgg_data(self, tc: TeamConfig) -> Optional[Dict[str, Any]]:
+    async def _fetch_vlrgg_data(self, tc: TeamConfig) -> dict[str, Any] | None:
         """Récupère les données VLR.gg pour une équipe."""
         if not tc.vlr_team_id:
             logger.warning(f"{tc.name}: aucun vlrTeamId configuré")
@@ -583,9 +586,7 @@ class VlrggTrackerExtension(Extension):
 
     # ── Construction des embeds ──────────────────────────────────────
 
-    def _build_vlrgg_embeds(
-        self, vlr_data: Dict[str, Any], team: str
-    ) -> List[Embed]:
+    def _build_vlrgg_embeds(self, vlr_data: dict[str, Any], team: str) -> list[Embed]:
         """Construit les embeds Discord à partir des données VLR.gg."""
         embeds = []
 
@@ -632,9 +633,7 @@ class VlrggTrackerExtension(Extension):
 
         return embeds
 
-    def _format_vlrgg_result(
-        self, match: Dict[str, Any], team: str
-    ) -> Dict[str, str]:
+    def _format_vlrgg_result(self, match: dict[str, Any], team: str) -> dict[str, str]:
         """Formate un résultat VLR.gg pour l'affichage."""
         team1 = match.get("team1", "???")
         team2 = match.get("team2", "???")
@@ -708,7 +707,7 @@ class VlrggTrackerExtension(Extension):
             "value": value,
         }
 
-    def _format_vlrgg_live(self, match: Dict[str, Any]) -> Dict[str, str]:
+    def _format_vlrgg_live(self, match: dict[str, Any]) -> dict[str, str]:
         """Formate un match live VLR.gg pour l'affichage."""
         team1 = match.get("team1", "???")
         team2 = match.get("team2", "???")
@@ -733,7 +732,7 @@ class VlrggTrackerExtension(Extension):
             "value": value,
         }
 
-    def _format_vlrgg_upcoming(self, match: Dict[str, Any]) -> Dict[str, str]:
+    def _format_vlrgg_upcoming(self, match: dict[str, Any]) -> dict[str, str]:
         """Formate un match à venir VLR.gg pour l'affichage."""
         team1 = match.get("team1", "???")
         team2 = match.get("team2", "???")
@@ -758,9 +757,9 @@ class VlrggTrackerExtension(Extension):
             "value": f"{time_display}\n{event_line}",
         }
 
-    def _extract_vlrgg_ongoing(self, vlr_data: Dict[str, Any]) -> Dict[str, Any]:
+    def _extract_vlrgg_ongoing(self, vlr_data: dict[str, Any]) -> dict[str, Any]:
         """Extrait les matchs en cours depuis les données VLR.gg."""
-        ongoing: Dict[str, Any] = {}
+        ongoing: dict[str, Any] = {}
         for match in vlr_data.get("live", []):
             match_id = self._make_vlr_match_id(match)
             ongoing[match_id] = match
@@ -768,7 +767,7 @@ class VlrggTrackerExtension(Extension):
 
     # ── Formatage des détails de match (depuis /match/details) ───────
 
-    def _format_match_details_maps(self, details: Dict[str, Any]) -> Optional[str]:
+    def _format_match_details_maps(self, details: dict[str, Any]) -> str | None:
         """Formate les scores par map depuis les détails d'un match."""
         maps_data = details.get("maps", [])
         if not maps_data:
@@ -807,12 +806,10 @@ class VlrggTrackerExtension(Extension):
 
         return "\n".join(lines) if lines else None
 
-    def _format_match_details_top_players(
-        self, details: Dict[str, Any]
-    ) -> Optional[str]:
+    def _format_match_details_top_players(self, details: dict[str, Any]) -> str | None:
         """Formate les meilleurs joueurs depuis les détails d'un match."""
         # Chercher les stats dans les maps
-        all_players: Dict[str, Dict[str, Any]] = {}
+        all_players: dict[str, dict[str, Any]] = {}
         maps_data = details.get("maps", [])
 
         for map_info in maps_data:
@@ -857,17 +854,13 @@ class VlrggTrackerExtension(Extension):
         # Trier par rating moyen
         sorted_players = sorted(
             all_players.items(),
-            key=lambda x: (
-                sum(x[1]["ratings"]) / len(x[1]["ratings"]) if x[1]["ratings"] else 0
-            ),
+            key=lambda x: sum(x[1]["ratings"]) / len(x[1]["ratings"]) if x[1]["ratings"] else 0,
             reverse=True,
         )
 
         lines = []
         for name, stats in sorted_players[:3]:
-            avg_rating = (
-                sum(stats["ratings"]) / len(stats["ratings"]) if stats["ratings"] else 0
-            )
+            avg_rating = sum(stats["ratings"]) / len(stats["ratings"]) if stats["ratings"] else 0
             k, d, a = stats["kills"], stats["deaths"], stats["assists"]
             lines.append(f"**{name}** — {avg_rating:.1f} rating | {k}/{d}/{a} K/D/A")
 
@@ -879,8 +872,13 @@ class VlrggTrackerExtension(Extension):
         return mongo_manager.get_guild_collection(server_id, "vlrgg_live")
 
     async def _save_live_match(
-        self, server_id: str, team_name: str, match_id: str,
-        match_data: Dict[str, Any], channel_id: str, message_id: str
+        self,
+        server_id: str,
+        team_name: str,
+        match_id: str,
+        match_data: dict[str, Any],
+        channel_id: str,
+        message_id: str,
     ) -> None:
         try:
             await self._live_col(server_id).replace_one(
@@ -920,7 +918,9 @@ class VlrggTrackerExtension(Extension):
 
             team_state = server_state.teams.get(team_name)
             if not team_state:
-                logger.warning(f"Serveur {server_id}: équipe '{team_name}' introuvable pour restauration")
+                logger.warning(
+                    f"Serveur {server_id}: équipe '{team_name}' introuvable pour restauration"
+                )
                 continue
 
             try:
@@ -932,13 +932,15 @@ class VlrggTrackerExtension(Extension):
                 team_state.ongoing_matches[match_id] = match_data
                 logger.info(f"Serveur {server_id}: match live {match_id} restauré pour {team_name}")
             except Exception as e:
-                logger.warning(f"Serveur {server_id}: impossible de restaurer le message {message_id}: {e}")
+                logger.warning(
+                    f"Serveur {server_id}: impossible de restaurer le message {message_id}: {e}"
+                )
                 await self._delete_live_match(server_id, match_id)
 
     # ── Utilitaires ──────────────────────────────────────────────────
 
     @staticmethod
-    def _make_vlr_match_id(match: Dict[str, Any]) -> str:
+    def _make_vlr_match_id(match: dict[str, Any]) -> str:
         """Génère un ID unique pour un match VLR.gg."""
         # Préférer l'URL du match si disponible pour un ID plus stable
         match_url = match.get("match_page", "")
@@ -947,9 +949,7 @@ class VlrggTrackerExtension(Extension):
             return f"vlrgg_{url_id}"
         return f"vlrgg_{match.get('team1', '')}_{match.get('team2', '')}"
 
-    def _create_base_embed(
-        self, title: str, description: str = "", footer_text: str = ""
-    ) -> Embed:
+    def _create_base_embed(self, title: str, description: str = "", footer_text: str = "") -> Embed:
         """Crée un embed de base avec le style commun."""
         embed = Embed(
             title=title,

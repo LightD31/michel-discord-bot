@@ -6,6 +6,7 @@ Can be started alongside the bot or independently.
 import asyncio
 import logging
 import threading
+
 import uvicorn
 
 from src import logutil
@@ -16,6 +17,7 @@ logger = logutil.init_logger("webui.server")
 
 class _FilterInvalidHTTP(logging.Filter):
     """Suppress noisy uvicorn warnings caused by non-HTTP traffic (scanners, TLS probes)."""
+
     def filter(self, record: logging.LogRecord) -> bool:
         return "Invalid HTTP request received" not in record.getMessage()
 

@@ -19,40 +19,42 @@ Recent improvements:
 import asyncio
 import os
 import uuid
+from datetime import datetime, timedelta
+from typing import Optional
+
 from dateutil.relativedelta import relativedelta
 from interactions import (
-    TimestampStyles,
+    ActionRow,
     BaseChannel,
+    Button,
+    ButtonStyle,
     ChannelType,
     Client,
     Embed,
     Extension,
+    IntegrationType,
+    IntervalTrigger,
     OptionType,
     Permissions,
+    SlashCommandChoice,
     SlashContext,
+    Task,
+    TimestampStyles,
     listen,
     slash_command,
     slash_default_member_permission,
     slash_option,
-    Button,
-    Task,
-    IntervalTrigger,
-    ActionRow,
-    ButtonStyle,
-    SlashCommandChoice,
-    IntegrationType,
 )
 from interactions.api.events import (
     MessageReactionAdd,
     MessageReactionRemove,
 )
 from interactions.client.utils import timestamp_converter
-from datetime import datetime, timedelta
-from typing import Optional
+
 from src import logutil
-from src.mongodb import mongo_manager
 from src.config_manager import load_config
-from src.helpers import Colors, fetch_user_safe, send_error, is_guild_enabled
+from src.helpers import Colors, fetch_user_safe, is_guild_enabled, send_error
+from src.mongodb import mongo_manager
 from src.utils import format_poll
 
 logger = logutil.init_logger(os.path.basename(__file__))
@@ -64,10 +66,7 @@ enabled_servers_int = [int(s) for s in enabled_servers]  # type: ignore
 guild_reminders: dict[str, dict] = {}
 
 # Poll emojis constant
-POLL_EMOJIS = [
-    "1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣",
-    "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"
-]
+POLL_EMOJIS = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
 
 # Default poll options
 DEFAULT_POLL_OPTIONS = ["Oui", "Non"]
@@ -97,7 +96,7 @@ class UtilExtension(Extension):
             await message.add_reaction(emojis[i])
 
     @staticmethod
-    def parse_poll_author_id(footer_text: str) -> Optional[str]:
+    def parse_poll_author_id(footer_text: str) -> str | None:
         """Extract author ID from poll footer text."""
         if not footer_text or len(footer_text.split(" ")) < 5:
             return None
@@ -109,7 +108,10 @@ class UtilExtension(Extension):
         self.check_reminders.start()
 
     @slash_command(
-        name="ping", description="Vérifier la latence du bot", scopes=enabled_servers_int, integration_types=[IntegrationType.GUILD_INSTALL, IntegrationType.USER_INSTALL]  # type: ignore
+        name="ping",
+        description="Vérifier la latence du bot",
+        scopes=enabled_servers_int,
+        integration_types=[IntegrationType.GUILD_INSTALL, IntegrationType.USER_INSTALL],  # type: ignore
     )
     async def ping(self, ctx: SlashContext):
         """
@@ -123,7 +125,9 @@ class UtilExtension(Extension):
         await ctx.send(f"Pong ! Latence : {round(ctx.bot.latency * 1000)}ms")
 
     @slash_command(
-        name="delete", description="Supprimer des messages", scopes=enabled_servers_int  # type: ignore
+        name="delete",
+        description="Supprimer des messages",
+        scopes=enabled_servers_int,  # type: ignore
     )
     @slash_option(
         "nombre",
@@ -150,9 +154,7 @@ class UtilExtension(Extension):
         opt_type=OptionType.STRING,
         required=False,
     )
-    @slash_default_member_permission(
-        Permissions.ADMINISTRATOR | Permissions.MANAGE_MESSAGES
-    )
+    @slash_default_member_permission(Permissions.ADMINISTRATOR | Permissions.MANAGE_MESSAGES)
     async def delete(
         self,
         ctx: SlashContext,
@@ -217,14 +219,12 @@ class UtilExtension(Extension):
             ChannelType.GUILD_NEWS,
         ],
     )
-    @slash_default_member_permission(
-        Permissions.ADMINISTRATOR | Permissions.MANAGE_MESSAGES
-    )
+    @slash_default_member_permission(Permissions.ADMINISTRATOR | Permissions.MANAGE_MESSAGES)
     async def send(
         self,
         ctx: SlashContext,
         message: str,
-        channel: Optional[BaseChannel] = None,
+        channel: BaseChannel | None = None,
     ):
         """
         A slash command that sends a message to a channel.
@@ -243,15 +243,17 @@ class UtilExtension(Extension):
         if channel.type == ChannelType.GUILD_CATEGORY:
             await send_error(ctx, "Vous ne pouvez pas envoyer de message dans une catégorie")
             return
-        
+
         # Ensure channel is a text channel that can send messages
-        if not hasattr(channel, 'send'):
+        if not hasattr(channel, "send"):
             await send_error(ctx, "Ce type de channel ne supporte pas l'envoi de messages")
             return
-            
+
         # Type cast to ensure the channel has the send method
         from typing import cast
+
         from interactions import GuildText
+
         text_channel = cast(GuildText, channel)
         sent = await text_channel.send(message)
         logger.info(
@@ -263,7 +265,12 @@ class UtilExtension(Extension):
         )
         await ctx.send("Message envoyé !", ephemeral=True)
 
-    @slash_command(name="poll", description="Créer un sondage", scopes=enabled_servers_int, integration_types=[IntegrationType.GUILD_INSTALL, IntegrationType.USER_INSTALL])  # type: ignore
+    @slash_command(
+        name="poll",
+        description="Créer un sondage",
+        scopes=enabled_servers_int,
+        integration_types=[IntegrationType.GUILD_INSTALL, IntegrationType.USER_INSTALL],
+    )  # type: ignore
     @slash_option(
         "question",
         "Question du sondage",
@@ -300,9 +307,7 @@ class UtilExtension(Extension):
             emojis = POLL_EMOJIS
         embed = Embed(
             title=question,
-            description="\n\n".join(
-                [f"{emojis[i]} {option}" for i, option in enumerate(options)]
-            ),
+            description="\n\n".join([f"{emojis[i]} {option}" for i, option in enumerate(options)]),
             color=Colors.UTIL,
         )
         embed.set_footer(
@@ -310,7 +315,9 @@ class UtilExtension(Extension):
             icon_url=ctx.user.avatar_url,
         )
         message = await ctx.send(embed=embed)
-        await self.add_poll_reactions(message, options, use_default=(options == DEFAULT_POLL_OPTIONS))
+        await self.add_poll_reactions(
+            message, options, use_default=(options == DEFAULT_POLL_OPTIONS)
+        )
         logger.debug(
             "Création d'un sondage par %s (ID: %s)\nQuestion : %s\nOptions : %s",
             ctx.user.username,
@@ -362,7 +369,9 @@ class UtilExtension(Extension):
                 await event.message.edit(embed=embed)
 
     @slash_command(
-        name="editpoll", description="Modifier un sondage", scopes=enabled_servers_int  # type: ignore
+        name="editpoll",
+        description="Modifier un sondage",
+        scopes=enabled_servers_int,  # type: ignore
     )
     @slash_option(
         "message_id",
@@ -418,10 +427,10 @@ class UtilExtension(Extension):
         except Exception:
             await send_error(ctx, "Message introuvable ou inaccessible")
             return
-        
+
         # At this point, message is guaranteed to be not None
         assert message is not None
-            
+
         if message.author != ctx.bot.user:
             await send_error(ctx, "Vous ne pouvez modifier que les sondages créés par le bot")
             return
@@ -435,7 +444,12 @@ class UtilExtension(Extension):
         footer_text = message.embeds[0].footer.text if message.embeds[0].footer else ""
         author_id = self.parse_poll_author_id(footer_text)
         if not author_id or author_id != str(ctx.user.id):
-            await send_error(ctx, "Vous ne pouvez modifier que les sondages que vous avez créés" if author_id else "Impossible de vérifier l'auteur de ce sondage")
+            await send_error(
+                ctx,
+                "Vous ne pouvez modifier que les sondages que vous avez créés"
+                if author_id
+                else "Impossible de vérifier l'auteur de ce sondage",
+            )
             return
         embed = message.embeds[0]
         if reset_reactions:
@@ -498,7 +512,7 @@ class UtilExtension(Extension):
         except Exception as e:
             logger.error(f"Failed to load reminders: {e}")
 
-    async def save_reminders(self, guild_id: Optional[str] = None):
+    async def save_reminders(self, guild_id: str | None = None):
         """Save reminders to per-guild MongoDB. If guild_id given, save only that guild."""
         try:
             guilds = [guild_id] if guild_id else list(guild_reminders.keys())
@@ -507,10 +521,12 @@ class UtilExtension(Extension):
                 await col.delete_many({})
                 reminders = guild_reminders.get(gid, {})
                 for remind_time, user_reminders in reminders.items():
-                    await col.insert_one({
-                        "_id": remind_time.strftime("%Y-%m-%d %H:%M:%S"),
-                        "user_reminders": user_reminders,
-                    })
+                    await col.insert_one(
+                        {
+                            "_id": remind_time.strftime("%Y-%m-%d %H:%M:%S"),
+                            "user_reminders": user_reminders,
+                        }
+                    )
         except Exception as e:
             logger.error(f"Failed to save reminders: {e}")
 
@@ -571,8 +587,8 @@ class UtilExtension(Extension):
         hour: int,
         minute: int,
         task: str,
-        frequency: Optional[str] = None,
-        date: Optional[str] = None,
+        frequency: str | None = None,
+        date: str | None = None,
     ):
         # Create the reminder time from the provided date, hour, and minute
         current_time = datetime.now()
@@ -626,9 +642,7 @@ class UtilExtension(Extension):
             reminders[remind_time][user_id] = []
 
         # Append the new reminder for this user at this remind_time
-        reminders[remind_time][user_id].append(
-            {"message": task, "frequency": frequency}
-        )
+        reminders[remind_time][user_id].append({"message": task, "frequency": frequency})
 
         # Save the reminders
         await self.save_reminders(gid)
@@ -687,7 +701,8 @@ class UtilExtension(Extension):
             return
 
         # Send message with reminder buttons
-        message = await ctx.send(f"Quel rappel veux-tu supprimer (annulation {timestamp_converter(datetime.now()+timedelta(seconds=60)).format(TimestampStyles.RelativeTime)})",
+        message = await ctx.send(
+            f"Quel rappel veux-tu supprimer (annulation {timestamp_converter(datetime.now() + timedelta(seconds=60)).format(TimestampStyles.RelativeTime)})",
             components=[ActionRow(*buttons)],
             ephemeral=True,
         )
@@ -721,9 +736,9 @@ class UtilExtension(Extension):
                 )
             else:
                 await send_error(ctx, "Rappel introuvable")
-        except asyncio.TimeoutError:
-            await ctx.edit(message=message,
-                content="Annulé, aucun rappel sélectionné", components=[]
+        except TimeoutError:
+            await ctx.edit(
+                message=message, content="Annulé, aucun rappel sélectionné", components=[]
             )
 
     @Task.create(IntervalTrigger(minutes=1))
@@ -738,7 +753,7 @@ class UtilExtension(Extension):
             for remind_time, user_reminders in list(reminders.items()):
                 if remind_time <= current_time:
                     recurring_reminders = {}
-                    
+
                     for user_id, reminder_list in user_reminders.items():
                         try:
                             _, user = await fetch_user_safe(self.bot, user_id)
@@ -756,9 +771,9 @@ class UtilExtension(Extension):
                         except Exception as e:
                             logger.warning(f"Failed to send reminder to user {user_id}: {e}")
                             continue
-                    
+
                     reminders_to_remove.add(remind_time)
-                    
+
                     if recurring_reminders:
                         for user_id, reminder_list in recurring_reminders.items():
                             for reminder in reminder_list:
@@ -773,7 +788,7 @@ class UtilExtension(Extension):
                                     new_time = remind_time + relativedelta(years=1)
                                 else:
                                     continue
-                                
+
                                 if new_time not in reminders_to_add:
                                     reminders_to_add[new_time] = {}
                                 if user_id not in reminders_to_add[new_time]:
@@ -790,4 +805,3 @@ class UtilExtension(Extension):
 
         for gid in guilds_to_save:
             await self.save_reminders(gid)
-

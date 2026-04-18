@@ -11,10 +11,9 @@ This module provides:
 
 import os
 import random
-from datetime import datetime, timedelta
-
-from typing import Optional
 from datetime import date as date_type
+from datetime import datetime, timedelta
+from typing import Optional
 
 from interactions import (
     ActionRow,
@@ -40,10 +39,9 @@ from interactions import (
 from interactions.api.events import Component
 
 from src import logutil
-from src.config_manager import load_config
-from src.helpers import fetch_user_safe, send_error
 from src.coloc.api_client import ZuniversAPIClient, ZuniversAPIError
 from src.coloc.constants import (
+    ACTION_TYPE_NAMES,
     ADVENT_CALENDAR_REMINDERS,
     CURRENCY_EMOJI,
     DEFAULT_CORPORATION_ID,
@@ -51,7 +49,6 @@ from src.coloc.constants import (
     ReminderType,
     get_advent_calendar_url,
     get_reminder_message,
-    ACTION_TYPE_NAMES,
 )
 from src.coloc.models import (
     EventState,
@@ -68,6 +65,8 @@ from src.coloc.utils import (
     image_url_needs_download,
     set_event_embed_image,
 )
+from src.config_manager import load_config
+from src.helpers import fetch_user_safe, send_error
 
 logger = logutil.init_logger(os.path.basename(__file__))
 
@@ -82,7 +81,9 @@ class ColocExtension(Extension):
     def __init__(self, bot: Client):
         self.bot = bot
         self.api_client = ZuniversAPIClient()
-        self.storage = StorageManager(config["misc"]["dataFolder"], guild_id=enabled_servers[0] if enabled_servers else None)
+        self.storage = StorageManager(
+            config["misc"]["dataFolder"], guild_id=enabled_servers[0] if enabled_servers else None
+        )
         self.reminders = ReminderCollection()
         self.event_state = EventState()
 
@@ -97,13 +98,13 @@ class ColocExtension(Extension):
         # Load persistent data
         self.reminders = await self.storage.load_reminders()
         self.event_state = await self.storage.load_event_state()
-        
+
         # Start scheduled tasks
         self.daily_journa_check.start()
         self.reminder_checker.start()
         self.corporation_recap.start()
         self.events_checker.start()
-        
+
         logger.info("Coloc extension started successfully")
 
     async def async_stop(self):
@@ -187,13 +188,9 @@ class ColocExtension(Extension):
             SlashCommandChoice(name="Les deux", value="BOTH"),
         ],
     )
-    async def set_reminder(
-        self, ctx: SlashContext, heure: int, minute: int, type: str
-    ):
+    async def set_reminder(self, ctx: SlashContext, heure: int, minute: int, type: str):
         """Set a daily reminder for /journa."""
-        remind_time = datetime.now().replace(
-            hour=heure, minute=minute, second=0, microsecond=0
-        )
+        remind_time = datetime.now().replace(hour=heure, minute=minute, second=0, microsecond=0)
         if remind_time <= datetime.now():
             remind_time += timedelta(days=1)
 
@@ -207,9 +204,7 @@ class ColocExtension(Extension):
 
         await self.storage.save_reminders(self.reminders)
 
-        await ctx.send(
-            f"Rappel ajouté à {remind_time.strftime('%H:%M')}", ephemeral=True
-        )
+        await ctx.send(f"Rappel ajouté à {remind_time.strftime('%H:%M')}", ephemeral=True)
         logger.info(
             "Reminder %s at %s added for %s",
             type,
@@ -287,10 +282,8 @@ class ColocExtension(Extension):
             for type_name in ["NORMAL", "HARDCORE"]:
                 reminder_type = ReminderType(type_name)
                 for user_id in reminder_types[type_name].copy():
-                    await self._process_reminder(
-                        user_id, reminder_type, current_time
-                    )
-                    
+                    await self._process_reminder(user_id, reminder_type, current_time)
+
                     # Schedule next reminder
                     next_remind = remind_time + timedelta(days=1)
                     if next_remind not in reminders_to_add:
@@ -304,9 +297,7 @@ class ColocExtension(Extension):
         for next_remind, reminder_data in reminders_to_add.items():
             for type_name in ["NORMAL", "HARDCORE"]:
                 for user_id in reminder_data[type_name]:
-                    self.reminders.add_reminder(
-                        next_remind, user_id, ReminderType(type_name)
-                    )
+                    self.reminders.add_reminder(next_remind, user_id, ReminderType(type_name))
 
         await self.storage.save_reminders(self.reminders)
 
@@ -352,9 +343,7 @@ class ColocExtension(Extension):
     async def _check_advent_calendar(self, user: User, day: int) -> None:
         """Check and send advent calendar reminder if needed."""
         try:
-            unopened_days = await self.api_client.get_unopened_calendar_days(
-                user.username, day
-            )
+            unopened_days = await self.api_client.get_unopened_calendar_days(user.username, day)
             if unopened_days:
                 url = get_advent_calendar_url(user.username)
                 message = random.choice(ADVENT_CALENDAR_REMINDERS).format(url=url)
@@ -401,9 +390,7 @@ class ColocExtension(Extension):
         await self._check_hardcore_season(channel)
         await self.storage.save_event_state(self.event_state)
 
-    async def _check_events_for_rule_set(
-        self, channel: GuildText, rule_set: ReminderType
-    ) -> None:
+    async def _check_events_for_rule_set(self, channel: GuildText, rule_set: ReminderType) -> None:
         """Check events for a specific rule set."""
         try:
             current_events = await self.api_client.get_current_events(rule_set)
@@ -416,9 +403,7 @@ class ColocExtension(Extension):
 
                 if event.id not in previous_state:
                     if event.is_active:
-                        await self._send_event_notification(
-                            channel, event_data, "start", rule_set
-                        )
+                        await self._send_event_notification(channel, event_data, "start", rule_set)
                         logger.info(f"New {rule_set.value} event: {event.name}")
                 else:
                     prev_active = previous_state[event.id]["is_active"]
@@ -439,9 +424,7 @@ class ColocExtension(Extension):
                         "beginDate": prev_event["begin_date"],
                         "endDate": prev_event["end_date"],
                     }
-                    await self._send_event_notification(
-                        channel, fake_event, "end", rule_set
-                    )
+                    await self._send_event_notification(channel, fake_event, "end", rule_set)
                     logger.info(f"{rule_set.value} event ended (disappeared): {prev_event['name']}")
 
             self.event_state.events[rule_set.value] = current_state
@@ -458,14 +441,14 @@ class ColocExtension(Extension):
     ) -> None:
         """Send an event notification embed to the channel."""
         embed = create_event_embed(event, event_type, rule_set)
-        
+
         image_file = None
         image_url = event.get("imageUrl")
         if image_url and image_url_needs_download(image_url):
             image_file = await self.api_client.download_image(image_url, "event_image.webp")
-        
+
         set_event_embed_image(embed, image_url, image_file)
-        
+
         if image_file:
             await channel.send(embed=embed, file=image_file)
         else:
@@ -475,7 +458,9 @@ class ColocExtension(Extension):
         """Check for hardcore season changes."""
         try:
             current_data = await self.api_client.get_current_hardcore_season()
-            current_season = HardcoreSeason.from_api_response(current_data) if current_data else None
+            current_season = (
+                HardcoreSeason.from_api_response(current_data) if current_data else None
+            )
             previous_season = self.event_state.hardcore_season
 
             if previous_season is None and current_season is not None and current_data:
@@ -509,7 +494,7 @@ class ColocExtension(Extension):
     # ==================== Corporation Recap ====================
 
     @Task.create(TimeTrigger(23, 59, 45, utc=False))
-    async def corporation_recap(self, date: Optional[str] = None):
+    async def corporation_recap(self, date: str | None = None):
         """Send daily corporation recap."""
         channel = await self._get_zunivers_channel()
         if not channel:
@@ -529,13 +514,11 @@ class ColocExtension(Extension):
             return
 
         logs = self._process_corporation_logs(data.get("corporationLogs", []), target_date)
-        
+
         if not logs:
             return
 
-        all_members = {
-            m["user"]["discordGlobalName"] for m in data.get("userCorporations", [])
-        }
+        all_members = {m["user"]["discordGlobalName"] for m in data.get("userCorporations", [])}
 
         corp_embed = create_corporation_embed(data, CURRENCY_EMOJI)
         logs_embed = create_corporation_logs_embed(logs, all_members, target_date, CURRENCY_EMOJI)
@@ -553,12 +536,12 @@ class ColocExtension(Extension):
         opt_type=OptionType.STRING,
         required=False,
     )
-    async def corpo_command(self, ctx: SlashContext, date: Optional[str] = None):
+    async def corpo_command(self, ctx: SlashContext, date: str | None = None):
         """Manual corporation recap command."""
         await self.corporation_recap(date=date)
         await ctx.send("Corporation recap envoyé !", ephemeral=True)
 
-    def _parse_date(self, date_str: Optional[str] = None) -> Optional[date_type]:
+    def _parse_date(self, date_str: str | None = None) -> date_type | None:
         """Parse a date string or return today's date."""
         if date_str is None:
             return datetime.today().date()
@@ -568,9 +551,7 @@ class ColocExtension(Extension):
             logger.warning(f"Invalid date format: {date_str}")
             return None
 
-    def _process_corporation_logs(
-        self, logs: list[dict], target_date: date_type
-    ) -> list[dict]:
+    def _process_corporation_logs(self, logs: list[dict], target_date: date_type) -> list[dict]:
         """Filter and process corporation logs for a specific date."""
         today_logs = []
         for log in logs:
@@ -607,7 +588,7 @@ class ColocExtension(Extension):
 
     # ==================== Helpers ====================
 
-    async def _get_zunivers_channel(self) -> Optional[GuildText]:
+    async def _get_zunivers_channel(self) -> GuildText | None:
         """Get the configured Zunivers channel."""
         try:
             channel = await self.bot.fetch_channel(module_config["colocZuniversChannelId"])
