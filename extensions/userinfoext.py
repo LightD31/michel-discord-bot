@@ -8,8 +8,8 @@ import os
 from interactions import Client, Extension, listen
 from interactions.api.events import MemberAdd, MemberRemove, MemberUpdate
 
-from src import logutil
 from features.userinfo import UserInfoRepository
+from src import logutil
 
 logger = logutil.init_logger(os.path.basename(__file__))
 

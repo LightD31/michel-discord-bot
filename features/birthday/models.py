@@ -2,7 +2,6 @@
 
 import re
 from datetime import datetime
-from typing import Optional
 
 import pytz
 from pydantic import BaseModel, field_validator
@@ -42,6 +41,6 @@ class BirthdayEntry(BaseModel):
         if isinstance(v, str):
             try:
                 return datetime.strptime(v, "%d/%m/%Y")
-            except ValueError:
-                raise ValueError("Date invalide. Format attendu : JJ/MM/AAAA")
+            except ValueError as e:
+                raise ValueError("Date invalide. Format attendu : JJ/MM/AAAA") from e
         return v

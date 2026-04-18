@@ -2,9 +2,9 @@
 
 import os
 
+from features.feur.models import FeurStats
 from src.core.db import mongo_manager
 from src.core.logging import init_logger
-from features.feur.models import FeurStats
 
 logger = init_logger(os.path.basename(__file__))
 

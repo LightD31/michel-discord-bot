@@ -8,15 +8,15 @@ import re
 import string
 from datetime import datetime
 
-from interactions import Extension, listen, slash_command, SlashContext, Embed, EmbedFooter
+from interactions import Embed, EmbedFooter, Extension, SlashContext, listen, slash_command
 from interactions.api.events import MessageCreate
 
+from features.feur import FeurRepository
 from src import logutil
 from src.core.config import load_config
 from src.core.text import sanitize_content
 from src.discord_ext.embeds import Colors
 from src.discord_ext.messages import require_guild
-from features.feur import FeurRepository
 
 logger = logutil.init_logger(os.path.basename(__file__))
 
@@ -42,9 +42,12 @@ def _should_respond(content: str, keyword: str) -> bool:
     if words and words[-1] == keyword:
         return True
     for sentence in _split_into_sentences(content):
-        if keyword in sentence and "?" in sentence:
-            if sentence.find("?", sentence.find(keyword)) != -1:
-                return True
+        if (
+            keyword in sentence
+            and "?" in sentence
+            and sentence.find("?", sentence.find(keyword)) != -1
+        ):
+            return True
     return False
 
 
@@ -128,7 +131,9 @@ class FeurExtension(Extension):
         if top_users:
             embed.add_field(
                 name="🏆 Top 5 du serveur",
-                value="\n".join(f"{i+1}. {name}: **{count}**" for i, (name, count) in enumerate(top_users)),
+                value="\n".join(
+                    f"{i + 1}. {name}: **{count}**" for i, (name, count) in enumerate(top_users)
+                ),
                 inline=False,
             )
         await ctx.send(embed=embed)

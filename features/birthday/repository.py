@@ -1,14 +1,13 @@
 """Birthday repository — all MongoDB I/O for the birthday feature."""
 
 import os
-from typing import Optional
 
 import pymongo
 
+from features.birthday.models import BirthdayEntry
 from src.core.db import mongo_manager
 from src.core.errors import DatabaseError
 from src.core.logging import init_logger
-from features.birthday.models import BirthdayEntry
 
 logger = init_logger(os.path.basename(__file__))
 
@@ -26,7 +25,7 @@ class BirthdayRepository:
         except Exception as e:
             logger.error("Failed to create birthday index for guild %s: %s", self._guild_id, e)
 
-    async def find_one(self, user_id: int) -> Optional[BirthdayEntry]:
+    async def find_one(self, user_id: int) -> BirthdayEntry | None:
         try:
             doc = await self._col().find_one({"user": user_id})
             if doc is None:
@@ -35,7 +34,7 @@ class BirthdayRepository:
             return BirthdayEntry(**doc)
         except Exception as e:
             logger.error("DB find_one failed: %s", e)
-            raise DatabaseError(f"Failed to query database: {e}")
+            raise DatabaseError(f"Failed to query database: {e}") from e
 
     async def find_all(self) -> list[BirthdayEntry]:
         try:
@@ -50,7 +49,7 @@ class BirthdayRepository:
             return entries
         except Exception as e:
             logger.error("DB find failed: %s", e)
-            raise DatabaseError(f"Failed to query database: {e}")
+            raise DatabaseError(f"Failed to query database: {e}") from e
 
     async def upsert(self, entry: BirthdayEntry) -> None:
         try:
@@ -62,14 +61,14 @@ class BirthdayRepository:
             )
         except Exception as e:
             logger.error("DB upsert failed: %s", e)
-            raise DatabaseError(f"Failed to upsert birthday: {e}")
+            raise DatabaseError(f"Failed to upsert birthday: {e}") from e
 
     async def update_fields(self, user_id: int, fields: dict) -> None:
         try:
             await self._col().update_one({"user": user_id}, {"$set": fields})
         except Exception as e:
             logger.error("DB update_one failed: %s", e)
-            raise DatabaseError(f"Failed to update birthday: {e}")
+            raise DatabaseError(f"Failed to update birthday: {e}") from e
 
     async def delete(self, user_id: int) -> int:
         try:
@@ -77,4 +76,4 @@ class BirthdayRepository:
             return result.deleted_count
         except Exception as e:
             logger.error("DB delete_one failed: %s", e)
-            raise DatabaseError(f"Failed to delete birthday: {e}")
+            raise DatabaseError(f"Failed to delete birthday: {e}") from e
