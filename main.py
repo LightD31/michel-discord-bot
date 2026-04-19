@@ -14,7 +14,9 @@ from interactions import IntervalTrigger, Task
 from src.core import logging as logutil
 from src.core.config import load_config
 from src.core.logging import DEBUG
+from src.core.migrations import migrate_config_module_keys
 
+migrate_config_module_keys()
 config, _, _ = load_config()
 
 DEV_GUILD = config["discord"]["devGuildId"]

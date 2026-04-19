@@ -5,11 +5,11 @@ import os
 from dataclasses import dataclass, field
 from typing import Any
 
+from features.vlrgg import _clean_vlr_text, expand_round_name
 from src.core import logging as logutil
 from src.core.config import CONFIG_PATH, load_config
 from src.core.db import mongo_manager
 from src.discord_ext.embeds import Colors
-from src.vlrgg import _clean_vlr_text, expand_round_name
 from src.webui.schemas import SchemaBase, enabled_field, register_module, ui
 
 # ── Module config ────────────────────────────────────────────────────────────
@@ -145,7 +145,7 @@ def _save_team_channel_message(
     logger.info("Saved channelMessageId for team %s on guild %s", team_name, guild_id)
 
 
-# Re-export helpers that originate from src.vlrgg but are used across submodules
+# Re-export helpers that originate from features.vlrgg but are used across submodules
 __all__ = [
     "VlrggConfig",
     "logger",

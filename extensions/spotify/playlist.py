@@ -21,7 +21,7 @@ from interactions import (
 )
 from interactions.client.utils import timestamp_converter
 
-from dict import finishList, startList
+from features.messages import finishList, startList
 from src.core import logging as logutil
 from src.core.text import milliseconds_to_string
 from src.discord_ext.embeds import Colors

@@ -1,9 +1,20 @@
-"""PollsMixin — poll creation, editing, and reaction-tracking handlers."""
+"""Polls Discord extension — poll creation, editing, and reaction tracking.
+
+Slash commands:
+- ``/poll`` — create a poll with up to 10 options
+- ``/editpoll`` — edit the question, options, or reset reactions of a poll you created
+
+Listens to :class:`MessageReactionAdd` / :class:`MessageReactionRemove` to keep
+poll embeds' vote counts fresh. Enabled per-guild via ``moduleUtils``.
+"""
 
 import asyncio
+import os
 
 from interactions import (
+    Client,
     Embed,
+    Extension,
     IntegrationType,
     OptionType,
     SlashContext,
@@ -11,51 +22,40 @@ from interactions import (
     slash_command,
     slash_option,
 )
-from interactions.api.events import (
-    MessageReactionAdd,
-    MessageReactionRemove,
-)
+from interactions.api.events import MessageReactionAdd, MessageReactionRemove
 
+from features.polls import (
+    DEFAULT_POLL_EMOJIS,
+    DEFAULT_POLL_OPTIONS,
+    POLL_EMOJIS,
+    parse_poll_author_id,
+    validate_poll_options,
+)
+from src.core import logging as logutil
+from src.core.config import load_config
 from src.discord_ext.embeds import Colors
 from src.discord_ext.messages import send_error
 from src.discord_ext.paginator import format_poll
 
-from ._common import (
-    DEFAULT_POLL_EMOJIS,
-    DEFAULT_POLL_OPTIONS,
-    POLL_EMOJIS,
-    enabled_servers_int,
-    logger,
-)
+logger = logutil.init_logger(os.path.basename(__file__))
+_, _, enabled_servers = load_config("moduleUtils")
+enabled_servers_int = [int(s) for s in enabled_servers]  # type: ignore[misc]
 
 
-class PollsMixin:
-    # asyncio.Lock is initialised in UtilExtension.__init__
-    lock: asyncio.Lock
+def _is_poll_embed(embed: Embed) -> bool:
+    return embed.color == Colors.UTIL
 
-    @staticmethod
-    def validate_poll_options(options: list[str]) -> bool:
-        """Validate poll options count."""
-        return len(options) <= 10
 
-    @staticmethod
-    def is_poll_embed(embed: Embed) -> bool:
-        """Check if an embed is a poll embed."""
-        return embed.color == Colors.UTIL
+async def _add_poll_reactions(message, options: list[str], use_default: bool = False) -> None:
+    emojis = DEFAULT_POLL_EMOJIS if use_default else POLL_EMOJIS
+    for i in range(len(options)):
+        await message.add_reaction(emojis[i])
 
-    @staticmethod
-    async def add_poll_reactions(message, options: list[str], use_default: bool = False):
-        """Add reactions to a poll message."""
-        emojis = DEFAULT_POLL_EMOJIS if use_default else POLL_EMOJIS
-        for i in range(len(options)):
-            await message.add_reaction(emojis[i])
 
-    @staticmethod
-    def parse_poll_author_id(footer_text: str) -> str | None:
-        """Extract author ID from poll footer text."""
-        if not footer_text or len(footer_text.split(" ")) < 5:
-            return None
-        return footer_text.split(" ")[4].rstrip(")")
+class PollsExtension(Extension):
+    def __init__(self, bot: Client):
+        self.bot = bot
+        self.lock = asyncio.Lock()
 
     @slash_command(
         name="poll",
@@ -76,24 +76,12 @@ class PollsMixin:
         required=False,
     )
     async def poll(self, ctx: SlashContext, question, options=None):
-        """
-        A slash command that creates a poll.
-
-        Parameters:
-        -----------
-        ctx : SlashContext
-            The context of the slash command.
-        question : str
-            The question to ask in the poll.
-        options : str, optional
-            The options for the poll, separated by semicolon. Default is ["Oui", "Non"].
-        """
         if options is None:
             options = DEFAULT_POLL_OPTIONS
             emojis = DEFAULT_POLL_EMOJIS
         else:
             options = [option.strip() for option in options.split(";")]
-            if not self.validate_poll_options(options):
+            if not validate_poll_options(options):
                 await send_error(ctx, "Vous ne pouvez pas créer un sondage avec plus de 10 options")
                 return
             emojis = POLL_EMOJIS
@@ -107,9 +95,7 @@ class PollsMixin:
             icon_url=ctx.user.avatar_url,
         )
         message = await ctx.send(embed=embed)
-        await self.add_poll_reactions(
-            message, options, use_default=(options == DEFAULT_POLL_OPTIONS)
-        )
+        await _add_poll_reactions(message, options, use_default=(options == DEFAULT_POLL_OPTIONS))
         logger.debug(
             "Création d'un sondage par %s (ID: %s)\nQuestion : %s\nOptions : %s",
             ctx.user.username,
@@ -120,9 +106,7 @@ class PollsMixin:
 
     @listen(MessageReactionAdd)
     async def on_message_reaction_add(self, event: MessageReactionAdd):
-        """
-        Count reactions and update the poll embed
-        """
+        """Count reactions and update the poll embed."""
         async with self.lock:
             logger.debug(
                 "Reaction added : %s\npoll message id : %s\nperson : %s\nreaction : %s",
@@ -133,17 +117,13 @@ class PollsMixin:
             )
             if len(event.message.embeds) == 0:
                 return
-            # Check if the message is a poll
             if event.message.embeds[0].color == Colors.UTIL:
-                # Create the poll embed
                 embed = await format_poll(event)
                 await event.message.edit(embed=embed)
 
     @listen(MessageReactionRemove)
     async def on_message_reaction_remove(self, event: MessageReactionRemove):
-        """
-        Count reactions and update the poll embed
-        """
+        """Count reactions and update the poll embed."""
         async with self.lock:
             logger.debug(
                 "Reaction removed : %s\npoll message id : %s\nperson : %s\nreaction : %s",
@@ -154,9 +134,7 @@ class PollsMixin:
             )
             if len(event.message.embeds) == 0:
                 return
-            # Check if the message is a poll
             if event.message.embeds[0].color == Colors.UTIL:
-                # Create the poll embed
                 embed = await format_poll(event)
                 await event.message.edit(embed=embed)
 
@@ -197,22 +175,6 @@ class PollsMixin:
         options=None,
         reset_reactions=False,
     ):
-        """
-        A slash command that edits a poll.
-
-        Parameters:
-        -----------
-        ctx : SlashContext
-            The context of the slash command.
-        message_id : str
-            The ID of the message to edit.
-        question : str, optional
-            The new question to ask in the poll.
-        options : str, optional
-            The new options for the poll, separated by commas.
-        reset_reactions : bool, optional
-            Whether to reset the reactions of the poll. Default is False.
-        """
         await ctx.defer(ephemeral=True)
         try:
             message = await ctx.channel.fetch_message(message_id)
@@ -220,7 +182,6 @@ class PollsMixin:
             await send_error(ctx, "Message introuvable ou inaccessible")
             return
 
-        # At this point, message is guaranteed to be not None
         assert message is not None
 
         if message.author != ctx.bot.user:
@@ -229,12 +190,11 @@ class PollsMixin:
         if not message.embeds:
             await send_error(ctx, "Vous ne pouvez modifier que les sondages créés par le bot")
             return
-        if not self.is_poll_embed(message.embeds[0]):
+        if not _is_poll_embed(message.embeds[0]):
             await send_error(ctx, "Vous ne pouvez modifier que les sondages créés par le bot")
             return
-        # Verify if the author of the poll is the person who made the poll
         footer_text = message.embeds[0].footer.text if message.embeds[0].footer else ""
-        author_id = self.parse_poll_author_id(footer_text)
+        author_id = parse_poll_author_id(footer_text)
         if not author_id or author_id != str(ctx.user.id):
             await send_error(
                 ctx,
@@ -252,13 +212,13 @@ class PollsMixin:
             embed.title = f"{embed.title} (modifié)"
         if options is not None:
             options = [option.strip() for option in options.split(";")]
-            if not self.validate_poll_options(options):
+            if not validate_poll_options(options):
                 await send_error(ctx, "Vous ne pouvez pas créer un sondage avec plus de 10 options")
                 return
             embed.description = "\n\n".join(
                 [f"{POLL_EMOJIS[i]} {option}" for i, option in enumerate(options)]
             )
-            await self.add_poll_reactions(message, options)
+            await _add_poll_reactions(message, options)
         elif reset_reactions:
             description = embed.description or ""
             option_count = len(description.split("\n\n")) if description else 2
@@ -268,3 +228,10 @@ class PollsMixin:
         await message.edit(embed=embed)
         logger.info("Poll edited")
         await ctx.send("Sondage modifié", ephemeral=True)
+
+
+def setup(bot: Client) -> None:
+    PollsExtension(bot)
+
+
+__all__ = ["PollsExtension", "setup"]

@@ -4,8 +4,8 @@ from typing import Any
 
 from interactions import Embed, Timestamp
 
+from features.vlrgg import parse_vlrgg_timestamp
 from src.discord_ext.embeds import SPACER_FIELD, format_discord_timestamp
-from src.vlrgg import parse_vlrgg_timestamp
 
 from ._common import (
     DEFAULT_EMBED_COLOR,

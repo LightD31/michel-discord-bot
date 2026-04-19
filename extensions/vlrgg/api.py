@@ -4,11 +4,11 @@ from typing import Any
 
 from interactions import Embed
 
-from src.vlrgg import (
+from features.vlrgg import (
     extract_match_id_from_url,
     fetch_match_details,
 )
-from src.vlrgg import (
+from features.vlrgg import (
     fetch_all_team_data as vlrgg_fetch_all,
 )
 

@@ -4,13 +4,13 @@ from typing import Any
 
 from interactions import Embed, IntervalTrigger, Task, Timestamp
 
-from src.discord_ext.embeds import Colors
-from src.vlrgg import (
+from features.vlrgg import (
     _clean_vlr_text,
     expand_round_name,
     extract_match_id_from_url,
     fetch_match_details,
 )
+from src.discord_ext.embeds import Colors
 
 from ._common import (
     DEFAULT_EMBED_COLOR,
