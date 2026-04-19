@@ -36,6 +36,12 @@ A modular, multi-guild Discord bot built with **interactions.py**. Michel ships 
 | **XP & Levels** | Per-message XP gain (cooldown-based), level-up announcements, and a paginated leaderboard. |
 | **Birthday** | Store birthdays with timezone support, send daily greetings, and assign a birthday role. |
 | **Welcome** | Weighted-random welcome and farewell messages. |
+| **Minecraft** *(disabled)* | Server status monitoring, player stats via SFTP/RCON. |
+| **Olympics** *(disabled)* | Medal tracking for the Milan-Cortina 2026 Winter Olympics. |
+| **Satisfactory** *(disabled)* | Game server status via pyfactorybridge. |
+| **Speedons** *(disabled)* | Speedrun charity marathon tracker. |
+| **Streamlabs Charity** *(disabled)* | Charity campaign amount & streamer status tracker. |
+| **Zevent** *(disabled)* | Zevent 2025 charity marathon tracker (amount raised, streamer status, milestones). |
 | **Random** | `/pick` (random choice from a list) and `/dice` (configurable die roll) powered by Random.org. |
 | **Feur** | Classic French joke — the bot replies "feur" when someone ends a message with "quoi", with per-user stats. |
 | **Tricount** | Shared expense tracker — create groups, log expenses, and compute balances. |
