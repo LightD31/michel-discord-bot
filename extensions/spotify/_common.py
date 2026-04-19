@@ -13,12 +13,12 @@ from enum import Enum
 from typing import Any
 
 import interactions
-from src.core.http import http_client
 from interactions import Message
 
 from src.core import logging as logutil
 from src.core.config import load_config, load_discord2name
 from src.core.db import mongo_manager
+from src.core.http import http_client
 from src.discord_ext.embeds import Colors
 from src.integrations.spotify import spotify_auth
 from src.webui.schemas import (
