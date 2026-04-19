@@ -5,7 +5,6 @@ from typing import Optional
 
 from aiohttp import ClientError
 from babel.numbers import format_currency
-from dotenv import load_dotenv
 from interactions import (
     Client,
     Embed,
@@ -64,7 +63,6 @@ class StreamlabsCharityConfig(SchemaBase):
 
 
 logger = logutil.init_logger(os.path.basename(__file__))
-load_dotenv()
 
 # Constants
 DEFAULT_STREAMLABS_URL = (
@@ -81,8 +79,8 @@ class StreamlabsCharityExtension(Extension):
     def __init__(self, bot: Client):
         self.bot: Client = bot
         self.twitch = None
-        self.client_id = os.getenv("TWITCH_CLIENT_ID")
-        self.client_secret = os.getenv("TWITCH_CLIENT_SECRET")
+        self.client_id = _config["twitch"]["twitchClientId"]
+        self.client_secret = _config["twitch"]["twitchClientSecret"]
         self.channel_id: str | None = _guild_cfg.get("streamlabsChannelId")
         self.message_id: str | None = _guild_cfg.get("streamlabsMessageId")
         self.pin: bool = bool(_guild_cfg.get("streamlabsPinMessage", False))
@@ -111,13 +109,17 @@ class StreamlabsCharityExtension(Extension):
         asyncio.create_task(self.run())
 
     async def run(self):
-        self.twitch = await Twitch(self.client_id, self.client_secret)
-        helper = UserAuthenticationStorageHelper(
-            twitch=self.twitch,
-            scopes=[AuthScope.USER_READ_SUBSCRIPTIONS],
-            storage_path="./data/twitchcreds.json",
-        )
-        await helper.bind()
+        try:
+            self.twitch = await Twitch(self.client_id, self.client_secret)
+            helper = UserAuthenticationStorageHelper(
+                twitch=self.twitch,
+                scopes=[AuthScope.USER_READ_SUBSCRIPTIONS],
+                storage_path="./data/twitchcreds.json",
+            )
+            await helper.bind()
+        except Exception as e:
+            logger.error(f"Twitch init failed; live status disabled: {e}")
+            self.twitch = None
 
     @Task.create(IntervalTrigger(minutes=1))
     async def streamlabscharity(self):
