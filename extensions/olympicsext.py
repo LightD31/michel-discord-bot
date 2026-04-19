@@ -28,6 +28,24 @@ from interactions import (
 from src import logutil
 from src.mongodb import mongo_manager
 from src.utils import load_config
+from src.webui.schemas import SchemaBase, enabled_field, register_module, ui
+
+
+@register_module("moduleOlympics")
+class OlympicsConfig(SchemaBase):
+    __label__ = "Jeux Olympiques"
+    __description__ = "Alertes médailles des Jeux Olympiques."
+    __icon__ = "🏅"
+    __category__ = "Événements"
+
+    enabled: bool = enabled_field()
+    olympicsChannelId: str = ui(
+        "Salon alertes",
+        "channel",
+        required=True,
+        description="Salon pour les alertes de médailles.",
+    )
+
 
 logger = logutil.init_logger(os.path.basename(__file__))
 config, module_config, enabled_servers = load_config("moduleOlympics")

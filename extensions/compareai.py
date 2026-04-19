@@ -38,6 +38,18 @@ from src import logutil
 from src.config_manager import load_config
 from src.helpers import fetch_user_safe, send_error, send_success
 from src.utils import search_dict_by_sentence
+from src.webui.schemas import SchemaBase, enabled_field, register_module
+
+
+@register_module("moduleIA")
+class IAConfig(SchemaBase):
+    __label__ = "Intelligence Artificielle"
+    __description__ = "Comparaison de modèles IA via OpenRouter."
+    __icon__ = "🤖"
+    __category__ = "Outils"
+
+    enabled: bool = enabled_field()
+
 
 # =============================================================================
 # Configuration and Constants

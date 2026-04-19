@@ -24,6 +24,43 @@ from src import logutil
 from src.config_manager import load_config
 from src.helpers import fetch_or_create_persistent_message, send_error
 from src.utils import escape_md, fetch
+from src.webui.schemas import (
+    SchemaBase,
+    enabled_field,
+    hidden_message_id,
+    register_module,
+    ui,
+)
+
+
+@register_module("moduleStreamlabsCharity")
+class StreamlabsCharityConfig(SchemaBase):
+    __label__ = "Streamlabs Charity"
+    __description__ = "Suivi d'une campagne Streamlabs Charity en direct."
+    __icon__ = "❤️"
+    __category__ = "Événements"
+
+    enabled: bool = enabled_field()
+    streamlabsChannelId: str = ui(
+        "Salon",
+        "channel",
+        required=True,
+        description="Salon pour le message de suivi (créé automatiquement).",
+    )
+    streamlabsPinMessage: bool = ui(
+        "Épingler le message",
+        "boolean",
+        default=False,
+        description="Épingler automatiquement le message de suivi.",
+    )
+    streamlabsTeamUrl: str = ui(
+        "URL de la team",
+        "url",
+        default="https://streamlabscharity.com/teams/@streamers-4-palestinians/streamers-4-palestinians",
+        description="URL publique de la team Streamlabs Charity.",
+    )
+    streamlabsMessageId: str | None = hidden_message_id("Message suivi", "streamlabsChannelId")
+
 
 logger = logutil.init_logger(os.path.basename(__file__))
 load_dotenv()

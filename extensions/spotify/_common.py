@@ -10,6 +10,7 @@ import os
 import re
 from datetime import datetime
 from enum import Enum
+from typing import Any
 
 import aiohttp
 import interactions
@@ -20,8 +21,66 @@ from src.config_manager import load_config, load_discord2name
 from src.helpers import Colors
 from src.integrations.spotify import spotify_auth
 from src.mongodb import mongo_manager
+from src.webui.schemas import (
+    SchemaBase,
+    enabled_field,
+    hidden_message_id,
+    register_module,
+    ui,
+)
 
 logger = logutil.init_logger(os.path.basename(__file__))
+
+
+@register_module("moduleSpotify")
+class SpotifyConfig(SchemaBase):
+    __label__ = "Spotify"
+    __description__ = "Suivi des écoutes Spotify et playlists collaboratives."
+    __icon__ = "🎵"
+    __category__ = "Médias & Streaming"
+
+    enabled: bool = enabled_field()
+    voteEnabled: bool = ui(
+        "Votes activés",
+        "boolean",
+        default=False,
+        description="Activer les votes sur les morceaux ajoutés.",
+    )
+    spotifyChannelId: str = ui(
+        "Salon notifications",
+        "channel",
+        required=True,
+        description="Salon pour les notifications d'écoute.",
+    )
+    spotifyPlaylistId: str | None = ui(
+        "Playlist principale", "string", description="ID de la playlist Spotify principale."
+    )
+    spotifyNewPlaylistId: str | None = ui(
+        "Playlist découvertes", "string", description="ID de la playlist de découvertes."
+    )
+    spotifyRecapChannelId: str | None = ui(
+        "Salon message récap",
+        "channel",
+        description="Salon où le message de récap est publié (créé automatiquement).",
+    )
+    spotifyRecapPinMessage: bool = ui(
+        "Épingler le message récap",
+        "boolean",
+        default=False,
+        description="Épingler automatiquement le message de récap de la playlist.",
+    )
+    spotifyRecapMessageId: str | None = hidden_message_id(
+        "ID message récap", "spotifyRecapChannelId"
+    )
+    spotifyUsers: dict[str, Any] = ui(
+        "Mapping Spotify → Discord",
+        "spotifymap",
+        description=(
+            "Associe un ID Spotify à un membre Discord. "
+            "Le prénom affiché vient du mapping « Discord → Prénoms »."
+        ),
+    )
+
 
 config, module_config, enabled_servers = load_config("moduleSpotify")
 

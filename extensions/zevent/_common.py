@@ -6,8 +6,72 @@ from datetime import UTC, datetime
 
 from src import logutil
 from src.utils import load_config
+from src.webui.schemas import (
+    SchemaBase,
+    enabled_field,
+    hidden_message_id,
+    register_module,
+    ui,
+)
 
 logger = logutil.init_logger(os.path.basename(__file__))
+
+
+@register_module("moduleZevent")
+class ZeventConfig(SchemaBase):
+    __label__ = "Zevent"
+    __description__ = "Suivi de l'événement Zevent en temps réel (dons, planning, streamers)."
+    __icon__ = "🎉"
+    __category__ = "Événements"
+
+    enabled: bool = enabled_field()
+    zeventChannelId: str = ui(
+        "Salon",
+        "channel",
+        required=True,
+        description="Salon où le message de suivi est posté (créé automatiquement).",
+    )
+    zeventPinMessage: bool = ui(
+        "Épingler le message de suivi",
+        "boolean",
+        default=False,
+        description="Épingler automatiquement le message de suivi.",
+    )
+    zeventMessageId: str | None = hidden_message_id("Message", "zeventChannelId")
+    zeventStreamlabsApiUrl: str = ui(
+        "URL Streamlabs",
+        "url",
+        description="URL de l'API Streamlabs Charity pour les dons.",
+        default="https://streamlabscharity.com/api/v1/teams/@zevent-2025/zevent-2025",
+    )
+    zeventEventStartDate: str = ui(
+        "Début de l'événement",
+        "string",
+        description=(
+            "Date/heure de début du concert pré-événement "
+            "(ISO 8601, ex: 2025-09-04T17:55:00+00:00)."
+        ),
+        default="2025-09-04T17:55:00+00:00",
+    )
+    zeventMainEventStartDate: str = ui(
+        "Début du Zevent",
+        "string",
+        description="Date/heure de début du Zevent principal (ISO 8601).",
+        default="2025-09-05T16:00:00+00:00",
+    )
+    zeventUpdateInterval: int = ui(
+        "Intervalle de mise à jour (secondes)",
+        "number",
+        description="Fréquence de mise à jour du message en secondes. Nécessite un redémarrage.",
+        default=30,
+    )
+    zeventMilestoneInterval: int = ui(
+        "Intervalle des paliers (dons)",
+        "number",
+        description="Montant entre chaque notification de palier de dons.",
+        default=100000,
+    )
+
 
 config, _module_config, _enabled_servers = load_config("moduleZevent")
 _cfg = _module_config.get(_enabled_servers[0], {}) if _enabled_servers else {}

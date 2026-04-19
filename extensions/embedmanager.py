@@ -13,6 +13,7 @@ Features:
 """
 
 import os
+from typing import Any
 
 from interactions import (
     Client,
@@ -21,6 +22,43 @@ from interactions import (
 )
 
 from src import logutil
+from src.webui.schemas import (
+    SchemaBase,
+    enabled_field,
+    hidden_message_id,
+    register_module,
+    ui,
+)
+
+
+@register_module("moduleEmbedManager")
+class EmbedManagerConfig(SchemaBase):
+    __label__ = "Gestionnaire d'Embeds"
+    __description__ = "Création et publication d'embeds personnalisés."
+    __icon__ = "📝"
+    __category__ = "Outils"
+
+    enabled: bool = enabled_field()
+    channelId: str = ui(
+        "Salon de publication",
+        "channel",
+        required=True,
+        description="Salon pour publier les embeds (message créé automatiquement).",
+    )
+    pinMessage: bool = ui(
+        "Épingler le message",
+        "boolean",
+        default=False,
+        description="Épingler automatiquement le message publié.",
+    )
+    messageId: str | None = hidden_message_id("Message cible", "channelId")
+    embeds: list[Any] = ui(
+        "Embeds",
+        "embedlist",
+        description="Créez des embeds avec un titre, couleur et liens.",
+        default=[],
+    )
+
 
 logger = logutil.init_logger(os.path.basename(__file__))
 

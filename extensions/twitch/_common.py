@@ -6,8 +6,30 @@ the package root.
 """
 
 from datetime import datetime
+from typing import Any
 
 import pytz
+
+from src.webui.schemas import SchemaBase, enabled_field, register_module, ui
+
+
+@register_module("moduleTwitch")
+class TwitchConfig(SchemaBase):
+    __label__ = "Twitch"
+    __description__ = "Notifications de live et planning des streamers."
+    __icon__ = "📺"
+    __category__ = "Médias & Streaming"
+
+    enabled: bool = enabled_field()
+    twitchStreamerList: dict[str, Any] = ui(
+        "Streamers suivis",
+        "streamermap",
+        required=True,
+        description=(
+            "Liste des streamers Twitch à suivre. "
+            "Chaque streamer a ses propres salons et préférences de notifications."
+        ),
+    )
 
 
 def ensure_utc(dt: datetime | None) -> datetime | None:

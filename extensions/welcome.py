@@ -8,6 +8,40 @@ from interactions.api.events import MemberAdd, MemberRemove
 from src import logutil
 from src.config_manager import load_config
 from src.helpers import is_guild_enabled, pick_weighted_message
+from src.webui.schemas import SchemaBase, enabled_field, register_module, ui
+
+
+@register_module("moduleWelcome")
+class WelcomeConfig(SchemaBase):
+    __label__ = "Bienvenue"
+    __description__ = "Messages de bienvenue et de départ."
+    __icon__ = "👋"
+    __category__ = "Communauté"
+
+    enabled: bool = enabled_field()
+    welcomeChannelId: str = ui(
+        "Salon de bienvenue",
+        "channel",
+        required=True,
+        description="Salon où les messages de bienvenue sont envoyés.",
+    )
+    welcomeMessageList: list[str] = ui(
+        "Messages de bienvenue",
+        "messagelist",
+        description="Liste de messages avec poids de probabilité.",
+        default=["Bienvenue {mention} !"],
+        weight_field="welcomeMessageWeights",
+        variables="{mention}",
+    )
+    leaveMessageList: list[str] = ui(
+        "Messages de départ",
+        "messagelist",
+        description="Liste de messages de départ avec poids de probabilité.",
+        default=["{username} nous a quittés."],
+        weight_field="leaveMessageWeights",
+        variables="{username}",
+    )
+
 
 logger = logutil.init_logger(os.path.basename(__file__))
 

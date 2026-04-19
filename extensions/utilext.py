@@ -55,6 +55,18 @@ from src import logutil
 from src.config_manager import load_config
 from src.helpers import Colors, fetch_user_safe, is_guild_enabled, send_error
 from src.utils import format_poll
+from src.webui.schemas import SchemaBase, enabled_field, register_module
+
+
+@register_module("moduleUtils")
+class UtilsConfig(SchemaBase):
+    __label__ = "Utilitaires"
+    __description__ = "Commandes utilitaires : ping, sondages, rappels, suppression de messages."
+    __icon__ = "🛠️"
+    __category__ = "Outils"
+
+    enabled: bool = enabled_field()
+
 
 logger = logutil.init_logger(os.path.basename(__file__))
 config, module_config, enabled_servers = load_config("moduleUtils")

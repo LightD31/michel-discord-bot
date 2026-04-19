@@ -22,6 +22,54 @@ from interactions.ext import paginators
 from src import logutil
 from src.config_manager import load_config
 from src.helpers import fetch_or_create_persistent_message
+from src.webui.schemas import (
+    SchemaBase,
+    enabled_field,
+    hidden_message_id,
+    register_module,
+    ui,
+)
+
+
+@register_module("moduleSpeedons")
+class SpeedonsConfig(SchemaBase):
+    __label__ = "Speedons"
+    __description__ = "Planning et suivi en temps réel de l'événement Speedons."
+    __icon__ = "🏃"
+    __category__ = "Événements"
+
+    enabled: bool = enabled_field()
+    speedonsChannelId: str = ui(
+        "Salon",
+        "channel",
+        required=True,
+        description="Salon contenant les messages du planning (créés automatiquement).",
+    )
+    speedonsPinMessages: bool = ui(
+        "Épingler les messages",
+        "boolean",
+        default=False,
+        description="Épingler automatiquement les messages planning et live.",
+    )
+    speedonsScheduleMessageId: str | None = hidden_message_id(
+        "Message planning", "speedonsChannelId"
+    )
+    speedonsLiveMessageId: str | None = hidden_message_id(
+        "Message run en cours", "speedonsChannelId"
+    )
+    speedonsApiUrl: str = ui(
+        "URL API",
+        "url",
+        description="URL de base de l'API Speedons (inclut le slug de la campagne).",
+        default="https://tracker.speedons.fr/api/campaigns?slug=2025",
+    )
+    speedonsIconUrl: str = ui(
+        "URL de l'icône",
+        "url",
+        description="URL de l'icône affichée dans les embeds.",
+        default="https://speedons.fr/static/b476f2d8ad4a19d2393eb4cff9486cc9/c6b81/icon.png",
+    )
+
 
 logger = logutil.init_logger(os.path.basename(__file__))
 
