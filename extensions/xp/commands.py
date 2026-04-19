@@ -20,9 +20,6 @@ class CommandsMixin:
 
     def _repo(self, guild_id: str) -> XpRepository: ...  # provided by LevelingMixin
 
-    async def _build_leaderboard_embeds(self, guild) -> list[Embed]:  # from LeaderboardMixin
-        ...
-
     async def _get_user_rank(self, guild_id: str, user_id: str) -> int | None:
         if not self._db_connected:
             return None
