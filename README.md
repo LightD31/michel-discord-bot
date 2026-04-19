@@ -42,11 +42,14 @@ A modular, multi-guild Discord bot built with **interactions.py**. Michel ships 
 | **VLR.gg Tracker** | Valorant esports match tracking — schedules, live score updates, and post-match results from VLR.gg. |
 | **Uptime** | Server monitoring via Uptime Kuma — periodic status embeds and maintenance notifications. |
 | **Backup** | Scheduled (and on-demand) JSON backups of all MongoDB databases with configurable retention. |
-| **Utilities** | `/ping`, `/delete`, `/send`, `/poll` (reaction polls with vote tracking), `/remind` (scheduled reminders). |
+| **Polls** | Reaction polls with vote tracking and result embeds. |
+| **Reminders** | `/remind` scheduled reminders, persisted and restored across restarts. |
+| **Admin** | Owner/admin utilities: `/ping`, `/delete`, `/send`, and the global embed manager. |
+| **User Info** | Per-user profile lookup and shared user stats. |
 
 ### Archived / Disabled Extensions
 
-Extensions prefixed with `_` are not loaded automatically. They include:
+Extensions prefixed with `_` (or explicitly disabled in `config["extensions"]`) are not loaded automatically. They include:
 
 - **Minecraft** — Server status monitoring, player stats via SFTP/RCON.
 - **Olympics** — Medal tracking for the Milan-Cortina 2026 Winter Olympics.
@@ -59,30 +62,87 @@ Extensions prefixed with `_` are not loaded automatically. They include:
 
 ## Architecture
 
-```
-main.py                 # Entry point — loads extensions, starts client & optional Web UI
-config.py               # DEBUG flag
-dict.py                 # Random phrase dictionaries used by the bot
+The codebase is split into three top-level layers, each with a clear role:
 
-extensions/             # One file = one feature (auto-loaded unless prefixed with _)
-src/
-├── config_manager.py   # Loads config/config.json, filters per-guild module config
-├── logutil.py          # Colored ANSI logging with CustomFormatter
-├── mongodb.py          # MongoManager singleton — one DB per guild + a global DB (motor async)
-├── utils.py            # Shared helpers (pagination, image gen, markdown escape, HTTP fetch…)
-├── spotify.py          # Spotipy auth, embed builders, vote counting
-├── vlrgg.py            # VLR.gg API client with TTL cache
-├── minecraft.py        # Minecraft player stats via SFTP + NBT parsing
-├── minecraft_rcon.py   # Raw async RCON implementation
-├── minecraft_config.py # Minecraft tuning constants
-├── coloc/              # Zunivers integration (API client, models, storage)
-└── webui/              # FastAPI dashboard (OAuth2, SSE logs, dynamic config forms)
+```
+main.py                 # Entry point — discovers & loads extensions, starts client & optional Web UI
+
+extensions/             # Discord-facing layer — one package (or file) per feature
+├── admin/              # /ping, /delete, /send, embedmanager
+├── backup.py
+├── birthday.py
+├── compareai/          # AI Compare (ai_client, voting)
+├── confrerie/          # Confrérie (stats, requests, updates, editors)
+├── coloc/              # Zunivers integration entry point
+├── feur.py
+├── minecraft/          # (disabled) stats, status
+├── olympics/           # (disabled) medals, tasks
+├── polls/
+├── random_.py
+├── reminders/
+├── secretsanta/        # sessions, bans, draws, buttons
+├── spotify/            # auth, playlist, votes
+├── tricount/           # groups, expenses, reports
+├── twitch/             # eventsub, notifications, schedule, emotes
+├── uptime/             # monitors, notifications, tasks, socketio_client
+├── userinfo.py
+├── vlrgg/              # api, embeds, notifications
+├── welcome.py
+├── xp/                 # leveling, commands, leaderboard
+├── youtube.py
+├── zevent/             # (disabled)
+└── zunivers/           # reminders, events, corporation
+
+features/               # Domain logic — pure Python, no Discord imports
+├── birthday/           # models + repository
+├── coloc/              # Zunivers API client, models, storage
+├── feur/
+├── messages/           # phrase dictionaries (welcome, feur, level-up…)
+├── minecraft/          # SFTP-based stats reader, tuning constants
+├── polls/              # constants & helpers
+├── random/             # random-org helpers
+├── reminders/          # reminder repository
+├── secretsanta/        # pairing algorithm, repository
+├── uptime/             # model + repository
+├── userinfo/           # shared user profile repository
+├── vlrgg/              # VLR.gg HTTP client (cached)
+└── xp/                 # level curve, TTL cache, XP repository
+
+src/                    # Shared infrastructure
+├── core/               # Framework-free essentials
+│   ├── config.py       #   reactive JSON config store
+│   ├── db.py           #   MongoDB singleton (motor async)
+│   ├── http.py         #   shared aiohttp session with retry/fetch helpers
+│   ├── logging.py      #   colored ANSI logger factory
+│   ├── errors.py       #   base exception hierarchy
+│   ├── images.py       #   Pillow helpers (rank cards, etc.)
+│   ├── text.py         #   markdown escaping & text utilities
+│   └── migrations.py   #   config-key migrations run at startup
+├── discord_ext/        # interactions.py-dependent UI helpers
+│   ├── embeds.py       #   color palette, spacer field, timestamp formatter
+│   ├── messages.py     #   send_error/success, persistent-message bootstrap
+│   ├── autocomplete.py #   shared autocomplete handlers + enabled-guild check
+│   └── paginator.py    #   CustomPaginator + reaction-poll formatter
+├── integrations/       # Pure external-API clients (no Discord imports)
+│   ├── spotify.py      #   Spotipy auth, embed builders, vote counting
+│   ├── notion.py       #   Notion API client
+│   └── minecraft_rcon.py
+├── webui/              # FastAPI dashboard
+│   ├── app.py, server.py, auth.py, context.py
+│   ├── schemas.py      #   per-module JSON schemas for dynamic forms
+│   ├── routes/         #   auth, bot, config, extensions, servers, frontend
+│   ├── sse/            #   live log streaming over Server-Sent Events
+│   ├── log_handler.py
+│   └── static/
+└── assets/             # Bundled fonts used by image rendering
 ```
 
 **Key design choices:**
 
+- **Three-layer split** — `extensions/` owns Discord I/O, `features/` owns domain logic and persistence, `src/` owns shared infrastructure. Features are unit-testable without importing `interactions`.
 - **Per-guild isolation** — Each Discord server has its own MongoDB database (`guild_{id}`), plus a shared `global` database.
-- **Hot-loadable extensions** — Extensions are discovered at startup by scanning `extensions/*.py`. Prefixing a file with `_` disables it.
+- **Hot-loadable extensions** — Extensions are auto-discovered at startup: any non-underscore-prefixed `extensions/<name>.py` file or `extensions/<name>/` package is loaded unless explicitly disabled via `config["extensions"]`.
+- **Mixin-based extensions** — Larger extensions (xp, zunivers, twitch, uptime, secretsanta…) are split into mixin classes by concern and composed in the package's `__init__.py`.
 - **Async everywhere** — Motor for MongoDB, aiohttp for HTTP, asyncssh for SFTP, native async RCON.
 
 ---
@@ -109,7 +169,7 @@ docker compose up -d
 
 Volumes:
 - `./config` → `/app/config` (configuration files)
-- `./data` → `/app/data` (persistent data)
+- `./data` → `/app/data` (persistent data, backups)
 - `./logs` → `/app/logs` (log files)
 
 The Web UI is exposed on port **8080** by default.
@@ -139,11 +199,14 @@ source of truth for both local installs and the Docker image.
 
 ## Configuration
 
-All configuration lives in `config/config.json`. The structure contains:
+All configuration lives in `config/config.json`. The top-level structure contains:
 
 - **`discord`** — `botToken`, `devGuildId`.
 - **`webui`** — `enabled`, `host`, `port`, OAuth2 settings.
+- **`extensions`** — optional map of `"extensions.<name>": bool` to explicitly enable or disable discovered extensions (overrides the underscore-prefix default).
 - **Per-module configs** — Each extension reads its own section via `load_config("module_name")`, which returns the global config, the per-guild config for that module, and the list of guilds where the module is enabled.
+
+Config is loaded through `src.core.config`, which provides atomic writes and a reactive `ConfigStore` so the Web UI and running extensions stay in sync. A `migrate_config_module_keys()` pass runs at startup to rewrite legacy key names.
 
 Modules can be toggled per server through the Web UI or directly in the JSON file.
 
@@ -151,23 +214,26 @@ Modules can be toggled per server through the Web UI or directly in the JSON fil
 
 ## Extensions
 
-Every extension is a single Python file in the `extensions/` directory containing an `interactions.py` `Extension` subclass. To create a new extension:
+An extension is either a single Python file (`extensions/myext.py`) or a package (`extensions/myext/__init__.py`) containing an `interactions.py` `Extension` subclass. To create a new one:
 
-1. Create `extensions/myext.py`.
+1. Create `extensions/myext.py` (or `extensions/myext/__init__.py` for a multi-file package).
 2. Define an `Extension` subclass.
-3. Add a `setup()` function at the module level.
+3. Expose a module-level `setup(bot)` function that instantiates it.
 4. Restart the bot — the extension will be auto-loaded.
 
-Prefix the file with `_` to keep it in the repo without loading it.
+To disable without deleting, either prefix the path with `_` or set `"extensions.myext": false` in config.
+
+**Composition convention** — When an extension grows beyond ~200 lines, promote it to a package and split responsibilities into mixin modules (`leveling.py`, `commands.py`, `leaderboard.py`, …) assembled via multiple inheritance in `__init__.py`. Shared constants and the Pydantic config schema go in `_common.py`. Domain logic (persistence, pure functions, API clients) moves into a matching `features/<name>/` package so it can be tested without Discord.
 
 ---
 
 ## Web UI
 
-An optional FastAPI-based dashboard available when `webui.enabled` is `true` in config.
+An optional FastAPI-based dashboard, enabled when `webui.enabled` is `true` in config.
 
 - **Authentication** — Discord OAuth2 restricted to a list of admin user IDs.
-- **Features** — Toggle modules per server, edit module and global configuration through dynamic forms (powered by JSON schemas in `src/webui/schemas.py`), live log streaming via SSE.
+- **Features** — Toggle modules per server, edit module and global configuration through dynamic forms (powered by the JSON schemas in `src/webui/schemas.py`), and stream live logs via Server-Sent Events.
+- **Routes** — Split across `src/webui/routes/` (`auth`, `bot`, `config`, `extensions`, `servers`, `frontend`).
 - **Stack** — FastAPI + Uvicorn, served in a daemon thread alongside the bot.
 
 ---
@@ -180,21 +246,30 @@ An optional FastAPI-based dashboard available when `webui.enabled` is `true` in 
 |-------|-----------|
 | Bot framework | [interactions.py](https://github.com/interactions-py/interactions.py) |
 | Database | MongoDB via [Motor](https://motor.readthedocs.io/) (async) |
-| Web UI | [FastAPI](https://fastapi.tiangolo.com/) + [Uvicorn](https://www.uvicorn.org/) |
+| Web UI | [FastAPI](https://fastapi.tiangolo.com/) + [Uvicorn](https://www.uvicorn.org/) + [sse-starlette](https://github.com/sysid/sse-starlette) |
+| Config validation | [Pydantic v2](https://docs.pydantic.dev/) |
 | Spotify | [Spotipy](https://spotipy.readthedocs.io/) |
 | Twitch | [twitchAPI](https://pytwitchapi.dev/) (EventSub) |
+| Notion | [notion-client](https://github.com/ramnes/notion-sdk-py) |
 | AI | [OpenRouter](https://openrouter.ai/) (OpenAI, Anthropic, DeepSeek, Gemini, Grok) |
 | Minecraft | mcstatus, asyncssh, native RCON |
 | Monitoring | Uptime Kuma (SocketIO) |
 | Image gen | Pillow |
 
+### Tooling
+
+- **Lint & format** — [ruff](https://docs.astral.sh/ruff/) (`ruff check`, `ruff format`).
+- **Type checking** — [mypy](https://mypy-lang.org/). `src.core.*` is strict; the rest is lenient during incremental typing adoption.
+- **Tests** — [pytest](https://docs.pytest.org/) with `pytest-asyncio` (auto mode). Tests live in `tests/`.
+- **Pre-commit** — ruff, mypy, and [detect-secrets](https://github.com/Yelp/detect-secrets) run on every commit.
+
 ### Project Conventions
 
 - Python 3.12, async/await throughout.
-- One extension per file in `extensions/`.
-- Shared logic goes in `src/`.
-- MongoDB: one database per guild (`guild_{id}`), global data in `global`.
-- Logging via `src/logutil` (colored ANSI output).
+- **Layering** — Discord code in `extensions/`, domain logic in `features/`, shared infrastructure in `src/`. `features/` must not import `interactions`.
+- **Persistence** — One MongoDB database per guild (`guild_{id}`), shared data in `global`. Each feature owns a repository module under `features/<name>/repository.py`.
+- **Logging** — `src.core.logging.init_logger(name)` (colored ANSI output).
+- **HTTP** — Use the shared session from `src.core.http` rather than creating per-call aiohttp clients.
 
 ---
 
