@@ -3,14 +3,17 @@
 from __future__ import annotations
 
 from io import BytesIO
+from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
+
+_DEFAULT_FONT_PATH = str(Path(__file__).resolve().parent.parent / "assets" / "Menlo-Regular.ttf")
 
 
 def create_dynamic_image(
     text: str,
     font_size: int = 20,
-    font_path: str = "src/Menlo-Regular.ttf",
+    font_path: str = _DEFAULT_FONT_PATH,
     image_padding: int = 10,
     background_color: str = "#1E1F22",
 ) -> tuple[Image.Image, BytesIO]:

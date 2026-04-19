@@ -16,7 +16,7 @@ from interactions import (
     slash_option,
 )
 
-from dict import chooseList
+from features.messages import chooseList
 from features.random import validate_choices, validate_die_faces
 from src.core import logging as logutil
 
