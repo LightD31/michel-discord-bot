@@ -64,10 +64,19 @@ def create_router(ctx: WebUIContext) -> APIRouter:
         ext_dir = "extensions"
         if os.path.isdir(ext_dir):
             for fname in sorted(os.listdir(ext_dir)):
-                if not fname.endswith(".py") or fname.startswith("__"):
+                if fname.startswith("_") or fname.startswith("__"):
                     continue
-                ext_path = f"extensions.{fname[:-3]}"
-                short_name = fname[:-3]
+                full_path = os.path.join(ext_dir, fname)
+                if fname.endswith(".py") and os.path.isfile(full_path):
+                    ext_path = f"extensions.{fname[:-3]}"
+                    short_name = fname[:-3]
+                elif os.path.isdir(full_path) and os.path.isfile(
+                    os.path.join(full_path, "__init__.py")
+                ):
+                    ext_path = f"extensions.{fname}"
+                    short_name = fname
+                else:
+                    continue
                 default_enabled = not short_name.startswith("_")
                 enabled = ext_config.get(ext_path, default_enabled)
                 result.append(
