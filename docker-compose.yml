@@ -1,9 +1,7 @@
 services:
   discord_bot:
     container_name: discord_bot
-    build:
-      context: ./
-      dockerfile: ./Dockerfile
+    image: ghcr.io/lightd31/michel-discord-bot:latest
     ports:
       - "8080:8080"
     environment:
