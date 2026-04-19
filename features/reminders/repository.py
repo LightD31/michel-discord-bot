@@ -38,9 +38,7 @@ class ReminderRepository:
             )
             await self._col().create_index([("user_id", pymongo.ASCENDING)], name="user_id_idx")
         except Exception as e:
-            logger.error(
-                "Failed to create reminder indexes for guild %s: %s", self._guild_id, e
-            )
+            logger.error("Failed to create reminder indexes for guild %s: %s", self._guild_id, e)
 
     @staticmethod
     def _doc_to_reminder(doc: dict) -> Reminder:

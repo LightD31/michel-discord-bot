@@ -133,9 +133,8 @@ pre-commit install
 python main.py
 ```
 
-Runtime dependencies are declared in `pyproject.toml`. `requirements.txt` is
-kept in sync for the Docker image until the Dockerfile is migrated to install
-from the pyproject.
+Runtime dependencies are declared in `pyproject.toml`, which is the single
+source of truth for both local installs and the Docker image.
 
 ---
 

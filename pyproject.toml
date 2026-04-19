@@ -1,3 +1,7 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "michel-discord-bot"
 version = "0.1.0"
@@ -6,18 +10,21 @@ requires-python = ">=3.12"
 license = { file = "LICENSE" }
 readme = "README.md"
 
-# Runtime dependencies — keep in sync with requirements.txt until the Dockerfile
-# is migrated to install from pyproject.toml. See Phase 0 notes.
+# Runtime dependencies. This is the single source of truth; the Docker image
+# installs from here.
 dependencies = [
     # Bot framework & core
     "discord-py-interactions",
     "python-dotenv",
     "aiohttp",
     "curl_cffi",
+    "httpx",
+    "requests",
     "uvloop; platform_system != 'Windows'",
 
     # Datastore
     "motor",
+    "pydantic>=2",
 
     # Integrations
     "spotipy",
@@ -35,6 +42,7 @@ dependencies = [
 
     # Utilities
     "pytz",
+    "python-dateutil",
     "babel",
     "isodate",
     "emoji",
@@ -48,6 +56,13 @@ dependencies = [
     "uvicorn[standard]",
     "sse-starlette",
 ]
+
+# The project ships as a flat collection of modules (main.py + extensions/ +
+# features/ + src/) loaded at runtime from /app, not as an installable library.
+# `py-modules = []` tells setuptools to build an empty distribution so
+# `pip install .` only resolves and installs the declared dependencies.
+[tool.setuptools]
+py-modules = []
 
 [project.optional-dependencies]
 dev = [

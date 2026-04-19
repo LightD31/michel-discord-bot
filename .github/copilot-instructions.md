@@ -92,7 +92,7 @@ src/
 ## Testing & Running
 
 - **Docker**: `docker compose up -d` (production). Mounts `config/`, `data/`, `logs/`.
-- **Local**: activate venv, then `pip install -e ".[dev]"` (declared in `pyproject.toml`, includes ruff/mypy/pytest/pre-commit/detect-secrets) and `pre-commit install`. Run the bot with `python main.py`. `requirements.txt` is kept in sync for the Docker image.
+- **Local**: activate venv, then `pip install -e ".[dev]"` (declared in `pyproject.toml`, includes ruff/mypy/pytest/pre-commit/detect-secrets) and `pre-commit install`. Run the bot with `python main.py`. The Docker image installs from the same `pyproject.toml`.
 - **Tests**: `pytest` (config in `pyproject.toml`). Lint: `ruff check .`. Types: `mypy src`.
 
 ## Common Tasks
