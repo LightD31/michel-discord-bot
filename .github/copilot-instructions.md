@@ -21,7 +21,6 @@ src/
 ├── utils.py            # Shared helpers: pagination, image gen (Pillow), markdown escape, HTTP fetch, number format
 ├── spotify.py          # Spotipy OAuth, embed builders, vote helpers
 ├── vlrgg.py            # VLR.gg (Valorant esports) API client with TTL cache
-├── raiderio.py         # Raider.IO Mythic+ leaderboard client
 ├── minecraft.py        # Minecraft player stats via SFTP (asyncssh) + NBT parsing
 ├── minecraft_rcon.py   # Raw async RCON socket implementation
 ├── minecraft_config.py # Minecraft tuning constants (cache TTL, timeouts, limits)
