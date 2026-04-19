@@ -51,7 +51,7 @@ A modular, multi-guild Discord bot built with **interactions.py**. Michel ships 
 
 ### Archived / Disabled Extensions
 
-Extensions prefixed with `_` (or explicitly disabled in `config["extensions"]`) are not loaded automatically. They include:
+Extensions can be disabled via the Web UI or by setting `config["extensions"]["<extension>"]` to `false`. Currently archived extensions include:
 
 - **Minecraft** — Server status monitoring, player stats via SFTP/RCON.
 - **Olympics** — Medal tracking for the Milan-Cortina 2026 Winter Olympics.
@@ -143,7 +143,7 @@ src/                    # Shared infrastructure
 
 - **Three-layer split** — `extensions/` owns Discord I/O, `features/` owns domain logic and persistence, `src/` owns shared infrastructure. Features are unit-testable without importing `interactions`.
 - **Per-guild isolation** — Each Discord server has its own MongoDB database (`guild_{id}`), plus a shared `global` database.
-- **Hot-loadable extensions** — Extensions are auto-discovered at startup: any non-underscore-prefixed `extensions/<name>.py` file or `extensions/<name>/` package is loaded unless explicitly disabled via `config["extensions"]`.
+- **Hot-loadable extensions** — Extensions are auto-discovered at startup and loaded unless explicitly disabled via the Web UI or `config["extensions"]`.
 - **Mixin-based extensions** — Larger extensions (xp, zunivers, twitch, uptime, secretsanta…) are split into mixin classes by concern and composed in the package's `__init__.py`.
 - **Async everywhere** — Motor for MongoDB, aiohttp for HTTP, asyncssh for SFTP, native async RCON.
 
@@ -223,7 +223,7 @@ An extension is either a single Python file (`extensions/myext.py`) or a package
 3. Expose a module-level `setup(bot)` function that instantiates it.
 4. Restart the bot — the extension will be auto-loaded.
 
-To disable without deleting, either prefix the path with `_` or set `"extensions.myext": false` in config.
+To disable, use the Web UI or set `"extensions.myext": false` in `config.json`.
 
 **Composition convention** — When an extension grows beyond ~200 lines, promote it to a package and split responsibilities into mixin modules (`leveling.py`, `commands.py`, `leaderboard.py`, …) assembled via multiple inheritance in `__init__.py`. Shared constants and the Pydantic config schema go in `_common.py`. Domain logic (persistence, pure functions, API clients) moves into a matching `features/<name>/` package so it can be tested without Discord.
 
