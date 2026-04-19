@@ -1,5 +1,16 @@
-"""RemindersMixin — reminder slash commands and background task."""
+"""Reminders Discord extension — /reminder slash command and due-check task.
 
+Slash commands:
+- ``/reminder set`` — create a reminder (optional recurrence: daily/weekly/monthly/yearly)
+- ``/reminder remove`` — interactive button list to delete one of your reminders
+
+The background ``check_reminders`` task polls every minute, DMs the author,
+and either reschedules recurring reminders or deletes one-shot reminders.
+Persistence lives in :class:`features.reminders.ReminderRepository` (MongoDB).
+Enabled per-guild via ``moduleUtils``.
+"""
+
+import os
 from datetime import datetime, timedelta
 
 from dateutil.relativedelta import relativedelta
@@ -8,27 +19,39 @@ from interactions import (
     Button,
     ButtonStyle,
     Client,
+    Extension,
     IntervalTrigger,
     OptionType,
     SlashCommandChoice,
     SlashContext,
     Task,
     TimestampStyles,
+    listen,
     slash_command,
     slash_option,
 )
 from interactions.client.utils import timestamp_converter
 
 from features.reminders import Reminder, ReminderRepository
+from src.core import logging as logutil
+from src.core.config import load_config
 from src.discord_ext.messages import fetch_user_safe, send_error
 
-from ._common import enabled_servers, enabled_servers_int, logger
+logger = logutil.init_logger(os.path.basename(__file__))
+_, _, enabled_servers = load_config("moduleUtils")
+enabled_servers_int = [int(s) for s in enabled_servers]  # type: ignore[misc]
 
 
-class RemindersMixin:
-    # bot and _reminder_repos are provided by UtilExtension.__init__
-    bot: Client
-    _reminder_repos: dict[str, ReminderRepository]
+class RemindersExtension(Extension):
+    def __init__(self, bot: Client):
+        self.bot: Client = bot
+        self._reminder_repos: dict[str, ReminderRepository] = {}
+
+    @listen()
+    async def on_startup(self):
+        for guild_id in enabled_servers:
+            await self._reminder_repo(guild_id).ensure_indexes()
+        self.check_reminders.start()
 
     def _reminder_repo(self, guild_id: str | int) -> ReminderRepository:
         gid = str(guild_id)
@@ -38,7 +61,6 @@ class RemindersMixin:
             self._reminder_repos[gid] = repo
         return repo
 
-    # Set reminder
     @slash_command(
         name="reminder",
         sub_cmd_name="set",
@@ -98,7 +120,6 @@ class RemindersMixin:
         frequency: str | None = None,
         date: str | None = None,
     ):
-        # Create the reminder time from the provided date, hour, and minute
         current_time = datetime.now()
         remind_time = current_time.replace(
             hour=hour,
@@ -116,7 +137,6 @@ class RemindersMixin:
                 year=parseddate.year, month=parseddate.month, day=parseddate.day
             )
 
-        # If the remind_time is in the past, roll it forward according to frequency.
         while remind_time <= current_time:
             if frequency is None:
                 remind_time += timedelta(days=1)
@@ -267,8 +287,6 @@ class RemindersMixin:
                 next_time = self._next_occurrence(reminder.remind_time, reminder.frequency)
                 try:
                     if next_time is not None:
-                        # Roll forward past any missed occurrences so recurring
-                        # reminders don't fire repeatedly after downtime.
                         while next_time <= now:
                             next_time = self._next_occurrence(next_time, reminder.frequency)
                             if next_time is None:
@@ -281,3 +299,10 @@ class RemindersMixin:
                     logger.error(
                         "Failed to update reminder %s in guild %s: %s", reminder.id, gid, e
                     )
+
+
+def setup(bot: Client) -> None:
+    RemindersExtension(bot)
+
+
+__all__ = ["RemindersExtension", "setup"]

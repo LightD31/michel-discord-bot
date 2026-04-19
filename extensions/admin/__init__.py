@@ -1,8 +1,24 @@
-"""CommandsMixin — general utility slash commands (ping, delete, send)."""
+"""Admin Discord extension — general-purpose moderator utilities.
+
+Slash commands:
+- ``/ping`` — bot latency probe
+- ``/delete`` — bulk-delete messages in a channel
+- ``/send`` — send a message to a channel as the bot
+
+Enablement is shared with :mod:`extensions.polls` and
+:mod:`extensions.reminders` via the ``moduleUtils`` config key. This package
+owns the :class:`UtilsConfig` schema registration.
+"""
+
+import os
+from typing import cast
 
 from interactions import (
     BaseChannel,
     ChannelType,
+    Client,
+    Extension,
+    GuildText,
     IntegrationType,
     OptionType,
     Permissions,
@@ -12,12 +28,28 @@ from interactions import (
     slash_option,
 )
 
+from src.core import logging as logutil
+from src.core.config import load_config
 from src.discord_ext.messages import send_error
+from src.webui.schemas import SchemaBase, enabled_field, register_module
 
-from ._common import enabled_servers_int, logger
+
+@register_module("moduleUtils")
+class UtilsConfig(SchemaBase):
+    __label__ = "Utilitaires"
+    __description__ = "Commandes utilitaires : ping, sondages, rappels, suppression de messages."
+    __icon__ = "🛠️"
+    __category__ = "Outils"
+
+    enabled: bool = enabled_field()
 
 
-class CommandsMixin:
+logger = logutil.init_logger(os.path.basename(__file__))
+_, _, enabled_servers = load_config("moduleUtils")
+enabled_servers_int = [int(s) for s in enabled_servers]  # type: ignore[misc]
+
+
+class AdminExtension(Extension):
     @slash_command(
         name="ping",
         description="Vérifier la latence du bot",
@@ -25,14 +57,6 @@ class CommandsMixin:
         integration_types=[IntegrationType.GUILD_INSTALL, IntegrationType.USER_INSTALL],  # type: ignore
     )
     async def ping(self, ctx: SlashContext):
-        """
-        A slash command that checks the latency of the bot.
-
-        Parameters:
-        -----------
-        ctx : SlashContext
-            The context of the slash command.
-        """
         await ctx.send(f"Pong ! Latence : {round(ctx.bot.latency * 1000)}ms")
 
     @slash_command(
@@ -74,22 +98,6 @@ class CommandsMixin:
         before=None,
         after=None,
     ):
-        """
-        A slash command that deletes messages in a channel.
-
-        Parameters:
-        -----------
-        ctx : SlashContext
-            The context of the slash command.
-        nombre : int, optional
-            The number of messages to delete. Default is 1.
-        channel : discord.TextChannel, optional
-            The channel in which to delete messages. Default is the current channel.
-        before : int, optional
-            Delete messages before this message ID.
-        after : int, optional
-            Delete messages after this message ID.
-        """
         if channel is None:
             channel = ctx.channel
         await channel.purge(
@@ -137,32 +145,15 @@ class CommandsMixin:
         message: str,
         channel: BaseChannel | None = None,
     ):
-        """
-        A slash command that sends a message to a channel.
-
-        Parameters:
-        -----------
-        ctx : SlashContext
-            The context of the slash command.
-        message : str
-            The message to send.
-        """
         if channel is None:
             channel = ctx.channel
-        # Check if the channel is a category
         if channel.type == ChannelType.GUILD_CATEGORY:
             await send_error(ctx, "Vous ne pouvez pas envoyer de message dans une catégorie")
             return
 
-        # Ensure channel is a text channel that can send messages
         if not hasattr(channel, "send"):
             await send_error(ctx, "Ce type de channel ne supporte pas l'envoi de messages")
             return
-
-        # Type cast to ensure the channel has the send method
-        from typing import cast
-
-        from interactions import GuildText
 
         text_channel = cast(GuildText, channel)
         sent = await text_channel.send(message)
@@ -174,3 +165,10 @@ class CommandsMixin:
             sent.channel.id,
         )
         await ctx.send("Message envoyé !", ephemeral=True)
+
+
+def setup(bot: Client) -> None:
+    AdminExtension(bot)
+
+
+__all__ = ["AdminExtension", "UtilsConfig", "setup"]
