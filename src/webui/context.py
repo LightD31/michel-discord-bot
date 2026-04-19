@@ -12,7 +12,6 @@ focused modules (``routes/`` and ``sse/``) instead of one 1 000-line file.
 from __future__ import annotations
 
 import asyncio
-import json
 import os
 from dataclasses import dataclass
 from typing import Any
@@ -22,7 +21,6 @@ from fastapi import HTTPException, Request
 from src.webui.auth import DiscordOAuth, Session
 
 COOKIE_NAME = "michel_session"
-CONFIG_PATH = os.path.join("config", "config.json")
 
 
 @dataclass
@@ -42,10 +40,10 @@ class WebUIContext:
         return load_full_config() or {"config": {}, "servers": {}}
 
     def save_config(self, data: dict) -> None:
-        """Write the full config to ``config/config.json`` (non-atomic)."""
-        os.makedirs("config", exist_ok=True)
-        with open(CONFIG_PATH, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=4, ensure_ascii=False)
+        """Persist *data* atomically and notify ConfigStore subscribers."""
+        from src.core.config import config_store
+
+        config_store.save_full(data)
 
     # --- Session / authorization -------------------------------------
 

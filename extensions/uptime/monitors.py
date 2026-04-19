@@ -7,6 +7,7 @@ import aiohttp
 from interactions import AutocompleteContext
 
 from src.core import logging as logutil
+from src.core.http import http_client
 
 from ._common import config
 
@@ -46,14 +47,13 @@ class MonitorsMixin:
                 and config.get("uptimeKuma", {}).get("uptimeKumaUsername")
                 and config.get("uptimeKuma", {}).get("uptimeKumaPassword")
             ):
-                async with aiohttp.ClientSession() as session:
-                    auth = aiohttp.BasicAuth(
-                        config.get("uptimeKuma", {}).get("uptimeKumaUsername", ""),
-                        config.get("uptimeKuma", {}).get("uptimeKumaPassword", ""),
-                    )
-                    url = f"https://{config['uptimeKuma']['uptimeKumaUrl']}/api/monitors"
-
-                    async with session.get(url, auth=auth) as response:
+                session = await http_client.session()
+                auth = aiohttp.BasicAuth(
+                    config.get("uptimeKuma", {}).get("uptimeKumaUsername", ""),
+                    config.get("uptimeKuma", {}).get("uptimeKumaPassword", ""),
+                )
+                url = f"https://{config['uptimeKuma']['uptimeKumaUrl']}/api/monitors"
+                async with session.get(url, auth=auth) as response:
                         if response.status == 200:
                             data = await response.json()
                             monitors = {}
@@ -99,14 +99,13 @@ class MonitorsMixin:
                 )
 
         try:
-            async with aiohttp.ClientSession() as session:
-                auth = aiohttp.BasicAuth(
-                    config.get("uptimeKuma", {}).get("uptimeKumaUsername", ""),
-                    config.get("uptimeKuma", {}).get("uptimeKumaPassword", ""),
-                )
-                url = f"https://{config['uptimeKuma']['uptimeKumaUrl']}/api/monitor/{sensor_id}"
-
-                async with session.get(url, auth=auth) as response:
+            session = await http_client.session()
+            auth = aiohttp.BasicAuth(
+                config.get("uptimeKuma", {}).get("uptimeKumaUsername", ""),
+                config.get("uptimeKuma", {}).get("uptimeKumaPassword", ""),
+            )
+            url = f"https://{config['uptimeKuma']['uptimeKumaUrl']}/api/monitor/{sensor_id}"
+            async with session.get(url, auth=auth) as response:
                     if response.status == 200:
                         data = await response.json()
                         self.monitors_cache[sensor_id_str] = data

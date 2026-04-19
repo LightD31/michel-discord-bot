@@ -12,8 +12,8 @@ from datetime import datetime
 from enum import Enum
 from typing import Any
 
-import aiohttp
 import interactions
+from src.core.http import http_client
 from interactions import Message
 
 from src.core import logging as logutil
@@ -272,7 +272,8 @@ async def embed_song(
 
     track_id = track["id"]
     embed_url = f"https://open.spotify.com/embed/track/{track_id}"
-    async with aiohttp.ClientSession() as session, session.get(embed_url) as response:
+    session = await http_client.session()
+    async with session.get(embed_url) as response:
         content = await response.text()
     preview_match = re.search(r"\"audioPreview\":{\"url\":\"(.*?)\"}", content)
 
@@ -281,7 +282,7 @@ async def embed_song(
 
     preview_file = None
     if preview_url:
-        async with aiohttp.ClientSession() as session, session.get(preview_url) as resp:
+        async with session.get(preview_url) as resp:
             if resp.status == 200:
                 audio_data = await resp.read()
                 preview_file = interactions.File(

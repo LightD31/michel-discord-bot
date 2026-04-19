@@ -2,11 +2,11 @@
 
 import os
 
-import aiohttp
 from interactions import File, OrTrigger, Task, TimeTrigger
 
 from src.core import logging as logutil
 from src.core.db import mongo_manager
+from src.core.http import http_client
 from src.discord_ext.embeds import Colors
 
 from ._common import StreamerInfo
@@ -44,7 +44,8 @@ class EmotesMixin:
         file_path = os.path.join(EMOTE_CACHE_DIR, f"{streamer_id}_{emote_id}.png")
 
         try:
-            async with aiohttp.ClientSession() as session, session.get(image_url) as response:
+            session = await http_client.session()
+            async with session.get(image_url) as response:
                 if response.status == 200:
                     content = await response.read()
                     with open(file_path, "wb") as f:

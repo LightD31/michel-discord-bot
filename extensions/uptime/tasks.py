@@ -6,6 +6,7 @@ import aiohttp
 from interactions import IntervalTrigger, Task
 
 from src.core import logging as logutil
+from src.core.http import http_client
 
 from ._common import config, has_kuma_credentials
 
@@ -73,11 +74,10 @@ class TasksMixin:
     @Task.create(IntervalTrigger(seconds=55))
     async def send_status_update(self):
         """Push a heartbeat to the configured Uptime Kuma push endpoint."""
-        async with aiohttp.ClientSession() as session:
-            try:
-                url = f"https://{config['uptimeKuma']['uptimeKumaUrl']}/api/push/{config['uptimeKuma']['uptimeKumaToken']}?status=up&msg=OK&ping={round(self.bot.latency * 1000, 1)}"
-
-                async with session.get(url) as response:
-                    response.raise_for_status()
-            except aiohttp.ClientError as error:
-                logger.error("Error sending status update: %s", error)
+        try:
+            url = f"https://{config['uptimeKuma']['uptimeKumaUrl']}/api/push/{config['uptimeKuma']['uptimeKumaToken']}?status=up&msg=OK&ping={round(self.bot.latency * 1000, 1)}"
+            session = await http_client.session()
+            async with session.get(url) as response:
+                response.raise_for_status()
+        except aiohttp.ClientError as error:
+            logger.error("Error sending status update: %s", error)
