@@ -7,6 +7,7 @@ import aiohttp
 from interactions import AutocompleteContext
 
 from src.core import logging as logutil
+from src.core.http import http_client
 
 from ._common import config
 
@@ -46,32 +47,31 @@ class MonitorsMixin:
                 and config.get("uptimeKuma", {}).get("uptimeKumaUsername")
                 and config.get("uptimeKuma", {}).get("uptimeKumaPassword")
             ):
-                async with aiohttp.ClientSession() as session:
-                    auth = aiohttp.BasicAuth(
-                        config.get("uptimeKuma", {}).get("uptimeKumaUsername", ""),
-                        config.get("uptimeKuma", {}).get("uptimeKumaPassword", ""),
-                    )
-                    url = f"https://{config['uptimeKuma']['uptimeKumaUrl']}/api/monitors"
-
-                    async with session.get(url, auth=auth) as response:
-                        if response.status == 200:
-                            data = await response.json()
-                            monitors = {}
-                            if isinstance(data, list):
-                                for monitor in data:
-                                    if "name" in monitor and "id" in monitor:
-                                        monitors[monitor["name"]] = monitor["id"]
-                            elif isinstance(data, dict):
-                                for monitor_id, monitor_data in data.items():
-                                    if isinstance(monitor_data, dict) and "name" in monitor_data:
-                                        monitors[monitor_data["name"]] = (
-                                            int(monitor_id) if monitor_id.isdigit() else monitor_id
-                                        )
-                            return monitors
-                        else:
-                            logger.warning(
-                                f"Erreur API REST pour récupération des moniteurs: {response.status}"
-                            )
+                session = await http_client.session()
+                auth = aiohttp.BasicAuth(
+                    config.get("uptimeKuma", {}).get("uptimeKumaUsername", ""),
+                    config.get("uptimeKuma", {}).get("uptimeKumaPassword", ""),
+                )
+                url = f"https://{config['uptimeKuma']['uptimeKumaUrl']}/api/monitors"
+                async with session.get(url, auth=auth) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        monitors = {}
+                        if isinstance(data, list):
+                            for monitor in data:
+                                if "name" in monitor and "id" in monitor:
+                                    monitors[monitor["name"]] = monitor["id"]
+                        elif isinstance(data, dict):
+                            for monitor_id, monitor_data in data.items():
+                                if isinstance(monitor_data, dict) and "name" in monitor_data:
+                                    monitors[monitor_data["name"]] = (
+                                        int(monitor_id) if monitor_id.isdigit() else monitor_id
+                                    )
+                        return monitors
+                    else:
+                        logger.warning(
+                            f"Erreur API REST pour récupération des moniteurs: {response.status}"
+                        )
 
         except Exception as error:
             logger.error(f"Erreur lors de la récupération des moniteurs: {error}")
@@ -99,23 +99,20 @@ class MonitorsMixin:
                 )
 
         try:
-            async with aiohttp.ClientSession() as session:
-                auth = aiohttp.BasicAuth(
-                    config.get("uptimeKuma", {}).get("uptimeKumaUsername", ""),
-                    config.get("uptimeKuma", {}).get("uptimeKumaPassword", ""),
-                )
-                url = f"https://{config['uptimeKuma']['uptimeKumaUrl']}/api/monitor/{sensor_id}"
-
-                async with session.get(url, auth=auth) as response:
-                    if response.status == 200:
-                        data = await response.json()
-                        self.monitors_cache[sensor_id_str] = data
-                        return data
-                    else:
-                        logger.warning(
-                            f"Erreur API REST pour capteur {sensor_id}: {response.status}"
-                        )
-                        return None
+            session = await http_client.session()
+            auth = aiohttp.BasicAuth(
+                config.get("uptimeKuma", {}).get("uptimeKumaUsername", ""),
+                config.get("uptimeKuma", {}).get("uptimeKumaPassword", ""),
+            )
+            url = f"https://{config['uptimeKuma']['uptimeKumaUrl']}/api/monitor/{sensor_id}"
+            async with session.get(url, auth=auth) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    self.monitors_cache[sensor_id_str] = data
+                    return data
+                else:
+                    logger.warning(f"Erreur API REST pour capteur {sensor_id}: {response.status}")
+                    return None
         except Exception as error:
             logger.error(
                 f"Erreur lors de la récupération du capteur {sensor_id} via API REST: {error}"

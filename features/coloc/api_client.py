@@ -5,10 +5,11 @@ import io
 import os
 from typing import Any
 
-from aiohttp import ClientError, ClientSession, ClientTimeout
+from aiohttp import ClientError, ClientSession
 from interactions import File
 
 from src.core import logging as logutil
+from src.core.http import http_client
 
 from .constants import (
     ZUNIVERS_CALENDAR_URL_TEMPLATE,
@@ -33,25 +34,14 @@ class ZuniversAPIError(Exception):
 class ZuniversAPIClient:
     """Client for interacting with the Zunivers API."""
 
-    DEFAULT_TIMEOUT = ClientTimeout(total=30)
     MAX_RETRIES = 3
     RETRY_DELAY = 1.0  # seconds
 
-    def __init__(self, session: ClientSession | None = None):
-        self._session = session
-        self._owns_session = session is None
-
     async def _get_session(self) -> ClientSession:
-        """Get or create an aiohttp session."""
-        if self._session is None or self._session.closed:
-            self._session = ClientSession(timeout=self.DEFAULT_TIMEOUT)
-            self._owns_session = True
-        return self._session
+        return await http_client.session()
 
     async def close(self) -> None:
-        """Close the session if we own it."""
-        if self._owns_session and self._session and not self._session.closed:
-            await self._session.close()
+        pass
 
     async def _request(
         self,
