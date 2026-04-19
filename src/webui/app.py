@@ -137,8 +137,7 @@ def create_app(bot=None, bot_loop=None) -> FastAPI:
         ext_dir = "extensions"
         if os.path.isdir(ext_dir):
             for fname in os.listdir(ext_dir):
-                if fname.endswith(".py") and not fname.startswith("_"):
-                    fpath = os.path.join(ext_dir, fname)
+                for fpath in _iter_extension_source_files(ext_dir, fname):
                     try:
                         with open(fpath, encoding="utf-8") as f:
                             content = f.read()
@@ -150,17 +149,43 @@ def create_app(bot=None, bot_loop=None) -> FastAPI:
                         pass
         return sorted(modules)
 
+    def _iter_extension_source_files(ext_dir: str, entry: str):
+        """Yield .py source files that belong to an extension entry.
+
+        An entry can be either ``<name>.py`` (single-file extension) or a
+        package directory containing ``__init__.py`` — in which case every
+        ``*.py`` file inside the package is yielded so ``load_config(...)``
+        calls in any submodule are picked up.
+        """
+        if entry.startswith("_") or entry.startswith("__"):
+            return
+        full = os.path.join(ext_dir, entry)
+        if entry.endswith(".py") and os.path.isfile(full):
+            yield full
+        elif os.path.isdir(full) and os.path.isfile(os.path.join(full, "__init__.py")):
+            for root, _, files in os.walk(full):
+                for name in files:
+                    if name.endswith(".py"):
+                        yield os.path.join(root, name)
+
     def _build_module_to_extension_map() -> dict[str, str]:
         """Build a mapping from module config name to extension module path.
-        E.g. {'moduleTricount': 'extensions.tricount', 'moduleTwitch': 'extensions.twitchextv2'}
+        E.g. {'moduleTricount': 'extensions.tricount', 'moduleTwitch': 'extensions.twitch'}
         """
         mapping = {}
         ext_dir = "extensions"
         if os.path.isdir(ext_dir):
             for fname in os.listdir(ext_dir):
-                if fname.endswith(".py") and not fname.startswith("_"):
+                if fname.startswith("_") or fname.startswith("__"):
+                    continue
+                full = os.path.join(ext_dir, fname)
+                if fname.endswith(".py") and os.path.isfile(full):
                     ext_module_path = f"extensions.{fname[:-3]}"
-                    fpath = os.path.join(ext_dir, fname)
+                elif os.path.isdir(full) and os.path.isfile(os.path.join(full, "__init__.py")):
+                    ext_module_path = f"extensions.{fname}"
+                else:
+                    continue
+                for fpath in _iter_extension_source_files(ext_dir, fname):
                     try:
                         with open(fpath, encoding="utf-8") as f:
                             content = f.read()

@@ -75,15 +75,20 @@ async def on_startup():
             logger.error(f"Failed to start Web UI: {e}")
 
 
-# get all python files in "extensions" folder
-# Extension enabled state is controlled via config["extensions"][ext_path] (bool).
-# Default: non-underscore-prefixed extensions are enabled, underscore-prefixed are disabled.
+# Discover extensions: either single-file modules (extensions/<name>.py) or
+# packages (extensions/<name>/__init__.py). Enabled state is controlled via
+# config["extensions"][ext_path] (bool). Default: non-underscore-prefixed
+# entries are enabled, underscore-prefixed are disabled.
 extension_config = config.get("extensions", {})
-extensions = [
-    f"extensions.{f[:-3]}"
-    for f in os.listdir("extensions")
-    if f.endswith(".py") and not f.startswith("__")
-]
+extensions = []
+for entry in os.listdir("extensions"):
+    if entry.startswith("__"):
+        continue
+    full_path = os.path.join("extensions", entry)
+    if entry.endswith(".py") and os.path.isfile(full_path):
+        extensions.append(f"extensions.{entry[:-3]}")
+    elif os.path.isdir(full_path) and os.path.isfile(os.path.join(full_path, "__init__.py")):
+        extensions.append(f"extensions.{entry}")
 for extension in extensions:
     short_name = extension[len("extensions.") :]
     default_enabled = not short_name.startswith("_")
