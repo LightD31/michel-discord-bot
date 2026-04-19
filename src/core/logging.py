@@ -5,8 +5,11 @@ module path stays available as a re-export shim.
 """
 
 import logging
+import os
 
-from config import DEBUG  # pylint: disable=import-error # root-level config.py
+# DEBUG flag, sourced from the ``MICHEL_DEBUG`` environment variable.
+# Phase 5: replaces the standalone ``config.py`` flag at the repo root.
+DEBUG = os.environ.get("MICHEL_DEBUG", "").lower() in ("1", "true", "yes", "on")
 
 
 class CustomFormatter(logging.Formatter):
