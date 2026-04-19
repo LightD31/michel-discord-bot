@@ -34,7 +34,7 @@ dependencies = [
     "openai",
     "mcstatus",
     "asyncssh",
-    "nbtlib==1.12.1",
+    "nbtlib==2.0.4",
     "pyfactorybridge",
     "pykuma",
     "python-socketio",
