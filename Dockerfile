@@ -9,12 +9,14 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 # Set the working directory
 WORKDIR /app
 
-# Copy and install requirements separately to leverage caching
-COPY ./requirements.txt /app/requirements.txt
+# Install dependencies from pyproject.toml. Copy only the metadata files so
+# this layer stays cached as long as the project metadata doesn't change.
+COPY pyproject.toml README.md LICENSE /app/
 RUN pip install --upgrade pip \
-    && pip install --upgrade -r /app/requirements.txt
+    && pip install .
 
-# Copy the rest of the application code
+# Copy the rest of the application code (runtime modules live under /app and
+# are picked up via PYTHONPATH — they are not installed into site-packages).
 COPY ./ /app/
 
 # Healthcheck: verify the bot heartbeat file was written within the last 60 seconds
