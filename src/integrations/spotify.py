@@ -14,7 +14,7 @@ from src.core import logging as logutil
 from src.core.config import load_config
 
 logger = logutil.init_logger(os.path.basename(__file__))
-config, _, _ = load_config()
+config, _module_cfg, _enabled = load_config()
 
 
 def spotify_auth() -> spotipy.Spotify:

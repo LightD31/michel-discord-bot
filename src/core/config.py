@@ -16,7 +16,7 @@ import tempfile
 import threading
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Optional, cast
 
 from src.core import logging as _logging
 
@@ -32,11 +32,11 @@ CONFIG_PATH = os.path.join("config", "config.json")
 _write_lock = threading.Lock()
 
 
-def _load_config_file() -> dict:
+def _load_config_file() -> dict[str, Any]:
     """Read and parse ``config/config.json``. Returns ``{}`` on failure."""
     try:
         with open(CONFIG_PATH, encoding="utf-8") as file:
-            return json.load(file)
+            return cast(dict[str, Any], json.load(file))
     except FileNotFoundError:
         logger.error("Configuration file not found: %s", CONFIG_PATH)
         return {}
@@ -45,7 +45,7 @@ def _load_config_file() -> dict:
         return {}
 
 
-def _atomic_write(data: dict) -> None:
+def _atomic_write(data: dict[str, Any]) -> None:
     """Serialize *data* to ``CONFIG_PATH`` atomically.
 
     Writes to a tempfile in the same directory (so ``os.replace`` stays on the
@@ -102,18 +102,21 @@ class ConfigStore:
     """
 
     _instance: Optional["ConfigStore"] = None
+    _data: dict[str, Any] | None
+    _subscribers: list[Callable[[dict[str, Any]], Any]]
+    _state_lock: threading.Lock
 
     def __new__(cls) -> "ConfigStore":
         if cls._instance is None:
             cls._instance = super().__new__(cls)
-            cls._instance._data = None  # type: ignore[attr-defined]
-            cls._instance._subscribers = []  # type: ignore[attr-defined]
-            cls._instance._state_lock = threading.Lock()  # type: ignore[attr-defined]
+            cls._instance._data = None
+            cls._instance._subscribers = []
+            cls._instance._state_lock = threading.Lock()
         return cls._instance
 
     # --- Read ---------------------------------------------------------
 
-    def get(self) -> dict:
+    def get(self) -> dict[str, Any]:
         """Return the cached config dict, loading it from disk on first call."""
         with self._state_lock:
             if self._data is None:
@@ -122,19 +125,19 @@ class ConfigStore:
 
     # --- Write / refresh ---------------------------------------------
 
-    def save_full(self, data: dict) -> None:
+    def save_full(self, data: dict[str, Any]) -> None:
         """Atomically persist *data* and notify subscribers."""
         with _write_lock:
             _atomic_write(data)
         self._update_and_notify(data)
 
-    def reload(self) -> dict:
+    def reload(self) -> dict[str, Any]:
         """Re-read ``config/config.json`` from disk and notify subscribers."""
         data = _load_config_file()
         self._update_and_notify(data)
         return data
 
-    def _update_and_notify(self, data: dict) -> None:
+    def _update_and_notify(self, data: dict[str, Any]) -> None:
         """Update the cache and fire subscribers.
 
         Internal — legacy ``save_config`` / ``save_module_field`` call this
@@ -147,7 +150,7 @@ class ConfigStore:
 
     # --- Subscribers --------------------------------------------------
 
-    def subscribe(self, callback: Callable[[dict], Any]) -> Callable[[], None]:
+    def subscribe(self, callback: Callable[[dict[str, Any]], Any]) -> Callable[[], None]:
         """Register *callback* to be invoked after every save/reload.
 
         Returns a zero-arg ``unsubscribe()`` helper.
@@ -161,7 +164,7 @@ class ConfigStore:
 
         return unsubscribe
 
-    def _notify(self, data: dict) -> None:
+    def _notify(self, data: dict[str, Any]) -> None:
         with self._state_lock:
             listeners = list(self._subscribers)
         for cb in listeners:
@@ -180,12 +183,14 @@ config_store = ConfigStore()
 # ---------------------------------------------------------------------------
 
 
-def load_full_config() -> dict:
+def load_full_config() -> dict[str, Any]:
     """Load the complete configuration (fresh read every call)."""
     return _load_config_file()
 
 
-def load_config(module_name: str | None = None) -> tuple[dict, dict, list[str]]:
+def load_config(
+    module_name: str | None = None,
+) -> tuple[dict[str, Any], dict[str, Any], list[str]]:
     """Load the configuration for a specific module.
 
     Returns:
@@ -223,7 +228,10 @@ def load_config(module_name: str | None = None) -> tuple[dict, dict, list[str]]:
 
 
 def save_config(
-    module_name: str, config: dict, module_config: dict, enabled_servers: list[str]
+    module_name: str,
+    config: dict[str, Any],
+    module_config: dict[str, Any],
+    enabled_servers: list[str],
 ) -> None:
     """Save the configuration for a specific module."""
     with _write_lock:
@@ -244,13 +252,14 @@ def save_config(
     )
 
 
-def load_discord2name(guild_id: str | int) -> dict:
+def load_discord2name(guild_id: str | int) -> dict[str, Any]:
     """Load the discord2name mapping for a specific guild."""
     data = load_full_config()
-    return data.get("servers", {}).get(str(guild_id), {}).get("discord2name", {})
+    result: dict[str, Any] = data.get("servers", {}).get(str(guild_id), {}).get("discord2name", {})
+    return result
 
 
-def save_module_field(module_name: str, guild_id: str | int, field: str, value) -> None:
+def save_module_field(module_name: str, guild_id: str | int, field: str, value: Any) -> None:
     """Update a single field inside ``servers.<guild_id>.<module_name>``.
 
     Creates intermediate dicts if missing.

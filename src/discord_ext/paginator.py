@@ -41,7 +41,7 @@ class CustomPaginator(paginators.Paginator):
             case "select":
                 self.page_index = int(ctx.values[0])
             case "callback":
-                if self.callback:
+                if self.callback is not None:
                     return await self.callback(ctx)
 
         await ctx.edit_origin(**self.to_dict())
@@ -67,7 +67,7 @@ async def format_poll(event: MessageReactionAdd | MessageReactionRemove):
     """
     message = event.message
     embed = message.embeds[0]
-    options = embed.description.split("\n\n")
+    options = (embed.description or "").split("\n\n")
     reactions = message.reactions
 
     reaction_users = defaultdict(list)

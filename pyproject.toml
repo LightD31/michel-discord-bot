@@ -132,9 +132,15 @@ exclude = [
     "^logs/",
 ]
 
+# `strict = true` inside [[tool.mypy.overrides]] expands at config-load time
+# and its flags leak globally instead of scoping to the matched module
+# (known mypy quirk). Listing the flags explicitly scopes them correctly.
 [[tool.mypy.overrides]]
 module = "src.core.*"
-strict = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+disallow_untyped_calls = true
+warn_return_any = true
 
 # ─── pytest ────────────────────────────────────────────────────────────
 [tool.pytest.ini_options]

@@ -54,7 +54,7 @@ class CustomFormatter(logging.Formatter):
         }
     )
 
-    def format(self, record):
+    def format(self, record: logging.LogRecord) -> str:
         log_fmt = self.FORMATS.get(record.levelno)
         formatter = logging.Formatter(log_fmt, datefmt="%Y-%m-%d %H:%M:%S")
         return formatter.format(record)
@@ -97,15 +97,15 @@ def _configure_logger(name: str) -> logging.Logger:
     return lgr
 
 
-def overwrite_ipy_loggers():
+def overwrite_ipy_loggers() -> None:
+    targets = {"mixin", "dispatch", "http", "gateway", "client", "context"}
     for k, v in logging.Logger.manager.loggerDict.items():
-        print(k, v)
-        if k in ["mixin", "dispatch", "http", "gateway", "client", "context"]:
+        if k in targets and isinstance(v, logging.Logger):
             for h in v.handlers:
-                h.setFormatter(CustomFormatter)
+                h.setFormatter(CustomFormatter())
 
 
-def get_logger(name):
+def get_logger(name: str) -> logging.Logger:
     """Return a configured logger by name.
 
     Useful for modules that have already initialized a logger, e.g. the
@@ -114,6 +114,6 @@ def get_logger(name):
     return _configure_logger(name)
 
 
-def init_logger(name="root"):
+def init_logger(name: str = "root") -> logging.Logger:
     """Create a designated logger for separate modules."""
     return _configure_logger(name)

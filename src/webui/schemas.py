@@ -141,7 +141,7 @@ def _fields_of(cls: type[BaseModel]) -> dict[str, dict[str, Any]]:
     for name, info in cls.model_fields.items():
         extra = info.json_schema_extra
         meta = extra.get("ui") if isinstance(extra, dict) else None
-        if meta:
+        if isinstance(meta, dict):
             out[name] = dict(meta)
     return out
 

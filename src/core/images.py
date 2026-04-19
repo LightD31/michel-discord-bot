@@ -34,8 +34,8 @@ def create_dynamic_image(
     bbox = draw.textbbox((0, 0), text, font=font)
     text_width, text_height = bbox[2] - bbox[0], bbox[3] - bbox[1]
 
-    image_width = text_width + 2 * image_padding
-    image_height = text_height + 2 * image_padding
+    image_width = int(text_width + 2 * image_padding)
+    image_height = int(text_height + 2 * image_padding)
     image = Image.new("RGB", (image_width, image_height), color=background_color)
     draw = ImageDraw.Draw(image)
 

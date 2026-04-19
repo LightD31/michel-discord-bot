@@ -133,7 +133,8 @@ async def fetch_or_create_persistent_message(
 
     if message_id:
         try:
-            existing = await channel.fetch_message(int(message_id))
+            # hasattr check above narrows this at runtime; mypy can't see it.
+            existing = await channel.fetch_message(int(message_id))  # type: ignore[union-attr]
             if existing is not None:
                 return existing
         except Exception as e:  # noqa: BLE001 — log and recreate

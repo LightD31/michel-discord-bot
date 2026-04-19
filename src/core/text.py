@@ -10,6 +10,7 @@ from __future__ import annotations
 import random
 import re
 import string
+from typing import Any
 
 import emoji
 
@@ -18,7 +19,7 @@ import emoji
 # ---------------------------------------------------------------------------
 
 
-def milliseconds_to_string(duration_ms) -> str:
+def milliseconds_to_string(duration_ms: float | str) -> str:
     """Convert milliseconds to a French human-readable duration string."""
     duration_ms = int(duration_ms)
     seconds = duration_ms / 1000
@@ -34,7 +35,7 @@ def milliseconds_to_string(duration_ms) -> str:
     )
 
 
-def format_number(num) -> str:
+def format_number(num: float) -> str:
     """Format a number with a k suffix for thousands."""
     if num >= 1000:
         return f"{num / 1000:.1f}k"
@@ -65,7 +66,7 @@ def remove_punctuation(input_string: str) -> str:
     return input_string.translate(translator).strip()
 
 
-def search_dict_by_sentence(my_dict: dict, sentence: str):
+def search_dict_by_sentence(my_dict: dict[Any, Any], sentence: str) -> Any:
     """Return the first value whose key (or any tuple-key element) matches a word in *sentence*."""
     words = set(sentence.lower().split())
     for key, value in my_dict.items():
@@ -92,11 +93,11 @@ def extract_answer(text: str) -> str | None:
 
 
 def pick_weighted_message(
-    config: dict,
+    config: dict[str, Any],
     list_key: str,
     weights_key: str,
     default: str,
-    **format_kwargs,
+    **format_kwargs: Any,
 ) -> str:
     """Pick a random message from ``config[list_key]`` using weights, then format it.
 
@@ -111,7 +112,7 @@ def pick_weighted_message(
     """
     messages = config.get(list_key, [default])
     weights = config.get(weights_key, [1] * len(messages))
-    chosen = random.choices(messages, weights=weights)[0]
+    chosen: str = random.choices(messages, weights=weights)[0]
     return chosen.format(**format_kwargs)
 
 

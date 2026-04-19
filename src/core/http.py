@@ -48,12 +48,14 @@ class HttpClient:
     """
 
     _instance: HttpClient | None = None
+    _session: ClientSession | None
+    _lock: asyncio.Lock
 
     def __new__(cls) -> HttpClient:
         if cls._instance is None:
             cls._instance = super().__new__(cls)
-            cls._instance._session = None  # type: ignore[attr-defined]
-            cls._instance._lock = asyncio.Lock()  # type: ignore[attr-defined]
+            cls._instance._session = None
+            cls._instance._lock = asyncio.Lock()
         return cls._instance
 
     async def session(self) -> ClientSession:
@@ -83,8 +85,8 @@ http_client = HttpClient()
 async def fetch(
     url: str,
     return_type: str = "text",
-    headers: dict | None = None,
-    params: dict | None = None,
+    headers: dict[str, str] | None = None,
+    params: dict[str, Any] | None = None,
     retries: int = 3,
     pause: int = 1,
 ) -> Any:
