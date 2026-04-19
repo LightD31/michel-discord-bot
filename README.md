@@ -49,17 +49,6 @@ A modular, multi-guild Discord bot built with **interactions.py**. Michel ships 
 | **Admin** | Owner/admin utilities: `/ping`, `/delete`, `/send`, and the global embed manager. |
 | **User Info** | Per-user profile lookup and shared user stats. |
 
-### Archived / Disabled Extensions
-
-Extensions can be disabled via the Web UI or by setting `config["extensions"]["<extension>"]` to `false`. Currently archived extensions include:
-
-- **Minecraft** — Server status monitoring, player stats via SFTP/RCON.
-- **Olympics** — Medal tracking for the Milan-Cortina 2026 Winter Olympics.
-- **Satisfactory** — Game server status via pyfactorybridge.
-- **Speedons** — Speedrun charity marathon tracker.
-- **Streamlabs Charity** — Charity campaign amount & streamer status tracker.
-- **Zevent** — Zevent 2025 charity marathon tracker (amount raised, streamer status, milestones).
-
 ---
 
 ## Architecture
