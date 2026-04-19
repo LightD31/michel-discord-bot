@@ -10,7 +10,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  lint-type-test:
+  lint:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -31,17 +31,55 @@ jobs:
       - name: Ruff format (check only)
         run: ruff format --check .
 
+  typecheck:
+    runs-on: ubuntu-latest
+    # Soft-fail until the bulk of src/ is typed.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install project + dev extras
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
       - name: Mypy (src/core strict; rest lenient)
-        # Soft-fail until the bulk of src/ is typed.
-        continue-on-error: true
         run: mypy src
 
-      - name: Pytest
-        # Soft-fail until the first real tests land.
-        continue-on-error: true
-        run: pytest
+  test:
+    runs-on: ubuntu-latest
+    # Soft-fail until the first real tests land.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
 
-  secret-scan:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install project + dev extras
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Pytest with coverage
+        run: pytest --cov=src --cov-report=term --cov-report=xml
+
+      - name: Upload coverage artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-xml
+          path: coverage.xml
+          if-no-files-found: ignore
+
+  secrets:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -55,7 +93,8 @@ jobs:
       - name: Install detect-secrets
         run: pip install "detect-secrets>=1.5"
 
-      - name: Scan staged diff against baseline
-        run: |
-          detect-secrets scan --baseline .secrets.baseline
-          detect-secrets audit --report .secrets.baseline || true
+      - name: Scan tracked files against baseline
+        # `detect-secrets-hook` is the CI-friendly entry point: it compares
+        # findings against the baseline and exits non-zero on new secrets.
+        # `scan --baseline` only rewrites the baseline and cannot fail a build.
+        run: git ls-files -z | xargs -0 detect-secrets-hook --baseline .secrets.baseline

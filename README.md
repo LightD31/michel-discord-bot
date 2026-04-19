@@ -3,6 +3,8 @@
 [![License](https://img.shields.io/badge/license-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 [![Python](https://img.shields.io/badge/python-3.12-brightgreen.svg)](https://www.python.org/)
 [![interactions.py](https://img.shields.io/badge/interactions.py-latest-blueviolet.svg)](https://github.com/interactions-py/interactions.py)
+[![CI](https://github.com/LightD31/michel-discord-bot/actions/workflows/ci.yml/badge.svg)](https://github.com/LightD31/michel-discord-bot/actions/workflows/ci.yml)
+[![Docker](https://github.com/LightD31/michel-discord-bot/actions/workflows/docker.yml/badge.svg)](https://github.com/LightD31/michel-discord-bot/actions/workflows/docker.yml)
 
 A modular, multi-guild Discord bot built with **interactions.py**. Michel ships with a plugin-based architecture where each feature is an independently loadable extension, a per-guild MongoDB backend, and an optional FastAPI web dashboard for live configuration.
 
