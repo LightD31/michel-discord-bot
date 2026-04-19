@@ -9,7 +9,6 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from typing import Optional
 
 from interactions import ComponentContext, Message
 from interactions.api.events import MessageReactionAdd, MessageReactionRemove
@@ -17,17 +16,15 @@ from interactions.ext import paginators
 
 from src.core.config import load_discord2name
 
-
 # ---------------------------------------------------------------------------
 # Custom paginator
 # ---------------------------------------------------------------------------
 
+
 class CustomPaginator(paginators.Paginator):
     """Custom paginator with overridden button handling."""
 
-    async def _on_button(
-        self, ctx: ComponentContext, *args, **kwargs
-    ) -> Optional[Message]:
+    async def _on_button(self, ctx: ComponentContext, *args, **kwargs) -> Message | None:
         if self._timeout_task:
             self._timeout_task.ping.set()
         match ctx.custom_id.split("|")[1]:
@@ -87,8 +84,7 @@ async def format_poll(event: MessageReactionAdd | MessageReactionRemove):
         i for i, count in reaction_counts.items() if count == max_reaction_count
     ]
     participant_count = len(
-        {user.id for users in reaction_users.values() for user in users}
-        - {message.author.id}
+        {user.id for users in reaction_users.values() for user in users} - {message.author.id}
     )
 
     description_list = []

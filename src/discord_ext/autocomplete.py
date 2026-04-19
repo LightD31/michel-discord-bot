@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Callable
+from collections.abc import Callable
 
 from interactions import AutocompleteContext
 
@@ -36,9 +36,7 @@ async def guild_group_autocomplete(
     groups = await col_func(ctx.guild.id).find(query).to_list(length=None)
     input_text = ctx.input_text.lower()
     filtered = [
-        {"name": g["name"], "value": g["name"]}
-        for g in groups
-        if input_text in g["name"].lower()
+        {"name": g["name"], "value": g["name"]} for g in groups if input_text in g["name"].lower()
     ]
     await ctx.send(choices=filtered[:25])
 

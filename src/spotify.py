@@ -2,22 +2,25 @@
 This module provides functionality for authenticating with the Spotify API and creating embed messages for Discord bots.
 """
 
+import io
 import os
+import re
 from datetime import datetime
 from enum import Enum
-import io
+
 import aiohttp
-import re
 import interactions
 import spotipy
+
 from src import logutil
-from src.helpers import Colors
 from src.config_manager import load_config
+from src.helpers import Colors
 
 logger = logutil.init_logger(os.path.basename(__file__))
-config,_,_ = load_config()
+config, _, _ = load_config()
 
 SPOTIFY_ICON_URL = "https://upload.wikimedia.org/wikipedia/commons/thumb/1/19/Spotify_logo_without_text.svg/200px-Spotify_logo_without_text.svg.png"
+
 
 def spotify_auth():
     """
@@ -49,9 +52,7 @@ def spotify_auth():
             logger.warning("Cached token has expired or is invalid.")
         # Generate the authorization URL and prompt the user to visit it
         auth_url = sp_oauth.get_authorize_url()
-        logger.warning(
-            "Please visit this URL to authorize the application: %s", auth_url
-        )
+        logger.warning("Please visit this URL to authorize the application: %s", auth_url)
         # print(f"Please visit this URL to authorize the application: {auth_url}")
 
         # # Wait for the user to input the response URL after authenticating
@@ -76,6 +77,7 @@ class EmbedType(Enum):
     VOTE_LOSE = "vote_lose"
     INFOS = "infos"
     VOTE_ADD = "vote_add"
+
 
 async def embed_song(
     song: dict,
@@ -102,140 +104,127 @@ async def embed_song(
     """
     if not person:
         person = song.get("added_by", "")
-        
+
     embed_settings = {
         EmbedType.ADD: {
             "title": "Chanson ajoutée à la playlist",
             "footer": f"Ajoutée par {person}",
-            "color": Colors.SPOTIFY
+            "color": Colors.SPOTIFY,
         },
         EmbedType.DELETE: {
             "title": "Chanson supprimée de la playlist",
             "footer": "",
-            "color": interactions.MaterialColors.RED
+            "color": interactions.MaterialColors.RED,
         },
         EmbedType.VOTE: {
             "title": f"Vote ouvert jusqu'à {interactions.utils.timestamp_converter(time).format(interactions.TimestampStyles.RelativeTime)}",
             "footer": "Nettoyeur de playlist",
-            "color": interactions.MaterialColors.ORANGE
+            "color": interactions.MaterialColors.ORANGE,
         },
         EmbedType.VOTE_WIN: {
             "title": "Résultat du vote",
             "footer": "",
-            "color": interactions.MaterialColors.LIME
+            "color": interactions.MaterialColors.LIME,
         },
         EmbedType.VOTE_LOSE: {
             "title": "Résultat du vote",
             "footer": "",
-            "color": interactions.MaterialColors.DEEP_ORANGE
+            "color": interactions.MaterialColors.DEEP_ORANGE,
         },
         EmbedType.INFOS: {
             "title": "Informations sur la chanson",
             "footer": "",
-            "color": Colors.SPOTIFY
+            "color": Colors.SPOTIFY,
         },
         EmbedType.VOTE_ADD: {
             "title": f"Vote ouvert jusqu'à {interactions.utils.timestamp_converter(time).format(interactions.TimestampStyles.RelativeTime)}",
             "footer": "",
-            "color": interactions.MaterialColors.ORANGE
-        }
+            "color": interactions.MaterialColors.ORANGE,
+        },
     }
 
-    settings = embed_settings.get(embedtype, None)
+    settings = embed_settings.get(embedtype)
     if not settings:
         raise ValueError("Invalid embed type")
 
     embed = interactions.Embed(title=settings["title"], color=settings["color"])
     embed.set_thumbnail(url=track["album"]["images"][0]["url"])
-    
+
     # Obtenir l'URL de prévisualisation
     track_id = track["id"]
     embed_url = f"https://open.spotify.com/embed/track/{track_id}"
-    async with aiohttp.ClientSession() as session:
-        async with session.get(embed_url) as response:
-            content = await response.text()
-    preview_match = re.search(r'\"audioPreview\":{\"url\":\"(.*?)\"}', content)
-    
+    async with aiohttp.ClientSession() as session, session.get(embed_url) as response:
+        content = await response.text()
+    preview_match = re.search(r"\"audioPreview\":{\"url\":\"(.*?)\"}", content)
+
     preview_url = preview_match.group(1) if preview_match else None
     preview_text = f"\n([Écouter un extrait]({preview_url}))" if preview_url else ""
-    
+
     # Télécharger le fichier MP3 si disponible
     preview_file = None
     if preview_url:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(preview_url) as resp:
-                if resp.status == 200:
-                    audio_data = await resp.read()
-                    preview_file = interactions.File(
-                        file_name=f"preview.mp3",
-                        file=io.BytesIO(audio_data)
-                    )
-    
+        async with aiohttp.ClientSession() as session, session.get(preview_url) as resp:
+            if resp.status == 200:
+                audio_data = await resp.read()
+                preview_file = interactions.File(
+                    file_name="preview.mp3", file=io.BytesIO(audio_data)
+                )
+
     embed.add_field(
         name="Titre",
         value=f"[{track['name']}]({track['external_urls']['spotify']}){preview_text}",
-        inline=True
+        inline=True,
     )
-    
+
     embed.add_field(
         name="Artiste",
-        value=", ".join(f"[{artist['name']}]({artist['external_urls']['spotify']})" for artist in track["artists"]),
-        inline=True
+        value=", ".join(
+            f"[{artist['name']}]({artist['external_urls']['spotify']})"
+            for artist in track["artists"]
+        ),
+        inline=True,
     )
-    
+
     embed.add_field(
         name="Album",
         value=f"[{track['album']['name']}]({track['album']['external_urls']['spotify']})",
-        inline=True
+        inline=True,
     )
 
     if embedtype not in {EmbedType.ADD, EmbedType.VOTE_ADD}:
         embed.add_field(
             name="\u200b",
             value=f"Initialement ajoutée par <@{person}>{' (ou pas)' if person == '108967780224614400' else ''}",
-            inline=False
+            inline=False,
         )
 
     if embedtype == EmbedType.VOTE_ADD:
-        embed.add_field(
-            name="\u200b",
-            value=f"Proposée par <@{person}>",
-            inline=False
-        )
-        embed.add_field(
-            name="Votes",
-            value=f"1 vote (<@{person}>)",
-            inline=False
-        )
+        embed.add_field(name="\u200b", value=f"Proposée par <@{person}>", inline=False)
+        embed.add_field(name="Votes", value=f"1 vote (<@{person}>)", inline=False)
 
     if embedtype == EmbedType.VOTE:
+        embed.add_field(name="Votes", value="Pas encore de votes", inline=False)
         embed.add_field(
-            name="Votes",
-            value="Pas encore de votes",
-            inline=False
+            name="\u200b", value="Dashboard votes: https://drndvs.link/StatsPlaylist", inline=False
         )
-        embed.add_field(
-            name="\u200b", 
-            value="Dashboard votes: https://drndvs.link/StatsPlaylist",
-            inline=False
-        )
-        
+
     if embedtype in {EmbedType.ADD, EmbedType.DELETE}:
         embed.add_field(
             name="\u200b",
             value="[Ecouter la playlist](https://drndvs.link/LaPlaylistDeLaGuilde)",
-            inline=False
+            inline=False,
         )
         embed.add_field(
             name="\u200b",
             value="[Ecouter les récents](https://drndvs.link/LesDecouvertesDeLaGuilde)",
-            inline=True
+            inline=True,
         )
 
     embed.set_footer(text=settings["footer"], icon_url=icon)
     embed.timestamp = time
-    
+
     return embed, preview_file
+
 
 async def embed_message_vote(
     keep=0,
@@ -275,15 +264,15 @@ async def embed_message_vote(
         inline=True,
     )
     embed.add_field(name="\u200b", value=f"Votes de {', '.join(users)}")
-    embed.add_field(
-        name="\u200b", value="Dashboard votes: https://drndvs.link/StatsPlaylist"
-    )
+    embed.add_field(name="\u200b", value="Dashboard votes: https://drndvs.link/StatsPlaylist")
     embed.set_footer(
         text="Nettoyeur de Playlist",
         icon_url=SPOTIFY_ICON_URL,
     )
     embed.timestamp = interactions.utils.timestamp_converter(datetime.now())
     return embed
+
+
 async def embed_message_vote_add(
     yes=0,
     no=0,
@@ -323,6 +312,7 @@ async def embed_message_vote_add(
     embed.timestamp = interactions.utils.timestamp_converter(datetime.now())
     return embed
 
+
 def count_votes(votes, discord2name):
     """
     Counts the votes and returns a dictionary with the vote counts.
@@ -340,7 +330,7 @@ def count_votes(votes, discord2name):
             vote_counts[vote] += 1
         else:
             vote_counts[vote] = 1
-    for user in votes.keys():
+    for user in votes:
         users.append(discord2name.get(user, user))
     conserver = vote_counts.get("conserver", 0)
     supprimer = vote_counts.get("supprimer", 0)
@@ -364,7 +354,9 @@ def spotifymongoformat(track, user=None, spotify2discord=None):
         song = {
             "_id": str(track["track"].get("id", None)),
             "added_by": str(
-                user if user else spotify2discord.get(track["added_by"]["id"], track["added_by"]["id"])
+                user
+                if user
+                else spotify2discord.get(track["added_by"]["id"], track["added_by"]["id"])
             ),
             "added_at": track.get("added_at", interactions.Timestamp.utcnow()),
             "duration_ms": track["track"]["duration_ms"],
@@ -376,7 +368,9 @@ def spotifymongoformat(track, user=None, spotify2discord=None):
         song = {
             "_id": str(track.get("id", None)),
             "added_by": str(
-                user if user else spotify2discord.get(track["added_by"]["id"], track["added_by"]["id"])
+                user
+                if user
+                else spotify2discord.get(track["added_by"]["id"], track["added_by"]["id"])
             ),
             "added_at": track.get("added_at", interactions.Timestamp.utcnow()),
             "duration_ms": track["duration_ms"],

@@ -45,13 +45,9 @@ class CustomFormatter(logging.Formatter):
         else {
             logging.DEBUG: reset,
             logging.INFO: grey + "[%(asctime)s][%(levelname)7s] %(message)s" + reset,
-            logging.WARNING: yellow
-            + "[%(asctime)s][%(levelname)7s] %(message)s"
-            + reset,
+            logging.WARNING: yellow + "[%(asctime)s][%(levelname)7s] %(message)s" + reset,
             logging.ERROR: red + "[%(asctime)s][%(levelname)7s] %(message)s" + reset,
-            logging.CRITICAL: bold_red
-            + "[%(asctime)s][%(levelname)7s] %(message)s"
-            + reset,
+            logging.CRITICAL: bold_red + "[%(asctime)s][%(levelname)7s] %(message)s" + reset,
         }
     )
 

@@ -19,21 +19,21 @@ from interactions import (
     Client,
     Embed,
     Extension,
+    OptionType,
     OrTrigger,
+    Permissions,
     SlashContext,
     Task,
     TimeTrigger,
     listen,
     slash_command,
     slash_option,
-    OptionType,
-    Permissions,
 )
 
 from src import logutil
+from src.config_manager import load_config
 from src.helpers import Colors
 from src.mongodb import mongo_manager
-from src.config_manager import load_config
 
 logger = logutil.init_logger(os.path.basename(__file__))
 
@@ -114,9 +114,7 @@ class BackupExtension(Extension):
         min_value=1,
         max_value=30,
     )
-    async def backup_command(
-        self, ctx: SlashContext, max_backups: int | None = None
-    ) -> None:
+    async def backup_command(self, ctx: SlashContext, max_backups: int | None = None) -> None:
         """Slash command to trigger a backup manually (admin only)."""
         self._refresh_config()
         effective_max = max_backups if max_backups is not None else self.max_backups
@@ -135,9 +133,7 @@ class BackupExtension(Extension):
                 color=Colors.BACKUP_SUCCESS,
             )
             embed.add_field(name="Durée", value=f"{elapsed:.1f}s", inline=True)
-            embed.add_field(
-                name="Rétention", value=f"{effective_max} sauvegardes", inline=True
-            )
+            embed.add_field(name="Rétention", value=f"{effective_max} sauvegardes", inline=True)
             await ctx.send(embed=embed)
         except Exception as e:
             logger.error("Manual backup failed: %s", e, exc_info=True)

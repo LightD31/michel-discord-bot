@@ -7,38 +7,43 @@ import asyncio
 import json
 import os
 import secrets
-from typing import Optional
 
-from fastapi import FastAPI, Request, Response, HTTPException
-from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
-from sse_starlette.sse import EventSourceResponse
+from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from pydantic import BaseModel
+from sse_starlette.sse import EventSourceResponse
 
 from src import logutil
 from src.config_manager import load_config as bot_load_config
 from src.webui.auth import DiscordOAuth, Session
 from src.webui.log_handler import WebUILogHandler, install_log_handler
-from src.webui.schemas import MODULE_SCHEMAS, GLOBAL_CONFIG_SCHEMAS
+from src.webui.schemas import GLOBAL_CONFIG_SCHEMAS, MODULE_SCHEMAS
 
 logger = logutil.init_logger("webui.app")
 
 # ── Pydantic models ──────────────────────────────────────────────────
 
+
 class ModuleToggle(BaseModel):
     module: str
     enabled: bool
 
+
 class ConfigUpdate(BaseModel):
     config: dict
+
 
 class GlobalConfigUpdate(BaseModel):
     section: str
     config: dict
 
+
 class ExtensionToggle(BaseModel):
     enabled: bool
 
+
 # ── App factory ──────────────────────────────────────────────────────
+
 
 def create_app(bot=None, bot_loop=None) -> FastAPI:
     """
@@ -51,10 +56,10 @@ def create_app(bot=None, bot_loop=None) -> FastAPI:
     """
     # Load bot config to get OAuth credentials
     config, _, _ = bot_load_config()
-    
+
     webui_config = config.get("webui", {})
     discord_config = config.get("discord", {})
-    
+
     client_id = webui_config.get("clientId") or discord_config.get("clientId", "")
     client_secret = webui_config.get("clientSecret", "")
     base_url = webui_config.get("baseUrl", "http://localhost:8080")
@@ -83,6 +88,7 @@ def create_app(bot=None, bot_loop=None) -> FastAPI:
     def _get_full_config() -> dict:
         """Load the full config from disk."""
         from src.config_manager import load_full_config
+
         return load_full_config() or {"config": {}, "servers": {}}
 
     def _save_config(data: dict):
@@ -91,7 +97,7 @@ def create_app(bot=None, bot_loop=None) -> FastAPI:
         with open(CONFIG_PATH, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=4, ensure_ascii=False)
 
-    def _get_session(request: Request) -> Optional[Session]:
+    def _get_session(request: Request) -> Session | None:
         token = request.cookies.get(COOKIE_NAME)
         if not token:
             return None
@@ -134,9 +140,10 @@ def create_app(bot=None, bot_loop=None) -> FastAPI:
                 if fname.endswith(".py") and not fname.startswith("_"):
                     fpath = os.path.join(ext_dir, fname)
                     try:
-                        with open(fpath, "r", encoding="utf-8") as f:
+                        with open(fpath, encoding="utf-8") as f:
                             content = f.read()
                         import re
+
                         for match in re.finditer(r'load_config\(["\']([\w]+)["\']\)', content):
                             modules.add(match.group(1))
                     except Exception:
@@ -155,9 +162,10 @@ def create_app(bot=None, bot_loop=None) -> FastAPI:
                     ext_module_path = f"extensions.{fname[:-3]}"
                     fpath = os.path.join(ext_dir, fname)
                     try:
-                        with open(fpath, "r", encoding="utf-8") as f:
+                        with open(fpath, encoding="utf-8") as f:
                             content = f.read()
                         import re
+
                         for match in re.finditer(r'load_config\(["\']([\w]+)["\']\)', content):
                             mod_name = match.group(1)
                             mapping[mod_name] = ext_module_path
@@ -177,7 +185,11 @@ def create_app(bot=None, bot_loop=None) -> FastAPI:
         mapping = _build_module_to_extension_map()
         ext_path = mapping.get(module_name)
         if not ext_path:
-            return {"reloaded": None, "error": f"Aucune extension trouvée pour {module_name}", "skipped": False}
+            return {
+                "reloaded": None,
+                "error": f"Aucune extension trouvée pour {module_name}",
+                "skipped": False,
+            }
         try:
             bot.reload_extension(ext_path)
             logger.info(f"Auto-reloaded {ext_path} after config change for {module_name}")
@@ -255,15 +267,17 @@ def create_app(bot=None, bot_loop=None) -> FastAPI:
             if not bot_guild_ids or g["id"] in bot_guild_ids
         ]
 
-        return JSONResponse({
-            "authenticated": True,
-            "user_id": session.user_id,
-            "username": session.username,
-            "avatar": session.avatar,
-            "guilds": guilds,
-            "is_admin": _is_admin_user(session),
-            "is_developer": oauth.is_developer(session),
-        })
+        return JSONResponse(
+            {
+                "authenticated": True,
+                "user_id": session.user_id,
+                "username": session.username,
+                "avatar": session.avatar,
+                "guilds": guilds,
+                "is_admin": _is_admin_user(session),
+                "is_developer": oauth.is_developer(session),
+            }
+        )
 
     # ── Config API routes ────────────────────────────────────────────
 
@@ -333,7 +347,9 @@ def create_app(bot=None, bot_loop=None) -> FastAPI:
                 continue
             guild_info = user_guilds.get(str(server_id), {})
             result[server_id] = {
-                "name": guild_info.get("name", server_config.get("serverName", f"Serveur {server_id}")),
+                "name": guild_info.get(
+                    "name", server_config.get("serverName", f"Serveur {server_id}")
+                ),
                 "icon": guild_info.get("icon"),
                 "config": server_config,
             }
@@ -358,10 +374,11 @@ def create_app(bot=None, bot_loop=None) -> FastAPI:
 
         async def _fetch():
             from interactions import ChannelType
+
             try:
                 guild = await bot.fetch_guild(int(server_id))
             except Exception as e:
-                raise HTTPException(status_code=404, detail=f"Serveur introuvable: {e}")
+                raise HTTPException(status_code=404, detail=f"Serveur introuvable: {e}") from e
             if guild is None:
                 raise HTTPException(status_code=404, detail="Serveur introuvable")
             try:
@@ -387,14 +404,16 @@ def create_app(bot=None, bot_loop=None) -> FastAPI:
                     parent = getattr(c, "parent_id", None) or getattr(c, "category_id", None)
                     if parent:
                         parent_id = str(parent)
-                    result.append({
-                        "id": str(c.id),
-                        "name": getattr(c, "name", str(c.id)),
-                        "parent_id": parent_id,
-                        "position": getattr(c, "position", 0) or 0,
-                        "is_thread": ctype in thread_channel_types,
-                        "archived": bool(getattr(c, "archived", False)),
-                    })
+                    result.append(
+                        {
+                            "id": str(c.id),
+                            "name": getattr(c, "name", str(c.id)),
+                            "parent_id": parent_id,
+                            "position": getattr(c, "position", 0) or 0,
+                            "is_thread": ctype in thread_channel_types,
+                            "archived": bool(getattr(c, "archived", False)),
+                        }
+                    )
                 except Exception:
                     continue
             # Fetch active threads (including private ones the bot can see)
@@ -411,14 +430,16 @@ def create_app(bot=None, bot_loop=None) -> FastAPI:
                     if tid in known_ids:
                         continue
                     parent_id = getattr(t, "parent_id", None)
-                    result.append({
-                        "id": tid,
-                        "name": getattr(t, "name", tid),
-                        "parent_id": str(parent_id) if parent_id else None,
-                        "position": 0,
-                        "is_thread": True,
-                        "archived": bool(getattr(t, "archived", False)),
-                    })
+                    result.append(
+                        {
+                            "id": tid,
+                            "name": getattr(t, "name", tid),
+                            "parent_id": str(parent_id) if parent_id else None,
+                            "position": 0,
+                            "is_thread": True,
+                            "archived": bool(getattr(t, "archived", False)),
+                        }
+                    )
                     known_ids.add(tid)
                 except Exception:
                     continue
@@ -426,11 +447,13 @@ def create_app(bot=None, bot_loop=None) -> FastAPI:
             categories = []
             for c in channels:
                 if getattr(c, "type", None) == ChannelType.GUILD_CATEGORY:
-                    categories.append({
-                        "id": str(c.id),
-                        "name": getattr(c, "name", str(c.id)),
-                        "position": getattr(c, "position", 0) or 0,
-                    })
+                    categories.append(
+                        {
+                            "id": str(c.id),
+                            "name": getattr(c, "name", str(c.id)),
+                            "position": getattr(c, "position", 0) or 0,
+                        }
+                    )
             result.sort(key=lambda x: (x["position"], x["name"]))
             categories.sort(key=lambda x: x["position"])
             return {"channels": result, "categories": categories}
@@ -442,7 +465,7 @@ def create_app(bot=None, bot_loop=None) -> FastAPI:
             raise
         except Exception as e:
             logger.error(f"Failed to list channels for {server_id}: {e}")
-            raise HTTPException(status_code=500, detail=str(e))
+            raise HTTPException(status_code=500, detail=str(e)) from e
         return JSONResponse(data)
 
     @app.get("/api/servers/{server_id}/members")
@@ -476,11 +499,13 @@ def create_app(bot=None, bot_loop=None) -> FastAPI:
                     seen.add(uid)
                     username = doc.get("username") or ""
                     display = doc.get("display_name") or username or uid
-                    members.append({
-                        "id": uid,
-                        "username": username,
-                        "display_name": display,
-                    })
+                    members.append(
+                        {
+                            "id": uid,
+                            "username": username,
+                            "display_name": display,
+                        }
+                    )
             except Exception as e:
                 logger.debug(f"Could not read users collection for {server_id}: {e}")
 
@@ -500,11 +525,13 @@ def create_app(bot=None, bot_loop=None) -> FastAPI:
                         seen.add(uid)
                         username = getattr(m, "username", "") or ""
                         display = getattr(m, "display_name", None) or username or uid
-                        members.append({
-                            "id": uid,
-                            "username": username,
-                            "display_name": display,
-                        })
+                        members.append(
+                            {
+                                "id": uid,
+                                "username": username,
+                                "display_name": display,
+                            }
+                        )
                     except Exception:
                         continue
 
@@ -518,7 +545,7 @@ def create_app(bot=None, bot_loop=None) -> FastAPI:
             raise
         except Exception as e:
             logger.error(f"Failed to list members for {server_id}: {e}")
-            raise HTTPException(status_code=500, detail=str(e))
+            raise HTTPException(status_code=500, detail=str(e)) from e
         return JSONResponse(data)
 
     @app.get("/api/servers/{server_id}")
@@ -532,7 +559,9 @@ def create_app(bot=None, bot_loop=None) -> FastAPI:
         return JSONResponse({"server_id": server_id, "config": server_config})
 
     @app.put("/api/servers/{server_id}/modules/{module_name}")
-    async def api_update_module(request: Request, server_id: str, module_name: str, body: ConfigUpdate):
+    async def api_update_module(
+        request: Request, server_id: str, module_name: str, body: ConfigUpdate
+    ):
         """Update a specific module's config for a server."""
         _require_admin(request)
         data = _get_full_config()
@@ -548,7 +577,9 @@ def create_app(bot=None, bot_loop=None) -> FastAPI:
         return JSONResponse({"status": "ok", "reload": reload_result})
 
     @app.post("/api/servers/{server_id}/modules/{module_name}/toggle")
-    async def api_toggle_module(request: Request, server_id: str, module_name: str, body: ModuleToggle):
+    async def api_toggle_module(
+        request: Request, server_id: str, module_name: str, body: ModuleToggle
+    ):
         """Enable or disable a module for a server."""
         _require_admin(request)
         data = _get_full_config()
@@ -562,7 +593,9 @@ def create_app(bot=None, bot_loop=None) -> FastAPI:
 
         data["servers"][server_id][module_name]["enabled"] = body.enabled
         _save_config(data)
-        logger.info(f"{'Enabled' if body.enabled else 'Disabled'} {module_name} for server {server_id}")
+        logger.info(
+            f"{'Enabled' if body.enabled else 'Disabled'} {module_name} for server {server_id}"
+        )
         reload_result = _try_reload_extension_for_module(module_name)
         return JSONResponse({"status": "ok", "enabled": body.enabled, "reload": reload_result})
 
@@ -613,11 +646,13 @@ def create_app(bot=None, bot_loop=None) -> FastAPI:
                 allowed_keys.add("enabled")
                 for key in list(module_config.keys()):
                     if key not in allowed_keys:
-                        removed.append({
-                            "location": f"servers.{server_id}.{module_name}",
-                            "key": key,
-                            "value": module_config[key],
-                        })
+                        removed.append(
+                            {
+                                "location": f"servers.{server_id}.{module_name}",
+                                "key": key,
+                                "value": module_config[key],
+                            }
+                        )
                         if not dry_run:
                             del module_config[key]
 
@@ -632,11 +667,13 @@ def create_app(bot=None, bot_loop=None) -> FastAPI:
             allowed_keys = set(schema["fields"].keys())
             for key in list(section_data.keys()):
                 if key not in allowed_keys:
-                    removed.append({
-                        "location": f"config.{section_name}",
-                        "key": key,
-                        "value": section_data[key],
-                    })
+                    removed.append(
+                        {
+                            "location": f"config.{section_name}",
+                            "key": key,
+                            "value": section_data[key],
+                        }
+                    )
                     if not dry_run:
                         del section_data[key]
 
@@ -652,12 +689,14 @@ def create_app(bot=None, bot_loop=None) -> FastAPI:
             else:
                 entry["value"] = str(v)[:120]
 
-        return JSONResponse({
-            "status": "ok",
-            "dry_run": dry_run,
-            "removed_count": len(removed),
-            "removed": removed,
-        })
+        return JSONResponse(
+            {
+                "status": "ok",
+                "dry_run": dry_run,
+                "removed_count": len(removed),
+                "removed": removed,
+            }
+        )
 
     # ── Extension helpers ────────────────────────────────────────────
 
@@ -665,7 +704,7 @@ def create_app(bot=None, bot_loop=None) -> FastAPI:
         """Get the module paths (e.g. 'extensions.tricount') for all loaded extensions."""
         paths = []
         if bot and hasattr(bot, "ext"):
-            for class_name, ext_instance in bot.ext.items():
+            for _, ext_instance in bot.ext.items():
                 # interactions.py Extension stores the module name in extension_name
                 module_path = getattr(ext_instance, "extension_name", None)
                 if module_path:
@@ -702,13 +741,16 @@ def create_app(bot=None, bot_loop=None) -> FastAPI:
             raise HTTPException(status_code=400, detail="Aucun embed configuré")
 
         from extensions.embedmanager import build_embeds
+
         discord_embeds = build_embeds(embeds_config)
         if not discord_embeds:
             raise HTTPException(status_code=500, detail="Erreur lors de la génération des embeds")
 
         try:
+
             async def _publish():
                 from src.helpers import fetch_or_create_persistent_message
+
                 message = await fetch_or_create_persistent_message(
                     bot,
                     channel_id=channel_id,
@@ -728,7 +770,7 @@ def create_app(bot=None, bot_loop=None) -> FastAPI:
             await asyncio.wrap_future(future)
         except Exception as e:
             logger.error(f"EmbedManager publish failed for server {server_id}: {e}")
-            raise HTTPException(status_code=500, detail=str(e))
+            raise HTTPException(status_code=500, detail=str(e)) from e
 
         return JSONResponse({"status": "ok", "count": len(discord_embeds)})
 
@@ -765,7 +807,7 @@ def create_app(bot=None, bot_loop=None) -> FastAPI:
             return JSONResponse({"status": "ok", "extension": ext_name})
         except Exception as e:
             logger.error(f"Failed to reload {ext_name}: {e}")
-            raise HTTPException(status_code=500, detail=str(e))
+            raise HTTPException(status_code=500, detail=str(e)) from e
 
     # ── Extension management ─────────────────────────────────────────
 
@@ -788,12 +830,14 @@ def create_app(bot=None, bot_loop=None) -> FastAPI:
                 short_name = fname[:-3]
                 default_enabled = not short_name.startswith("_")
                 enabled = ext_config.get(ext_path, default_enabled)
-                result.append({
-                    "path": ext_path,
-                    "filename": fname,
-                    "enabled": enabled,
-                    "loaded": ext_path in loaded_exts,
-                })
+                result.append(
+                    {
+                        "path": ext_path,
+                        "filename": fname,
+                        "enabled": enabled,
+                        "loaded": ext_path in loaded_exts,
+                    }
+                )
         return JSONResponse({"extensions": result})
 
     @app.post("/api/extensions/{ext_name:path}/toggle")
@@ -822,7 +866,15 @@ def create_app(bot=None, bot_loop=None) -> FastAPI:
                 logger.error(f"Failed to {'load' if body.enabled else 'unload'} {ext_name}: {e}")
                 loaded = ext_name in set(_get_extension_module_paths())
 
-        return JSONResponse({"status": "ok", "path": ext_name, "enabled": body.enabled, "loaded": loaded, "error": error})
+        return JSONResponse(
+            {
+                "status": "ok",
+                "path": ext_name,
+                "enabled": body.enabled,
+                "loaded": loaded,
+                "error": error,
+            }
+        )
 
     # ── Bot info ─────────────────────────────────────────────────────
 
@@ -849,8 +901,9 @@ def create_app(bot=None, bot_loop=None) -> FastAPI:
     # ── Logs API ─────────────────────────────────────────────────────
 
     @app.get("/api/logs")
-    async def api_get_logs(request: Request, count: int = 200, level: str = "",
-                           search: str = "", logger_name: str = ""):
+    async def api_get_logs(
+        request: Request, count: int = 200, level: str = "", search: str = "", logger_name: str = ""
+    ):
         """Get recent log entries with optional filtering."""
         _require_developer(request)
         handler = WebUILogHandler.get_instance()
@@ -885,7 +938,7 @@ def create_app(bot=None, bot_loop=None) -> FastAPI:
                             "event": "log",
                             "data": json.dumps(entry.to_dict()),
                         }
-                    except asyncio.TimeoutError:
+                    except TimeoutError:
                         # Send keepalive
                         yield {"event": "ping", "data": ""}
             except (asyncio.CancelledError, GeneratorExit):
@@ -916,8 +969,9 @@ def create_app(bot=None, bot_loop=None) -> FastAPI:
         static_path = os.path.join("src", "webui", "static", path)
         if os.path.isfile(static_path):
             import mimetypes
+
             content_type, _ = mimetypes.guess_type(static_path)
-            with open(static_path, "r", encoding="utf-8") as f:
+            with open(static_path, encoding="utf-8") as f:
                 content = f.read()
             return Response(content=content, media_type=content_type or "text/plain")
         return _serve_frontend()
@@ -926,7 +980,7 @@ def create_app(bot=None, bot_loop=None) -> FastAPI:
         """Load and return the frontend HTML."""
         frontend_path = os.path.join("src", "webui", "static", "index.html")
         try:
-            with open(frontend_path, "r", encoding="utf-8") as f:
+            with open(frontend_path, encoding="utf-8") as f:
                 return HTMLResponse(content=f.read())
         except FileNotFoundError:
             return HTMLResponse(

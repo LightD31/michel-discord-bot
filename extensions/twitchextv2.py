@@ -1,8 +1,9 @@
 import asyncio
+import json
 import os
 import signal
 from datetime import datetime, timedelta
-from typing import Optional, Union, Dict, List
+from typing import Optional, Union
 
 import aiohttp
 import pytz
@@ -27,14 +28,12 @@ from interactions import (
     Task,
     TimestampStyles,
     TimeTrigger,
-    OrTrigger,
     listen,
     slash_command,
     slash_default_member_permission,
     slash_option,
     utils,
 )
-import json
 from twitchAPI.eventsub.websocket import EventSubWebsocket
 from twitchAPI.helper import first
 from twitchAPI.oauth import UserAuthenticationStorageHelper
@@ -54,9 +53,9 @@ from twitchAPI.twitch import Twitch
 from twitchAPI.type import AuthScope, TwitchResourceNotFound
 
 from src import logutil
+from src.config_manager import CONFIG_PATH, load_config
 from src.helpers import Colors, send_error, send_success
 from src.mongodb import mongo_manager
-from src.config_manager import CONFIG_PATH, load_config
 
 
 def _save_streamer_channel_message(
@@ -64,7 +63,7 @@ def _save_streamer_channel_message(
 ) -> None:
     """Persist planning channel/message for a specific streamer in config.json."""
     try:
-        with open(CONFIG_PATH, "r", encoding="utf-8") as file:
+        with open(CONFIG_PATH, encoding="utf-8") as file:
             data = json.load(file)
     except (FileNotFoundError, json.JSONDecodeError):
         return
@@ -77,6 +76,7 @@ def _save_streamer_channel_message(
     streamer_cfg["twitchPlanningPinMessage"] = pin
     with open(CONFIG_PATH, "w", encoding="utf-8") as file:
         json.dump(data, file, indent=4)
+
 
 logger = logutil.init_logger(os.path.basename(__file__))
 
@@ -113,14 +113,14 @@ class StreamerInfo:
         self.notif_channel = None
         self.scheduled_event = None
         # Stream session info (stored when stream starts)
-        self.stream_start_time: Optional[datetime] = None
-        self.stream_title: Optional[str] = None
-        self.stream_id: Optional[str] = None
+        self.stream_start_time: datetime | None = None
+        self.stream_title: str | None = None
+        self.stream_id: str | None = None
         # Last notified title and category (to avoid duplicate notifications)
-        self.last_notified_title: Optional[str] = None
-        self.last_notified_category: Optional[str] = None
+        self.last_notified_title: str | None = None
+        self.last_notified_category: str | None = None
         # Ordered list of categories played during the current live session
-        self.stream_categories: List[str] = []
+        self.stream_categories: list[str] = []
 
 
 class TwitchExtension(Extension):
@@ -135,7 +135,7 @@ class TwitchExtension(Extension):
         self.client_secret = self.config["twitch"]["twitchClientSecret"]
 
         # Initialize data structures for multiple servers and streamers
-        self.streamers: Dict[str, StreamerInfo] = {}
+        self.streamers: dict[str, StreamerInfo] = {}
         self.init_streamers()
 
         self.eventsub = None  # Initialize eventsub here
@@ -147,7 +147,7 @@ class TwitchExtension(Extension):
         os.makedirs(self.EMOTE_CACHE_DIR, exist_ok=True)
 
     @staticmethod
-    def get_display_value(value: Optional[str], fallback: str = "Non renseigné") -> str:
+    def get_display_value(value: str | None, fallback: str = "Non renseigné") -> str:
         """Normalize optional values before displaying them in notifications."""
         if value is None:
             return fallback
@@ -193,7 +193,9 @@ class TwitchExtension(Extension):
                 timestamp=now,
             )
 
-    async def download_emote_image(self, emote_id: str, image_url: str, streamer_id: str) -> Optional[str]:
+    async def download_emote_image(
+        self, emote_id: str, image_url: str, streamer_id: str
+    ) -> str | None:
         """
         Download and cache an emote image locally.
 
@@ -211,22 +213,23 @@ class TwitchExtension(Extension):
         file_path = os.path.join(self.EMOTE_CACHE_DIR, f"{streamer_id}_{emote_id}.png")
 
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(image_url) as response:
-                    if response.status == 200:
-                        content = await response.read()
-                        with open(file_path, "wb") as f:
-                            f.write(content)
-                        logger.debug(f"Cached emote image: {file_path}")
-                        return file_path
-                    else:
-                        logger.error(f"Failed to download emote image {emote_id}: HTTP {response.status}")
-                        return None
+            async with aiohttp.ClientSession() as session, session.get(image_url) as response:
+                if response.status == 200:
+                    content = await response.read()
+                    with open(file_path, "wb") as f:
+                        f.write(content)
+                    logger.debug(f"Cached emote image: {file_path}")
+                    return file_path
+                else:
+                    logger.error(
+                        f"Failed to download emote image {emote_id}: HTTP {response.status}"
+                    )
+                    return None
         except Exception as e:
             logger.error(f"Error downloading emote image {emote_id}: {e}")
             return None
 
-    def get_cached_emote_path(self, emote_id: str, streamer_id: str) -> Optional[str]:
+    def get_cached_emote_path(self, emote_id: str, streamer_id: str) -> str | None:
         """
         Get the path to a cached emote image if it exists.
 
@@ -270,7 +273,7 @@ class TwitchExtension(Extension):
                     config=streamer_config,
                 )
 
-    def get_streamer_by_user_id(self, user_id: str) -> List[StreamerInfo]:
+    def get_streamer_by_user_id(self, user_id: str) -> list[StreamerInfo]:
         """Get all streamers that match the given Twitch user ID"""
         return [s for s in self.streamers.values() if s.user_id == user_id]
 
@@ -281,7 +284,7 @@ class TwitchExtension(Extension):
     async def _load_streamer_states(self) -> None:
         """Hydrate StreamerInfo session fields from MongoDB at startup."""
         try:
-            states: Dict[str, dict] = {}
+            states: dict[str, dict] = {}
             async for doc in self._streamer_state_collection().find():
                 states[doc["_id"]] = doc
         except Exception as e:
@@ -299,7 +302,9 @@ class TwitchExtension(Extension):
             streamer.last_notified_title = doc.get("last_notified_title")
             streamer.last_notified_category = doc.get("last_notified_category")
             stored_categories = doc.get("stream_categories")
-            streamer.stream_categories = list(stored_categories) if isinstance(stored_categories, list) else []
+            streamer.stream_categories = (
+                list(stored_categories) if isinstance(stored_categories, list) else []
+            )
 
     async def _save_streamer_state(self, streamer_id: str) -> None:
         """Persist the session fields of a streamer (shared across guilds)."""
@@ -346,13 +351,19 @@ class TwitchExtension(Extension):
                     streamer.channel = await self.bot.fetch_channel(streamer.planning_channel_id)
 
                     msg = None
-                    if streamer.planning_message_id and streamer.channel and hasattr(streamer.channel, "fetch_message"):
+                    if (
+                        streamer.planning_message_id
+                        and streamer.channel
+                        and hasattr(streamer.channel, "fetch_message")
+                    ):
                         try:
                             msg = await streamer.channel.fetch_message(streamer.planning_message_id)
                         except Exception as e:
                             logger.warning(
                                 "Streamer %s: could not fetch planning message %s (%s); recreating",
-                                streamer.streamer_id, streamer.planning_message_id, e,
+                                streamer.streamer_id,
+                                streamer.planning_message_id,
+                                e,
                             )
                     if msg is None and streamer.channel and hasattr(streamer.channel, "send"):
                         msg = await streamer.channel.send(
@@ -374,7 +385,9 @@ class TwitchExtension(Extension):
                     streamer.message = msg
 
                 if streamer.notification_channel_id:
-                    streamer.notif_channel = await self.bot.fetch_channel(streamer.notification_channel_id)
+                    streamer.notif_channel = await self.bot.fetch_channel(
+                        streamer.notification_channel_id
+                    )
 
                 # Find any existing scheduled events created by the bot
                 guild = await self.bot.fetch_guild(streamer.guild_id)
@@ -397,7 +410,7 @@ class TwitchExtension(Extension):
     async def on_ready(self):
         try:
             await self.eventsub.stop()
-        except Exception as e:
+        except Exception:
             logger.info("EventSub is not running")
         await self.bot.wait_until_ready()
         asyncio.create_task(self.run())
@@ -464,7 +477,7 @@ class TwitchExtension(Extension):
             self.eventsub.start()
 
             # Subscribe to events for all streamers
-            for streamer_key, streamer in self.streamers.items():
+            for _, streamer in self.streamers.items():
                 try:
                     # Get the Twitch user ID for this streamer
                     user = await first(self.twitch.get_users(logins=[streamer.streamer_id]))
@@ -481,7 +494,9 @@ class TwitchExtension(Extension):
                         await self.eventsub.listen_channel_update_v2(
                             broadcaster_user_id=user.id, callback=self.on_update
                         )
-                        logger.info(f"Registered event subscriptions for {streamer.streamer_id} (ID: {user.id})")
+                        logger.info(
+                            f"Registered event subscriptions for {streamer.streamer_id} (ID: {user.id})"
+                        )
                     else:
                         logger.error(f"Could not find Twitch user for {streamer.streamer_id}")
                 except Exception as e:
@@ -507,17 +522,13 @@ class TwitchExtension(Extension):
         await self.twitch.close()
         asyncio.create_task(self.run())
 
-    def add_field_to_embed(
-        self, embed: Embed, stream: ChannelStreamScheduleSegment, is_now=False
-    ):
+    def add_field_to_embed(self, embed: Embed, stream: ChannelStreamScheduleSegment, is_now=False):
         now = datetime.now(pytz.UTC)
         start_time = ensure_utc(stream.start_time)
         end_time = ensure_utc(stream.end_time)
         title = stream.title if stream.title is not None else "Pas de titre défini"
         category = (
-            stream.category.name
-            if stream.category is not None
-            else "Pas de catégorie définie"
+            stream.category.name if stream.category is not None else "Pas de catégorie définie"
         )
         if is_now:
             name = f"<:live_1:1265285043891343391><:live_2:1265285055186468864><:live_3:1265285063818477703> {title}"
@@ -539,11 +550,9 @@ class TwitchExtension(Extension):
             guild_id (int, optional): The guild ID to fetch the bot member from.
         """
         try:
-            schedule: ChannelStreamSchedule = (
-                await self.twitch.get_channel_stream_schedule(
-                    broadcaster_id=user_id,
-                    first=5,
-                )
+            schedule: ChannelStreamSchedule = await self.twitch.get_channel_stream_schedule(
+                broadcaster_id=user_id,
+                first=5,
             )
         except TwitchResourceNotFound as e:
             logger.error("No schedule found for user %s: %s", user_id, e)
@@ -592,7 +601,9 @@ class TwitchExtension(Extension):
                 )
                 return embed
         except Exception as e:
-            logger.error(f"Error creating schedule embed for user {user_id} in guild {guild_id}: {e}")
+            logger.error(
+                f"Error creating schedule embed for user {user_id} in guild {guild_id}: {e}"
+            )
             # Return a basic embed if there's an error
             return Embed(
                 title="Planning",
@@ -603,10 +614,10 @@ class TwitchExtension(Extension):
 
     async def create_stream_embed(
         self,
-        stream: Optional[Stream],
+        stream: Stream | None,
         user_id: str,
         offline: bool = False,
-        data: Optional[ChannelUpdateEvent] = None,
+        data: ChannelUpdateEvent | None = None,
     ) -> Embed:
 
         user_id, title, description, user_login = await self.get_stream_info(
@@ -622,10 +633,10 @@ class TwitchExtension(Extension):
 
     async def get_stream_info(
         self,
-        stream: Optional[Stream],
+        stream: Stream | None,
         user_id: str,
         offline: bool,
-        data: Optional[ChannelUpdateEvent] = None,
+        data: ChannelUpdateEvent | None = None,
     ) -> tuple:
         if data:
             return self.get_stream_info_from_data(data, offline, stream)
@@ -634,9 +645,7 @@ class TwitchExtension(Extension):
         else:
             return self.get_online_stream_info(stream)
 
-    def get_stream_info_from_data(
-        self, data: ChannelUpdateEvent, offline, stream: Stream = None
-    ):
+    def get_stream_info_from_data(self, data: ChannelUpdateEvent, offline, stream: Stream = None):
         """
         Get the stream information from the data.
 
@@ -687,9 +696,7 @@ class TwitchExtension(Extension):
         Returns:
             tuple: A tuple containing the user ID, title, description, and user login.
         """
-        description = (
-            f"Joue à **{stream.game_name}** pour **{stream.viewer_count}** viewers"
-        )
+        description = f"Joue à **{stream.game_name}** pour **{stream.viewer_count}** viewers"
         title = stream.title
         user_login = stream.user_login
         return stream.user_id, title, description, user_login
@@ -746,7 +753,7 @@ class TwitchExtension(Extension):
         self,
         streamer: StreamerInfo,
         offline: bool = False,
-        data: Optional[Union[ChannelUpdateEvent, StreamOfflineEvent]] = None,
+        data: ChannelUpdateEvent | StreamOfflineEvent | None = None,
     ) -> None:
         """
         Update the planning message (if configured) and manage the scheduled
@@ -818,9 +825,7 @@ class TwitchExtension(Extension):
                 except Exception as e:
                     logger.error(f"Error editing message for {streamer.streamer_id}: {e}")
 
-    async def add_user(
-        self, embed: Embed, user_id: str, offline: bool = False
-    ) -> Embed:
+    async def add_user(self, embed: Embed, user_id: str, offline: bool = False) -> Embed:
         """
         Add a user to the embed with the specified user ID.
 
@@ -841,11 +846,9 @@ class TwitchExtension(Extension):
                 url=f"https://twitch.tv/{user.login}",
             )
 
-            if offline and hasattr(user, 'offline_image_url') and user.offline_image_url:
-                embed.set_image(
-                    url=f"{user.offline_image_url}?{datetime.now().timestamp()}"
-                )
-            
+            if offline and hasattr(user, "offline_image_url") and user.offline_image_url:
+                embed.set_image(url=f"{user.offline_image_url}?{datetime.now().timestamp()}")
+
             return embed
         except Exception as e:
             logger.error(f"Error adding user {user_id} to embed: {e}")
@@ -873,14 +876,18 @@ class TwitchExtension(Extension):
                     streamer.stream_title = stream.title
                     streamer.stream_id = stream.id
                     streamer.stream_categories = [stream.game_name] if stream.game_name else []
-                    logger.info(f"Stored stream info for {streamer.streamer_id}: started at {streamer.stream_start_time}")
+                    logger.info(
+                        f"Stored stream info for {streamer.streamer_id}: started at {streamer.stream_start_time}"
+                    )
 
                 await self.send_stream_start_notification(streamer, broadcaster_name, stream)
 
                 # For each server tracking this streamer, update the message
                 await self.edit_message(streamer, offline=False)
             except Exception as e:
-                logger.error(f"Error handling live start for {streamer.streamer_id} in guild {streamer.guild_id}: {e}")
+                logger.error(
+                    f"Error handling live start for {streamer.streamer_id} in guild {streamer.guild_id}: {e}"
+                )
 
         for streamer_id in {s.streamer_id for s in streamers}:
             await self._save_streamer_state(streamer_id)
@@ -904,10 +911,10 @@ class TwitchExtension(Extension):
             try:
                 # Send stream end notification
                 await self.send_stream_end_notification(streamer, broadcaster_name)
-                
+
                 # For each server tracking this streamer, update the message
                 await self.edit_message(streamer, offline=True)
-                
+
                 # Clear stream session info
                 streamer.stream_start_time = None
                 streamer.stream_title = None
@@ -915,7 +922,9 @@ class TwitchExtension(Extension):
                 streamer.stream_categories = []
                 # Keep last_notified_title and last_notified_category to track changes even when offline
             except Exception as e:
-                logger.error(f"Error handling live end for {streamer.streamer_id} in guild {streamer.guild_id}: {e}")
+                logger.error(
+                    f"Error handling live end for {streamer.streamer_id} in guild {streamer.guild_id}: {e}"
+                )
 
         for streamer_id in {s.streamer_id for s in streamers}:
             await self._save_streamer_state(streamer_id)
@@ -935,7 +944,7 @@ class TwitchExtension(Extension):
         self,
         streamer: StreamerInfo,
         broadcaster_name: str,
-        stream: Optional[Stream],
+        stream: Stream | None,
     ) -> None:
         """Send a notification message when a stream starts."""
         if not streamer.notif_channel:
@@ -944,9 +953,7 @@ class TwitchExtension(Extension):
             return
 
         try:
-            title = self.get_display_value(
-                stream.title if stream else None, "Titre non renseigné"
-            )
+            title = self.get_display_value(stream.title if stream else None, "Titre non renseigné")
             category = self.get_display_value(
                 stream.game_name if stream else None, "Catégorie non renseignée"
             )
@@ -977,12 +984,14 @@ class TwitchExtension(Extension):
             await streamer.notif_channel.send(embed=embed)
             logger.info(
                 "Sent stream start notification for %s in guild %s",
-                streamer.streamer_id, streamer.guild_id,
+                streamer.streamer_id,
+                streamer.guild_id,
             )
         except Exception as e:
             logger.error(
                 "Error sending stream start notification for %s: %s",
-                streamer.streamer_id, e,
+                streamer.streamer_id,
+                e,
             )
 
     async def send_stream_end_notification(self, streamer: StreamerInfo, broadcaster_name: str):
@@ -1002,12 +1011,12 @@ class TwitchExtension(Extension):
             # Calculate stream duration
             end_time = datetime.now(pytz.UTC)
             duration_str = "Durée inconnue"
-            
+
             if streamer.stream_start_time:
                 duration = end_time - streamer.stream_start_time
                 hours, remainder = divmod(int(duration.total_seconds()), 3600)
                 minutes, seconds = divmod(remainder, 60)
-                
+
                 if hours > 0:
                     duration_str = f"{hours}h {minutes}min"
                 else:
@@ -1016,7 +1025,9 @@ class TwitchExtension(Extension):
             # Get VOD info if available
             vod_url = None
             try:
-                videos = self.twitch.get_videos(user_id=streamer.user_id, video_type="archive", first=1)
+                videos = self.twitch.get_videos(
+                    user_id=streamer.user_id, video_type="archive", first=1
+                )
                 async for video in videos:
                     # Check if this VOD is from the stream that just ended
                     if streamer.stream_id and video.stream_id == streamer.stream_id:
@@ -1029,7 +1040,7 @@ class TwitchExtension(Extension):
             title = self.get_display_value(streamer.stream_title, "Titre non renseigné")
 
             # Build the list of categories played during the session (deduplicated while preserving order)
-            categories: List[str] = []
+            categories: list[str] = []
             for cat in streamer.stream_categories:
                 if cat and (not categories or categories[-1] != cat):
                     categories.append(cat)
@@ -1051,7 +1062,7 @@ class TwitchExtension(Extension):
             embed.add_field(name="Durée", value=duration_str, inline=True)
             embed.add_field(name="Titre", value=title, inline=False)
             embed.add_field(name=category_label, value=category_value, inline=False)
-            
+
             if vod_url:
                 embed.add_field(name="VOD", value=f"[Regarder le replay]({vod_url})", inline=False)
 
@@ -1064,7 +1075,9 @@ class TwitchExtension(Extension):
                 logger.debug(f"Could not fetch user info for thumbnail: {e}")
 
             await streamer.notif_channel.send(embed=embed)
-            logger.info(f"Sent stream end notification for {streamer.streamer_id} in guild {streamer.guild_id}")
+            logger.info(
+                f"Sent stream end notification for {streamer.streamer_id} in guild {streamer.guild_id}"
+            )
 
         except Exception as e:
             logger.error(f"Error sending stream end notification for {streamer.streamer_id}: {e}")
@@ -1091,19 +1104,31 @@ class TwitchExtension(Extension):
                 stream = await self.get_stream_data(user_id)
 
                 # Track category changes during the live session
-                if stream is not None and raw_category:
-                    if not streamer.stream_categories or streamer.stream_categories[-1] != raw_category:
-                        streamer.stream_categories.append(raw_category)
+                if (
+                    stream is not None
+                    and raw_category
+                    and (
+                        not streamer.stream_categories
+                        or streamer.stream_categories[-1] != raw_category
+                    )
+                ):
+                    streamer.stream_categories.append(raw_category)
 
                 # Check if title or category actually changed to avoid duplicate notifications
                 new_title = self.get_display_value(data.event.title, "Titre non renseigné")
-                new_category = self.get_display_value(data.event.category_name, "Catégorie non renseignée")
+                new_category = self.get_display_value(
+                    data.event.category_name, "Catégorie non renseignée"
+                )
 
                 title_changed = streamer.last_notified_title != new_title
                 category_changed = streamer.last_notified_category != new_category
-                
+
                 # Send notification only if something actually changed
-                if streamer.notif_channel and streamer.notify_stream_update and (title_changed or category_changed):
+                if (
+                    streamer.notif_channel
+                    and streamer.notify_stream_update
+                    and (title_changed or category_changed)
+                ):
                     # Update the last notified values
                     streamer.last_notified_title = new_title
                     streamer.last_notified_category = new_category
@@ -1124,16 +1149,16 @@ class TwitchExtension(Extension):
 
                     await streamer.notif_channel.send(embed=update_embed)
                 elif not (title_changed or category_changed):
-                    logger.debug(f"Skipping duplicate notification for {streamer.streamer_id} - title and category unchanged")
+                    logger.debug(
+                        f"Skipping duplicate notification for {streamer.streamer_id} - title and category unchanged"
+                    )
 
                 # Update the message
-                await self.edit_message(
-                    streamer,
-                    offline=(stream is None),
-                    data=data
-                )
+                await self.edit_message(streamer, offline=(stream is None), data=data)
             except Exception as e:
-                logger.error(f"Error handling update for {streamer.streamer_id} in guild {streamer.guild_id}: {e}")
+                logger.error(
+                    f"Error handling update for {streamer.streamer_id} in guild {streamer.guild_id}: {e}"
+                )
 
         for streamer_id in {s.streamer_id for s in streamers}:
             await self._save_streamer_state(streamer_id)
@@ -1144,7 +1169,7 @@ class TwitchExtension(Extension):
             if streamer.user_id:
                 stream_data = await self.get_stream_data(streamer.user_id)
                 stream_checks.append(stream_data is not None)
-        
+
         if any(stream_checks):
             self.update.reschedule(IntervalTrigger(minutes=15))
 
@@ -1170,13 +1195,15 @@ class TwitchExtension(Extension):
             await self.on_startup()
 
         # Update all streamers
-        for streamer_key, streamer in self.streamers.items():
+        for _, streamer in self.streamers.items():
             if streamer.user_id:
                 try:
                     stream = await self.get_stream_data(streamer.user_id)
                     await self.edit_message(streamer, offline=(stream is None))
                 except Exception as e:
-                    logger.error(f"Error updating streamer {streamer.streamer_id} in guild {streamer.guild_id}: {e}")
+                    logger.error(
+                        f"Error updating streamer {streamer.streamer_id} in guild {streamer.guild_id}: {e}"
+                    )
 
     @Task.create(OrTrigger(*[TimeTrigger(hour=i, utc=False) for i in range(24)]))
     async def check_new_emotes(self):
@@ -1184,7 +1211,7 @@ class TwitchExtension(Extension):
 
         # Group streamers by streamer_id so we only fetch emotes once per unique streamer
         # and send notifications to all guilds following that streamer.
-        streamers_by_id: Dict[str, List[StreamerInfo]] = {}
+        streamers_by_id: dict[str, list[StreamerInfo]] = {}
         for streamer in self.streamers.values():
             if not streamer.user_id or not streamer.notif_channel:
                 continue
@@ -1204,7 +1231,10 @@ class TwitchExtension(Extension):
                 try:
                     async for doc in emote_col.find():
                         emote_id = doc["_id"]
-                        data[emote_id] = {"name": doc.get("name", ""), "cached_file": doc.get("cached_file")}
+                        data[emote_id] = {
+                            "name": doc.get("name", ""),
+                            "cached_file": doc.get("cached_file"),
+                        }
                 except Exception as e:
                     logger.error(f"Error loading emotes from MongoDB for {streamer_id}: {e}")
 
@@ -1218,20 +1248,29 @@ class TwitchExtension(Extension):
                 if not data and new_emotes:
                     logger.warning(
                         "Initial emote sync for %s: %d emotes found – skipping notifications",
-                        streamer_id, len(new_emotes),
+                        streamer_id,
+                        len(new_emotes),
                     )
                     docs = []
                     for emote in emotes:
-                        image_url = emote.images.get('url_4x', emote.images.get('url_2x', emote.images.get('url_1x')))
-                        cached_file = await self.download_emote_image(emote.id, image_url, streamer_id)
-                        docs.append({"_id": emote.id, "name": emote.name, "cached_file": cached_file})
+                        image_url = emote.images.get(
+                            "url_4x", emote.images.get("url_2x", emote.images.get("url_1x"))
+                        )
+                        cached_file = await self.download_emote_image(
+                            emote.id, image_url, streamer_id
+                        )
+                        docs.append(
+                            {"_id": emote.id, "name": emote.name, "cached_file": cached_file}
+                        )
                     if docs:
                         await emote_col.insert_many(docs)
                     continue
 
                 # Build a map of current emote names for replacement detection
                 current_emote_names = {emote.name: emote for emote in emotes}
-                deleted_emote_names = {data[emote_id]["name"]: emote_id for emote_id in deleted_emotes}
+                deleted_emote_names = {
+                    data[emote_id]["name"]: emote_id for emote_id in deleted_emotes
+                }
 
                 # Detect replaced emotes (same name, different ID)
                 replaced_emotes = []
@@ -1243,14 +1282,20 @@ class TwitchExtension(Extension):
                         truly_new_emotes.append(emote)
 
                 # Remove replaced emotes from deleted list
-                truly_deleted_emotes = [emote_id for emote_id in deleted_emotes if data[emote_id]["name"] not in current_emote_names]
+                truly_deleted_emotes = [
+                    emote_id
+                    for emote_id in deleted_emotes
+                    if data[emote_id]["name"] not in current_emote_names
+                ]
 
                 # Process replaced emotes (same name, new ID)
                 if replaced_emotes:
                     logger.info(f"Replaced emotes found for {streamer_id}")
                     for old_emote_id, new_emote in replaced_emotes:
                         old_cached_file = self.get_cached_emote_path(old_emote_id, streamer_id)
-                        new_image_url = new_emote.images.get('url_4x', new_emote.images.get('url_2x', new_emote.images.get('url_1x')))
+                        new_image_url = new_emote.images.get(
+                            "url_4x", new_emote.images.get("url_2x", new_emote.images.get("url_1x"))
+                        )
 
                         logger.info(f"Replaced emote for {streamer_id}: {new_emote.name}")
 
@@ -1264,38 +1309,70 @@ class TwitchExtension(Extension):
                                 description=f"L'emote **{new_emote.name}** a été remplacé sur la chaîne de **{streamer_id}**.",
                                 color=Colors.ORANGE,
                             )
-                            embed.add_field(name="Emote", value=self.get_display_value(new_emote.name), inline=True)
-                            embed.add_field(name="Streamer", value=self.get_display_value(streamer_id), inline=True)
+                            embed.add_field(
+                                name="Emote",
+                                value=self.get_display_value(new_emote.name),
+                                inline=True,
+                            )
+                            embed.add_field(
+                                name="Streamer",
+                                value=self.get_display_value(streamer_id),
+                                inline=True,
+                            )
                             embed.add_field(name="Action", value="Remplacement", inline=True)
                             if new_image_url:
                                 embed.set_thumbnail(url=new_image_url)
 
                             if old_cached_file:
-                                embed.add_field(name="Ancienne version", value="Image jointe", inline=True)
-                                embed.add_field(name="Nouvelle version", value="Thumbnail de l'embed", inline=True)
-                                await streamer.notif_channel.send(embed=embed, files=[File(old_cached_file, file_name=f"old_{new_emote.name}.png")])
+                                embed.add_field(
+                                    name="Ancienne version", value="Image jointe", inline=True
+                                )
+                                embed.add_field(
+                                    name="Nouvelle version",
+                                    value="Thumbnail de l'embed",
+                                    inline=True,
+                                )
+                                await streamer.notif_channel.send(
+                                    embed=embed,
+                                    files=[
+                                        File(old_cached_file, file_name=f"old_{new_emote.name}.png")
+                                    ],
+                                )
                             else:
-                                embed.add_field(name="Nouvelle version", value="Thumbnail de l'embed", inline=True)
+                                embed.add_field(
+                                    name="Nouvelle version",
+                                    value="Thumbnail de l'embed",
+                                    inline=True,
+                                )
                                 await streamer.notif_channel.send(embed=embed)
 
                         # Delete old cached file and download new one (once, globally)
                         if old_cached_file:
                             self.delete_cached_emote(old_emote_id, streamer_id)
 
-                        new_cached_file = await self.download_emote_image(new_emote.id, new_image_url, streamer_id)
+                        new_cached_file = await self.download_emote_image(
+                            new_emote.id, new_image_url, streamer_id
+                        )
 
                         # Update data with new emote info
                         del data[old_emote_id]
-                        data[new_emote.id] = {"name": new_emote.name, "cached_file": new_cached_file}
+                        data[new_emote.id] = {
+                            "name": new_emote.name,
+                            "cached_file": new_cached_file,
+                        }
 
                 # Process truly new emotes
                 if truly_new_emotes:
                     logger.debug(f"New emotes found for {streamer_id}")
                     for emote in truly_new_emotes:
-                        image_url = emote.images.get('url_4x', emote.images.get('url_2x', emote.images.get('url_1x')))
+                        image_url = emote.images.get(
+                            "url_4x", emote.images.get("url_2x", emote.images.get("url_1x"))
+                        )
 
                         # Download and cache the emote image (once, globally)
-                        cached_file = await self.download_emote_image(emote.id, image_url, streamer_id)
+                        cached_file = await self.download_emote_image(
+                            emote.id, image_url, streamer_id
+                        )
                         data[emote.id] = {"name": emote.name, "cached_file": cached_file}
 
                         details = self.get_emote_details(emote)
@@ -1311,8 +1388,14 @@ class TwitchExtension(Extension):
                                 title="Nouvel emote ajouté",
                                 description=f"Un nouvel emote est disponible sur la chaine de **{streamer_id}**.",
                             )
-                            embed.add_field(name="Emote", value=self.get_display_value(emote.name), inline=True)
-                            embed.add_field(name="Streamer", value=self.get_display_value(streamer_id), inline=True)
+                            embed.add_field(
+                                name="Emote", value=self.get_display_value(emote.name), inline=True
+                            )
+                            embed.add_field(
+                                name="Streamer",
+                                value=self.get_display_value(streamer_id),
+                                inline=True,
+                            )
                             embed.add_field(name="Type", value=details, inline=True)
                             if image_url:
                                 embed.set_thumbnail(url=image_url)
@@ -1337,12 +1420,21 @@ class TwitchExtension(Extension):
                                 title="Emote supprimé",
                                 description=f"L'emote **{emote_name}** a été retiré de la chaîne de **{streamer_id}**.",
                             )
-                            embed.add_field(name="Emote", value=self.get_display_value(emote_name), inline=True)
-                            embed.add_field(name="Streamer", value=self.get_display_value(streamer_id), inline=True)
+                            embed.add_field(
+                                name="Emote", value=self.get_display_value(emote_name), inline=True
+                            )
+                            embed.add_field(
+                                name="Streamer",
+                                value=self.get_display_value(streamer_id),
+                                inline=True,
+                            )
                             embed.add_field(name="Action", value="Suppression", inline=True)
 
                             if cached_file:
-                                await streamer.notif_channel.send(embed=embed, files=[File(cached_file, file_name=f"{emote_name}.png")])
+                                await streamer.notif_channel.send(
+                                    embed=embed,
+                                    files=[File(cached_file, file_name=f"{emote_name}.png")],
+                                )
                             else:
                                 await streamer.notif_channel.send(embed=embed)
 
@@ -1355,8 +1447,12 @@ class TwitchExtension(Extension):
                 # Download and cache images for existing emotes that don't have cached files
                 for emote in emotes:
                     if emote.id in data and not self.get_cached_emote_path(emote.id, streamer_id):
-                        image_url = emote.images.get('url_4x', emote.images.get('url_2x', emote.images.get('url_1x')))
-                        cached_file = await self.download_emote_image(emote.id, image_url, streamer_id)
+                        image_url = emote.images.get(
+                            "url_4x", emote.images.get("url_2x", emote.images.get("url_1x"))
+                        )
+                        cached_file = await self.download_emote_image(
+                            emote.id, image_url, streamer_id
+                        )
                         data[emote.id]["cached_file"] = cached_file
 
                 # Save updated emotes to MongoDB
@@ -1370,7 +1466,14 @@ class TwitchExtension(Extension):
                     # Sync MongoDB with current data dict
                     await emote_col.delete_many({})
                     if data:
-                        docs = [{"_id": eid, "name": edata["name"], "cached_file": edata.get("cached_file")} for eid, edata in data.items()]
+                        docs = [
+                            {
+                                "_id": eid,
+                                "name": edata["name"],
+                                "cached_file": edata.get("cached_file"),
+                            }
+                            for eid, edata in data.items()
+                        ]
                         await emote_col.insert_many(docs)
 
             except Exception as e:

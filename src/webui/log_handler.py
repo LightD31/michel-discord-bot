@@ -4,6 +4,7 @@ Captures log records into a ring buffer and supports SSE streaming.
 """
 
 import asyncio
+import contextlib
 import logging
 from collections import deque
 from dataclasses import dataclass
@@ -13,6 +14,7 @@ from typing import Optional
 @dataclass
 class LogEntry:
     """Represents a single log entry."""
+
     timestamp: float
     level: str
     logger_name: str
@@ -41,11 +43,13 @@ class WebUILogHandler(logging.Handler):
 
     # Loggers to ignore to prevent feedback loops (SSE logging its own
     # chunks) and reduce noise from infrastructure loggers.
-    _IGNORED_LOGGERS = frozenset({
-        "sse_starlette",
-        "sse_starlette.sse",
-        "uvicorn.access",
-    })
+    _IGNORED_LOGGERS = frozenset(
+        {
+            "sse_starlette",
+            "sse_starlette.sse",
+            "uvicorn.access",
+        }
+    )
 
     def __init__(self, max_entries: int = 2000):
         super().__init__()
@@ -91,15 +95,18 @@ class WebUILogHandler(logging.Handler):
                     dead.append(queue)
             # Remove dead queues
             for q in dead:
-                try:
+                with contextlib.suppress(ValueError):
                     self._listeners.remove(q)
-                except ValueError:
-                    pass
         except Exception:
             self.handleError(record)
 
-    def get_recent(self, count: int = 200, level: Optional[str] = None,
-                   search: Optional[str] = None, logger_name: Optional[str] = None) -> list[dict]:
+    def get_recent(
+        self,
+        count: int = 200,
+        level: str | None = None,
+        search: str | None = None,
+        logger_name: str | None = None,
+    ) -> list[dict]:
         """Get recent log entries with optional filtering."""
         entries = list(self.buffer)
 
@@ -114,8 +121,11 @@ class WebUILogHandler(logging.Handler):
 
         if search:
             search_lower = search.lower()
-            entries = [e for e in entries if search_lower in e.message.lower()
-                       or search_lower in e.logger_name.lower()]
+            entries = [
+                e
+                for e in entries
+                if search_lower in e.message.lower() or search_lower in e.logger_name.lower()
+            ]
 
         return [e.to_dict() for e in entries[-count:]]
 
@@ -127,10 +137,8 @@ class WebUILogHandler(logging.Handler):
 
     def unsubscribe(self, queue: asyncio.Queue):
         """Remove an SSE listener queue."""
-        try:
+        with contextlib.suppress(ValueError):
             self._listeners.remove(queue)
-        except ValueError:
-            pass
         # Drain the queue to release any held LogEntry references
         while not queue.empty():
             try:

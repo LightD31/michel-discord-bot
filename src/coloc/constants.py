@@ -1,22 +1,28 @@
 """Constants for the Coloc module."""
 
-from enum import Enum
+from enum import StrEnum
 from typing import Final
+
 import pytz
 
 # Timezone
 PARIS_TZ: Final = pytz.timezone("Europe/Paris")
 
 
-class ReminderType(str, Enum):
+class ReminderType(StrEnum):
     """Types of reminders available."""
+
     NORMAL = "NORMAL"
     HARDCORE = "HARDCORE"
 
 
 # Discord channel/role hardcoded links
-JOURNA_NORMAL_LINK: Final[str] = "https://discord.com/channels/138283154589876224/808432657838768168"
-JOURNA_HARDCORE_LINK: Final[str] = "https://discord.com/channels/138283154589876224/1263861962744270958"
+JOURNA_NORMAL_LINK: Final[str] = (
+    "https://discord.com/channels/138283154589876224/808432657838768168"
+)
+JOURNA_HARDCORE_LINK: Final[str] = (
+    "https://discord.com/channels/138283154589876224/1263861962744270958"
+)
 CALENDAR_URL_TEMPLATE: Final[str] = "https://zunivers.zerator.com/calendrier-festif/{username}"
 
 # API URLs
@@ -99,7 +105,7 @@ ACTION_TYPE_NAMES: Final[dict[str, str]] = {
 def get_bonus_value_description(bonus_type: str, level: int) -> str:
     """Get the formatted description for a corporation bonus value."""
     cumulative_sum = sum(range(1, level + 1))
-    
+
     descriptions = {
         "MEMBER_COUNT": f"+{level * 4} membres max",
         "LOOT": f"+{cumulative_sum * 10} {CURRENCY_EMOJI} par journa ou bonus",

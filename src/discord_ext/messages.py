@@ -7,15 +7,16 @@ previously lived in every extension.
 
 from __future__ import annotations
 
+import contextlib
 import logging
-from typing import Any, Optional
+from typing import Any
 
 from interactions import Client, Message, SlashContext, ThreadChannel
-
 
 # ---------------------------------------------------------------------------
 # Ephemeral responses
 # ---------------------------------------------------------------------------
+
 
 async def send_error(ctx: SlashContext, message: str) -> None:
     """Send an ephemeral error message prefixed with a cross emoji."""
@@ -30,6 +31,7 @@ async def send_success(ctx: SlashContext, message: str) -> None:
 # ---------------------------------------------------------------------------
 # Guild check
 # ---------------------------------------------------------------------------
+
 
 async def require_guild(ctx: SlashContext) -> bool:
     """Return True if the command is used inside a guild, else send an error.
@@ -49,6 +51,7 @@ async def require_guild(ctx: SlashContext) -> bool:
 # Safe user fetch (cache → API fallback)
 # ---------------------------------------------------------------------------
 
+
 async def fetch_user_safe(bot: Client, user_id) -> tuple[str, Any]:
     """Try the cache then the API.
 
@@ -56,10 +59,8 @@ async def fetch_user_safe(bot: Client, user_id) -> tuple[str, Any]:
     """
     user = bot.get_user(user_id)
     if not user:
-        try:
+        with contextlib.suppress(Exception):  # noqa: BLE001 — graceful fallback
             user = await bot.fetch_user(user_id)
-        except Exception:  # noqa: BLE001 — graceful fallback
-            pass
     name = user.display_name if user else f"ID:{user_id}"
     return name, user
 
@@ -68,9 +69,10 @@ async def fetch_user_safe(bot: Client, user_id) -> tuple[str, Any]:
 # Thread unarchive
 # ---------------------------------------------------------------------------
 
+
 async def unarchive_if_thread(
     channel: Any,
-    logger: Optional[logging.Logger] = None,
+    logger: logging.Logger | None = None,
 ) -> None:
     """Unarchive the channel if it is an archived thread. No-op otherwise.
 
@@ -92,6 +94,7 @@ async def unarchive_if_thread(
 # Persistent module message (auto-create + pin + persist id)
 # ---------------------------------------------------------------------------
 
+
 async def fetch_or_create_persistent_message(
     bot: Client,
     *,
@@ -102,8 +105,8 @@ async def fetch_or_create_persistent_message(
     guild_id: int | str | None = None,
     initial_content: str = "Initialisation…",
     pin: bool = False,
-    logger: Optional[logging.Logger] = None,
-) -> Optional[Message]:
+    logger: logging.Logger | None = None,
+) -> Message | None:
     """Return the module's persistent Discord message, creating it if missing.
 
     Flow:
@@ -137,7 +140,9 @@ async def fetch_or_create_persistent_message(
             if logger:
                 logger.warning(
                     "Persistent message %s missing in channel %s (%s); recreating",
-                    message_id, channel_id, e,
+                    message_id,
+                    channel_id,
+                    e,
                 )
 
     try:
@@ -157,6 +162,7 @@ async def fetch_or_create_persistent_message(
     if guild_id is not None:
         try:
             from src.core.config import save_module_field
+
             save_module_field(module_name, guild_id, message_id_key, str(msg.id))
         except Exception as e:  # noqa: BLE001 — log and continue
             if logger:

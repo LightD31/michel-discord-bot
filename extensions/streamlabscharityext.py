@@ -1,3 +1,11 @@
+import asyncio
+import os
+from datetime import datetime
+from typing import Optional
+
+from aiohttp import ClientError
+from babel.numbers import format_currency
+from dotenv import load_dotenv
 from interactions import (
     Client,
     Embed,
@@ -8,32 +16,26 @@ from interactions import (
     listen,
     slash_command,
 )
-from babel.numbers import format_currency
-from datetime import datetime
-from typing import Optional
-import asyncio
-from dotenv import load_dotenv
-from aiohttp import ClientError
-from src import logutil
-import os
-from src.config_manager import load_config
-from src.helpers import fetch_or_create_persistent_message, send_error
-from src.utils import fetch, escape_md
 from twitchAPI.oauth import UserAuthenticationStorageHelper
 from twitchAPI.twitch import Twitch
 from twitchAPI.type import AuthScope
+
+from src import logutil
+from src.config_manager import load_config
+from src.helpers import fetch_or_create_persistent_message, send_error
+from src.utils import escape_md, fetch
 
 logger = logutil.init_logger(os.path.basename(__file__))
 load_dotenv()
 
 # Constants
-DEFAULT_STREAMLABS_URL = "https://streamlabscharity.com/teams/@streamers-4-palestinians/streamers-4-palestinians"
+DEFAULT_STREAMLABS_URL = (
+    "https://streamlabscharity.com/teams/@streamers-4-palestinians/streamers-4-palestinians"
+)
 COLOR = 0x005EA5
 
 _config, _module_config, _enabled_servers = load_config("moduleStreamlabsCharity")
-_guild_cfg = (
-    _module_config.get(_enabled_servers[0], {}) if _enabled_servers else {}
-)
+_guild_cfg = _module_config.get(_enabled_servers[0], {}) if _enabled_servers else {}
 STREAMLABS_URL = _guild_cfg.get("streamlabsTeamUrl") or DEFAULT_STREAMLABS_URL
 
 
@@ -43,13 +45,13 @@ class StreamlabsCharityExtension(Extension):
         self.twitch = None
         self.client_id = os.getenv("TWITCH_CLIENT_ID")
         self.client_secret = os.getenv("TWITCH_CLIENT_SECRET")
-        self.channel_id: Optional[str] = _guild_cfg.get("streamlabsChannelId")
-        self.message_id: Optional[str] = _guild_cfg.get("streamlabsMessageId")
+        self.channel_id: str | None = _guild_cfg.get("streamlabsChannelId")
+        self.message_id: str | None = _guild_cfg.get("streamlabsMessageId")
         self.pin: bool = bool(_guild_cfg.get("streamlabsPinMessage", False))
-        self.guild_id: Optional[str] = _enabled_servers[0] if _enabled_servers else None
-        self.message: Optional[Message] = None
+        self.guild_id: str | None = _enabled_servers[0] if _enabled_servers else None
+        self.message: Message | None = None
 
-    async def _get_message(self) -> Optional[Message]:
+    async def _get_message(self) -> Message | None:
         if self.message is not None:
             return self.message
         self.message = await fetch_or_create_persistent_message(
@@ -101,12 +103,17 @@ class StreamlabsCharityExtension(Extension):
         return await fetch(STREAMLABS_URL.replace("teams", "api/v1/teams"), "json")
 
     async def fetch_members_data(self, campaign_id):
-        members_data = await fetch(f"https://streamlabscharity.com/api/v1/teams/{campaign_id}/members", "json")
+        members_data = await fetch(
+            f"https://streamlabscharity.com/api/v1/teams/{campaign_id}/members", "json"
+        )
         members = members_data["data"]
         while members_data.get("next_page_url"):
             members_data = await fetch(members_data["next_page_url"], "json")
             members.extend(members_data["data"])
-        return {member["user"]["display_name"].lower(): self.create_member_data(member) for member in members}
+        return {
+            member["user"]["display_name"].lower(): self.create_member_data(member)
+            for member in members
+        }
 
     def create_member_data(self, member):
         return {
@@ -121,7 +128,7 @@ class StreamlabsCharityExtension(Extension):
         CHUNK_SIZE = 100
         members_keys = list(members_dict.keys())
         for i in range(0, len(members_keys), CHUNK_SIZE):
-            chunk_keys = members_keys[i:i+CHUNK_SIZE]
+            chunk_keys = members_keys[i : i + CHUNK_SIZE]
             async for stream in self.twitch.get_streams(user_login=chunk_keys):
                 if stream.user_login in members_dict:
                     members_dict[stream.user_login]["is_live"] = True
@@ -135,7 +142,7 @@ class StreamlabsCharityExtension(Extension):
         embeds = [
             self.create_campaign_embed(campaign_data),
             self.create_cause_embed(campaign_data),
-            self.create_streamers_embed(members_str_online, members_str_offline, members_dict)
+            self.create_streamers_embed(members_str_online, members_str_offline, members_dict),
         ]
         await message.edit(content="", embeds=embeds)
 
@@ -145,7 +152,11 @@ class StreamlabsCharityExtension(Extension):
             for member in members_dict.values()
             if member["is_live"]
         ]
-        offline_members = [escape_md(member["display_name"]) for member in members_dict.values() if not member["is_live"]]
+        offline_members = [
+            escape_md(member["display_name"])
+            for member in members_dict.values()
+            if not member["is_live"]
+        ]
         return online_members, offline_members
 
     def split_members(self, members):
@@ -162,7 +173,9 @@ class StreamlabsCharityExtension(Extension):
         return members_str_list
 
     def create_campaign_embed(self, campaign_data):
-        formatted_amount = format_currency(campaign_data["amount_raised"] / 100, "EUR", locale="fr_FR")
+        formatted_amount = format_currency(
+            campaign_data["amount_raised"] / 100, "EUR", locale="fr_FR"
+        )
         return Embed(
             title=campaign_data["campaign"]["display_name"],
             description=(
@@ -176,17 +189,21 @@ class StreamlabsCharityExtension(Extension):
 
     def create_cause_embed(self, campaign_data):
         social_links = {
-            key: url for key, url in {
+            key: url
+            for key, url in {
                 "Discord": campaign_data["campaign"]["causable"]["page_settings"].get("discord"),
                 "Facebook": campaign_data["campaign"]["causable"]["page_settings"].get("facebook"),
-                "Instagram": campaign_data["campaign"]["causable"]["page_settings"].get("instagram"),
+                "Instagram": campaign_data["campaign"]["causable"]["page_settings"].get(
+                    "instagram"
+                ),
                 "Twitch": campaign_data["campaign"]["causable"]["page_settings"].get("twitch"),
                 "Twitter": campaign_data["campaign"]["causable"]["page_settings"].get("twitter"),
                 "Youtube": campaign_data["campaign"]["causable"]["page_settings"].get("youtube"),
                 "URL": campaign_data["campaign"]["causable"]["page_settings"].get("misc_url"),
                 "URL 2": campaign_data["campaign"]["causable"]["page_settings"].get("misc_url_2"),
                 "URL 3": campaign_data["campaign"]["causable"]["page_settings"].get("misc_url_3"),
-            }.items() if url
+            }.items()
+            if url
         }
         social_links_str = ", ".join(f"[{key}]({url})" for key, url in social_links.items())
         return Embed(
@@ -205,8 +222,14 @@ class StreamlabsCharityExtension(Extension):
             color=COLOR,
             timestamp=datetime.now(),
         )
-        self.add_embed_fields(embed_streamers, f"En ligne ({online_count}/{len(members_dict)})", members_str_online)
-        self.add_embed_fields(embed_streamers, f"Hors ligne ({offline_count}/{len(members_dict)})", members_str_offline)
+        self.add_embed_fields(
+            embed_streamers, f"En ligne ({online_count}/{len(members_dict)})", members_str_online
+        )
+        self.add_embed_fields(
+            embed_streamers,
+            f"Hors ligne ({offline_count}/{len(members_dict)})",
+            members_str_offline,
+        )
         return embed_streamers
 
     def add_embed_fields(self, embed, title, members_str_list):
@@ -232,7 +255,7 @@ class StreamlabsCharityExtension(Extension):
         embeds = [
             self.create_campaign_embed(campaign_data),
             self.create_cause_embed(campaign_data),
-            self.create_final_members_embed(members_str)
+            self.create_final_members_embed(members_str),
         ]
         await message.edit(content="", embeds=embeds)
 
@@ -243,4 +266,3 @@ class StreamlabsCharityExtension(Extension):
         embed_streamers = Embed(title="Participants", color=COLOR)
         self.add_embed_fields(embed_streamers, "Merci à tous <3", members_str)
         return embed_streamers
-

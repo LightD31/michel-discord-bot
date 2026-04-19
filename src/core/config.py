@@ -9,12 +9,14 @@ Writes are atomic (tempfile + ``os.replace`` + ``fsync``) and serialized by a
 in a separate uvicorn thread, so a thread-aware primitive is required.
 """
 
+import contextlib
 import json
 import os
 import tempfile
 import threading
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable, Optional, Tuple
+from typing import Any, Optional
 
 from src.core import logging as _logging
 
@@ -33,7 +35,7 @@ _write_lock = threading.Lock()
 def _load_config_file() -> dict:
     """Read and parse ``config/config.json``. Returns ``{}`` on failure."""
     try:
-        with open(CONFIG_PATH, "r", encoding="utf-8") as file:
+        with open(CONFIG_PATH, encoding="utf-8") as file:
             return json.load(file)
     except FileNotFoundError:
         logger.error("Configuration file not found: %s", CONFIG_PATH)
@@ -53,9 +55,7 @@ def _atomic_write(data: dict) -> None:
     directory = os.path.dirname(CONFIG_PATH) or "."
     os.makedirs(directory, exist_ok=True)
 
-    fd, tmp_path = tempfile.mkstemp(
-        prefix=".config-", suffix=".json.tmp", dir=directory
-    )
+    fd, tmp_path = tempfile.mkstemp(prefix=".config-", suffix=".json.tmp", dir=directory)
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as tmp:
             json.dump(data, tmp, indent=4, ensure_ascii=False)
@@ -63,16 +63,15 @@ def _atomic_write(data: dict) -> None:
             os.fsync(tmp.fileno())
         os.replace(tmp_path, CONFIG_PATH)
     except Exception:
-        try:
+        with contextlib.suppress(OSError):
             Path(tmp_path).unlink()
-        except OSError:
-            pass
         raise
 
 
 # ---------------------------------------------------------------------------
 # Reactive store — new in Phase 1
 # ---------------------------------------------------------------------------
+
 
 class ConfigStore:
     """Singleton-style reactive wrapper around ``config/config.json``.
@@ -157,11 +156,8 @@ class ConfigStore:
             self._subscribers.append(callback)
 
         def unsubscribe() -> None:
-            with self._state_lock:
-                try:
-                    self._subscribers.remove(callback)
-                except ValueError:
-                    pass
+            with self._state_lock, contextlib.suppress(ValueError):
+                self._subscribers.remove(callback)
 
         return unsubscribe
 
@@ -183,12 +179,13 @@ config_store = ConfigStore()
 # Legacy function API (kept working via re-export shim)
 # ---------------------------------------------------------------------------
 
+
 def load_full_config() -> dict:
     """Load the complete configuration (fresh read every call)."""
     return _load_config_file()
 
 
-def load_config(module_name: str | None = None) -> Tuple[dict, dict, list[str]]:
+def load_config(module_name: str | None = None) -> tuple[dict, dict, list[str]]:
     """Load the configuration for a specific module.
 
     Returns:
@@ -230,7 +227,7 @@ def save_config(
 ) -> None:
     """Save the configuration for a specific module."""
     with _write_lock:
-        with open(CONFIG_PATH, "r", encoding="utf-8") as file:
+        with open(CONFIG_PATH, encoding="utf-8") as file:
             data = json.load(file)
         for server_id, server_info in data["servers"].items():
             if str(server_id) in enabled_servers:
@@ -253,16 +250,14 @@ def load_discord2name(guild_id: str | int) -> dict:
     return data.get("servers", {}).get(str(guild_id), {}).get("discord2name", {})
 
 
-def save_module_field(
-    module_name: str, guild_id: str | int, field: str, value
-) -> None:
+def save_module_field(module_name: str, guild_id: str | int, field: str, value) -> None:
     """Update a single field inside ``servers.<guild_id>.<module_name>``.
 
     Creates intermediate dicts if missing.
     """
     with _write_lock:
         try:
-            with open(CONFIG_PATH, "r", encoding="utf-8") as file:
+            with open(CONFIG_PATH, encoding="utf-8") as file:
                 data = json.load(file)
         except FileNotFoundError:
             data = {}
@@ -277,6 +272,4 @@ def save_module_field(
 
         _atomic_write(data)
     config_store._update_and_notify(data)
-    logger.info(
-        "Updated config: servers.%s.%s.%s", guild_id, module_name, field
-    )
+    logger.info("Updated config: servers.%s.%s.%s", guild_id, module_name, field)

@@ -30,7 +30,7 @@ import os
 import shutil
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, Union
+from typing import Optional
 
 from motor.motor_asyncio import (
     AsyncIOMotorClient,
@@ -52,8 +52,8 @@ class MongoManager:
     """Singleton-style global MongoDB connection manager using motor (async)."""
 
     _instance: Optional["MongoManager"] = None
-    _client: Optional[AsyncIOMotorClient] = None
-    _url: Optional[str] = None
+    _client: AsyncIOMotorClient | None = None
+    _url: str | None = None
 
     def __new__(cls) -> "MongoManager":
         if cls._instance is None:
@@ -73,8 +73,7 @@ class MongoManager:
 
             if not self._url:
                 raise RuntimeError(
-                    "MongoDB URL is not configured. "
-                    "Set 'mongodb.url' in your configuration."
+                    "MongoDB URL is not configured. Set 'mongodb.url' in your configuration."
                 )
 
             self._client = AsyncIOMotorClient(
@@ -95,12 +94,12 @@ class MongoManager:
 
     # --- Per-guild helpers -------------------------------------------
 
-    def get_guild_db(self, guild_id: Union[str, int]) -> AsyncIOMotorDatabase:
+    def get_guild_db(self, guild_id: str | int) -> AsyncIOMotorDatabase:
         """Return the database for a specific guild."""
         return self.client[f"{GUILD_DB_PREFIX}{guild_id}"]
 
     def get_guild_collection(
-        self, guild_id: Union[str, int], collection_name: str
+        self, guild_id: str | int, collection_name: str
     ) -> AsyncIOMotorCollection:
         """Return a collection inside a guild's database."""
         return self.client[f"{GUILD_DB_PREFIX}{guild_id}"][collection_name]
@@ -168,10 +167,7 @@ class MongoManager:
 
         db_names = await self.client.list_database_names()
         # Only back up our own databases
-        relevant = [
-            n for n in db_names
-            if n.startswith(GUILD_DB_PREFIX) or n == GLOBAL_DB_NAME
-        ]
+        relevant = [n for n in db_names if n.startswith(GUILD_DB_PREFIX) or n == GLOBAL_DB_NAME]
 
         total_docs = 0
         for db_name in relevant:
@@ -194,9 +190,7 @@ class MongoManager:
                 )
                 total_docs += len(docs)
 
-            logger.debug(
-                "Backed up database '%s' (%d collections)", db_name, len(col_names)
-            )
+            logger.debug("Backed up database '%s' (%d collections)", db_name, len(col_names))
 
         logger.info(
             "Backup complete: %d databases, %d total documents → %s",

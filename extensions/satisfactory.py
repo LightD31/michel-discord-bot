@@ -24,13 +24,13 @@ config, module_config, enabled_servers = load_config("moduleSatisfactory")
 
 class Satisfactory(Extension):
     def __init__(self, client):
-        self.channel: Optional[BaseChannel] = None
-        self.message: Optional[Message] = None
-        self.api: Optional[API] = None
-        self.server_config: Optional[dict] = None
-        self.guild_id: Optional[str] = None
+        self.channel: BaseChannel | None = None
+        self.message: Message | None = None
+        self.api: API | None = None
+        self.server_config: dict | None = None
+        self.guild_id: str | None = None
 
-    async def _ensure_message(self) -> Optional[Message]:
+    async def _ensure_message(self) -> Message | None:
         if self.message is not None:
             return self.message
         if not self.server_config:
@@ -106,4 +106,3 @@ class Satisfactory(Extension):
             logger.debug("Updated Satisfactory status: %d players, tier %s", players, tier)
         except Exception as e:
             logger.error("Failed to update Satisfactory message: %s", e)
-

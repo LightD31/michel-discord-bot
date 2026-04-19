@@ -8,8 +8,8 @@ import isodate
 from interactions import BaseChannel, Client, Extension, IntervalTrigger, Task, listen
 
 from src import logutil
-from src.mongodb import mongo_manager
 from src.config_manager import load_config
+from src.mongodb import mongo_manager
 from src.utils import fetch
 
 logger = logutil.init_logger(os.path.basename(__file__))
@@ -50,9 +50,7 @@ class YoutubeExtension(Extension):
                 video_id = await self.get_video_id(uploads)
                 if self.is_video_already_checked(server, user, video_id, youtube_data):
                     continue
-                youtube_data = self.update_youtube_data(
-                    server, user, video_id, youtube_data
-                )
+                youtube_data = self.update_youtube_data(server, user, video_id, youtube_data)
                 if not is_initial_sync and await self.is_video_valid(video_id):
                     await channel.send(f"https://www.youtube.com/watch?v={video_id}")
             await self.save_youtube_data(youtube_data)
@@ -60,7 +58,7 @@ class YoutubeExtension(Extension):
     async def get_uploads(self, user):
         if user not in self.playlist_cache:
             url = f"{YOUTUBE_API_URL}/channels?part=contentDetails&forHandle={user}&key={YOUTUBE_API_KEY}"
-            data = await fetch(url, return_type='json')
+            data = await fetch(url, return_type="json")
             logger.debug(data)
             uploads = data["items"][0]["contentDetails"]["relatedPlaylists"]["uploads"]
             self.playlist_cache[user] = uploads
@@ -70,7 +68,7 @@ class YoutubeExtension(Extension):
 
     async def get_video_id(self, uploads):
         url = f"{YOUTUBE_API_URL}/playlistItems?part=snippet&maxResults=1&playlistId={uploads}&key={YOUTUBE_API_KEY}"
-        data = await fetch(url, return_type='json')
+        data = await fetch(url, return_type="json")
         logger.debug(data)
         return data["items"][0]["snippet"]["resourceId"]["videoId"]
 
@@ -97,12 +95,10 @@ class YoutubeExtension(Extension):
 
     async def is_video_valid(self, video_id):
         url = f"{YOUTUBE_API_URL}/videos?part=snippet,contentDetails&id={video_id}&key={YOUTUBE_API_KEY}"
-        data = await fetch(url, return_type='json')
+        data = await fetch(url, return_type="json")
         logger.debug(data)
         if data["items"][0]["snippet"]["liveBroadcastContent"] == "none":
-            duration = isodate.parse_duration(
-                data["items"][0]["contentDetails"]["duration"]
-            )
+            duration = isodate.parse_duration(data["items"][0]["contentDetails"]["duration"])
             if duration > datetime.timedelta(minutes=1, seconds=30):
                 return True
             else:
@@ -114,6 +110,4 @@ class YoutubeExtension(Extension):
     async def save_youtube_data(self, youtube_data):
         for server_id, users in youtube_data.items():
             col = mongo_manager.get_guild_collection(server_id, "youtube")
-            await col.update_one(
-                {"_id": "youtube_data"}, {"$set": users}, upsert=True
-            )
+            await col.update_one({"_id": "youtube_data"}, {"$set": users}, upsert=True)

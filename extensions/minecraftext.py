@@ -26,9 +26,9 @@ from interactions import (
     ScheduledEventType,
     SlashContext,
     Task,
-    TimeTrigger,
     Timestamp,
     TimestampStyles,
+    TimeTrigger,
     listen,
     slash_command,
     slash_default_member_permission,
@@ -74,7 +74,7 @@ SERVER_TYPE = module_config.get("minecraftServerType", "")
 
 class Minecraft(Extension):
     """Discord extension for Minecraft server monitoring and statistics."""
-    
+
     def __init__(self, client):
         self.client = client
         self.image_cache = {}
@@ -108,6 +108,7 @@ class Minecraft(Extension):
             return
         # Clear caches on startup
         from src.minecraft import stats_cache
+
         stats_cache.clear()
         self.image_cache.clear()
         logger.info("Caches cleared on startup")
@@ -137,7 +138,7 @@ class Minecraft(Extension):
         except Exception:
             logger.info("Could not find Minecraft server at %s using lookup", MINECRAFT_ADDRESS)
             self.serverColoc = JavaServer(MINECRAFT_IP, MINECRAFT_PORT)
-            
+
         logger.debug("Updating Minecraft server status")
         try:
             message = await self._get_status_message()
@@ -166,7 +167,7 @@ class Minecraft(Extension):
                 embed1, name = self._create_online_embed(coloc_status)
                 players_online = coloc_status.players.online
 
-            except (ConnectionResetError, ConnectionRefusedError, TimeoutError, socket.timeout) as e:
+            except (ConnectionResetError, ConnectionRefusedError, TimeoutError) as e:
                 logger.debug(e)
                 embed1, name = self._create_offline_embed()
 
@@ -192,16 +193,20 @@ class Minecraft(Extension):
         else:
             players = "\u200b"
             joueurs = "\u200b"
-            
+
         embed = Embed(
             title=f"Serveur {SERVER_TYPE + ' ' if SERVER_TYPE else ''}{coloc_status.version.name}",
             description=f"Adresse : `{MINECRAFT_ADDRESS}`"
-            + (f"\nModpack : [{MODPACK_NAME}]({MODPACK_URL})" if MODPACK_NAME and MODPACK_URL else "")
+            + (
+                f"\nModpack : [{MODPACK_NAME}]({MODPACK_URL})"
+                if MODPACK_NAME and MODPACK_URL
+                else ""
+            )
             + (f"\nVersion : **{MODPACK_VERSION}**" if MODPACK_VERSION else ""),
             fields=[
                 {
                     "name": "Latence",
-                    "value": "{:.2f} ms".format(coloc_status.latency),
+                    "value": f"{coloc_status.latency:.2f} ms",
                     "inline": True,
                 },
                 {
@@ -209,10 +214,17 @@ class Minecraft(Extension):
                     "value": players,
                     "inline": True,
                 },
-            ] + ([{
-                    "name": "État de Michel et du serveur",
-                    "value": STATUS_URL,
-                }] if STATUS_URL else []),
+            ]
+            + (
+                [
+                    {
+                        "name": "État de Michel et du serveur",
+                        "value": STATUS_URL,
+                    }
+                ]
+                if STATUS_URL
+                else []
+            ),
             color=BrandColors.GREEN,
             timestamp=Timestamp.utcnow().isoformat(),
         )
@@ -224,10 +236,14 @@ class Minecraft(Extension):
         embed = Embed(
             title="Serveur Hors-ligne",
             description=f"Adresse : `{MINECRAFT_ADDRESS}`",
-            fields=[{
+            fields=[
+                {
                     "name": "État de Michel et du serveur",
                     "value": STATUS_URL,
-                }] if STATUS_URL else [],
+                }
+            ]
+            if STATUS_URL
+            else [],
             color=BrandColors.RED,
             timestamp=Timestamp.utcnow().isoformat(),
         )
@@ -239,7 +255,7 @@ class Minecraft(Extension):
             title = message.embeds[0].title
         except IndexError:
             title = "Serveur Minecraft"
-            
+
         embed = Embed(
             title=title,
             description=f"Adresse : `{MINECRAFT_ADDRESS}`\n",
@@ -248,10 +264,17 @@ class Minecraft(Extension):
                     "name": "Latence",
                     "value": "Serveur en veille :sleeping:",
                 },
-            ] + ([{
-                    "name": "État de Michel et du serveur",
-                    "value": STATUS_URL,
-                }] if STATUS_URL else []),
+            ]
+            + (
+                [
+                    {
+                        "name": "État de Michel et du serveur",
+                        "value": STATUS_URL,
+                    }
+                ]
+                if STATUS_URL
+                else []
+            ),
             footer=FOOTER_TEXT if FOOTER_TEXT else None,
             timestamp=Timestamp.utcnow().isoformat(),
             color=BrandColors.YELLOW,
@@ -260,9 +283,8 @@ class Minecraft(Extension):
 
     async def _update_channel_name(self, channel, name):
         """Update channel name if needed and not recently changed."""
-        if (
-            channel.name != name
-            and self.channel_edit_timestamp < datetime.now() - timedelta(minutes=5)
+        if channel.name != name and self.channel_edit_timestamp < datetime.now() - timedelta(
+            minutes=5
         ):
             await channel.edit(name=name)
             self.channel_edit_timestamp = datetime.now()
@@ -313,7 +335,7 @@ class Minecraft(Extension):
 
         # Get player statistics using optimized SFTP connection
         player_stats = await self._get_player_stats()
-                  
+
         # Convert player stats to formatted table
         table = self._create_stats_table(player_stats)
 
@@ -332,39 +354,54 @@ class Minecraft(Extension):
     async def _get_player_stats(self):
         """Retrieve player statistics from the Minecraft server."""
         from src.minecraft import get_minecraft_stats_with_retry
-        
+
         try:
-            logger.debug(f"SFTP connection params: host={SFTP_HOST}, port={SFTP_PORT}, username={SFTP_USERNAME}")
-            player_stats = await get_minecraft_stats_with_retry(
-                host=SFTP_HOST,
-                port=SFTP_PORT,
-                username=SFTP_USERNAME,
-                password=SFTPS_PASSWORD
+            logger.debug(
+                f"SFTP connection params: host={SFTP_HOST}, port={SFTP_PORT}, username={SFTP_USERNAME}"
             )
-            logger.debug(f"Retrieved stats for {len(player_stats)} players using optimized connection")
+            player_stats = await get_minecraft_stats_with_retry(
+                host=SFTP_HOST, port=SFTP_PORT, username=SFTP_USERNAME, password=SFTPS_PASSWORD
+            )
+            logger.debug(
+                f"Retrieved stats for {len(player_stats)} players using optimized connection"
+            )
             return player_stats
 
         except Exception as e:
-            logger.error(f"Failed to get stats with optimized method (host={SFTP_HOST}, port={SFTP_PORT}, user={SFTP_USERNAME}): {e}")
+            logger.error(
+                f"Failed to get stats with optimized method (host={SFTP_HOST}, port={SFTP_PORT}, user={SFTP_USERNAME}): {e}"
+            )
             return []
 
     def _create_stats_table(self, player_stats):
         """Create and format the statistics table."""
         if not player_stats:
             # Create empty table
-            df = pd.DataFrame(columns=["Joueur", "Niveau", "Morts", "Morts/h", "Marche (km)", "Temps de jeu", "Blocs minés", "Mobs tués", "Animaux reproduits"])
+            df = pd.DataFrame(
+                columns=[
+                    "Joueur",
+                    "Niveau",
+                    "Morts",
+                    "Morts/h",
+                    "Marche (km)",
+                    "Temps de jeu",
+                    "Blocs minés",
+                    "Mobs tués",
+                    "Animaux reproduits",
+                ]
+            )
             logger.warning("No player data retrieved")
         else:
             df = pd.DataFrame(player_stats)
-            
+
             # Validate and format "Temps de jeu" column
             if "Temps de jeu" in df.columns:
                 df["Temps de jeu"] = pd.to_timedelta(df["Temps de jeu"], unit="s").dt.round("1s")
                 df.sort_values(by="Temps de jeu", ascending=False, inplace=True)
-            
+
             # Limit to top N players to keep image size manageable
             df = df.head(get_mc_config("max_players_displayed", 15))
-        
+
         return self._format_table_efficiently(df)
 
     async def _update_stats_message(self, message, embed1, embed2, table):
@@ -375,14 +412,14 @@ class Minecraft(Extension):
             return
 
         table_string = table.get_string()
-        
+
         if table_string in self.image_cache:
             await message.edit(content="", embeds=[embed1, embed2])
             logger.debug("Image retrieved from cache")
         else:
             # Clean cache before adding new image
             self._optimize_image_cache()
-            
+
             imageIO = BytesIO()
             image, imageIO = create_dynamic_image(table_string)
             self.image_cache[table_string] = (image, imageIO)
@@ -405,9 +442,9 @@ class Minecraft(Extension):
         if pd.isna(num):
             return "0"
         if num >= 1000000:
-            return f"{num/1000000:.1f}M"
+            return f"{num / 1000000:.1f}M"
         elif num >= 1000:
-            return f"{num/1000:.1f}k"
+            return f"{num / 1000:.1f}k"
         else:
             return str(int(num))
 
@@ -415,7 +452,7 @@ class Minecraft(Extension):
         """Format table efficiently to reduce image size."""
         if df.empty:
             return None
-            
+
         # Format numeric columns to reduce width
         if "Morts/h" in df.columns:
             df["Morts/h"] = df["Morts/h"].round(2)
@@ -423,7 +460,7 @@ class Minecraft(Extension):
             df["Marche (km)"] = df["Marche (km)"].round(1)
         if "Niveau" in df.columns:
             df["Niveau"] = df["Niveau"].astype(str)
-        
+
         # Format large numbers for better readability
         if "Blocs minés" in df.columns:
             df["Blocs minés"] = df["Blocs minés"].apply(self._format_large_number)
@@ -431,11 +468,11 @@ class Minecraft(Extension):
             df["Mobs tués"] = df["Mobs tués"].apply(self._format_large_number)
         if "Animaux reproduits" in df.columns:
             df["Animaux reproduits"] = df["Animaux reproduits"].apply(self._format_large_number)
-            
+
         # Truncate long names
         if "Joueur" in df.columns:
-            df["Joueur"] = df["Joueur"].str[:get_mc_config("player_name_max_length", 14)]
-        
+            df["Joueur"] = df["Joueur"].str[: get_mc_config("player_name_max_length", 14)]
+
         # Convert to table
         output = StringIO()
         df.to_csv(output, index=False, float_format="%.1f")
@@ -449,5 +486,5 @@ class Minecraft(Extension):
         max_players = get_mc_config("max_players_displayed", 15)
         table.title = f"Stats Joueurs (Top {max_players})"
         table.hrules = prettytable.ALL
-        
+
         return table

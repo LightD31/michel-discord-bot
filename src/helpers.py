@@ -16,8 +16,8 @@ from src.discord_ext.autocomplete import (  # noqa: F401
     is_guild_enabled,
 )
 from src.discord_ext.embeds import (  # noqa: F401
-    Colors,
     SPACER_FIELD,
+    Colors,
     format_discord_timestamp,
 )
 from src.discord_ext.messages import (  # noqa: F401
