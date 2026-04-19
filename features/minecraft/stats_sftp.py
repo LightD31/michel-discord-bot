@@ -150,7 +150,9 @@ async def get_player_stats_optimized(
         custom_stats = playerdata.get("stats", {}).get("minecraft:custom", {})
         mined_stats = playerdata.get("stats", {}).get("minecraft:mined", {})
 
-        level = str(int(nbt[""]["XpLevel"]))
+        # Support both named-root ({"": {...}}) and unnamed-root NBT layouts
+        nbt_root = nbt.get("", nbt)
+        level = str(int(nbt_root["XpLevel"]))
         deaths = custom_stats.get("minecraft:deaths", 0)
         playtime = custom_stats.get("minecraft:play_time", 0)
         walked = custom_stats.get("minecraft:walk_one_cm", 0)
