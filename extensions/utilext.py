@@ -657,9 +657,7 @@ class UtilExtension(Extension):
                 )
             else:
                 label = f"{reminder.message:40} ({remind_time.strftime('%H:%M')})"
-            buttons.append(
-                Button(label=label, style=ButtonStyle.SECONDARY, custom_id=reminder.id)
-            )
+            buttons.append(Button(label=label, style=ButtonStyle.SECONDARY, custom_id=reminder.id))
             id_map[reminder.id] = reminder
 
         message = await ctx.send(
@@ -726,13 +724,9 @@ class UtilExtension(Extension):
                     _, user = await fetch_user_safe(self.bot, reminder.user_id)
                     if user:
                         await user.send(reminder.message)
-                        logger.info(
-                            "Reminder sent to %s: %s", user.display_name, reminder.message
-                        )
+                        logger.info("Reminder sent to %s: %s", user.display_name, reminder.message)
                 except Exception as e:
-                    logger.warning(
-                        "Failed to send reminder to user %s: %s", reminder.user_id, e
-                    )
+                    logger.warning("Failed to send reminder to user %s: %s", reminder.user_id, e)
                     continue
 
                 next_time = self._next_occurrence(reminder.remind_time, reminder.frequency)
