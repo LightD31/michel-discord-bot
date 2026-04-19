@@ -170,6 +170,7 @@ class ApiMixin:
 
     def _live_col(self, server_id: str):
         from ._common import live_col
+
         return live_col(server_id)
 
     async def _save_live_match(

@@ -4,6 +4,7 @@ from typing import Any
 
 from interactions import Embed, IntervalTrigger, Task, Timestamp
 
+from src.discord_ext.embeds import Colors
 from src.vlrgg import (
     _clean_vlr_text,
     expand_round_name,
@@ -19,7 +20,6 @@ from ._common import (
     TeamState,
     logger,
 )
-from src.discord_ext.embeds import Colors
 
 
 class NotificationsMixin:
@@ -36,9 +36,7 @@ class NotificationsMixin:
                 try:
                     await self._update_team_schedule(team_state)
                 except Exception as e:
-                    logger.exception(
-                        f"Erreur schedule pour {team_name} (serveur {server_id}): {e}"
-                    )
+                    logger.exception(f"Erreur schedule pour {team_name} (serveur {server_id}): {e}")
 
     @Task.create(IntervalTrigger(minutes=LIVE_UPDATE_INTERVAL_MINUTES))
     async def live_update(self) -> None:
@@ -238,12 +236,8 @@ class NotificationsMixin:
                 teams_detail = details["teams"]
                 team1 = teams_detail[0].get("name", "???") if len(teams_detail) > 0 else "???"
                 team2 = teams_detail[1].get("name", "???") if len(teams_detail) > 1 else "???"
-                score1 = (
-                    str(teams_detail[0].get("score", "?")) if len(teams_detail) > 0 else "?"
-                )
-                score2 = (
-                    str(teams_detail[1].get("score", "?")) if len(teams_detail) > 1 else "?"
-                )
+                score1 = str(teams_detail[0].get("score", "?")) if len(teams_detail) > 0 else "?"
+                score2 = str(teams_detail[1].get("score", "?")) if len(teams_detail) > 1 else "?"
             else:
                 team1 = (match_data or {}).get("team1", "???")
                 team2 = (match_data or {}).get("team2", "???")
@@ -297,9 +291,9 @@ class NotificationsMixin:
                     event_name = full_name
                 round_info = expand_round_name(series) if series else ""
             if not event_name:
-                event_name = (match_data or {}).get("match_event", "") or (
-                    match_data or {}
-                ).get("tournament_name", "Tournoi")
+                event_name = (match_data or {}).get("match_event", "") or (match_data or {}).get(
+                    "tournament_name", "Tournoi"
+                )
 
             description = f"**{event_name}**"
             if round_info:

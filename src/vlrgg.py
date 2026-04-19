@@ -19,8 +19,8 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from src.core import logging as logutil
-from src.discord_ext.embeds import format_discord_timestamp
 from src.core.http import fetch
+from src.discord_ext.embeds import format_discord_timestamp
 
 logger = logutil.init_logger(__name__)
 

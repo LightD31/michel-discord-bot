@@ -12,9 +12,9 @@ from ._common import (
     MEDAL_EMOJIS,
     MEDAL_LABELS,
     MEDALS_URL,
+    _get_flag,
     enabled_servers,
     logger,
-    _get_flag,
 )
 
 

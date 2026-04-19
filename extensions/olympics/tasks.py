@@ -9,8 +9,8 @@ from interactions import IntervalTrigger, Task
 
 from ._common import (
     COUNTRY_CODE,
-    MEDALLISTS_URL,
     EVENT_MEDALS_URL,
+    MEDALLISTS_URL,
     MEDALS_URL,
     POLL_INTERVAL_MINUTES,
     _olympics_col,

@@ -13,12 +13,12 @@ import asyncio
 
 from interactions import Client, Extension, listen
 
+from features.reminders import ReminderRepository
+
 from ._common import enabled_servers
 from .commands import CommandsMixin
 from .polls import PollsMixin
 from .reminders import RemindersMixin
-
-from features.reminders import ReminderRepository
 
 
 class UtilExtension(CommandsMixin, PollsMixin, RemindersMixin, Extension):

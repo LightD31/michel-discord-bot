@@ -38,7 +38,6 @@ from interactions import (
 )
 from interactions.api.events import Component
 
-from src.core import logging as logutil
 from src.coloc.api_client import ZuniversAPIClient, ZuniversAPIError
 from src.coloc.constants import (
     ACTION_TYPE_NAMES,
@@ -65,6 +64,7 @@ from src.coloc.utils import (
     image_url_needs_download,
     set_event_embed_image,
 )
+from src.core import logging as logutil
 from src.core.config import load_config
 from src.discord_ext.messages import fetch_user_safe, send_error
 from src.webui.schemas import SchemaBase, enabled_field, register_module, ui

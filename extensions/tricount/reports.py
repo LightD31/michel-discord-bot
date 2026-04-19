@@ -126,9 +126,7 @@ class ReportsMixin:
             return
 
         expenses = (
-            await expenses_col(ctx.guild.id)
-            .find({"group_id": group["_id"]})
-            .to_list(length=None)
+            await expenses_col(ctx.guild.id).find({"group_id": group["_id"]}).to_list(length=None)
         )
 
         if not expenses:
@@ -162,9 +160,13 @@ class ReportsMixin:
             _, user = await fetch_user_safe(self.bot, member_id)
             if user:
                 if data["balance"] > 0.01:
-                    balance_text += f"💰 {user.mention}: +{data['balance']:.2f}€ (a payé {data['paid']:.2f}€)\n"
+                    balance_text += (
+                        f"💰 {user.mention}: +{data['balance']:.2f}€ (a payé {data['paid']:.2f}€)\n"
+                    )
                 elif data["balance"] < -0.01:
-                    balance_text += f"💸 {user.mention}: {data['balance']:.2f}€ (a payé {data['paid']:.2f}€)\n"
+                    balance_text += (
+                        f"💸 {user.mention}: {data['balance']:.2f}€ (a payé {data['paid']:.2f}€)\n"
+                    )
                 else:
                     balance_text += f"✅ {user.mention}: 0€ (a payé {data['paid']:.2f}€)\n"
             else:
