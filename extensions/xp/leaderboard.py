@@ -1,5 +1,6 @@
 """LeaderboardMixin — permanent leaderboard updater task and embed builders."""
 
+import traceback
 from datetime import datetime
 
 import pymongo
@@ -178,5 +179,10 @@ class LeaderboardMixin:
                 embeds=paginator_dict["embeds"],
                 components=paginator_dict["components"],
             )
-        except Exception:
-            logger.exception("Failed to update leaderboard for guild %s", guild_id)
+        except Exception as e:
+            logger.error(
+                "Failed to update leaderboard for guild %s: %s\n%s",
+                guild_id,
+                e,
+                traceback.format_exc(),
+            )
