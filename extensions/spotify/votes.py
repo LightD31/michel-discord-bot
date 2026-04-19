@@ -2,7 +2,6 @@
 
 import os
 import random
-import time
 from datetime import datetime, timedelta
 
 import pymongo
@@ -45,13 +44,13 @@ from ._common import (
     enabled_servers,
     sp,
 )
+from ._cooldown import VoteCooldown
 
 logger = logutil.init_logger(os.path.basename(__file__))
 
-# Per-user last-vote timestamp used for the shared button cooldown. Module-level
-# on purpose: both button handlers (conserver/supprimer/menfou + addwithvote)
-# rate-limit the same user identity.
-last_votes: dict[str, float] = {}
+# Mongo-backed per-user cooldown shared across both button handlers
+# (conserver/supprimer/menfou + addwithvote). TTL indexes auto-expire entries.
+vote_cooldown = VoteCooldown(COOLDOWN_TIME)
 
 
 class VotesMixin:
@@ -257,11 +256,11 @@ class VotesMixin:
             return
         server = self.get_server(ctx.guild_id)
         user_id = str(ctx.user.id)
-        if user_id in last_votes and time.time() - last_votes[user_id] < COOLDOWN_TIME:
+        if await vote_cooldown.is_on_cooldown(user_id):
             await send_error(ctx, "Tu ne peux voter que toutes les 5 secondes.")
             logger.warning("%s a essayé de voter trop rapidement", ctx.user.username)
             return
-        last_votes[user_id] = time.time()
+        await vote_cooldown.record(user_id)
         message_id = server.vote_infos.get("message_id")
         track_id = server.vote_infos.get("track_id")
         if ctx.message.id == int(message_id):
@@ -555,11 +554,11 @@ class VotesMixin:
         song_id = event.ctx.custom_id.split("_")[1]
         vote = event.ctx.custom_id.split("_")[2]
         user_id = str(event.ctx.user.id)
-        if user_id in last_votes and time.time() - last_votes[user_id] < COOLDOWN_TIME:
+        if await vote_cooldown.is_on_cooldown(user_id):
             await send_error(event.ctx, "Tu ne peux voter que toutes les 5 secondes.")
             logger.warning("%s a essayé de voter trop rapidement", event.ctx.user.username)
             return
-        last_votes[user_id] = time.time()
+        await vote_cooldown.record(user_id)
         data = await server.vote_manager.load_data()
         if vote == "annuler":
             data[song_id]["votes"].pop(user_id, None)
