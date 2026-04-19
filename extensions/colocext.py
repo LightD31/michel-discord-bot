@@ -67,6 +67,21 @@ from src.coloc.utils import (
 )
 from src.config_manager import load_config
 from src.helpers import fetch_user_safe, send_error
+from src.webui.schemas import SchemaBase, enabled_field, register_module, ui
+
+
+@register_module("moduleColoc")
+class ColocConfig(SchemaBase):
+    __label__ = "Colocation"
+    __description__ = "Gestion de la colocation et notifications Zunivers."
+    __icon__ = "🏠"
+    __category__ = "Communauté"
+
+    enabled: bool = enabled_field()
+    colocZuniversChannelId: str | None = ui(
+        "Salon Zunivers", "channel", description="Salon pour les notifications Zunivers."
+    )
+
 
 logger = logutil.init_logger(os.path.basename(__file__))
 

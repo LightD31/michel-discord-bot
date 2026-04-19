@@ -22,6 +22,18 @@ from src import logutil
 from src.config_manager import load_config
 from src.helpers import Colors, fetch_user_safe, guild_group_autocomplete, require_guild, send_error
 from src.mongodb import mongo_manager
+from src.webui.schemas import SchemaBase, enabled_field, register_module
+
+
+@register_module("moduleTricount")
+class TricountConfig(SchemaBase):
+    __label__ = "Tricount"
+    __description__ = "Gestion des dépenses partagées."
+    __icon__ = "💰"
+    __category__ = "Outils"
+
+    enabled: bool = enabled_field()
+
 
 logger = logutil.init_logger(os.path.basename(__file__))
 config, module_config, enabled_servers = load_config("moduleTricount")

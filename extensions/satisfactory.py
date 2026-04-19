@@ -16,6 +16,50 @@ from pyfactorybridge import API
 from src import logutil
 from src.helpers import fetch_or_create_persistent_message
 from src.utils import load_config
+from src.webui.schemas import (
+    SchemaBase,
+    enabled_field,
+    hidden_message_id,
+    register_module,
+    secret_field,
+    ui,
+)
+
+
+@register_module("moduleSatisfactory")
+class SatisfactoryConfig(SchemaBase):
+    __label__ = "Satisfactory"
+    __description__ = "Statut et gestion du serveur Satisfactory."
+    __icon__ = "🏭"
+    __category__ = "Esport & Jeux"
+
+    enabled: bool = enabled_field()
+    satisfactoryChannelId: str = ui(
+        "Salon statut",
+        "channel",
+        required=True,
+        description="Salon pour le message de statut (créé automatiquement).",
+    )
+    satisfactoryPinMessage: bool = ui(
+        "Épingler le message de statut",
+        "boolean",
+        default=False,
+        description="Épingler automatiquement le message de statut.",
+    )
+    satisfactoryMessageId: str | None = hidden_message_id("Message statut", "satisfactoryChannelId")
+    satisfactoryServerIp: str = ui(
+        "IP du serveur", "string", required=True, description="Adresse IP du serveur Satisfactory."
+    )
+    satisfactoryServerPort: str = ui(
+        "Port du serveur", "string", default="7777", description="Port du serveur Satisfactory."
+    )
+    satisfactoryServerPassword: str | None = secret_field(
+        "Mot de passe serveur", description="Mot de passe du serveur Satisfactory."
+    )
+    satisfactoryServerToken: str | None = secret_field(
+        "Token API serveur", description="Token d'authentification API du serveur."
+    )
+
 
 logger = logutil.init_logger(os.path.basename(__file__))
 

@@ -44,6 +44,30 @@ from src.vlrgg import (
 from src.vlrgg import (
     fetch_all_team_data as vlrgg_fetch_all,
 )
+from src.webui.schemas import SchemaBase, enabled_field, register_module, ui
+
+
+@register_module("moduleVlrgg")
+class VlrggConfig(SchemaBase):
+    __label__ = "Esport Tracker (VLR.gg)"
+    __description__ = "Suivi automatique des matchs d'équipes Valorant via VLR.gg."
+    __icon__ = "🎮"
+    __category__ = "Esport & Jeux"
+
+    enabled: bool = enabled_field()
+    notificationChannelId: str | None = ui(
+        "Salon notifications",
+        "channel",
+        description="Salon pour les notifications de matchs en direct et résultats.",
+    )
+    teams: list[Any] = ui(
+        "Équipes suivies",
+        "teams",
+        description=(
+            "Liste des équipes Valorant à suivre. Chaque équipe nécessite un nom et un ID VLR.gg."
+        ),
+    )
+
 
 logger = logutil.init_logger(os.path.basename(__file__))
 config, module_config, enabled_servers = load_config("moduleVlrgg")

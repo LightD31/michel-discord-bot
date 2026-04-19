@@ -41,6 +41,44 @@ from src.helpers import (
 )
 from src.mongodb import mongo_manager
 from src.utils import CustomPaginator, format_number
+from src.webui.schemas import (
+    SchemaBase,
+    enabled_field,
+    hidden_message_id,
+    register_module,
+    ui,
+)
+
+
+@register_module("moduleXp")
+class XpConfig(SchemaBase):
+    __label__ = "Système d'XP"
+    __description__ = "Système de niveaux et d'expérience."
+    __icon__ = "⭐"
+    __category__ = "Communauté"
+
+    enabled: bool = enabled_field()
+    xpChannelId: str | None = ui(
+        "Salon leaderboard",
+        "channel",
+        description="Salon pour le leaderboard permanent (créé automatiquement).",
+    )
+    xpPinMessage: bool = ui(
+        "Épingler le leaderboard",
+        "boolean",
+        default=False,
+        description="Épingler automatiquement le message du leaderboard.",
+    )
+    xpMessageId: str | None = hidden_message_id("Message leaderboard", "xpChannelId")
+    levelUpMessageList: list[str] = ui(
+        "Messages de level-up",
+        "messagelist",
+        description="Liste de messages avec poids de probabilité.",
+        default=["Bravo {mention}, tu as atteint le niveau {lvl} !"],
+        weight_field="levelUpMessageWeights",
+        variables="{mention}, {lvl}",
+    )
+
 
 logger = logutil.init_logger(os.path.basename(__file__))
 config, module_config, enabled_servers = load_config("moduleXp")

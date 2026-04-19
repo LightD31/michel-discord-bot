@@ -11,6 +11,30 @@ from src import logutil
 from src.config_manager import load_config
 from src.mongodb import mongo_manager
 from src.utils import fetch
+from src.webui.schemas import SchemaBase, enabled_field, register_module, ui
+
+
+@register_module("moduleYoutube")
+class YoutubeConfig(SchemaBase):
+    __label__ = "YouTube"
+    __description__ = "Notifications de nouvelles vidéos YouTube."
+    __icon__ = "▶️"
+    __category__ = "Médias & Streaming"
+
+    enabled: bool = enabled_field()
+    ChannelId: str = ui(
+        "Salon notifications",
+        "channel",
+        required=True,
+        description="Salon pour les notifications de nouvelles vidéos.",
+    )
+    youtubeChannelList: list[str] = ui(
+        "Chaînes YouTube",
+        "list",
+        required=True,
+        description="Liste des noms de chaînes YouTube à surveiller.",
+    )
+
 
 logger = logutil.init_logger(os.path.basename(__file__))
 config, module_config, enabled_servers = load_config("moduleYoutube")
