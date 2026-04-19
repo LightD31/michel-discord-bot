@@ -72,7 +72,6 @@ src/
 ├── utils.py            # Shared helpers (pagination, image gen, markdown escape, HTTP fetch…)
 ├── spotify.py          # Spotipy auth, embed builders, vote counting
 ├── vlrgg.py            # VLR.gg API client with TTL cache
-├── raiderio.py         # Raider.IO Mythic+ leaderboard client
 ├── minecraft.py        # Minecraft player stats via SFTP + NBT parsing
 ├── minecraft_rcon.py   # Raw async RCON implementation
 ├── minecraft_config.py # Minecraft tuning constants
