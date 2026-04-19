@@ -17,8 +17,8 @@ from ._common import (
     CHANNEL_ID_KUBZ,
     MESSAGE_ID_KUBZ,
     MINECRAFT_GUILD_ID,
-    MinecraftConfig,
     PIN_STATUS_MESSAGE,
+    MinecraftConfig,
     enabled_servers,
     logger,
 )

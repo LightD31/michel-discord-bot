@@ -20,10 +20,10 @@ from features.minecraft import get_config as get_mc_config
 from src.core.images import create_dynamic_image
 
 from ._common import (
-    SFTPS_PASSWORD,
     SFTP_HOST,
     SFTP_PORT,
     SFTP_USERNAME,
+    SFTPS_PASSWORD,
     logger,
 )
 

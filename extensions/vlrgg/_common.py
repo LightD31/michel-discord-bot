@@ -5,11 +5,11 @@ import os
 from dataclasses import dataclass, field
 from typing import Any
 
+from features.vlrgg import _clean_vlr_text, expand_round_name
 from src.core import logging as logutil
 from src.core.config import CONFIG_PATH, load_config
 from src.core.db import mongo_manager
 from src.discord_ext.embeds import Colors
-from features.vlrgg import _clean_vlr_text, expand_round_name
 from src.webui.schemas import SchemaBase, enabled_field, register_module, ui
 
 # ── Module config ────────────────────────────────────────────────────────────

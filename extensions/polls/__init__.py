@@ -95,9 +95,7 @@ class PollsExtension(Extension):
             icon_url=ctx.user.avatar_url,
         )
         message = await ctx.send(embed=embed)
-        await _add_poll_reactions(
-            message, options, use_default=(options == DEFAULT_POLL_OPTIONS)
-        )
+        await _add_poll_reactions(message, options, use_default=(options == DEFAULT_POLL_OPTIONS))
         logger.debug(
             "Création d'un sondage par %s (ID: %s)\nQuestion : %s\nOptions : %s",
             ctx.user.username,
