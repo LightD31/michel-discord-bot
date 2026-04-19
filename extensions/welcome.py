@@ -5,9 +5,10 @@ import os
 from interactions import Client, Extension, listen
 from interactions.api.events import MemberAdd, MemberRemove
 
-from src import logutil
-from src.config_manager import load_config
-from src.helpers import is_guild_enabled, pick_weighted_message
+from src.core import logging as logutil
+from src.core.config import load_config
+from src.core.text import pick_weighted_message
+from src.discord_ext.autocomplete import is_guild_enabled
 from src.webui.schemas import SchemaBase, enabled_field, register_module, ui
 
 

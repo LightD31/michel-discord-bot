@@ -11,8 +11,8 @@ import sys
 import interactions
 from interactions import IntervalTrigger, Task
 
-from src import logutil
-from src.config_manager import load_config
+from src.core import logging as logutil
+from src.core.config import load_config
 from src.core.logging import DEBUG
 
 config, _, _ = load_config()

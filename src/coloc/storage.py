@@ -2,8 +2,8 @@
 
 import os
 
-from src import logutil
-from src.mongodb import mongo_manager
+from src.core import logging as logutil
+from src.core.db import mongo_manager
 
 from .models import EventState, ReminderCollection
 

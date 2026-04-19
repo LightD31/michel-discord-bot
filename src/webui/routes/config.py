@@ -4,7 +4,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from src import logutil
+from src.core import logging as logutil
 from src.webui.context import WebUIContext, discover_modules
 from src.webui.schemas import GLOBAL_CONFIG_SCHEMAS, MODULE_SCHEMAS
 

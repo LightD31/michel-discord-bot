@@ -18,9 +18,10 @@ from features.secretsanta import (
     generate_assignments_with_subgroups,
     generate_valid_assignments,
 )
-from src import logutil
-from src.config_manager import load_discord2name
-from src.helpers import Colors, fetch_user_safe, send_error
+from src.core import logging as logutil
+from src.core.config import load_discord2name
+from src.discord_ext.embeds import Colors
+from src.discord_ext.messages import fetch_user_safe, send_error
 
 from ._common import DATA_DIR, create_join_buttons, get_context_id
 

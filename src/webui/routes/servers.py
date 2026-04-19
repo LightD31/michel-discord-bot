@@ -6,7 +6,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from src import logutil
+from src.core import logging as logutil
 from src.core.config import load_config as bot_load_config
 from src.webui.context import WebUIContext, build_module_to_extension_map
 

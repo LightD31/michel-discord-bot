@@ -8,7 +8,7 @@ from io import BytesIO
 import asyncssh
 import nbtlib
 
-from src import logutil
+from src.core import logging as logutil
 
 logger = logutil.init_logger(os.path.basename(__file__))
 

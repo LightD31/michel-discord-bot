@@ -2,8 +2,8 @@
 
 import os
 
-from src import logutil
-from src.utils import load_config
+from src.core import logging as logutil
+from src.core.config import load_config
 
 logger = logutil.init_logger(os.path.basename(__file__))
 

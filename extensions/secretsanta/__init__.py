@@ -10,7 +10,7 @@ import os
 from interactions import Client, Extension
 
 from features.secretsanta import SecretSantaRepository
-from src import logutil
+from src.core import logging as logutil
 
 from .bans import BansMixin
 from .buttons import ButtonsMixin

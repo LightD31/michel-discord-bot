@@ -6,8 +6,8 @@ from typing import Any
 
 from interactions import Embed, OrTrigger, Task, TimeTrigger
 
-from src import logutil
-from src.helpers import Colors
+from src.core import logging as logutil
+from src.discord_ext.embeds import Colors
 
 from ._common import ConfrerieError, module_config
 

@@ -5,9 +5,9 @@ import os
 import aiohttp
 from interactions import File, OrTrigger, Task, TimeTrigger
 
-from src import logutil
-from src.helpers import Colors
-from src.mongodb import mongo_manager
+from src.core import logging as logutil
+from src.core.db import mongo_manager
+from src.discord_ext.embeds import Colors
 
 from ._common import StreamerInfo
 

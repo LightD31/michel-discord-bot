@@ -4,8 +4,8 @@ import os
 
 from interactions import SlashCommandChoice
 
-from src import logutil
-from src.config_manager import load_config
+from src.core import logging as logutil
+from src.core.config import load_config
 from src.webui.schemas import (
     SchemaBase,
     enabled_field,

@@ -36,7 +36,7 @@ from features.birthday import (
     _safe_replace_year,
     _strip_year_from_format,
 )
-from src import logutil
+from src.core import logging as logutil
 from src.core.config import load_config
 from src.core.errors import DatabaseError, ValidationError
 from src.core.text import pick_weighted_message

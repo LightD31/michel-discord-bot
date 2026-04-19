@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 
 import aiohttp
 
-from src import logutil
+from src.core import logging as logutil
 
 logger = logutil.init_logger("webui.auth")
 

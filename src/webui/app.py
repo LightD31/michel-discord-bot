@@ -9,7 +9,7 @@ first.
 
 from fastapi import FastAPI
 
-from src import logutil
+from src.core import logging as logutil
 from src.core.config import load_config as bot_load_config
 from src.webui.auth import DiscordOAuth
 from src.webui.context import WebUIContext

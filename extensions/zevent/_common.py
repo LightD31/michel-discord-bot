@@ -4,8 +4,8 @@ import os
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
-from src import logutil
-from src.utils import load_config
+from src.core import logging as logutil
+from src.core.config import load_config
 from src.webui.schemas import (
     SchemaBase,
     enabled_field,

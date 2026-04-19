@@ -11,8 +11,8 @@ from datetime import timedelta
 from interactions import BaseChannel, Client, Extension, Message, listen
 from twitchAPI.twitch import Twitch
 
-from src import logutil
-from src.helpers import fetch_or_create_persistent_message
+from src.core import logging as logutil
+from src.discord_ext.messages import fetch_or_create_persistent_message
 
 from ._common import (
     CHANNEL_ID,

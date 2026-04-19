@@ -5,8 +5,8 @@ from datetime import datetime
 
 from interactions import Embed, File
 
-from src import logutil
-from src.helpers import SPACER_FIELD, Colors, format_discord_timestamp
+from src.core import logging as logutil
+from src.discord_ext.embeds import SPACER_FIELD, Colors, format_discord_timestamp
 
 from .constants import (
     CURRENCY_EMOJI,

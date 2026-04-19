@@ -26,14 +26,14 @@ from interactions import (
     listen,
 )
 
-from src import logutil
-from src.config_manager import CONFIG_PATH, load_config
-from src.helpers import (
+from src.core import logging as logutil
+from src.core.config import CONFIG_PATH, load_config
+from src.core.db import mongo_manager
+from src.discord_ext.embeds import (
     SPACER_FIELD,
     Colors,
     format_discord_timestamp,
 )
-from src.mongodb import mongo_manager
 from src.vlrgg import (
     expand_round_name,
     extract_match_id_from_url,

@@ -5,8 +5,8 @@ import os
 from interactions import Embed, Timestamp
 
 from features.uptime import normalize_status
-from src import logutil
-from src.helpers import Colors
+from src.core import logging as logutil
+from src.discord_ext.embeds import Colors
 
 logger = logutil.init_logger(os.path.basename(__file__))
 

@@ -26,10 +26,10 @@ from interactions import (
     slash_option,
 )
 
-from src import logutil
-from src.config_manager import CONFIG_PATH, load_config
-from src.helpers import send_error, send_success
-from src.mongodb import mongo_manager
+from src.core import logging as logutil
+from src.core.config import CONFIG_PATH, load_config
+from src.core.db import mongo_manager
+from src.discord_ext.messages import send_error, send_success
 
 from ._common import StreamerInfo, ensure_utc
 from .emotes import EMOTE_CACHE_DIR, EmotesMixin

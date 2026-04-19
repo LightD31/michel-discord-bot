@@ -13,9 +13,9 @@ from interactions import (
 )
 from pyfactorybridge import API
 
-from src import logutil
-from src.helpers import fetch_or_create_persistent_message
-from src.utils import load_config
+from src.core import logging as logutil
+from src.core.config import load_config
+from src.discord_ext.messages import fetch_or_create_persistent_message
 from src.webui.schemas import (
     SchemaBase,
     enabled_field,

@@ -37,13 +37,11 @@ from interactions import (
 from interactions.client.utils import timestamp_converter
 from mcstatus import JavaServer
 
-from src import logutil
-from src.helpers import (
-    fetch_or_create_persistent_message,
-    send_error,
-)
+from src.core import logging as logutil
+from src.core.config import load_config
+from src.core.images import create_dynamic_image
+from src.discord_ext.messages import fetch_or_create_persistent_message, send_error
 from src.minecraft_config import get_config as get_mc_config
-from src.utils import create_dynamic_image, load_config
 from src.webui.schemas import (
     SchemaBase,
     enabled_field,

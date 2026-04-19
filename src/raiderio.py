@@ -1,4 +1,4 @@
-from src.utils import fetch
+from src.core.http import fetch
 
 
 def ms_to_time(ms, hours=False):

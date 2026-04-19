@@ -14,8 +14,9 @@ from interactions import (
     slash_command,
 )
 
-from src import logutil
-from src.helpers import Colors, fetch_user_safe, format_discord_timestamp, send_error
+from src.core import logging as logutil
+from src.discord_ext.embeds import Colors, format_discord_timestamp
+from src.discord_ext.messages import fetch_user_safe, send_error
 
 from ._common import ConfrerieError, config, enabled_servers, module_config
 

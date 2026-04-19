@@ -13,7 +13,7 @@ from datetime import datetime
 
 from interactions import Client, Extension, listen
 
-from src import logutil
+from src.core import logging as logutil
 
 from ._common import SERVERS, ServerData
 from .auth import AuthMixin

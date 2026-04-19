@@ -14,8 +14,10 @@ from interactions import (
     slash_option,
 )
 
-from src import logutil
-from src.helpers import Colors, is_guild_enabled, send_error
+from src.core import logging as logutil
+from src.discord_ext.autocomplete import is_guild_enabled
+from src.discord_ext.embeds import Colors
+from src.discord_ext.messages import send_error
 
 from ._common import config, enabled_servers
 

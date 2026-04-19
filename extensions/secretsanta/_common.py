@@ -12,8 +12,8 @@ from interactions import (
     spread_to_rows,
 )
 
-from src import logutil
-from src.config_manager import load_config
+from src.core import logging as logutil
+from src.core.config import load_config
 
 logger = logutil.init_logger(os.path.basename(__file__))
 config, module_config, enabled_servers = load_config("moduleSecretSanta")
