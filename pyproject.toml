@@ -114,6 +114,11 @@ indent-style = "space"
 # ─── mypy ──────────────────────────────────────────────────────────────
 [tool.mypy]
 python_version = "3.12"
+# `src/` has no __init__.py and imports across the codebase use the
+# `src.core.*` form. Without these two settings mypy sees each module under
+# two names (e.g. `core.logging` and `src.core.logging`) and bails out.
+explicit_package_bases = true
+mypy_path = "$MYPY_CONFIG_FILE_DIR"
 # Incremental adoption: strict on new core modules, lenient everywhere else.
 # Raise the floor as modules get typed.
 ignore_missing_imports = true

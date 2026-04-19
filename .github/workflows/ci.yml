@@ -97,4 +97,8 @@ jobs:
         # `detect-secrets-hook` is the CI-friendly entry point: it compares
         # findings against the baseline and exits non-zero on new secrets.
         # `scan --baseline` only rewrites the baseline and cannot fail a build.
-        run: git ls-files -z | xargs -0 detect-secrets-hook --baseline .secrets.baseline
+        # Exclusions mirror .pre-commit-config.yaml (grafana dashboards, data
+        # dumps and logs contain non-secret UUIDs that trigger false positives).
+        run: |
+          git ls-files -z ':!grafana/**' ':!data/**' ':!logs/**' ':!.secrets.baseline' \
+            | xargs -0 detect-secrets-hook --baseline .secrets.baseline
