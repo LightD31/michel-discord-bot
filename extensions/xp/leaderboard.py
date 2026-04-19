@@ -178,5 +178,5 @@ class LeaderboardMixin:
                 embeds=paginator_dict["embeds"],
                 components=paginator_dict["components"],
             )
-        except Exception as e:
-            logger.error("Failed to update leaderboard for guild %s: %s", guild_id, e)
+        except Exception:
+            logger.exception("Failed to update leaderboard for guild %s", guild_id)
