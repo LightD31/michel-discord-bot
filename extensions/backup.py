@@ -30,10 +30,10 @@ from interactions import (
     slash_option,
 )
 
-from src import logutil
-from src.config_manager import load_config
-from src.helpers import Colors
-from src.mongodb import mongo_manager
+from src.core import logging as logutil
+from src.core.config import load_config
+from src.core.db import mongo_manager
+from src.discord_ext.embeds import Colors
 
 logger = logutil.init_logger(os.path.basename(__file__))
 

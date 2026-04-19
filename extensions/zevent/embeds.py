@@ -5,7 +5,7 @@ from datetime import UTC, datetime, timedelta
 
 from interactions import Embed, TimestampStyles, utils
 
-from src import logutil
+from src.core import logging as logutil
 
 from ._common import (
     EVENT_START_DATE,

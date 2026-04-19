@@ -20,10 +20,11 @@ from twitchAPI.oauth import UserAuthenticationStorageHelper
 from twitchAPI.twitch import Twitch
 from twitchAPI.type import AuthScope
 
-from src import logutil
-from src.config_manager import load_config
-from src.helpers import fetch_or_create_persistent_message, send_error
-from src.utils import escape_md, fetch
+from src.core import logging as logutil
+from src.core.config import load_config
+from src.core.http import fetch
+from src.core.text import escape_md
+from src.discord_ext.messages import fetch_or_create_persistent_message, send_error
 from src.webui.schemas import (
     SchemaBase,
     enabled_field,

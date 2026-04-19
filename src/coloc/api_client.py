@@ -8,7 +8,7 @@ from typing import Any
 from aiohttp import ClientError, ClientSession, ClientTimeout
 from interactions import File
 
-from src import logutil
+from src.core import logging as logutil
 
 from .constants import (
     ZUNIVERS_CALENDAR_URL_TEMPLATE,

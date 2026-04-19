@@ -9,7 +9,7 @@ import os
 from interactions import Client, Extension, listen
 
 from features.uptime import UptimeRepository
-from src import logutil
+from src.core import logging as logutil
 
 from ._common import enabled_servers
 from .commands import CommandsMixin

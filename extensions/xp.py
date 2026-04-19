@@ -29,18 +29,14 @@ from interactions import (
 )
 from interactions.api.events import MessageCreate
 
-from src import logutil
-from src.config_manager import load_config
-from src.helpers import (
-    Colors,
-    fetch_or_create_persistent_message,
-    fetch_user_safe,
-    is_guild_enabled,
-    pick_weighted_message,
-    send_error,
-)
-from src.mongodb import mongo_manager
-from src.utils import CustomPaginator, format_number
+from src.core import logging as logutil
+from src.core.config import load_config
+from src.core.db import mongo_manager
+from src.core.text import format_number, pick_weighted_message
+from src.discord_ext.autocomplete import is_guild_enabled
+from src.discord_ext.embeds import Colors
+from src.discord_ext.messages import fetch_or_create_persistent_message, fetch_user_safe, send_error
+from src.discord_ext.paginator import CustomPaginator
 from src.webui.schemas import (
     SchemaBase,
     enabled_field,

@@ -6,8 +6,8 @@ from datetime import datetime
 
 from interactions import Embed, File, IntervalTrigger, Task, utils
 
-from src import logutil
-from src.utils import fetch
+from src.core import logging as logutil
+from src.core.http import fetch
 
 from ._common import API_URL, MILESTONE_INTERVAL, STREAMLABS_API_URL, UPDATE_INTERVAL
 

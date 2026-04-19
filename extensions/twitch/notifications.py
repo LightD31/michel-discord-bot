@@ -9,8 +9,8 @@ from twitchAPI.helper import first
 from twitchAPI.object.api import ChannelInformation, Stream, TwitchUser
 from twitchAPI.object.eventsub import ChannelUpdateEvent
 
-from src import logutil
-from src.helpers import Colors
+from src.core import logging as logutil
+from src.discord_ext.embeds import Colors
 
 logger = logutil.init_logger(os.path.basename(__file__))
 

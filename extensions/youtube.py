@@ -7,10 +7,10 @@ import aiohttp
 import isodate
 from interactions import BaseChannel, Client, Extension, IntervalTrigger, Task, listen
 
-from src import logutil
-from src.config_manager import load_config
-from src.mongodb import mongo_manager
-from src.utils import fetch
+from src.core import logging as logutil
+from src.core.config import load_config
+from src.core.db import mongo_manager
+from src.core.http import fetch
 from src.webui.schemas import SchemaBase, enabled_field, register_module, ui
 
 

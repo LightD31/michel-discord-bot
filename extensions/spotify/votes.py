@@ -27,8 +27,8 @@ from interactions import (
 from interactions.api.events import Component
 from interactions.client.utils import timestamp_converter
 
-from src import logutil
-from src.helpers import fetch_user_safe, send_error
+from src.core import logging as logutil
+from src.discord_ext.messages import fetch_user_safe, send_error
 from src.integrations.spotify import spotifymongoformat
 
 from ._common import (

@@ -9,7 +9,7 @@ import threading
 
 import uvicorn
 
-from src import logutil
+from src.core import logging as logutil
 from src.webui.app import create_app
 
 logger = logutil.init_logger("webui.server")

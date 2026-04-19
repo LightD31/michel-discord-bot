@@ -16,7 +16,7 @@ from twitchAPI.object.eventsub import (
 from twitchAPI.twitch import Twitch
 from twitchAPI.type import AuthScope
 
-from src import logutil
+from src.core import logging as logutil
 
 from ._common import ensure_utc
 

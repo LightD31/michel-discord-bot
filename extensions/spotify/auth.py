@@ -12,7 +12,7 @@ from interactions import (
     slash_command,
 )
 
-from src import logutil
+from src.core import logging as logutil
 
 from ._common import (
     DEV_GUILD,

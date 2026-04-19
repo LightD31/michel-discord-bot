@@ -16,11 +16,11 @@ import aiohttp
 import interactions
 from interactions import Message
 
-from src import logutil
-from src.config_manager import load_config, load_discord2name
-from src.helpers import Colors
+from src.core import logging as logutil
+from src.core.config import load_config, load_discord2name
+from src.core.db import mongo_manager
+from src.discord_ext.embeds import Colors
 from src.integrations.spotify import spotify_auth
-from src.mongodb import mongo_manager
 from src.webui.schemas import (
     SchemaBase,
     enabled_field,

@@ -9,7 +9,7 @@ from interactions import Client, Extension, listen
 from interactions.api.events import MemberAdd, MemberRemove, MemberUpdate
 
 from features.userinfo import UserInfoRepository
-from src import logutil
+from src.core import logging as logutil
 
 logger = logutil.init_logger(os.path.basename(__file__))
 

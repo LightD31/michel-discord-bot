@@ -20,8 +20,8 @@ from twitchAPI.object.api import ChannelStreamSchedule, ChannelStreamScheduleSeg
 from twitchAPI.object.eventsub import ChannelUpdateEvent, StreamOfflineEvent
 from twitchAPI.type import TwitchResourceNotFound
 
-from src import logutil
-from src.helpers import Colors
+from src.core import logging as logutil
+from src.discord_ext.embeds import Colors
 
 from ._common import StreamerInfo, ensure_utc
 

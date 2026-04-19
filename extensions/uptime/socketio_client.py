@@ -2,7 +2,7 @@
 
 import os
 
-from src import logutil
+from src.core import logging as logutil
 
 from ._common import config
 

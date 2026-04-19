@@ -15,8 +15,8 @@ from interactions import (
     slash_option,
 )
 
-from src import logutil
-from src.helpers import send_error
+from src.core import logging as logutil
+from src.discord_ext.messages import send_error
 from src.integrations.notion import NotionAPIError
 
 from ._common import (

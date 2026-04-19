@@ -21,7 +21,7 @@ from interactions import (
     Extension,
 )
 
-from src import logutil
+from src.core import logging as logutil
 from src.webui.schemas import (
     SchemaBase,
     enabled_field,

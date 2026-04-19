@@ -11,7 +11,7 @@ from typing import Any
 
 from interactions import Client, EmbedFooter, Extension, listen
 
-from src import logutil
+from src.core import logging as logutil
 from src.integrations.notion import NotionClient
 
 from ._common import config, enabled_servers, module_config

@@ -12,7 +12,7 @@ from interactions import Embed, EmbedFooter, Extension, SlashContext, listen, sl
 from interactions.api.events import MessageCreate
 
 from features.feur import FeurRepository
-from src import logutil
+from src.core import logging as logutil
 from src.core.config import load_config
 from src.core.text import sanitize_content
 from src.discord_ext.embeds import Colors

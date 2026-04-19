@@ -4,8 +4,8 @@ import os
 
 from interactions import SlashContext, slash_command
 
-from src import logutil
-from src.utils import fetch
+from src.core import logging as logutil
+from src.core.http import fetch
 
 from ._common import API_URL
 

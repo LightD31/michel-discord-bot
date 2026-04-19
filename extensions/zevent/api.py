@@ -4,8 +4,8 @@ import os
 from datetime import UTC, date, datetime
 from typing import Any
 
-from src import logutil
-from src.utils import fetch
+from src.core import logging as logutil
+from src.core.http import fetch
 
 from ._common import (
     EVENT_START_DATE,

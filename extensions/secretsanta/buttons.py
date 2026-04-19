@@ -7,8 +7,9 @@ import re
 from interactions import ComponentContext, Embed, component_callback
 
 from features.secretsanta import SecretSantaSession
-from src import logutil
-from src.helpers import Colors, fetch_user_safe
+from src.core import logging as logutil
+from src.discord_ext.embeds import Colors
+from src.discord_ext.messages import fetch_user_safe
 
 from ._common import create_join_buttons
 
