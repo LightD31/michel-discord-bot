@@ -56,7 +56,9 @@ def _build_embed(message, count: int, emoji: str) -> Embed:
         value=f"[Aller au message]({_jump_url(message.guild.id, message.channel.id, message.id)})",
         inline=False,
     )
-    embed.set_footer(text=f"{emoji} {count} • #{getattr(message.channel, 'name', message.channel.id)}")
+    embed.set_footer(
+        text=f"{emoji} {count} • #{getattr(message.channel, 'name', message.channel.id)}"
+    )
     embed.timestamp = getattr(message, "created_at", None) or datetime.now()
     return embed
 
@@ -99,9 +101,7 @@ class ListenersMixin:
     async def on_reaction_remove(self, event: MessageReactionRemove) -> None:
         await self._handle_reaction(event)
 
-    async def _handle_reaction(
-        self, event: MessageReactionAdd | MessageReactionRemove
-    ) -> None:
+    async def _handle_reaction(self, event: MessageReactionAdd | MessageReactionRemove) -> None:
         message = event.message
         if message is None or message.guild is None:
             return

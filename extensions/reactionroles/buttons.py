@@ -51,11 +51,7 @@ class ButtonsMixin:
             else:
                 await member.add_role(role_id, reason="Reaction-roles toggle")
                 await ctx.send(f"Rôle <@&{role_id}> ajouté ✅", ephemeral=True)
-                logger.info(
-                    "Added role %s to %s in guild %s", role_id, ctx.author.id, ctx.guild_id
-                )
+                logger.info("Added role %s to %s in guild %s", role_id, ctx.author.id, ctx.guild_id)
         except Exception as e:
             logger.error("Failed to toggle role %s for %s: %s", role_id, ctx.author.id, e)
-            await send_error(
-                ctx, "Impossible de modifier ce rôle (permissions ou hiérarchie ?)."
-            )
+            await send_error(ctx, "Impossible de modifier ce rôle (permissions ou hiérarchie ?).")

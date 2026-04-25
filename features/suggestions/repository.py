@@ -40,9 +40,7 @@ class SuggestionsRepository:
             await self._col().create_index(
                 [("message_id", pymongo.ASCENDING)], name="message_id_idx"
             )
-            await self._col().create_index(
-                [("status", pymongo.ASCENDING)], name="status_idx"
-            )
+            await self._col().create_index([("status", pymongo.ASCENDING)], name="status_idx")
         except Exception as e:
             logger.error("Failed to create suggestions indexes for %s: %s", self._guild_id, e)
 

@@ -70,9 +70,7 @@ class ReactionRolesRepository:
         if not fields:
             return 0
         try:
-            result = await self._col().update_one(
-                {"_id": ObjectId(menu_id)}, {"$set": fields}
-            )
+            result = await self._col().update_one({"_id": ObjectId(menu_id)}, {"$set": fields})
             return result.modified_count
         except Exception as e:
             logger.error("DB update_one failed: %s", e)
