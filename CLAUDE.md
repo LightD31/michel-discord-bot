@@ -64,6 +64,10 @@ When an extension grows past ~200 lines, promote it to a package and split respo
 
 Any extension that reads from `config["module<Name>"]` should declare a Pydantic schema using the `@register_module(...)` decorator from `src.webui.schemas` (typically in `extensions/<name>/_common.py`, see `extensions/xp/_common.py` for a canonical example). This is what makes the module appear in the dashboard with editable, typed fields, per-server toggles, and validation — without it the only way to configure the extension is hand-editing `config/config.json` and restarting. New global config sections use `@register_section(...)` the same way.
 
+### Custom Web UI views
+
+When schema-driven forms aren't enough (e.g. CRUD over a list of objects, anything that mutates Discord state from the dashboard), drop a router in `src/webui/routes/<name>.py` exposing a `create_router(ctx: WebUIContext) -> APIRouter` factory and register it in `src/webui/app.py` next to the others. `ctx` carries the bot client, the config store, and the auth helpers, so routes can both read MongoDB *and* call back into Discord (post/edit messages, etc.). The reaction-role menu builder (`src/webui/routes/rolemenus.py` paired with `features/reactionroles/`) is the reference pattern. The frontend lives in a single SPA at `src/webui/static/index.html`; `frontend.py` catch-alls any unknown path back to it, so new views are added by extending that file rather than creating per-view templates.
+
 ### Per-guild data isolation
 
 Each Discord server gets its own MongoDB database named `guild_{guild_id}`; cross-guild data lives in a shared `global` database. Access via the singleton in `src/core/db.py`. Repositories under `features/<name>/repository.py` encapsulate this.
