@@ -2,7 +2,6 @@
 
 import os
 
-import httpx
 from interactions import Client, Extension, File, listen
 from interactions.api.events import MemberAdd, MemberRemove
 
@@ -58,24 +57,20 @@ config, module_config, enabled_servers = load_config("moduleWelcome")
 
 
 async def _fetch_avatar_bytes(member) -> bytes | None:
-    """Best-effort download of the member's avatar PNG."""
-    avatar_url = getattr(member, "display_avatar", None) or getattr(member, "avatar_url", None)
-    if avatar_url is None:
+    """Best-effort download of the member's avatar as PNG bytes.
+
+    interactions.py exposes ``display_avatar`` as an :class:`Asset` whose
+    ``fetch()`` method talks to Discord's CDN through the bot's authenticated
+    HTTP client — the recommended path. We force the PNG extension so animated
+    avatars decode to a still frame.
+    """
+    asset = getattr(member, "display_avatar", None) or getattr(member, "avatar", None)
+    if asset is None:
         return None
-    url = str(avatar_url)
-    if "?" in url:
-        url = url.split("?", 1)[0]
-    if "." in url.rsplit("/", 1)[-1]:
-        # Force PNG so animated avatars decode to a still frame.
-        url = url.rsplit(".", 1)[0] + ".png"
-    url = f"{url}?size=256"
     try:
-        async with httpx.AsyncClient(timeout=8.0) as client:
-            response = await client.get(url)
-            response.raise_for_status()
-            return response.content
+        return await asset.fetch(extension=".png", size=256)
     except Exception as e:
-        logger.debug("Could not fetch avatar for %s: %s", getattr(member, "id", "?"), e)
+        logger.warning("Could not fetch avatar for %s: %s", getattr(member, "id", "?"), e)
         return None
 
 

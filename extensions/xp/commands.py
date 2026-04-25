@@ -2,7 +2,6 @@
 
 from datetime import datetime
 
-import httpx
 import pymongo
 from interactions import (
     Client,
@@ -29,24 +28,19 @@ from ._common import EMBED_COLOR, TIMEZONE, enabled_servers, logger
 
 
 async def _fetch_avatar_bytes(target_user) -> bytes | None:
-    avatar_url = getattr(target_user, "display_avatar", None) or getattr(
-        target_user, "avatar_url", None
-    )
-    if avatar_url is None:
+    """Pull the user's avatar through interactions.py's Asset.fetch helper.
+
+    ``str(asset)`` returns the attrs repr, not the CDN URL — using
+    ``Asset.fetch()`` is the supported way and goes through the bot's HTTP
+    client, which knows how to handle CDN responses.
+    """
+    asset = getattr(target_user, "display_avatar", None) or getattr(target_user, "avatar", None)
+    if asset is None:
         return None
-    url = str(avatar_url)
-    if "?" in url:
-        url = url.split("?", 1)[0]
-    if "." in url.rsplit("/", 1)[-1]:
-        url = url.rsplit(".", 1)[0] + ".png"
-    url = f"{url}?size=256"
     try:
-        async with httpx.AsyncClient(timeout=8.0) as client:
-            response = await client.get(url)
-            response.raise_for_status()
-            return response.content
+        return await asset.fetch(extension=".png", size=256)
     except Exception as e:
-        logger.debug("Could not fetch avatar for rank card: %s", e)
+        logger.warning("Could not fetch avatar for rank card: %s", e)
         return None
 
 
