@@ -49,10 +49,24 @@ class YoutubeConfig(SchemaBase):
         value_label="Libellé",
     )
     youtubeIncludeShorts: bool = ui(
-        "Notifier les Shorts",
+        "Shorts (défaut)",
         "boolean",
         default=False,
-        description="Inclure les vidéos courtes (Shorts).",
+        description=(
+            "Valeur par défaut pour inclure les Shorts. "
+            "Surchargeable par chaîne via « Shorts par chaîne »."
+        ),
+    )
+    youtubeShortsPerChannel: dict[str, str] = ui(
+        "Shorts par chaîne",
+        "keyvaluemap",
+        description=(
+            "Override par handle : `true` pour notifier les Shorts de cette "
+            "chaîne, `false` pour les ignorer. Une entrée absente utilise la "
+            "valeur par défaut ci-dessus."
+        ),
+        key_label="Handle",
+        value_label="true / false",
     )
     youtubeIncludeLive: bool = ui(
         "Notifier les lives",
@@ -118,7 +132,6 @@ class YoutubeExtension(Extension):
                     "Initial YouTube sync for server %s – skipping notifications",
                     server,
                 )
-            filters = self._content_filters(srv_config)
             template = srv_config.get(
                 "youtubeNotificationTemplate", "https://www.youtube.com/watch?v={video_id}"
             )
@@ -133,6 +146,7 @@ class YoutubeExtension(Extension):
                 if self.is_video_already_checked(server, user, video_id, youtube_data):
                     continue
                 youtube_data = self.update_youtube_data(server, user, video_id, youtube_data)
+                filters = self._content_filters(srv_config, handle)
                 if not is_initial_sync and await self.is_video_valid(video_id, filters):
                     label = labels.get(handle) or labels.get(user) or handle
                     try:
@@ -143,14 +157,28 @@ class YoutubeExtension(Extension):
             await self.save_youtube_data(youtube_data)
 
     @staticmethod
-    def _content_filters(srv_config: dict) -> dict[str, object]:
-        """Per-guild content filter dict consumed by ``is_video_valid``."""
+    def _content_filters(srv_config: dict, handle: str) -> dict[str, object]:
+        """Per-channel content filter dict consumed by ``is_video_valid``.
+
+        Falls back to the guild-wide defaults when the channel has no override.
+        """
         try:
             short_max = int(srv_config.get("youtubeShortMaxSeconds", 90))
         except (TypeError, ValueError):
             short_max = 90
+
+        shorts_default = bool(srv_config.get("youtubeIncludeShorts", False))
+        per_channel = srv_config.get("youtubeShortsPerChannel") or {}
+        # Accept either bare or @-prefixed keys so the operator's UI input matches
+        # whatever they typed in `youtubeChannelList`.
+        raw = per_channel.get(handle, per_channel.get(f"@{handle}"))
+        if raw is None:
+            shorts = shorts_default
+        else:
+            shorts = str(raw).strip().lower() in {"1", "true", "yes", "y", "oui", "on"}
+
         return {
-            "shorts": bool(srv_config.get("youtubeIncludeShorts", False)),
+            "shorts": shorts,
             "live": bool(srv_config.get("youtubeIncludeLive", False)),
             "vod": bool(srv_config.get("youtubeIncludeVod", True)),
             "short_max_seconds": max(1, short_max),
