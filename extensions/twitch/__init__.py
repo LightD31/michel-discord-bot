@@ -9,6 +9,7 @@ change detection live in their own submodules (mixin classes combined below).
 import asyncio
 import json
 import os
+from collections import defaultdict
 
 import pytz
 from interactions import (
@@ -112,6 +113,45 @@ class TwitchExtension(
     def get_streamer_key(self, guild_id: int, streamer_id: str) -> str:
         return f"{guild_id}_{streamer_id}"
 
+    # ─── Scheduled-event matching ─────────────────────────────────────
+
+    @staticmethod
+    def _event_location(event) -> str:
+        """Best-effort extraction of the external_location URL from a scheduled event."""
+        meta = getattr(event, "entity_metadata", None)
+        if meta is not None:
+            location = getattr(meta, "location", None)
+            if location:
+                return str(location)
+        # Fallback for older interactions.py versions that surface it directly.
+        return str(getattr(event, "location", "") or "")
+
+    def _match_scheduled_event(self, streamer: StreamerInfo, bot_events: list):
+        """Pick the scheduled event for ``streamer`` from the guild's bot-owned events.
+
+        Each streamer's event has ``external_location =
+        https://twitch.tv/{user_login}``; the configured ``streamer_id`` key is
+        the same login, so we match on that URL.
+
+        Mutates ``bot_events`` to remove the claimed event so the next streamer
+        in the same guild can't be assigned the same event.
+        """
+        expected = f"https://twitch.tv/{streamer.streamer_id}".lower()
+        for i, event in enumerate(bot_events):
+            if self._event_location(event).lower() == expected:
+                return bot_events.pop(i)
+
+        # Legacy fallback: events created before URL disambiguation existed
+        # had no reliable per-streamer marker. Claim one only if this guild
+        # tracks a single streamer; otherwise leave the event alone — the next
+        # update tick will recreate it for whichever streamer needs it.
+        guild_streamer_count = sum(
+            1 for s in self.streamers.values() if s.guild_id == streamer.guild_id
+        )
+        if guild_streamer_count == 1 and bot_events:
+            return bot_events.pop(0)
+        return None
+
     # ─── Session-state persistence ────────────────────────────────────
 
     @staticmethod
@@ -176,6 +216,32 @@ class TwitchExtension(
 
         await self._load_streamer_states()
 
+        # Pre-fetch each guild's bot-owned scheduled events once so we can
+        # disambiguate events by their external_location URL when multiple
+        # streamers share a guild.
+        streamers_by_guild: dict[int, list[StreamerInfo]] = defaultdict(list)
+        for streamer in self.streamers.values():
+            streamers_by_guild[streamer.guild_id].append(streamer)
+
+        bot_events_by_guild: dict[int, list] = {}
+        for guild_id in streamers_by_guild:
+            try:
+                guild = await self.bot.fetch_guild(guild_id)
+                events = await guild.list_scheduled_events()
+            except Exception as e:
+                logger.error("Error fetching scheduled events for guild %s: %s", guild_id, e)
+                bot_events_by_guild[guild_id] = []
+                continue
+            owned = []
+            for event in events:
+                try:
+                    creator = await event.creator
+                except Exception:
+                    continue
+                if creator and creator.id == self.bot.user.id:
+                    owned.append(event)
+            bot_events_by_guild[guild_id] = owned
+
         for streamer_key, streamer in self.streamers.items():
             try:
                 if streamer.planning_channel_id:
@@ -220,14 +286,14 @@ class TwitchExtension(
                         streamer.notification_channel_id
                     )
 
-                # Attach any existing bot-owned scheduled event to this streamer.
-                # TODO: disambiguate when multiple streamers are tracked in the same guild.
-                guild = await self.bot.fetch_guild(streamer.guild_id)
-                for event in await guild.list_scheduled_events():
-                    creator = await event.creator
-                    if creator.id == self.bot.user.id:
-                        streamer.scheduled_event = event
-                        break
+                # Attach the bot-owned scheduled event whose external_location
+                # URL matches this streamer's Twitch login (case-insensitive).
+                # Falls back to claiming an unclaimed bot event only when this
+                # is the sole streamer in the guild — preserves legacy behavior
+                # for events created before URL disambiguation existed.
+                streamer.scheduled_event = self._match_scheduled_event(
+                    streamer, bot_events_by_guild.get(streamer.guild_id, [])
+                )
             except Exception as e:
                 logger.error(f"Error initializing channels for streamer {streamer_key}: {e}")
 

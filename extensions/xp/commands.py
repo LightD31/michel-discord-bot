@@ -2,14 +2,52 @@
 
 from datetime import datetime
 
+import httpx
 import pymongo
-from interactions import Client, Embed, OptionType, SlashContext, User, slash_command, slash_option
+from interactions import (
+    Client,
+    Embed,
+    File,
+    OptionType,
+    SlashContext,
+    User,
+    slash_command,
+    slash_option,
+)
 
-from features.xp import TTLCache, XpRepository, calculate_level, create_progress_bar
+from features.xp import (
+    TTLCache,
+    XpRepository,
+    calculate_level,
+    create_progress_bar,
+    render_rank_card,
+)
 from src.discord_ext.messages import send_error
 from src.discord_ext.paginator import CustomPaginator
 
 from ._common import EMBED_COLOR, TIMEZONE, enabled_servers, logger
+
+
+async def _fetch_avatar_bytes(target_user) -> bytes | None:
+    avatar_url = getattr(target_user, "display_avatar", None) or getattr(
+        target_user, "avatar_url", None
+    )
+    if avatar_url is None:
+        return None
+    url = str(avatar_url)
+    if "?" in url:
+        url = url.split("?", 1)[0]
+    if "." in url.rsplit("/", 1)[-1]:
+        url = url.rsplit(".", 1)[0] + ".png"
+    url = f"{url}?size=256"
+    try:
+        async with httpx.AsyncClient(timeout=8.0) as client:
+            response = await client.get(url)
+            response.raise_for_status()
+            return response.content
+    except Exception as e:
+        logger.debug("Could not fetch avatar for rank card: %s", e)
+        return None
 
 
 class CommandsMixin:
@@ -69,11 +107,32 @@ class CommandsMixin:
             await ctx.send(f"{target_user.mention} n'a pas encore de niveau.")
             return
 
+        await ctx.defer()
         xp = stats.get("xp", 0)
         lvl, xp_in_level, xp_max = calculate_level(xp)
         rank = await self._get_user_rank(guild_id, str(target_user.id))
-        rank_display = f"{rank}/{ctx.guild.member_count}" if rank else "N/A"
 
+        avatar_bytes = await _fetch_avatar_bytes(target_user)
+        try:
+            buffer = render_rank_card(
+                avatar_bytes=avatar_bytes,
+                username=target_user.username,
+                display_name=getattr(target_user, "display_name", target_user.username),
+                level=lvl,
+                xp_in_level=xp_in_level,
+                xp_to_next=xp_max,
+                total_xp=xp,
+                rank=rank,
+                member_count=ctx.guild.member_count,
+                message_count=stats.get("msg", 0),
+            )
+            await ctx.send(file=File(file=buffer, file_name="rank.png"))
+            return
+        except Exception as e:
+            logger.warning("Falling back to embed rank card: %s", e)
+
+        # Embed fallback when image rendering fails (e.g. missing fonts/Pillow).
+        rank_display = f"{rank}/{ctx.guild.member_count}" if rank else "N/A"
         embed = Embed(
             title=f"Statistiques de {target_user.username}",
             color=EMBED_COLOR,

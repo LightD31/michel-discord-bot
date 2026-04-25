@@ -152,3 +152,68 @@ class LevelingMixin:
             lvl=new_level,
         )
         await message.channel.send(formatted_message)
+        await self._apply_level_rewards(guild_id, message.author, new_level)
+
+    async def _apply_level_rewards(self, guild_id: str, member, new_level: int) -> None:
+        """Grant the configured role for ``new_level`` (and optionally drop lower-tier roles).
+
+        Config shape (per guild)::
+
+            "levelRewards": {"5": "1234567890", "10": "9876543210", ...}
+            "stackLevelRewards": false    # drop the previous tier when set
+
+        Silent no-op when no reward matches or the bot lacks Manage Roles.
+        """
+        guild_config = module_config.get(guild_id, {})
+        rewards: dict = guild_config.get("levelRewards") or {}
+        if not rewards:
+            return
+
+        # Map int level → role id, ignoring malformed entries.
+        parsed: dict[int, int] = {}
+        for raw_level, raw_role in rewards.items():
+            try:
+                parsed[int(raw_level)] = int(raw_role)
+            except (TypeError, ValueError):
+                continue
+        if not parsed:
+            return
+
+        new_role_id = parsed.get(new_level)
+        if not new_role_id:
+            return
+
+        guild = getattr(member, "guild", None)
+        if guild is None:
+            return
+
+        try:
+            await member.add_role(new_role_id, reason=f"Récompense XP niveau {new_level}")
+        except Exception as e:
+            logger.warning(
+                "Could not grant level reward role %s to %s: %s",
+                new_role_id,
+                member.id,
+                e,
+            )
+            return
+
+        if guild_config.get("stackLevelRewards", False):
+            return
+
+        member_role_ids = {int(r.id) for r in getattr(member, "roles", [])}
+        for level, role_id in parsed.items():
+            if level >= new_level:
+                continue
+            if role_id in member_role_ids and role_id != new_role_id:
+                try:
+                    await member.remove_role(
+                        role_id, reason=f"Remplacé par le rôle de niveau {new_level}"
+                    )
+                except Exception as e:
+                    logger.debug(
+                        "Could not remove obsolete level role %s from %s: %s",
+                        role_id,
+                        member.id,
+                        e,
+                    )

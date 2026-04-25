@@ -41,6 +41,28 @@ class XpConfig(SchemaBase):
         description="Épingler automatiquement le message du leaderboard.",
     )
     xpMessageId: str | None = hidden_message_id("Message leaderboard", "xpChannelId")
+    voiceXpEnabled: bool = ui(
+        "XP vocal",
+        "boolean",
+        default=False,
+        description="Octroyer de l'XP aux membres présents en salon vocal (par minute).",
+    )
+    levelRewards: dict[str, str] = ui(
+        "Récompenses par niveau",
+        "keyvaluemap",
+        description="Map niveau → ID de rôle attribué automatiquement à ce niveau.",
+        key_label="Niveau",
+        value_label="ID du rôle",
+    )
+    stackLevelRewards: bool = ui(
+        "Cumuler les rôles de niveau",
+        "boolean",
+        default=False,
+        description=(
+            "Si désactivé, le rôle de niveau précédent est retiré quand un palier "
+            "supérieur est franchi."
+        ),
+    )
     levelUpMessageList: list[str] = ui(
         "Messages de level-up",
         "messagelist",

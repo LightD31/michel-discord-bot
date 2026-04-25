@@ -1,16 +1,18 @@
 """Reminders Discord extension — /reminder slash command and due-check task.
 
 Slash commands:
-- ``/reminder set`` — create a reminder (optional recurrence: daily/weekly/monthly/yearly)
+- ``/reminder set`` — create a reminder (optional recurrence + extra recipients)
 - ``/reminder remove`` — interactive button list to delete one of your reminders
 
-The background ``check_reminders`` task polls every minute, DMs the author,
-and either reschedules recurring reminders or deletes one-shot reminders.
-Persistence lives in :class:`features.reminders.ReminderRepository` (MongoDB).
-Enabled per-guild via ``moduleUtils``.
+The background ``check_reminders`` task polls every minute, DMs each recipient,
+attaches a "Snooze 10 min" button, and either reschedules recurring reminders
+or deletes one-shot reminders. Persistence lives in
+:class:`features.reminders.ReminderRepository` (MongoDB). Enabled per-guild via
+``moduleUtils``.
 """
 
 import os
+import re
 from datetime import datetime, timedelta
 
 from dateutil.relativedelta import relativedelta
@@ -19,6 +21,7 @@ from interactions import (
     Button,
     ButtonStyle,
     Client,
+    ComponentContext,
     Extension,
     IntervalTrigger,
     OptionType,
@@ -26,6 +29,7 @@ from interactions import (
     SlashContext,
     Task,
     TimestampStyles,
+    component_callback,
     listen,
     slash_command,
     slash_option,
@@ -37,9 +41,55 @@ from src.core import logging as logutil
 from src.core.config import load_config
 from src.discord_ext.messages import fetch_user_safe, send_error
 
+SNOOZE_PREFIX = "reminder_snooze"
+SNOOZE_MINUTES = 10
+RECIPIENT_SEPARATORS = ",; "
+MAX_EXTRA_RECIPIENTS = 25
+_SNOOZE_RE = re.compile(rf"^{SNOOZE_PREFIX}:(\d+):([0-9a-fA-F]+)$")
+
 logger = logutil.init_logger(os.path.basename(__file__))
-_, _, enabled_servers = load_config("moduleUtils")
+_, _module_config, enabled_servers = load_config("moduleUtils")
 enabled_servers_int = [int(s) for s in enabled_servers]  # type: ignore[misc]
+
+
+def _snooze_minutes(guild_id: str | int | None) -> int:
+    """Per-guild snooze duration with a sane fallback to the module default."""
+    if guild_id is None:
+        return SNOOZE_MINUTES
+    cfg = _module_config.get(str(guild_id), {})
+    raw = cfg.get("reminderSnoozeMinutes")
+    try:
+        value = int(raw) if raw is not None else SNOOZE_MINUTES
+    except (TypeError, ValueError):
+        value = SNOOZE_MINUTES
+    return max(1, min(value, 1440))
+
+
+def _parse_recipients(raw: str | None) -> list[str] | None:
+    """Parse a free-text recipient list into a list of Discord user IDs.
+
+    Accepts mentions ``<@123>`` / ``<@!123>`` and bare numeric IDs separated
+    by commas, semicolons, or whitespace. Returns ``None`` on malformed input.
+    """
+    if not raw:
+        return []
+    out: list[str] = []
+    seen: set[str] = set()
+    chunk = raw
+    for sep in RECIPIENT_SEPARATORS:
+        chunk = chunk.replace(sep, " ")
+    for token in chunk.split():
+        token = token.strip()
+        if not token:
+            continue
+        if token.startswith("<@") and token.endswith(">"):
+            token = token[2:-1].lstrip("!&")
+        if not token.isdigit():
+            return None
+        if token not in seen:
+            seen.add(token)
+            out.append(token)
+    return out
 
 
 class RemindersExtension(Extension):
@@ -111,6 +161,13 @@ class RemindersExtension(Extension):
         OptionType.STRING,
         required=False,
     )
+    @slash_option(
+        "destinataires",
+        "IDs ou mentions Discord supplémentaires, séparés par des virgules/espaces",
+        OptionType.STRING,
+        required=False,
+        argument_name="recipients",
+    )
     async def reminder_set(
         self,
         ctx: SlashContext,
@@ -119,6 +176,7 @@ class RemindersExtension(Extension):
         task: str,
         frequency: str | None = None,
         date: str | None = None,
+        recipients: str | None = None,
     ):
         current_time = datetime.now()
         remind_time = current_time.replace(
@@ -152,25 +210,45 @@ class RemindersExtension(Extension):
             elif frequency == "yearly":
                 remind_time += relativedelta(years=1)
 
+        recipient_ids = _parse_recipients(recipients)
+        if recipient_ids is None:
+            await send_error(
+                ctx,
+                "Liste de destinataires invalide. Utilisez des IDs Discord ou "
+                "des mentions séparés par des virgules.",
+            )
+            return
+        if len(recipient_ids) > MAX_EXTRA_RECIPIENTS:
+            await send_error(
+                ctx, f"Pas plus de {MAX_EXTRA_RECIPIENTS} destinataires supplémentaires."
+            )
+            return
+
         gid = str(ctx.guild_id)
         reminder = Reminder(
             user_id=str(ctx.author.id),
             message=task,
             remind_time=remind_time,
             frequency=frequency,  # type: ignore[arg-type]
+            recipient_ids=recipient_ids,
         )
         await self._reminder_repo(gid).add(reminder)
 
+        recipients_suffix = (
+            f" (partagé avec {len(recipient_ids)} personne(s))" if recipient_ids else ""
+        )
         await ctx.send(
-            f"Rappel {frequency} créé à {remind_time.strftime('%H:%M')} avec le message: {task}",
+            f"Rappel {frequency or ''} créé à {remind_time.strftime('%H:%M')}"
+            f" avec le message: {task}{recipients_suffix}",
             ephemeral=True,
         )
         logger.info(
-            "Reminder set for %s at %s with message %s (%s)",
+            "Reminder set for %s at %s with message %s (%s, +%d recipients)",
             ctx.author.display_name,
             remind_time.strftime("%H:%M"),
             task,
             frequency,
+            len(recipient_ids),
         )
 
     @reminder_set.subcommand(
@@ -261,6 +339,48 @@ class RemindersExtension(Extension):
             return remind_time + relativedelta(years=1)
         return None
 
+    @staticmethod
+    def _snooze_components(reminder_id: str, guild_id: str, snooze_minutes: int) -> list[ActionRow]:
+        return [
+            ActionRow(
+                Button(
+                    label=f"Snooze {snooze_minutes} min",
+                    style=ButtonStyle.SECONDARY,
+                    custom_id=f"{SNOOZE_PREFIX}:{guild_id}:{reminder_id}",
+                )
+            )
+        ]
+
+    @component_callback(_SNOOZE_RE)
+    async def on_snooze(self, ctx: ComponentContext):
+        """Re-fire the reminder for the clicker after the per-guild snooze delay."""
+        match = _SNOOZE_RE.match(ctx.custom_id)
+        if not match:
+            await ctx.send("Bouton invalide.", ephemeral=True)
+            return
+        gid, reminder_id = match.group(1), match.group(2)
+        minutes = _snooze_minutes(gid)
+
+        original_message = ctx.message.content if ctx.message and ctx.message.content else "Rappel"
+        new_time = datetime.now() + timedelta(minutes=minutes)
+        snoozed = Reminder(
+            user_id=str(ctx.author.id),
+            message=f"⏰ (snooze) {original_message}",
+            remind_time=new_time,
+        )
+        try:
+            await self._reminder_repo(gid).add(snoozed)
+        except Exception as e:
+            logger.error("Failed to snooze reminder %s: %s", reminder_id, e)
+            await ctx.send("Impossible de reporter le rappel.", ephemeral=True)
+            return
+
+        await ctx.send(
+            f"Rappel reporté de {minutes} minutes "
+            f"({timestamp_converter(new_time).format(TimestampStyles.RelativeTime)}).",
+            ephemeral=True,
+        )
+
     @Task.create(IntervalTrigger(minutes=1))
     async def check_reminders(self):
         now = datetime.now()
@@ -275,14 +395,7 @@ class RemindersExtension(Extension):
             for reminder in due:
                 if reminder.id is None:
                     continue
-                try:
-                    _, user = await fetch_user_safe(self.bot, reminder.user_id)
-                    if user:
-                        await user.send(reminder.message)
-                        logger.info("Reminder sent to %s: %s", user.display_name, reminder.message)
-                except Exception as e:
-                    logger.warning("Failed to send reminder to user %s: %s", reminder.user_id, e)
-                    continue
+                await self._dispatch_reminder(gid, reminder)
 
                 next_time = self._next_occurrence(reminder.remind_time, reminder.frequency)
                 try:
@@ -299,6 +412,18 @@ class RemindersExtension(Extension):
                     logger.error(
                         "Failed to update reminder %s in guild %s: %s", reminder.id, gid, e
                     )
+
+    async def _dispatch_reminder(self, gid: str, reminder: Reminder) -> None:
+        """DM each recipient with a snooze button. Errors are logged per-recipient."""
+        components = self._snooze_components(reminder.id or "", gid, _snooze_minutes(gid))
+        for recipient_id in reminder.all_recipients():
+            try:
+                _, user = await fetch_user_safe(self.bot, recipient_id)
+                if user:
+                    await user.send(reminder.message, components=components)
+                    logger.info("Reminder sent to %s: %s", user.display_name, reminder.message)
+            except Exception as e:
+                logger.warning("Failed to send reminder to user %s: %s", recipient_id, e)
 
 
 def setup(bot: Client) -> None:

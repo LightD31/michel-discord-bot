@@ -4,6 +4,13 @@ XP_COOLDOWN_SECONDS = 60
 XP_MIN = 15
 XP_MAX = 25
 
+# Voice XP: awarded on a per-minute tick while the user is in a non-AFK voice
+# channel with at least one other non-bot member. Same magnitude as messages,
+# scaled lower since voice presence is passive.
+VOICE_XP_PER_TICK_MIN = 5
+VOICE_XP_PER_TICK_MAX = 10
+VOICE_TICK_SECONDS = 60
+
 LEADERBOARD_PAGE_SIZE = 10
 RANK_MEDALS: list[str] = ["🥇", "🥈", "🥉"]
 
@@ -18,6 +25,9 @@ __all__ = [
     "RANK_CACHE_TTL",
     "RANK_MEDALS",
     "USER_CACHE_TTL",
+    "VOICE_TICK_SECONDS",
+    "VOICE_XP_PER_TICK_MAX",
+    "VOICE_XP_PER_TICK_MIN",
     "XP_COOLDOWN_SECONDS",
     "XP_MAX",
     "XP_MIN",

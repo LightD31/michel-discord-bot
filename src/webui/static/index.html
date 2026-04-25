@@ -1637,6 +1637,75 @@
             }
         }
 
+        /* ── YouTube Channel Map Editor ──────────────── */
+        .youtubechannel-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .youtubechannel-entry {
+            display: grid;
+            grid-template-columns: 1.4fr 1.4fr repeat(3, auto) auto;
+            gap: 10px;
+            align-items: center;
+            padding: 10px 12px;
+            background: var(--bg-primary);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+        }
+
+        .youtubechannel-entry input[type="text"] {
+            padding: 6px 8px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            color: var(--text-primary);
+            font-size: 14px;
+            outline: none;
+        }
+
+        .youtubechannel-entry input[type="text"]:focus {
+            border-color: var(--accent);
+        }
+
+        .youtubechannel-toggle {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 13px;
+            color: var(--text-secondary);
+            cursor: pointer;
+            white-space: nowrap;
+        }
+
+        .youtubechannel-toggle input[type="checkbox"] {
+            width: 15px;
+            height: 15px;
+            accent-color: var(--accent);
+            cursor: pointer;
+        }
+
+        .youtubechannel-entry .btn-remove-entry {
+            padding: 6px 10px;
+            background: transparent;
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            color: var(--text-muted);
+            cursor: pointer;
+        }
+
+        .youtubechannel-entry .btn-remove-entry:hover {
+            color: var(--error);
+            border-color: var(--error);
+        }
+
+        @media (max-width: 720px) {
+            .youtubechannel-entry {
+                grid-template-columns: 1fr 1fr;
+            }
+        }
+
         /* ── Name Mapping List Editor ────────────────── */
         .namemap-list {
             display: flex;
@@ -2960,6 +3029,29 @@
                     break;
                 }
 
+                case 'youtubechannelmap': {
+                    let channelMap;
+                    if (Array.isArray(value)) {
+                        // Legacy list[str] config — migrate in-place to the
+                        // structured shape with VOD-only defaults.
+                        channelMap = {};
+                        for (const handle of value) {
+                            if (handle) channelMap[handle] = { shorts: false, live: false, vod: true };
+                        }
+                    } else if (typeof value === 'object' && value !== null) {
+                        channelMap = value;
+                    } else {
+                        channelMap = {};
+                    }
+                    html += `<div class="youtubechannel-list" data-field="${key}" data-type="youtubechannelmap">`;
+                    Object.entries(channelMap).forEach(([handle, cfg]) => {
+                        html += renderYoutubeChannelEntry(handle, cfg || {});
+                    });
+                    html += `</div>`;
+                    html += `<button type="button" class="btn-add-entry" onclick="addYoutubeChannelEntry(this)">+ Ajouter une chaîne</button>`;
+                    break;
+                }
+
                 case 'spotifymap':
                     const spotifyUsers = Array.isArray(value) ? value : [];
                     html += `<div class="spotifymap-list" data-field="${key}" data-type="spotifymap">`;
@@ -3125,6 +3217,9 @@
                 case 'streamermap':
                     // Handled separately below
                     continue;
+                case 'youtubechannelmap':
+                    // Handled separately below
+                    continue;
                 case 'messagelist':
                     // Handled separately below
                     continue;
@@ -3255,6 +3350,26 @@
             if (spotifyUsers.length > 0) {
                 result[key] = spotifyUsers;
             }
+        }
+
+        // Collect youtubechannelmap lists
+        const ytChannelLists = form.querySelectorAll('[data-type="youtubechannelmap"]');
+        for (const list of ytChannelLists) {
+            const key = list.dataset.field;
+            const entries = list.querySelectorAll('.youtubechannel-entry');
+            const channelMap = {};
+            for (const entry of entries) {
+                const handle = entry.querySelector('[data-yt-field="handle"]')?.value?.trim();
+                if (!handle) continue;
+                const label = entry.querySelector('[data-yt-field="label"]')?.value?.trim() || '';
+                const shorts = !!entry.querySelector('[data-yt-field="shorts"]')?.checked;
+                const live = !!entry.querySelector('[data-yt-field="live"]')?.checked;
+                const vod = !!entry.querySelector('[data-yt-field="vod"]')?.checked;
+                const cfg = { shorts, live, vod };
+                if (label) cfg.label = label;
+                channelMap[handle] = cfg;
+            }
+            result[key] = channelMap;
         }
 
         // Collect streamermap (Twitch) lists
@@ -3515,6 +3630,40 @@
         const entry = wrapper.firstElementChild;
         list.appendChild(entry);
         populateChannelPickers(entry);
+        entry.querySelector('input[type="text"]').focus();
+    }
+
+    function renderYoutubeChannelEntry(handle, cfg) {
+        const shorts = !!cfg.shorts;
+        const live = !!cfg.live;
+        const vod = cfg.vod !== false; // default true
+        return `
+            <div class="youtubechannel-entry">
+                <input type="text" data-yt-field="handle" value="${escapeHtml(handle || '')}" placeholder="@handle">
+                <input type="text" data-yt-field="label" value="${escapeHtml(cfg.label || '')}" placeholder="Libellé (optionnel)">
+                <label class="youtubechannel-toggle">
+                    <input type="checkbox" data-yt-field="shorts" ${shorts ? 'checked' : ''}>
+                    <span>Shorts</span>
+                </label>
+                <label class="youtubechannel-toggle">
+                    <input type="checkbox" data-yt-field="live" ${live ? 'checked' : ''}>
+                    <span>Live</span>
+                </label>
+                <label class="youtubechannel-toggle">
+                    <input type="checkbox" data-yt-field="vod" ${vod ? 'checked' : ''}>
+                    <span>VOD</span>
+                </label>
+                <button class="btn-remove-entry" onclick="this.closest('.youtubechannel-entry').remove()" title="Supprimer">✕</button>
+            </div>`;
+    }
+
+    function addYoutubeChannelEntry(btn) {
+        const list = btn.previousElementSibling;
+        if (!list || !list.classList.contains('youtubechannel-list')) return;
+        const wrapper = document.createElement('div');
+        wrapper.innerHTML = renderYoutubeChannelEntry('', { shorts: false, live: false, vod: true }).trim();
+        const entry = wrapper.firstElementChild;
+        list.appendChild(entry);
         entry.querySelector('input[type="text"]').focus();
     }
 
@@ -4629,6 +4778,30 @@
                                     <span style="color:var(--text-secondary);font-family:Consolas,monospace;">${escapeHtml(u.discordId || '')}</span>
                                 </div>
                             `).join('')}
+                        </div>
+                    </div>
+                `;
+                continue;
+            }
+
+            if (fieldType === 'youtubechannelmap' && typeof val === 'object' && val !== null && !Array.isArray(val)) {
+                const channels = Object.entries(val);
+                html += `
+                    <div class="preview-row" style="flex-direction:column;gap:6px;">
+                        <span class="preview-label">${field.label || key} (${channels.length})</span>
+                        <div style="display:flex;flex-direction:column;gap:4px;width:100%;">
+                            ${channels.length > 0 ? channels.map(([handle, cfg]) => {
+                                const flags = [];
+                                if (cfg?.shorts) flags.push('Shorts');
+                                if (cfg?.live) flags.push('Live');
+                                if (cfg?.vod !== false) flags.push('VOD');
+                                const label = cfg?.label ? ` (${escapeHtml(String(cfg.label))})` : '';
+                                return `
+                                <div style="display:flex;gap:8px;align-items:center;padding:4px 8px;background:var(--bg-primary);border-radius:var(--radius);font-size:13px;">
+                                    <span style="font-weight:600;color:var(--accent);min-width:140px;">${escapeHtml(handle)}${label}</span>
+                                    <span style="color:var(--text-muted);font-family:Consolas,monospace;flex:1;">${flags.join(' · ') || '—'}</span>
+                                </div>`;
+                            }).join('') : '<span style="color:var(--text-muted);font-size:13px;">Aucune chaîne configurée</span>'}
                         </div>
                     </div>
                 `;
