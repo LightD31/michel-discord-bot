@@ -135,11 +135,7 @@ class RssExtension(Extension):
                 if not url:
                     continue
                 state = await self._repo(guild_id).get(feed_id)
-                if (
-                    state
-                    and state.last_poll_at
-                    and (now - state.last_poll_at) < poll_interval
-                ):
+                if state and state.last_poll_at and (now - state.last_poll_at) < poll_interval:
                     continue
                 try:
                     await self._poll_one(
@@ -207,7 +203,9 @@ class RssExtension(Extension):
         posted_ids: list[str] = []
         for entry in new_entries:
             try:
-                await channel.send(_render(template, feed_id=feed_id, feed_cfg=feed_cfg, entry=entry))  # type: ignore[union-attr]
+                await channel.send(
+                    _render(template, feed_id=feed_id, feed_cfg=feed_cfg, entry=entry)
+                )  # type: ignore[union-attr]
                 posted_ids.append(entry.entry_id)
             except Exception as e:
                 logger.warning("Failed to send RSS entry %s: %s", entry.entry_id, e)

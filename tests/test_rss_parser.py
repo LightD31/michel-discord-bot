@@ -1,6 +1,9 @@
 """Unit tests for ``features.rss.parser``."""
 
+import pytest
+
 from features.rss import parse_feed, strip_html
+from src.core.errors import IntegrationError
 
 RSS_SAMPLE = """\
 <?xml version="1.0" encoding="UTF-8"?>
@@ -77,3 +80,13 @@ def test_strip_html_handles_none_and_empty() -> None:
     assert strip_html(None) == ""
     assert strip_html("") == ""
     assert strip_html("   ") == ""
+
+
+def test_parse_feed_raises_on_garbage() -> None:
+    with pytest.raises(IntegrationError):
+        parse_feed("this is not xml")
+
+
+def test_parse_feed_raises_on_unknown_root() -> None:
+    with pytest.raises(IntegrationError):
+        parse_feed("<html><body>nope</body></html>")

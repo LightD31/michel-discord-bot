@@ -1,8 +1,10 @@
-"""RSS / Atom parser.
+"""RSS / Atom parser built on :mod:`defusedxml`.
 
-Wraps :mod:`feedparser` with a small normalization layer so callers receive a
-list of :class:`features.rss.models.RssEntry` regardless of the feed flavor
-(RSS 2.0, Atom 1.0, RDF). Pure parsing only — the async HTTP fetch lives in
+Pulls in zero compiled dependencies (avoids ``feedparser``'s ``sgmllib3k``
+build failure on modern setuptools) and supports the two formats we actually
+care about: RSS 2.0 (``<rss><channel>``) and Atom 1.0 (``<feed>``).
+
+Pure parsing only — the async HTTP fetch lives in
 :mod:`features.rss.network` so this module stays importable without the
 ``aiohttp``/``src.core`` chain (handy for tests).
 """
@@ -12,14 +14,16 @@ from __future__ import annotations
 import html
 import re
 from datetime import UTC, datetime
-from typing import Any
+from email.utils import parsedate_to_datetime
+from xml.etree.ElementTree import Element
 
-import feedparser
+from defusedxml import ElementTree as ET
 
 from features.rss.models import RssEntry
 from src.core.errors import IntegrationError
 
 _TAG_RE = re.compile(r"<[^>]+>")
+_ATOM_NS = "{http://www.w3.org/2005/Atom}"
 
 
 def strip_html(text: str | None, *, max_length: int = 400) -> str:
@@ -34,64 +38,193 @@ def strip_html(text: str | None, *, max_length: int = 400) -> str:
     return cleaned
 
 
-def _entry_id(entry: dict[str, Any]) -> str:
-    """Pick the most stable identifier feedparser exposes for an entry."""
-    for key in ("id", "guid", "link"):
-        value = entry.get(key)
-        if isinstance(value, str) and value:
-            return value
-    return entry.get("title", "") or ""
+def _localname(tag: str) -> str:
+    """Return the local name of an XML tag, dropping any ``{namespace}`` prefix."""
+    return tag.rsplit("}", 1)[-1] if "}" in tag else tag
 
 
-def _entry_published(entry: dict[str, Any]) -> datetime | None:
-    """Return a ``datetime`` for the entry, preferring ``published`` over ``updated``."""
-    for key in ("published_parsed", "updated_parsed"):
-        parsed = entry.get(key)
-        if parsed:
-            try:
-                return datetime(*parsed[:6], tzinfo=UTC)
-            except (TypeError, ValueError):
-                continue
+def _text(elem: Element | None) -> str:
+    """Return all text inside *elem*, including descendants and tails.
+
+    Feeds occasionally drop literal HTML inside an unescaped ``<title>`` /
+    ``<description>``. defusedxml parses those tags as XML children, so naïve
+    ``elem.text`` would only return the prefix before the first child. We
+    walk the subtree and re-join everything, then ``strip_html`` upstream
+    normalizes the result.
+    """
+    if elem is None:
+        return ""
+    parts: list[str] = []
+    if elem.text:
+        parts.append(elem.text)
+    for child in elem:
+        parts.append(_text(child))
+        if child.tail:
+            parts.append(child.tail)
+    return "".join(parts).strip()
+
+
+def _find_local(parent: Element, name: str) -> Element | None:
+    """Find a direct child by local name regardless of namespace."""
+    for child in parent:
+        if _localname(child.tag) == name:
+            return child
     return None
 
 
-def normalize_entry(entry: dict[str, Any]) -> RssEntry | None:
-    """Convert a feedparser entry dict into an :class:`RssEntry`. ``None`` if unusable."""
-    eid = _entry_id(entry)
+def _findall_local(parent: Element, name: str) -> list[Element]:
+    return [child for child in parent if _localname(child.tag) == name]
+
+
+def _parse_rfc822(value: str) -> datetime | None:
+    """Parse an RFC 822 / RSS ``pubDate``. Returns UTC-aware ``datetime`` or ``None``."""
+    try:
+        dt = parsedate_to_datetime(value)
+    except (TypeError, ValueError):
+        return None
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=UTC)
+    return dt
+
+
+def _parse_iso8601(value: str) -> datetime | None:
+    """Parse an ISO 8601 / Atom ``updated``. Returns UTC-aware ``datetime`` or ``None``."""
+    if not value:
+        return None
+    # Python <3.11 didn't accept the trailing ``Z``; the codebase targets 3.12+
+    # so this is just defensive.
+    cleaned = value.strip().replace("Z", "+00:00")
+    try:
+        dt = datetime.fromisoformat(cleaned)
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=UTC)
+    return dt
+
+
+def _atom_link(entry: Element) -> str:
+    """Return the best ``<link>`` URL for an Atom entry.
+
+    Prefers ``rel="alternate"`` (or no rel — that's the default) over
+    ``rel="self"``/``rel="enclosure"``.
+    """
+    fallback = ""
+    for link in _findall_local(entry, "link"):
+        href = link.get("href", "")
+        if not href:
+            continue
+        rel = link.get("rel", "alternate")
+        if rel == "alternate":
+            return href
+        if not fallback:
+            fallback = href
+    return fallback
+
+
+def _atom_author(entry: Element) -> str:
+    author = _find_local(entry, "author")
+    if author is None:
+        return ""
+    name = _find_local(author, "name")
+    return _text(name) or _text(author)
+
+
+def _parse_atom_entry(entry: Element) -> RssEntry | None:
+    eid = _text(_find_local(entry, "id"))
+    title = _text(_find_local(entry, "title"))
+    link = _atom_link(entry)
+    if not eid:
+        eid = link or title
     if not eid:
         return None
-    title = strip_html(entry.get("title", "")) or "(sans titre)"
-    link = entry.get("link", "") or ""
-    summary = strip_html(entry.get("summary") or entry.get("description") or "")
-    author = entry.get("author") or ""
+    summary = _text(_find_local(entry, "summary")) or _text(_find_local(entry, "content"))
+    published_text = _text(_find_local(entry, "published")) or _text(_find_local(entry, "updated"))
     return RssEntry(
         entry_id=eid,
-        title=title,
+        title=strip_html(title) or "(sans titre)",
         link=link,
-        summary=summary,
-        author=str(author),
-        published=_entry_published(entry),
+        summary=strip_html(summary),
+        author=_atom_author(entry),
+        published=_parse_iso8601(published_text),
+    )
+
+
+def _parse_rss_item(item: Element) -> RssEntry | None:
+    title = _text(_find_local(item, "title"))
+    link = _text(_find_local(item, "link"))
+    guid = _text(_find_local(item, "guid"))
+    eid = guid or link or title
+    if not eid:
+        return None
+    summary = _text(_find_local(item, "description"))
+    published_text = _text(_find_local(item, "pubDate"))
+    author = _text(_find_local(item, "author")) or _text(_find_local(item, "creator"))
+    return RssEntry(
+        entry_id=eid,
+        title=strip_html(title) or "(sans titre)",
+        link=link,
+        summary=strip_html(summary),
+        author=author,
+        published=_parse_rfc822(published_text),
     )
 
 
 def parse_feed(body: str) -> list[RssEntry]:
-    """Parse a feed body into a list of :class:`RssEntry` (most recent first).
+    """Parse an RSS 2.0 or Atom 1.0 feed into a list of :class:`RssEntry`.
 
     Returns the entries in the order the feed exposes them — typically newest
-    first, but feeds are inconsistent so callers should not rely on it for
-    correctness, only for display ordering.
+    first. Raises :class:`src.core.errors.IntegrationError` if the body is
+    neither valid XML nor a recognized feed shape.
     """
-    parsed = feedparser.parse(body)
-    if parsed.bozo and not parsed.entries:
-        # ``bozo`` flags any parse warning; only fail when it produced nothing usable.
-        reason = getattr(parsed, "bozo_exception", None)
-        raise IntegrationError(f"Could not parse feed: {reason}")
+    if not body or not body.strip():
+        raise IntegrationError("Empty feed body")
+    try:
+        root = ET.fromstring(body)
+    except ET.ParseError as e:
+        raise IntegrationError(f"Could not parse feed: {e}") from e
+
     out: list[RssEntry] = []
-    for raw in parsed.entries:
-        item = normalize_entry(raw)
-        if item is not None:
-            out.append(item)
-    return out
+    local = _localname(root.tag)
+    if local == "feed":
+        # Atom 1.0
+        for entry in _findall_local(root, "entry"):
+            item = _parse_atom_entry(entry)
+            if item is not None:
+                out.append(item)
+        return out
+    if local == "rss":
+        channel = _find_local(root, "channel")
+        if channel is None:
+            return out
+        for item in _findall_local(channel, "item"):
+            parsed = _parse_rss_item(item)
+            if parsed is not None:
+                out.append(parsed)
+        return out
+    if local == "RDF":
+        # RSS 1.0 — ``<item>`` elements are siblings of ``<channel>``.
+        for item in _findall_local(root, "item"):
+            parsed = _parse_rss_item(item)
+            if parsed is not None:
+                out.append(parsed)
+        return out
+    raise IntegrationError(f"Unrecognized feed root element: {local!r}")
+
+
+def normalize_entry(entry: Element) -> RssEntry | None:
+    """Public for symmetry with the previous feedparser-based API.
+
+    Dispatches based on the entry's tag (Atom ``entry`` vs. RSS ``item``).
+    """
+    local = _localname(entry.tag)
+    if local == "entry":
+        return _parse_atom_entry(entry)
+    if local == "item":
+        return _parse_rss_item(entry)
+    return None
 
 
 __all__ = ["normalize_entry", "parse_feed", "strip_html"]

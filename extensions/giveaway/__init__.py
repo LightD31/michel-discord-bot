@@ -198,9 +198,7 @@ class GiveawayExtension(Extension):
             return
         seconds = parse_duration(duration)
         if seconds is None:
-            await send_error(
-                ctx, "Format de durée invalide. Utilisez par ex. `30m`, `2h`, `1d`."
-            )
+            await send_error(ctx, "Format de durée invalide. Utilisez par ex. `30m`, `2h`, `1d`.")
             return
         if seconds < MIN_DURATION_SECONDS:
             await send_error(ctx, f"Durée minimale : {MIN_DURATION_SECONDS} s.")

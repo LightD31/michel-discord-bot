@@ -46,7 +46,7 @@ dependencies = [
     "babel",
     "isodate",
     "emoji",
-    "feedparser",
+    "defusedxml",
     "beautifulsoup4",
     "Pillow",
     "prettytable",

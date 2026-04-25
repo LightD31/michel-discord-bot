@@ -63,9 +63,7 @@ class GiveawayRepository:
         return [self._doc_to_giveaway(d) for d in docs]
 
     async def list_due(self, now: datetime) -> list[Giveaway]:
-        cursor = self._col().find(
-            {"drawn": False, "cancelled": False, "ends_at": {"$lte": now}}
-        )
+        cursor = self._col().find({"drawn": False, "cancelled": False, "ends_at": {"$lte": now}})
         docs = await cursor.to_list(length=None)
         return [self._doc_to_giveaway(d) for d in docs]
 
