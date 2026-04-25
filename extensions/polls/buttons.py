@@ -135,9 +135,7 @@ class PollButtonsMixin:
 
         if poll.mode == "ranked":
             if option_idx in existing:
-                feedback = (
-                    f"Cette option est déjà à la position #{existing.index(option_idx) + 1}."
-                )
+                feedback = f"Cette option est déjà à la position #{existing.index(option_idx) + 1}."
                 await ctx.send(feedback, ephemeral=True)
                 return
             new_ranking = [*existing, option_idx]

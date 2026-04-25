@@ -78,13 +78,9 @@ class PollRepository:
             raise DatabaseError(f"Failed to clear vote: {e}") from e
 
     async def list_due(self, now: datetime) -> list[Poll]:
-        cursor = self._col().find(
-            {"closed": False, "closes_at": {"$ne": None, "$lte": now}}
-        )
+        cursor = self._col().find({"closed": False, "closes_at": {"$ne": None, "$lte": now}})
         docs = await cursor.to_list(length=None)
         return [self._doc_to_poll(d) for d in docs]
 
     async def mark_closed(self, poll_id: str) -> None:
-        await self._col().update_one(
-            {"_id": ObjectId(poll_id)}, {"$set": {"closed": True}}
-        )
+        await self._col().update_one({"_id": ObjectId(poll_id)}, {"$set": {"closed": True}})

@@ -19,7 +19,13 @@ from src.discord_ext.autocomplete import guild_group_autocomplete
 from src.discord_ext.embeds import Colors
 from src.discord_ext.messages import fetch_user_safe, require_guild
 
-from ._common import DEFAULT_CATEGORIES, DEFAULT_CATEGORY, expenses_col, groups_col
+from ._common import (
+    DEFAULT_CATEGORY,
+    expenses_col,
+    groups_col,
+    guild_categories,
+    guild_currency,
+)
 
 logger = logutil.init_logger(os.path.basename(__file__))
 
@@ -112,17 +118,20 @@ class ExpensesMixin:
         }
         await expenses_col(ctx.guild.id).insert_one(expense_data)
 
+        currency = guild_currency(ctx.guild.id)
         embed = Embed(
             title="✅ Dépense ajoutée",
             description=f"Dépense ajoutée au groupe **{groupe}**",
             color=Colors.SUCCESS,
         )
-        embed.add_field(name="Montant", value=f"{montant:.2f}€", inline=True)
+        embed.add_field(name="Montant", value=f"{montant:.2f}{currency}", inline=True)
         embed.add_field(name="Payeur", value=payeur.mention, inline=True)
         embed.add_field(name="Catégorie", value=category, inline=True)
         embed.add_field(name="Description", value=description, inline=False)
         embed.add_field(
-            name="Part par personne", value=f"{montant / len(group['members']):.2f}€", inline=True
+            name="Part par personne",
+            value=f"{montant / len(group['members']):.2f}{currency}",
+            inline=True,
         )
         logger.info(
             "Dépense de %.2f€ ajoutée par %s au groupe '%s' (payeur: %s, catégorie: %s)",
@@ -139,7 +148,7 @@ class ExpensesMixin:
         query = (ctx.input_text or "").lower()
         seen: set[str] = set()
         choices: list[dict[str, str]] = []
-        for cat in DEFAULT_CATEGORIES:
+        for cat in guild_categories(ctx.guild.id) if ctx.guild else []:
             if query in cat.lower() and cat not in seen:
                 seen.add(cat)
                 choices.append({"name": cat, "value": cat})

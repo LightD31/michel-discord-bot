@@ -29,9 +29,8 @@ from ._common import EMBED_COLOR, TIMEZONE, enabled_servers, logger
 
 
 async def _fetch_avatar_bytes(target_user) -> bytes | None:
-    avatar_url = (
-        getattr(target_user, "display_avatar", None)
-        or getattr(target_user, "avatar_url", None)
+    avatar_url = getattr(target_user, "display_avatar", None) or getattr(
+        target_user, "avatar_url", None
     )
     if avatar_url is None:
         return None

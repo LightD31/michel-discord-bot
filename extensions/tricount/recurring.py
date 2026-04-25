@@ -161,9 +161,7 @@ class RecurringMixin:
     async def _ajouter_categorie_ac(self, ctx: AutocompleteContext):
         query = (ctx.input_text or "").lower()
         choices = [
-            {"name": cat, "value": cat}
-            for cat in DEFAULT_CATEGORIES
-            if query in cat.lower()
+            {"name": cat, "value": cat} for cat in DEFAULT_CATEGORIES if query in cat.lower()
         ]
         await ctx.send(choices=choices[:25])
 
@@ -185,10 +183,7 @@ class RecurringMixin:
         if groupe:
             query["group_name"] = groupe
         docs = (
-            await recurring_col(ctx.guild.id)
-            .find(query)
-            .sort("next_run", 1)
-            .to_list(length=None)
+            await recurring_col(ctx.guild.id).find(query).sort("next_run", 1).to_list(length=None)
         )
         if not docs:
             await ctx.send("Aucune dépense récurrente active.", ephemeral=True)
@@ -238,9 +233,7 @@ class RecurringMixin:
             {"$set": {"active": False}},
         )
         if result.modified_count == 0:
-            await ctx.send(
-                "❌ Récurrence introuvable ou déjà arrêtée.", ephemeral=True
-            )
+            await ctx.send("❌ Récurrence introuvable ou déjà arrêtée.", ephemeral=True)
             return
         await ctx.send("✅ Récurrence arrêtée.", ephemeral=True)
 
@@ -255,9 +248,7 @@ class RecurringMixin:
                     .to_list(length=None)
                 )
             except Exception as e:
-                logger.error(
-                    "Could not list due recurring expenses for %s: %s", guild_id, e
-                )
+                logger.error("Could not list due recurring expenses for %s: %s", guild_id, e)
                 continue
             for doc in due:
                 await self._materialise_recurring(guild_id, doc)
@@ -265,9 +256,7 @@ class RecurringMixin:
     async def _materialise_recurring(self, guild_id: str, doc: dict) -> None:
         """Create the next concrete expense and reschedule the recurrence."""
         try:
-            group = await groups_col(guild_id).find_one(
-                {"_id": doc["group_id"], "is_active": True}
-            )
+            group = await groups_col(guild_id).find_one({"_id": doc["group_id"], "is_active": True})
             if not group:
                 # Group was deleted — deactivate the recurrence.
                 await recurring_col(guild_id).update_one(
@@ -294,6 +283,4 @@ class RecurringMixin:
                 {"_id": doc["_id"]}, {"$set": {"next_run": next_run}}
             )
         except Exception as e:
-            logger.error(
-                "Failed to materialise recurring expense %s: %s", doc.get("_id"), e
-            )
+            logger.error("Failed to materialise recurring expense %s: %s", doc.get("_id"), e)

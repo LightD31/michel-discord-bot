@@ -76,15 +76,11 @@ def render_category_chart(
         draw.text((30, y + 6), text_label, font=label_font, fill=_TEXT_PRIMARY)
 
         # Background bar (full width, faded).
-        draw.rounded_rectangle(
-            (bar_x, y + 8, bar_x + bar_max_w, y + 32), radius=12, fill=_GRID
-        )
+        draw.rounded_rectangle((bar_x, y + 8, bar_x + bar_max_w, y + 32), radius=12, fill=_GRID)
         # Filled portion.
         bar_w = max(int(bar_max_w * (value / max_value)), 6)
         color = _BAR_PALETTE[i % len(_BAR_PALETTE)]
-        draw.rounded_rectangle(
-            (bar_x, y + 8, bar_x + bar_w, y + 32), radius=12, fill=color
-        )
+        draw.rounded_rectangle((bar_x, y + 8, bar_x + bar_w, y + 32), radius=12, fill=color)
         pct = (value / total * 100) if total else 0
         value_text = f"{value:.2f}{currency} ({pct:.0f}%)"
         draw.text(

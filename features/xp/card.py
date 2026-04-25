@@ -107,12 +107,7 @@ def render_rank_card(
             username_text = username_text[:19] + "…"
         draw.text((text_x, 86), username_text, font=sub_font, fill=_TEXT_DIM)
 
-    rank_text = (
-        f"#{rank}"
-        + (f" / {member_count}" if member_count else "")
-        if rank
-        else "—"
-    )
+    rank_text = f"#{rank}" + (f" / {member_count}" if member_count else "") if rank else "—"
     rank_font = ImageFont.truetype(_FONT_PATH, 26)
     rank_bbox = draw.textbbox((0, 0), rank_text, font=rank_font)
     rank_w = rank_bbox[2] - rank_bbox[0]

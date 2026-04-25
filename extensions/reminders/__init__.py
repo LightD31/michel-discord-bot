@@ -48,8 +48,21 @@ MAX_EXTRA_RECIPIENTS = 25
 _SNOOZE_RE = re.compile(rf"^{SNOOZE_PREFIX}:(\d+):([0-9a-fA-F]+)$")
 
 logger = logutil.init_logger(os.path.basename(__file__))
-_, _, enabled_servers = load_config("moduleUtils")
+_, _module_config, enabled_servers = load_config("moduleUtils")
 enabled_servers_int = [int(s) for s in enabled_servers]  # type: ignore[misc]
+
+
+def _snooze_minutes(guild_id: str | int | None) -> int:
+    """Per-guild snooze duration with a sane fallback to the module default."""
+    if guild_id is None:
+        return SNOOZE_MINUTES
+    cfg = _module_config.get(str(guild_id), {})
+    raw = cfg.get("reminderSnoozeMinutes")
+    try:
+        value = int(raw) if raw is not None else SNOOZE_MINUTES
+    except (TypeError, ValueError):
+        value = SNOOZE_MINUTES
+    return max(1, min(value, 1440))
 
 
 def _parse_recipients(raw: str | None) -> list[str] | None:
@@ -327,11 +340,11 @@ class RemindersExtension(Extension):
         return None
 
     @staticmethod
-    def _snooze_components(reminder_id: str, guild_id: str) -> list[ActionRow]:
+    def _snooze_components(reminder_id: str, guild_id: str, snooze_minutes: int) -> list[ActionRow]:
         return [
             ActionRow(
                 Button(
-                    label=f"Snooze {SNOOZE_MINUTES} min",
+                    label=f"Snooze {snooze_minutes} min",
                     style=ButtonStyle.SECONDARY,
                     custom_id=f"{SNOOZE_PREFIX}:{guild_id}:{reminder_id}",
                 )
@@ -340,15 +353,16 @@ class RemindersExtension(Extension):
 
     @component_callback(_SNOOZE_RE)
     async def on_snooze(self, ctx: ComponentContext):
-        """Re-fire the reminder for the clicker in ``SNOOZE_MINUTES`` minutes."""
+        """Re-fire the reminder for the clicker after the per-guild snooze delay."""
         match = _SNOOZE_RE.match(ctx.custom_id)
         if not match:
             await ctx.send("Bouton invalide.", ephemeral=True)
             return
         gid, reminder_id = match.group(1), match.group(2)
+        minutes = _snooze_minutes(gid)
 
         original_message = ctx.message.content if ctx.message and ctx.message.content else "Rappel"
-        new_time = datetime.now() + timedelta(minutes=SNOOZE_MINUTES)
+        new_time = datetime.now() + timedelta(minutes=minutes)
         snoozed = Reminder(
             user_id=str(ctx.author.id),
             message=f"⏰ (snooze) {original_message}",
@@ -362,7 +376,7 @@ class RemindersExtension(Extension):
             return
 
         await ctx.send(
-            f"Rappel reporté de {SNOOZE_MINUTES} minutes "
+            f"Rappel reporté de {minutes} minutes "
             f"({timestamp_converter(new_time).format(TimestampStyles.RelativeTime)}).",
             ephemeral=True,
         )
@@ -401,15 +415,13 @@ class RemindersExtension(Extension):
 
     async def _dispatch_reminder(self, gid: str, reminder: Reminder) -> None:
         """DM each recipient with a snooze button. Errors are logged per-recipient."""
-        components = self._snooze_components(reminder.id or "", gid)
+        components = self._snooze_components(reminder.id or "", gid, _snooze_minutes(gid))
         for recipient_id in reminder.all_recipients():
             try:
                 _, user = await fetch_user_safe(self.bot, recipient_id)
                 if user:
                     await user.send(reminder.message, components=components)
-                    logger.info(
-                        "Reminder sent to %s: %s", user.display_name, reminder.message
-                    )
+                    logger.info("Reminder sent to %s: %s", user.display_name, reminder.message)
             except Exception as e:
                 logger.warning("Failed to send reminder to user %s: %s", recipient_id, e)
 

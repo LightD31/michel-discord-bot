@@ -1,9 +1,7 @@
 """Pure tally helpers — first-past-the-post and instant-runoff voting."""
 
 
-def tally_first_past_post(
-    votes: dict[str, list[int]], num_options: int
-) -> list[int]:
+def tally_first_past_post(votes: dict[str, list[int]], num_options: int) -> list[int]:
     """Return per-option vote counts. ``votes`` values use only their first index."""
     counts = [0] * num_options
     for ranking in votes.values():
@@ -66,9 +64,7 @@ def tally_ranked_choice(
 
         # Eliminate the lowest non-zero candidate(s); if all remaining are tied,
         # return the first-indexed remaining option.
-        active_counts = [
-            (i, c) for i, c in enumerate(counts) if i not in eliminated and c > 0
-        ]
+        active_counts = [(i, c) for i, c in enumerate(counts) if i not in eliminated and c > 0]
         if not active_counts:
             return rounds, None
         if len({c for _, c in active_counts}) == 1:
@@ -128,9 +124,7 @@ __all__ = [
 # Light sanity tests so behavior is documented in source.
 if __name__ == "__main__":
     # Plurality: option 0 wins
-    counts = tally_first_past_post(
-        {"a": [0], "b": [0], "c": [1]}, num_options=3
-    )
+    counts = tally_first_past_post({"a": [0], "b": [0], "c": [1]}, num_options=3)
     assert counts == [2, 1, 0], counts
 
     # Ranked: A wins outright with majority of first-choice votes.

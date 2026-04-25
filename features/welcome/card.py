@@ -50,9 +50,7 @@ def render_welcome_card(
     glow_x = PADDING + (AVATAR_SIZE // 2) - (glow_size // 2)
     glow_y = (CARD_HEIGHT // 2) - (glow_size // 2)
     glow = Image.new("RGBA", (glow_size, glow_size), (0, 0, 0, 0))
-    ImageDraw.Draw(glow).ellipse(
-        (0, 0, glow_size, glow_size), fill=(*_ACCENT_COLOR, 90)
-    )
+    ImageDraw.Draw(glow).ellipse((0, 0, glow_size, glow_size), fill=(*_ACCENT_COLOR, 90))
     glow = glow.filter(ImageFilter.GaussianBlur(20))
     card.paste(glow, (glow_x, glow_y), glow)
 

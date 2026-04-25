@@ -19,7 +19,7 @@ from src.discord_ext.autocomplete import guild_group_autocomplete
 from src.discord_ext.embeds import Colors
 from src.discord_ext.messages import fetch_user_safe, require_guild
 
-from ._common import DEFAULT_CATEGORY, expenses_col, groups_col
+from ._common import DEFAULT_CATEGORY, expenses_col, groups_col, guild_currency
 
 logger = logutil.init_logger(os.path.basename(__file__))
 
@@ -198,9 +198,7 @@ class ReportsMixin:
             return
         group = await groups_col(ctx.guild.id).find_one({"name": groupe, "is_active": True})
         if not group:
-            await ctx.send(
-                f"❌ Aucun groupe actif trouvé avec le nom '{groupe}'.", ephemeral=True
-            )
+            await ctx.send(f"❌ Aucun groupe actif trouvé avec le nom '{groupe}'.", ephemeral=True)
             return
         if ctx.author.id not in group["members"]:
             await ctx.send(
@@ -211,9 +209,7 @@ class ReportsMixin:
 
         await ctx.defer()
         expenses = (
-            await expenses_col(ctx.guild.id)
-            .find({"group_id": group["_id"]})
-            .to_list(length=None)
+            await expenses_col(ctx.guild.id).find({"group_id": group["_id"]}).to_list(length=None)
         )
         if not expenses:
             await ctx.send("Aucune dépense enregistrée dans ce groupe.")
@@ -228,6 +224,7 @@ class ReportsMixin:
             buffer = render_category_chart(
                 title=f"Dépenses du groupe {groupe}",
                 category_totals=dict(totals),
+                currency=guild_currency(ctx.guild.id),
             )
         except Exception as e:
             logger.error("Could not render tricount chart: %s", e)

@@ -34,7 +34,7 @@ from interactions import (
 from src.core import logging as logutil
 from src.core.config import load_config
 from src.discord_ext.messages import send_error, send_success
-from src.webui.schemas import SchemaBase, enabled_field, register_module
+from src.webui.schemas import SchemaBase, enabled_field, register_module, ui
 
 
 @register_module("moduleUtils")
@@ -45,6 +45,25 @@ class UtilsConfig(SchemaBase):
     __category__ = "Outils"
 
     enabled: bool = enabled_field()
+    reminderSnoozeMinutes: int = ui(
+        "Durée du snooze (rappels)",
+        "number",
+        default=10,
+        description=(
+            "Délai en minutes appliqué quand un membre clique sur le bouton "
+            "« Snooze » d'un rappel reçu en message privé."
+        ),
+    )
+    pollDefaultDurationMinutes: int = ui(
+        "Durée par défaut des sondages",
+        "number",
+        default=0,
+        description=(
+            "Si > 0, les commandes /poll, /poll-anonyme et /poll-classement "
+            "appliquent cette fermeture automatique quand l'option `duree` "
+            "n'est pas fournie."
+        ),
+    )
 
 
 logger = logutil.init_logger(os.path.basename(__file__))
@@ -169,7 +188,6 @@ class AdminExtension(Extension):
         )
         await ctx.send("Message envoyé !", ephemeral=True)
 
-
     @slash_command(
         name="slowmode",
         description="Définir le mode lent d'un salon (0 = désactivé)",
@@ -216,9 +234,7 @@ class AdminExtension(Extension):
         if secondes == 0:
             await send_success(ctx, f"Mode lent désactivé sur <#{target.id}>.")
         else:
-            await send_success(
-                ctx, f"Mode lent réglé à **{secondes}s** sur <#{target.id}>."
-            )
+            await send_success(ctx, f"Mode lent réglé à **{secondes}s** sur <#{target.id}>.")
         logger.info(
             "Slowmode set to %ss on #%s by %s (ID: %s)",
             secondes,
@@ -264,8 +280,7 @@ class AdminExtension(Extension):
                 | Permissions.SEND_MESSAGES_IN_THREADS
                 | Permissions.CREATE_PUBLIC_THREADS
                 | Permissions.CREATE_PRIVATE_THREADS,
-                reason=raison
-                or f"Verrouillé par {ctx.user.username} (ID: {ctx.user.id})",
+                reason=raison or f"Verrouillé par {ctx.user.username} (ID: {ctx.user.id})",
             )
         except Exception as e:
             await send_error(ctx, f"Impossible de verrouiller le salon : {e}")

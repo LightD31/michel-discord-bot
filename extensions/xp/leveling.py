@@ -188,9 +188,7 @@ class LevelingMixin:
             return
 
         try:
-            await member.add_role(
-                new_role_id, reason=f"Récompense XP niveau {new_level}"
-            )
+            await member.add_role(new_role_id, reason=f"Récompense XP niveau {new_level}")
         except Exception as e:
             logger.warning(
                 "Could not grant level reward role %s to %s: %s",

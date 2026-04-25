@@ -23,25 +23,36 @@ class YoutubeConfig(SchemaBase):
 
     enabled: bool = enabled_field()
     ChannelId: str = ui(
-        "Salon notifications",
+        "Salon de notification",
         "channel",
         required=True,
-        description="Salon pour les notifications de nouvelles vidéos.",
+        description="Salon où sont publiées les notifications de nouvelles vidéos.",
     )
     youtubeChannelList: list[str] = ui(
-        "Chaînes YouTube",
+        "Chaînes YouTube suivies",
         "list",
         required=True,
         description=(
-            "Liste des handles YouTube à surveiller, configurables depuis le "
-            "dashboard. Format : @handle ou simplement le nom de chaîne."
+            "Liste des handles YouTube à surveiller (un par ligne). "
+            "Format accepté : `@handle` ou juste le handle. "
+            "Modifiable directement depuis le dashboard."
         ),
+    )
+    youtubeChannelLabels: dict[str, str] = ui(
+        "Libellés personnalisés",
+        "keyvaluemap",
+        description=(
+            "Optionnel : associe un nom d'affichage à chaque handle. "
+            "Utilisé dans les logs et messages."
+        ),
+        key_label="Handle",
+        value_label="Libellé",
     )
     youtubeIncludeShorts: bool = ui(
         "Notifier les Shorts",
         "boolean",
         default=False,
-        description="Inclure les vidéos de moins de 90 secondes (Shorts).",
+        description="Inclure les vidéos courtes (Shorts).",
     )
     youtubeIncludeLive: bool = ui(
         "Notifier les lives",
@@ -54,6 +65,24 @@ class YoutubeConfig(SchemaBase):
         "boolean",
         default=True,
         description="Inclure les vidéos longues classiques (VOD).",
+    )
+    youtubeShortMaxSeconds: int = ui(
+        "Seuil Short (secondes)",
+        "number",
+        default=90,
+        description=(
+            "Durée maximale (en secondes) en deçà de laquelle une vidéo est "
+            "considérée comme un Short. 90 par défaut."
+        ),
+    )
+    youtubeNotificationTemplate: str = ui(
+        "Modèle de notification",
+        "string",
+        default="https://www.youtube.com/watch?v={video_id}",
+        description=(
+            "Texte envoyé pour chaque nouvelle vidéo. Variables : "
+            "`{video_id}`, `{handle}`, `{label}`."
+        ),
     )
 
 
@@ -90,6 +119,10 @@ class YoutubeExtension(Extension):
                     server,
                 )
             filters = self._content_filters(srv_config)
+            template = srv_config.get(
+                "youtubeNotificationTemplate", "https://www.youtube.com/watch?v={video_id}"
+            )
+            labels: dict[str, str] = srv_config.get("youtubeChannelLabels") or {}
             for user in srv_config["youtubeChannelList"]:
                 if not user:
                     continue
@@ -101,16 +134,26 @@ class YoutubeExtension(Extension):
                     continue
                 youtube_data = self.update_youtube_data(server, user, video_id, youtube_data)
                 if not is_initial_sync and await self.is_video_valid(video_id, filters):
-                    await channel.send(f"https://www.youtube.com/watch?v={video_id}")
+                    label = labels.get(handle) or labels.get(user) or handle
+                    try:
+                        rendered = template.format(video_id=video_id, handle=handle, label=label)
+                    except (KeyError, IndexError):
+                        rendered = f"https://www.youtube.com/watch?v={video_id}"
+                    await channel.send(rendered)
             await self.save_youtube_data(youtube_data)
 
     @staticmethod
-    def _content_filters(srv_config: dict) -> dict[str, bool]:
+    def _content_filters(srv_config: dict) -> dict[str, object]:
         """Per-guild content filter dict consumed by ``is_video_valid``."""
+        try:
+            short_max = int(srv_config.get("youtubeShortMaxSeconds", 90))
+        except (TypeError, ValueError):
+            short_max = 90
         return {
             "shorts": bool(srv_config.get("youtubeIncludeShorts", False)),
             "live": bool(srv_config.get("youtubeIncludeLive", False)),
             "vod": bool(srv_config.get("youtubeIncludeVod", True)),
+            "short_max_seconds": max(1, short_max),
         }
 
     async def get_uploads(self, user):
@@ -151,14 +194,14 @@ class YoutubeExtension(Extension):
         youtube_data[str(server)][user] = video_id
         return youtube_data
 
-    async def is_video_valid(self, video_id, filters: dict[str, bool] | None = None):
+    async def is_video_valid(self, video_id, filters: dict[str, object] | None = None):
         """Decide whether to surface ``video_id`` based on per-guild filters.
 
-        ``filters`` keys: ``shorts``, ``live``, ``vod``. Default mirrors the
-        legacy behaviour (VOD-only).
+        ``filters`` keys: ``shorts``, ``live``, ``vod``, ``short_max_seconds``.
+        Default mirrors the legacy behaviour (VOD-only, 90 s short threshold).
         """
         if filters is None:
-            filters = {"shorts": False, "live": False, "vod": True}
+            filters = {"shorts": False, "live": False, "vod": True, "short_max_seconds": 90}
         url = f"{YOUTUBE_API_URL}/videos?part=snippet,contentDetails&id={video_id}&key={YOUTUBE_API_KEY}"
         data = await fetch(url, return_type="json")
         logger.debug(data)
@@ -171,7 +214,8 @@ class YoutubeExtension(Extension):
             return False
 
         duration = isodate.parse_duration(item["contentDetails"]["duration"])
-        is_short = duration <= datetime.timedelta(minutes=1, seconds=30)
+        threshold = datetime.timedelta(seconds=int(filters.get("short_max_seconds", 90)))
+        is_short = duration <= threshold
         if is_short:
             if filters["shorts"]:
                 return True

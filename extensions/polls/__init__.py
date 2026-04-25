@@ -51,8 +51,22 @@ from src.discord_ext.paginator import format_poll
 from .buttons import PollButtonsMixin, render_results_field, update_poll_embed, vote_components
 
 logger = logutil.init_logger(os.path.basename(__file__))
-_, _, enabled_servers = load_config("moduleUtils")
+_, _utils_module_config, enabled_servers = load_config("moduleUtils")
 enabled_servers_int = [int(s) for s in enabled_servers]  # type: ignore[misc]
+
+
+def _default_poll_seconds(guild_id: str | int | None) -> int | None:
+    """Per-guild default auto-close (seconds) when ``duree`` is omitted; None disables it."""
+    if guild_id is None:
+        return None
+    cfg = _utils_module_config.get(str(guild_id), {})
+    minutes = cfg.get("pollDefaultDurationMinutes")
+    try:
+        value = int(minutes) if minutes is not None else 0
+    except (TypeError, ValueError):
+        value = 0
+    return value * 60 if value > 0 else None
+
 
 # In-memory map of (guild_id, message_id) → asyncio.Task that auto-closes
 # reaction-based polls. Button polls use the periodic task below instead.
@@ -141,6 +155,8 @@ class PollsExtension(Extension, PollButtonsMixin):
                     ctx, "Format de durée invalide. Utilisez par ex. `30m`, `2h`, `1d`."
                 )
                 return
+        else:
+            close_seconds = _default_poll_seconds(ctx.guild_id)
         description = "\n\n".join([f"{emojis[i]} {option}" for i, option in enumerate(options)])
         if close_seconds:
             close_time = datetime.now() + timedelta(seconds=close_seconds)
@@ -155,9 +171,7 @@ class PollsExtension(Extension, PollButtonsMixin):
         message = await ctx.send(embed=embed)
         await _add_poll_reactions(message, options, use_default=(options == DEFAULT_POLL_OPTIONS))
         if close_seconds:
-            self._schedule_reaction_close(
-                ctx.guild_id, message, close_seconds, options, emojis
-            )
+            self._schedule_reaction_close(ctx.guild_id, message, close_seconds, options, emojis)
         logger.debug(
             "Création d'un sondage par %s (ID: %s)\nQuestion : %s\nOptions : %s",
             ctx.user.username,
@@ -281,6 +295,7 @@ class PollsExtension(Extension, PollButtonsMixin):
             return
 
         closes_at: datetime | None = None
+        seconds: int | None = None
         if duration:
             seconds = parse_duration(duration)
             if seconds is None:
@@ -288,17 +303,16 @@ class PollsExtension(Extension, PollButtonsMixin):
                     ctx, "Format de durée invalide. Utilisez par ex. `30m`, `2h`, `1d`."
                 )
                 return
+        else:
+            seconds = _default_poll_seconds(ctx.guild_id)
+        if seconds:
             closes_at = datetime.now() + timedelta(seconds=seconds)
 
         mode_label = "anonyme" if mode == "anonymous" else "classement"
         embed = Embed(
             title=f"📊 {question}",
             description=f"*Sondage {mode_label}* — cliquez sur un bouton pour voter."
-            + (
-                f"\nFermeture : {format_discord_timestamp(closes_at, 'R')}"
-                if closes_at
-                else ""
-            ),
+            + (f"\nFermeture : {format_discord_timestamp(closes_at, 'R')}" if closes_at else ""),
             color=Colors.UTIL,
         )
         embed.set_footer(
@@ -342,9 +356,7 @@ class PollsExtension(Extension, PollButtonsMixin):
             channel = await self.bot.fetch_channel(int(poll.channel_id))
             message = await channel.fetch_message(int(poll.message_id))
         except Exception as e:
-            logger.warning(
-                "Could not fetch poll %s in channel %s: %s", poll.id, poll.channel_id, e
-            )
+            logger.warning("Could not fetch poll %s in channel %s: %s", poll.id, poll.channel_id, e)
             await self._poll_repo(guild_id).mark_closed(poll.id)
             return
 

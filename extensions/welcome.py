@@ -149,9 +149,7 @@ class WelcomeExtension(Extension):
         )
         await channel.send(filled_message, files=files)
 
-    async def _build_card_files(
-        self, member, guild, *, title: str, enabled: bool
-    ) -> list[File]:
+    async def _build_card_files(self, member, guild, *, title: str, enabled: bool) -> list[File]:
         if not enabled:
             return []
         try:
