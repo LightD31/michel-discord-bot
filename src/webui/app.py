@@ -30,6 +30,9 @@ from src.webui.routes import (
     frontend as frontend_routes,
 )
 from src.webui.routes import (
+    rolemenus as rolemenus_routes,
+)
+from src.webui.routes import (
     servers as servers_routes,
 )
 from src.webui.sse import logs as logs_sse
@@ -74,6 +77,7 @@ def create_app(bot=None, bot_loop=None) -> FastAPI:
     app.include_router(auth_routes.create_router(ctx))
     app.include_router(config_routes.create_router(ctx))
     app.include_router(servers_routes.create_router(ctx))
+    app.include_router(rolemenus_routes.create_router(ctx))
     app.include_router(extensions_routes.create_router(ctx))
     app.include_router(bot_routes.create_router(ctx))
     app.include_router(logs_sse.create_router(ctx))

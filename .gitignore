@@ -102,6 +102,9 @@ Pipfile.lock
 # poetry
 poetry.lock
 
+# uv
+uv.lock
+
 # celery beat schedule file
 celerybeat-schedule
 celerybeat.pid
