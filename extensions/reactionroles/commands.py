@@ -3,10 +3,7 @@
 from datetime import datetime
 
 from interactions import (
-    ActionRow,
     BaseChannel,
-    Button,
-    ButtonStyle,
     ChannelType,
     Embed,
     OptionType,
@@ -21,7 +18,7 @@ from features.reactionroles import RoleMenu, RoleMenuEntry
 from src.discord_ext.embeds import Colors
 from src.discord_ext.messages import require_guild, send_error, send_success
 
-from ._common import BUTTON_PREFIX, MAX_ENTRIES, enabled_servers_int, logger
+from ._common import MAX_ENTRIES, build_components, build_embed, enabled_servers_int, logger
 
 
 def _parse_entries(raw: str) -> list[RoleMenuEntry] | str:
@@ -48,30 +45,6 @@ def _parse_entries(raw: str) -> list[RoleMenuEntry] | str:
             return f"Entrée {idx} : libellé trop long (max 80 caractères)."
         entries.append(RoleMenuEntry(role_id=role_id, emoji=emoji, label=label))
     return entries
-
-
-def _build_embed(title: str, description: str | None, entries: list[RoleMenuEntry]) -> Embed:
-    body_lines = [f"{e.emoji} <@&{e.role_id}> — {e.label}" for e in entries]
-    embed_description = (description + "\n\n" if description else "") + "\n".join(body_lines)
-    return Embed(title=title, description=embed_description, color=Colors.UTIL)
-
-
-def _build_components(menu_id: str, entries: list[RoleMenuEntry]) -> list[ActionRow]:
-    rows: list[ActionRow] = []
-    for chunk_start in range(0, len(entries), 5):
-        buttons = []
-        for offset, entry in enumerate(entries[chunk_start : chunk_start + 5]):
-            idx = chunk_start + offset
-            buttons.append(
-                Button(
-                    label=entry.label[:80],
-                    style=ButtonStyle.SECONDARY,
-                    emoji=entry.emoji,
-                    custom_id=f"{BUTTON_PREFIX}:{menu_id}:{idx}",
-                )
-            )
-        rows.append(ActionRow(*buttons))
-    return rows
 
 
 class CommandsMixin:
@@ -150,8 +123,8 @@ class CommandsMixin:
         )
         menu_id = await self.repository(ctx.guild_id).add(menu)
 
-        embed = _build_embed(title, description, parsed)
-        components = _build_components(menu_id, parsed)
+        embed = build_embed(title, description, parsed)
+        components = build_components(menu_id, parsed)
         try:
             sent = await channel.send(embeds=[embed], components=components)  # type: ignore[union-attr]
         except Exception as e:
@@ -287,7 +260,7 @@ class CommandsMixin:
                 if channel and hasattr(channel, "fetch_message"):
                     msg = await channel.fetch_message(int(menu.message_id))
                     if msg:
-                        embed = _build_embed(new_title, new_description, menu.entries)
+                        embed = build_embed(new_title, new_description, menu.entries)
                         await msg.edit(embeds=[embed])
             except Exception as e:
                 logger.warning("Could not edit role menu message %s: %s", menu.message_id, e)
