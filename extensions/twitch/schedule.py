@@ -1,5 +1,6 @@
 """Twitch schedule embed + planning message + Discord scheduled-event sync."""
 
+import contextlib
 import os
 from datetime import datetime, timedelta
 
@@ -186,10 +187,8 @@ class ScheduleMixin:
                             )
                             await streamer.scheduled_event.edit(status=ScheduledEventStatus.ACTIVE)
                     elif streamer.scheduled_event:
-                        try:
+                        with contextlib.suppress(NotFound):
                             await streamer.scheduled_event.delete()
-                        except NotFound:
-                            pass
                         streamer.scheduled_event = None
                 except Exception as e:
                     logger.error(f"Error handling scheduled event for {streamer.streamer_id}: {e}")
