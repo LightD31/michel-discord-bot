@@ -13,7 +13,14 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-from features.reactionroles import ReactionRolesRepository, RoleMenu, RoleMenuEntry
+from features.reactionroles import (
+    MAX_ENTRIES,
+    ReactionRolesRepository,
+    RoleMenu,
+    RoleMenuEntry,
+    build_components,
+    build_embed,
+)
 from src.core import logging as logutil
 from src.webui.context import WebUIContext
 
@@ -62,8 +69,6 @@ def _menu_to_dict(menu: RoleMenu) -> dict:
 def _validate_entries(
     entries_in: list[RoleMenuEntryIn], guild_role_ids: set[str]
 ) -> list[RoleMenuEntry] | str:
-    from extensions.reactionroles._common import MAX_ENTRIES
-
     if not entries_in:
         return "Au moins une entrée requise."
     if len(entries_in) > MAX_ENTRIES:
@@ -175,8 +180,6 @@ def create_router(ctx: WebUIContext) -> APIRouter:
         session = ctx.require_admin(request)
 
         async def _create():
-            from extensions.reactionroles._common import build_components, build_embed
-
             guild, channel = await _resolve_guild_and_channel(ctx.bot, server_id, body.channel_id)
             guild_role_ids = {str(r.id) for r in getattr(guild, "roles", []) or []}
             parsed = _validate_entries(body.entries, guild_role_ids)
@@ -226,8 +229,6 @@ def create_router(ctx: WebUIContext) -> APIRouter:
         ctx.require_admin(request)
 
         async def _update():
-            from extensions.reactionroles._common import build_components, build_embed
-
             repo = ReactionRolesRepository(server_id)
             existing = await repo.get(menu_id)
             if not existing:
