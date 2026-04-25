@@ -61,7 +61,13 @@ def _build_embed(
     winners_mention: str | None = None,
     entry_count: int | None = None,
 ) -> Embed:
-    """Render the giveaway embed for any of its three lifecycle states."""
+    """Render the giveaway embed for any of its three lifecycle states.
+
+    Metadata (closing time, winner count, host, participants) lives in proper
+    embed fields so Discord renders consistent label/value pairs on both
+    desktop and mobile — packing them into ``description`` produced misaligned
+    labels with apparently-empty values on narrow viewports.
+    """
     title_prefix = "🎁 GIVEAWAY"
     color = Colors.UTIL
     if cancelled:
@@ -72,27 +78,43 @@ def _build_embed(
         color = Colors.SUCCESS
 
     embed = Embed(title=f"{title_prefix} — {giveaway.prize}", color=color)
-    parts: list[str] = []
+
+    # Description: prose only — the giveaway's own description plus the
+    # call-to-action / status line.
+    description_lines: list[str] = []
     if giveaway.description:
-        parts.append(giveaway.description)
+        description_lines.append(giveaway.description)
     if cancelled:
-        parts.append("*Ce giveaway a été annulé.*")
+        description_lines.append("*Ce giveaway a été annulé.*")
     elif closed:
         if winners_mention:
-            parts.append(f"**Gagnant·e·s :** {winners_mention}")
+            description_lines.append(f"🎉 **Gagnant·e·s :** {winners_mention}")
         else:
-            parts.append("**Aucune participation valide.**")
+            description_lines.append("**Aucune participation valide.**")
     else:
-        parts.append(
-            f"Réagissez avec {giveaway.emoji} pour participer !\n"
-            f"Fermeture : {format_discord_timestamp(giveaway.ends_at, 'R')}"
-            f" ({format_discord_timestamp(giveaway.ends_at, 'F')})"
+        description_lines.append(f"Réagissez avec {giveaway.emoji} pour participer !")
+    if description_lines:
+        embed.description = "\n\n".join(description_lines)
+
+    # Fields: structured metadata. Inline so the row stays compact.
+    if not cancelled and not closed:
+        embed.add_field(
+            name="Fermeture",
+            value=(
+                f"{format_discord_timestamp(giveaway.ends_at, 'R')}\n"
+                f"{format_discord_timestamp(giveaway.ends_at, 'F')}"
+            ),
+            inline=True,
         )
-    parts.append(f"**Gagnant·e·s à tirer :** {giveaway.winners_count}")
-    parts.append(f"**Hôte :** <@{giveaway.host_id}>")
+    embed.add_field(
+        name="Gagnant·e·s à tirer",
+        value=str(giveaway.winners_count),
+        inline=True,
+    )
+    embed.add_field(name="Hôte", value=f"<@{giveaway.host_id}>", inline=True)
     if entry_count is not None:
-        parts.append(f"**Participants :** {entry_count}")
-    embed.description = "\n\n".join(parts)
+        embed.add_field(name="Participants", value=str(entry_count), inline=True)
+
     embed.set_footer(text=f"Lancé par {host_name}", icon_url=host_avatar)
     return embed
 
