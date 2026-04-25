@@ -1,5 +1,6 @@
 """Twitch schedule embed + planning message + Discord scheduled-event sync."""
 
+import contextlib
 import os
 from datetime import datetime, timedelta
 
@@ -16,6 +17,7 @@ from interactions import (
     TimeTrigger,
     utils,
 )
+from interactions.client.errors import NotFound
 from twitchAPI.object.api import ChannelStreamSchedule, ChannelStreamScheduleSegment
 from twitchAPI.object.eventsub import ChannelUpdateEvent, StreamOfflineEvent
 from twitchAPI.type import TwitchResourceNotFound
@@ -161,12 +163,20 @@ class ScheduleMixin:
 
                     if streamer.manage_discord_events:
                         if streamer.scheduled_event:
-                            await streamer.scheduled_event.edit(
-                                name=title100,
-                                description=f"**{title}**\n\n{description}",
-                                end_time=datetime.now(self.timezone) + timedelta(days=1),
-                            )
-                        else:
+                            try:
+                                await streamer.scheduled_event.edit(
+                                    name=title100,
+                                    description=f"**{title}**\n\n{description}",
+                                    end_time=datetime.now(self.timezone) + timedelta(days=1),
+                                )
+                            except NotFound:
+                                # Event was deleted in Discord; drop the stale reference
+                                # so we recreate it below.
+                                logger.warning(
+                                    f"Scheduled event for {streamer.streamer_id} no longer exists, recreating"
+                                )
+                                streamer.scheduled_event = None
+                        if not streamer.scheduled_event:
                             streamer.scheduled_event = await guild.create_scheduled_event(
                                 name=title100,
                                 event_type=ScheduledEventType.EXTERNAL,
@@ -177,7 +187,8 @@ class ScheduleMixin:
                             )
                             await streamer.scheduled_event.edit(status=ScheduledEventStatus.ACTIVE)
                     elif streamer.scheduled_event:
-                        await streamer.scheduled_event.delete()
+                        with contextlib.suppress(NotFound):
+                            await streamer.scheduled_event.delete()
                         streamer.scheduled_event = None
                 except Exception as e:
                     logger.error(f"Error handling scheduled event for {streamer.streamer_id}: {e}")
@@ -197,9 +208,11 @@ class ScheduleMixin:
             if streamer.scheduled_event:
                 try:
                     await streamer.scheduled_event.delete()
-                    streamer.scheduled_event = None
+                except NotFound:
+                    pass
                 except Exception as e:
                     logger.error(f"Error deleting scheduled event for {streamer.streamer_id}: {e}")
+                streamer.scheduled_event = None
 
             if has_message:
                 try:
