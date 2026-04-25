@@ -28,7 +28,10 @@ class GiveawayConfig(SchemaBase):
     )
 
 
-_, module_config, enabled_servers = load_config(MODULE_KEY)
+# NOTE: keep the literal string here — the WebUI's ``build_module_to_extension_map``
+# scans source files with a regex matching ``load_config("…")``, so a constant
+# would make the module invisible to the dashboard's auto-reload.
+_, module_config, enabled_servers = load_config("moduleGiveaway")
 enabled_servers_int = [int(s) for s in enabled_servers]
 
 
