@@ -4,6 +4,9 @@ Slash commands:
 - ``/ping`` — bot latency probe
 - ``/delete`` — bulk-delete messages in a channel
 - ``/send`` — send a message to a channel as the bot
+- ``/slowmode`` — set or clear a channel's slowmode delay
+- ``/lock`` — deny @everyone send permissions on a channel
+- ``/unlock`` — restore @everyone send permissions on a channel
 
 Enablement is shared with :mod:`extensions.polls` and
 :mod:`extensions.reminders` via the ``moduleUtils`` config key. This package
@@ -30,7 +33,7 @@ from interactions import (
 
 from src.core import logging as logutil
 from src.core.config import load_config
-from src.discord_ext.messages import send_error
+from src.discord_ext.messages import send_error, send_success
 from src.webui.schemas import SchemaBase, enabled_field, register_module
 
 
@@ -165,6 +168,160 @@ class AdminExtension(Extension):
             sent.channel.id,
         )
         await ctx.send("Message envoyé !", ephemeral=True)
+
+
+    @slash_command(
+        name="slowmode",
+        description="Définir le mode lent d'un salon (0 = désactivé)",
+        scopes=enabled_servers_int,  # type: ignore
+    )
+    @slash_option(
+        "secondes",
+        "Délai en secondes entre messages (0–21600)",
+        opt_type=OptionType.INTEGER,
+        required=True,
+        min_value=0,
+        max_value=21600,
+    )
+    @slash_option(
+        "channel",
+        "Salon ciblé (par défaut : salon courant)",
+        opt_type=OptionType.CHANNEL,
+        required=False,
+        channel_types=[
+            ChannelType.GUILD_TEXT,
+            ChannelType.GUILD_NEWS,
+            ChannelType.GUILD_PUBLIC_THREAD,
+            ChannelType.GUILD_PRIVATE_THREAD,
+            ChannelType.GUILD_NEWS_THREAD,
+        ],
+    )
+    @slash_default_member_permission(Permissions.MANAGE_CHANNELS)
+    async def slowmode(
+        self,
+        ctx: SlashContext,
+        secondes: int,
+        channel: BaseChannel | None = None,
+    ):
+        target = channel or ctx.channel
+        try:
+            await target.edit(
+                rate_limit_per_user=secondes,
+                reason=f"Slowmode défini par {ctx.user.username} (ID: {ctx.user.id})",
+            )
+        except Exception as e:
+            await send_error(ctx, f"Impossible de modifier le salon : {e}")
+            return
+
+        if secondes == 0:
+            await send_success(ctx, f"Mode lent désactivé sur <#{target.id}>.")
+        else:
+            await send_success(
+                ctx, f"Mode lent réglé à **{secondes}s** sur <#{target.id}>."
+            )
+        logger.info(
+            "Slowmode set to %ss on #%s by %s (ID: %s)",
+            secondes,
+            target.name,
+            ctx.user.username,
+            ctx.user.id,
+        )
+
+    @slash_command(
+        name="lock",
+        description="Verrouiller un salon (empêcher @everyone d'écrire)",
+        scopes=enabled_servers_int,  # type: ignore
+    )
+    @slash_option(
+        "channel",
+        "Salon à verrouiller (par défaut : salon courant)",
+        opt_type=OptionType.CHANNEL,
+        required=False,
+        channel_types=[ChannelType.GUILD_TEXT, ChannelType.GUILD_NEWS],
+    )
+    @slash_option(
+        "raison",
+        "Raison du verrouillage",
+        opt_type=OptionType.STRING,
+        required=False,
+    )
+    @slash_default_member_permission(Permissions.MANAGE_CHANNELS)
+    async def lock(
+        self,
+        ctx: SlashContext,
+        channel: BaseChannel | None = None,
+        raison: str | None = None,
+    ):
+        target = channel or ctx.channel
+        if not ctx.guild:
+            await send_error(ctx, "Cette commande ne peut être utilisée que dans un serveur.")
+            return
+        everyone = ctx.guild.default_role
+        try:
+            await target.add_permission(
+                everyone,
+                deny=Permissions.SEND_MESSAGES
+                | Permissions.SEND_MESSAGES_IN_THREADS
+                | Permissions.CREATE_PUBLIC_THREADS
+                | Permissions.CREATE_PRIVATE_THREADS,
+                reason=raison
+                or f"Verrouillé par {ctx.user.username} (ID: {ctx.user.id})",
+            )
+        except Exception as e:
+            await send_error(ctx, f"Impossible de verrouiller le salon : {e}")
+            return
+
+        suffix = f" — {raison}" if raison else ""
+        await send_success(ctx, f"🔒 <#{target.id}> verrouillé{suffix}.")
+        logger.info(
+            "Channel #%s locked by %s (ID: %s)%s",
+            target.name,
+            ctx.user.username,
+            ctx.user.id,
+            f" — {raison}" if raison else "",
+        )
+
+    @slash_command(
+        name="unlock",
+        description="Déverrouiller un salon précédemment verrouillé",
+        scopes=enabled_servers_int,  # type: ignore
+    )
+    @slash_option(
+        "channel",
+        "Salon à déverrouiller (par défaut : salon courant)",
+        opt_type=OptionType.CHANNEL,
+        required=False,
+        channel_types=[ChannelType.GUILD_TEXT, ChannelType.GUILD_NEWS],
+    )
+    @slash_default_member_permission(Permissions.MANAGE_CHANNELS)
+    async def unlock(
+        self,
+        ctx: SlashContext,
+        channel: BaseChannel | None = None,
+    ):
+        target = channel or ctx.channel
+        if not ctx.guild:
+            await send_error(ctx, "Cette commande ne peut être utilisée que dans un serveur.")
+            return
+        everyone = ctx.guild.default_role
+        try:
+            # Clear the deny mask we set in /lock by passing an empty Permissions flag.
+            await target.add_permission(
+                everyone,
+                deny=Permissions(0),
+                reason=f"Déverrouillé par {ctx.user.username} (ID: {ctx.user.id})",
+            )
+        except Exception as e:
+            await send_error(ctx, f"Impossible de déverrouiller le salon : {e}")
+            return
+
+        await send_success(ctx, f"🔓 <#{target.id}> déverrouillé.")
+        logger.info(
+            "Channel #%s unlocked by %s (ID: %s)",
+            target.name,
+            ctx.user.username,
+            ctx.user.id,
+        )
 
 
 def setup(bot: Client) -> None:

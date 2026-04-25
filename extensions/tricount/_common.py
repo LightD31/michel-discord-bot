@@ -21,6 +21,21 @@ class TricountConfig(SchemaBase):
 logger = logutil.init_logger(os.path.basename(__file__))
 config, module_config, enabled_servers = load_config("moduleTricount")
 
+# Default expense categories surfaced in /depense autocomplete. Free-form input
+# is also accepted so guilds can use their own taxonomy.
+DEFAULT_CATEGORIES = [
+    "Alimentation",
+    "Logement",
+    "Transport",
+    "Loisirs",
+    "Restaurant",
+    "Cadeaux",
+    "Voyages",
+    "Autre",
+]
+
+DEFAULT_CATEGORY = "Autre"
+
 
 def groups_col(guild_id):
     return mongo_manager.get_guild_collection(str(guild_id), "tricount_groups")
@@ -28,3 +43,7 @@ def groups_col(guild_id):
 
 def expenses_col(guild_id):
     return mongo_manager.get_guild_collection(str(guild_id), "tricount_expenses")
+
+
+def recurring_col(guild_id):
+    return mongo_manager.get_guild_collection(str(guild_id), "tricount_recurring")

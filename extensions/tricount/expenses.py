@@ -19,7 +19,7 @@ from src.discord_ext.autocomplete import guild_group_autocomplete
 from src.discord_ext.embeds import Colors
 from src.discord_ext.messages import fetch_user_safe, require_guild
 
-from ._common import expenses_col, groups_col
+from ._common import DEFAULT_CATEGORIES, DEFAULT_CATEGORY, expenses_col, groups_col
 
 logger = logutil.init_logger(os.path.basename(__file__))
 
@@ -57,6 +57,13 @@ class ExpensesMixin:
         opt_type=OptionType.USER,
         required=False,
     )
+    @slash_option(
+        name="categorie",
+        description="Catégorie (alimentation, transport, loisirs, …)",
+        opt_type=OptionType.STRING,
+        required=False,
+        autocomplete=True,
+    )
     async def depense(
         self,
         ctx: SlashContext,
@@ -64,6 +71,7 @@ class ExpensesMixin:
         montant: float,
         description: str,
         payeur: User | Member | None = None,
+        categorie: str | None = None,
     ):
         if not await require_guild(ctx):
             return
@@ -90,11 +98,13 @@ class ExpensesMixin:
 
         from datetime import datetime
 
+        category = (categorie or DEFAULT_CATEGORY).strip() or DEFAULT_CATEGORY
         expense_data = {
             "group_id": group["_id"],
             "group_name": groupe,
             "amount": round(montant, 2),
             "description": description,
+            "category": category,
             "payer": payeur.id,
             "added_by": ctx.author.id,
             "participants": group["members"],
@@ -109,18 +119,45 @@ class ExpensesMixin:
         )
         embed.add_field(name="Montant", value=f"{montant:.2f}€", inline=True)
         embed.add_field(name="Payeur", value=payeur.mention, inline=True)
+        embed.add_field(name="Catégorie", value=category, inline=True)
         embed.add_field(name="Description", value=description, inline=False)
         embed.add_field(
             name="Part par personne", value=f"{montant / len(group['members']):.2f}€", inline=True
         )
         logger.info(
-            "Dépense de %.2f€ ajoutée par %s au groupe '%s' (payeur: %s)",
+            "Dépense de %.2f€ ajoutée par %s au groupe '%s' (payeur: %s, catégorie: %s)",
             montant,
             ctx.author.display_name,
             groupe,
             payeur.display_name,
+            category,
         )
         await ctx.send(embed=embed)
+
+    @depense.autocomplete("categorie")
+    async def depense_categorie_autocomplete(self, ctx: AutocompleteContext):
+        query = (ctx.input_text or "").lower()
+        seen: set[str] = set()
+        choices: list[dict[str, str]] = []
+        for cat in DEFAULT_CATEGORIES:
+            if query in cat.lower() and cat not in seen:
+                seen.add(cat)
+                choices.append({"name": cat, "value": cat})
+        # Surface previously used custom categories from this guild.
+        if ctx.guild:
+            try:
+                used = await expenses_col(ctx.guild.id).distinct("category")
+                for cat in used:
+                    if not cat or cat in seen:
+                        continue
+                    if query in cat.lower():
+                        seen.add(cat)
+                        choices.append({"name": cat, "value": cat})
+                    if len(choices) >= 25:
+                        break
+            except Exception:
+                pass
+        await ctx.send(choices=choices[:25])
 
     @depense.autocomplete("groupe")
     async def depense_groupe_autocomplete(self, ctx: AutocompleteContext):

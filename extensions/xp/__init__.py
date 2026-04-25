@@ -21,9 +21,10 @@ from ._common import XpConfig, enabled_servers, logger, module_config
 from .commands import CommandsMixin
 from .leaderboard import LeaderboardMixin
 from .leveling import LevelingMixin
+from .voice import VoiceMixin
 
 
-class XpExtension(Extension, LevelingMixin, CommandsMixin, LeaderboardMixin):
+class XpExtension(Extension, LevelingMixin, VoiceMixin, CommandsMixin, LeaderboardMixin):
     """XP and leveling system extension."""
 
     def __init__(self, bot: Client):
@@ -32,6 +33,7 @@ class XpExtension(Extension, LevelingMixin, CommandsMixin, LeaderboardMixin):
         self._user_cache = TTLCache(ttl=USER_CACHE_TTL)
         self._rank_cache = TTLCache(ttl=RANK_CACHE_TTL)
         self._repos: dict[str, XpRepository] = {}
+        self._voice_sessions: dict[tuple[str, str], float] = {}
 
         self._validate_config()
         logger.debug("enabled_servers for XP module: %s", enabled_servers)
@@ -66,6 +68,7 @@ class XpExtension(Extension, LevelingMixin, CommandsMixin, LeaderboardMixin):
                 logger.error("Failed to create indexes for guild %s: %s", guild_id, e)
 
         self._cache_cleanup_task.start()
+        self._voice_xp_tick.start()
 
         self.leaderboardpermanent.start()
         await self.leaderboardpermanent()

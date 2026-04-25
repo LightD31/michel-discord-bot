@@ -1,22 +1,25 @@
 """Expense reports: list expenses, balance, and group overview."""
 
 import os
+from collections import defaultdict
 
 from interactions import (
     AutocompleteContext,
     Embed,
+    File,
     OptionType,
     SlashContext,
     slash_command,
     slash_option,
 )
 
+from features.tricount import render_category_chart
 from src.core import logging as logutil
 from src.discord_ext.autocomplete import guild_group_autocomplete
 from src.discord_ext.embeds import Colors
 from src.discord_ext.messages import fetch_user_safe, require_guild
 
-from ._common import expenses_col, groups_col
+from ._common import DEFAULT_CATEGORY, expenses_col, groups_col
 
 logger = logutil.init_logger(os.path.basename(__file__))
 
@@ -177,6 +180,63 @@ class ReportsMixin:
 
     @bilan.autocomplete("groupe")
     async def bilan_groupe_autocomplete(self, ctx: AutocompleteContext):
+        await guild_group_autocomplete(ctx, groups_col)
+
+    @slash_command(
+        name="tricount-graphique",
+        description="Exporter un graphique des dépenses par catégorie",
+    )
+    @slash_option(
+        name="groupe",
+        description="Nom du groupe",
+        opt_type=OptionType.STRING,
+        required=True,
+        autocomplete=True,
+    )
+    async def tricount_graphique(self, ctx: SlashContext, groupe: str):
+        if not await require_guild(ctx):
+            return
+        group = await groups_col(ctx.guild.id).find_one({"name": groupe, "is_active": True})
+        if not group:
+            await ctx.send(
+                f"❌ Aucun groupe actif trouvé avec le nom '{groupe}'.", ephemeral=True
+            )
+            return
+        if ctx.author.id not in group["members"]:
+            await ctx.send(
+                "❌ Vous devez être membre du groupe pour voir le graphique.",
+                ephemeral=True,
+            )
+            return
+
+        await ctx.defer()
+        expenses = (
+            await expenses_col(ctx.guild.id)
+            .find({"group_id": group["_id"]})
+            .to_list(length=None)
+        )
+        if not expenses:
+            await ctx.send("Aucune dépense enregistrée dans ce groupe.")
+            return
+
+        totals: dict[str, float] = defaultdict(float)
+        for expense in expenses:
+            cat = expense.get("category") or DEFAULT_CATEGORY
+            totals[cat] += float(expense.get("amount", 0))
+
+        try:
+            buffer = render_category_chart(
+                title=f"Dépenses du groupe {groupe}",
+                category_totals=dict(totals),
+            )
+        except Exception as e:
+            logger.error("Could not render tricount chart: %s", e)
+            await ctx.send("❌ Erreur lors de la génération du graphique.")
+            return
+        await ctx.send(file=File(file=buffer, file_name="tricount.png"))
+
+    @tricount_graphique.autocomplete("groupe")
+    async def graphique_groupe_autocomplete(self, ctx: AutocompleteContext):
         await guild_group_autocomplete(ctx, groups_col)
 
     @slash_command(

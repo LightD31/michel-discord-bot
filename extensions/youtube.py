@@ -32,7 +32,28 @@ class YoutubeConfig(SchemaBase):
         "Chaînes YouTube",
         "list",
         required=True,
-        description="Liste des noms de chaînes YouTube à surveiller.",
+        description=(
+            "Liste des handles YouTube à surveiller, configurables depuis le "
+            "dashboard. Format : @handle ou simplement le nom de chaîne."
+        ),
+    )
+    youtubeIncludeShorts: bool = ui(
+        "Notifier les Shorts",
+        "boolean",
+        default=False,
+        description="Inclure les vidéos de moins de 90 secondes (Shorts).",
+    )
+    youtubeIncludeLive: bool = ui(
+        "Notifier les lives",
+        "boolean",
+        default=False,
+        description="Inclure les diffusions en direct (live broadcasts).",
+    )
+    youtubeIncludeVod: bool = ui(
+        "Notifier les VOD",
+        "boolean",
+        default=True,
+        description="Inclure les vidéos longues classiques (VOD).",
     )
 
 
@@ -56,10 +77,9 @@ class YoutubeExtension(Extension):
     @Task.create(IntervalTrigger(minutes=5))
     async def check_youtube(self):
         for server in enabled_servers:
-            if module_config[str(server)].get("ChannelId"):
-                channel: BaseChannel = await self.bot.fetch_channel(
-                    module_config[str(server)].get("ChannelId")
-                )
+            srv_config = module_config[str(server)]
+            if srv_config.get("ChannelId"):
+                channel: BaseChannel = await self.bot.fetch_channel(srv_config.get("ChannelId"))
             else:
                 continue
             youtube_data = await self.get_youtube_data()
@@ -69,15 +89,29 @@ class YoutubeExtension(Extension):
                     "Initial YouTube sync for server %s – skipping notifications",
                     server,
                 )
-            for user in module_config[str(server)]["youtubeChannelList"]:
-                uploads = await self.get_uploads(user)
+            filters = self._content_filters(srv_config)
+            for user in srv_config["youtubeChannelList"]:
+                if not user:
+                    continue
+                # Strip leading "@" so @handle and bare handle both resolve.
+                handle = user.lstrip("@")
+                uploads = await self.get_uploads(handle)
                 video_id = await self.get_video_id(uploads)
                 if self.is_video_already_checked(server, user, video_id, youtube_data):
                     continue
                 youtube_data = self.update_youtube_data(server, user, video_id, youtube_data)
-                if not is_initial_sync and await self.is_video_valid(video_id):
+                if not is_initial_sync and await self.is_video_valid(video_id, filters):
                     await channel.send(f"https://www.youtube.com/watch?v={video_id}")
             await self.save_youtube_data(youtube_data)
+
+    @staticmethod
+    def _content_filters(srv_config: dict) -> dict[str, bool]:
+        """Per-guild content filter dict consumed by ``is_video_valid``."""
+        return {
+            "shorts": bool(srv_config.get("youtubeIncludeShorts", False)),
+            "live": bool(srv_config.get("youtubeIncludeLive", False)),
+            "vod": bool(srv_config.get("youtubeIncludeVod", True)),
+        }
 
     async def get_uploads(self, user):
         if user not in self.playlist_cache:
@@ -117,18 +151,35 @@ class YoutubeExtension(Extension):
         youtube_data[str(server)][user] = video_id
         return youtube_data
 
-    async def is_video_valid(self, video_id):
+    async def is_video_valid(self, video_id, filters: dict[str, bool] | None = None):
+        """Decide whether to surface ``video_id`` based on per-guild filters.
+
+        ``filters`` keys: ``shorts``, ``live``, ``vod``. Default mirrors the
+        legacy behaviour (VOD-only).
+        """
+        if filters is None:
+            filters = {"shorts": False, "live": False, "vod": True}
         url = f"{YOUTUBE_API_URL}/videos?part=snippet,contentDetails&id={video_id}&key={YOUTUBE_API_KEY}"
         data = await fetch(url, return_type="json")
         logger.debug(data)
-        if data["items"][0]["snippet"]["liveBroadcastContent"] == "none":
-            duration = isodate.parse_duration(data["items"][0]["contentDetails"]["duration"])
-            if duration > datetime.timedelta(minutes=1, seconds=30):
+        item = data["items"][0]
+        live_state = item["snippet"]["liveBroadcastContent"]
+        if live_state != "none":
+            if filters["live"]:
                 return True
-            else:
-                logger.info("New video is a Short")
-        else:
-            logger.info("New video is a live stream")
+            logger.info("New video is a live stream — skipped (live filter off)")
+            return False
+
+        duration = isodate.parse_duration(item["contentDetails"]["duration"])
+        is_short = duration <= datetime.timedelta(minutes=1, seconds=30)
+        if is_short:
+            if filters["shorts"]:
+                return True
+            logger.info("New video is a Short — skipped (shorts filter off)")
+            return False
+        if filters["vod"]:
+            return True
+        logger.info("New video is a VOD — skipped (vod filter off)")
         return False
 
     async def save_youtube_data(self, youtube_data):
