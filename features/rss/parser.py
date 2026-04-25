@@ -24,6 +24,15 @@ from src.core.errors import IntegrationError
 
 _TAG_RE = re.compile(r"<[^>]+>")
 _ATOM_NS = "{http://www.w3.org/2005/Atom}"
+_IMG_SRC_RE = re.compile(r"""<img[^>]*\bsrc=["']([^"']+)["']""", re.IGNORECASE)
+
+
+def _extract_image_from_html(html_text: str | None) -> str:
+    """Return the ``src`` of the first ``<img>`` tag in *html_text*. ``""`` if none."""
+    if not html_text:
+        return ""
+    match = _IMG_SRC_RE.search(html_text)
+    return match.group(1) if match else ""
 
 
 def strip_html(text: str | None, *, max_length: int = 400) -> str:
@@ -132,6 +141,35 @@ def _atom_author(entry: Element) -> str:
     return _text(name) or _text(author)
 
 
+def _extract_image(entry: Element, summary_html: str = "") -> str:
+    """Return the best image URL for *entry*.
+
+    Walks namespaced media elements (``media:thumbnail``, ``media:content``)
+    and ``enclosure`` tags, falling back to scanning the rendered
+    summary/content HTML for an ``<img src>``.
+    """
+    for child in entry.iter():
+        local = _localname(child.tag)
+        if local == "thumbnail":
+            url = child.get("url") or child.text
+            if url:
+                return url.strip()
+        if local == "content":
+            medium = (child.get("medium") or "").lower()
+            ctype = (child.get("type") or "").lower()
+            if medium == "image" or ctype.startswith("image/"):
+                url = child.get("url")
+                if url:
+                    return url.strip()
+        if local == "enclosure":
+            ctype = (child.get("type") or "").lower()
+            if ctype.startswith("image/"):
+                url = child.get("url") or child.get("href")
+                if url:
+                    return url.strip()
+    return _extract_image_from_html(summary_html)
+
+
 def _parse_atom_entry(entry: Element) -> RssEntry | None:
     eid = _text(_find_local(entry, "id"))
     title = _text(_find_local(entry, "title"))
@@ -140,15 +178,16 @@ def _parse_atom_entry(entry: Element) -> RssEntry | None:
         eid = link or title
     if not eid:
         return None
-    summary = _text(_find_local(entry, "summary")) or _text(_find_local(entry, "content"))
+    raw_summary = _text(_find_local(entry, "summary")) or _text(_find_local(entry, "content"))
     published_text = _text(_find_local(entry, "published")) or _text(_find_local(entry, "updated"))
     return RssEntry(
         entry_id=eid,
         title=strip_html(title) or "(sans titre)",
         link=link,
-        summary=strip_html(summary),
+        summary=strip_html(raw_summary),
         author=_atom_author(entry),
         published=_parse_iso8601(published_text),
+        image_url=_extract_image(entry, raw_summary),
     )
 
 
@@ -159,16 +198,17 @@ def _parse_rss_item(item: Element) -> RssEntry | None:
     eid = guid or link or title
     if not eid:
         return None
-    summary = _text(_find_local(item, "description"))
+    raw_summary = _text(_find_local(item, "description"))
     published_text = _text(_find_local(item, "pubDate"))
     author = _text(_find_local(item, "author")) or _text(_find_local(item, "creator"))
     return RssEntry(
         entry_id=eid,
         title=strip_html(title) or "(sans titre)",
         link=link,
-        summary=strip_html(summary),
+        summary=strip_html(raw_summary),
         author=author,
         published=_parse_rfc822(published_text),
+        image_url=_extract_image(item, raw_summary),
     )
 
 

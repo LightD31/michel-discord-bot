@@ -39,10 +39,11 @@ class RssConfig(SchemaBase):
         "rssfeedmap",
         required=True,
         description=(
-            "Une entrée par flux. URL obligatoire, libellé optionnel, "
-            "salon dédié optionnel (sinon le salon par défaut est utilisé), "
-            "modèle de message optionnel — variables `{title}`, `{link}`, "
-            "`{summary}`, `{author}`, `{label}`."
+            "Une entrée par flux. URL obligatoire, libellé et salon dédié "
+            "optionnels. Mode **texte** ou **embed** : en mode embed, "
+            "configurez la couleur, le titre, la description et l'affichage "
+            "de l'image. Variables disponibles dans tous les modèles : "
+            "`{title}`, `{link}`, `{summary}`, `{author}`, `{label}`, `{image}`."
         ),
     )
     rssPollMinutes: int = ui(

@@ -11,6 +11,11 @@ class RssEntry(BaseModel):
     The parser collapses provider-specific quirks (Atom vs. RSS, ``<id>`` vs.
     ``<link>``, escaped HTML in titles) into this flat shape so downstream code
     only deals with strings.
+
+    ``image_url`` is the first usable image found, in this order:
+    ``<media:thumbnail>`` → ``<media:content medium="image">`` →
+    ``<enclosure type="image/*">`` → first ``<img src>`` inside the
+    summary/content HTML. Empty string when none is available.
     """
 
     entry_id: str
@@ -19,6 +24,7 @@ class RssEntry(BaseModel):
     summary: str = ""
     author: str = ""
     published: datetime | None = None
+    image_url: str = ""
 
 
 class RssFeedState(BaseModel):

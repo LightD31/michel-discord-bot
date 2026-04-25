@@ -65,9 +65,8 @@ def _iter_feeds(srv_config: dict):
             yield str(feed_id), {"url": cfg}
 
 
-def _render(template: str, *, feed_id: str, feed_cfg: dict, entry: RssEntry) -> str:
-    """Render *template* against an entry, falling back to the default on error."""
-    label = feed_cfg.get("label") or feed_id
+def _format_template(template: str, *, label: str, entry: RssEntry, fallback: str) -> str:
+    """Apply ``str.format`` with the entry context, swallowing bad placeholders."""
     try:
         return template.format(
             title=entry.title,
@@ -75,9 +74,71 @@ def _render(template: str, *, feed_id: str, feed_cfg: dict, entry: RssEntry) -> 
             summary=entry.summary,
             author=entry.author,
             label=label,
+            image=entry.image_url,
         )
     except (KeyError, IndexError):
-        return DEFAULT_TEMPLATE.format(title=entry.title, link=entry.link, label=label)
+        return fallback
+
+
+def _render_text(feed_id: str, feed_cfg: dict, entry: RssEntry) -> str:
+    """Render a plain-text/markdown message for ``mode="text"``."""
+    label = feed_cfg.get("label") or feed_id
+    template = feed_cfg.get("template") or DEFAULT_TEMPLATE
+    fallback = DEFAULT_TEMPLATE.format(
+        title=entry.title, link=entry.link, label=label, summary="", author="", image=""
+    )
+    return _format_template(template, label=label, entry=entry, fallback=fallback)
+
+
+def _parse_color(value: object) -> int | None:
+    """Decode a hex/integer color into an ``int``. ``None`` if unparseable."""
+    if isinstance(value, int) and 0 <= value <= 0xFFFFFF:
+        return value
+    if isinstance(value, str):
+        text = value.strip().lstrip("#")
+        if not text:
+            return None
+        try:
+            parsed = int(text, 16)
+        except ValueError:
+            return None
+        if 0 <= parsed <= 0xFFFFFF:
+            return parsed
+    return None
+
+
+def _render_embed(feed_id: str, feed_cfg: dict, entry: RssEntry) -> Embed:
+    """Render a Discord ``Embed`` for ``mode="embed"``.
+
+    Templates are independent: ``embed_title`` (default ``{title}``),
+    ``embed_description`` (default ``{summary}``). The entry's link drops
+    onto ``embed.url`` so the title becomes a clickable header. When
+    ``embed_show_image`` is true and the entry has an image, it's set as the
+    embed image.
+    """
+    label = feed_cfg.get("label") or feed_id
+    title_tpl = feed_cfg.get("embed_title") or "{title}"
+    desc_tpl = feed_cfg.get("embed_description") or "{summary}"
+    title = _format_template(title_tpl, label=label, entry=entry, fallback=entry.title)
+    description = _format_template(desc_tpl, label=label, entry=entry, fallback=entry.summary)
+
+    embed = Embed(
+        title=title[:256] if title else "(sans titre)",
+        description=description[:4000] if description else None,
+        url=entry.link or None,
+        color=_parse_color(feed_cfg.get("embed_color")) or Colors.UTIL,
+    )
+    if feed_cfg.get("embed_show_image", True) and entry.image_url:
+        try:
+            embed.set_image(url=entry.image_url)
+        except Exception as e:  # noqa: BLE001 — bad URLs shouldn't lose the post
+            logger.debug("Could not set embed image %s: %s", entry.image_url, e)
+    if entry.author:
+        embed.set_author(name=entry.author[:256])
+    if entry.published:
+        embed.timestamp = entry.published
+    embed.set_footer(text=label[:2048])
+    return embed
 
 
 def _poll_minutes(srv_config: dict) -> int:
@@ -199,13 +260,15 @@ class RssExtension(Extension):
             logger.error("Channel %s does not accept sends", channel_id)
             return
 
-        template = feed_cfg.get("template") or DEFAULT_TEMPLATE
+        mode = (feed_cfg.get("mode") or "text").strip().lower()
         posted_ids: list[str] = []
         for entry in new_entries:
             try:
-                await channel.send(
-                    _render(template, feed_id=feed_id, feed_cfg=feed_cfg, entry=entry)
-                )  # type: ignore[union-attr]
+                if mode == "embed":
+                    embed = _render_embed(feed_id, feed_cfg, entry)
+                    await channel.send(embeds=[embed])  # type: ignore[union-attr]
+                else:
+                    await channel.send(_render_text(feed_id, feed_cfg, entry))  # type: ignore[union-attr]
                 posted_ids.append(entry.entry_id)
             except Exception as e:
                 logger.warning("Failed to send RSS entry %s: %s", entry.entry_id, e)
@@ -260,6 +323,8 @@ class RssExtension(Extension):
                 value_lines.append(f"par *{entry.author}*")
             if entry.summary:
                 value_lines.append(entry.summary[:200])
+            if entry.image_url:
+                value_lines.append(f"🖼️ image détectée : {entry.image_url[:120]}")
             value_lines.append(f"[Lien]({entry.link})" if entry.link else "")
             embed.add_field(
                 name=entry.title[:240] or "(sans titre)",
