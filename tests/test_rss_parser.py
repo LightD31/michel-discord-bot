@@ -2,7 +2,7 @@
 
 import pytest
 
-from features.rss import parse_feed, strip_html
+from features.rss.parser import parse_feed, strip_html
 from src.core.errors import IntegrationError
 
 RSS_SAMPLE = """\
