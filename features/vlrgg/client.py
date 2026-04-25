@@ -15,8 +15,9 @@ Note: Un cache avec TTL court est utilisé (API self-hosted sur vlr.drndvs.fr).
 import asyncio
 import re
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from src.core import logging as logutil
 from src.core.http import fetch
@@ -120,18 +121,22 @@ def filter_team_matches(team: str, matches: list[dict]) -> list[dict]:
 
 
 def parse_vlrgg_timestamp(timestamp_str: str) -> datetime | None:
-    """Parse un timestamp VLR.gg en datetime.
+    """Parse un timestamp VLR.gg en datetime aware (UTC).
+
+    L'API VLR.gg renvoie ce champ en UTC malgré le format sans suffixe ; on
+    attache donc explicitement le fuseau pour éviter une conversion implicite
+    en heure locale lors de l'appel ultérieur à ``dt.timestamp()``.
 
     Args:
         timestamp_str: Chaîne de timestamp (ex: "2024-04-24 21:00:00").
 
     Returns:
-        datetime correspondant, ou None si le parsing échoue.
+        datetime aware (UTC) correspondant, ou None si le parsing échoue.
     """
     if not timestamp_str:
         return None
     try:
-        return datetime.strptime(timestamp_str, "%Y-%m-%d %H:%M:%S")
+        return datetime.strptime(timestamp_str, "%Y-%m-%d %H:%M:%S").replace(tzinfo=UTC)
     except (ValueError, TypeError):
         return None
 
@@ -213,8 +218,10 @@ def expand_round_name(round_str: str) -> str:
     return round_str
 
 
-# L'API VLR.gg renvoie les heures en EST (UTC-5)
-_VLR_TIMEZONE = timezone(timedelta(hours=-5))
+# L'API VLR.gg (vlr.drndvs.fr) restitue les dates de /team/matches dans
+# l'heure locale de son serveur (Europe/Paris) — ex: "8:00 pm" correspond
+# à 20h CEST/CET. ZoneInfo gère le passage à l'heure d'été automatiquement.
+_VLR_TIMEZONE = ZoneInfo("Europe/Paris")
 
 # Formats de date courants retournés par l'API VLR.gg
 _DATE_FORMATS = [
@@ -230,7 +237,8 @@ _DATE_FORMATS = [
 def format_vlr_date(date_str: str) -> str:
     """Formate une date VLR.gg en timestamp Discord (affichage local pour chaque utilisateur).
 
-    Les dates de l'API VLR.gg sont en EST (UTC-5).
+    Les dates de /team/matches sont rendues dans l'heure locale du serveur
+    de l'API (Europe/Paris) ; ZoneInfo gère CET/CEST automatiquement.
     Retourne un timestamp Discord <t:UNIX:f> si le parsing réussit,
     sinon retourne la chaîne telle quelle.
     """
@@ -242,7 +250,6 @@ def format_vlr_date(date_str: str) -> str:
     for fmt in _DATE_FORMATS:
         try:
             dt = datetime.strptime(cleaned, fmt)
-            # Attacher le fuseau EST pour un timestamp Unix correct
             dt = dt.replace(tzinfo=_VLR_TIMEZONE)
             return format_discord_timestamp(dt, "f")
         except ValueError:
