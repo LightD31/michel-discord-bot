@@ -1686,6 +1686,46 @@
             cursor: pointer;
         }
 
+        /* ── RSS Feed Map Editor ─────────────────────── */
+        .rssfeed-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .rssfeed-entry {
+            display: grid;
+            grid-template-columns: 1fr 1.5fr 1fr 1fr 1.5fr auto;
+            gap: 10px;
+            align-items: center;
+            padding: 10px 12px;
+            background: var(--bg-primary);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+        }
+
+        .rssfeed-entry input[type="text"],
+        .rssfeed-entry select {
+            padding: 6px 8px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            color: var(--text-primary);
+            font-size: 14px;
+            outline: none;
+        }
+
+        .rssfeed-entry input[type="text"]:focus,
+        .rssfeed-entry select:focus {
+            border-color: var(--accent);
+        }
+
+        @media (max-width: 900px) {
+            .rssfeed-entry {
+                grid-template-columns: 1fr;
+            }
+        }
+
         .youtubechannel-entry .btn-remove-entry {
             padding: 6px 10px;
             background: transparent;
@@ -3052,6 +3092,18 @@
                     break;
                 }
 
+                case 'rssfeedmap': {
+                    const feedMap = (typeof value === 'object' && value !== null && !Array.isArray(value)) ? value : {};
+                    html += `<div class="rssfeed-list" data-field="${key}" data-type="rssfeedmap">`;
+                    Object.entries(feedMap).forEach(([feedId, cfg]) => {
+                        const normalized = (typeof cfg === 'string') ? { url: cfg } : (cfg || {});
+                        html += renderRssFeedEntry(feedId, normalized);
+                    });
+                    html += `</div>`;
+                    html += `<button type="button" class="btn-add-entry" onclick="addRssFeedEntry(this)">+ Ajouter un flux</button>`;
+                    break;
+                }
+
                 case 'spotifymap':
                     const spotifyUsers = Array.isArray(value) ? value : [];
                     html += `<div class="spotifymap-list" data-field="${key}" data-type="spotifymap">`;
@@ -3220,6 +3272,9 @@
                 case 'youtubechannelmap':
                     // Handled separately below
                     continue;
+                case 'rssfeedmap':
+                    // Handled separately below
+                    continue;
                 case 'messagelist':
                     // Handled separately below
                     continue;
@@ -3370,6 +3425,35 @@
                 channelMap[handle] = cfg;
             }
             result[key] = channelMap;
+        }
+
+        // Collect rssfeedmap lists
+        const rssFeedLists = form.querySelectorAll('[data-type="rssfeedmap"]');
+        for (const list of rssFeedLists) {
+            const key = list.dataset.field;
+            const entries = list.querySelectorAll('.rssfeed-entry');
+            const feedMap = {};
+            for (const entry of entries) {
+                const feedId = entry.querySelector('[data-rss-field="feed_id"]')?.value?.trim();
+                const url = entry.querySelector('[data-rss-field="url"]')?.value?.trim();
+                if (!feedId || !url) continue;
+                const label = entry.querySelector('[data-rss-field="label"]')?.value?.trim() || '';
+                const channelPicker = entry.querySelector('[data-rss-field="channel_id"]');
+                let channelId = '';
+                if (channelPicker) {
+                    const manual = channelPicker.querySelector('.channel-picker-manual');
+                    const select = channelPicker.querySelector('.channel-picker-select');
+                    const manualVisible = manual && manual.style.display !== 'none';
+                    channelId = (manualVisible ? (manual?.value ?? '') : (select?.value ?? '')).trim();
+                }
+                const template = entry.querySelector('[data-rss-field="template"]')?.value?.trim() || '';
+                const cfg = { url };
+                if (label) cfg.label = label;
+                if (channelId) cfg.channel_id = channelId;
+                if (template) cfg.template = template;
+                feedMap[feedId] = cfg;
+            }
+            result[key] = feedMap;
         }
 
         // Collect streamermap (Twitch) lists
@@ -3664,6 +3748,37 @@
         wrapper.innerHTML = renderYoutubeChannelEntry('', { shorts: false, live: false, vod: true }).trim();
         const entry = wrapper.firstElementChild;
         list.appendChild(entry);
+        entry.querySelector('input[type="text"]').focus();
+    }
+
+    function renderRssFeedEntry(feedId, cfg) {
+        const safeChannel = escapeHtml(cfg.channel_id || '');
+        return `
+            <div class="rssfeed-entry">
+                <input type="text" data-rss-field="feed_id" value="${escapeHtml(feedId || '')}" placeholder="ex: epic-free">
+                <input type="text" data-rss-field="url" value="${escapeHtml(cfg.url || '')}" placeholder="https://exemple.com/feed.xml">
+                <input type="text" data-rss-field="label" value="${escapeHtml(cfg.label || '')}" placeholder="Libellé (optionnel)">
+                <div class="channel-picker" data-rss-field="channel_id" data-current="${safeChannel}">
+                    <select class="form-input channel-picker-select">
+                        <option value="">— Salon par défaut —</option>
+                        ${cfg.channel_id ? `<option value="${safeChannel}" selected>${safeChannel}</option>` : ''}
+                    </select>
+                    <input type="text" class="form-input channel-picker-manual" value="${safeChannel}" placeholder="ID de salon" style="display:none;">
+                    <button type="button" class="btn-channel-toggle" onclick="toggleChannelPickerMode(this)" title="Saisie manuelle">✎</button>
+                </div>
+                <input type="text" data-rss-field="template" value="${escapeHtml(cfg.template || '')}" placeholder="Modèle (optionnel)">
+                <button class="btn-remove-entry" onclick="this.closest('.rssfeed-entry').remove()" title="Supprimer">✕</button>
+            </div>`;
+    }
+
+    function addRssFeedEntry(btn) {
+        const list = btn.previousElementSibling;
+        if (!list || !list.classList.contains('rssfeed-list')) return;
+        const wrapper = document.createElement('div');
+        wrapper.innerHTML = renderRssFeedEntry('', {}).trim();
+        const entry = wrapper.firstElementChild;
+        list.appendChild(entry);
+        if (typeof populateChannelPickers === 'function') populateChannelPickers(entry);
         entry.querySelector('input[type="text"]').focus();
     }
 
@@ -4778,6 +4893,27 @@
                                     <span style="color:var(--text-secondary);font-family:Consolas,monospace;">${escapeHtml(u.discordId || '')}</span>
                                 </div>
                             `).join('')}
+                        </div>
+                    </div>
+                `;
+                continue;
+            }
+
+            if (fieldType === 'rssfeedmap' && typeof val === 'object' && val !== null && !Array.isArray(val)) {
+                const feeds = Object.entries(val);
+                html += `
+                    <div class="preview-row" style="flex-direction:column;gap:6px;">
+                        <span class="preview-label">${field.label || key} (${feeds.length})</span>
+                        <div style="display:flex;flex-direction:column;gap:4px;width:100%;">
+                            ${feeds.length > 0 ? feeds.map(([feedId, cfg]) => {
+                                const c = (typeof cfg === 'string') ? { url: cfg } : (cfg || {});
+                                const label = c.label ? ` — ${escapeHtml(String(c.label))}` : '';
+                                return `
+                                <div style="display:flex;gap:8px;align-items:center;padding:4px 8px;background:var(--bg-primary);border-radius:var(--radius);font-size:13px;">
+                                    <span style="font-weight:600;color:var(--accent);min-width:140px;">${escapeHtml(feedId)}${label}</span>
+                                    <span style="color:var(--text-muted);font-family:Consolas,monospace;flex:1;">${escapeHtml(String(c.url || '—'))}</span>
+                                </div>`;
+                            }).join('') : '<span style="color:var(--text-muted);font-size:13px;">Aucun flux configuré</span>'}
                         </div>
                     </div>
                 `;

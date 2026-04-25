@@ -36,16 +36,13 @@ class RssConfig(SchemaBase):
     )
     rssFeeds: dict[str, dict] = ui(
         "Flux suivis",
-        "keyvaluemap",
+        "rssfeedmap",
         required=True,
-        key_label="Identifiant interne",
-        value_label="Configuration",
         description=(
-            "Une entrée par flux. Champs attendus dans la valeur (JSON) : "
-            "`url` (obligatoire), `label` (libellé affiché), `channel_id` "
-            "(salon dédié, optionnel), `template` (modèle de message — "
-            "variables `{title}`, `{link}`, `{summary}`, `{author}`, "
-            "`{label}`)."
+            "Une entrée par flux. URL obligatoire, libellé optionnel, "
+            "salon dédié optionnel (sinon le salon par défaut est utilisé), "
+            "modèle de message optionnel — variables `{title}`, `{link}`, "
+            "`{summary}`, `{author}`, `{label}`."
         ),
     )
     rssPollMinutes: int = ui(
