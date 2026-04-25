@@ -46,6 +46,7 @@ dependencies = [
     "babel",
     "isodate",
     "emoji",
+    "defusedxml",
     "beautifulsoup4",
     "Pillow",
     "prettytable",
@@ -146,6 +147,10 @@ warn_return_any = true
 [tool.pytest.ini_options]
 minversion = "8.0"
 testpaths = ["tests"]
+# The project ships as a flat namespace (extensions/ + features/ + src/) — no
+# package install. Pytest needs the repo root on sys.path so test modules can
+# import from those packages without setting PYTHONPATH at every invocation.
+pythonpath = ["."]
 asyncio_mode = "auto"
 filterwarnings = [
     "error",
