@@ -60,6 +60,10 @@ Three-layer split. Respect the boundaries:
 
 When an extension grows past ~200 lines, promote it to a package and split responsibilities into mixin modules (e.g. `xp/leveling.py`, `xp/commands.py`, `xp/leaderboard.py`) composed via multiple inheritance in `__init__.py`. Shared constants and the Pydantic config schema go in `_common.py`. Domain logic moves into a matching `features/<name>/` package.
 
+### Web UI schema (strongly recommended for any new extension)
+
+Any extension that reads from `config["module<Name>"]` should declare a Pydantic schema using the `@register_module(...)` decorator from `src.webui.schemas` (typically in `extensions/<name>/_common.py`, see `extensions/xp/_common.py` for a canonical example). This is what makes the module appear in the dashboard with editable, typed fields, per-server toggles, and validation — without it the only way to configure the extension is hand-editing `config/config.json` and restarting. New global config sections use `@register_section(...)` the same way.
+
 ### Per-guild data isolation
 
 Each Discord server gets its own MongoDB database named `guild_{guild_id}`; cross-guild data lives in a shared `global` database. Access via the singleton in `src/core/db.py`. Repositories under `features/<name>/repository.py` encapsulate this.
