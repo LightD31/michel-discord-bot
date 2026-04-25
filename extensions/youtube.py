@@ -28,57 +28,15 @@ class YoutubeConfig(SchemaBase):
         required=True,
         description="Salon où sont publiées les notifications de nouvelles vidéos.",
     )
-    youtubeChannelList: list[str] = ui(
+    youtubeChannelList: dict[str, dict] = ui(
         "Chaînes YouTube suivies",
-        "list",
+        "youtubechannelmap",
         required=True,
         description=(
-            "Liste des handles YouTube à surveiller (un par ligne). "
-            "Format accepté : `@handle` ou juste le handle. "
-            "Modifiable directement depuis le dashboard."
+            "Une ligne par chaîne avec ses propres bascules Shorts / Lives / "
+            "VOD. Le handle accepte `@handle` ou juste le handle ; un libellé "
+            "optionnel apparaît dans les logs et les notifications."
         ),
-    )
-    youtubeChannelLabels: dict[str, str] = ui(
-        "Libellés personnalisés",
-        "keyvaluemap",
-        description=(
-            "Optionnel : associe un nom d'affichage à chaque handle. "
-            "Utilisé dans les logs et messages."
-        ),
-        key_label="Handle",
-        value_label="Libellé",
-    )
-    youtubeIncludeShorts: bool = ui(
-        "Shorts (défaut)",
-        "boolean",
-        default=False,
-        description=(
-            "Valeur par défaut pour inclure les Shorts. "
-            "Surchargeable par chaîne via « Shorts par chaîne »."
-        ),
-    )
-    youtubeShortsPerChannel: dict[str, str] = ui(
-        "Shorts par chaîne",
-        "keyvaluemap",
-        description=(
-            "Override par handle : `true` pour notifier les Shorts de cette "
-            "chaîne, `false` pour les ignorer. Une entrée absente utilise la "
-            "valeur par défaut ci-dessus."
-        ),
-        key_label="Handle",
-        value_label="true / false",
-    )
-    youtubeIncludeLive: bool = ui(
-        "Notifier les lives",
-        "boolean",
-        default=False,
-        description="Inclure les diffusions en direct (live broadcasts).",
-    )
-    youtubeIncludeVod: bool = ui(
-        "Notifier les VOD",
-        "boolean",
-        default=True,
-        description="Inclure les vidéos longues classiques (VOD).",
     )
     youtubeShortMaxSeconds: int = ui(
         "Seuil Short (secondes)",
@@ -135,20 +93,29 @@ class YoutubeExtension(Extension):
             template = srv_config.get(
                 "youtubeNotificationTemplate", "https://www.youtube.com/watch?v={video_id}"
             )
-            labels: dict[str, str] = srv_config.get("youtubeChannelLabels") or {}
-            for user in srv_config["youtubeChannelList"]:
-                if not user:
+            try:
+                short_max = int(srv_config.get("youtubeShortMaxSeconds", 90))
+            except (TypeError, ValueError):
+                short_max = 90
+            short_max = max(1, short_max)
+
+            for raw_handle, channel_cfg in self._iter_channels(srv_config):
+                if not raw_handle:
                     continue
-                # Strip leading "@" so @handle and bare handle both resolve.
-                handle = user.lstrip("@")
+                handle = raw_handle.lstrip("@")
                 uploads = await self.get_uploads(handle)
                 video_id = await self.get_video_id(uploads)
-                if self.is_video_already_checked(server, user, video_id, youtube_data):
+                if self.is_video_already_checked(server, raw_handle, video_id, youtube_data):
                     continue
-                youtube_data = self.update_youtube_data(server, user, video_id, youtube_data)
-                filters = self._content_filters(srv_config, handle)
+                youtube_data = self.update_youtube_data(server, raw_handle, video_id, youtube_data)
+                filters = {
+                    "shorts": bool(channel_cfg.get("shorts", False)),
+                    "live": bool(channel_cfg.get("live", False)),
+                    "vod": bool(channel_cfg.get("vod", True)),
+                    "short_max_seconds": short_max,
+                }
                 if not is_initial_sync and await self.is_video_valid(video_id, filters):
-                    label = labels.get(handle) or labels.get(user) or handle
+                    label = channel_cfg.get("label") or handle
                     try:
                         rendered = template.format(video_id=video_id, handle=handle, label=label)
                     except (KeyError, IndexError):
@@ -157,32 +124,20 @@ class YoutubeExtension(Extension):
             await self.save_youtube_data(youtube_data)
 
     @staticmethod
-    def _content_filters(srv_config: dict, handle: str) -> dict[str, object]:
-        """Per-channel content filter dict consumed by ``is_video_valid``.
+    def _iter_channels(srv_config: dict):
+        """Yield ``(handle, channel_cfg)`` pairs from the configured channel list.
 
-        Falls back to the guild-wide defaults when the channel has no override.
+        Accepts both the structured dict shape (``youtubechannelmap``) and the
+        legacy ``list[str]`` shape — list entries default to VOD-only with
+        Shorts and Lives disabled, matching the previous behaviour.
         """
-        try:
-            short_max = int(srv_config.get("youtubeShortMaxSeconds", 90))
-        except (TypeError, ValueError):
-            short_max = 90
-
-        shorts_default = bool(srv_config.get("youtubeIncludeShorts", False))
-        per_channel = srv_config.get("youtubeShortsPerChannel") or {}
-        # Accept either bare or @-prefixed keys so the operator's UI input matches
-        # whatever they typed in `youtubeChannelList`.
-        raw = per_channel.get(handle, per_channel.get(f"@{handle}"))
-        if raw is None:
-            shorts = shorts_default
-        else:
-            shorts = str(raw).strip().lower() in {"1", "true", "yes", "y", "oui", "on"}
-
-        return {
-            "shorts": shorts,
-            "live": bool(srv_config.get("youtubeIncludeLive", False)),
-            "vod": bool(srv_config.get("youtubeIncludeVod", True)),
-            "short_max_seconds": max(1, short_max),
-        }
+        raw = srv_config.get("youtubeChannelList")
+        if isinstance(raw, dict):
+            for handle, cfg in raw.items():
+                yield handle, (cfg if isinstance(cfg, dict) else {})
+        elif isinstance(raw, list):
+            for handle in raw:
+                yield handle, {"shorts": False, "live": False, "vod": True}
 
     async def get_uploads(self, user):
         if user not in self.playlist_cache:

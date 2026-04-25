@@ -19,7 +19,8 @@ import the DSL without triggering a circular import.
 Recognised widget types (``type=`` on ``ui()``):
     string, number, boolean, channel, role, message, secret, url,
     list, list:number, dict, messagelist, embedlist, keyvaluemap,
-    spotifymap, streamermap, teams, discord2name, models.
+    spotifymap, streamermap, youtubechannelmap, teams, discord2name,
+    models.
 """
 
 from typing import Any, ClassVar
