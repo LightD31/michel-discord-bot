@@ -90,3 +90,65 @@ def test_parse_feed_raises_on_garbage() -> None:
 def test_parse_feed_raises_on_unknown_root() -> None:
     with pytest.raises(IntegrationError):
         parse_feed("<html><body>nope</body></html>")
+
+
+RSS_WITH_ENCLOSURE = """\
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <item>
+      <title>Free Game</title>
+      <link>https://example.com/g</link>
+      <guid>g-1</guid>
+      <enclosure url="https://example.com/cover.jpg" type="image/jpeg" length="12345"/>
+    </item>
+  </channel>
+</rss>
+"""
+
+RSS_WITH_IMG_IN_DESCRIPTION = """\
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <item>
+      <title>Free Game</title>
+      <link>https://example.com/g</link>
+      <guid>g-2</guid>
+      <description>&lt;p&gt;Get it now! &lt;img src="https://cdn.example.com/key-art.png" alt="cover"/&gt;&lt;/p&gt;</description>
+    </item>
+  </channel>
+</rss>
+"""
+
+ATOM_WITH_MEDIA_THUMBNAIL = """\
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom" xmlns:media="http://search.yahoo.com/mrss/">
+  <id>tag:example.com</id>
+  <entry>
+    <title>Post</title>
+    <link href="https://example.com/post/1"/>
+    <id>tag:1</id>
+    <media:thumbnail url="https://example.com/thumb.jpg"/>
+  </entry>
+</feed>
+"""
+
+
+def test_image_url_from_rss_enclosure() -> None:
+    [entry] = parse_feed(RSS_WITH_ENCLOSURE)
+    assert entry.image_url == "https://example.com/cover.jpg"
+
+
+def test_image_url_from_html_description() -> None:
+    [entry] = parse_feed(RSS_WITH_IMG_IN_DESCRIPTION)
+    assert entry.image_url == "https://cdn.example.com/key-art.png"
+
+
+def test_image_url_from_atom_media_thumbnail() -> None:
+    [entry] = parse_feed(ATOM_WITH_MEDIA_THUMBNAIL)
+    assert entry.image_url == "https://example.com/thumb.jpg"
+
+
+def test_image_url_empty_when_no_image() -> None:
+    [entry] = parse_feed(ATOM_SAMPLE)
+    assert entry.image_url == ""

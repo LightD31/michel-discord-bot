@@ -1694,17 +1694,48 @@
         }
 
         .rssfeed-entry {
-            display: grid;
-            grid-template-columns: 1fr 1.5fr 1fr 1fr 1.5fr auto;
-            gap: 10px;
-            align-items: center;
-            padding: 10px 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            padding: 12px;
             background: var(--bg-primary);
             border: 1px solid var(--border);
             border-radius: var(--radius);
         }
 
+        .rssfeed-row {
+            display: grid;
+            grid-template-columns: 1fr 1.5fr 1fr 1fr 0.8fr auto;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .rssfeed-template-row {
+            display: grid;
+            grid-template-columns: 100px 1fr;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .rssfeed-embed-panel {
+            display: none;
+            grid-template-columns: 100px 1fr 100px 1fr;
+            gap: 10px;
+            align-items: center;
+            padding-top: 6px;
+            border-top: 1px dashed var(--border);
+        }
+
+        .rssfeed-entry[data-mode="embed"] .rssfeed-template-row {
+            display: none;
+        }
+
+        .rssfeed-entry[data-mode="embed"] .rssfeed-embed-panel {
+            display: grid;
+        }
+
         .rssfeed-entry input[type="text"],
+        .rssfeed-entry input[type="color"],
         .rssfeed-entry select {
             padding: 6px 8px;
             background: var(--bg-secondary);
@@ -1715,13 +1746,38 @@
             outline: none;
         }
 
+        .rssfeed-entry input[type="color"] {
+            padding: 2px;
+            width: 100%;
+            min-width: 48px;
+            height: 32px;
+            cursor: pointer;
+        }
+
         .rssfeed-entry input[type="text"]:focus,
         .rssfeed-entry select:focus {
             border-color: var(--accent);
         }
 
+        .rssfeed-field-label {
+            font-size: 12px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+
+        .rssfeed-toggle {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+
         @media (max-width: 900px) {
-            .rssfeed-entry {
+            .rssfeed-row,
+            .rssfeed-template-row,
+            .rssfeed-embed-panel {
                 grid-template-columns: 1fr;
             }
         }
@@ -3447,10 +3503,22 @@
                     channelId = (manualVisible ? (manual?.value ?? '') : (select?.value ?? '')).trim();
                 }
                 const template = entry.querySelector('[data-rss-field="template"]')?.value?.trim() || '';
+                const mode = entry.querySelector('[data-rss-field="mode"]')?.value || 'text';
+                const embedColor = entry.querySelector('[data-rss-field="embed_color"]')?.value?.trim() || '';
+                const embedTitle = entry.querySelector('[data-rss-field="embed_title"]')?.value?.trim() || '';
+                const embedDescription = entry.querySelector('[data-rss-field="embed_description"]')?.value?.trim() || '';
+                const embedShowImage = entry.querySelector('[data-rss-field="embed_show_image"]')?.checked;
                 const cfg = { url };
                 if (label) cfg.label = label;
                 if (channelId) cfg.channel_id = channelId;
                 if (template) cfg.template = template;
+                if (mode === 'embed') {
+                    cfg.mode = 'embed';
+                    if (embedColor) cfg.embed_color = embedColor;
+                    if (embedTitle) cfg.embed_title = embedTitle;
+                    if (embedDescription) cfg.embed_description = embedDescription;
+                    cfg.embed_show_image = embedShowImage !== false;
+                }
                 feedMap[feedId] = cfg;
             }
             result[key] = feedMap;
@@ -3753,22 +3821,55 @@
 
     function renderRssFeedEntry(feedId, cfg) {
         const safeChannel = escapeHtml(cfg.channel_id || '');
+        const mode = (cfg.mode === 'embed') ? 'embed' : 'text';
+        // Discord brand-blue default; #RRGGBB format expected by <input type="color">.
+        let color = (cfg.embed_color || '#5865F2').toString().trim();
+        if (!color.startsWith('#')) color = '#' + color;
+        if (!/^#[0-9a-fA-F]{6}$/.test(color)) color = '#5865F2';
+        const showImage = cfg.embed_show_image !== false;
         return `
-            <div class="rssfeed-entry">
-                <input type="text" data-rss-field="feed_id" value="${escapeHtml(feedId || '')}" placeholder="ex: epic-free">
-                <input type="text" data-rss-field="url" value="${escapeHtml(cfg.url || '')}" placeholder="https://exemple.com/feed.xml">
-                <input type="text" data-rss-field="label" value="${escapeHtml(cfg.label || '')}" placeholder="Libellé (optionnel)">
-                <div class="channel-picker" data-rss-field="channel_id" data-current="${safeChannel}">
-                    <select class="form-input channel-picker-select">
-                        <option value="">— Salon par défaut —</option>
-                        ${cfg.channel_id ? `<option value="${safeChannel}" selected>${safeChannel}</option>` : ''}
+            <div class="rssfeed-entry" data-mode="${mode}">
+                <div class="rssfeed-row">
+                    <input type="text" data-rss-field="feed_id" value="${escapeHtml(feedId || '')}" placeholder="ex: epic-free">
+                    <input type="text" data-rss-field="url" value="${escapeHtml(cfg.url || '')}" placeholder="https://exemple.com/feed.xml">
+                    <input type="text" data-rss-field="label" value="${escapeHtml(cfg.label || '')}" placeholder="Libellé (optionnel)">
+                    <div class="channel-picker" data-rss-field="channel_id" data-current="${safeChannel}">
+                        <select class="form-input channel-picker-select">
+                            <option value="">— Salon par défaut —</option>
+                            ${cfg.channel_id ? `<option value="${safeChannel}" selected>${safeChannel}</option>` : ''}
+                        </select>
+                        <input type="text" class="form-input channel-picker-manual" value="${safeChannel}" placeholder="ID de salon" style="display:none;">
+                        <button type="button" class="btn-channel-toggle" onclick="toggleChannelPickerMode(this)" title="Saisie manuelle">✎</button>
+                    </div>
+                    <select data-rss-field="mode" onchange="onRssModeChange(this)">
+                        <option value="text" ${mode === 'text' ? 'selected' : ''}>Texte</option>
+                        <option value="embed" ${mode === 'embed' ? 'selected' : ''}>Embed</option>
                     </select>
-                    <input type="text" class="form-input channel-picker-manual" value="${safeChannel}" placeholder="ID de salon" style="display:none;">
-                    <button type="button" class="btn-channel-toggle" onclick="toggleChannelPickerMode(this)" title="Saisie manuelle">✎</button>
+                    <button class="btn-remove-entry" onclick="this.closest('.rssfeed-entry').remove()" title="Supprimer">✕</button>
                 </div>
-                <input type="text" data-rss-field="template" value="${escapeHtml(cfg.template || '')}" placeholder="Modèle (optionnel)">
-                <button class="btn-remove-entry" onclick="this.closest('.rssfeed-entry').remove()" title="Supprimer">✕</button>
+                <div class="rssfeed-template-row">
+                    <span class="rssfeed-field-label">Modèle texte</span>
+                    <input type="text" data-rss-field="template" value="${escapeHtml(cfg.template || '')}" placeholder="ex: **{label}** — [{title}]({link})">
+                </div>
+                <div class="rssfeed-embed-panel">
+                    <span class="rssfeed-field-label">Couleur</span>
+                    <input type="color" data-rss-field="embed_color" value="${color}">
+                    <span class="rssfeed-field-label">Image</span>
+                    <label class="rssfeed-toggle">
+                        <input type="checkbox" data-rss-field="embed_show_image" ${showImage ? 'checked' : ''}>
+                        <span>Afficher l'image détectée</span>
+                    </label>
+                    <span class="rssfeed-field-label">Titre embed</span>
+                    <input type="text" data-rss-field="embed_title" value="${escapeHtml(cfg.embed_title || '')}" placeholder="{title}">
+                    <span class="rssfeed-field-label">Description</span>
+                    <input type="text" data-rss-field="embed_description" value="${escapeHtml(cfg.embed_description || '')}" placeholder="{summary}">
+                </div>
             </div>`;
+    }
+
+    function onRssModeChange(select) {
+        const entry = select.closest('.rssfeed-entry');
+        if (entry) entry.dataset.mode = select.value;
     }
 
     function addRssFeedEntry(btn) {
@@ -4908,9 +5009,10 @@
                             ${feeds.length > 0 ? feeds.map(([feedId, cfg]) => {
                                 const c = (typeof cfg === 'string') ? { url: cfg } : (cfg || {});
                                 const label = c.label ? ` — ${escapeHtml(String(c.label))}` : '';
+                                const modeBadge = (c.mode === 'embed') ? ' <span style="color:var(--accent);font-size:11px;">[embed]</span>' : '';
                                 return `
                                 <div style="display:flex;gap:8px;align-items:center;padding:4px 8px;background:var(--bg-primary);border-radius:var(--radius);font-size:13px;">
-                                    <span style="font-weight:600;color:var(--accent);min-width:140px;">${escapeHtml(feedId)}${label}</span>
+                                    <span style="font-weight:600;color:var(--accent);min-width:140px;">${escapeHtml(feedId)}${label}${modeBadge}</span>
                                     <span style="color:var(--text-muted);font-family:Consolas,monospace;flex:1;">${escapeHtml(String(c.url || '—'))}</span>
                                 </div>`;
                             }).join('') : '<span style="color:var(--text-muted);font-size:13px;">Aucun flux configuré</span>'}
