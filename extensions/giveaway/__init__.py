@@ -17,6 +17,7 @@ Persistence: per-guild ``giveaways`` collection. Enabled per-guild via
 
 from __future__ import annotations
 
+from asyncio import Lock
 from datetime import datetime, timedelta
 
 from interactions import (
@@ -35,6 +36,7 @@ from interactions import (
     slash_default_member_permission,
     slash_option,
 )
+from interactions.api.events import MessageReactionAdd, MessageReactionRemove
 
 from features.giveaway import MAX_WINNERS, Giveaway, GiveawayRepository, pick_winners
 from features.polls import parse_duration  # reused: same DSL as /poll
@@ -49,6 +51,22 @@ MIN_DURATION_SECONDS = 10
 # Hard ceiling — 30 days. Discord stops surfacing reactions on very old
 # messages, so longer giveaways risk silent entry loss.
 MAX_DURATION_SECONDS = 30 * 86400
+# Affiche les mentions tant que la liste reste lisible dans un champ d'embed.
+MAX_LISTED_PARTICIPANTS = 15
+MAX_PARTICIPANTS_FIELD_CHARS = 900
+
+
+def _participants_field_value(entrant_ids: list[str]) -> str:
+    """Format the participants field as mentions, or fallback to a count."""
+    count = len(entrant_ids)
+    if count == 0:
+        return "Aucun"
+
+    mentions = ", ".join(f"<@{uid}>" for uid in entrant_ids)
+    if count > MAX_LISTED_PARTICIPANTS or len(mentions) > MAX_PARTICIPANTS_FIELD_CHARS:
+        suffix = "participant·e" if count == 1 else "participant·e·s"
+        return f"{count} {suffix}"
+    return mentions
 
 
 def _build_embed(
@@ -59,6 +77,7 @@ def _build_embed(
     closed: bool = False,
     cancelled: bool = False,
     winners_mention: str | None = None,
+    entrants: list[str] | None = None,
     entry_count: int | None = None,
 ) -> Embed:
     """Render the giveaway embed for any of its three lifecycle states.
@@ -112,8 +131,13 @@ def _build_embed(
         inline=True,
     )
     embed.add_field(name="Hôte", value=f"<@{giveaway.host_id}>", inline=True)
-    if entry_count is not None:
-        embed.add_field(name="Participants", value=str(entry_count), inline=True)
+    participants_value: str | None = None
+    if entrants is not None:
+        participants_value = _participants_field_value(entrants)
+    elif entry_count is not None:
+        participants_value = str(entry_count)
+    if participants_value is not None:
+        embed.add_field(name="Participants", value=participants_value, inline=True)
 
     embed.set_footer(text=f"Lancé par {host_name}", icon_url=host_avatar)
     return embed
@@ -147,6 +171,7 @@ class GiveawayExtension(Extension):
     def __init__(self, bot: Client):
         self.bot: Client = bot
         self._repos: dict[str, GiveawayRepository] = {}
+        self._reaction_lock = Lock()
 
     def _repo(self, guild_id: str | int) -> GiveawayRepository:
         gid = str(guild_id)
@@ -248,6 +273,7 @@ class GiveawayExtension(Extension):
             giveaway,
             host_name=ctx.user.username,
             host_avatar=str(ctx.user.avatar_url) if ctx.user.avatar_url else None,
+            entrants=[],
         )
         message = await ctx.send(embeds=[embed])
         giveaway.message_id = str(message.id)
@@ -426,6 +452,62 @@ class GiveawayExtension(Extension):
             color=Colors.UTIL,
         )
         await ctx.send(embeds=[embed], ephemeral=True)
+
+    # ------------------------------------------------------------------
+    # Live participant updates on reactions
+    # ------------------------------------------------------------------
+
+    @listen(MessageReactionAdd)
+    async def on_message_reaction_add(self, event: MessageReactionAdd) -> None:
+        await self._refresh_participants_embed(event)
+
+    @listen(MessageReactionRemove)
+    async def on_message_reaction_remove(self, event: MessageReactionRemove) -> None:
+        await self._refresh_participants_embed(event)
+
+    async def _refresh_participants_embed(
+        self,
+        event: MessageReactionAdd | MessageReactionRemove,
+    ) -> None:
+        message = event.message
+        if message is None or message.guild is None:
+            return
+
+        giveaway = await self._repo(message.guild.id).get_by_message(str(message.id))
+        if giveaway is None or giveaway.drawn or giveaway.cancelled:
+            return
+
+        # Ignore unrelated emojis to avoid editing on every reaction event.
+        emoji_name = str(getattr(event.emoji, "name", event.emoji))
+        if emoji_name != giveaway.emoji and str(event.emoji) != giveaway.emoji:
+            return
+
+        async with self._reaction_lock:
+            entrants = await _collect_entrants(message, giveaway.emoji, giveaway.host_id)
+
+            host_name = f"ID:{giveaway.host_id}"
+            host_avatar: str | None = None
+            if message.embeds:
+                footer = getattr(message.embeds[0], "footer", None)
+                footer_text = getattr(footer, "text", None)
+                if isinstance(footer_text, str) and footer_text.startswith("Lancé par "):
+                    resolved = footer_text.removeprefix("Lancé par ").strip()
+                    if resolved:
+                        host_name = resolved
+                footer_icon = getattr(footer, "icon_url", None)
+                if isinstance(footer_icon, str) and footer_icon:
+                    host_avatar = footer_icon
+
+            embed = _build_embed(
+                giveaway,
+                host_name=host_name,
+                host_avatar=host_avatar,
+                entrants=entrants,
+            )
+            try:
+                await message.edit(embeds=[embed])
+            except Exception as e:
+                logger.debug("Could not refresh giveaway participants for %s: %s", giveaway.id, e)
 
     # ------------------------------------------------------------------
     # Background scheduler
