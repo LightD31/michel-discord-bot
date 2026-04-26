@@ -10,6 +10,7 @@ logger = logutil.init_logger(os.path.basename(__file__))
 
 MODULE_KEY = "moduleGiveaway"
 DEFAULT_EMOJI = "🎉"
+DEFAULT_ALLOW_HOST_WIN = False
 
 
 @register_module(MODULE_KEY)
@@ -25,6 +26,15 @@ class GiveawayConfig(SchemaBase):
         "string",
         default=DEFAULT_EMOJI,
         description="Emoji unicode utilisé pour participer (par défaut 🎉).",
+    )
+    allowHostWin: bool = ui(
+        "Autoriser l'organisateur à gagner",
+        "boolean",
+        default=DEFAULT_ALLOW_HOST_WIN,
+        description=(
+            "Si activé, l'hôte du giveaway peut participer et être tiré au sort "
+            "s'il réagit avec l'emoji d'entrée."
+        ),
     )
 
 
@@ -46,10 +56,23 @@ def guild_emoji(guild_id: str | int | None) -> str:
     return DEFAULT_EMOJI
 
 
+def guild_allow_host_win(guild_id: str | int | None) -> bool:
+    """Return whether the giveaway host can be part of the draw pool."""
+    if guild_id is None:
+        return DEFAULT_ALLOW_HOST_WIN
+    cfg = module_config.get(str(guild_id), {})
+    raw = cfg.get("allowHostWin")
+    if isinstance(raw, bool):
+        return raw
+    return DEFAULT_ALLOW_HOST_WIN
+
+
 __all__ = [
     "DEFAULT_EMOJI",
     "GiveawayConfig",
+    "DEFAULT_ALLOW_HOST_WIN",
     "MODULE_KEY",
+    "guild_allow_host_win",
     "enabled_servers",
     "enabled_servers_int",
     "guild_emoji",

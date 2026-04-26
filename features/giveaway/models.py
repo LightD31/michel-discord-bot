@@ -26,6 +26,7 @@ class Giveaway(BaseModel):
     prize: str
     description: str | None = None
     emoji: str = "🎉"
+    allow_host_win: bool | None = None
     winners_count: int = 1
     ends_at: datetime
     drawn: bool = False

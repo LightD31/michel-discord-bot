@@ -1,7 +1,7 @@
 """Giveaway Discord extension — ``/giveaway`` slash command + draw scheduler.
 
 Slash commands:
-- ``/giveaway start prize:<str> duration:<30m|2h|1d> winners:<int>`` — post a
+- ``/giveaway start prize:<str> duration:<30m|2h|1d> winners:<int> [allow_host_win:<bool>]`` — post a
   giveaway embed and start accepting reaction entries.
 - ``/giveaway end message_id:<id>`` — end a giveaway early and draw winners now.
 - ``/giveaway reroll message_id:<id> [winners:<int>]`` — pick fresh winners
@@ -43,7 +43,13 @@ from features.polls import parse_duration  # reused: same DSL as /poll
 from src.discord_ext.embeds import Colors, format_discord_timestamp
 from src.discord_ext.messages import require_guild, send_error, send_success
 
-from ._common import enabled_servers, enabled_servers_int, guild_emoji, logger
+from ._common import (
+    enabled_servers,
+    enabled_servers_int,
+    guild_allow_host_win,
+    guild_emoji,
+    logger,
+)
 
 # Floor on giveaway duration. Anything shorter than 10 s is almost certainly a
 # typo and races the background scheduler.
@@ -143,8 +149,14 @@ def _build_embed(
     return embed
 
 
-async def _collect_entrants(message: Message, emoji: str, host_id: str) -> list[str]:
-    """Read reactions from *message* and return non-bot, non-host entrant IDs."""
+async def _collect_entrants(
+    message: Message,
+    emoji: str,
+    host_id: str,
+    *,
+    allow_host: bool,
+) -> list[str]:
+    """Read reactions from *message* and return valid entrant IDs."""
     target = next(
         (r for r in (message.reactions or []) if str(getattr(r.emoji, "name", r.emoji)) == emoji),
         None,
@@ -158,7 +170,7 @@ async def _collect_entrants(message: Message, emoji: str, host_id: str) -> list[
             if getattr(user, "bot", False):
                 continue
             uid = str(user.id)
-            if uid == host_id or uid in seen:
+            if (not allow_host and uid == host_id) or uid in seen:
                 continue
             seen.add(uid)
             entrants.append(uid)
@@ -232,6 +244,13 @@ class GiveawayExtension(Extension):
         required=False,
         argument_name="description",
     )
+    @slash_option(
+        "organisateur_peut_gagner",
+        "Autoriser l'organisateur de ce giveaway à gagner",
+        opt_type=OptionType.BOOLEAN,
+        required=False,
+        argument_name="allow_host_win",
+    )
     @slash_default_member_permission(Permissions.MANAGE_GUILD)
     async def giveaway_start(
         self,
@@ -240,6 +259,7 @@ class GiveawayExtension(Extension):
         duration: str,
         winners: int = 1,
         description: str | None = None,
+        allow_host_win: bool | None = None,
     ) -> None:
         if not await require_guild(ctx):
             return
@@ -256,6 +276,9 @@ class GiveawayExtension(Extension):
 
         ends_at = datetime.now() + timedelta(seconds=seconds)
         emoji = guild_emoji(ctx.guild_id)
+        effective_allow_host_win = (
+            allow_host_win if allow_host_win is not None else guild_allow_host_win(ctx.guild_id)
+        )
 
         giveaway = Giveaway(
             guild_id=str(ctx.guild_id),
@@ -265,6 +288,7 @@ class GiveawayExtension(Extension):
             prize=prize,
             description=description,
             emoji=emoji,
+            allow_host_win=effective_allow_host_win,
             winners_count=winners,
             ends_at=ends_at,
         )
@@ -290,11 +314,12 @@ class GiveawayExtension(Extension):
             logger.warning("Could not seed reaction %s on %s: %s", emoji, message.id, e)
 
         logger.info(
-            "Giveaway %s started by %s (prize=%r, winners=%d, ends=%s)",
+            "Giveaway %s started by %s (prize=%r, winners=%d, host_can_win=%s, ends=%s)",
             giveaway.id,
             ctx.user.username,
             prize,
             winners,
+            effective_allow_host_win,
             ends_at.isoformat(),
         )
 
@@ -409,7 +434,17 @@ class GiveawayExtension(Extension):
             await send_error(ctx, "Message original introuvable.")
             return
 
-        entrants = await _collect_entrants(message, giveaway.emoji, giveaway.host_id)
+        allow_host = (
+            giveaway.allow_host_win
+            if giveaway.allow_host_win is not None
+            else guild_allow_host_win(ctx.guild_id)
+        )
+        entrants = await _collect_entrants(
+            message,
+            giveaway.emoji,
+            giveaway.host_id,
+            allow_host=allow_host,
+        )
         count = winners if winners is not None else giveaway.winners_count
         new_winners = pick_winners(entrants, count, exclude=giveaway.winners)
         if not new_winners:
@@ -483,7 +518,17 @@ class GiveawayExtension(Extension):
             return
 
         async with self._reaction_lock:
-            entrants = await _collect_entrants(message, giveaway.emoji, giveaway.host_id)
+            allow_host = (
+                giveaway.allow_host_win
+                if giveaway.allow_host_win is not None
+                else guild_allow_host_win(message.guild.id)
+            )
+            entrants = await _collect_entrants(
+                message,
+                giveaway.emoji,
+                giveaway.host_id,
+                allow_host=allow_host,
+            )
 
             host_name = f"ID:{giveaway.host_id}"
             host_avatar: str | None = None
@@ -552,7 +597,17 @@ class GiveawayExtension(Extension):
             await self._repo(giveaway.guild_id).mark_drawn(giveaway.id, [])
             return
 
-        entrants = await _collect_entrants(message, giveaway.emoji, giveaway.host_id)
+        allow_host = (
+            giveaway.allow_host_win
+            if giveaway.allow_host_win is not None
+            else guild_allow_host_win(giveaway.guild_id)
+        )
+        entrants = await _collect_entrants(
+            message,
+            giveaway.emoji,
+            giveaway.host_id,
+            allow_host=allow_host,
+        )
         winners = pick_winners(entrants, giveaway.winners_count)
         await self._repo(giveaway.guild_id).mark_drawn(giveaway.id, winners)
 
