@@ -9,7 +9,7 @@ XP_MAX = 25
 # scaled lower since voice presence is passive.
 VOICE_XP_PER_TICK_MIN = 5
 VOICE_XP_PER_TICK_MAX = 10
-VOICE_TICK_SECONDS = 60
+VOICE_TICK_SECONDS = 180
 
 LEADERBOARD_PAGE_SIZE = 10
 RANK_MEDALS: list[str] = ["🥇", "🥈", "🥉"]
