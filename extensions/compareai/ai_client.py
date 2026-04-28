@@ -326,15 +326,61 @@ class CompareAIMixin:
 
     def _extract_response_content(self, raw_content: str) -> str:
         """Extract content between <response> and </response> tags."""
-        match = re.search(r"<response>(.*?)</response>", raw_content, re.DOTALL)
+        if not raw_content:
+            return ""
+
+        # Some models add attributes/casing or escape tags in HTML entities.
+        match = re.search(
+            r"<response(?:\s+[^>]*)?>(.*?)</response>",
+            raw_content,
+            re.DOTALL | re.IGNORECASE,
+        )
+
+        if not match:
+            match = re.search(
+                r"&lt;response(?:\s+[^&]*)&gt;(.*?)&lt;/response&gt;",
+                raw_content,
+                re.DOTALL | re.IGNORECASE,
+            )
 
         if match:
             extracted = match.group(1).strip()
             logger.debug(f"Extracted response content: {extracted[:100]}...")
             return extracted
 
-        logger.warning("No <response> tags found, using full content")
+        logger.debug("No <response> tags found, using full content")
         return raw_content.strip()
+
+    def _normalize_model_id_candidates(self, model_id: str) -> list[str]:
+        """Generate likely canonical model ids for pricing lookup."""
+        candidates: list[str] = [model_id]
+
+        # OpenRouter model ids may include route suffixes (e.g. ':free').
+        base_without_route = model_id.split(":", 1)[0]
+        if base_without_route not in candidates:
+            candidates.append(base_without_route)
+
+        # Many preview models append a dated suffix like '-20260406'.
+        without_date = re.sub(r"-\d{8}$", "", base_without_route)
+        if without_date and without_date not in candidates:
+            candidates.append(without_date)
+
+        return candidates
+
+    def _resolve_pricing(self, model_id: str) -> ModelPricing | None:
+        """Resolve pricing by exact id first, then tolerant fallbacks."""
+        for candidate in self._normalize_model_id_candidates(model_id):
+            pricing = self.model_prices.get(candidate)
+            if pricing:
+                return pricing
+
+        # Last fallback: look for canonical ids that are prefixes of dated variants.
+        normalized = self._normalize_model_id_candidates(model_id)[-1]
+        for known_id, pricing in self.model_prices.items():
+            if normalized == known_id or normalized.startswith(f"{known_id}-"):
+                return pricing
+
+        return None
 
     def _get_model_display_name(self, provider_id: str) -> str:
         """Get the display name for a provider."""
@@ -391,7 +437,7 @@ class CompareAIMixin:
         output_tokens = getattr(message.usage, "completion_tokens", 0) or 0
         model_id = getattr(message, "model", "unknown")
 
-        pricing = self.model_prices.get(model_id)
+        pricing = self._resolve_pricing(model_id)
         if pricing:
             return pricing.calculate_cost(input_tokens, output_tokens)
 
@@ -409,7 +455,7 @@ class CompareAIMixin:
         output_tokens = getattr(message.usage, "completion_tokens", 0) or 0
         model_id = getattr(message, "model", "unknown")
 
-        pricing = self.model_prices.get(model_id)
+        pricing = self._resolve_pricing(model_id)
         if pricing:
             input_cost = pricing.input_cost_per_token * input_tokens
             output_cost = pricing.output_cost_per_token * output_tokens
