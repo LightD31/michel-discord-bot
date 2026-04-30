@@ -2,7 +2,7 @@
 
 # Pinned by digest so the base is reproducible; Dependabot (docker ecosystem)
 # bumps both the tag and the digest together.
-FROM python:3.14-slim@sha256:bc389f7dfcb21413e72a28f491985326994795e34d2b86c8ae2f417b4e7818aa AS builder
+FROM python:3.14-slim@sha256:5b3879b6f3cb77e712644d50262d05a7c146b7312d784a18eff7ff5462e77033 AS builder
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -20,7 +20,7 @@ COPY pyproject.toml README.md LICENSE /app/
 RUN pip install --upgrade pip && pip install .
 
 # ─── runtime ───────────────────────────────────────────────────────────
-FROM python:3.14-slim@sha256:bc389f7dfcb21413e72a28f491985326994795e34d2b86c8ae2f417b4e7818aa AS runtime
+FROM python:3.14-slim@sha256:5b3879b6f3cb77e712644d50262d05a7c146b7312d784a18eff7ff5462e77033 AS runtime
 
 LABEL org.opencontainers.image.source="https://github.com/LightD31/michel-discord-bot" \
       org.opencontainers.image.description="Michel — modular multi-guild Discord bot (interactions.py + MongoDB + optional FastAPI dashboard)." \
