@@ -31,6 +31,19 @@ class WebUIContext:
     bot_loop: asyncio.AbstractEventLoop | None
     oauth: DiscordOAuth
 
+    # --- Bot loop dispatch -------------------------------------------
+
+    def bot_loop_alive(self) -> bool:
+        """True if the bot's event loop is still running and accepting work."""
+        return self.bot_loop is not None and not self.bot_loop.is_closed()
+
+    def require_bot_loop(self) -> asyncio.AbstractEventLoop:
+        """Return the bot loop or raise 503 if it's gone (no bot, or loop closed)."""
+        if not self.bot or not self.bot_loop_alive():
+            raise HTTPException(status_code=503, detail="Bot non disponible")
+        assert self.bot_loop is not None
+        return self.bot_loop
+
     # --- Config I/O ---------------------------------------------------
 
     def get_full_config(self) -> dict:

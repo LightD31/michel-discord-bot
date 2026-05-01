@@ -106,9 +106,8 @@ async def _resolve_guild_and_channel(bot, guild_id: str, channel_id: str):
 
 
 def _run_on_bot_loop(ctx: WebUIContext, coro):
-    if not ctx.bot or not ctx.bot_loop:
-        raise HTTPException(status_code=503, detail="Bot non disponible")
-    future = asyncio.run_coroutine_threadsafe(coro, ctx.bot_loop)
+    bot_loop = ctx.require_bot_loop()
+    future = asyncio.run_coroutine_threadsafe(coro, bot_loop)
     return asyncio.wrap_future(future)
 
 

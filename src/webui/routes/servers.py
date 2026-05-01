@@ -94,8 +94,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
     async def api_get_server_channels(request: Request, server_id: str):
         """List text/news channels for the given server (for channel-picker dropdowns)."""
         ctx.require_admin(request)
-        if not ctx.bot or not ctx.bot_loop:
-            raise HTTPException(status_code=503, detail="Bot non disponible")
+        bot_loop = ctx.require_bot_loop()
 
         async def _fetch():
             from interactions import ChannelType
@@ -183,7 +182,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
             return {"channels": result, "categories": categories}
 
         try:
-            future = asyncio.run_coroutine_threadsafe(_fetch(), ctx.bot_loop)
+            future = asyncio.run_coroutine_threadsafe(_fetch(), bot_loop)
             data = await asyncio.wrap_future(future)
         except HTTPException:
             raise
@@ -200,8 +199,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
         falls back to the live guild member cache if the collection is empty.
         """
         ctx.require_admin(request)
-        if not ctx.bot or not ctx.bot_loop:
-            raise HTTPException(status_code=503, detail="Bot non disponible")
+        bot_loop = ctx.require_bot_loop()
 
         async def _fetch():
             from src.core.db import mongo_manager
@@ -263,7 +261,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
             return {"members": members}
 
         try:
-            future = asyncio.run_coroutine_threadsafe(_fetch(), ctx.bot_loop)
+            future = asyncio.run_coroutine_threadsafe(_fetch(), bot_loop)
             data = await asyncio.wrap_future(future)
         except HTTPException:
             raise
@@ -325,8 +323,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
     async def api_embedmanager_publish(request: Request, server_id: str):
         """Publish configured embeds to the target Discord message."""
         ctx.require_admin(request)
-        if not ctx.bot or not ctx.bot_loop:
-            raise HTTPException(status_code=503, detail="Bot non disponible")
+        bot_loop = ctx.require_bot_loop()
 
         _, module_config, enabled_servers = bot_load_config("moduleEmbedManager")
         if server_id not in enabled_servers:
@@ -369,7 +366,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
                     raise RuntimeError("Impossible de créer ou récupérer le message cible")
                 await message.edit(content="", embeds=discord_embeds)
 
-            future = asyncio.run_coroutine_threadsafe(_publish(), ctx.bot_loop)
+            future = asyncio.run_coroutine_threadsafe(_publish(), bot_loop)
             await asyncio.wrap_future(future)
         except Exception as e:
             logger.error(f"EmbedManager publish failed for server {server_id}: {e}")
