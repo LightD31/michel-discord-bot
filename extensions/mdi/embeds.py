@@ -333,9 +333,9 @@ class EmbedsMixin:
         total: int | None,
         winner: bool,
     ) -> str:
-        """Line 1 fragment: ``**Name** 0💀 12:24``."""
+        """Line 1 fragment: ``**Name** (0💀) 12:24``."""
         bold_name = f"**{name}**" if winner else name
-        return f"{bold_name} {deaths}💀 {self._fmt_seconds(total)}"
+        return f"{bold_name} ({deaths}💀) {self._fmt_seconds(total)}"
 
     @staticmethod
     def _splits_lines(

@@ -119,6 +119,8 @@ class NotificationsMixin:
         embed = self._build_match_embed(match, team, event_url)
 
         if doc is None:
+            if phase == "scheduled":
+                return  # don't post until the match goes live
             # First time — post a fresh message
             content = self._initial_post_content(state, phase)
             try:
