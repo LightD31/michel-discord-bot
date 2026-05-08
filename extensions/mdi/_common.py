@@ -71,7 +71,7 @@ class MDIConfig(SchemaBase):
 
 
 logger = logutil.init_logger(os.path.basename(__file__))
-config, module_config, enabled_servers = load_config(MODULE_KEY)
+config, module_config, enabled_servers = load_config("moduleMDI")
 
 
 # ── Constants ────────────────────────────────────────────────────────────────
