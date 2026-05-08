@@ -127,6 +127,8 @@ class ApiMixin:
                         str(game.dungeon_name),
                         str(game.first_team_deaths),
                         str(game.second_team_deaths),
+                        str(game.first_team_splits),
+                        str(game.second_team_splits),
                         str(game.video_id),
                     ]
                 )

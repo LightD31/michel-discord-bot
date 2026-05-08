@@ -95,6 +95,33 @@ class TeamRef:
         )
 
 
+def _parse_split_seconds(value: str | None) -> int | None:
+    """Parse ``"M:SS"`` split time to total seconds. Returns ``None`` on failure."""
+    if not value:
+        return None
+    parts = value.split(":")
+    if len(parts) == 2:
+        try:
+            return int(parts[0]) * 60 + int(parts[1])
+        except ValueError:
+            return None
+    return None
+
+
+def _collect_splits(details: dict[str, Any], prefix: str) -> tuple[int, ...]:
+    """Return individual split times in seconds; stops at the first null split."""
+    splits: list[int] = []
+    for i in range(1, 6):
+        raw = details.get(f"{prefix}Split{i}")
+        if raw is None:
+            break
+        seconds = _parse_split_seconds(raw)
+        if seconds is None:
+            break
+        splits.append(seconds)
+    return tuple(splits)
+
+
 @dataclass(frozen=True)
 class GameSnapshot:
     """One game (dungeon) within a match."""
@@ -105,8 +132,21 @@ class GameSnapshot:
     winner_team_id: int | None
     mythic_level: int | None
     dungeon_name: str | None
+    dungeon_short_name: str | None
+    keystone_timer_seconds: int | None
     first_team_deaths: int
     second_team_deaths: int
+    first_team_splits: tuple[int, ...]
+    second_team_splits: tuple[int, ...]
+
+    @property
+    def first_team_total_seconds(self) -> int | None:
+        return sum(self.first_team_splits) if self.first_team_splits else None
+
+    @property
+    def second_team_total_seconds(self) -> int | None:
+        return sum(self.second_team_splits) if self.second_team_splits else None
+
     video_id: str | None
     video_type: str | None
 
@@ -114,6 +154,7 @@ class GameSnapshot:
     def from_api(cls, data: dict[str, Any]) -> GameSnapshot:
         details = data.get("details") or {}
         dungeon = data.get("dungeon") or {}
+        keystone_ms = dungeon.get("keystone_timer_ms") if isinstance(dungeon, dict) else None
         return cls(
             id=int(data.get("id") or 0),
             game_order=int(data.get("gameOrder") or 0),
@@ -121,8 +162,13 @@ class GameSnapshot:
             winner_team_id=_to_int_or_none(data.get("winnerTeamId")),
             mythic_level=_to_int_or_none(details.get("mythicLevel")),
             dungeon_name=(dungeon.get("name") if isinstance(dungeon, dict) else None) or None,
+            dungeon_short_name=(dungeon.get("short_name") if isinstance(dungeon, dict) else None)
+            or None,
+            keystone_timer_seconds=int(keystone_ms) // 1000 if keystone_ms else None,
             first_team_deaths=int(details.get("firstTeamDeaths") or 0),
             second_team_deaths=int(details.get("secondTeamDeaths") or 0),
+            first_team_splits=_collect_splits(details, "firstTeam"),
+            second_team_splits=_collect_splits(details, "secondTeam"),
             video_id=data.get("videoId") or None,
             video_type=data.get("videoType") or None,
         )

@@ -314,24 +314,83 @@ class EmbedsMixin:
             lines.append(self._game_line(game, match))
         return "\n".join(lines)
 
+    @staticmethod
+    def _fmt_seconds(total: int | None) -> str:
+        """Format seconds as ``M:SS``."""
+        if total is None:
+            return "—"
+        return f"{total // 60}:{total % 60:02d}"
+
+    @staticmethod
+    def _fmt_splits(splits: tuple[int, ...]) -> str:
+        """Format split times as ``"M:SS·M:SS·…"``."""
+        return "·".join(f"{s // 60}:{s % 60:02d}" for s in splits)
+
+    def _team_summary(
+        self,
+        name: str,
+        deaths: int,
+        total: int | None,
+        winner: bool,
+    ) -> str:
+        """Line 1 fragment: ``**Name** 0💀 12:24``."""
+        bold_name = f"**{name}**" if winner else name
+        return f"{bold_name} {deaths}💀 {self._fmt_seconds(total)}"
+
+    @staticmethod
+    def _splits_lines(
+        first_splits: tuple[int, ...],
+        second_splits: tuple[int, ...],
+    ) -> str:
+        """One line per split index, fastest time in bold."""
+        if not first_splits and not second_splits:
+            return ""
+        lines: list[str] = []
+        for i in range(max(len(first_splits), len(second_splits))):
+            t1 = first_splits[i] if i < len(first_splits) else None
+            t2 = second_splits[i] if i < len(second_splits) else None
+            s1 = f"{t1 // 60}:{t1 % 60:02d}" if t1 is not None else "—"
+            s2 = f"{t2 // 60}:{t2 % 60:02d}" if t2 is not None else "—"
+            if t1 is not None and t2 is not None:
+                if t1 < t2:
+                    s1, s2 = f"**{s1}**", s2
+                elif t2 < t1:
+                    s1, s2 = s1, f"**{s2}**"
+            lines.append(f"↳ S{i + 1}  {s1}  ·  {s2}")
+        return "\n".join(lines)
+
     def _game_line(self, game: GameSnapshot, match: MatchSnapshot) -> str:
-        dungeon = game.dungeon_name or "Donjon TBD"
-        level = f" • +{game.mythic_level}" if game.mythic_level else ""
-        if game.winner_team_id is None:
-            return f"`G{game.game_order}` {dungeon}{level} — en cours"
+        dungeon = game.dungeon_short_name or game.dungeon_name or "Donjon TBD"
+        level = f" +{game.mythic_level}" if game.mythic_level else ""
+        header = f"`G{game.game_order}` **{dungeon}{level}**"
+
+        first_name = match.first_team.name if match.first_team else "T1"
+        second_name = match.second_team.name if match.second_team else "T2"
         first_id = match.first_team.id if match.first_team else None
         second_id = match.second_team.id if match.second_team else None
-        winner_name = "?"
-        if game.winner_team_id == first_id and match.first_team:
-            winner_name = match.first_team.name
-        elif game.winner_team_id == second_id and match.second_team:
-            winner_name = match.second_team.name
-        deaths = (
-            f" — morts: {game.first_team_deaths}/{game.second_team_deaths}"
-            if (game.first_team_deaths or game.second_team_deaths)
-            else ""
+
+        if game.winner_team_id is None:
+            t1 = self._team_summary(
+                first_name, game.first_team_deaths, game.first_team_total_seconds, winner=False
+            )
+            t2 = self._team_summary(
+                second_name, game.second_team_deaths, game.second_team_total_seconds, winner=False
+            )
+            line1 = f"{header} *(en cours)* — {t1} vs {t2}"
+            line2 = self._splits_lines(game.first_team_splits, game.second_team_splits)
+            return f"{line1}\n{line2}" if line2 else line1
+
+        first_won = game.winner_team_id == first_id
+        second_won = game.winner_team_id == second_id
+        t1 = self._team_summary(
+            first_name, game.first_team_deaths, game.first_team_total_seconds, winner=first_won
         )
-        return f"`G{game.game_order}` {dungeon}{level} → **{winner_name}**{deaths}"
+        t2 = self._team_summary(
+            second_name, game.second_team_deaths, game.second_team_total_seconds, winner=second_won
+        )
+        line1 = f"{header} → {t1} vs {t2}"
+        line2 = self._splits_lines(game.first_team_splits, game.second_team_splits)
+        return f"{line1}\n{line2}" if line2 else line1
 
     @staticmethod
     def _watch_link(match: MatchSnapshot) -> str:
