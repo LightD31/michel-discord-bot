@@ -35,10 +35,18 @@ class EmbedsMixin:
 
     @staticmethod
     def _match_phase(match: MatchSnapshot) -> str:
-        """Classify a match as ``"scheduled"`` | ``"live"`` | ``"terminal"``."""
+        """Classify a match as ``"scheduled"`` | ``"live"`` | ``"terminal"``.
+
+        Raider.IO flips every game's status from ``"skip"`` to in-progress
+        simultaneously when a match begins (not one-by-one as games finish), so
+        any non-``"skip"``/``"unstarted"`` game status is the strongest signal
+        that the match is live.
+        """
         if match.is_terminal:
             return "terminal"
         if match.status and match.status != "unstarted":
+            return "live"
+        if any(g.status not in ("skip", "unstarted", "") for g in match.games):
             return "live"
         if any(g.winner_team_id is not None for g in match.games):
             return "live"
@@ -369,14 +377,20 @@ class EmbedsMixin:
         first_id = match.first_team.id if match.first_team else None
         second_id = match.second_team.id if match.second_team else None
 
+        # Per-game phases: Raider.IO progresses sequentially
+        # ``unstarted`` → ``in_progress`` → ``complete``. ``skip`` is filtered
+        # out upstream. Treat anything else with no winner as in-progress to
+        # stay on the safe side.
         if game.winner_team_id is None:
+            if game.status == "unstarted":
+                return f"{header} *(à venir)*"
             t1 = self._team_summary(
                 first_name, game.first_team_deaths, game.first_team_total_seconds, winner=False
             )
             t2 = self._team_summary(
                 second_name, game.second_team_deaths, game.second_team_total_seconds, winner=False
             )
-            line1 = f"{header} *(en cours)* — {t1} vs {t2}"
+            line1 = f"{header} 🔴 *en cours* — {t1} vs {t2}"
             line2 = self._splits_lines(game.first_team_splits, game.second_team_splits)
             return f"{line1}\n{line2}" if line2 else line1
 

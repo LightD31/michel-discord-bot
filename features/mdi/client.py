@@ -249,14 +249,14 @@ async def _cached_get(url: str) -> dict[str, Any]:
     if cached is not None:
         ts, data = cached
         if _now_ts() - ts < _CACHE_TTL_SECONDS:
-            return data  # type: ignore[no-any-return]
+            return data
     try:
         data = await fetch(url, return_type="json")
     except Exception as e:
         logger.error("Raider.IO fetch failed for %s: %s", url, e)
         # Serve stale rather than nothing if we have it.
         if cached is not None:
-            return cached[1]  # type: ignore[no-any-return]
+            return cached[1]
         return {}
     if not isinstance(data, dict):
         logger.warning("Raider.IO returned non-dict payload for %s", url)
