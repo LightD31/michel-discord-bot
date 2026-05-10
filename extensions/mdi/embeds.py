@@ -415,7 +415,7 @@ class EmbedsMixin:
         return "\n".join(lines)
 
     def _game_line(self, game: GameSnapshot, match: MatchSnapshot) -> str:
-        dungeon = game.dungeon_short_name or game.dungeon_name or "Donjon TBD"
+        dungeon = game.dungeon_name or game.dungeon_short_name or "Donjon TBD"
         level = f" +{game.mythic_level}" if game.mythic_level else ""
 
         first_name = match.first_team.name if match.first_team else "T1"
@@ -431,16 +431,16 @@ class EmbedsMixin:
             if game.status == "unstarted":
                 header = f"🟡 `G{game.game_order}` **{dungeon}{level}**"
                 return f"{header} *(à venir)*"
-            header = f"🔴 `G{game.game_order}` **{dungeon}{level}**"
+            header = f"🔴 `G{game.game_order}` **{dungeon}{level}** *en cours*"
             t1 = self._team_summary(
                 first_name, game.first_team_deaths, game.first_team_total_seconds, winner=False
             )
             t2 = self._team_summary(
                 second_name, game.second_team_deaths, game.second_team_total_seconds, winner=False
             )
-            line1 = f"{header} *en cours* — {t1} vs {t2}"
-            line2 = self._splits_lines(game.first_team_splits, game.second_team_splits)
-            return f"{line1}\n{line2}" if line2 else line1
+            teams_line = f"{t1} vs {t2}"
+            splits = self._splits_lines(game.first_team_splits, game.second_team_splits)
+            return "\n".join(p for p in (header, teams_line, splits) if p)
 
         header = f"🏆 `G{game.game_order}` **{dungeon}{level}**"
         first_won = game.winner_team_id == first_id
@@ -451,9 +451,9 @@ class EmbedsMixin:
         t2 = self._team_summary(
             second_name, game.second_team_deaths, game.second_team_total_seconds, winner=second_won
         )
-        line1 = f"{header} — {t1} vs {t2}"
-        line2 = self._splits_lines(game.first_team_splits, game.second_team_splits)
-        return f"{line1}\n{line2}" if line2 else line1
+        teams_line = f"{t1} vs {t2}"
+        splits = self._splits_lines(game.first_team_splits, game.second_team_splits)
+        return "\n".join(p for p in (header, teams_line, splits) if p)
 
     @staticmethod
     def _watch_link(match: MatchSnapshot) -> str:
