@@ -91,6 +91,8 @@ STATUS_EMOJI_TERMINAL_WIN = "🏆"
 STATUS_EMOJI_TERMINAL_LOSS = "❌"
 STATUS_EMOJI_TERMINAL_NEUTRAL = "🏁"
 
+RAIDERIO_ICON_URL = "https://cdn.raiderio.net/images/brand/icon-180.png"
+
 
 # ── Dataclasses ───────────────────────────────────────────────────────────────
 
@@ -211,6 +213,7 @@ __all__ = [
     "LIVE_INTERVAL_MINUTES",
     "MDIConfig",
     "MODULE_KEY",
+    "RAIDERIO_ICON_URL",
     "SCHEDULE_INTERVAL_MINUTES",
     "STATUS_EMOJI_LIVE",
     "STATUS_EMOJI_SCHEDULED",

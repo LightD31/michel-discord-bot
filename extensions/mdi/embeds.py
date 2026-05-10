@@ -20,6 +20,7 @@ from ._common import (
     EMBED_COLOR_LOSS,
     EMBED_COLOR_SCHEDULED,
     EMBED_COLOR_WIN,
+    RAIDERIO_ICON_URL,
     STATUS_EMOJI_LIVE,
     STATUS_EMOJI_SCHEDULED,
     STATUS_EMOJI_TERMINAL_LOSS,
@@ -27,9 +28,42 @@ from ._common import (
     STATUS_EMOJI_TERMINAL_WIN,
 )
 
+EVENT_TITLE = "MDI Midnight Season 1"
+
 
 class EmbedsMixin:
     """Mixin: builds the schedule embed and the per-match embed (3 variants)."""
+
+    # ── Author / heading helpers ─────────────────────────────────────────────
+
+    @staticmethod
+    def _author_label(phase: str) -> str:
+        if phase == "live":
+            return f"🔴 LIVE · {EVENT_TITLE}"
+        if phase == "terminal":
+            return f"🏁 Terminé · {EVENT_TITLE}"
+        if phase == "schedule":
+            return f"📅 Planning · {EVENT_TITLE}"
+        return f"🟡 À venir · {EVENT_TITLE}"
+
+    @classmethod
+    def _set_event_author(cls, embed: Embed, event_url: str | None, phase: str) -> None:
+        """Attach the Raider.IO branded author block at the top of *embed*."""
+        embed.set_author(
+            name=cls._author_label(phase),
+            url=event_url,
+            icon_url=RAIDERIO_ICON_URL,
+        )
+
+    def _score_heading(self, match: MatchSnapshot) -> str:
+        """Score as an ``##`` heading line for live/terminal descriptions."""
+        first = match.first_team
+        second = match.second_team
+        first_name = first.name if first else "TBD"
+        second_name = second.name if second else "TBD"
+        first_wins = sum(1 for g in match.games if first and g.winner_team_id == first.id)
+        second_wins = sum(1 for g in match.games if second and g.winner_team_id == second.id)
+        return f"## **{first_name}**  {first_wins} — {second_wins}  **{second_name}**"
 
     # ── Match phase classifier ───────────────────────────────────────────────
 
@@ -55,20 +89,27 @@ class EmbedsMixin:
     # ── Schedule embed ───────────────────────────────────────────────────────
 
     def _build_schedule_embed(
-        self, team: TeamRef | None, team_slug: str, matches: list[MatchSnapshot]
+        self,
+        team: TeamRef | None,
+        team_slug: str,
+        matches: list[MatchSnapshot],
+        event_url: str | None = None,
     ) -> Embed:
         """Build the pinned planning embed."""
         team_name = team.name if team else team_slug.capitalize()
-        title = f"📅 {team_name} — MDI Midnight Season 1"
-        description = f"Suivi des matchs de **{team_name}** sur Raider.IO. Mise à jour automatique."
+        title = f"📅 {team_name} — {EVENT_TITLE}"
+        description = f"Suivi automatique des matchs de **{team_name}**."
         embed = Embed(
             title=title,
             description=description,
             color=EMBED_COLOR_DEFAULT,
             timestamp=Timestamp.now(),
         )
+        if event_url:
+            embed.url = event_url
         if team and team.icon_logo_url:
             embed.set_thumbnail(url=team.icon_logo_url)
+        self._set_event_author(embed, event_url, "schedule")
 
         if not matches:
             embed.add_field(
@@ -76,7 +117,6 @@ class EmbedsMixin:
                 value="Pas de match trouvé pour cette équipe pour l'instant.",
                 inline=False,
             )
-            embed.set_footer(text="Source: Raider.IO")
             return embed
 
         # Group by bracket while preserving sort order
@@ -88,20 +128,17 @@ class EmbedsMixin:
 
         for slug, group_matches in groups.items():
             bracket_title = bracket_titles.get(slug, slug)
-            lines: list[str] = []
-            for match in group_matches:
-                lines.append(self._schedule_line(match, team))
-            value = "\n".join(lines) if lines else "—"
+            blocks: list[str] = [self._schedule_line(match, team) for match in group_matches]
+            value = "\n".join(blocks) if blocks else "—"
             # Discord limits each field value to 1024 characters; chunk if needed.
             for chunk_index, chunk in enumerate(self._chunk_field_value(value)):
                 name = bracket_title if chunk_index == 0 else f"{bracket_title} (suite)"
                 embed.add_field(name=name, value=chunk, inline=False)
 
-        embed.set_footer(text="Source: Raider.IO")
         return embed
 
     def _schedule_line(self, match: MatchSnapshot, team: TeamRef | None) -> str:
-        """One line in the schedule embed."""
+        """Two-line block per match: status + matchup, then timestamp as subtext."""
         phase = self._match_phase(match)
         if phase == "terminal":
             if team is not None and match.winner_team_id == team.id:
@@ -117,13 +154,9 @@ class EmbedsMixin:
 
         opponent = match.opponent_of(team.id) if team is not None else None
         opponent_name = opponent.name if opponent else "TBD"
-
-        time_part = (
-            format_discord_timestamp(match.starts_at, "F") if match.starts_at is not None else ""
-        )
         position = self._position_label(match)
 
-        score_part = ""
+        head_parts: list[str] = [f"{emoji} vs **{opponent_name}**", f"`{position}`"]
         if phase != "scheduled" and team is not None:
             mine = match.games_won_by(team.id)
             theirs = sum(
@@ -131,13 +164,16 @@ class EmbedsMixin:
                 for g in match.games
                 if g.winner_team_id is not None and g.winner_team_id != team.id
             )
-            score_part = f" — **{mine}–{theirs}**"
+            head_parts.append(f"**{mine} – {theirs}**")
+        head = " — ".join(head_parts)
 
-        bits = [emoji, position, f"vs **{opponent_name}**"]
-        head = " ".join(b for b in bits if b)
-        tail_parts = [time_part, score_part]
-        tail = " ".join(p for p in tail_parts if p)
-        return f"{head}{(' · ' + tail) if tail else ''}"
+        if match.starts_at is not None:
+            sub = (
+                f"-# {format_discord_timestamp(match.starts_at, 'F')}"
+                f" · {format_discord_timestamp(match.starts_at, 'R')}"
+            )
+            return f"{head}\n{sub}"
+        return head
 
     @staticmethod
     def _position_label(match: MatchSnapshot) -> str:
@@ -206,26 +242,21 @@ class EmbedsMixin:
         )
         if event_url:
             embed.url = event_url
-        embed.description = self._bracket_line(match)
+
+        desc_lines = [self._bracket_line(match)]
         if match.starts_at is not None:
-            embed.add_field(
-                name="Programmé",
-                value=(
-                    f"{format_discord_timestamp(match.starts_at, 'F')}"
-                    f" ({format_discord_timestamp(match.starts_at, 'R')})"
-                ),
-                inline=False,
-            )
-        embed.add_field(name="Statut", value="🟡 Programmé", inline=True)
+            desc_lines.append(f"**{format_discord_timestamp(match.starts_at, 'F')}**")
+            desc_lines.append(f"-# Coup d'envoi {format_discord_timestamp(match.starts_at, 'R')}")
+        embed.description = "\n".join(desc_lines)
+
         if match.first_team and match.second_team:
-            embed.add_field(
-                name="Affiche",
-                value=self._team_line(match.first_team) + "\n" + self._team_line(match.second_team),
-                inline=False,
-            )
+            embed.add_field(name="Affiche", value=self._team_line(match.first_team), inline=True)
+            embed.add_field(name="\u200b", value="**vs**", inline=True)
+            embed.add_field(name="\u200b", value=self._team_line(match.second_team), inline=True)
+
         if team and team.icon_logo_url:
             embed.set_thumbnail(url=team.icon_logo_url)
-        embed.set_footer(text="Source: Raider.IO")
+        self._set_event_author(embed, event_url, "scheduled")
         return embed
 
     def _build_live_embed(
@@ -238,17 +269,25 @@ class EmbedsMixin:
         )
         if event_url:
             embed.url = event_url
-        embed.description = self._bracket_line(match) + "\n🔴 **Match en direct**"
-        embed.add_field(name="Score", value=self._scoreboard(match), inline=False)
+
+        desc_lines = [self._bracket_line(match), self._score_heading(match)]
+        sub_parts = ["En cours"]
+        if match.starts_at is not None:
+            sub_parts.append(f"début {format_discord_timestamp(match.starts_at, 'R')}")
+        watch = self._watch_link(match)
+        if watch:
+            sub_parts.append(f"📺 {watch}")
+        desc_lines.append(f"-# {' · '.join(sub_parts)}")
+        embed.description = "\n".join(desc_lines)
+
         games_text = self._games_block(match)
         if games_text:
             embed.add_field(name="Donjons", value=games_text, inline=False)
-        watch = self._watch_link(match)
-        if watch:
-            embed.add_field(name="Diffusion", value=watch, inline=False)
+
         if team and team.icon_logo_url:
             embed.set_thumbnail(url=team.icon_logo_url)
-        embed.set_footer(text="Mise à jour automatique • Source: Raider.IO")
+        self._set_event_author(embed, event_url, "live")
+        embed.set_footer(text="Mise à jour automatique")
         return embed
 
     def _build_terminal_embed(
@@ -274,17 +313,25 @@ class EmbedsMixin:
         )
         if event_url:
             embed.url = event_url
-        embed.description = f"{self._bracket_line(match)}\n**{verdict}**"
-        embed.add_field(name="Score final", value=self._scoreboard(match), inline=False)
+
+        desc_lines = [
+            self._bracket_line(match),
+            self._score_heading(match),
+            f"**{emoji} {verdict}**",
+        ]
+        watch = self._watch_link(match)
+        if watch:
+            desc_lines.append(f"-# 📺 Replay : {watch}")
+        embed.description = "\n".join(desc_lines)
+
         games_text = self._games_block(match)
         if games_text:
             embed.add_field(name="Donjons", value=games_text, inline=False)
-        watch = self._watch_link(match)
-        if watch:
-            embed.add_field(name="Replay", value=watch, inline=False)
+
         if team and team.icon_logo_url:
             embed.set_thumbnail(url=team.icon_logo_url)
-        embed.set_footer(text="Match terminé • Source: Raider.IO")
+        self._set_event_author(embed, event_url, "terminal")
+        embed.set_footer(text="Match terminé")
         return embed
 
     # ── Helpers ──────────────────────────────────────────────────────────────
@@ -350,7 +397,7 @@ class EmbedsMixin:
         first_splits: tuple[int, ...],
         second_splits: tuple[int, ...],
     ) -> str:
-        """One line per split index, fastest time in bold."""
+        """One subtext line per split index, fastest time in bold."""
         if not first_splits and not second_splits:
             return ""
         lines: list[str] = []
@@ -364,13 +411,12 @@ class EmbedsMixin:
                     s1, s2 = f"**{s1}**", s2
                 elif t2 < t1:
                     s1, s2 = s1, f"**{s2}**"
-            lines.append(f"↳ S{i + 1}  {s1}  ·  {s2}")
+            lines.append(f"-# ↳ S{i + 1}  {s1}  ·  {s2}")
         return "\n".join(lines)
 
     def _game_line(self, game: GameSnapshot, match: MatchSnapshot) -> str:
         dungeon = game.dungeon_short_name or game.dungeon_name or "Donjon TBD"
         level = f" +{game.mythic_level}" if game.mythic_level else ""
-        header = f"`G{game.game_order}` **{dungeon}{level}**"
 
         first_name = match.first_team.name if match.first_team else "T1"
         second_name = match.second_team.name if match.second_team else "T2"
@@ -383,17 +429,20 @@ class EmbedsMixin:
         # stay on the safe side.
         if game.winner_team_id is None:
             if game.status == "unstarted":
+                header = f"🟡 `G{game.game_order}` **{dungeon}{level}**"
                 return f"{header} *(à venir)*"
+            header = f"🔴 `G{game.game_order}` **{dungeon}{level}**"
             t1 = self._team_summary(
                 first_name, game.first_team_deaths, game.first_team_total_seconds, winner=False
             )
             t2 = self._team_summary(
                 second_name, game.second_team_deaths, game.second_team_total_seconds, winner=False
             )
-            line1 = f"{header} 🔴 *en cours* — {t1} vs {t2}"
+            line1 = f"{header} *en cours* — {t1} vs {t2}"
             line2 = self._splits_lines(game.first_team_splits, game.second_team_splits)
             return f"{line1}\n{line2}" if line2 else line1
 
+        header = f"🏆 `G{game.game_order}` **{dungeon}{level}**"
         first_won = game.winner_team_id == first_id
         second_won = game.winner_team_id == second_id
         t1 = self._team_summary(
@@ -402,7 +451,7 @@ class EmbedsMixin:
         t2 = self._team_summary(
             second_name, game.second_team_deaths, game.second_team_total_seconds, winner=second_won
         )
-        line1 = f"{header} → {t1} vs {t2}"
+        line1 = f"{header} — {t1} vs {t2}"
         line2 = self._splits_lines(game.first_team_splits, game.second_team_splits)
         return f"{line1}\n{line2}" if line2 else line1
 

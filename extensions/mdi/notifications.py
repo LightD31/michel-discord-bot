@@ -265,7 +265,9 @@ class NotificationsMixin:
         if channel is None:
             return
 
-        embed = self._build_schedule_embed(state.tracked_team, gc.team_slug, matches)
+        embed = self._build_schedule_embed(
+            state.tracked_team, gc.team_slug, matches, _event_url(gc.event_slug)
+        )
         new_hash = self._schedule_hash(matches)
 
         # Try to use the existing message
