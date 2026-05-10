@@ -3184,11 +3184,29 @@
                     html += `<button type="button" class="btn-add-entry" onclick="addRssFeedEntry(this)">+ Ajouter un flux</button>`;
                     html += `<select class="rssfeed-preset-select" onchange="applyRssPreset(this)" title="Préréglages prêts à l'emploi">
                         <option value="">+ Préréglage…</option>
-                        <option value="lootscraper-all">LootScraper — tous (Epic + Amazon + itch.io + Steam)</option>
-                        <option value="lootscraper-epic">LootScraper — Epic Games</option>
-                        <option value="lootscraper-amazon">LootScraper — Amazon Prime</option>
-                        <option value="lootscraper-itch">LootScraper — itch.io</option>
-                        <option value="lootscraper-steam">LootScraper — Steam</option>
+                        <optgroup label="LootScraper — Bundles">
+                            <option value="lootscraper-all">Bundle classique (Epic + Amazon + itch.io + Steam)</option>
+                            <option value="lootscraper-all-pc">Bundle PC (Epic + GOG + Humble + itch.io + Amazon + Steam)</option>
+                            <option value="lootscraper-everything">Tout LootScraper (12 flux)</option>
+                        </optgroup>
+                        <optgroup label="LootScraper — Jeux PC gratuits">
+                            <option value="lootscraper-epic">Epic Games</option>
+                            <option value="lootscraper-gog">GOG</option>
+                            <option value="lootscraper-humble">Humble</option>
+                            <option value="lootscraper-itch">itch.io</option>
+                        </optgroup>
+                        <optgroup label="LootScraper — Amazon &amp; Steam">
+                            <option value="lootscraper-amazon">Amazon Prime Gaming (jeux)</option>
+                            <option value="lootscraper-amazon-loot">Amazon Prime Gaming (loot)</option>
+                            <option value="lootscraper-steam">Steam (jeux gratuits)</option>
+                            <option value="lootscraper-steam-loot">Steam (loot)</option>
+                        </optgroup>
+                        <optgroup label="LootScraper — Mobile">
+                            <option value="lootscraper-epic-android">Epic Games — Android</option>
+                            <option value="lootscraper-epic-ios">Epic Games — iOS</option>
+                            <option value="lootscraper-apple">App Store (iOS)</option>
+                            <option value="lootscraper-google">Google Play (Android)</option>
+                        </optgroup>
                     </select>`;
                     break;
                 }
@@ -3930,61 +3948,84 @@
         entry.querySelector('input[type="text"]').focus();
     }
 
-    // Shared default templates for the LootScraper free-game feeds. Description
-    // uses {summary} flattened by the parser plus a Discord timestamp tag for
-    // the publish time, and the link goes onto a Discord link button rather
-    // than being embedded inline.
+    // Shared default templates for the LootScraper feeds. Description uses
+    // {summary} flattened by the parser plus a Discord timestamp tag for the
+    // publish time, and the link goes onto a Discord link button rather than
+    // being embedded inline.
     const _LOOTSCRAPER_DESC = '{summary}\n\n🕐 Publié {published_relative} ({published_short})';
+    const _LOOTSCRAPER_BASE = 'https://feed.eikowagenknecht.com/';
+    function _lsPreset(slug, file, label, color, btnLabel, opts = {}) {
+        return {
+            feed_id: slug,
+            url: _LOOTSCRAPER_BASE + file,
+            label,
+            mode: 'embed',
+            embed_color: color,
+            embed_title: (opts.titleEmoji || '🎮') + ' {title}',
+            embed_description: _LOOTSCRAPER_DESC,
+            embed_show_image: true,
+            embed_show_link_button: true,
+            embed_link_button_label: btnLabel,
+        };
+    }
     const RSS_PRESETS = {
-        'lootscraper-epic': {
-            feed_id: 'lootscraper-epic',
-            url: 'https://feed.eikowagenknecht.com/lootscraper_epic_game.xml',
-            label: 'Epic Games — Gratuit',
-            mode: 'embed',
-            embed_color: '#0078F2',
-            embed_title: '🎮 {title}',
-            embed_description: _LOOTSCRAPER_DESC,
-            embed_show_image: true,
-            embed_show_link_button: true,
-            embed_link_button_label: 'Récupérer sur Epic Games',
-        },
-        'lootscraper-amazon': {
-            feed_id: 'lootscraper-amazon',
-            url: 'https://feed.eikowagenknecht.com/lootscraper_amazon_game.xml',
-            label: 'Amazon Prime Gaming',
-            mode: 'embed',
-            embed_color: '#FF9900',
-            embed_title: '🎮 {title}',
-            embed_description: _LOOTSCRAPER_DESC,
-            embed_show_image: true,
-            embed_show_link_button: true,
-            embed_link_button_label: 'Récupérer sur Prime Gaming',
-        },
-        'lootscraper-itch': {
-            feed_id: 'lootscraper-itch',
-            url: 'https://feed.eikowagenknecht.com/lootscraper_itch_game.xml',
-            label: 'itch.io — Gratuit',
-            mode: 'embed',
-            embed_color: '#FA5C5C',
-            embed_title: '🎮 {title}',
-            embed_description: _LOOTSCRAPER_DESC,
-            embed_show_image: true,
-            embed_show_link_button: true,
-            embed_link_button_label: 'Récupérer sur itch.io',
-        },
-        'lootscraper-steam': {
-            feed_id: 'lootscraper-steam',
-            url: 'https://feed.eikowagenknecht.com/lootscraper_steam_game.xml',
-            label: 'Steam — Gratuit',
-            mode: 'embed',
-            embed_color: '#66C0F4',
-            embed_title: '🎮 {title}',
-            embed_description: _LOOTSCRAPER_DESC,
-            embed_show_image: true,
-            embed_show_link_button: true,
-            embed_link_button_label: 'Récupérer sur Steam',
-        },
+        // PC stores — free full games
+        'lootscraper-epic': _lsPreset(
+            'lootscraper-epic', 'lootscraper_epic_game.xml',
+            'Epic Games — Gratuit', '#0078F2', 'Récupérer sur Epic Games'),
+        'lootscraper-gog': _lsPreset(
+            'lootscraper-gog', 'lootscraper_gog_game.xml',
+            'GOG — Gratuit', '#86328A', 'Récupérer sur GOG'),
+        'lootscraper-humble': _lsPreset(
+            'lootscraper-humble', 'lootscraper_humble_game.xml',
+            'Humble — Gratuit', '#CC2929', 'Récupérer sur Humble'),
+        'lootscraper-itch': _lsPreset(
+            'lootscraper-itch', 'lootscraper_itch_game.xml',
+            'itch.io — Gratuit', '#FA5C5C', 'Récupérer sur itch.io'),
+        // Subscription / loot — Amazon & Steam
+        'lootscraper-amazon': _lsPreset(
+            'lootscraper-amazon', 'lootscraper_amazon_game.xml',
+            'Amazon Prime Gaming', '#FF9900', 'Récupérer sur Prime Gaming'),
+        'lootscraper-amazon-loot': _lsPreset(
+            'lootscraper-amazon-loot', 'lootscraper_amazon_loot.xml',
+            'Amazon Prime — Loot', '#FF9900', 'Récupérer sur Prime Gaming',
+            { titleEmoji: '🎁' }),
+        'lootscraper-steam': _lsPreset(
+            'lootscraper-steam', 'lootscraper_steam_game.xml',
+            'Steam — Gratuit', '#66C0F4', 'Récupérer sur Steam'),
+        'lootscraper-steam-loot': _lsPreset(
+            'lootscraper-steam-loot', 'lootscraper_steam_loot.xml',
+            'Steam — Loot', '#66C0F4', 'Récupérer sur Steam',
+            { titleEmoji: '🎁' }),
+        // Mobile stores
+        'lootscraper-epic-android': _lsPreset(
+            'lootscraper-epic-android', 'lootscraper_epic_game_android.xml',
+            'Epic Games — Android', '#0078F2', 'Récupérer sur Epic Games',
+            { titleEmoji: '📱' }),
+        'lootscraper-epic-ios': _lsPreset(
+            'lootscraper-epic-ios', 'lootscraper_epic_game_ios.xml',
+            'Epic Games — iOS', '#0078F2', 'Récupérer sur Epic Games',
+            { titleEmoji: '📱' }),
+        'lootscraper-apple': _lsPreset(
+            'lootscraper-apple', 'lootscraper_apple_game.xml',
+            'App Store — Gratuit', '#007AFF', "Récupérer sur l'App Store",
+            { titleEmoji: '📱' }),
+        'lootscraper-google': _lsPreset(
+            'lootscraper-google', 'lootscraper_google_game.xml',
+            'Google Play — Gratuit', '#34A853', 'Récupérer sur Google Play',
+            { titleEmoji: '📱' }),
     };
+    // "All" bundle keeps the four originals (Epic / Amazon / itch / Steam) so
+    // a fresh install matches the canonical free-PC-games setup.
+    const _LOOTSCRAPER_ALL_PC_GAMES = [
+        'lootscraper-epic', 'lootscraper-gog',
+        'lootscraper-humble', 'lootscraper-itch',
+        'lootscraper-amazon', 'lootscraper-steam',
+    ];
+    const _LOOTSCRAPER_ALL_BASIC = [
+        'lootscraper-epic', 'lootscraper-amazon',
+        'lootscraper-itch', 'lootscraper-steam',
+    ];
 
     function applyRssPreset(select) {
         const value = select.value;
@@ -3995,9 +4036,11 @@
             list = list.previousElementSibling;
         }
         if (!list) return;
-        const ids = (value === 'lootscraper-all')
-            ? ['lootscraper-epic', 'lootscraper-amazon', 'lootscraper-itch', 'lootscraper-steam']
-            : [value];
+        let ids;
+        if (value === 'lootscraper-all') ids = _LOOTSCRAPER_ALL_BASIC;
+        else if (value === 'lootscraper-all-pc') ids = _LOOTSCRAPER_ALL_PC_GAMES;
+        else if (value === 'lootscraper-everything') ids = Object.keys(RSS_PRESETS);
+        else ids = [value];
         const existing = new Set(
             Array.from(list.querySelectorAll('.rssfeed-entry input[data-rss-field="feed_id"]'))
                 .map(i => (i.value || '').trim())
