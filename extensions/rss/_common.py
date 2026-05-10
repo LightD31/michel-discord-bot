@@ -41,9 +41,15 @@ class RssConfig(SchemaBase):
         description=(
             "Une entrée par flux. URL obligatoire, libellé et salon dédié "
             "optionnels. Mode **texte** ou **embed** : en mode embed, "
-            "configurez la couleur, le titre, la description et l'affichage "
-            "de l'image. Variables disponibles dans tous les modèles : "
-            "`{title}`, `{link}`, `{summary}`, `{author}`, `{label}`, `{image}`."
+            "configurez la couleur, le titre, la description (multi-ligne), "
+            "l'image et un bouton de lien optionnel. Le préréglage "
+            "« LootScraper » importe en un clic les flux jeux gratuits Epic, "
+            "Amazon Prime, itch.io et Steam. Variables disponibles dans tous "
+            "les modèles : `{title}`, `{link}`, `{summary}`, `{author}`, "
+            "`{label}`, `{image}`, `{published}`, `{published_short}`, "
+            "`{published_long}`, `{published_relative}`, `{published_date}`, "
+            "`{published_iso}` (les variantes `published_*` produisent des "
+            "timestamps Discord rendus dans le fuseau du lecteur)."
         ),
     )
     rssPollMinutes: int = ui(

@@ -1736,6 +1736,7 @@
 
         .rssfeed-entry input[type="text"],
         .rssfeed-entry input[type="color"],
+        .rssfeed-entry textarea,
         .rssfeed-entry select {
             padding: 6px 8px;
             background: var(--bg-secondary);
@@ -1755,8 +1756,32 @@
         }
 
         .rssfeed-entry input[type="text"]:focus,
+        .rssfeed-entry textarea:focus,
         .rssfeed-entry select:focus {
             border-color: var(--accent);
+        }
+
+        .rssfeed-embed-panel input[data-rss-field="embed_title"],
+        .rssfeed-embed-panel textarea[data-rss-field="embed_description"] {
+            grid-column: 2 / -1;
+        }
+
+        .rssfeed-embed-panel textarea[data-rss-field="embed_description"] {
+            min-height: 80px;
+            resize: vertical;
+            font-family: inherit;
+            line-height: 1.4;
+        }
+
+        .rssfeed-preset-select {
+            margin-left: 10px;
+            padding: 6px 10px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            color: var(--text-primary);
+            font-size: 14px;
+            cursor: pointer;
         }
 
         .rssfeed-field-label {
@@ -3157,6 +3182,14 @@
                     });
                     html += `</div>`;
                     html += `<button type="button" class="btn-add-entry" onclick="addRssFeedEntry(this)">+ Ajouter un flux</button>`;
+                    html += `<select class="rssfeed-preset-select" onchange="applyRssPreset(this)" title="Préréglages prêts à l'emploi">
+                        <option value="">+ Préréglage…</option>
+                        <option value="lootscraper-all">LootScraper — tous (Epic + Amazon + itch.io + Steam)</option>
+                        <option value="lootscraper-epic">LootScraper — Epic Games</option>
+                        <option value="lootscraper-amazon">LootScraper — Amazon Prime</option>
+                        <option value="lootscraper-itch">LootScraper — itch.io</option>
+                        <option value="lootscraper-steam">LootScraper — Steam</option>
+                    </select>`;
                     break;
                 }
 
@@ -3508,6 +3541,8 @@
                 const embedTitle = entry.querySelector('[data-rss-field="embed_title"]')?.value?.trim() || '';
                 const embedDescription = entry.querySelector('[data-rss-field="embed_description"]')?.value?.trim() || '';
                 const embedShowImage = entry.querySelector('[data-rss-field="embed_show_image"]')?.checked;
+                const embedShowLinkButton = entry.querySelector('[data-rss-field="embed_show_link_button"]')?.checked;
+                const embedLinkButtonLabel = entry.querySelector('[data-rss-field="embed_link_button_label"]')?.value?.trim() || '';
                 const cfg = { url };
                 if (label) cfg.label = label;
                 if (channelId) cfg.channel_id = channelId;
@@ -3518,6 +3553,10 @@
                     if (embedTitle) cfg.embed_title = embedTitle;
                     if (embedDescription) cfg.embed_description = embedDescription;
                     cfg.embed_show_image = embedShowImage !== false;
+                    if (embedShowLinkButton) {
+                        cfg.embed_show_link_button = true;
+                        if (embedLinkButtonLabel) cfg.embed_link_button_label = embedLinkButtonLabel;
+                    }
                 }
                 feedMap[feedId] = cfg;
             }
@@ -3827,6 +3866,7 @@
         if (!color.startsWith('#')) color = '#' + color;
         if (!/^#[0-9a-fA-F]{6}$/.test(color)) color = '#5865F2';
         const showImage = cfg.embed_show_image !== false;
+        const showLinkButton = !!cfg.embed_show_link_button;
         return `
             <div class="rssfeed-entry" data-mode="${mode}">
                 <div class="rssfeed-row">
@@ -3849,7 +3889,7 @@
                 </div>
                 <div class="rssfeed-template-row">
                     <span class="rssfeed-field-label">Modèle texte</span>
-                    <input type="text" data-rss-field="template" value="${escapeHtml(cfg.template || '')}" placeholder="ex: **{label}** — [{title}]({link})">
+                    <textarea data-rss-field="template" rows="2" placeholder="ex: **{label}** — [{title}]({link})">${escapeHtml(cfg.template || '')}</textarea>
                 </div>
                 <div class="rssfeed-embed-panel">
                     <span class="rssfeed-field-label">Couleur</span>
@@ -3862,7 +3902,14 @@
                     <span class="rssfeed-field-label">Titre embed</span>
                     <input type="text" data-rss-field="embed_title" value="${escapeHtml(cfg.embed_title || '')}" placeholder="{title}">
                     <span class="rssfeed-field-label">Description</span>
-                    <input type="text" data-rss-field="embed_description" value="${escapeHtml(cfg.embed_description || '')}" placeholder="{summary}">
+                    <textarea data-rss-field="embed_description" rows="4" placeholder="{summary}">${escapeHtml(cfg.embed_description || '')}</textarea>
+                    <span class="rssfeed-field-label">Bouton lien</span>
+                    <label class="rssfeed-toggle">
+                        <input type="checkbox" data-rss-field="embed_show_link_button" ${showLinkButton ? 'checked' : ''}>
+                        <span>Afficher un bouton vers l'article</span>
+                    </label>
+                    <span class="rssfeed-field-label">Libellé bouton</span>
+                    <input type="text" data-rss-field="embed_link_button_label" value="${escapeHtml(cfg.embed_link_button_label || '')}" placeholder="Voir l'article">
                 </div>
             </div>`;
     }
@@ -3881,6 +3928,91 @@
         list.appendChild(entry);
         if (typeof populateChannelPickers === 'function') populateChannelPickers(entry);
         entry.querySelector('input[type="text"]').focus();
+    }
+
+    // Shared default templates for the LootScraper free-game feeds. Description
+    // uses {summary} flattened by the parser plus a Discord timestamp tag for
+    // the publish time, and the link goes onto a Discord link button rather
+    // than being embedded inline.
+    const _LOOTSCRAPER_DESC = '{summary}\n\n🕐 Publié {published_relative} ({published_short})';
+    const RSS_PRESETS = {
+        'lootscraper-epic': {
+            feed_id: 'lootscraper-epic',
+            url: 'https://feed.eikowagenknecht.com/lootscraper_epic_game.xml',
+            label: 'Epic Games — Gratuit',
+            mode: 'embed',
+            embed_color: '#0078F2',
+            embed_title: '🎮 {title}',
+            embed_description: _LOOTSCRAPER_DESC,
+            embed_show_image: true,
+            embed_show_link_button: true,
+            embed_link_button_label: 'Récupérer sur Epic Games',
+        },
+        'lootscraper-amazon': {
+            feed_id: 'lootscraper-amazon',
+            url: 'https://feed.eikowagenknecht.com/lootscraper_amazon_game.xml',
+            label: 'Amazon Prime Gaming',
+            mode: 'embed',
+            embed_color: '#FF9900',
+            embed_title: '🎮 {title}',
+            embed_description: _LOOTSCRAPER_DESC,
+            embed_show_image: true,
+            embed_show_link_button: true,
+            embed_link_button_label: 'Récupérer sur Prime Gaming',
+        },
+        'lootscraper-itch': {
+            feed_id: 'lootscraper-itch',
+            url: 'https://feed.eikowagenknecht.com/lootscraper_itch_game.xml',
+            label: 'itch.io — Gratuit',
+            mode: 'embed',
+            embed_color: '#FA5C5C',
+            embed_title: '🎮 {title}',
+            embed_description: _LOOTSCRAPER_DESC,
+            embed_show_image: true,
+            embed_show_link_button: true,
+            embed_link_button_label: 'Récupérer sur itch.io',
+        },
+        'lootscraper-steam': {
+            feed_id: 'lootscraper-steam',
+            url: 'https://feed.eikowagenknecht.com/lootscraper_steam_game.xml',
+            label: 'Steam — Gratuit',
+            mode: 'embed',
+            embed_color: '#66C0F4',
+            embed_title: '🎮 {title}',
+            embed_description: _LOOTSCRAPER_DESC,
+            embed_show_image: true,
+            embed_show_link_button: true,
+            embed_link_button_label: 'Récupérer sur Steam',
+        },
+    };
+
+    function applyRssPreset(select) {
+        const value = select.value;
+        select.value = '';
+        if (!value) return;
+        let list = select.previousElementSibling;
+        while (list && !(list.classList && list.classList.contains('rssfeed-list'))) {
+            list = list.previousElementSibling;
+        }
+        if (!list) return;
+        const ids = (value === 'lootscraper-all')
+            ? ['lootscraper-epic', 'lootscraper-amazon', 'lootscraper-itch', 'lootscraper-steam']
+            : [value];
+        const existing = new Set(
+            Array.from(list.querySelectorAll('.rssfeed-entry input[data-rss-field="feed_id"]'))
+                .map(i => (i.value || '').trim())
+                .filter(Boolean)
+        );
+        for (const id of ids) {
+            const preset = RSS_PRESETS[id];
+            if (!preset || existing.has(preset.feed_id)) continue;
+            const wrapper = document.createElement('div');
+            wrapper.innerHTML = renderRssFeedEntry(preset.feed_id, preset).trim();
+            const entry = wrapper.firstElementChild;
+            list.appendChild(entry);
+            if (typeof populateChannelPickers === 'function') populateChannelPickers(entry);
+            existing.add(preset.feed_id);
+        }
     }
 
     function addSpotifyUserEntry(btn) {

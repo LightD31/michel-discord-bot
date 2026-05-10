@@ -19,7 +19,10 @@ module-level default channel.
 from __future__ import annotations
 
 from interactions import (
+    ActionRow,
     BaseChannel,
+    Button,
+    ButtonStyle,
     Client,
     Embed,
     Extension,
@@ -65,6 +68,33 @@ def _iter_feeds(srv_config: dict):
             yield str(feed_id), {"url": cfg}
 
 
+def _published_tokens(entry: RssEntry) -> dict[str, str]:
+    """Return Discord timestamp tags for ``entry.published``.
+
+    Each style mirrors a Discord timestamp format identifier — clients render
+    them in the viewer's locale and timezone. Empty strings if the feed entry
+    didn't expose a publish/updated date.
+    """
+    if not entry.published:
+        return {
+            "published": "",
+            "published_short": "",
+            "published_long": "",
+            "published_relative": "",
+            "published_date": "",
+            "published_iso": "",
+        }
+    ts = int(entry.published.timestamp())
+    return {
+        "published": f"<t:{ts}:F>",
+        "published_short": f"<t:{ts}:f>",
+        "published_long": f"<t:{ts}:F>",
+        "published_relative": f"<t:{ts}:R>",
+        "published_date": f"<t:{ts}:D>",
+        "published_iso": entry.published.isoformat(),
+    }
+
+
 def _format_template(template: str, *, label: str, entry: RssEntry, fallback: str) -> str:
     """Apply ``str.format`` with the entry context, swallowing bad placeholders."""
     try:
@@ -75,6 +105,7 @@ def _format_template(template: str, *, label: str, entry: RssEntry, fallback: st
             author=entry.author,
             label=label,
             image=entry.image_url,
+            **_published_tokens(entry),
         )
     except (KeyError, IndexError):
         return fallback
@@ -139,6 +170,25 @@ def _render_embed(feed_id: str, feed_cfg: dict, entry: RssEntry) -> Embed:
         embed.timestamp = entry.published
     embed.set_footer(text=label[:2048])
     return embed
+
+
+def _build_link_button(feed_cfg: dict, entry: RssEntry) -> list[ActionRow] | None:
+    """Build a Discord link-button row for the entry URL when enabled.
+
+    Returns ``None`` when the feature is off or the entry has no link, since
+    Discord rejects link buttons without a URL.
+    """
+    if not feed_cfg.get("embed_show_link_button"):
+        return None
+    if not entry.link:
+        return None
+    raw_label = (feed_cfg.get("embed_link_button_label") or "").strip()
+    label = raw_label[:80] if raw_label else "Voir l'article"
+    try:
+        return [ActionRow(Button(style=ButtonStyle.LINK, url=entry.link, label=label))]
+    except Exception as e:  # noqa: BLE001 — bad URL shouldn't lose the post
+        logger.debug("Could not build RSS link button for %s: %s", entry.link, e)
+        return None
 
 
 def _poll_minutes(srv_config: dict) -> int:
@@ -264,11 +314,18 @@ class RssExtension(Extension):
         posted_ids: list[str] = []
         for entry in new_entries:
             try:
+                components = _build_link_button(feed_cfg, entry)
+                send_kwargs: dict = {}
+                if components is not None:
+                    send_kwargs["components"] = components
                 if mode == "embed":
                     embed = _render_embed(feed_id, feed_cfg, entry)
-                    await channel.send(embeds=[embed])  # type: ignore[union-attr]
+                    await channel.send(embeds=[embed], **send_kwargs)  # type: ignore[union-attr]
                 else:
-                    await channel.send(_render_text(feed_id, feed_cfg, entry))  # type: ignore[union-attr]
+                    await channel.send(
+                        _render_text(feed_id, feed_cfg, entry),
+                        **send_kwargs,  # type: ignore[union-attr]
+                    )
                 posted_ids.append(entry.entry_id)
             except Exception as e:
                 logger.warning("Failed to send RSS entry %s: %s", entry.entry_id, e)
