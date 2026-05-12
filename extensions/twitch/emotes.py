@@ -304,9 +304,11 @@ class EmotesMixin:
                             embed.add_field(name="Action", value="Suppression", inline=True)
 
                             if cached_file:
+                                attachment_name = f"{emote_name}.png"
+                                embed.set_thumbnail(url=f"attachment://{attachment_name}")
                                 await streamer.notif_channel.send(
                                     embed=embed,
-                                    files=[File(cached_file, file_name=f"{emote_name}.png")],
+                                    files=[File(cached_file, file_name=attachment_name)],
                                 )
                             else:
                                 await streamer.notif_channel.send(embed=embed)
