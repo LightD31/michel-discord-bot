@@ -161,8 +161,14 @@ class EmotesMixin:
                             "url_4x",
                             new_emote.images.get("url_2x", new_emote.images.get("url_1x")),
                         )
+                        new_cached_file = await self.download_emote_image(
+                            new_emote.id, new_image_url, streamer_id
+                        )
 
                         logger.info(f"Replaced emote for {streamer_id}: {new_emote.name}")
+
+                        old_attachment_name = f"old_{new_emote.name}.png"
+                        new_attachment_name = f"new_{new_emote.name}.png"
 
                         for streamer in guild_streamers:
                             if not streamer.notify_emote_changes:
@@ -187,41 +193,30 @@ class EmotesMixin:
                                 inline=True,
                             )
                             embed.add_field(name="Action", value="Remplacement", inline=True)
-                            if new_image_url:
+
+                            files: list[File] = []
+                            if old_cached_file and new_cached_file:
+                                # Multi-image trick: needs a shared embed url so Discord
+                                # merges the extra image embeds onto the main one.
+                                embed.url = f"https://twitch.tv/{streamer_id}"
+                                embed.set_images(
+                                    f"attachment://{old_attachment_name}",
+                                    f"attachment://{new_attachment_name}",
+                                )
+                                files = [
+                                    File(old_cached_file, file_name=old_attachment_name),
+                                    File(new_cached_file, file_name=new_attachment_name),
+                                ]
+                            elif new_cached_file:
+                                embed.set_image(url=f"attachment://{new_attachment_name}")
+                                files = [File(new_cached_file, file_name=new_attachment_name)]
+                            elif new_image_url:
                                 embed.set_thumbnail(url=new_image_url)
 
-                            if old_cached_file:
-                                embed.add_field(
-                                    name="Ancienne version", value="Image jointe", inline=True
-                                )
-                                embed.add_field(
-                                    name="Nouvelle version",
-                                    value="Thumbnail de l'embed",
-                                    inline=True,
-                                )
-                                await streamer.notif_channel.send(
-                                    embed=embed,
-                                    files=[
-                                        File(
-                                            old_cached_file,
-                                            file_name=f"old_{new_emote.name}.png",
-                                        )
-                                    ],
-                                )
-                            else:
-                                embed.add_field(
-                                    name="Nouvelle version",
-                                    value="Thumbnail de l'embed",
-                                    inline=True,
-                                )
-                                await streamer.notif_channel.send(embed=embed)
+                            await streamer.notif_channel.send(embed=embed, files=files or None)
 
                         if old_cached_file:
                             self.delete_cached_emote(old_emote_id, streamer_id)
-
-                        new_cached_file = await self.download_emote_image(
-                            new_emote.id, new_image_url, streamer_id
-                        )
 
                         del data[old_emote_id]
                         data[new_emote.id] = {
