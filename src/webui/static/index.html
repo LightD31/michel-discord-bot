@@ -3956,6 +3956,12 @@
                     <span class="rssfeed-field-label">Libellé bouton</span>
                     <input type="text" data-rss-field="embed_link_button_label" value="${escapeHtml(cfg.embed_link_button_label || '')}" placeholder="Voir l'article">
                 </div>
+                <div class="messagelist-variables" style="margin-top:8px;">
+                    <span>Variables : </span>
+                    ${['{title}','{link}','{summary}','{label}','{author}','{image}','{published_date}'].map(v =>
+                        `<button type="button" class="var-chip" data-var="${v}" onmousedown="insertVariable(event,this)">${v}</button>`
+                    ).join('')}
+                </div>
             </div>`;
     }
 
