@@ -2099,8 +2099,31 @@
         .messagelist-variables {
             font-size: 12px;
             color: var(--text-muted);
-            margin-top: 4px;
-            font-style: italic;
+            margin-top: 6px;
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .var-chip {
+            display: inline-flex;
+            align-items: center;
+            background: rgba(88, 101, 242, 0.08);
+            border: 1px solid rgba(88, 101, 242, 0.25);
+            border-radius: 4px;
+            padding: 1px 7px;
+            font-size: 11px;
+            font-family: monospace;
+            color: var(--accent);
+            cursor: pointer;
+            transition: background 0.15s, border-color 0.15s;
+            user-select: none;
+        }
+
+        .var-chip:hover {
+            background: rgba(88, 101, 242, 0.18);
+            border-color: var(--accent);
         }
 
         @media (max-width: 768px) {
@@ -3252,7 +3275,11 @@
                     });
                     html += `</div>`;
                     if (field.variables) {
-                        html += `<div class="messagelist-variables">Variables disponibles : ${escapeHtml(field.variables)}</div>`;
+                        const varChips = field.variables.split(',').map(v => {
+                            const vt = v.trim();
+                            return `<button type="button" class="var-chip" data-var="${escapeHtml(vt)}" onmousedown="insertVariable(event,this)">${escapeHtml(vt)}</button>`;
+                        }).join('');
+                        html += `<div class="messagelist-variables"><span>Variables : </span>${varChips}</div>`;
                     }
                     html += `<button type="button" class="btn-add-entry" onclick="addMessageEntry(this)">+ Ajouter un message</button>`;
                     break;
@@ -4182,6 +4209,18 @@
         list.appendChild(entry);
         populateChannelPickers(entry);
         entry.querySelector('input[data-team-field="name"]').focus();
+    }
+
+    function insertVariable(event, btn) {
+        event.preventDefault();
+        const variable = btn.dataset.var;
+        const input = document.activeElement;
+        if (!input || (input.tagName !== 'INPUT' && input.tagName !== 'TEXTAREA')) return;
+        const start = input.selectionStart ?? input.value.length;
+        const end = input.selectionEnd ?? input.value.length;
+        input.value = input.value.slice(0, start) + variable + input.value.slice(end);
+        input.selectionStart = input.selectionEnd = start + variable.length;
+        input.dispatchEvent(new Event('input', { bubbles: true }));
     }
 
     function addMessageEntry(btn) {
