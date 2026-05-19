@@ -145,9 +145,13 @@ def _extract_image(entry: Element, summary_html: str = "") -> str:
     """Return the best image URL for *entry*.
 
     Walks namespaced media elements (``media:thumbnail``, ``media:content``)
-    and ``enclosure`` tags, falling back to scanning the rendered
-    summary/content HTML for an ``<img src>``.
+    and ``enclosure`` tags, then inline XHTML ``<img>`` children (Atom
+    ``<content type="xhtml">`` parses image tags as real XML elements rather
+    than escaped HTML text — that's how LootScraper exposes cover art).
+    Falls back to scanning the rendered summary/content HTML for an
+    ``<img src>``.
     """
+    img_fallback = ""
     for child in entry.iter():
         local = _localname(child.tag)
         if local == "thumbnail":
@@ -167,6 +171,12 @@ def _extract_image(entry: Element, summary_html: str = "") -> str:
                 url = child.get("url") or child.get("href")
                 if url:
                     return url.strip()
+        if local == "img" and not img_fallback:
+            src = child.get("src")
+            if src:
+                img_fallback = src.strip()
+    if img_fallback:
+        return img_fallback
     return _extract_image_from_html(summary_html)
 
 
