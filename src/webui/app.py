@@ -35,6 +35,9 @@ from src.webui.routes import (
 from src.webui.routes import (
     servers as servers_routes,
 )
+from src.webui.routes import (
+    spotify as spotify_routes,
+)
 from src.webui.sse import logs as logs_sse
 
 logger = logutil.init_logger("webui.app")
@@ -79,6 +82,7 @@ def create_app(bot=None, bot_loop=None) -> FastAPI:
     app.include_router(servers_routes.create_router(ctx))
     app.include_router(rolemenus_routes.create_router(ctx))
     app.include_router(extensions_routes.create_router(ctx))
+    app.include_router(spotify_routes.create_router(ctx))
     app.include_router(bot_routes.create_router(ctx))
     app.include_router(logs_sse.create_router(ctx))
     app.include_router(frontend_routes.create_router(ctx))

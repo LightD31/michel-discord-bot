@@ -3,9 +3,10 @@
 Permet l'ajout, la suppression et le vote de morceaux dans des playlists
 Spotify partagées par serveur.
 
-The class is assembled as a mixin composition so that each concern lives in its
-own module (``auth``, ``playlist``, ``votes``). Shared data classes, constants,
-and embed builders are in :mod:`._common`.
+The class is assembled as a mixin composition so that each concern lives in
+its own module (``playlist``, ``votes``). Shared data classes, constants, and
+embed builders are in :mod:`._common`. OAuth re-authorization moved to the
+Web UI dashboard (``src/webui/routes/spotify.py``).
 """
 
 import os
@@ -16,15 +17,14 @@ from interactions import Client, Extension, listen
 from src.core import logging as logutil
 
 from ._common import SERVERS, ServerData
-from .auth import AuthMixin
 from .playlist import PlaylistMixin
 from .votes import VotesMixin
 
 logger = logutil.init_logger(os.path.basename(__file__))
 
 
-class SpotifyExtension(Extension, AuthMixin, PlaylistMixin, VotesMixin):
-    """Discord extension combining auth, playlist, and vote behaviours."""
+class SpotifyExtension(Extension, PlaylistMixin, VotesMixin):
+    """Discord extension combining playlist and vote behaviours."""
 
     def __init__(self, bot: Client):
         self.bot: Client = bot

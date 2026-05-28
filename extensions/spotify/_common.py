@@ -20,7 +20,7 @@ from src.core.config import load_config, load_discord2name
 from src.core.db import mongo_manager
 from src.core.http import http_client
 from src.discord_ext.embeds import Colors
-from src.integrations.spotify import spotify_auth
+from src.integrations.spotify import sp
 from src.webui.schemas import (
     SchemaBase,
     enabled_field,
@@ -84,9 +84,6 @@ class SpotifyConfig(SchemaBase):
 
 config, module_config, enabled_servers = load_config("moduleSpotify")
 
-SPOTIFY_CLIENT_ID = config["spotify"]["spotifyClientId"]
-SPOTIFY_CLIENT_SECRET = config["spotify"]["spotifyClientSecret"]
-SPOTIFY_REDIRECT_URI = config["spotify"]["spotifyRedirectUri"]
 DEV_GUILD = config["discord"]["devGuildId"]
 DATA_FOLDER = config["misc"]["dataFolder"]
 COOLDOWN_TIME = 1
@@ -96,8 +93,9 @@ SPOTIFY_ICON_URL = (
     "Spotify_logo_without_text.svg/200px-Spotify_logo_without_text.svg.png"
 )
 
-# Shared Spotipy client — built once at import time.
-sp = spotify_auth()
+# ``sp`` is a lazy proxy from ``src.integrations.spotify`` — the real spotipy
+# client is built on first use so the bot still starts when the token cache is
+# missing. Re-authorize via the Web UI (``/api/spotify/auth/start``).
 
 
 class EmbedType(Enum):
