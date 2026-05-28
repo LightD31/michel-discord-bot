@@ -112,13 +112,21 @@ def _format_template(template: str, *, label: str, entry: RssEntry, fallback: st
 
 
 def _render_text(feed_id: str, feed_cfg: dict, entry: RssEntry) -> str:
-    """Render a plain-text/markdown message for ``mode="text"``."""
+    """Render a plain-text/markdown message for ``mode="text"``.
+
+    Clipped to Discord's 2000-char message-content limit; the parser caps the
+    summary near the embed limit so the same summary fed into a text template
+    can occasionally need clipping here.
+    """
     label = feed_cfg.get("label") or feed_id
     template = feed_cfg.get("template") or DEFAULT_TEMPLATE
     fallback = DEFAULT_TEMPLATE.format(
         title=entry.title, link=entry.link, label=label, summary="", author="", image=""
     )
-    return _format_template(template, label=label, entry=entry, fallback=fallback)
+    rendered = _format_template(template, label=label, entry=entry, fallback=fallback)
+    if len(rendered) > 2000:
+        rendered = rendered[:1999].rstrip() + "…"
+    return rendered
 
 
 def _parse_color(value: object) -> int | None:

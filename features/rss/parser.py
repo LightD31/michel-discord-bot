@@ -25,6 +25,23 @@ from src.core.errors import IntegrationError
 _TAG_RE = re.compile(r"<[^>]+>")
 _ATOM_NS = "{http://www.w3.org/2005/Atom}"
 _IMG_SRC_RE = re.compile(r"""<img[^>]*\bsrc=["']([^"']+)["']""", re.IGNORECASE)
+_BR_RE = re.compile(r"<br\s*/?>", re.IGNORECASE)
+_HR_RE = re.compile(r"<hr\s*/?>", re.IGNORECASE)
+_BLOCK_END_RE = re.compile(
+    r"</(p|div|li|ul|ol|h[1-6]|tr|blockquote|section|article|header|footer)\s*>",
+    re.IGNORECASE,
+)
+# Drop fine-print blocks (``<small>``) entirely — they're typically source /
+# generator credits that just add noise in a Discord embed.
+_SMALL_RE = re.compile(r"<small[^>]*>.*?</small>", re.IGNORECASE | re.DOTALL)
+_BOLD_RE = re.compile(r"</?(b|strong)\s*>", re.IGNORECASE)
+_LINK_RE = re.compile(
+    r"""<a\s[^>]*?href=["']([^"']+)["'][^>]*>(.*?)</a>""",
+    re.IGNORECASE | re.DOTALL,
+)
+_PUNCT_LEFT_RE = re.compile(r" +([.,!?:;)\]])")
+_PUNCT_RIGHT_RE = re.compile(r"([(\[]) +")
+_EMPTY_BOLD_RE = re.compile(r"\*\*\s*\*\*")
 
 
 def _extract_image_from_html(html_text: str | None) -> str:
@@ -35,13 +52,56 @@ def _extract_image_from_html(html_text: str | None) -> str:
     return match.group(1) if match else ""
 
 
-def strip_html(text: str | None, *, max_length: int = 400) -> str:
-    """Strip tags + decode entities + collapse whitespace, truncate to ``max_length``."""
+def _link_to_markdown(match: re.Match[str]) -> str:
+    href = match.group(1).strip()
+    inner = _TAG_RE.sub("", match.group(2))
+    inner = " ".join(inner.split())
+    return f"[{inner}]({href})" if inner else href
+
+
+def strip_html(text: str | None, *, max_length: int = 3900) -> str:
+    """Render simple HTML into Discord-friendly markdown.
+
+    Translates the few constructs that map cleanly to Discord's markdown
+    flavor so feeds like LootScraper read like real messages rather than
+    blobs of text:
+
+    * ``<b>`` / ``<strong>`` become ``**bold**``
+    * ``<a href="X">Y</a>`` becomes ``[Y](X)``
+    * ``<br>``, ``<hr>``, and block-level closers (``</p>``, ``</li>``, …)
+      become real newlines
+    * ``<small>…</small>`` is dropped entirely (source/generator credits)
+    * Remaining tags are stripped (replaced with a space to avoid welding
+      adjacent words together)
+
+    Then collapses horizontal whitespace per line, fixes the ``( X )`` /
+    ``Y .`` artifacts left behind by inline-tag stripping, collapses runs
+    of blank lines, and truncates to ``max_length``.
+    """
     if not text:
         return ""
-    cleaned = _TAG_RE.sub(" ", text)
+    cleaned = _SMALL_RE.sub("", text)
+    cleaned = _LINK_RE.sub(_link_to_markdown, cleaned)
+    cleaned = _BR_RE.sub("\n", cleaned)
+    cleaned = _HR_RE.sub("\n", cleaned)
+    cleaned = _BLOCK_END_RE.sub("\n", cleaned)
+    cleaned = _BOLD_RE.sub("**", cleaned)
+    cleaned = _TAG_RE.sub(" ", cleaned)
     cleaned = html.unescape(cleaned)
-    cleaned = " ".join(cleaned.split())
+    out_lines: list[str] = []
+    blank = False
+    for raw_line in cleaned.split("\n"):
+        line = " ".join(raw_line.split())
+        line = _PUNCT_LEFT_RE.sub(r"\1", line)
+        line = _PUNCT_RIGHT_RE.sub(r"\1", line)
+        line = _EMPTY_BOLD_RE.sub("", line).strip()
+        if line:
+            out_lines.append(line)
+            blank = False
+        elif out_lines and not blank:
+            out_lines.append("")
+            blank = True
+    cleaned = "\n".join(out_lines).strip()
     if len(cleaned) > max_length:
         cleaned = cleaned[: max_length - 1].rstrip() + "…"
     return cleaned
