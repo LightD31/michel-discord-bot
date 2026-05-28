@@ -111,8 +111,9 @@ def create_router(ctx: WebUIContext) -> APIRouter:
                     loaded = False
                     logger.info(f"Unloaded extension: {ext_name}")
             except Exception as e:
-                error = str(e)
-                logger.error(f"Failed to {'load' if body.enabled else 'unload'} {ext_name}: {e}")
+                action = "load" if body.enabled else "unload"
+                error = f"Échec ({type(e).__name__}). Voir les logs."
+                logger.error(f"Failed to {action} {ext_name}: {e}")
                 loaded = ext_name in set(ctx.get_extension_module_paths())
 
         return JSONResponse(

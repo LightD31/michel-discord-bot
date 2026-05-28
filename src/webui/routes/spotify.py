@@ -14,6 +14,7 @@ The Spotify app must list ``{webui.baseUrl}/spotify/auth/callback`` as an
 allowed redirect URI, and ``spotify.spotifyRedirectUri`` in config must match.
 """
 
+import html
 import secrets
 from urllib.parse import quote
 
@@ -122,7 +123,10 @@ def create_router(ctx: WebUIContext) -> APIRouter:
             oauth.get_access_token(code=code, as_dict=False, check_cache=False)
         except Exception as e:
             logger.error("Spotify token exchange failed: %s", e)
-            return _result_page(ok=False, message=f"Échec de l'échange du code : {e}")
+            return _result_page(
+                ok=False,
+                message="Échec de l'échange du code. Voir les logs du bot pour le détail.",
+            )
 
         sp.reset()
         account = fetch_account_summary()
@@ -149,8 +153,10 @@ def _result_page(*, ok: bool, message: str) -> HTMLResponse:
     """Tiny self-closing page that bounces back to the dashboard."""
     title = "Spotify connecté" if ok else "Échec de connexion Spotify"
     color = "#1ed760" if ok else "#e53e3e"
-    safe_message = quote(message, safe=" .,:;()@/-_")
-    html = f"""<!doctype html>
+    safe_message_url = quote(message, safe=" .,:;()@/-_")
+    safe_message_html = html.escape(message)
+    status = "ok" if ok else "error"
+    body = f"""<!doctype html>
 <html lang="fr"><head>
 <meta charset="utf-8"><title>{title}</title>
 <style>
@@ -175,7 +181,7 @@ body {{
 </style></head>
 <body><div class="card">
 <h1>{title}</h1>
-<p>{message}</p>
-<a href="/#/global?section=spotify&spotify_auth={"ok" if ok else "error"}&msg={safe_message}">Retour au dashboard</a>
+<p>{safe_message_html}</p>
+<a href="/#/global?section=spotify&spotify_auth={status}&msg={safe_message_url}">Retour au dashboard</a>
 </div></body></html>"""
-    return HTMLResponse(content=html, status_code=200 if ok else 400)
+    return HTMLResponse(content=body, status_code=200 if ok else 400)

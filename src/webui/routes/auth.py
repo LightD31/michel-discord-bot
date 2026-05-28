@@ -8,16 +8,31 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from src.webui.context import COOKIE_NAME, WebUIContext
 
 
+def _is_https(request: Request) -> bool:
+    """Whether the request reached us over HTTPS (honors X-Forwarded-Proto)."""
+    forwarded = request.headers.get("x-forwarded-proto", "").split(",")[0].strip().lower()
+    if forwarded:
+        return forwarded == "https"
+    return request.url.scheme == "https"
+
+
 def create_router(ctx: WebUIContext) -> APIRouter:
     router = APIRouter()
 
     @router.get("/auth/login")
-    async def auth_login():
+    async def auth_login(request: Request):
         """Redirect to Discord OAuth2 login."""
         state = secrets.token_urlsafe(16)
         url = ctx.oauth.get_oauth_url(state)
         response = RedirectResponse(url=url)
-        response.set_cookie("oauth_state", state, httponly=True, max_age=300)
+        response.set_cookie(
+            "oauth_state",
+            state,
+            httponly=True,
+            max_age=300,
+            samesite="lax",
+            secure=_is_https(request),
+        )
         return response
 
     @router.get("/auth/callback")
@@ -40,6 +55,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
             httponly=True,
             max_age=86400,
             samesite="lax",
+            secure=_is_https(request),
         )
         response.delete_cookie("oauth_state")
         return response

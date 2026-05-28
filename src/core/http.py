@@ -23,6 +23,7 @@ from __future__ import annotations
 import asyncio
 import os
 from typing import Any
+from urllib.parse import urlsplit, urlunsplit
 
 from aiohttp import ClientError, ClientSession, ClientTimeout
 
@@ -30,6 +31,36 @@ from src.core import logging as _logging
 from src.core.errors import HttpError
 
 logger = _logging.init_logger(os.path.basename(__file__))
+
+_SENSITIVE_QUERY_KEYS = ("token", "access_token", "key", "api_key", "apikey", "password", "secret")
+
+
+def _redact_url(url: str) -> str:
+    """Strip userinfo and known credential-carrying query params from *url*.
+
+    Used before logging so credentials passed in the URL never end up on disk.
+    """
+    try:
+        parts = urlsplit(url)
+    except ValueError:
+        return "<unparseable url>"
+    netloc = parts.hostname or ""
+    if parts.port:
+        netloc = f"{netloc}:{parts.port}"
+    if parts.username:
+        netloc = f"***@{netloc}"
+    query = parts.query
+    if query:
+        kept = []
+        for pair in query.split("&"):
+            key, sep, _ = pair.partition("=")
+            if key.lower() in _SENSITIVE_QUERY_KEYS:
+                kept.append(f"{key}{sep}***" if sep else key)
+            else:
+                kept.append(pair)
+        query = "&".join(kept)
+    return urlunsplit((parts.scheme, netloc, parts.path, query, parts.fragment))
+
 
 # Default User-Agent kept identical to the previous ``src/utils.fetch`` impl
 # so servers that gate on UA keep accepting our requests.
@@ -116,25 +147,26 @@ async def fetch(
     if headers:
         merged_headers.update(headers)
 
+    safe_url = _redact_url(url)
     last_status: int | None = None
     for attempt in range(retries):
         try:
             async with session.get(url, headers=merged_headers, params=params) as response:
                 last_status = response.status
                 if response.status >= 500:
-                    logger.error("Failed to fetch %s: Status %s", url, response.status)
+                    logger.error("Failed to fetch %s: Status %s", safe_url, response.status)
                     if attempt < retries - 1:
                         await asyncio.sleep(pause * (attempt + 1))
                         continue
                     raise HttpError(
-                        f"Failed to fetch {url}",
+                        f"Failed to fetch {safe_url}",
                         url=url,
                         status=response.status,
                     )
                 if response.status != 200:
-                    logger.error("Failed to fetch %s: Status %s", url, response.status)
+                    logger.error("Failed to fetch %s: Status %s", safe_url, response.status)
                     raise HttpError(
-                        f"Failed to fetch {url}",
+                        f"Failed to fetch {safe_url}",
                         url=url,
                         status=response.status,
                     )
@@ -142,17 +174,17 @@ async def fetch(
                     return await response.text()
                 return await response.json()
         except (TimeoutError, ClientError) as e:
-            logger.error("Error fetching %s: %s", url, e)
+            logger.error("Error fetching %s: %s", safe_url, e)
             if attempt == retries - 1:
                 raise HttpError(
-                    f"Error fetching {url}: {e}",
+                    f"Error fetching {safe_url}: {e}",
                     url=url,
                     status=last_status,
                 ) from e
             await asyncio.sleep(pause)
 
     # Loop exits only on repeated retryable 5xx without raising — guard rail.
-    raise HttpError(f"Failed to fetch {url}", url=url, status=last_status)
+    raise HttpError(f"Failed to fetch {safe_url}", url=url, status=last_status)
 
 
 __all__ = ["HttpClient", "fetch", "http_client"]

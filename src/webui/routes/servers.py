@@ -46,7 +46,11 @@ def _try_reload_extension_for_module(ctx: WebUIContext, module_name: str) -> dic
         return {"reloaded": ext_path, "error": None, "skipped": False}
     except Exception as e:
         logger.error(f"Auto-reload failed for {ext_path}: {e}")
-        return {"reloaded": None, "error": str(e), "skipped": False}
+        return {
+            "reloaded": None,
+            "error": f"Échec du rechargement ({type(e).__name__}). Voir les logs.",
+            "skipped": False,
+        }
 
 
 def create_router(ctx: WebUIContext) -> APIRouter:
