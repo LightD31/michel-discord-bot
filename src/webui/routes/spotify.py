@@ -153,8 +153,9 @@ def _result_page(*, ok: bool, message: str) -> HTMLResponse:
     """Tiny self-closing page that bounces back to the dashboard."""
     title = "Spotify connecté" if ok else "Échec de connexion Spotify"
     color = "#1ed760" if ok else "#e53e3e"
-    safe_message_url = quote(message, safe=" .,:;()@/-_")
     safe_message_html = html.escape(message)
+    # URL-encode first, then HTML-escape for safe embedding inside an href attribute.
+    safe_message_url = html.escape(quote(message, safe=" .,:;()@/-_"), quote=True)
     status = "ok" if ok else "error"
     body = f"""<!doctype html>
 <html lang="fr"><head>
