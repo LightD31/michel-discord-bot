@@ -3009,6 +3009,12 @@
 
         const btnLabel = s.authorized ? '🔄 Re-authoriser' : '🔑 Se connecter';
         const btnClass = s.authorized ? 'btn btn-ghost btn-sm' : 'btn btn-primary btn-sm';
+        const cbUrl = s.callback_url || '';
+        const cbHint = cbUrl ? `
+            <div style="margin-top:8px;padding:8px;background:var(--bg-primary);border-radius:6px;font-size:0.8rem;color:var(--text-muted)">
+                Redirect URI à enregistrer dans le dashboard Spotify :
+                <code style="user-select:all">${escapeHtml(cbUrl)}</code>
+            </div>` : '';
 
         return `
             <div style="margin-top:12px;padding:12px;background:var(--bg-secondary);border-radius:8px;border:1px solid var(--border)">
@@ -3017,6 +3023,7 @@
                     <button class="${btnClass}" onclick="startSpotifyAuth()">${btnLabel}</button>
                 </div>
                 ${body}
+                ${cbHint}
             </div>
         `;
     }

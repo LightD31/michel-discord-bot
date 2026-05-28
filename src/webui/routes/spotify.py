@@ -21,6 +21,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
 from src.core import logging as logutil
+from src.core.config import config_store
 from src.integrations.spotify import (
     build_oauth,
     fetch_account_summary,
@@ -32,6 +33,19 @@ from src.webui.context import WebUIContext
 logger = logutil.init_logger("webui.routes.spotify")
 
 STATE_COOKIE = "spotify_oauth_state"
+CALLBACK_PATH = "/spotify/auth/callback"
+
+
+def _callback_url() -> str:
+    """Build the OAuth callback URL from ``webui.baseUrl``.
+
+    Single source of truth: avoids drift between the URL we send to Spotify
+    in ``/start`` and the one we declare in ``/callback`` for the token
+    exchange — both must match, and both must match what's registered in the
+    Spotify developer dashboard.
+    """
+    base = config_store.get().get("config", {}).get("webui", {}).get("baseUrl", "")
+    return f"{base.rstrip('/')}{CALLBACK_PATH}"
 
 
 def create_router(ctx: WebUIContext) -> APIRouter:
@@ -42,6 +56,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
         """Report whether the Spotify token cache is populated and valid."""
         ctx.require_admin(request)
         status = get_token_status()
+        status["callback_url"] = _callback_url()
         if status.get("authorized"):
             status["account"] = fetch_account_summary()
         return JSONResponse(status)
@@ -50,18 +65,27 @@ def create_router(ctx: WebUIContext) -> APIRouter:
     async def spotify_auth_start(request: Request):
         """Begin Spotify OAuth: redirect the admin to Spotify's authorize page."""
         ctx.require_admin(request)
+        redirect_uri = _callback_url()
+        if not redirect_uri.endswith(CALLBACK_PATH) or redirect_uri == CALLBACK_PATH:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Configure d'abord webui.baseUrl (section « Dashboard Web ») "
+                    "pour que le callback OAuth pointe vers le dashboard."
+                ),
+            )
         try:
-            oauth = build_oauth()
+            oauth = build_oauth(redirect_uri=redirect_uri)
         except Exception as e:
             raise HTTPException(
                 status_code=500, detail=f"Configuration Spotify invalide : {e}"
             ) from e
-        if not oauth.client_id or not oauth.client_secret or not oauth.redirect_uri:
+        if not oauth.client_id or not oauth.client_secret:
             raise HTTPException(
                 status_code=400,
                 detail=(
-                    "Client ID, Client Secret et Redirect URI doivent être renseignés "
-                    "dans la section Spotify de la configuration globale."
+                    "Client ID et Client Secret doivent être renseignés dans la "
+                    "section Spotify de la configuration globale."
                 ),
             )
 
@@ -94,7 +118,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
             return _result_page(ok=False, message="Code d'autorisation manquant.")
 
         try:
-            oauth = build_oauth()
+            oauth = build_oauth(redirect_uri=_callback_url())
             oauth.get_access_token(code=code, as_dict=False, check_cache=False)
         except Exception as e:
             logger.error("Spotify token exchange failed: %s", e)
