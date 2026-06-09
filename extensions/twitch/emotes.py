@@ -4,8 +4,8 @@ import os
 
 from interactions import File, OrTrigger, Task, TimeTrigger
 
+from features.twitch import TwitchEmotesRepository
 from src.core import logging as logutil
-from src.core.db import mongo_manager
 from src.core.http import http_client
 from src.discord_ext.embeds import Colors
 
@@ -91,18 +91,12 @@ class EmotesMixin:
 
             try:
                 emotes = await self.twitch.get_channel_emotes(user_id)
-                emote_col = mongo_manager.get_global_collection(f"twitch_emotes_{streamer_id}")
+                emote_repo = TwitchEmotesRepository(streamer_id)
 
                 # Load existing emotes from MongoDB (global, shared across guilds).
-                # Schema: {_id: emote_id, name: str, cached_file: str | None}
                 data: dict[str, dict] = {}
                 try:
-                    async for doc in emote_col.find():
-                        emote_id = doc["_id"]
-                        data[emote_id] = {
-                            "name": doc.get("name", ""),
-                            "cached_file": doc.get("cached_file"),
-                        }
+                    data = await emote_repo.load_all()
                 except Exception as e:
                     logger.error(f"Error loading emotes from MongoDB for {streamer_id}: {e}")
 
@@ -130,7 +124,7 @@ class EmotesMixin:
                             {"_id": emote.id, "name": emote.name, "cached_file": cached_file}
                         )
                     if docs:
-                        await emote_col.insert_many(docs)
+                        await emote_repo.insert_many(docs)
                     continue
 
                 # Detect replaced emotes (same name, different ID).
@@ -330,17 +324,15 @@ class EmotesMixin:
                     if emote.id in data
                 )
                 if truly_new_emotes or truly_deleted_emotes or replaced_emotes or has_cache_updates:
-                    await emote_col.delete_many({})
-                    if data:
-                        docs = [
-                            {
-                                "_id": eid,
-                                "name": edata["name"],
-                                "cached_file": edata.get("cached_file"),
-                            }
-                            for eid, edata in data.items()
-                        ]
-                        await emote_col.insert_many(docs)
+                    docs = [
+                        {
+                            "_id": eid,
+                            "name": edata["name"],
+                            "cached_file": edata.get("cached_file"),
+                        }
+                        for eid, edata in data.items()
+                    ]
+                    await emote_repo.replace_all(docs)
 
             except Exception as e:
                 logger.error(f"Error checking emotes for {streamer_id}: {e}")

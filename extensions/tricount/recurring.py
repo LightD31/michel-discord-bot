@@ -18,6 +18,7 @@ from interactions import (
     slash_option,
 )
 
+from features.tricount import TricountRepository
 from src.core import logging as logutil
 from src.discord_ext.autocomplete import guild_group_autocomplete
 from src.discord_ext.embeds import Colors
@@ -27,9 +28,6 @@ from ._common import (
     DEFAULT_CATEGORIES,
     DEFAULT_CATEGORY,
     enabled_servers,
-    expenses_col,
-    groups_col,
-    recurring_col,
 )
 
 logger = logutil.init_logger(os.path.basename(__file__))
@@ -55,8 +53,7 @@ class RecurringMixin:
         # Indexes are best-effort; failure here shouldn't break extension load.
         for guild_id in enabled_servers:
             try:
-                await recurring_col(guild_id).create_index("next_run", name="next_run_idx")
-                await recurring_col(guild_id).create_index("active", name="active_idx")
+                await TricountRepository(guild_id).ensure_recurring_indexes()
             except Exception as e:
                 logger.debug("Could not init recurring indexes for %s: %s", guild_id, e)
         self.recurring_tick.start()
@@ -121,7 +118,8 @@ class RecurringMixin:
             await ctx.send("❌ Le montant doit être positif.", ephemeral=True)
             return
 
-        group = await groups_col(ctx.guild.id).find_one({"name": groupe, "is_active": True})
+        repo = TricountRepository(ctx.guild.id)
+        group = await repo.find_active_group(groupe)
         if not group or ctx.author.id not in group["members"]:
             await ctx.send("❌ Groupe introuvable ou non membre.", ephemeral=True)
             return
@@ -141,7 +139,7 @@ class RecurringMixin:
             "active": True,
             "created_at": datetime.now(),
         }
-        result = await recurring_col(ctx.guild.id).insert_one(doc)
+        inserted_id = await repo.add_recurring(doc)
         embed = Embed(
             title="✅ Dépense récurrente créée",
             description=(
@@ -150,12 +148,12 @@ class RecurringMixin:
             ),
             color=Colors.SUCCESS,
         )
-        embed.set_footer(text=f"ID : {result.inserted_id}")
+        embed.set_footer(text=f"ID : {inserted_id}")
         await ctx.send(embed=embed)
 
     @depense_recurrente_ajouter.autocomplete("groupe")
     async def _ajouter_groupe_ac(self, ctx: AutocompleteContext):
-        await guild_group_autocomplete(ctx, groups_col)
+        await guild_group_autocomplete(ctx, TricountRepository.groups_collection)
 
     @depense_recurrente_ajouter.autocomplete("categorie")
     async def _ajouter_categorie_ac(self, ctx: AutocompleteContext):
@@ -179,12 +177,7 @@ class RecurringMixin:
     async def depense_recurrente_lister(self, ctx: SlashContext, groupe: str | None = None):
         if not await require_guild(ctx):
             return
-        query: dict = {"active": True, "added_by": ctx.author.id}
-        if groupe:
-            query["group_name"] = groupe
-        docs = (
-            await recurring_col(ctx.guild.id).find(query).sort("next_run", 1).to_list(length=None)
-        )
+        docs = await TricountRepository(ctx.guild.id).list_active_recurring(ctx.author.id, groupe)
         if not docs:
             await ctx.send("Aucune dépense récurrente active.", ephemeral=True)
             return
@@ -208,7 +201,7 @@ class RecurringMixin:
 
     @depense_recurrente_lister.autocomplete("groupe")
     async def _lister_groupe_ac(self, ctx: AutocompleteContext):
-        await guild_group_autocomplete(ctx, groups_col)
+        await guild_group_autocomplete(ctx, TricountRepository.groups_collection)
 
     @depense_recurrente_ajouter.subcommand(
         sub_cmd_name="arreter",
@@ -228,11 +221,10 @@ class RecurringMixin:
         except Exception:
             await ctx.send("❌ ID invalide.", ephemeral=True)
             return
-        result = await recurring_col(ctx.guild.id).update_one(
-            {"_id": obj_id, "added_by": ctx.author.id, "active": True},
-            {"$set": {"active": False}},
+        modified_count = await TricountRepository(ctx.guild.id).stop_recurring(
+            obj_id, ctx.author.id
         )
-        if result.modified_count == 0:
+        if modified_count == 0:
             await ctx.send("❌ Récurrence introuvable ou déjà arrêtée.", ephemeral=True)
             return
         await ctx.send("✅ Récurrence arrêtée.", ephemeral=True)
@@ -242,11 +234,7 @@ class RecurringMixin:
         now = datetime.now()
         for guild_id in enabled_servers:
             try:
-                due = (
-                    await recurring_col(guild_id)
-                    .find({"active": True, "next_run": {"$lte": now}})
-                    .to_list(length=None)
-                )
+                due = await TricountRepository(guild_id).list_due_recurring(now)
             except Exception as e:
                 logger.error("Could not list due recurring expenses for %s: %s", guild_id, e)
                 continue
@@ -255,13 +243,12 @@ class RecurringMixin:
 
     async def _materialise_recurring(self, guild_id: str, doc: dict) -> None:
         """Create the next concrete expense and reschedule the recurrence."""
+        repo = TricountRepository(guild_id)
         try:
-            group = await groups_col(guild_id).find_one({"_id": doc["group_id"], "is_active": True})
+            group = await repo.find_active_group_by_id(doc["group_id"])
             if not group:
                 # Group was deleted — deactivate the recurrence.
-                await recurring_col(guild_id).update_one(
-                    {"_id": doc["_id"]}, {"$set": {"active": False}}
-                )
+                await repo.deactivate_recurring(doc["_id"])
                 return
             expense = {
                 "group_id": group["_id"],
@@ -275,12 +262,10 @@ class RecurringMixin:
                 "date": datetime.now(),
                 "recurring_id": doc["_id"],
             }
-            await expenses_col(guild_id).insert_one(expense)
+            await repo.add_expense(expense)
             next_run = _next_occurrence(doc["next_run"], doc["frequency"])
             while next_run <= datetime.now():
                 next_run = _next_occurrence(next_run, doc["frequency"])
-            await recurring_col(guild_id).update_one(
-                {"_id": doc["_id"]}, {"$set": {"next_run": next_run}}
-            )
+            await repo.reschedule_recurring(doc["_id"], next_run)
         except Exception as e:
             logger.error("Failed to materialise recurring expense %s: %s", doc.get("_id"), e)

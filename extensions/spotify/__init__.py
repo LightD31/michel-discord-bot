@@ -46,40 +46,36 @@ class SpotifyExtension(Extension, PlaylistMixin, VotesMixin):
         self.new_titles_playlist.start()
 
     async def load_voteinfos(self, server: ServerData):
-        doc = await server.vote_infos_col.find_one({"_id": "current"})
+        doc = await server.repo.get_vote_infos()
         if doc:
             server.vote_infos = {k: v for k, v in doc.items() if k != "_id"}
         else:
             server.vote_infos = {}
 
     async def save_voteinfos(self, server: ServerData):
-        await server.vote_infos_col.update_one(
-            {"_id": "current"}, {"$set": server.vote_infos}, upsert=True
-        )
+        await server.repo.save_vote_infos(server.vote_infos)
 
     async def load_snapshot(self, server: ServerData):
-        doc = await server.snapshot_col.find_one({"_id": "current"})
+        doc = await server.repo.get_snapshot()
         if doc:
             server.snapshot = {k: v for k, v in doc.items() if k != "_id"}
         else:
             server.snapshot = {"snapshot": "", "duration": 0, "length": 0}
 
     async def save_snapshot(self, server: ServerData):
-        await server.snapshot_col.update_one(
-            {"_id": "current"}, {"$set": server.snapshot}, upsert=True
-        )
+        await server.repo.save_snapshot(server.snapshot)
 
     async def load_reminders(self, server: ServerData):
-        async for doc in server.reminders_col.find():
+        for doc in await server.repo.list_reminders():
             remind_time = datetime.strptime(doc["_id"], "%Y-%m-%d %H:%M:%S")
             server.reminders[remind_time] = set(doc["user_ids"])
 
     async def save_reminders(self, server: ServerData):
-        await server.reminders_col.delete_many({})
-        for remind_time, user_ids in server.reminders.items():
-            await server.reminders_col.insert_one(
-                {
-                    "_id": remind_time.strftime("%Y-%m-%d %H:%M:%S"),
-                    "user_ids": list(user_ids),
-                }
-            )
+        docs = [
+            {
+                "_id": remind_time.strftime("%Y-%m-%d %H:%M:%S"),
+                "user_ids": list(user_ids),
+            }
+            for remind_time, user_ids in server.reminders.items()
+        ]
+        await server.repo.replace_reminders(docs)

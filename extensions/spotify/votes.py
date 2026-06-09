@@ -4,7 +4,6 @@ import os
 import random
 from datetime import datetime, timedelta
 
-import pymongo
 import spotipy
 from interactions import (
     ActionRow,
@@ -27,6 +26,7 @@ from interactions import (
 from interactions.api.events import Component
 from interactions.client.utils import timestamp_converter
 
+from features.spotify import VoteCooldown
 from src.core import logging as logutil
 from src.discord_ext.messages import fetch_user_safe, send_error
 from src.integrations.spotify import spotifymongoformat
@@ -44,7 +44,6 @@ from ._common import (
     enabled_servers,
     sp,
 )
-from ._cooldown import VoteCooldown
 
 logger = logutil.init_logger(os.path.basename(__file__))
 
@@ -81,8 +80,8 @@ class VotesMixin:
         channel = self.bot.get_channel(server.channel_id)
         message = await channel.fetch_message(message_id)
         logger.debug("message : %s", str(message.id))
-        votes = await server.votes_db.find_one({"_id": track_id})
-        song = await server.playlist_items_full.find_one({"_id": track_id})
+        votes = await server.repo.get_votes_doc(track_id)
+        song = await server.repo.get_playlist_item(track_id)
         logger.debug("song : %s\ntrack_id : %s", song, track_id)
         track = sp.track(track_id, market="FR")
         conserver, supprimer, menfou, users = count_votes(votes["votes"], server.discord2name)
@@ -137,10 +136,8 @@ class VotesMixin:
                 components=[],
             )
             sp.playlist_remove_all_occurrences_of_items(server.playlist_id, [track_id])
-            await server.playlist_items_full.delete_one({"_id": track_id})
-            await server.votes_db.find_one_and_update(
-                {"_id": track_id}, {"$set": {"state": "supprimée"}}
-            )
+            await server.repo.delete_playlist_item(track_id)
+            await server.repo.set_vote_state(track_id, "supprimée")
             logger.info("La chanson a été supprimée.")
             await self._check_playlist_changes_for_server(server)
         else:
@@ -166,23 +163,21 @@ class VotesMixin:
                 ],
                 components=[],
             )
-            await server.votes_db.find_one_and_update(
-                {"_id": track_id}, {"$set": {"state": "conservée"}}
-            )
+            await server.repo.set_vote_state(track_id, "conservée")
             logger.info("La chanson a été conservée.")
         await self._start_new_vote(server)
 
     async def _start_new_vote(self, server: ServerData):
         """Pick a fresh track (not previously voted on) and open a new poll."""
-        track_ids = set(await server.playlist_items_full.distinct("_id"))
-        pollhistory = set(await server.votes_db.distinct("_id"))
+        track_ids = set(await server.repo.playlist_track_ids())
+        pollhistory = set(await server.repo.voted_track_ids())
         track_id = random.choice(list(track_ids))
         logger.debug("track_id choisie : %s", track_id)
         while track_id in pollhistory:
             logger.warning("Chanson déjà votée, nouvelle chanson tirée au sort (%s)", track_id)
             track_id = random.choice(list(track_ids))
         logger.info("Chanson tirée au sort : %s", track_id)
-        song = await server.playlist_items_full.find_one({"_id": track_id})
+        song = await server.repo.get_playlist_item(track_id)
         track = sp.track(song["_id"], market="FR")
         channel = await self.bot.fetch_channel(server.channel_id)
         embed, file = await embed_song(
@@ -231,20 +226,16 @@ class VotesMixin:
         await channel.purge(deletion_limit=1, after=message)
         server.vote_infos.update({"message_id": str(message.id), "track_id": track_id})
         await self.save_voteinfos(server)
-        await server.votes_db.update_one(
-            {"_id": track_id},
+        await server.repo.init_vote_doc(
+            track_id,
             {
-                "$set": {
-                    "name": (
-                        f"{', '.join(artist['name'] for artist in track['artists'])} "
-                        f"- {track['name']}"
-                    ),
-                    "date": datetime.now().strftime("%Y-%m-%d"),
-                    "added_by": song["added_by"],
-                    "votes": {},
-                }
+                "name": (
+                    f"{', '.join(artist['name'] for artist in track['artists'])} - {track['name']}"
+                ),
+                "date": datetime.now().strftime("%Y-%m-%d"),
+                "added_by": song["added_by"],
+                "votes": {},
             },
-            upsert=True,
         )
 
     @listen(Component)
@@ -267,18 +258,9 @@ class VotesMixin:
             embed_original = ctx.message.embeds[0]
             user_id = str(ctx.user.id)
             if ctx.custom_id == "annuler":
-                votes = await server.votes_db.find_one_and_update(
-                    {"_id": track_id},
-                    {"$unset": {f"votes.{user_id}": ""}},
-                    return_document=pymongo.ReturnDocument.AFTER,
-                )
+                votes = await server.repo.remove_vote(track_id, user_id)
             else:
-                votes = await server.votes_db.find_one_and_update(
-                    {"_id": track_id},
-                    {"$set": {f"votes.{user_id}": ctx.custom_id}},
-                    upsert=True,
-                    return_document=pymongo.ReturnDocument.AFTER,
-                )
+                votes = await server.repo.record_vote(track_id, user_id, ctx.custom_id)
             logger.info("User %s voted %s", ctx.user.username, ctx.custom_id)
             conserver, supprimer, menfou, users = count_votes(votes["votes"], server.discord2name)
             users = ", ".join(users)
@@ -371,8 +353,8 @@ class VotesMixin:
                 for user_id in user_ids.copy():
                     _, user = await fetch_user_safe(self.bot, user_id)
                     if user:
-                        vote_doc = await server.votes_db.find_one(
-                            {"_id": str(server.vote_infos["track_id"])}
+                        vote_doc = await server.repo.get_votes_doc(
+                            str(server.vote_infos["track_id"])
                         )
                         vote = vote_doc["votes"].get(str(user_id)) if vote_doc else None
                         if vote is None:
@@ -462,7 +444,7 @@ class VotesMixin:
     async def addwithvote(self, ctx: SlashContext, song):
         server = self.get_server(ctx.guild_id)
         if str(ctx.channel_id) == str(server.channel_id):
-            last_track_ids = await server.playlist_items_full.distinct("_id")
+            last_track_ids = await server.repo.playlist_track_ids()
             logger.info(
                 "/addwithvote '%s' utilisé par %s(id:%s)",
                 song,
@@ -619,7 +601,7 @@ class VotesMixin:
             return
         if yes_votes > no_votes:
             logger.debug("song : %s", song)
-            await server.playlist_items_full.insert_one(song)
+            await server.repo.add_playlist_item(song)
             sp.playlist_add_items(server.playlist_id, [song["_id"]])
             embed, file = await embed_song(
                 song=song,

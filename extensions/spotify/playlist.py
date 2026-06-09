@@ -81,9 +81,9 @@ class PlaylistMixin:
             logger.info("Commande /addsong utilisée avec une chanson inexistante")
             return
 
-        existing_ids = await server.playlist_items_full.distinct("_id")
+        existing_ids = await server.repo.playlist_track_ids()
         if song_data["_id"] not in existing_ids:
-            await server.playlist_items_full.insert_one(song_data)
+            await server.repo.add_playlist_item(song_data)
             sp.playlist_add_items(server.playlist_id, [song_data["_id"]])
             embed, file = await embed_song(
                 song=song_data,
@@ -173,7 +173,7 @@ class PlaylistMixin:
 
             length = len(tracks)
             duration = 0
-            last_track_ids = await server.playlist_items_full.distinct("_id")
+            last_track_ids = await server.repo.playlist_track_ids()
             current_track_ids = {track["track"]["id"] for track in tracks}
             added_track_ids = list(set(current_track_ids) - set(last_track_ids))
             removed_track_ids = list(set(last_track_ids) - set(current_track_ids))
@@ -193,7 +193,7 @@ class PlaylistMixin:
                 duration += track["track"]["duration_ms"]
                 if track["track"]["id"] in added_track_ids:
                     song = spotifymongoformat(track, spotify2discord=server.spotify2discord)
-                    await server.playlist_items_full.insert_one(song)
+                    await server.repo.add_playlist_item(song)
                     if not skip_notifications:
                         track = sp.track(track["track"]["id"], market="FR")
                         dt = timestamp_converter(
@@ -228,7 +228,7 @@ class PlaylistMixin:
                     len(removed_track_ids),
                 )
                 for track_id in removed_track_ids:
-                    song = await server.playlist_items_full.find_one_and_delete({"_id": track_id})
+                    song = await server.repo.pop_playlist_item(track_id)
                     if not skip_notifications:
                         track = sp.track(track_id, market="FR")
                         embed, file = await embed_song(
@@ -296,8 +296,8 @@ class PlaylistMixin:
         """Show combined MongoDB + Spotify info (and any vote history) for a song."""
         server = self.get_server(ctx.guild_id)
         embed = None
-        song = await server.playlist_items_full.find_one({"_id": song_id})
-        votes = await server.votes_db.find_one({"_id": song_id})
+        song = await server.repo.get_playlist_item(song_id)
+        votes = await server.repo.get_votes_doc(song_id)
         track = sp.track(song_id, market="FR")
         if song:
             embed, file = await embed_song(
@@ -376,10 +376,8 @@ class PlaylistMixin:
                     {"artists": {"$regex": regex_pattern, "$options": "i"}},
                 ]
             }
-            playlist_items = {
-                item["_id"]: item async for item in server.playlist_items_full.find(query)
-            }
-            votes = {item["_id"]: item async for item in server.votes_db.find(query)}
+            playlist_items = await server.repo.find_playlist_items(query)
+            votes = await server.repo.find_vote_docs(query)
 
             results = {**playlist_items, **votes}
             if not results:

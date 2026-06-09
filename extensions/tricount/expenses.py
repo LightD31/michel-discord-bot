@@ -14,6 +14,7 @@ from interactions import (
     slash_option,
 )
 
+from features.tricount import TricountRepository
 from src.core import logging as logutil
 from src.discord_ext.autocomplete import guild_group_autocomplete
 from src.discord_ext.embeds import Colors
@@ -21,8 +22,6 @@ from src.discord_ext.messages import fetch_user_safe, require_guild
 
 from ._common import (
     DEFAULT_CATEGORY,
-    expenses_col,
-    groups_col,
     guild_categories,
     guild_currency,
 )
@@ -89,7 +88,8 @@ class ExpensesMixin:
             await ctx.send("❌ Le montant doit être positif.", ephemeral=True)
             return
 
-        group = await groups_col(ctx.guild.id).find_one({"name": groupe, "is_active": True})
+        repo = TricountRepository(ctx.guild.id)
+        group = await repo.find_active_group(groupe)
         if not group:
             await ctx.send(f"❌ Aucun groupe actif trouvé avec le nom '{groupe}'.", ephemeral=True)
             return
@@ -116,7 +116,7 @@ class ExpensesMixin:
             "participants": group["members"],
             "date": datetime.now(),
         }
-        await expenses_col(ctx.guild.id).insert_one(expense_data)
+        await repo.add_expense(expense_data)
 
         currency = guild_currency(ctx.guild.id)
         embed = Embed(
@@ -155,7 +155,7 @@ class ExpensesMixin:
         # Surface previously used custom categories from this guild.
         if ctx.guild:
             try:
-                used = await expenses_col(ctx.guild.id).distinct("category")
+                used = await TricountRepository(ctx.guild.id).distinct_categories()
                 for cat in used:
                     if not cat or cat in seen:
                         continue
@@ -170,7 +170,7 @@ class ExpensesMixin:
 
     @depense.autocomplete("groupe")
     async def depense_groupe_autocomplete(self, ctx: AutocompleteContext):
-        await guild_group_autocomplete(ctx, groups_col)
+        await guild_group_autocomplete(ctx, TricountRepository.groups_collection)
 
     @slash_command(
         name="modifier-depense",
@@ -225,7 +225,8 @@ class ExpensesMixin:
             await ctx.send("❌ Le montant doit être positif.", ephemeral=True)
             return
 
-        group = await groups_col(ctx.guild.id).find_one({"name": groupe, "is_active": True})
+        repo = TricountRepository(ctx.guild.id)
+        group = await repo.find_active_group(groupe)
         if not group:
             await ctx.send(f"❌ Aucun groupe actif trouvé avec le nom '{groupe}'.", ephemeral=True)
             return
@@ -236,9 +237,7 @@ class ExpensesMixin:
             return
 
         try:
-            expense = await expenses_col(ctx.guild.id).find_one(
-                {"_id": ObjectId(depense_id), "group_id": group["_id"]}
-            )
+            expense = await repo.find_expense_in_group(ObjectId(depense_id), group["_id"])
         except Exception:
             await ctx.send("❌ ID de dépense invalide.", ephemeral=True)
             return
@@ -280,9 +279,7 @@ class ExpensesMixin:
             await ctx.send("❌ Aucune modification spécifiée.", ephemeral=True)
             return
 
-        await expenses_col(ctx.guild.id).update_one(
-            {"_id": ObjectId(depense_id)}, {"$set": modifications}
-        )
+        await repo.update_expense_fields(ObjectId(depense_id), modifications)
 
         embed = Embed(
             title="✅ Dépense modifiée",
@@ -301,7 +298,7 @@ class ExpensesMixin:
 
     @modifier_depense.autocomplete("groupe")
     async def modifier_depense_groupe_autocomplete(self, ctx: AutocompleteContext):
-        await guild_group_autocomplete(ctx, groups_col)
+        await guild_group_autocomplete(ctx, TricountRepository.groups_collection)
 
     @modifier_depense.autocomplete("depense_id")
     async def modifier_depense_id_autocomplete(self, ctx: AutocompleteContext):
@@ -311,28 +308,14 @@ class ExpensesMixin:
 
         input_text = ctx.input_text.lower()
 
-        user_groups = (
-            await groups_col(ctx.guild.id)
-            .find({"is_active": True, "members": ctx.author.id})
-            .to_list(length=None)
-        )
+        repo = TricountRepository(ctx.guild.id)
+        user_groups = await repo.list_member_groups(ctx.author.id)
         if not user_groups:
             await ctx.send(choices=[])
             return
 
         group_ids = [group["_id"] for group in user_groups]
-        expenses = (
-            await expenses_col(ctx.guild.id)
-            .find(
-                {
-                    "group_id": {"$in": group_ids},
-                    "$or": [{"added_by": ctx.author.id}, {"payer": ctx.author.id}],
-                }
-            )
-            .sort("date", -1)
-            .limit(25)
-            .to_list(length=None)
-        )
+        expenses = await repo.list_user_expenses(group_ids, ctx.author.id)
 
         choices = []
         for expense in expenses:
