@@ -20,6 +20,11 @@ class ZuniversConfig(SchemaBase):
     colocZuniversChannelId: str | None = ui(
         "Salon Zunivers", "channel", description="Salon pour les notifications Zunivers."
     )
+    journaReminderRoleId: str | None = ui(
+        "Rôle rappel /journa",
+        "role",
+        description="Rôle mentionné quand le /journa quotidien n'a pas été posté à 22h.",
+    )
 
 
 logger = logutil.init_logger("extensions.zunivers")

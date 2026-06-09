@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import random
 from typing import Any
 from urllib.parse import urlsplit, urlunsplit
 
@@ -112,6 +113,14 @@ class HttpClient:
 # Global singleton — import and reuse everywhere.
 http_client = HttpClient()
 
+# Cap on a single backoff sleep so high retry counts can't stall a task.
+_MAX_BACKOFF_SECONDS = 30.0
+
+
+def _backoff_delay(pause: float, attempt: int) -> float:
+    """Exponential backoff with jitter: ``pause * 2**attempt`` capped at 30s."""
+    return min(pause * 2.0**attempt, _MAX_BACKOFF_SECONDS) + random.uniform(0, pause)
+
 
 async def fetch(
     url: str,
@@ -126,7 +135,8 @@ async def fetch(
     Behaviour intentionally matches the legacy ``src.utils.fetch``:
 
     - Retries up to *retries* times on 5xx responses, ``ClientError``, and
-      ``asyncio.TimeoutError``. Linear backoff: ``pause * (attempt + 1)``.
+      ``asyncio.TimeoutError``. Exponential backoff with jitter:
+      ``pause * 2**attempt`` (capped at 30s) plus up to *pause* of jitter.
     - A non-500 non-200 response is not retried.
     - On final failure raises :class:`src.core.errors.HttpError` (subclass of
       :class:`Exception`, so existing ``except Exception:`` sites still catch).
@@ -156,7 +166,7 @@ async def fetch(
                 if response.status >= 500:
                     logger.error("Failed to fetch %s: Status %s", safe_url, response.status)
                     if attempt < retries - 1:
-                        await asyncio.sleep(pause * (attempt + 1))
+                        await asyncio.sleep(_backoff_delay(pause, attempt))
                         continue
                     raise HttpError(
                         f"Failed to fetch {safe_url}",
@@ -181,7 +191,7 @@ async def fetch(
                     url=url,
                     status=last_status,
                 ) from e
-            await asyncio.sleep(pause)
+            await asyncio.sleep(_backoff_delay(pause, attempt))
 
     # Loop exits only on repeated retryable 5xx without raising — guard rail.
     raise HttpError(f"Failed to fetch {safe_url}", url=url, status=last_status)

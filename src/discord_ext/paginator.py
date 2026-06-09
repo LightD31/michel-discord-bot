@@ -8,6 +8,7 @@
 
 from __future__ import annotations
 
+import time
 from collections import defaultdict
 
 from interactions import ComponentContext, Message
@@ -52,10 +53,22 @@ class CustomPaginator(paginators.Paginator):
 # Poll formatter
 # ---------------------------------------------------------------------------
 
-# Per-guild cache of Discord-id → display-name overrides. Populated lazily from
-# the ``discord2name`` config mapping; keeps ``format_poll`` from hitting the
-# JSON file on every reaction.
+# Per-guild cache of the ``discord2name`` id → display-name overrides. Keeps
+# ``format_poll`` from hitting the JSON file on every reaction while still
+# picking up config edits after the TTL; entries are bounded by guild count.
 name_cache: dict[str, dict[str, str]] = {}
+_name_cache_loaded_at: dict[str, float] = {}
+_NAME_CACHE_TTL_SECONDS = 600.0
+
+
+def _guild_name_overrides(server_id: str) -> dict[str, str]:
+    """Return the discord2name mapping for a guild, reloading it after the TTL."""
+    now = time.monotonic()
+    loaded_at = _name_cache_loaded_at.get(server_id)
+    if loaded_at is None or now - loaded_at > _NAME_CACHE_TTL_SECONDS:
+        name_cache[server_id] = load_discord2name(server_id)
+        _name_cache_loaded_at[server_id] = now
+    return name_cache[server_id]
 
 
 async def format_poll(event: MessageReactionAdd | MessageReactionRemove):
@@ -87,6 +100,8 @@ async def format_poll(event: MessageReactionAdd | MessageReactionRemove):
         {user.id for users in reaction_users.values() for user in users} - {message.author.id}
     )
 
+    overrides = _guild_name_overrides(str(event.message.guild.id))
+
     description_list = []
     for _i, option in enumerate(options):
         option = option.split(":", 1)[0].replace("**", "")
@@ -95,18 +110,7 @@ async def format_poll(event: MessageReactionAdd | MessageReactionRemove):
         reaction_count = reaction_counts[emoji_str]
         user_list = reaction_users[emoji_str]
 
-        user_names = []
-        for user in user_list:
-            user_name = user.display_name
-            user_id = str(user.id)
-            server_id = str(event.message.guild.id)
-            if server_id not in name_cache:
-                name_cache[server_id] = {}
-            if user_id not in name_cache[server_id]:
-                d2n = load_discord2name(server_id)
-                name_cache[server_id][user_id] = d2n.get(user_id, user_name)
-            user_name = name_cache[server_id][user_id]
-            user_names.append(user_name)
+        user_names = [overrides.get(str(user.id), user.display_name) for user in user_list]
         user_names_str = ", ".join(user_names)
 
         description = f"{option}"

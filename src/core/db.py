@@ -25,12 +25,13 @@ Usage::
     db  = mongo_manager["some_db"]["some_collection"]
 """
 
+import asyncio
 import json
 import os
 import shutil
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import ClassVar, Optional
 
 from motor.motor_asyncio import (
     AsyncIOMotorClient,
@@ -49,10 +50,17 @@ GUILD_DB_PREFIX = "guild_"
 
 
 class MongoManager:
-    """Singleton-style global MongoDB connection manager using motor (async)."""
+    """Singleton-style global MongoDB connection manager using motor (async).
+
+    Keeps one motor client *per event loop*: motor pins each client to the
+    loop that first uses it, so sharing a single client between the bot loop
+    and the Web UI's uvicorn loop (daemon thread) raises ``got Future
+    attached to a different loop``. In practice there are at most two
+    clients (bot + webui).
+    """
 
     _instance: Optional["MongoManager"] = None
-    _client: AsyncIOMotorClient | None = None
+    _clients: ClassVar[dict[asyncio.AbstractEventLoop | None, AsyncIOMotorClient]] = {}
     _url: str | None = None
 
     def __new__(cls) -> "MongoManager":
@@ -60,9 +68,18 @@ class MongoManager:
             cls._instance = super().__new__(cls)
         return cls._instance
 
+    @staticmethod
+    def _current_loop() -> asyncio.AbstractEventLoop | None:
+        try:
+            return asyncio.get_running_loop()
+        except RuntimeError:
+            return None
+
     def _ensure_client(self) -> AsyncIOMotorClient:
-        """Lazily create the motor client on first access."""
-        if self._client is None:
+        """Lazily create the motor client bound to the current event loop."""
+        loop = self._current_loop()
+        client = self._clients.get(loop)
+        if client is None:
             if self._url is None:
                 try:
                     config, _, _ = load_config()
@@ -76,12 +93,18 @@ class MongoManager:
                     "MongoDB URL is not configured. Set 'mongodb.url' in your configuration."
                 )
 
-            self._client = AsyncIOMotorClient(
+            client = AsyncIOMotorClient(
                 self._url,
                 serverSelectionTimeoutMS=5000,
+                connectTimeoutMS=10000,
+                socketTimeoutMS=60000,
+                maxPoolSize=50,
+                minPoolSize=1,
+                maxIdleTimeMS=300000,
             )
-            logger.info("Motor async MongoDB client created.")
-        return self._client
+            self._clients[loop] = client
+            logger.info("Motor async MongoDB client created (%d active).", len(self._clients))
+        return client
 
     # ------------------------------------------------------------------
     # Public helpers
@@ -136,11 +159,12 @@ class MongoManager:
             return False
 
     async def close(self) -> None:
-        """Close the motor client."""
-        if self._client is not None:
-            self._client.close()
-            self._client = None
-            logger.info("MongoDB connection closed.")
+        """Close every motor client (one per event loop)."""
+        if self._clients:
+            for client in self._clients.values():
+                client.close()
+            self._clients.clear()
+            logger.info("MongoDB connection(s) closed.")
 
     # ------------------------------------------------------------------
     # Backup

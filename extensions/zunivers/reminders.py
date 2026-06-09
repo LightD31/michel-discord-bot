@@ -29,7 +29,7 @@ from features.coloc.constants import (
 )
 from src.discord_ext.messages import fetch_user_safe
 
-from ._common import enabled_servers, logger
+from ._common import enabled_servers, logger, module_config
 
 
 class RemindersMixin:
@@ -56,9 +56,9 @@ class RemindersMixin:
             logger.info("Daily journa already posted, skipping reminder")
             return
 
-        await channel.send(
-            ":robot: <@&934560421912911882>, heureusement que les robots n'oublient pas ! :robot:"
-        )
+        role_id = module_config.get("journaReminderRoleId")
+        mention = f"<@&{role_id}>, " if role_id else ""
+        await channel.send(f":robot: {mention}heureusement que les robots n'oublient pas ! :robot:")
 
     # ==================== Reminder Management ====================
 
