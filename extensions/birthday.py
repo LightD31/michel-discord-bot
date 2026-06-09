@@ -43,6 +43,42 @@ from src.core.text import pick_weighted_message
 from src.discord_ext.embeds import Colors
 from src.discord_ext.messages import fetch_user_safe, require_guild
 from src.discord_ext.paginator import CustomPaginator
+from src.webui.schemas import SchemaBase, enabled_field, register_module, ui
+
+
+@register_module("moduleBirthday")
+class BirthdayConfig(SchemaBase):
+    __label__ = "Anniversaires"
+    __description__ = "Vœux d'anniversaire quotidiens, rôle du jour et liste des anniversaires."
+    __icon__ = "🎂"
+    __category__ = "Communauté"
+
+    enabled: bool = enabled_field()
+    birthdayChannelId: str | None = ui(
+        "Salon des vœux",
+        "channel",
+        description="Salon où les vœux sont envoyés (salon système du serveur par défaut).",
+    )
+    birthdayRoleId: str | None = ui(
+        "Rôle anniversaire",
+        "role",
+        description="Rôle attribué au membre le jour de son anniversaire (optionnel).",
+    )
+    birthdayGuildLocale: str = ui(
+        "Locale des dates",
+        "string",
+        default="en_US",
+        description="Locale utilisée pour formater les dates de la liste (ex : fr_FR).",
+    )
+    birthdayMessageList: list[str] = ui(
+        "Messages d'anniversaire",
+        "messagelist",
+        description="Liste de messages avec poids de probabilité.",
+        default=["Joyeux anniversaire {mention} ! 🎉"],
+        weight_field="birthdayMessageWeights",
+        variables="{mention}, {age}",
+    )
+
 
 logger = logutil.init_logger(os.path.basename(__file__))
 config, module_config, enabled_servers = load_config("moduleBirthday")

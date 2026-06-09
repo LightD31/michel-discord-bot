@@ -14,6 +14,21 @@ from interactions import (
 
 from src.core import logging as logutil
 from src.core.config import load_config
+from src.webui.schemas import SchemaBase, enabled_field, register_module
+
+
+@register_module("moduleSecretSanta")
+class SecretSantaConfig(SchemaBase):
+    __label__ = "Secret Santa"
+    __description__ = (
+        "Secret Santa dans Discord : inscriptions, exclusions, tirage et envoi des "
+        "assignations par MP. Réglages globaux dans la section « Secret Santa (global) »."
+    )
+    __icon__ = "🎁"
+    __category__ = "Événements"
+
+    enabled: bool = enabled_field()
+
 
 logger = logutil.init_logger(os.path.basename(__file__))
 config, module_config, enabled_servers = load_config("moduleSecretSanta")
