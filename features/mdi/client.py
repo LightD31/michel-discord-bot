@@ -204,6 +204,21 @@ class MatchSnapshot:
             self.second_team is not None and self.second_team.slug.lower() == slug_lower
         )
 
+    def team_by_slug(self, slug: str) -> TeamRef | None:
+        """Return this match's :class:`TeamRef` for *slug*, if it plays here.
+
+        Raider.IO team ids are per-bracket registrations: the same roster gets a
+        different ``id`` (and seed) in each bracket it enters. Winner checks must
+        therefore use the ref carried by the match itself, never one resolved
+        from another bracket.
+        """
+        slug_lower = slug.lower()
+        if self.first_team is not None and self.first_team.slug.lower() == slug_lower:
+            return self.first_team
+        if self.second_team is not None and self.second_team.slug.lower() == slug_lower:
+            return self.second_team
+        return None
+
     def opponent_of(self, team_id: int) -> TeamRef | None:
         if self.first_team is not None and self.first_team.id == team_id:
             return self.second_team
