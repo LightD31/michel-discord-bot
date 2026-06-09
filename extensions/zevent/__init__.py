@@ -5,6 +5,7 @@ APIs, Twitch stream aggregation, embed rendering, the refresh task, and the
 ``/zevent_finish`` command.
 """
 
+import asyncio
 import os
 from datetime import timedelta
 
@@ -39,6 +40,7 @@ class Zevent(Extension, ApiMixin, StreamsMixin, EmbedsMixin, TasksMixin, Command
         self.message: Message | None = None
         self.twitch: Twitch | None = None
         self.last_milestone = 0
+        self._milestone_lock = asyncio.Lock()
         self.last_data_cache: dict | None = None
         self.last_update_time = None
         self._streamer_cache: dict[str, str] = {}

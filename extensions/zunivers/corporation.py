@@ -23,7 +23,7 @@ from features.coloc.utils import (
     create_corporation_logs_embed,
 )
 
-from ._common import logger
+from ._common import enabled_servers, logger
 
 
 class CorporationMixin:
@@ -64,7 +64,7 @@ class CorporationMixin:
     @slash_command(
         name="corpo",
         description="Affiche les informations de la corporation",
-        scopes=[668445729928249344],
+        scopes=enabled_servers,
     )
     @slash_option(
         name="date",

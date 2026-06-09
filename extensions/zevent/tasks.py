@@ -204,22 +204,23 @@ class TasksMixin:
             await self.send_simplified_update(total_amount)
 
     async def check_and_send_milestone(self, total_amount: float):
-        current_milestone = int(total_amount // MILESTONE_INTERVAL * MILESTONE_INTERVAL)
+        # Serialize the read-modify-write on last_milestone so overlapping
+        # task runs can't both pass the comparison and announce twice.
+        async with self._milestone_lock:
+            current_milestone = int(total_amount // MILESTONE_INTERVAL * MILESTONE_INTERVAL)
 
-        if current_milestone > self.last_milestone:
-            if self.last_milestone != 0:
-                milestone_message = (
-                    f"🎉 Nouveau palier atteint : {current_milestone:,} € récoltés ! 🎉".replace(
+            if current_milestone > self.last_milestone:
+                if self.last_milestone != 0:
+                    milestone_message = f"🎉 Nouveau palier atteint : {current_milestone:,} € récoltés ! 🎉".replace(
                         ",", " "
                     )
-                )
-                if self.channel and hasattr(self.channel, "send"):
-                    await self.channel.send(milestone_message)
-                else:
-                    logger.error(
-                        "Cannot send milestone message: channel not available or doesn't support sending"
-                    )
-            self.last_milestone = current_milestone
+                    if self.channel and hasattr(self.channel, "send"):
+                        await self.channel.send(milestone_message)
+                    else:
+                        logger.error(
+                            "Cannot send milestone message: channel not available or doesn't support sending"
+                        )
+                self.last_milestone = current_milestone
 
     async def send_simplified_update(self, total_amount: str):
         """Fallback embed used when API fetch and cache both fail."""
