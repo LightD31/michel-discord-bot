@@ -10,6 +10,7 @@ first.
 from fastapi import FastAPI
 
 from src.core import logging as logutil
+from src.core.config import config_write_error
 from src.core.config import load_config as bot_load_config
 from src.webui.auth import DiscordOAuth
 from src.webui.context import WebUIContext
@@ -54,6 +55,14 @@ def create_app(bot=None, bot_loop=None) -> FastAPI:
         bot_loop: The event loop the bot runs on — required to invoke bot
             coroutines from the WebUI's thread.
     """
+    write_err = config_write_error()
+    if write_err:
+        logger.error(
+            "Le dossier config/ n'est pas inscriptible (%s) — toutes les sauvegardes du "
+            "dashboard échoueront. Sur l'hôte : chown -R 1000:1000 ./config",
+            write_err,
+        )
+
     config, _, _ = bot_load_config()
     webui_config = config.get("webui", {})
     discord_config = config.get("discord", {})

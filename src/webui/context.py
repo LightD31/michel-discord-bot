@@ -18,7 +18,10 @@ from typing import Any
 
 from fastapi import HTTPException, Request
 
+from src.core import logging as logutil
 from src.webui.auth import DiscordOAuth, Session
+
+logger = logutil.init_logger("webui.context")
 
 COOKIE_NAME = "michel_session"
 
@@ -53,10 +56,35 @@ class WebUIContext:
         return load_full_config() or {"config": {}, "servers": {}}
 
     def save_config(self, data: dict) -> None:
-        """Persist *data* atomically and notify ConfigStore subscribers."""
+        """Persist *data* atomically and notify ConfigStore subscribers.
+
+        Raises an ``HTTPException`` carrying the underlying cause so dashboard
+        saves surface an actionable message instead of a blind 500.
+        """
         from src.core.config import config_store
 
-        config_store.save_full(data)
+        if not data.get("config") and not data.get("servers"):
+            # An empty payload means the config file was unreadable when the
+            # request loaded it — saving would wipe the real config.
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    "Configuration en mémoire vide (fichier illisible ?) — "
+                    "sauvegarde refusée pour ne pas écraser config/config.json."
+                ),
+            )
+
+        try:
+            config_store.save_full(data)
+        except Exception as e:
+            logger.exception("Config save failed")
+            detail = f"Échec d'écriture de config/config.json : {e}"
+            if isinstance(e, PermissionError):
+                detail += (
+                    " — le dossier config/ n'est pas inscriptible par l'utilisateur du "
+                    "conteneur (uid 1000). Sur l'hôte : chown -R 1000:1000 ./config"
+                )
+            raise HTTPException(status_code=500, detail=detail) from e
 
     # --- Session / authorization -------------------------------------
 

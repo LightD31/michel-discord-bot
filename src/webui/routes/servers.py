@@ -312,7 +312,9 @@ def create_router(ctx: WebUIContext) -> APIRouter:
         if server_id not in data.get("servers", {}):
             data.setdefault("servers", {})[server_id] = {}
 
-        if module_name not in data["servers"][server_id]:
+        # Hand-edited configs may hold a non-dict value here; replace it
+        # rather than crashing on the item assignment below.
+        if not isinstance(data["servers"][server_id].get(module_name), dict):
             data["servers"][server_id][module_name] = {}
 
         data["servers"][server_id][module_name]["enabled"] = body.enabled

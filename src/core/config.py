@@ -68,6 +68,25 @@ def _atomic_write(data: dict[str, Any]) -> None:
         raise
 
 
+def config_write_error() -> str | None:
+    """Probe whether the config directory accepts new files.
+
+    Atomic writes create a tempfile next to ``config.json``, so they need
+    write permission on the *directory* — a bind mount owned by another uid
+    breaks saves even when the file itself is readable. Returns a
+    human-readable error string, or ``None`` when writable.
+    """
+    directory = os.path.dirname(CONFIG_PATH) or "."
+    try:
+        os.makedirs(directory, exist_ok=True)
+        fd, tmp_path = tempfile.mkstemp(prefix=".writetest-", suffix=".tmp", dir=directory)
+        os.close(fd)
+        os.unlink(tmp_path)
+        return None
+    except OSError as e:
+        return f"{type(e).__name__}: {e}"
+
+
 # ---------------------------------------------------------------------------
 # Reactive store — new in Phase 1
 # ---------------------------------------------------------------------------
