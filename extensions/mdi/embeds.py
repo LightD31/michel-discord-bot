@@ -128,7 +128,12 @@ class EmbedsMixin:
 
         for slug, group_matches in groups.items():
             bracket_title = bracket_titles.get(slug, slug)
-            blocks: list[str] = [self._schedule_line(match, team) for match in group_matches]
+            # Team ids are per-bracket on Raider.IO — resolve the ref from each
+            # match so win/loss and opponent detection stay correct across brackets.
+            blocks: list[str] = [
+                self._schedule_line(match, match.team_by_slug(team_slug) or team)
+                for match in group_matches
+            ]
             value = "\n".join(blocks) if blocks else "—"
             # Discord limits each field value to 1024 characters; chunk if needed.
             for chunk_index, chunk in enumerate(self._chunk_field_value(value)):

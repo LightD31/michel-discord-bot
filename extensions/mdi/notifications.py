@@ -106,8 +106,10 @@ class NotificationsMixin:
     # ── Per-match handler ────────────────────────────────────────────────────
 
     async def _process_match(self, state: GuildState, match: MatchSnapshot) -> None:
-        team = state.tracked_team
         gc = state.guild_config
+        # Raider.IO team ids are per-bracket: prefer the ref carried by this
+        # match so the win/loss verdict is computed against the right id.
+        team = match.team_by_slug(gc.team_slug) or state.tracked_team
         channel = state.notification_channel
         if channel is None:
             return

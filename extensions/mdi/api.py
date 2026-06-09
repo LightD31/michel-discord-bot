@@ -94,11 +94,13 @@ class ApiMixin:
         # Bracket order matches the natural API order; we approximate it via slug
         # ordering for stability when the API list is missing.
         slug_priority = {
+            "time-trials": 0,
             "group-a": 1,
             "group-b": 2,
             "group-c": 3,
-            "season-finals": 4,
-            "global-finals": 5,
+            "china-region-finals": 4,
+            "season-finals": 5,
+            "global-finals": 6,
         }
         priority = slug_priority.get(match.bracket_slug, 99)
         return (priority, match.bracket_slug, match.round, match.match_order)
