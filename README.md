@@ -52,7 +52,8 @@ A modular, multi-guild Discord bot built with **interactions.py**. Michel ships 
 | **Backup** | Scheduled (and on-demand) JSON backups of all MongoDB databases with configurable retention. |
 | **Polls** | Reaction polls with vote tracking and result embeds. |
 | **Reminders** | `/remind` scheduled reminders, persisted and restored across restarts. |
-| **Admin** | Owner/admin utilities: `/ping`, `/delete`, `/send`, and the global embed manager. |
+| **Moderation** | Member moderation — `/warn`, `/timeout`, `/kick`, `/ban`, `/unban`, numbered infraction history, a modlog channel, and automod (anti-invite / anti-spam / banned-words). Infractions are browsable and revocable from the Web UI. |
+| **Admin** | Owner/admin utilities: `/ping`, `/delete`, `/send`, `/slowmode`, `/lock`, `/unlock`, and the global embed manager. |
 | **User Info** | Per-user profile lookup and shared user stats. |
 
 ---

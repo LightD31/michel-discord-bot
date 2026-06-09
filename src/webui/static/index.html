@@ -4756,6 +4756,10 @@
         if (state.currentPage === 'module' && state.currentModule === 'moduleReactionRoles' && state.currentServerId) {
             loadRoleMenus(state.currentServerId);
         }
+        // Moderation: load infraction history when on its module page.
+        if (state.currentPage === 'module' && state.currentModule === 'moduleModeration' && state.currentServerId) {
+            loadInfractions(state.currentServerId);
+        }
     }
 
     function renderLogin() {
@@ -5664,6 +5668,40 @@
                 <div id="rolemenu-builder-body"></div>
             </div>
             ` : ''}
+
+            ${mod === 'moduleModeration' ? `
+            <div class="card" style="margin-top:16px;">
+                <div class="card-header">
+                    <div>
+                        <div class="card-title">Infractions</div>
+                        <div class="card-subtitle">Historique des sanctions enregistrées pour ce serveur.</div>
+                    </div>
+                    <div class="card-actions" style="flex-wrap:wrap; gap:6px;">
+                        <input id="inf-filter-user" class="form-input" placeholder="ID utilisateur" style="width:150px;">
+                        <select id="inf-filter-type" class="form-input" style="width:150px;">
+                            <option value="">Tous les types</option>
+                            <option value="warn">Avertissement</option>
+                            <option value="timeout">Timeout</option>
+                            <option value="untimeout">Fin de timeout</option>
+                            <option value="kick">Expulsion</option>
+                            <option value="ban">Bannissement</option>
+                            <option value="unban">Débannissement</option>
+                            <option value="automod">Automod</option>
+                            <option value="note">Note</option>
+                        </select>
+                        <select id="inf-filter-active" class="form-input" style="width:120px;">
+                            <option value="">Tous</option>
+                            <option value="true">Actifs</option>
+                            <option value="false">Révoqués</option>
+                        </select>
+                        <button class="btn btn-primary btn-sm" onclick="loadInfractions('${sid}')">🔍 Filtrer</button>
+                    </div>
+                </div>
+                <div id="infractions-list" data-server-id="${sid}">
+                    <div class="loading"><div class="spinner"></div></div>
+                </div>
+            </div>
+            ` : ''}
             ${schema && !schema.directValue ? renderExtraKeysCard(schema, modConfig) : ''}
         `;
     }
@@ -6075,6 +6113,67 @@
             toast('Menu supprimé.', 'success');
             if (_rolemenuEditing === menuId) closeRoleMenuBuilder();
             loadRoleMenus(serverId);
+        } catch (e) { /* handled by api() */ }
+    }
+
+    // ── Moderation: infraction browser ──────────────────────────────────
+    const INFRACTION_TYPE_LABELS = {
+        warn: '⚠️ Avertissement', timeout: '🔇 Timeout', untimeout: '🔊 Fin de timeout',
+        kick: '👢 Expulsion', ban: '🔨 Bannissement', unban: '♻️ Débannissement',
+        note: '📝 Note', automod: '🛡️ Automod',
+    };
+
+    async function loadInfractions(serverId) {
+        const container = document.getElementById('infractions-list');
+        if (!container) return;
+        container.innerHTML = `<div class="loading"><div class="spinner"></div></div>`;
+        const userId = (document.getElementById('inf-filter-user')?.value || '').trim();
+        const type = document.getElementById('inf-filter-type')?.value || '';
+        const active = document.getElementById('inf-filter-active')?.value || '';
+        const params = new URLSearchParams();
+        if (userId) params.set('user_id', userId);
+        if (type) params.set('type', type);
+        if (active) params.set('active', active);
+        try {
+            const data = await api(`/api/servers/${serverId}/infractions?${params.toString()}`);
+            const items = data?.infractions || [];
+            if (items.length === 0) {
+                container.innerHTML = `<div class="empty-state"><h3>Aucune infraction</h3><p>Aucune sanction ne correspond aux filtres.</p></div>`;
+                return;
+            }
+            container.innerHTML = items.map(i => {
+                const label = INFRACTION_TYPE_LABELS[i.type] || i.type;
+                const date = i.created_at ? new Date(i.created_at).toLocaleString('fr-FR') : '';
+                const dur = i.duration_seconds ? ` · ${Math.round(i.duration_seconds / 60)} min` : '';
+                const by = i.moderator_id === 'automod' ? '🛡️ Automod' : i.moderator_id;
+                const revokeBtn = i.active
+                    ? `<button class="btn btn-ghost btn-sm" style="color:var(--danger)" onclick="revokeInfraction('${escapeHtml(serverId)}', ${i.id})">Révoquer</button>`
+                    : `<span style="color:var(--text-muted); font-size:12px;">Révoqué</span>`;
+                return `
+                    <div style="border:1px solid var(--border); border-radius:var(--radius); padding:12px; margin-bottom:8px; ${i.active ? '' : 'opacity:0.55;'} display:flex; flex-direction:column; gap:6px;">
+                        <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap;">
+                            <div>
+                                <strong>#${i.id} · ${escapeHtml(label)}</strong>${dur}
+                                <span style="color:var(--text-muted); margin-left:8px;">utilisateur ${escapeHtml(i.user_id)}</span>
+                            </div>
+                            <div style="display:flex; gap:6px; align-items:center;">${revokeBtn}</div>
+                        </div>
+                        <div style="font-size:13px;">${escapeHtml(i.reason || 'Aucune raison')}</div>
+                        <div style="font-size:12px; color:var(--text-muted);">Par ${escapeHtml(by)} · ${escapeHtml(date)}</div>
+                    </div>
+                `;
+            }).join('');
+        } catch (e) {
+            container.innerHTML = `<div class="empty-state"><h3>Erreur</h3><p>${escapeHtml(String(e))}</p></div>`;
+        }
+    }
+
+    async function revokeInfraction(serverId, caseId) {
+        if (!confirm(`Révoquer le cas #${caseId} ?`)) return;
+        try {
+            await api(`/api/servers/${serverId}/infractions/${caseId}`, { method: 'DELETE' });
+            toast(`Cas #${caseId} révoqué.`, 'success');
+            loadInfractions(serverId);
         } catch (e) { /* handled by api() */ }
     }
 
