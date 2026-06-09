@@ -17,6 +17,18 @@ from src.core.config import load_config
 from src.core.text import sanitize_content
 from src.discord_ext.embeds import Colors
 from src.discord_ext.messages import require_guild
+from src.webui.schemas import SchemaBase, enabled_field, register_module
+
+
+@register_module("moduleFeur")
+class FeurConfig(SchemaBase):
+    __label__ = "Feur"
+    __description__ = 'Répond "feur" aux messages se terminant par "quoi", avec stats par membre.'
+    __icon__ = "🇫"
+    __category__ = "Communauté"
+
+    enabled: bool = enabled_field()
+
 
 logger = logutil.init_logger(os.path.basename(__file__))
 
