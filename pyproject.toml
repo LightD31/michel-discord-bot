@@ -10,8 +10,11 @@ requires-python = ">=3.12"
 license = { file = "LICENSE" }
 readme = "README.md"
 
-# Runtime dependencies. This is the single source of truth; the Docker image
-# installs from here.
+# Runtime dependencies, declared as ranges. Exact versions are locked in
+# requirements.txt (generated with
+# `uv pip compile pyproject.toml -o requirements.txt --universal`), which is
+# what the Docker image and CI install from. Regenerate the lock whenever this
+# list changes — CI fails if the two drift apart.
 dependencies = [
     # Bot framework & core
     "discord-py-interactions",
@@ -159,7 +162,8 @@ filterwarnings = [
 
 # ─── coverage ──────────────────────────────────────────────────────────
 [tool.coverage.run]
-source = ["src"]
+# features/ is the deliberately unit-testable layer — measure it too.
+source = ["src", "features"]
 branch = true
 
 [tool.coverage.report]

@@ -183,15 +183,21 @@ python -m venv .venv
 # Linux / macOS
 source .venv/bin/activate
 
-# Install runtime + dev tooling (ruff, mypy, pytest, pre-commit, detect-secrets)
-pip install -e ".[dev]"
+# Install pinned runtime deps + dev tooling (ruff, mypy, pytest, pre-commit, detect-secrets)
+pip install -r requirements.txt -e ".[dev]"
 pre-commit install
 
 python main.py
 ```
 
-Runtime dependencies are declared in `pyproject.toml`, which is the single
-source of truth for both local installs and the Docker image.
+Runtime dependencies are declared (as ranges) in `pyproject.toml` and locked
+to exact versions in `requirements.txt`, which is what the Docker image and CI
+install from. After changing dependencies in `pyproject.toml`, regenerate the
+lock with:
+
+```bash
+uv pip compile pyproject.toml -o requirements.txt --universal
+```
 
 ---
 
