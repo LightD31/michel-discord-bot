@@ -9,11 +9,13 @@ from features.mdi.client import (
     invalidate_cache,
     list_brackets,
 )
+from features.mdi.repository import MdiMatchesRepository
 
 __all__ = [
     "BracketInfo",
     "GameSnapshot",
     "MatchSnapshot",
+    "MdiMatchesRepository",
     "TeamRef",
     "get_bracket_matches",
     "invalidate_cache",

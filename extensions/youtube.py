@@ -7,9 +7,9 @@ import aiohttp
 import isodate
 from interactions import BaseChannel, Client, Extension, IntervalTrigger, Task, listen
 
+from features.youtube import YoutubeRepository
 from src.core import logging as logutil
 from src.core.config import load_config
-from src.core.db import mongo_manager
 from src.core.http import fetch
 from src.webui.schemas import SchemaBase, enabled_field, register_module, ui
 
@@ -159,10 +159,9 @@ class YoutubeExtension(Extension):
     async def get_youtube_data(self):
         data = {}
         for server_id in enabled_servers:
-            col = mongo_manager.get_guild_collection(server_id, "youtube")
-            doc = await col.find_one({"_id": "youtube_data"})
-            if doc:
-                data[str(server_id)] = {k: v for k, v in doc.items() if k != "_id"}
+            ids = await YoutubeRepository(server_id).get_last_video_ids()
+            if ids is not None:
+                data[str(server_id)] = ids
         return data
 
     def is_video_already_checked(self, server, user, video_id, youtube_data):
@@ -211,5 +210,4 @@ class YoutubeExtension(Extension):
 
     async def save_youtube_data(self, youtube_data):
         for server_id, users in youtube_data.items():
-            col = mongo_manager.get_guild_collection(server_id, "youtube")
-            await col.update_one({"_id": "youtube_data"}, {"$set": users}, upsert=True)
+            await YoutubeRepository(server_id).save_last_video_ids(users)

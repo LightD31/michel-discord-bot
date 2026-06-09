@@ -21,11 +21,13 @@ from features.vlrgg.client import (
     parse_vlrgg_timestamp,
     vlrgg_request,
 )
+from features.vlrgg.repository import VlrggLiveRepository
 
 __all__ = [
     "CACHE_TTL",
     "ROUND_ABBREVIATIONS",
     "VLRGG_API_URL",
+    "VlrggLiveRepository",
     "_clean_vlr_text",
     "check_api_health",
     "enrich_match_from_details",

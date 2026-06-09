@@ -13,13 +13,13 @@ from interactions import (
     slash_option,
 )
 
-from features.tricount import render_category_chart
+from features.tricount import TricountRepository, render_category_chart
 from src.core import logging as logutil
 from src.discord_ext.autocomplete import guild_group_autocomplete
 from src.discord_ext.embeds import Colors
 from src.discord_ext.messages import fetch_user_safe, require_guild
 
-from ._common import DEFAULT_CATEGORY, expenses_col, groups_col, guild_currency
+from ._common import DEFAULT_CATEGORY, guild_currency
 
 logger = logutil.init_logger(os.path.basename(__file__))
 
@@ -50,7 +50,8 @@ class ReportsMixin:
         if not await require_guild(ctx):
             return
 
-        group = await groups_col(ctx.guild.id).find_one({"name": groupe, "is_active": True})
+        repo = TricountRepository(ctx.guild.id)
+        group = await repo.find_active_group(groupe)
         if not group:
             await ctx.send(f"❌ Aucun groupe actif trouvé avec le nom '{groupe}'.", ephemeral=True)
             return
@@ -61,13 +62,7 @@ class ReportsMixin:
             return
 
         limit_value = limite if limite is not None else 10
-        expenses = (
-            await expenses_col(ctx.guild.id)
-            .find({"group_id": group["_id"]})
-            .sort("date", -1)
-            .limit(limit_value)
-            .to_list(length=None)
-        )
+        expenses = await repo.list_recent_expenses(group["_id"], limit_value)
 
         if not expenses:
             embed = Embed(
@@ -101,7 +96,7 @@ class ReportsMixin:
 
     @liste_depenses.autocomplete("groupe")
     async def liste_depenses_groupe_autocomplete(self, ctx: AutocompleteContext):
-        await guild_group_autocomplete(ctx, groups_col)
+        await guild_group_autocomplete(ctx, TricountRepository.groups_collection)
 
     @slash_command(
         name="bilan",
@@ -118,7 +113,8 @@ class ReportsMixin:
         if not await require_guild(ctx):
             return
 
-        group = await groups_col(ctx.guild.id).find_one({"name": groupe, "is_active": True})
+        repo = TricountRepository(ctx.guild.id)
+        group = await repo.find_active_group(groupe)
         if not group:
             await ctx.send(f"❌ Aucun groupe actif trouvé avec le nom '{groupe}'.", ephemeral=True)
             return
@@ -128,9 +124,7 @@ class ReportsMixin:
             )
             return
 
-        expenses = (
-            await expenses_col(ctx.guild.id).find({"group_id": group["_id"]}).to_list(length=None)
-        )
+        expenses = await repo.list_group_expenses(group["_id"])
 
         if not expenses:
             embed = Embed(
@@ -180,7 +174,7 @@ class ReportsMixin:
 
     @bilan.autocomplete("groupe")
     async def bilan_groupe_autocomplete(self, ctx: AutocompleteContext):
-        await guild_group_autocomplete(ctx, groups_col)
+        await guild_group_autocomplete(ctx, TricountRepository.groups_collection)
 
     @slash_command(
         name="tricount-graphique",
@@ -196,7 +190,8 @@ class ReportsMixin:
     async def tricount_graphique(self, ctx: SlashContext, groupe: str):
         if not await require_guild(ctx):
             return
-        group = await groups_col(ctx.guild.id).find_one({"name": groupe, "is_active": True})
+        repo = TricountRepository(ctx.guild.id)
+        group = await repo.find_active_group(groupe)
         if not group:
             await ctx.send(f"❌ Aucun groupe actif trouvé avec le nom '{groupe}'.", ephemeral=True)
             return
@@ -208,9 +203,7 @@ class ReportsMixin:
             return
 
         await ctx.defer()
-        expenses = (
-            await expenses_col(ctx.guild.id).find({"group_id": group["_id"]}).to_list(length=None)
-        )
+        expenses = await repo.list_group_expenses(group["_id"])
         if not expenses:
             await ctx.send("Aucune dépense enregistrée dans ce groupe.")
             return
@@ -234,7 +227,7 @@ class ReportsMixin:
 
     @tricount_graphique.autocomplete("groupe")
     async def graphique_groupe_autocomplete(self, ctx: AutocompleteContext):
-        await guild_group_autocomplete(ctx, groups_col)
+        await guild_group_autocomplete(ctx, TricountRepository.groups_collection)
 
     @slash_command(
         name="mes-groupes",
@@ -244,11 +237,8 @@ class ReportsMixin:
         if not await require_guild(ctx):
             return
 
-        groups = (
-            await groups_col(ctx.guild.id)
-            .find({"is_active": True, "members": ctx.author.id})
-            .to_list(length=None)
-        )
+        repo = TricountRepository(ctx.guild.id)
+        groups = await repo.list_member_groups(ctx.author.id)
 
         if not groups:
             embed = Embed(
@@ -265,14 +255,8 @@ class ReportsMixin:
             color=Colors.INFO,
         )
         for group in groups[:10]:
-            expense_count = await expenses_col(ctx.guild.id).count_documents(
-                {"group_id": group["_id"]}
-            )
-            expenses_for_group = (
-                await expenses_col(ctx.guild.id)
-                .find({"group_id": group["_id"]})
-                .to_list(length=None)
-            )
+            expense_count = await repo.count_group_expenses(group["_id"])
+            expenses_for_group = await repo.list_group_expenses(group["_id"])
             total_amount = sum(expense["amount"] for expense in expenses_for_group)
 
             field_value = (

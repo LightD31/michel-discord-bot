@@ -4,7 +4,6 @@ import os
 
 from src.core import logging as logutil
 from src.core.config import load_config
-from src.core.db import mongo_manager
 from src.webui.schemas import SchemaBase, enabled_field, register_module, ui
 
 
@@ -40,9 +39,6 @@ SCHEDULE_URL_TEMPLATE = (
 POLL_INTERVAL_MINUTES = 3
 COUNTRY_CODE = "FRA"
 COUNTRY_NAME = "France"
-
-# MongoDB collection (global – pas lié à un serveur)
-_olympics_col = mongo_manager.get_global_collection("olympics_state")
 
 # Headers requis pour l'API Olympics.com (anti-bot)
 OLYMPICS_HEADERS = {

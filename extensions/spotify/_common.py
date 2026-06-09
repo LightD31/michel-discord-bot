@@ -15,9 +15,9 @@ from typing import Any
 import interactions
 from interactions import Message
 
+from features.spotify import SpotifyRepository
 from src.core import logging as logutil
 from src.core.config import load_config, load_discord2name
-from src.core.db import mongo_manager
 from src.core.http import http_client
 from src.discord_ext.embeds import Colors
 from src.integrations.spotify import sp
@@ -123,23 +123,17 @@ def count_votes(votes, discord2name):
 
 
 class VoteManager:
-    """MongoDB-backed per-guild add-with-vote storage."""
+    """Per-guild add-with-vote storage, persisted through :class:`SpotifyRepository`."""
 
-    def __init__(self, guild_id, discord2name):
-        self.guild_id = guild_id
+    def __init__(self, repo: SpotifyRepository, discord2name):
+        self.repo = repo
         self.discord2name = discord2name
-        self.collection = mongo_manager.get_guild_collection(guild_id, "addwithvotes")
 
     async def load_data(self):
-        data = {}
-        async for doc in self.collection.find():
-            song_id = doc["_id"]
-            data[song_id] = {k: v for k, v in doc.items() if k != "_id"}
-        return data
+        return await self.repo.load_addwithvote_data()
 
     async def save_data(self, data):
-        for song_id, song_data in data.items():
-            await self.collection.update_one({"_id": song_id}, {"$set": song_data}, upsert=True)
+        await self.repo.save_addwithvote_data(data)
 
     def count_votes(self, data, song):
         song_data = data[song]
@@ -149,18 +143,18 @@ class VoteManager:
         return yes_votes, no_votes, users
 
     async def check_deadline(self, song_id):
-        doc = await self.collection.find_one({"_id": song_id})
+        doc = await self.repo.get_addwithvote_doc(song_id)
         if doc is None:
             return True
         return float(doc["deadline"]) <= datetime.now().timestamp()
 
     async def save_vote(self, author_id, vote, song):
         logger.info("%s voted %s to add %s", author_id, vote, song)
-        await self.collection.update_one({"_id": song}, {"$set": {f"votes.{author_id}": vote}})
+        await self.repo.save_addwithvote_vote(author_id, vote, song)
 
 
 class ServerData:
-    """Holds per-server configuration, state, and MongoDB collections."""
+    """Holds per-server configuration, state, and the per-guild repository."""
 
     def __init__(self, guild_id: str, server_config: dict):
         self.guild_id = guild_id
@@ -184,19 +178,13 @@ class ServerData:
         self.recap_pin = bool(server_config.get("spotifyRecapPinMessage", False))
         self.recap_message: Message | None = None
 
-        db = mongo_manager.get_guild_db(guild_id)
-        self.playlist_items_full = db["playlistItemsFull"]
-        self.votes_db = db["votes"]
+        self.repo = SpotifyRepository(guild_id)
 
         self.vote_infos = {}
         self.snapshot = {}
         self.reminders = {}
 
-        self.vote_manager = VoteManager(guild_id, self.discord2name)
-
-        self.vote_infos_col = db["vote_infos"]
-        self.snapshot_col = db["snapshot"]
-        self.reminders_col = db["reminders"]
+        self.vote_manager = VoteManager(self.repo, self.discord2name)
 
 
 # Per-server data, keyed by stringified guild id.

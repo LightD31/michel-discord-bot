@@ -5,6 +5,7 @@ from typing import Any
 from interactions import Embed
 
 from features.vlrgg import (
+    VlrggLiveRepository,
     extract_match_id_from_url,
     fetch_match_details,
 )
@@ -168,10 +169,8 @@ class ApiMixin:
 
     # ── Mongo persistence ─────────────────────────────────────────────────────
 
-    def _live_col(self, server_id: str):
-        from ._common import live_col
-
-        return live_col(server_id)
+    def _live_repo(self, server_id: str) -> VlrggLiveRepository:
+        return VlrggLiveRepository(server_id)
 
     async def _save_live_match(
         self,
@@ -183,30 +182,28 @@ class ApiMixin:
         message_id: str,
     ) -> None:
         try:
-            await self._live_col(server_id).replace_one(
-                {"_id": match_id},
+            await self._live_repo(server_id).upsert(
                 {
                     "_id": match_id,
                     "team_name": team_name,
                     "channel_id": channel_id,
                     "message_id": message_id,
                     "match_data": match_data,
-                },
-                upsert=True,
+                }
             )
         except Exception as e:
             logger.warning(f"Impossible de persister le match live {match_id}: {e}")
 
     async def _delete_live_match(self, server_id: str, match_id: str) -> None:
         try:
-            await self._live_col(server_id).delete_one({"_id": match_id})
+            await self._live_repo(server_id).delete(match_id)
         except Exception as e:
             logger.warning(f"Impossible de supprimer le match live persisté {match_id}: {e}")
 
     async def _restore_live_state(self, server_id: str, server_state: Any) -> None:
         """Restaure les matchs live depuis MongoDB après un redémarrage."""
         try:
-            docs = await self._live_col(server_id).find({}).to_list(length=None)
+            docs = await self._live_repo(server_id).load_all()
         except Exception as e:
             logger.warning(f"Serveur {server_id}: impossible de charger l'état live: {e}")
             return

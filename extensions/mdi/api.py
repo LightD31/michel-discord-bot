@@ -18,6 +18,7 @@ from typing import Any
 from features.mdi import (
     BracketInfo,
     MatchSnapshot,
+    MdiMatchesRepository,
     TeamRef,
     get_bracket_matches,
     list_brackets,
@@ -176,7 +177,7 @@ class ApiMixin:
     async def _load_persisted_matches(self, state: GuildState) -> None:
         """Load match-message metadata from Mongo into ``state.matches``."""
         try:
-            docs = await self._matches_col(state.server_id).find({}).to_list(length=None)
+            docs = await self._matches_repo(state.server_id).load_all()
         except Exception as e:
             logger.warning("Guild %s: could not load persisted MDI matches: %s", state.server_id, e)
             return
@@ -207,15 +208,11 @@ class ApiMixin:
             "updated_at": datetime.now(UTC).isoformat(),
         }
         try:
-            await self._matches_col(state.server_id).replace_one(
-                {"_id": doc["_id"]}, doc, upsert=True
-            )
+            await self._matches_repo(state.server_id).upsert(doc)
         except Exception as e:
             logger.warning("Guild %s: could not persist match %s: %s", state.server_id, match_id, e)
             return
         state.matches[match_id] = doc
 
-    def _matches_col(self, server_id: str) -> Any:
-        from ._common import matches_col
-
-        return matches_col(server_id)
+    def _matches_repo(self, server_id: str) -> MdiMatchesRepository:
+        return MdiMatchesRepository(server_id)

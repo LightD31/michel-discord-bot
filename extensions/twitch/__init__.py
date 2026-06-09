@@ -27,9 +27,9 @@ from interactions import (
     slash_option,
 )
 
+from features.twitch import TwitchStateRepository
 from src.core import logging as logutil
 from src.core.config import CONFIG_PATH, load_config
-from src.core.db import mongo_manager
 from src.discord_ext.messages import send_error, send_success
 
 from ._common import StreamerInfo, ensure_utc
@@ -154,16 +154,12 @@ class TwitchExtension(
 
     # ─── Session-state persistence ────────────────────────────────────
 
-    @staticmethod
-    def _streamer_state_collection():
-        return mongo_manager.get_global_collection("twitch_streamer_state")
+    _state_repo = TwitchStateRepository()
 
     async def _load_streamer_states(self) -> None:
         """Hydrate StreamerInfo session fields from MongoDB at startup."""
         try:
-            states: dict[str, dict] = {}
-            async for doc in self._streamer_state_collection().find():
-                states[doc["_id"]] = doc
+            states = await self._state_repo.load_all()
         except Exception as e:
             logger.error("Failed to load Twitch streamer states: %s", e)
             return
@@ -200,9 +196,7 @@ class TwitchExtension(
             "stream_categories": list(ref.stream_categories),
         }
         try:
-            await self._streamer_state_collection().update_one(
-                {"_id": streamer_id}, {"$set": doc}, upsert=True
-            )
+            await self._state_repo.save(streamer_id, doc)
         except Exception as e:
             logger.error("Failed to save Twitch state for %s: %s", streamer_id, e)
 

@@ -12,12 +12,11 @@ from interactions import (
     slash_option,
 )
 
+from features.tricount import TricountRepository
 from src.core import logging as logutil
 from src.discord_ext.autocomplete import guild_group_autocomplete
 from src.discord_ext.embeds import Colors
 from src.discord_ext.messages import require_guild
-
-from ._common import groups_col
 
 logger = logutil.init_logger(os.path.basename(__file__))
 
@@ -54,7 +53,8 @@ class GroupsMixin:
         if not await require_guild(ctx):
             return
 
-        existing_group = await groups_col(ctx.guild.id).find_one({"name": nom})
+        repo = TricountRepository(ctx.guild.id)
+        existing_group = await repo.find_group_by_name(nom)
         if existing_group:
             await ctx.send(
                 f"❌ Un groupe avec le nom '{nom}' existe déjà sur ce serveur.", ephemeral=True
@@ -69,8 +69,7 @@ class GroupsMixin:
             "created_at": datetime.now(),
             "is_active": True,
         }
-        result = await groups_col(ctx.guild.id).insert_one(group_data)
-        group_id = result.inserted_id
+        group_id = await repo.create_group(group_data)
 
         embed = Embed(
             title="✅ Groupe créé",
@@ -105,7 +104,8 @@ class GroupsMixin:
         if not await require_guild(ctx):
             return
 
-        group = await groups_col(ctx.guild.id).find_one({"name": nom, "is_active": True})
+        repo = TricountRepository(ctx.guild.id)
+        group = await repo.find_active_group(nom)
         if not group:
             await ctx.send(f"❌ Aucun groupe actif trouvé avec le nom '{nom}'.", ephemeral=True)
             return
@@ -113,9 +113,7 @@ class GroupsMixin:
             await ctx.send("❌ Vous êtes déjà membre de ce groupe.", ephemeral=True)
             return
 
-        await groups_col(ctx.guild.id).update_one(
-            {"_id": group["_id"]}, {"$push": {"members": ctx.author.id}}
-        )
+        await repo.add_group_member(group["_id"], ctx.author.id)
 
         embed = Embed(
             title="✅ Groupe rejoint",
@@ -132,7 +130,9 @@ class GroupsMixin:
 
     @tricount_rejoindre.autocomplete("nom")
     async def groupe_autocomplete(self, ctx: AutocompleteContext):
-        await guild_group_autocomplete(ctx, groups_col, member_filter=False)
+        await guild_group_autocomplete(
+            ctx, TricountRepository.groups_collection, member_filter=False
+        )
 
     @tricount_groupe.subcommand(
         sub_cmd_name="quitter",
@@ -149,7 +149,8 @@ class GroupsMixin:
         if not await require_guild(ctx):
             return
 
-        group = await groups_col(ctx.guild.id).find_one({"name": nom, "is_active": True})
+        repo = TricountRepository(ctx.guild.id)
+        group = await repo.find_active_group(nom)
         if not group:
             await ctx.send(f"❌ Aucun groupe actif trouvé avec le nom '{nom}'.", ephemeral=True)
             return
@@ -157,9 +158,7 @@ class GroupsMixin:
             await ctx.send("❌ Vous n'êtes pas membre de ce groupe.", ephemeral=True)
             return
 
-        await groups_col(ctx.guild.id).update_one(
-            {"_id": group["_id"]}, {"$pull": {"members": ctx.author.id}}
-        )
+        await repo.remove_group_member(group["_id"], ctx.author.id)
 
         embed = Embed(
             title="✅ Groupe quitté",
@@ -176,4 +175,4 @@ class GroupsMixin:
 
     @tricount_quitter.autocomplete("nom")
     async def groupe_membre_autocomplete(self, ctx: AutocompleteContext):
-        await guild_group_autocomplete(ctx, groups_col)
+        await guild_group_autocomplete(ctx, TricountRepository.groups_collection)

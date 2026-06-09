@@ -10,7 +10,6 @@ from typing import Any
 from features.mdi import TeamRef
 from src.core import logging as logutil
 from src.core.config import CONFIG_PATH, load_config
-from src.core.db import mongo_manager
 from src.discord_ext.embeds import Colors
 from src.webui.schemas import SchemaBase, enabled_field, register_module, ui
 
@@ -149,14 +148,6 @@ class GuildState:
     """match_id -> persisted document fields {channel_id, message_id, last_hash, terminal, ...}"""
 
 
-# ── Mongo helpers ─────────────────────────────────────────────────────────────
-
-
-def matches_col(server_id: str):
-    """Return the per-guild collection storing per-match message metadata."""
-    return mongo_manager.get_guild_collection(server_id, "mdi_matches")
-
-
 # ── Config persistence ────────────────────────────────────────────────────────
 
 
@@ -223,7 +214,6 @@ __all__ = [
     "config",
     "enabled_servers",
     "logger",
-    "matches_col",
     "module_config",
     "save_schedule_channel_message_id",
 ]

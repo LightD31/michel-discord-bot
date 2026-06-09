@@ -8,7 +8,6 @@ from typing import Any
 from features.vlrgg import _clean_vlr_text, expand_round_name
 from src.core import logging as logutil
 from src.core.config import CONFIG_PATH, load_config
-from src.core.db import mongo_manager
 from src.discord_ext.embeds import Colors
 from src.webui.schemas import SchemaBase, enabled_field, register_module, ui
 
@@ -106,14 +105,6 @@ class ServerState:
     teams: dict[str, TeamState] = field(default_factory=dict)
 
 
-# ── Mongo helpers ─────────────────────────────────────────────────────────────
-
-
-def live_col(server_id: str):
-    """Return the MongoDB collection for live match persistence."""
-    return mongo_manager.get_guild_collection(server_id, "vlrgg_live")
-
-
 # ── Config persistence ────────────────────────────────────────────────────────
 
 
@@ -161,7 +152,6 @@ __all__ = [
     "TeamConfig",
     "TeamState",
     "ServerState",
-    "live_col",
     "_save_team_channel_message",
     "_clean_vlr_text",
     "expand_round_name",

@@ -242,9 +242,7 @@ class NotificationsMixin:
             "updated_at": datetime.now(UTC).isoformat(),
         }
         try:
-            await self._matches_col(state.server_id).replace_one(
-                {"_id": doc["_id"]}, doc, upsert=True
-            )
+            await self._matches_repo(state.server_id).upsert(doc)
         except Exception as e:
             logger.warning(
                 "MDI: could not persist match %s for guild %s: %s",

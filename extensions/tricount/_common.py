@@ -1,10 +1,9 @@
-"""Shared config, constants, and collection helpers for the Tricount extension."""
+"""Shared config and constants for the Tricount extension."""
 
 import os
 
 from src.core import logging as logutil
 from src.core.config import load_config
-from src.core.db import mongo_manager
 from src.webui.schemas import SchemaBase, enabled_field, register_module, ui
 
 # Default expense categories surfaced in /depense autocomplete. Free-form input
@@ -62,15 +61,3 @@ def guild_categories(guild_id: str | int) -> list[str]:
 def guild_currency(guild_id: str | int) -> str:
     cfg = module_config.get(str(guild_id), {})
     return cfg.get("tricountCurrency") or DEFAULT_CURRENCY
-
-
-def groups_col(guild_id):
-    return mongo_manager.get_guild_collection(str(guild_id), "tricount_groups")
-
-
-def expenses_col(guild_id):
-    return mongo_manager.get_guild_collection(str(guild_id), "tricount_expenses")
-
-
-def recurring_col(guild_id):
-    return mongo_manager.get_guild_collection(str(guild_id), "tricount_recurring")

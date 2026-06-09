@@ -7,13 +7,14 @@ from typing import Any
 from curl_cffi import requests as cffi_requests
 from interactions import IntervalTrigger, Task
 
+from features.olympics import OlympicsStateRepository
+
 from ._common import (
     COUNTRY_CODE,
     EVENT_MEDALS_URL,
     MEDALLISTS_URL,
     MEDALS_URL,
     POLL_INTERVAL_MINUTES,
-    _olympics_col,
     logger,
 )
 
@@ -69,12 +70,14 @@ class TasksMixin:
 
     # ─── Persistance ──────────────────────────────────────────────────────────
 
+    _state_repo = OlympicsStateRepository()
+
     async def _load_state(self) -> None:
         """Charge l'état des médailles déjà notifiées depuis MongoDB."""
         try:
-            doc = await _olympics_col.find_one({"_id": "known_medals"})
-            if doc:
-                self.known_medals = set(doc.get("medals", []))
+            medals = await self._state_repo.load_known_medals()
+            if medals is not None:
+                self.known_medals = medals
                 logger.info(f"État Olympics chargé : {len(self.known_medals)} médailles connues")
             else:
                 logger.info("Aucun état Olympics trouvé, première exécution")
@@ -84,11 +87,7 @@ class TasksMixin:
     async def _save_state(self) -> None:
         """Sauvegarde l'état des médailles notifiées dans MongoDB."""
         try:
-            await _olympics_col.update_one(
-                {"_id": "known_medals"},
-                {"$set": {"medals": list(self.known_medals)}},
-                upsert=True,
-            )
+            await self._state_repo.save_known_medals(self.known_medals)
         except Exception as e:
             logger.error(f"Erreur lors de la sauvegarde de l'état Olympics : {e}")
 
