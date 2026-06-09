@@ -42,9 +42,24 @@ if not TOKEN:
     logger.critical("TOKEN variable not set. Cannot continue")
     sys.exit(1)
 
+# Only the intents the extensions actually consume — slash commands and
+# components need none of these. Privileged intents (Developer Portal
+# toggles): GUILD_MEMBERS (welcome, userinfo) and MESSAGE_CONTENT (feur,
+# automod filters). GUILD_PRESENCES is deliberately not requested. Add the
+# matching intent here when a new extension listens to a new gateway event.
+INTENTS = (
+    interactions.Intents.GUILDS  # guild/channel cache — required baseline
+    | interactions.Intents.GUILD_MEMBERS  # welcome + userinfo member join/leave/update
+    | interactions.Intents.GUILD_MESSAGES  # feur, xp leveling, automod
+    | interactions.Intents.MESSAGE_CONTENT  # feur keyword match, automod filters
+    | interactions.Intents.GUILD_MESSAGE_REACTIONS  # giveaway, polls, starboard
+    | interactions.Intents.GUILD_VOICE_STATES  # xp voice activity
+    | interactions.Intents.GUILD_SCHEDULED_EVENTS  # minecraft status events
+)
+
 client = interactions.Client(
     token=TOKEN,
-    intents=interactions.Intents.ALL,
+    intents=INTENTS,
     send_not_ready_messages=True,
     delete_unused_application_cmds=True,
     # auto_defer=interactions.AutoDefer(enabled=True, time_until_defer=0),
