@@ -144,6 +144,19 @@ def _fields_of(cls: type[BaseModel]) -> dict[str, dict[str, Any]]:
         meta = extra.get("ui") if isinstance(extra, dict) else None
         if isinstance(meta, dict):
             out[name] = dict(meta)
+    # Materialize ``weight_field`` references as hidden fields. The
+    # messagelist widget stores weights under a sibling config key;
+    # declaring that key here makes every schema consumer (config cleanup,
+    # previews, …) see it as module-owned without each extension declaring
+    # it by hand. The form renderers already skip weightField-referenced keys.
+    for field_meta in list(out.values()):
+        weight_key = field_meta.get("weightField")
+        if isinstance(weight_key, str) and weight_key and weight_key not in out:
+            out[weight_key] = {
+                "label": f"{field_meta.get('label', weight_key)} (poids)",
+                "type": "list:number",
+                "hidden": True,
+            }
     return out
 
 
