@@ -159,7 +159,8 @@ git clone https://github.com/LightD31/michel-discord-bot.git
 cd michel-discord-bot
 # Create and edit your configuration
 mkdir -p config
-cp config/config.example.json config/config.json   # if an example exists, or create manually
+cp config.example.json config/config.json   # generated skeleton — fill in the secrets
+# (regenerate the skeleton after schema changes: python scripts/generate_config_example.py)
 # Launch
 docker compose up -d
 ```

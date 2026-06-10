@@ -32,6 +32,9 @@ pytest --cov=src --cov=features --cov-report=term   # with coverage (CI)
 # Pre-commit (runs ruff + detect-secrets + hygiene hooks)
 pre-commit run --all-files
 
+# Regenerate config.example.json after adding/changing Web UI schemas
+python scripts/generate_config_example.py
+
 # Docker (production layout — mounts ./config, ./data, ./logs)
 docker compose up -d
 ```
@@ -89,6 +92,5 @@ Motor (MongoDB), aiohttp (HTTP), asyncssh (SFTP), native async RCON. Never block
 - Python 3.12, target-version `py312` in ruff. Line length 100.
 - Logging: `from src.core import logging as logutil; logger = logutil.init_logger("name")`.
 - Most user-facing strings are French — match existing language when editing command descriptions and embeds.
-- Stale doc warning: `.github/copilot-instructions.md` describes an older flat `src/` layout (`src/utils.py`, `src/mongodb.py`, etc.) that has been refactored into the three-layer split above. Trust `README.md` and the actual file tree, not that file.
 - `interactions.py` here is the `discord-py-interactions` package — not `discord.py`. Use `interactions.Extension`, `@slash_command`, `@listen()`, `@interactions.Task.create(IntervalTrigger(...))`.
 - `tests/test_smoke.py` is a placeholder to keep CI green; real tests are still being backfilled.

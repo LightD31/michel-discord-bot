@@ -124,6 +124,27 @@ jobs:
             exit 1
           fi
 
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@v6
+        with:
+          # Keep in sync with the Dockerfile base image — CI must test the
+          # interpreter the bot ships on.
+          python-version: "3.14"
+
+      - name: Audit locked dependencies for known CVEs
+        # --no-deps audits exactly the pins in the lockfile without resolving;
+        # the lock is fully pinned so nothing is missed.
+        run: |
+          pip install pip-audit
+          pip-audit -r requirements.txt --no-deps
+
   secrets:
     runs-on: ubuntu-latest
     timeout-minutes: 10

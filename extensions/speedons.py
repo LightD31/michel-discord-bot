@@ -1,9 +1,8 @@
+import asyncio
 import os
 from datetime import datetime, timedelta
-from typing import Optional
 
 import pytz
-import requests
 from interactions import (
     BaseChannel,
     Client,
@@ -21,6 +20,7 @@ from interactions.ext import paginators
 
 from src.core import logging as logutil
 from src.core.config import load_config
+from src.core.http import fetch
 from src.discord_ext.messages import fetch_or_create_persistent_message
 from src.webui.schemas import (
     SchemaBase,
@@ -87,10 +87,10 @@ def get_url(endpoint):
     return f"{BASE_URL}/{endpoint}"
 
 
-def get_data(url):
+async def get_data(url):
     try:
-        response = requests.get(url, timeout=5)
-        return response.json()["data"]
+        payload = await fetch(url, return_type="json", retries=2)
+        return payload["data"]
     except Exception as e:
         logger.error("Error fetching data from %s: %s", url, e)
         return None
@@ -157,10 +157,15 @@ class SpeedonsExtension(Extension):
         amount_url = BASE_URL
         incentives_url = get_url("challenges")
 
-        events_data = get_data(events_url)
-        attendees_data = get_data(attendees_url)
-        amount_data = get_data(amount_url)
-        incentives_data = get_data(incentives_url)
+        events_data, attendees_data, amount_data, incentives_data = await asyncio.gather(
+            get_data(events_url),
+            get_data(attendees_url),
+            get_data(amount_url),
+            get_data(incentives_url),
+        )
+        if None in (events_data, attendees_data, amount_data, incentives_data):
+            logger.warning("Speedons API data incomplete; skipping this update")
+            return
         embeds = []
         embedlive = None
         current_run = None
