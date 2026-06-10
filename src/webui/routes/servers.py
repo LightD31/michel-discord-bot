@@ -9,6 +9,7 @@ from pydantic import BaseModel
 from src.core import logging as logutil
 from src.core.config import load_config as bot_load_config
 from src.webui.context import WebUIContext, build_module_to_extension_map
+from src.webui.secrets import mask_server_config, restore_section
 
 logger = logutil.init_logger("webui.routes.servers")
 
@@ -83,7 +84,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
                 or f"Serveur {server_id}"
             )
             icon = guild_info.get("icon") or getattr(getattr(bot_guild, "icon", None), "hash", None)
-            return {"name": name, "icon": icon, "config": server_config}
+            return {"name": name, "icon": icon, "config": mask_server_config(server_config)}
 
         result: dict = {}
 
@@ -289,28 +290,40 @@ def create_router(ctx: WebUIContext) -> APIRouter:
 
     @router.get("/api/servers/{server_id}")
     async def api_get_server(request: Request, server_id: str):
-        """Get configuration for a specific server."""
+        """Get configuration for a specific server (secrets masked)."""
         ctx.require_guild_admin(request, server_id)
         data = ctx.get_full_config()
         server_config = data.get("servers", {}).get(server_id)
         if server_config is None:
             raise HTTPException(status_code=404, detail="Serveur non trouvé")
-        return JSONResponse({"server_id": server_id, "config": server_config})
+        return JSONResponse({"server_id": server_id, "config": mask_server_config(server_config)})
 
     @router.put("/api/servers/{server_id}/modules/{module_name}")
     async def api_update_module(
         request: Request, server_id: str, module_name: str, body: ConfigUpdate
     ):
-        """Update a specific module's config for a server."""
-        ctx.require_guild_admin(request, server_id)
-        data = ctx.get_full_config()
+        """Update a specific module's config for a server.
 
-        if server_id not in data.get("servers", {}):
-            data.setdefault("servers", {})[server_id] = {}
+        Secret fields submitted as the untouched mask placeholder keep their
+        current on-disk value.
+        """
+        session = ctx.require_guild_admin(request, server_id)
+        from src.webui import schemas
 
-        data["servers"][server_id][module_name] = body.config
-        ctx.save_config(data)
-        logger.info(f"Updated {module_name} config for server {server_id}")
+        schema = schemas.MODULE_SCHEMAS.get(module_name)
+
+        def mutator(data: dict) -> None:
+            server = data.setdefault("servers", {}).setdefault(server_id, {})
+            server[module_name] = restore_section(body.config, server.get(module_name), schema)
+
+        ctx.mutate_config(mutator)
+        logger.info(
+            "Updated %s config for server %s (by %s/%s)",
+            module_name,
+            server_id,
+            session.username,
+            session.user_id,
+        )
         reload_result = _try_reload_extension_for_module(ctx, module_name)
         return JSONResponse({"status": "ok", "reload": reload_result})
 
@@ -319,21 +332,24 @@ def create_router(ctx: WebUIContext) -> APIRouter:
         request: Request, server_id: str, module_name: str, body: ModuleToggle
     ):
         """Enable or disable a module for a server."""
-        ctx.require_guild_admin(request, server_id)
-        data = ctx.get_full_config()
+        session = ctx.require_guild_admin(request, server_id)
 
-        if server_id not in data.get("servers", {}):
-            data.setdefault("servers", {})[server_id] = {}
+        def mutator(data: dict) -> None:
+            server = data.setdefault("servers", {}).setdefault(server_id, {})
+            # Hand-edited configs may hold a non-dict value here; replace it
+            # rather than crashing on the item assignment below.
+            if not isinstance(server.get(module_name), dict):
+                server[module_name] = {}
+            server[module_name]["enabled"] = body.enabled
 
-        # Hand-edited configs may hold a non-dict value here; replace it
-        # rather than crashing on the item assignment below.
-        if not isinstance(data["servers"][server_id].get(module_name), dict):
-            data["servers"][server_id][module_name] = {}
-
-        data["servers"][server_id][module_name]["enabled"] = body.enabled
-        ctx.save_config(data)
+        ctx.mutate_config(mutator)
         logger.info(
-            f"{'Enabled' if body.enabled else 'Disabled'} {module_name} for server {server_id}"
+            "%s %s for server %s (by %s/%s)",
+            "Enabled" if body.enabled else "Disabled",
+            module_name,
+            server_id,
+            session.username,
+            session.user_id,
         )
         reload_result = _try_reload_extension_for_module(ctx, module_name)
         return JSONResponse({"status": "ok", "enabled": body.enabled, "reload": reload_result})

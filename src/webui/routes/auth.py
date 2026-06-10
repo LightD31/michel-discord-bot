@@ -5,7 +5,16 @@ import secrets
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
+from src.core import logging as logutil
 from src.webui.context import COOKIE_NAME, WebUIContext
+from src.webui.ratelimit import RateLimiter, client_ip
+
+logger = logutil.init_logger("webui.routes.auth")
+
+# Per-IP budget shared by /auth/login and /auth/callback — generous for a
+# human retrying a login, tight enough to throttle brute-forcing the flow.
+AUTH_RATE_LIMIT = 10
+AUTH_RATE_WINDOW_SECONDS = 60.0
 
 
 def _is_https(request: Request) -> bool:
@@ -18,10 +27,22 @@ def _is_https(request: Request) -> bool:
 
 def create_router(ctx: WebUIContext) -> APIRouter:
     router = APIRouter()
+    auth_limiter = RateLimiter(AUTH_RATE_LIMIT, AUTH_RATE_WINDOW_SECONDS)
+
+    def _throttle(request: Request) -> None:
+        retry_after = auth_limiter.check(client_ip(request))
+        if retry_after:
+            logger.warning("Auth rate limit hit for %s", client_ip(request))
+            raise HTTPException(
+                status_code=429,
+                detail="Trop de tentatives de connexion — réessaie dans un instant.",
+                headers={"Retry-After": str(int(retry_after) + 1)},
+            )
 
     @router.get("/auth/login")
     async def auth_login(request: Request):
         """Redirect to Discord OAuth2 login."""
+        _throttle(request)
         state = secrets.token_urlsafe(16)
         url = ctx.oauth.get_oauth_url(state)
         response = RedirectResponse(url=url)
@@ -38,6 +59,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
     @router.get("/auth/callback")
     async def auth_callback(request: Request, code: str = "", state: str = ""):
         """Handle Discord OAuth2 callback."""
+        _throttle(request)
         if not code:
             raise HTTPException(status_code=400, detail="Code manquant")
 

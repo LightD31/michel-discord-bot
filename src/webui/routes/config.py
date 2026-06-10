@@ -7,6 +7,7 @@ from pydantic import BaseModel
 from src.core import logging as logutil
 from src.webui.context import WebUIContext, discover_modules
 from src.webui.schemas import GLOBAL_CONFIG_SCHEMAS, MODULE_SCHEMAS
+from src.webui.secrets import mask_full_config, mask_section, restore_section
 
 logger = logutil.init_logger("webui.routes.config")
 
@@ -21,10 +22,10 @@ def create_router(ctx: WebUIContext) -> APIRouter:
 
     @router.get("/api/config")
     async def api_get_config(request: Request):
-        """Get the full configuration (contains secrets — developer only)."""
+        """Get the full configuration, secrets masked (developer only)."""
         ctx.require_developer(request)
         data = ctx.get_full_config()
-        return JSONResponse(data)
+        return JSONResponse(mask_full_config(data))
 
     @router.get("/api/modules")
     async def api_get_modules(request: Request):
@@ -65,32 +66,41 @@ def create_router(ctx: WebUIContext) -> APIRouter:
 
     @router.get("/api/global-config")
     async def api_get_global_config(request: Request):
-        """Get global configuration (contains secrets — developer only)."""
+        """Get global configuration, secrets masked (developer only)."""
         ctx.require_developer(request)
         data = ctx.get_full_config()
-        return JSONResponse(data.get("config", {}))
+        global_config = data.get("config", {})
+        masked = {
+            section: mask_section(section_data, GLOBAL_CONFIG_SCHEMAS.get(section))
+            for section, section_data in global_config.items()
+        }
+        return JSONResponse(masked)
 
     @router.put("/api/global-config/{section}")
     async def api_update_global_config(request: Request, section: str, body: GlobalConfigUpdate):
-        """Update a section of the global configuration (developer only)."""
-        ctx.require_developer(request)
-        data = ctx.get_full_config()
-        data.setdefault("config", {})[section] = body.config
-        ctx.save_config(data)
-        logger.info(f"Updated global config section: {section}")
+        """Update a section of the global configuration (developer only).
+
+        Secret fields submitted as the untouched mask placeholder keep their
+        current on-disk value (the dashboard never sees real secrets).
+        """
+        session = ctx.require_developer(request)
+        schema = GLOBAL_CONFIG_SCHEMAS.get(section)
+
+        def mutator(data: dict) -> None:
+            current = data.get("config", {}).get(section)
+            data.setdefault("config", {})[section] = restore_section(body.config, current, schema)
+
+        ctx.mutate_config(mutator)
+        logger.info(
+            "Updated global config section %s (by %s/%s)",
+            section,
+            session.username,
+            session.user_id,
+        )
         return JSONResponse({"status": "ok"})
 
-    @router.post("/api/cleanup-config")
-    async def api_cleanup_config(request: Request, dry_run: bool = False):
-        """Remove config keys not present in the schemas.
-
-        Query params:
-            dry_run: if true, return what would be removed without saving.
-        """
-        ctx.require_developer(request)
-        data = ctx.get_full_config()
-        removed: list[dict] = []
-
+    def _strip_unknown_keys(data: dict, removed: list[dict], apply: bool) -> None:
+        """Collect (and optionally delete) config keys absent from the schemas."""
         # Clean up per-server module configs
         servers = data.get("servers", {})
         for server_id, server_config in servers.items():
@@ -115,7 +125,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
                                 "value": module_config[key],
                             }
                         )
-                        if not dry_run:
+                        if apply:
                             del module_config[key]
 
         # Clean up global config sections
@@ -136,12 +146,32 @@ def create_router(ctx: WebUIContext) -> APIRouter:
                             "value": section_data[key],
                         }
                     )
-                    if not dry_run:
+                    if apply:
                         del section_data[key]
 
+    @router.post("/api/cleanup-config")
+    async def api_cleanup_config(request: Request, dry_run: bool = False):
+        """Remove config keys not present in the schemas.
+
+        Query params:
+            dry_run: if true, return what would be removed without saving.
+        """
+        session = ctx.require_developer(request)
+        removed: list[dict] = []
+
+        # Probe on a plain read first; only take the write path when there is
+        # something to delete, so a no-op cleanup never rewrites the file.
+        _strip_unknown_keys(ctx.get_full_config(), removed, apply=False)
+
         if not dry_run and removed:
-            ctx.save_config(data)
-            logger.info("Config cleanup: removed %d key(s)", len(removed))
+            removed = []
+            ctx.mutate_config(lambda data: _strip_unknown_keys(data, removed, apply=True))
+            logger.info(
+                "Config cleanup: removed %d key(s) (by %s/%s)",
+                len(removed),
+                session.username,
+                session.user_id,
+            )
 
         # Sanitise values for JSON response (avoid huge blobs)
         for entry in removed:

@@ -150,6 +150,31 @@ class ConfigStore:
             _atomic_write(data)
         self._update_and_notify(data)
 
+    def mutate(self, mutator: Callable[[dict[str, Any]], None]) -> dict[str, Any]:
+        """Atomically read-modify-write the config under the write lock.
+
+        ``mutator`` receives a fresh read of the on-disk config and edits it in
+        place. Holding ``_write_lock`` across read → mutate → write closes the
+        race where two concurrent "load full config, edit, save" sequences
+        (e.g. two dashboard requests) silently drop one of the edits.
+
+        Raises :class:`src.core.errors.ConfigError` instead of writing when the
+        config file is unreadable or empty — mutating an empty skeleton would
+        wipe the real config.
+        """
+        from src.core.errors import ConfigError
+
+        with _write_lock:
+            data = _load_config_file()
+            if not data:
+                raise ConfigError(
+                    f"{CONFIG_PATH} unreadable or empty — refusing to mutate and overwrite it"
+                )
+            mutator(data)
+            _atomic_write(data)
+        self._update_and_notify(data)
+        return data
+
     def reload(self) -> dict[str, Any]:
         """Re-read ``config/config.json`` from disk and notify subscribers."""
         data = _load_config_file()

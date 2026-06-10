@@ -77,14 +77,44 @@ class WebUIContext:
         try:
             config_store.save_full(data)
         except Exception as e:
-            logger.exception("Config save failed")
-            detail = f"Échec d'écriture de config/config.json : {e}"
-            if isinstance(e, PermissionError):
-                detail += (
-                    " — le dossier config/ n'est pas inscriptible par l'utilisateur du "
-                    "conteneur (uid 1000). Sur l'hôte : chown -R 1000:1000 ./config"
-                )
-            raise HTTPException(status_code=500, detail=detail) from e
+            self._raise_save_error(e)
+
+    def mutate_config(self, mutator) -> dict:
+        """Read-modify-write the config atomically (see ``ConfigStore.mutate``).
+
+        Prefer this over ``get_full_config()`` + ``save_config()`` in routes:
+        the mutator runs against a fresh read under the write lock, so a
+        concurrent save can't be silently overwritten.
+        """
+        from src.core.config import config_store
+        from src.core.errors import ConfigError
+
+        try:
+            return config_store.mutate(mutator)
+        except ConfigError as e:
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    "config/config.json illisible ou vide — "
+                    "modification refusée pour ne pas écraser la configuration."
+                ),
+            ) from e
+        except HTTPException:
+            raise
+        except Exception as e:
+            self._raise_save_error(e)
+            raise  # unreachable — _raise_save_error always raises
+
+    @staticmethod
+    def _raise_save_error(e: Exception) -> None:
+        logger.exception("Config save failed")
+        detail = f"Échec d'écriture de config/config.json : {e}"
+        if isinstance(e, PermissionError):
+            detail += (
+                " — le dossier config/ n'est pas inscriptible par l'utilisateur du "
+                "conteneur (uid 1000). Sur l'hôte : chown -R 1000:1000 ./config"
+            )
+        raise HTTPException(status_code=500, detail=detail) from e
 
     # --- Session / authorization -------------------------------------
 
