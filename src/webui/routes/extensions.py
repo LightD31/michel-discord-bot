@@ -92,11 +92,19 @@ def create_router(ctx: WebUIContext) -> APIRouter:
     @router.post("/api/extensions/{ext_name:path}/toggle")
     async def api_toggle_extension(request: Request, ext_name: str, body: ExtensionToggle):
         """Enable or disable an extension globally (updates config and loads/unloads)."""
-        ctx.require_developer(request)
-        data = ctx.get_full_config()
-        data.setdefault("config", {}).setdefault("extensions", {})[ext_name] = body.enabled
-        ctx.save_config(data)
-        logger.info(f"{'Enabled' if body.enabled else 'Disabled'} extension {ext_name} in config")
+        session = ctx.require_developer(request)
+
+        def mutator(data: dict) -> None:
+            data.setdefault("config", {}).setdefault("extensions", {})[ext_name] = body.enabled
+
+        ctx.mutate_config(mutator)
+        logger.info(
+            "%s extension %s in config (by %s/%s)",
+            "Enabled" if body.enabled else "Disabled",
+            ext_name,
+            session.username,
+            session.user_id,
+        )
 
         loaded = ext_name in set(ctx.get_extension_module_paths()) if ctx.bot else False
         error = None

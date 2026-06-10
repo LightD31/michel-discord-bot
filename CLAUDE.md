@@ -81,7 +81,12 @@ When schema-driven forms aren't enough (e.g. CRUD over a list of objects, anythi
 
 ### Web UI authorization
 
-Two tiers, enforced via helpers on `WebUIContext` (`src/webui/context.py`): any authenticated Discord user can manage the guilds where they hold `MANAGE_GUILD`/`ADMINISTRATOR` (or ownership); user IDs in `config.webui.developerUserIds` additionally get global config, extension reload, and the live log stream. Sessions are MongoDB-persisted with a TTL index (`src/webui/sessions.py`). Use `require_guild_admin()` for per-guild routes and `require_developer()` for global ones — never skip the check.
+Two tiers, enforced via helpers on `WebUIContext` (`src/webui/context.py`): any authenticated Discord user can manage the guilds where they hold `MANAGE_GUILD`/`ADMINISTRATOR` (or ownership); user IDs in `config.webui.developerUserIds` additionally get global config, extension reload, and the live log stream. Sessions are MongoDB-persisted with a TTL index (`src/webui/sessions.py`). Use `require_guild_admin()` for per-guild routes and `require_developer()` for global ones — never skip the check. The auth endpoints are rate-limited per client IP (`src/webui/ratelimit.py`).
+
+### Web UI config I/O rules
+
+- **Mutations**: use `ctx.mutate_config(mutator)` — an atomic read-modify-write under the config write lock — never `get_full_config()` + `save_config()` in sequence (that pattern silently drops concurrent edits). Include the acting user (`session.username`/`session.user_id` from the `require_*` helper) in the mutation log line.
+- **Secrets**: schema fields declared `secret=True` are masked to a placeholder in every API response (`src/webui/secrets.py`); the save paths call `restore_section()` so an untouched placeholder keeps the on-disk value. Any new endpoint that returns config must mask (`mask_full_config` / `mask_section` / `mask_server_config`), and any new save path for schema-backed config must restore.
 
 ### Per-guild data isolation
 
