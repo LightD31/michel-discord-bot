@@ -5,8 +5,11 @@ Coloc module for Zunivers integration.
 This package provides:
 - ZuniversAPIClient: API client with retry logic
 - Data models for reminders, events, and seasons
-- Utility functions for embed creation
+- Pure helpers (date parsing, item formatting)
 - Storage manager for persistence
+
+Discord embed builders live in :mod:`extensions.zunivers.embeds` — this
+package stays free of ``interactions`` imports.
 """
 
 from .api_client import ZuniversAPIClient, ZuniversAPIError
@@ -26,10 +29,8 @@ from .models import (
 )
 from .storage import StorageManager
 from .utils import (
-    create_corporation_embed,
-    create_corporation_logs_embed,
-    create_event_embed,
-    create_season_embed,
+    format_event_items,
+    image_url_needs_download,
     parse_zunivers_date,
 )
 
@@ -53,8 +54,6 @@ __all__ = [
     "StorageManager",
     # Utils
     "parse_zunivers_date",
-    "create_event_embed",
-    "create_season_embed",
-    "create_corporation_embed",
-    "create_corporation_logs_embed",
+    "format_event_items",
+    "image_url_needs_download",
 ]

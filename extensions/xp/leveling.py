@@ -2,7 +2,6 @@
 
 import random
 
-import pymongo
 from interactions import Client, Message, listen
 from interactions.api.events import MessageCreate
 
@@ -15,6 +14,7 @@ from features.xp import (
     XpRepository,
     calculate_level,
 )
+from src.core.errors import DatabaseError
 from src.core.text import pick_weighted_message
 from src.discord_ext.autocomplete import is_guild_enabled
 
@@ -54,7 +54,7 @@ class LevelingMixin:
         repo = self._repo(guild_id)
         try:
             stats = await repo.get_user(user_id)
-        except pymongo.errors.PyMongoError as e:
+        except DatabaseError as e:
             logger.error("Database error when fetching user stats: %s", e)
             return
 
@@ -85,20 +85,18 @@ class LevelingMixin:
             created = await self._repo(guild_id).ensure_collection(guild_name)
             if created:
                 logger.debug("Created xp collection for %s.", guild_name)
-        except pymongo.errors.PyMongoError as e:
+        except DatabaseError as e:
             logger.error("Failed to create collection for %s: %s", guild_name, e)
 
     async def _create_new_user(self, guild_id: str, user_id: str, timestamp: float) -> bool:
         repo = self._repo(guild_id)
         try:
+            # The repository treats a concurrent-create race as success.
             await repo.insert_new_user(user_id, random.randint(XP_MIN, XP_MAX), timestamp)
             self._invalidate_rank_cache(guild_id)
             logger.debug("Added %s to the database.", user_id)
             return True
-        except pymongo.errors.DuplicateKeyError:
-            logger.debug("User %s already exists (race condition).", user_id)
-            return True
-        except pymongo.errors.PyMongoError as e:
+        except DatabaseError as e:
             logger.error("Failed to create user %s: %s", user_id, e)
             return False
 
@@ -122,13 +120,13 @@ class LevelingMixin:
             await repo.update_xp(user_id, new_xp, new_msg, message.created_at.timestamp())
             self._invalidate_rank_cache(guild_id)
             logger.debug("Gave %s XP.", user_id)
-        except pymongo.errors.PyMongoError as e:
+        except DatabaseError as e:
             logger.error("Failed to update XP for %s: %s", user_id, e)
             return
 
         try:
             await repo.log_event(user_id, xp_gained, new_xp, message.created_at)
-        except pymongo.errors.PyMongoError as e:
+        except DatabaseError as e:
             logger.warning("Failed to log XP event for %s: %s", user_id, e)
 
         new_level, _, _ = calculate_level(new_xp)

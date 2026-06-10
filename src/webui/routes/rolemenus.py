@@ -14,14 +14,12 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from features.reactionroles import (
-    MAX_ENTRIES,
     ReactionRolesRepository,
     RoleMenu,
     RoleMenuEntry,
-    build_components,
-    build_embed,
 )
 from src.core import logging as logutil
+from src.discord_ext.rolemenus import MAX_ENTRIES, build_components, build_embed
 from src.webui.context import WebUIContext
 
 logger = logutil.init_logger("webui.routes.rolemenus")

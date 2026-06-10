@@ -1,6 +1,9 @@
 """EventsMixin — Zunivers event tracking and hardcore season notifications."""
 
+import io
+
 from interactions import (
+    File,
     GuildText,
     OrTrigger,
     SlashContext,
@@ -11,15 +14,11 @@ from interactions import (
 
 from features.coloc.constants import ReminderType
 from features.coloc.models import HardcoreSeason, ZuniversEvent
-from features.coloc.utils import (
-    create_event_embed,
-    create_season_embed,
-    image_url_needs_download,
-    set_event_embed_image,
-)
+from features.coloc.utils import image_url_needs_download
 from src.discord_ext.messages import send_error
 
 from ._common import enabled_servers, logger
+from .embeds import create_event_embed, create_season_embed, set_event_embed_image
 
 
 class EventsMixin:
@@ -113,7 +112,9 @@ class EventsMixin:
         image_file = None
         image_url = event.get("imageUrl")
         if image_url and image_url_needs_download(image_url):
-            image_file = await self.api_client.download_image(image_url, "event_image.webp")
+            image_bytes = await self.api_client.download_image(image_url)
+            if image_bytes:
+                image_file = File(file=io.BytesIO(image_bytes), file_name="event_image.webp")
 
         set_event_embed_image(embed, image_url, image_file)
 
