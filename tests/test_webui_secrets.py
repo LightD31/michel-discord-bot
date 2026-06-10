@@ -18,6 +18,13 @@ FAKE_SCHEMA = {
     },
 }
 
+# Obviously fake fixture values, hoisted into constants so detect-secrets'
+# keyword detector doesn't match `"apiKey": "<literal>"` lines all over the file.
+FAKE_SECRET = "hunter2"  # pragma: allowlist secret
+NEW_SECRET = "new-secret"  # pragma: allowlist secret
+OLD_SECRET = "old-secret"  # pragma: allowlist secret
+FAKE_TOKEN = "tok-123"  # pragma: allowlist secret
+
 
 @register_module("moduleSecretMaskTest")
 class _SecretMaskTestConfig(SchemaBase):
@@ -35,12 +42,12 @@ def test_secret_field_names_reads_schema_meta():
 
 
 def test_mask_section_masks_only_set_secrets():
-    data = {"apiKey": "hunter2", "channel": "123"}
+    data = {"apiKey": FAKE_SECRET, "channel": "123"}
     masked = mask_section(data, FAKE_SCHEMA)
     assert masked["apiKey"] == SECRET_PLACEHOLDER
     assert masked["channel"] == "123"
     # original untouched
-    assert data["apiKey"] == "hunter2"
+    assert data["apiKey"] == FAKE_SECRET
 
 
 def test_mask_section_leaves_empty_and_missing_secrets():
@@ -49,7 +56,7 @@ def test_mask_section_leaves_empty_and_missing_secrets():
 
 
 def test_mask_section_without_schema_is_passthrough_copy():
-    data = {"apiKey": "hunter2"}
+    data = {"apiKey": FAKE_SECRET}
     masked = mask_section(data, None)
     assert masked == data
     assert masked is not data
@@ -62,22 +69,22 @@ def test_mask_section_non_dict_passthrough():
 
 def test_restore_section_swaps_placeholder_for_current_value():
     incoming = {"apiKey": SECRET_PLACEHOLDER, "channel": "456"}
-    current = {"apiKey": "hunter2", "channel": "123"}
+    current = {"apiKey": FAKE_SECRET, "channel": "123"}
     restored = restore_section(incoming, current, FAKE_SCHEMA)
-    assert restored["apiKey"] == "hunter2"
+    assert restored["apiKey"] == FAKE_SECRET
     assert restored["channel"] == "456"
 
 
 def test_restore_section_keeps_new_secret_value():
-    restored = restore_section({"apiKey": "new-secret"}, {"apiKey": "old"}, FAKE_SCHEMA)
-    assert restored["apiKey"] == "new-secret"
+    restored = restore_section({"apiKey": NEW_SECRET}, {"apiKey": OLD_SECRET}, FAKE_SCHEMA)
+    assert restored["apiKey"] == NEW_SECRET
 
 
 def test_restore_section_clearing_still_works():
     # Empty/missing means "clear" — only the untouched placeholder is restored.
-    restored = restore_section({"apiKey": ""}, {"apiKey": "old"}, FAKE_SCHEMA)
+    restored = restore_section({"apiKey": ""}, {"apiKey": OLD_SECRET}, FAKE_SCHEMA)
     assert restored["apiKey"] == ""
-    restored = restore_section({"channel": "1"}, {"apiKey": "old"}, FAKE_SCHEMA)
+    restored = restore_section({"channel": "1"}, {"apiKey": OLD_SECRET}, FAKE_SCHEMA)
     assert "apiKey" not in restored
 
 
@@ -87,7 +94,7 @@ def test_restore_section_placeholder_without_current_becomes_empty():
 
 
 def test_mask_round_trip_is_identity_for_unchanged_secrets():
-    current = {"apiKey": "hunter2", "channel": "123"}
+    current = {"apiKey": FAKE_SECRET, "channel": "123"}
     masked = mask_section(current, FAKE_SCHEMA)
     restored = restore_section(masked, current, FAKE_SCHEMA)
     assert restored == current
@@ -96,12 +103,12 @@ def test_mask_round_trip_is_identity_for_unchanged_secrets():
 def test_mask_full_config_masks_global_sections_and_modules():
     data = {
         "config": {
-            "discord": {"botToken": "tok-123", "devGuildId": "42"},
+            "discord": {"botToken": FAKE_TOKEN, "devGuildId": "42"},
             "extensions": {"extensions.xp": True},
         },
         "servers": {
             "1": {
-                "moduleSecretMaskTest": {"enabled": True, "password": "s3cret"},
+                "moduleSecretMaskTest": {"enabled": True, "password": FAKE_SECRET},
                 "discord2name": {"99": "Alice"},
             },
         },
@@ -118,11 +125,11 @@ def test_mask_full_config_masks_global_sections_and_modules():
     assert module["enabled"] is True
     assert masked["servers"]["1"]["discord2name"] == {"99": "Alice"}
     # source dict untouched
-    assert data["config"]["discord"]["botToken"] == "tok-123"
+    assert data["config"]["discord"]["botToken"] == FAKE_TOKEN
 
 
 def test_mask_server_config_masks_registered_module():
-    server_config = {"moduleSecretMaskTest": {"password": "s3cret", "channelId": "1"}}
+    server_config = {"moduleSecretMaskTest": {"password": FAKE_SECRET, "channelId": "1"}}
     masked = mask_server_config(server_config)
     assert masked["moduleSecretMaskTest"]["password"] == SECRET_PLACEHOLDER
     assert masked["moduleSecretMaskTest"]["channelId"] == "1"
