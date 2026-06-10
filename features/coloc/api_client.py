@@ -1,12 +1,10 @@
 """API client for Zunivers API with retry logic."""
 
 import asyncio
-import io
 import os
 from typing import Any
 
 from aiohttp import ClientError, ClientSession
-from interactions import File
 
 from src.core import logging as logutil
 from src.core.http import http_client
@@ -101,15 +99,13 @@ class ZuniversAPIClient:
         url = ZUNIVERS_CORPORATION_URL_TEMPLATE.format(corp_id=corp_id)
         return await self._request(url, ReminderType.NORMAL)
 
-    async def download_image(self, image_url: str, filename: str = "image.webp") -> File | None:
-        """Download an image and return it as a Discord File object."""
+    async def download_image(self, image_url: str) -> bytes | None:
+        """Download an image and return its raw bytes (the caller wraps them for Discord)."""
         try:
             session = await self._get_session()
             async with session.get(image_url) as response:
                 if response.status == 200:
-                    image_data = await response.read()
-                    file_obj = io.BytesIO(image_data)
-                    return File(file=file_obj, file_name=filename)
+                    return await response.read()
         except Exception as e:
             logger.warning(f"Error downloading image from {image_url}: {e}")
         return None

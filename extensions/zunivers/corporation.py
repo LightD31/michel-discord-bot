@@ -18,12 +18,9 @@ from features.coloc.constants import (
     CURRENCY_EMOJI,
     DEFAULT_CORPORATION_ID,
 )
-from features.coloc.utils import (
-    create_corporation_embed,
-    create_corporation_logs_embed,
-)
 
 from ._common import enabled_servers, logger
+from .embeds import create_corporation_embed, create_corporation_logs_embed
 
 
 class CorporationMixin:

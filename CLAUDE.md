@@ -46,10 +46,10 @@ docker compose up -d
 Three-layer split (~33k lines). Respect the boundaries:
 
 - **`extensions/`** — Discord-facing layer (35 entries). Each is either `extensions/<name>.py` or a package `extensions/<name>/__init__.py` containing an `interactions.Extension` subclass plus a module-level `setup(bot)` factory. Auto-discovered by `main.py` at startup.
-- **`features/`** — Pure domain logic and persistence. **Must not import `interactions`** — this is what makes features unit-testable. Each feature owns a `repository.py` that reads/writes MongoDB. (Known legacy violations: `features/coloc/api_client.py`, `features/coloc/utils.py`, `features/reactionroles/builders.py` — don't copy that pattern; new domain code returns plain data and lets the extension build Discord objects.)
+- **`features/`** — Pure domain logic and persistence. **Must not import `interactions`** — this is what makes features unit-testable. Domain code returns plain data (bytes, dicts, models) and lets the extension build Discord objects. Each feature owns a `repository.py` that reads/writes MongoDB and translates driver exceptions into `src.core.errors.DatabaseError` so extensions never import `pymongo` (see `features/xp/repository.py`).
 - **`src/`** — Shared infrastructure.
   - `src/core/` is framework-free (config, db, http, logging, errors, images, text). Strictly typed under mypy.
-  - `src/discord_ext/` holds interactions.py-dependent UI helpers (embeds, paginator, autocomplete, persistent messages).
+  - `src/discord_ext/` holds interactions.py-dependent UI helpers (embeds, paginator, autocomplete, persistent messages). Renderers shared between an extension and a WebUI route also live here (e.g. `rolemenus.py`).
   - `src/integrations/` holds external-API clients with **no Discord imports** (Spotify, Notion, Minecraft RCON).
   - `src/webui/` is the optional FastAPI dashboard (run in a daemon thread alongside the bot).
 

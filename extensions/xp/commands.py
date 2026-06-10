@@ -2,7 +2,6 @@
 
 from datetime import datetime
 
-import pymongo
 from interactions import (
     Client,
     Embed,
@@ -21,6 +20,7 @@ from features.xp import (
     create_progress_bar,
     render_rank_card,
 )
+from src.core.errors import DatabaseError
 from src.discord_ext.messages import send_error
 from src.discord_ext.paginator import CustomPaginator
 
@@ -63,7 +63,7 @@ class CommandsMixin:
 
         try:
             rank = await self._repo(guild_id).get_user_rank(user_id)
-        except pymongo.errors.PyMongoError as e:
+        except DatabaseError as e:
             logger.error("Failed to get rank for user %s in guild %s: %s", user_id, guild_id, e)
             return None
 
@@ -92,7 +92,7 @@ class CommandsMixin:
 
         try:
             stats = await self._repo(guild_id).get_user(str(target_user.id))
-        except pymongo.errors.PyMongoError as e:
+        except DatabaseError as e:
             logger.error("Database error in rank command: %s", e)
             await send_error(ctx, "Erreur lors de la récupération des statistiques.")
             return

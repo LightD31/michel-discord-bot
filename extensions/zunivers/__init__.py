@@ -2,6 +2,7 @@
 
 Assembled as a mixin composition mirroring the vlrgg/minecraft packages:
 - :mod:`._common` — Pydantic config schema (``moduleZunivers``), logger
+- :mod:`.embeds` — Discord embed builders (events, seasons, corporation)
 - :mod:`.reminders` — RemindersMixin: /journa reminders, advent calendar
 - :mod:`.events` — EventsMixin: Zunivers events + hardcore season tracking
 - :mod:`.corporation` — CorporationMixin: daily recap + /corpo

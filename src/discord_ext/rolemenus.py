@@ -1,14 +1,21 @@
-"""Discord embed and component builders for role menus.
+"""Discord embed and component builders for reaction-role menus.
 
-Lives in ``features/`` (not ``extensions/``) so the slash-command extension
-and the WebUI route can share the exact same renderer without crossing
-package boundaries.
+Shared by the slash-command extension (``extensions/reactionroles``) and the
+WebUI route (``src/webui/routes/rolemenus.py``) so both render menus
+identically. Lives in ``src/discord_ext`` because it builds interactions.py
+objects — ``features/reactionroles`` stays free of Discord imports.
 """
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
 
 from interactions import ActionRow, Button, ButtonStyle, Embed
 
-from features.reactionroles.models import RoleMenuEntry
 from src.discord_ext.embeds import Colors
+
+if TYPE_CHECKING:
+    from features.reactionroles.models import RoleMenuEntry
 
 # Discord caps action rows at 5 buttons each, max 5 rows per message.
 MAX_ENTRIES = 25

@@ -14,7 +14,6 @@ XP is only awarded when:
 import random
 import time
 
-import pymongo
 from interactions import Client, IntervalTrigger, Task, listen
 from interactions.api.events import VoiceStateUpdate
 
@@ -26,6 +25,7 @@ from features.xp import (
     XpRepository,
     calculate_level,
 )
+from src.core.errors import DatabaseError
 from src.discord_ext.autocomplete import is_guild_enabled
 
 from ._common import enabled_servers, logger, module_config
@@ -127,7 +127,7 @@ class VoiceMixin:
             new_msg = stats.get("msg", 0)
             await repo.update_xp(user_id, new_xp, new_msg, now)
             self._invalidate_rank_cache(guild_id)
-        except pymongo.errors.PyMongoError as e:
+        except DatabaseError as e:
             logger.error("Voice XP DB error for %s in %s: %s", user_id, guild_id, e)
             return
 

@@ -1,15 +1,15 @@
 """Config schema, logger, and shared constants.
 
-Embed/component builders live in :mod:`features.reactionroles.builders` so
-the WebUI route can reuse them without crossing the ``extensions/`` package
-boundary.
+Embed/component builders live in :mod:`src.discord_ext.rolemenus` so the
+WebUI route can reuse them without crossing the ``extensions/`` package
+boundary (and ``features/`` stays free of ``interactions`` imports).
 """
 
 import os
 
-from features.reactionroles import BUTTON_PREFIX, MAX_ENTRIES, build_components, build_embed
 from src.core import logging as logutil
 from src.core.config import load_config
+from src.discord_ext.rolemenus import BUTTON_PREFIX, MAX_ENTRIES, build_components, build_embed
 from src.webui.schemas import SchemaBase, enabled_field, register_module
 
 logger = logutil.init_logger(os.path.basename(__file__))

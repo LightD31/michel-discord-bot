@@ -3,7 +3,6 @@
 import traceback
 from datetime import datetime
 
-import pymongo
 from interactions import Client, Embed, Guild, Message, Task, TimeTrigger
 
 from features.xp import (
@@ -13,6 +12,7 @@ from features.xp import (
     calculate_level,
     get_rank_display,
 )
+from src.core.errors import DatabaseError
 from src.core.text import format_number
 from src.discord_ext.embeds import Colors
 from src.discord_ext.messages import fetch_or_create_persistent_message, fetch_user_safe
@@ -89,7 +89,7 @@ class LeaderboardMixin:
 
         try:
             rankings = await self._repo(str(guild.id)).list_all_sorted_by_xp()
-        except pymongo.errors.PyMongoError as e:
+        except DatabaseError as e:
             logger.error("Database error building leaderboard: %s", e)
             return [
                 Embed(
