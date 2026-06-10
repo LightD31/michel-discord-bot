@@ -3039,18 +3039,9 @@
         const entries = Object.entries(fields);
         if (entries.length === 0) return '<p style="color:var(--text-muted)">Aucun champ défini.</p>';
 
-        // Collect weight fields linked from messagelist fields so we can skip them
-        const linkedWeightFields = new Set();
-        for (const [, f] of entries) {
-            if (f.type === 'messagelist' && f.weightField) {
-                linkedWeightFields.add(f.weightField);
-            }
-        }
-
         let html = `<div class="schema-form" data-form-id="${formId}">`;
         for (const [key, field] of entries) {
             if (options.excludeEnabled && key === 'enabled') continue;
-            if (linkedWeightFields.has(key)) continue;
 
             const value = values[key];
             const hasValue = value !== undefined && value !== null;
@@ -3324,16 +3315,15 @@
                     break;
 
                 case 'messagelist':
-                    const weightFieldKey = field.weightField || '';
                     const messages = Array.isArray(value) ? value : [];
-                    const weights = weightFieldKey ? (Array.isArray(values[weightFieldKey]) ? values[weightFieldKey] : []) : [];
-                    html += `<div class="messagelist-list" data-field="${key}" data-type="messagelist" data-weight-field="${weightFieldKey}">`;
+                    html += `<div class="messagelist-list" data-field="${key}" data-type="messagelist">`;
                     html += `<div class="messagelist-header"><span>Message</span><span>Poids</span><span></span></div>`;
-                    messages.forEach((msg, idx) => {
-                        const w = idx < weights.length ? weights[idx] : 1;
+                    messages.forEach((msg) => {
+                        const text = typeof msg === 'string' ? msg : String(msg?.text ?? '');
+                        const w = (msg && typeof msg === 'object' && msg.weight !== undefined) ? msg.weight : 1;
                         html += `
                             <div class="messagelist-entry">
-                                <input type="text" data-msg-field="message" value="${escapeHtml(String(msg))}" placeholder="Message…">
+                                <input type="text" data-msg-field="message" value="${escapeHtml(text)}" placeholder="Message…">
                                 <input type="number" data-msg-field="weight" value="${w}" min="0" placeholder="1">
                                 <button class="btn-remove-msg" onclick="this.closest('.messagelist-entry').remove()" title="Supprimer">✕</button>
                             </div>`;
@@ -3710,27 +3700,21 @@
             result[key] = streamerMap;
         }
 
-        // Collect messagelist fields
+        // Collect messagelist fields ({text, weight} objects)
         const msgLists = form.querySelectorAll('[data-type="messagelist"]');
         for (const list of msgLists) {
             const key = list.dataset.field;
-            const weightFieldKey = list.dataset.weightField;
             const entries = list.querySelectorAll('.messagelist-entry');
             const messages = [];
-            const weights = [];
             for (const entry of entries) {
                 const msg = entry.querySelector('[data-msg-field="message"]')?.value?.trim();
                 const w = entry.querySelector('[data-msg-field="weight"]')?.value?.trim();
                 if (msg) {
-                    messages.push(msg);
-                    weights.push(w ? Number(w) : 1);
+                    messages.push({ text: msg, weight: w ? Number(w) : 1 });
                 }
             }
             if (messages.length > 0) {
                 result[key] = messages;
-                if (weightFieldKey) {
-                    result[weightFieldKey] = weights;
-                }
             }
         }
 
@@ -5169,16 +5153,8 @@
 
     function renderSchemaPreview(schema, values) {
         const fields = schema.fields || {};
-        // Collect weight fields linked from messagelist fields so we can skip them
-        const linkedWeightFields = new Set();
-        for (const [, f] of Object.entries(fields)) {
-            if (f.type === 'messagelist' && f.weightField) {
-                linkedWeightFields.add(f.weightField);
-            }
-        }
         let html = '<div class="schema-preview">';
         for (const [key, field] of Object.entries(fields)) {
-            if (linkedWeightFields.has(key)) continue;
             if (field.hidden) continue;
             const val = values[key];
             const hasVal = val !== undefined && val !== null;
@@ -5186,17 +5162,16 @@
             const fieldType = field.type || 'string';
 
             if (fieldType === 'messagelist' && Array.isArray(val) && val.length > 0) {
-                const weightFieldKey = field.weightField || '';
-                const weights = weightFieldKey ? (Array.isArray(values[weightFieldKey]) ? values[weightFieldKey] : []) : [];
                 html += `
                     <div class="preview-row" style="flex-direction:column;gap:6px;">
                         <span class="preview-label">${field.label || key} (${val.length})</span>
                         <div style="display:flex;flex-direction:column;gap:4px;width:100%;">
-                            ${val.map((msg, idx) => {
-                                const w = idx < weights.length ? weights[idx] : 1;
+                            ${val.map((msg) => {
+                                const text = typeof msg === 'string' ? msg : String(msg?.text ?? '');
+                                const w = (msg && typeof msg === 'object' && msg.weight !== undefined) ? msg.weight : 1;
                                 return `
                                 <div style="display:flex;gap:8px;align-items:center;padding:4px 8px;background:var(--bg-primary);border-radius:var(--radius);font-size:13px;">
-                                    <span style="flex:1;color:var(--text-primary);">${escapeHtml(String(msg))}</span>
+                                    <span style="flex:1;color:var(--text-primary);">${escapeHtml(text)}</span>
                                     <span style="color:var(--text-muted);font-size:12px;">×${w}</span>
                                 </div>`;
                             }).join('')}
@@ -5704,12 +5679,6 @@
 
     function renderExtraKeysCard(schema, config) {
         const schemaKeys = new Set(Object.keys(schema.fields || {}));
-        // Also include linked weight fields as known keys
-        for (const [, f] of Object.entries(schema.fields || {})) {
-            if (f.type === 'messagelist' && f.weightField) {
-                schemaKeys.add(f.weightField);
-            }
-        }
         const extraKeys = Object.keys(config).filter(k => !schemaKeys.has(k));
         if (extraKeys.length === 0) return '';
         return `

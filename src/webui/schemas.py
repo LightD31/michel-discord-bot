@@ -42,7 +42,6 @@ def ui(
     description: str = "",
     secret: bool = False,
     hidden: bool = False,
-    weight_field: str = "",
     channel_field: str = "",
     variables: str = "",
     key_label: str = "",
@@ -60,8 +59,6 @@ def ui(
         meta["default"] = default
     if secret:
         meta["secret"] = True
-    if weight_field:
-        meta["weightField"] = weight_field
     if variables:
         meta["variables"] = variables
     if key_label:
@@ -144,19 +141,6 @@ def _fields_of(cls: type[BaseModel]) -> dict[str, dict[str, Any]]:
         meta = extra.get("ui") if isinstance(extra, dict) else None
         if isinstance(meta, dict):
             out[name] = dict(meta)
-    # Materialize ``weight_field`` references as hidden fields. The
-    # messagelist widget stores weights under a sibling config key;
-    # declaring that key here makes every schema consumer (config cleanup,
-    # previews, …) see it as module-owned without each extension declaring
-    # it by hand. The form renderers already skip weightField-referenced keys.
-    for field_meta in list(out.values()):
-        weight_key = field_meta.get("weightField")
-        if isinstance(weight_key, str) and weight_key and weight_key not in out:
-            out[weight_key] = {
-                "label": f"{field_meta.get('label', weight_key)} (poids)",
-                "type": "list:number",
-                "hidden": True,
-            }
     return out
 
 

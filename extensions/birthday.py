@@ -70,12 +70,11 @@ class BirthdayConfig(SchemaBase):
         default="en_US",
         description="Locale utilisée pour formater les dates de la liste (ex : fr_FR).",
     )
-    birthdayMessageList: list[str] = ui(
+    birthdayMessageList: list[dict] = ui(
         "Messages d'anniversaire",
         "messagelist",
         description="Liste de messages avec poids de probabilité.",
-        default=["Joyeux anniversaire {mention} ! 🎉"],
-        weight_field="birthdayMessageWeights",
+        default=[{"text": "Joyeux anniversaire {mention} ! 🎉", "weight": 1}],
         variables="{mention}, {age}",
     )
 
@@ -450,7 +449,6 @@ class BirthdayExtension(Extension):
             text = pick_weighted_message(
                 srv_cfg,
                 "birthdayMessageList",
-                "birthdayMessageWeights",
                 "Joyeux anniversaire {mention} ! 🎉",
                 mention=member.mention,
                 age=age,

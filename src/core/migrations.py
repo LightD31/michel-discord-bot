@@ -21,6 +21,17 @@ CONFIG_MODULE_RENAMES: dict[str, str] = {
     "moduleColoc": "moduleZunivers",
 }
 
+# Weighted message lists migrated from parallel arrays (list of strings +
+# sibling list of numbers) to a single list of {"text", "weight"} objects.
+WEIGHTED_MESSAGE_LISTS: dict[str, list[tuple[str, str]]] = {
+    "moduleWelcome": [
+        ("welcomeMessageList", "welcomeMessageWeights"),
+        ("leaveMessageList", "leaveMessageWeights"),
+    ],
+    "moduleBirthday": [("birthdayMessageList", "birthdayMessageWeights")],
+    "moduleXp": [("levelUpMessageList", "levelUpMessageWeights")],
+}
+
 
 def migrate_config_module_keys() -> bool:
     """Rename legacy per-server module keys in config.json.
@@ -79,4 +90,84 @@ def migrate_config_module_keys() -> bool:
     return changed
 
 
-__all__ = ["CONFIG_MODULE_RENAMES", "migrate_config_module_keys"]
+def _merge_weighted_message_lists(data: dict) -> bool:
+    """Merge parallel message/weight arrays into ``[{"text", "weight"}]`` in place.
+
+    For every ``(list_key, weights_key)`` of :data:`WEIGHTED_MESSAGE_LISTS`:
+    string entries are zipped with their weight (missing/invalid weights
+    default to 1, surplus weights are dropped), already-converted dict entries
+    are kept as-is, and the now-redundant weights key is removed.
+
+    Returns ``True`` when *data* was modified.
+    """
+    servers = data.get("servers", {})
+    if not isinstance(servers, dict):
+        return False
+
+    changed = False
+    for guild_id, server_cfg in servers.items():
+        if not isinstance(server_cfg, dict):
+            continue
+        for module_name, pairs in WEIGHTED_MESSAGE_LISTS.items():
+            module_cfg = server_cfg.get(module_name)
+            if not isinstance(module_cfg, dict):
+                continue
+            for list_key, weights_key in pairs:
+                weights = module_cfg.get(weights_key)
+                if not isinstance(weights, list):
+                    weights = []
+                messages = module_cfg.get(list_key)
+                if isinstance(messages, list) and any(isinstance(m, str) for m in messages):
+                    merged: list = []
+                    for i, message in enumerate(messages):
+                        if isinstance(message, str):
+                            weight = weights[i] if i < len(weights) else 1
+                            if isinstance(weight, bool) or not isinstance(weight, (int, float)):
+                                weight = 1
+                            merged.append({"text": message, "weight": weight})
+                        else:
+                            merged.append(message)
+                    module_cfg[list_key] = merged
+                    changed = True
+                    logger.info(
+                        "migrations: guild %s merged %s + %s into objects",
+                        guild_id,
+                        list_key,
+                        weights_key,
+                    )
+                if weights_key in module_cfg:
+                    module_cfg.pop(weights_key)
+                    changed = True
+    return changed
+
+
+def migrate_weighted_message_lists() -> bool:
+    """Apply :func:`_merge_weighted_message_lists` to config.json on disk.
+
+    Returns ``True`` when the file was rewritten.
+    """
+    path = Path(CONFIG_PATH)
+    if not path.exists():
+        return False
+
+    try:
+        with path.open(encoding="utf-8") as f:
+            data = json.load(f)
+    except json.JSONDecodeError as e:
+        logger.error("migrations: cannot parse %s: %s", CONFIG_PATH, e)
+        return False
+
+    if not _merge_weighted_message_lists(data):
+        return False
+
+    config_store.save_full(data)
+    logger.info("migrations: config.json rewritten with merged weighted message lists")
+    return True
+
+
+__all__ = [
+    "CONFIG_MODULE_RENAMES",
+    "WEIGHTED_MESSAGE_LISTS",
+    "migrate_config_module_keys",
+    "migrate_weighted_message_lists",
+]
