@@ -171,6 +171,25 @@
             color: white;
         }
 
+        .nav-item-label {
+            display: flex;
+            flex-direction: column;
+            min-width: 0;
+            line-height: 1.25;
+        }
+        .nav-item-name {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .nav-item-sub {
+            font-size: 10px;
+            color: var(--text-muted);
+            font-family: var(--font-mono, monospace);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
         .nav-item .icon {
             font-size: 18px;
             width: 24px;
@@ -4775,7 +4794,10 @@
                         <div class="server-icon">
                             ${iconUrl ? `<img src="${iconUrl}" alt="">` : s.name?.charAt(0) || '?'}
                         </div>
-                        <span>${s.name || id}</span>
+                        <div class="nav-item-label">
+                            <span class="nav-item-name">${s.name || id}</span>
+                            <span class="nav-item-sub">${id}</span>
+                        </div>
                     </div>
                 `;
             }).join('')

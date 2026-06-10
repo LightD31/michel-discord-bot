@@ -112,6 +112,50 @@ def test_http_client_one_session_per_loop():
     assert a is not b
 
 
+# ── /api/servers listing ────────────────────────────────────────────────
+
+
+def test_server_list_scoping_and_bot_cache_names():
+    """Developers see every bot guild with cache-resolved names; admins only theirs."""
+    import json
+    from types import SimpleNamespace
+
+    import src.webui.routes.servers as servers_routes
+
+    oauth = make_oauth(developer_user_ids=["42"])
+    bot = SimpleNamespace(
+        guilds=[
+            SimpleNamespace(id=1, name="Coloc", icon=SimpleNamespace(hash="abc123")),
+            SimpleNamespace(id=2, name="Autre serveur", icon=None),
+        ]
+    )
+    ctx = WebUIContext(bot=bot, bot_loop=None, oauth=oauth)
+    # Guild 99 is configured but the bot left it — must never be listed.
+    ctx.get_full_config = lambda: {"servers": {"1": {"moduleXp": {}}, "99": {}}}
+    router = servers_routes.create_router(ctx)
+    endpoint = next(r for r in router.routes if r.path == "/api/servers").endpoint
+
+    def call(session):
+        oauth.sessions[session.session_token] = session
+        request = SimpleNamespace(cookies={"michel_session": session.session_token})
+        return json.loads(asyncio.run(endpoint(request)).body)
+
+    # Developer managing nothing: both bot guilds, names/icons from the cache
+    dev = make_session(user_id="42", guilds=[])
+    out = call(dev)
+    assert set(out) == {"1", "2"}
+    assert out["1"]["name"] == "Coloc" and out["1"]["icon"] == "abc123"
+    assert out["2"]["name"] == "Autre serveur" and out["2"]["config"] == {}
+
+    # Plain admin managing guild 1: only guild 1, OAuth name takes precedence
+    admin = make_session(
+        user_id="7", guilds=[{"id": "1", "name": "Coloc (oauth)", "permissions": "32"}]
+    )
+    out = call(admin)
+    assert set(out) == {"1"}
+    assert out["1"]["name"] == "Coloc (oauth)"
+
+
 # ── Callback state (CSRF) validation ────────────────────────────────────
 #
 # The route endpoint is invoked directly with a hand-built starlette Request

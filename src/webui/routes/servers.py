@@ -58,17 +58,33 @@ def create_router(ctx: WebUIContext) -> APIRouter:
 
     @router.get("/api/servers")
     async def api_get_servers(request: Request):
-        """Get servers the user manages (developers see every configured server)."""
+        """Get servers the user manages (developers see every bot guild)."""
         session = ctx.require_admin(request)
         data = ctx.get_full_config()
         servers = data.get("servers", {})
 
-        bot_guild_ids: set[str] = set()
+        # Bot guild cache: authoritative names/icons even for guilds the
+        # user doesn't manage (OAuth only describes the user's own guilds).
+        bot_guilds: dict[str, object] = {}
         if ctx.bot and ctx.bot.guilds:
-            bot_guild_ids = {str(g.id) for g in ctx.bot.guilds}
+            bot_guilds = {str(g.id): g for g in ctx.bot.guilds}
+        bot_guild_ids = set(bot_guilds)
 
         is_developer = ctx.oauth.is_developer(session)
         managed_guilds = {g["id"]: g for g in ctx.oauth.get_user_managed_guilds(session)}
+
+        def server_entry(server_id: str, server_config: dict) -> dict:
+            guild_info = managed_guilds.get(server_id, {})
+            bot_guild = bot_guilds.get(server_id)
+            name = (
+                guild_info.get("name")
+                or getattr(bot_guild, "name", None)
+                or server_config.get("serverName")
+                or f"Serveur {server_id}"
+            )
+            icon = guild_info.get("icon") or getattr(getattr(bot_guild, "icon", None), "hash", None)
+            return {"name": name, "icon": icon, "config": server_config}
+
         result: dict = {}
 
         # Servers already in config — only if bot is in them and the user
@@ -78,23 +94,16 @@ def create_router(ctx: WebUIContext) -> APIRouter:
                 continue
             if not is_developer and str(server_id) not in managed_guilds:
                 continue
-            guild_info = managed_guilds.get(str(server_id), {})
-            result[server_id] = {
-                "name": guild_info.get(
-                    "name", server_config.get("serverName", f"Serveur {server_id}")
-                ),
-                "icon": guild_info.get("icon"),
-                "config": server_config,
-            }
+            result[server_id] = server_entry(str(server_id), server_config)
 
-        # Managed guilds not yet in config — only if bot is in them
-        for guild_id, guild_info in managed_guilds.items():
+        # Guilds not yet in config — the user's managed guilds, plus every
+        # bot guild for developers. Only if the bot is in them.
+        candidate_ids = set(managed_guilds)
+        if is_developer:
+            candidate_ids |= bot_guild_ids
+        for guild_id in candidate_ids:
             if guild_id not in result and (not bot_guild_ids or guild_id in bot_guild_ids):
-                result[guild_id] = {
-                    "name": guild_info.get("name", f"Serveur {guild_id}"),
-                    "icon": guild_info.get("icon"),
-                    "config": {},
-                }
+                result[guild_id] = server_entry(guild_id, {})
 
         return JSONResponse(result)
 
