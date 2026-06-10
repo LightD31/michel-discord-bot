@@ -58,7 +58,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
 
     @router.get("/api/servers")
     async def api_get_servers(request: Request):
-        """Get servers where both the user and the bot are present."""
+        """Get servers the user manages (developers see every configured server)."""
         session = ctx.require_admin(request)
         data = ctx.get_full_config()
         servers = data.get("servers", {})
@@ -67,14 +67,18 @@ def create_router(ctx: WebUIContext) -> APIRouter:
         if ctx.bot and ctx.bot.guilds:
             bot_guild_ids = {str(g.id) for g in ctx.bot.guilds}
 
-        user_guilds = {g["id"]: g for g in session.guilds}
+        is_developer = ctx.oauth.is_developer(session)
+        managed_guilds = {g["id"]: g for g in ctx.oauth.get_user_managed_guilds(session)}
         result: dict = {}
 
-        # Servers already in config — only if bot is in them
+        # Servers already in config — only if bot is in them and the user
+        # manages them (a guild admin must not see other guilds' config).
         for server_id, server_config in servers.items():
             if bot_guild_ids and str(server_id) not in bot_guild_ids:
                 continue
-            guild_info = user_guilds.get(str(server_id), {})
+            if not is_developer and str(server_id) not in managed_guilds:
+                continue
+            guild_info = managed_guilds.get(str(server_id), {})
             result[server_id] = {
                 "name": guild_info.get(
                     "name", server_config.get("serverName", f"Serveur {server_id}")
@@ -83,8 +87,8 @@ def create_router(ctx: WebUIContext) -> APIRouter:
                 "config": server_config,
             }
 
-        # User's managed guilds not yet in config — only if bot is in them
-        for guild_id, guild_info in user_guilds.items():
+        # Managed guilds not yet in config — only if bot is in them
+        for guild_id, guild_info in managed_guilds.items():
             if guild_id not in result and (not bot_guild_ids or guild_id in bot_guild_ids):
                 result[guild_id] = {
                     "name": guild_info.get("name", f"Serveur {guild_id}"),
@@ -97,7 +101,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
     @router.get("/api/servers/{server_id}/channels")
     async def api_get_server_channels(request: Request, server_id: str):
         """List text/news channels for the given server (for channel-picker dropdowns)."""
-        ctx.require_admin(request)
+        ctx.require_guild_admin(request, server_id)
         bot_loop = ctx.require_bot_loop()
 
         async def _fetch():
@@ -202,7 +206,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
         Pulls from the ``users`` MongoDB collection maintained by userinfoext;
         falls back to the live guild member cache if the collection is empty.
         """
-        ctx.require_admin(request)
+        ctx.require_guild_admin(request, server_id)
         bot_loop = ctx.require_bot_loop()
 
         async def _fetch():
@@ -277,7 +281,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
     @router.get("/api/servers/{server_id}")
     async def api_get_server(request: Request, server_id: str):
         """Get configuration for a specific server."""
-        ctx.require_admin(request)
+        ctx.require_guild_admin(request, server_id)
         data = ctx.get_full_config()
         server_config = data.get("servers", {}).get(server_id)
         if server_config is None:
@@ -289,7 +293,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
         request: Request, server_id: str, module_name: str, body: ConfigUpdate
     ):
         """Update a specific module's config for a server."""
-        ctx.require_admin(request)
+        ctx.require_guild_admin(request, server_id)
         data = ctx.get_full_config()
 
         if server_id not in data.get("servers", {}):
@@ -306,7 +310,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
         request: Request, server_id: str, module_name: str, body: ModuleToggle
     ):
         """Enable or disable a module for a server."""
-        ctx.require_admin(request)
+        ctx.require_guild_admin(request, server_id)
         data = ctx.get_full_config()
 
         if server_id not in data.get("servers", {}):
@@ -328,7 +332,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
     @router.post("/api/servers/{server_id}/modules/moduleEmbedManager/publish")
     async def api_embedmanager_publish(request: Request, server_id: str):
         """Publish configured embeds to the target Discord message."""
-        ctx.require_admin(request)
+        ctx.require_guild_admin(request, server_id)
         bot_loop = ctx.require_bot_loop()
 
         _, module_config, enabled_servers = bot_load_config("moduleEmbedManager")

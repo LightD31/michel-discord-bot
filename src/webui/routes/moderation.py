@@ -51,7 +51,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
         type: str | None = Query(default=None),
         active: str | None = Query(default=None),
     ):
-        ctx.require_admin(request)
+        ctx.require_guild_admin(request, server_id)
         active_filter: bool | None = None
         if active in ("true", "1"):
             active_filter = True
@@ -72,7 +72,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
 
     @router.delete("/api/servers/{server_id}/infractions/{case_id}")
     async def api_revoke_infraction(request: Request, server_id: str, case_id: int):
-        ctx.require_admin(request)
+        ctx.require_guild_admin(request, server_id)
         repo = ModerationRepository(server_id)
         try:
             existing = await repo.get(case_id)

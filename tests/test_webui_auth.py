@@ -169,6 +169,74 @@ def test_callback_accepts_matching_state():
     assert "michel_session=" in set_cookie
 
 
+# ── Per-guild authorization ─────────────────────────────────────────────
+
+
+def make_authed_request(session_token: str | None) -> Request:
+    headers = []
+    if session_token is not None:
+        headers.append((b"cookie", f"michel_session={session_token}".encode()))
+    return Request(
+        {
+            "type": "http",
+            "method": "GET",
+            "scheme": "http",
+            "path": "/api/servers/1",
+            "query_string": b"",
+            "headers": headers,
+        }
+    )
+
+
+def test_user_manages_guild_checks_that_specific_guild():
+    oauth = make_oauth()
+    ctx = WebUIContext(bot=None, bot_loop=None, oauth=oauth)
+    session = make_session(
+        guilds=[
+            {"id": "1", "permissions": "32"},  # MANAGE_GUILD
+            {"id": "2", "permissions": "8"},  # ADMINISTRATOR
+            {"id": "3", "owner": True, "permissions": "0"},
+            {"id": "4", "permissions": "0"},  # plain member
+        ]
+    )
+    assert ctx.user_manages_guild(session, "1")
+    assert ctx.user_manages_guild(session, 2)  # int ids accepted
+    assert ctx.user_manages_guild(session, "3")
+    assert not ctx.user_manages_guild(session, "4")
+    assert not ctx.user_manages_guild(session, "999")  # not even a member
+
+
+def test_developer_bypasses_guild_check():
+    oauth = make_oauth(developer_user_ids=["42"])
+    ctx = WebUIContext(bot=None, bot_loop=None, oauth=oauth)
+    session = make_session(guilds=[])
+    assert ctx.user_manages_guild(session, "999")
+    assert ctx.is_admin_user(session)  # developer is admin even with no bot
+
+
+def test_require_guild_admin_enforces_per_guild_access():
+    from fastapi import HTTPException
+
+    oauth = make_oauth()
+    ctx = WebUIContext(bot=None, bot_loop=None, oauth=oauth)
+    session = make_session(guilds=[{"id": "1", "permissions": "32"}])
+    oauth.sessions[session.session_token] = session
+
+    # No session cookie → 401
+    with pytest.raises(HTTPException) as exc:
+        ctx.require_guild_admin(make_authed_request(None), "1")
+    assert exc.value.status_code == 401
+
+    # Managing guild 1 grants nothing on guild 2 → 403
+    with pytest.raises(HTTPException) as exc:
+        ctx.require_guild_admin(make_authed_request(session.session_token), "2")
+    assert exc.value.status_code == 403
+
+    # The managed guild itself is allowed
+    granted = ctx.require_guild_admin(make_authed_request(session.session_token), "1")
+    assert granted is session
+
+
 # ── Persistence glue (stubbed repository) ───────────────────────────────
 
 
