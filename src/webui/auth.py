@@ -4,11 +4,15 @@ Discord OAuth2 authentication for the Web UI.
 
 import secrets
 import time
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
+from typing import Any
+from urllib.parse import urlencode
 
-import aiohttp
+from aiohttp import ClientError
 
 from src.core import logging as logutil
+from src.core.http import http_client
+from src.webui.sessions import SessionRepository, expires_dt_from_ts
 
 logger = logutil.init_logger("webui.auth")
 
@@ -31,6 +35,27 @@ class Session:
     session_token: str = field(default_factory=lambda: secrets.token_urlsafe(32))
 
 
+def _session_to_doc(session: Session) -> dict[str, Any]:
+    """Serialize a session for MongoDB (``_id`` = token, TTL helper field)."""
+    doc = asdict(session)
+    doc["_id"] = doc.pop("session_token")
+    doc["expires_dt"] = expires_dt_from_ts(session.expires_at)
+    return doc
+
+
+def _doc_to_session(doc: dict[str, Any]) -> Session:
+    return Session(
+        user_id=doc["user_id"],
+        username=doc["username"],
+        avatar=doc.get("avatar"),
+        guilds=doc.get("guilds", []),
+        access_token=doc["access_token"],
+        refresh_token=doc.get("refresh_token", ""),
+        expires_at=float(doc["expires_at"]),
+        session_token=doc["_id"],
+    )
+
+
 class DiscordOAuth:
     """Handles Discord OAuth2 flow and session management."""
 
@@ -46,7 +71,6 @@ class DiscordOAuth:
         self.redirect_uri = redirect_uri
         self.developer_user_ids = developer_user_ids or []
         self.sessions: dict[str, Session] = {}
-        self._cleanup_counter = 0
 
     def get_oauth_url(self, state: str) -> str:
         """Generate the Discord OAuth2 authorization URL."""
@@ -57,12 +81,12 @@ class DiscordOAuth:
             "scope": "identify guilds",
             "state": state,
         }
-        query = "&".join(f"{k}={v}" for k, v in params.items())
-        return f"{DISCORD_OAUTH2_URL}?{query}"
+        return f"{DISCORD_OAUTH2_URL}?{urlencode(params)}"
 
     async def exchange_code(self, code: str) -> Session | None:
         """Exchange an authorization code for tokens and create a session."""
-        async with aiohttp.ClientSession() as http:
+        try:
+            http = await http_client.session()
             # Exchange code for token
             data = {
                 "client_id": self.client_id,
@@ -77,9 +101,10 @@ class DiscordOAuth:
                     return None
                 token_data = await resp.json()
 
-            access_token = token_data["access_token"]
-            refresh_token = token_data["refresh_token"]
-            expires_in = token_data["expires_in"]
+            access_token = token_data.get("access_token")
+            if not access_token:
+                logger.error("Token exchange response missing access_token")
+                return None
 
             # Get user info
             headers = {"Authorization": f"Bearer {access_token}"}
@@ -96,21 +121,46 @@ class DiscordOAuth:
                     guilds = []
                 else:
                     guilds = await resp.json()
+        except (TimeoutError, ClientError, ValueError) as e:
+            logger.error("OAuth code exchange failed: %s", e)
+            return None
 
-        session = Session(
-            user_id=user_data["id"],
-            username=user_data.get("global_name") or user_data["username"],
-            avatar=user_data.get("avatar"),
-            guilds=guilds,
-            access_token=access_token,
-            refresh_token=refresh_token,
-            expires_at=time.time() + expires_in,
-        )
+        session = self._session_from_payload(token_data, user_data, guilds)
+        if session is None:
+            return None
 
         self.sessions[session.session_token] = session
-        self._maybe_cleanup()
+        await self._persist(session)
         logger.info(f"User logged in: {session.username} ({session.user_id})")
         return session
+
+    @staticmethod
+    def _session_from_payload(
+        token_data: dict[str, Any],
+        user_data: dict[str, Any],
+        guilds: list,
+    ) -> Session | None:
+        """Build a Session from Discord's responses; None if a field is missing."""
+        access_token = token_data.get("access_token")
+        user_id = user_data.get("id")
+        if not access_token or not user_id:
+            logger.error("Discord OAuth payload incomplete (token or user id missing)")
+            return None
+        try:
+            expires_in = float(token_data.get("expires_in") or 0)
+        except (TypeError, ValueError):
+            expires_in = 0.0
+        if expires_in <= 0:
+            expires_in = 3600.0  # conservative fallback, Discord normally sends 7 days
+        return Session(
+            user_id=str(user_id),
+            username=user_data.get("global_name") or user_data.get("username") or str(user_id),
+            avatar=user_data.get("avatar"),
+            guilds=guilds if isinstance(guilds, list) else [],
+            access_token=access_token,
+            refresh_token=token_data.get("refresh_token", ""),
+            expires_at=time.time() + expires_in,
+        )
 
     def is_developer(self, session: Session) -> bool:
         """Check if a session user is a developer (has access to extensions and logs)."""
@@ -125,19 +175,58 @@ class DiscordOAuth:
             del self.sessions[session_token]
         return None
 
-    def invalidate_session(self, session_token: str):
-        """Remove a session."""
+    async def invalidate_session(self, session_token: str) -> None:
+        """Remove a session from memory and MongoDB."""
         self.sessions.pop(session_token, None)
+        try:
+            await SessionRepository().delete(session_token)
+        except Exception as e:
+            logger.warning("Could not delete persisted session: %s", e)
 
-    def _maybe_cleanup(self):
-        """Periodically clean up expired sessions."""
-        self._cleanup_counter += 1
-        if self._cleanup_counter >= 10:
-            self._cleanup_counter = 0
-            now = time.time()
-            expired = [k for k, v in self.sessions.items() if v.expires_at <= now]
-            for k in expired:
-                del self.sessions[k]
+    # --- Persistence (survive bot restarts) ---------------------------
+
+    async def _persist(self, session: Session) -> None:
+        """Best-effort write-through to MongoDB — never blocks a login."""
+        try:
+            await SessionRepository().upsert_doc(_session_to_doc(session))
+        except Exception as e:
+            logger.warning("Could not persist session to MongoDB: %s", e)
+
+    async def restore_sessions(self) -> int:
+        """Load persisted, unexpired sessions into memory (dashboard startup)."""
+        try:
+            docs = await SessionRepository().load_all_docs()
+        except Exception as e:
+            logger.warning("Could not restore Web UI sessions: %s", e)
+            return 0
+        now = time.time()
+        restored = 0
+        for doc in docs:
+            try:
+                session = _doc_to_session(doc)
+            except (KeyError, TypeError, ValueError) as e:
+                logger.warning("Skipping malformed persisted session: %s", e)
+                continue
+            if session.expires_at > now:
+                self.sessions[session.session_token] = session
+                restored += 1
+        if restored:
+            logger.info("Restored %d Web UI session(s) from MongoDB.", restored)
+        return restored
+
+    async def purge_expired(self) -> int:
+        """Drop expired sessions from memory and MongoDB; returns memory count."""
+        now = time.time()
+        expired = [k for k, v in self.sessions.items() if v.expires_at <= now]
+        for k in expired:
+            del self.sessions[k]
+        try:
+            await SessionRepository().delete_expired(now)
+        except Exception as e:
+            logger.debug("Persisted-session purge failed: %s", e)
+        if expired:
+            logger.info("Purged %d expired Web UI session(s).", len(expired))
+        return len(expired)
 
     def get_user_managed_guilds(self, session: Session) -> list[dict]:
         """

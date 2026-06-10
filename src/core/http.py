@@ -23,7 +23,8 @@ from __future__ import annotations
 import asyncio
 import os
 import random
-from typing import Any
+import threading
+from typing import Any, ClassVar
 from urllib.parse import urlsplit, urlunsplit
 
 from aiohttp import ClientError, ClientSession, ClientTimeout
@@ -73,41 +74,55 @@ _DEFAULT_TIMEOUT = ClientTimeout(total=30)
 
 
 class HttpClient:
-    """Lazy singleton around a single ``aiohttp.ClientSession``.
+    """Lazy singleton handing out one ``aiohttp.ClientSession`` per event loop.
 
-    The session is created on first use inside the running event loop. Callers
-    should not close it — :meth:`close` is intended for shutdown hooks.
+    aiohttp sessions are bound to the loop they are created on, so sharing a
+    single session between the bot loop and the Web UI's uvicorn loop (daemon
+    thread) breaks — same constraint as ``src.core.db.MongoManager``. In
+    practice there are at most two sessions. Callers should not close them —
+    :meth:`close` is intended for shutdown hooks.
     """
 
     _instance: HttpClient | None = None
-    _session: ClientSession | None
-    _lock: asyncio.Lock
+    _sessions: ClassVar[dict[asyncio.AbstractEventLoop, ClientSession]] = {}
+    # ClientSession construction is synchronous, so a thread lock is enough to
+    # serialize creation across loops/threads (an asyncio.Lock would itself be
+    # bound to a single loop).
+    _create_lock: ClassVar[threading.Lock] = threading.Lock()
 
     def __new__(cls) -> HttpClient:
         if cls._instance is None:
             cls._instance = super().__new__(cls)
-            cls._instance._session = None
-            cls._instance._lock = asyncio.Lock()
         return cls._instance
 
     async def session(self) -> ClientSession:
-        """Return the shared session, creating it on first use."""
-        if self._session is None or self._session.closed:
-            async with self._lock:
-                if self._session is None or self._session.closed:
-                    self._session = ClientSession(
+        """Return the calling loop's shared session, creating it on first use."""
+        loop = asyncio.get_running_loop()
+        session = self._sessions.get(loop)
+        if session is None or session.closed:
+            with self._create_lock:
+                session = self._sessions.get(loop)
+                if session is None or session.closed:
+                    session = ClientSession(
                         timeout=_DEFAULT_TIMEOUT,
                         headers={"User-Agent": _DEFAULT_USER_AGENT},
                     )
-                    logger.info("Shared aiohttp ClientSession created.")
-        return self._session
+                    self._sessions[loop] = session
+                    logger.info(
+                        "Shared aiohttp ClientSession created (%d active).", len(self._sessions)
+                    )
+        return session
 
     async def close(self) -> None:
-        """Close the shared session. Call this during graceful shutdown."""
-        if self._session is not None and not self._session.closed:
-            await self._session.close()
+        """Close the calling loop's session. Call this during graceful shutdown.
+
+        Sessions owned by other loops must be closed from their own loop;
+        in practice they belong to daemon threads that die with the process.
+        """
+        session = self._sessions.pop(asyncio.get_running_loop(), None)
+        if session is not None and not session.closed:
+            await session.close()
             logger.info("Shared aiohttp ClientSession closed.")
-        self._session = None
 
 
 # Global singleton — import and reuse everywhere.
