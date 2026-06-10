@@ -1,4 +1,4 @@
-**Terms & Conditions**  
+**Terms & Conditions**
 
 These terms and conditions applies to the Michel app (hereby referred to as "Application") for mobile devices that was created by LightD31 (hereby referred to as "Service Provider") as an Open Source service.
 

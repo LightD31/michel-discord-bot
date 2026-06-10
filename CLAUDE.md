@@ -21,15 +21,16 @@ ruff check .
 ruff format --check .       # CI runs --check; drop --check to apply
 ruff check --fix .
 
-# Type check (src.core.* is strict, rest is lenient; CI-only — not in pre-commit)
+# Type check (src.core.* is strict, rest is lenient; runs in CI on every PR)
 mypy src
+pre-commit run mypy --hook-stage manual   # same check via the opt-in hook
 
 # Tests
 pytest
 pytest tests/test_rss_parser.py::test_parse_rss_extracts_two_entries   # single test
 pytest --cov=src --cov=features --cov-report=term  # with coverage (CI)
 
-# Pre-commit (ruff lint+format, detect-secrets, hygiene hooks — no mypy)
+# Pre-commit (ruff lint+format, detect-secrets, hygiene hooks; mypy is manual-stage only)
 pre-commit run --all-files
 
 # Regenerate config.example.json after adding/changing Web UI schemas
@@ -103,6 +104,7 @@ Motor (MongoDB), aiohttp (HTTP), asyncssh (SFTP), native async RCON. Never block
 ## Notes
 
 - `requires-python >= 3.12`; CI and the Docker image run Python 3.14. Ruff target-version is `py312`, line length 100.
+- **Windows + detect-secrets**: run scans with `PYTHONUTF8=1` (e.g. `$env:PYTHONUTF8=1` before `pre-commit run` or `detect-secrets-hook`). Without it, detect-secrets reads files in the legacy locale encoding, silently skips any file containing characters it can't decode (e.g. the ⭐ emoji in `config.example.json`), and will wrongly prune valid `.secrets.baseline` entries that CI then re-flags. Never commit a baseline shrink you can't reproduce with `PYTHONUTF8=1`.
 - Logging: `from src.core import logging as logutil; logger = logutil.init_logger("name")`. `MICHEL_DEBUG=1` enables debug level.
 - Most user-facing strings are French — match existing language when editing command descriptions and embeds.
 - `interactions.py` here is the `discord-py-interactions` package — not `discord.py`. Use `interactions.Extension`, `@slash_command`, `@listen()`, `@interactions.Task.create(IntervalTrigger(...))`.
