@@ -28,7 +28,7 @@ from src.webui.routes import auth as auth_routes
 def make_oauth(**kwargs) -> DiscordOAuth:
     defaults = {
         "client_id": "123",
-        "client_secret": "s3cret",
+        "client_secret": "s3cret",  # pragma: allowlist secret
         "redirect_uri": "https://michel.example/auth/callback",
     }
     defaults.update(kwargs)
