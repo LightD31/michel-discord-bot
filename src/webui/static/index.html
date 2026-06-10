@@ -3365,16 +3365,16 @@
                         const embedTitle = embed.title || 'Sans titre';
                         const embedColor = embed.color || '3498db';
                         const embedLinks = Array.isArray(embed.links) ? embed.links : [];
-                        
+
                         html += `<div class="embedlist-entry" data-embed-idx="${embedIdx}">`;
-                        
+
                         // Embed header
                         html += `<div class="embedlist-entry-header">`;
                         html += `<div class="embedlist-entry-title" title="${escapeHtml(embedTitle)}">${escapeHtml(embedTitle)}</div>`;
                         html += `<div class="embedlist-entry-controls">`;
                         html += `<button class="btn-remove-embed" onclick="this.closest('.embedlist-entry').remove()" title="Supprimer cet embed">✕</button>`;
                         html += `</div></div>`;
-                        
+
                         // Embed fields (title & color)
                         html += `<div class="embedlist-entry-fields">`;
                         html += `<div><label style="font-size:11px;color:var(--text-muted)">Titre</label>`;
@@ -3385,7 +3385,7 @@
                         html += `<input type="color" class="embedlist-color-input" data-embed-field="color" value="#${embedColor}" onchange="updateEmbedColorText(this)">`;
                         html += `<div class="embedlist-color-text">${embedColor}</div>`;
                         html += `</div></div></div>`;
-                        
+
                         // Links section
                         html += `<div class="embedlist-links">`;
                         html += `<div class="embedlist-links-label">Liens</div>`;
@@ -3400,7 +3400,7 @@
                                 </div>`;
                         });
                         html += `</div>`;
-                        
+
                         html += `<button type="button" class="btn-add-link" onclick="addEmbedLink(this)">+ Ajouter un lien</button>`;
                         html += `</div>`;
                     });
@@ -5589,7 +5589,7 @@
                     </div>
                     ${noToggle ? '' : `
                     <label class="toggle" style="transform: scale(1.2);">
-                        <input type="checkbox" ${enabled ? 'checked' : ''} 
+                        <input type="checkbox" ${enabled ? 'checked' : ''}
                             onchange="toggleModule('${sid}', '${mod}', this.checked)">
                         <span class="toggle-slider"></span>
                     </label>

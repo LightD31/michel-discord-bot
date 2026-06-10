@@ -283,10 +283,10 @@ An optional FastAPI-based dashboard, enabled when `webui.enabled` is `true` in c
 ### Tooling
 
 - **Lint & format** — [ruff](https://docs.astral.sh/ruff/) (`ruff check`, `ruff format`).
-- **Type checking** — [mypy](https://mypy-lang.org/) (`mypy src`). `src.core.*` is strict; the rest is lenient during incremental typing adoption. Runs in CI, not in pre-commit.
+- **Type checking** — [mypy](https://mypy-lang.org/) (`mypy src`). `src.core.*` is strict; the rest is lenient during incremental typing adoption. Runs in CI on every PR, and locally as an opt-in hook: `pre-commit run mypy --hook-stage manual`.
 - **Tests** — [pytest](https://docs.pytest.org/) with `pytest-asyncio` (auto mode) and coverage over `src` + `features`. The suite covers core infrastructure (db, http, config saving), Web UI auth (OAuth, sessions, CSRF), and feature logic (giveaway draw, moderation, MDI client, RSS parser, weighted messages).
 - **Pre-commit** — ruff (lint + format), [detect-secrets](https://github.com/Yelp/detect-secrets) (against `.secrets.baseline`), and hygiene hooks (whitespace, JSON/YAML validity, large files, merge conflicts).
-- **CI** (`.github/workflows/ci.yml`) — six jobs: ruff lint/format, mypy, pytest with coverage, lockfile drift check, `pip-audit` CVE scan, and a detect-secrets sweep.
+- **CI** (`.github/workflows/ci.yml`) — six jobs: ruff lint/format, mypy, pytest with coverage (per-file table in the run summary, XML artifact kept 14 days), lockfile drift check, `pip-audit` CVE scan, and a detect-secrets sweep. Also runs on a weekly schedule so CVE scanning doesn't stall between pushes.
 - **Docker** (`.github/workflows/docker.yml`) — multi-stage build published to GHCR with provenance and SBOM attestations.
 - **Dependabot** — weekly grouped updates for pip, Docker base image, and GitHub Actions.
 

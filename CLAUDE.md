@@ -21,15 +21,16 @@ ruff check .
 ruff format --check .       # CI runs --check; drop --check to apply
 ruff check --fix .
 
-# Type check (src.core.* is strict, rest is lenient; CI-only — not in pre-commit)
+# Type check (src.core.* is strict, rest is lenient; runs in CI on every PR)
 mypy src
+pre-commit run mypy --hook-stage manual   # same check via the opt-in hook
 
 # Tests
 pytest
 pytest tests/test_rss_parser.py::test_parse_rss_extracts_two_entries   # single test
 pytest --cov=src --cov=features --cov-report=term  # with coverage (CI)
 
-# Pre-commit (ruff lint+format, detect-secrets, hygiene hooks — no mypy)
+# Pre-commit (ruff lint+format, detect-secrets, hygiene hooks; mypy is manual-stage only)
 pre-commit run --all-files
 
 # Regenerate config.example.json after adding/changing Web UI schemas

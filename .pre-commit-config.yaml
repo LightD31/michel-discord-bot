@@ -7,6 +7,8 @@
 #   detect-secrets — scans staged diffs for credentials; blocks commits like the
 #                    deleted debug_sftp.py that shipped real passwords.
 #   end-of-file    — POSIX file termination & trailing whitespace hygiene.
+#   mypy           — opt-in (too slow for every commit; CI runs it on every PR):
+#                    pre-commit run mypy --hook-stage manual
 
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
@@ -33,3 +35,16 @@ repos:
       - id: check-added-large-files
         args: [--maxkb=1024]
       - id: check-merge-conflict
+
+  # Runs the project-venv mypy (language: system) so results match CI — the
+  # mirrors-mypy hook resolves types in an isolated env without the project's
+  # dependencies and reports different errors.
+  - repo: local
+    hooks:
+      - id: mypy
+        name: mypy (manual stage)
+        entry: mypy src
+        language: system
+        types: [python]
+        pass_filenames: false
+        stages: [manual]
