@@ -21,8 +21,6 @@ dependencies = [
     "python-dotenv",
     "aiohttp",
     "curl_cffi",
-    "httpx",
-    "requests",
     "uvloop; platform_system != 'Windows'",
 
     # Datastore
@@ -33,7 +31,6 @@ dependencies = [
     "spotipy",
     "twitchAPI",
     "notion-client>=2.7.0",
-    "anthropic",
     "openai",
     "mcstatus",
     "asyncssh",

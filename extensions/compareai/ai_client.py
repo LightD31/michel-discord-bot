@@ -3,19 +3,17 @@ CompareAIMixin — AI/OpenAI-related methods (API calls, prompt building, cost
 calculation).
 """
 
-import asyncio
 import re
 from typing import Any
 
-import httpx
 from interactions import Client, SlashContext
 from openai import AsyncOpenAI
 
+from src.core.http import fetch
 from src.core.text import search_dict_by_sentence
 from src.discord_ext.messages import fetch_user_safe, send_error
 
 from ._common import (
-    API_TIMEOUT_SECONDS,
     AVAILABLE_MODELS,
     CONVERSATION_HISTORY_LIMIT,
     DISCORD_MESSAGE_LIMIT,
@@ -60,37 +58,25 @@ class CompareAIMixin:
     # =========================================================================
 
     async def _load_model_prices(self) -> None:
-        """Load model prices from OpenRouter API with retry and exponential backoff."""
-        for attempt in range(MAX_API_RETRIES):
-            try:
-                async with httpx.AsyncClient(timeout=API_TIMEOUT_SECONDS) as client:
-                    response = await client.get(
-                        "https://openrouter.ai/api/v1/models",
-                        headers={
-                            "Authorization": f"Bearer {config['OpenRouter']['openrouterApiKey']}",
-                            "HTTP-Referer": "https://discord.bot",
-                            "X-Title": "Michel Discord Bot",
-                        },
-                    )
-                    response.raise_for_status()
-                    data = response.json()
+        """Load model prices from the OpenRouter API (shared client, built-in retry)."""
+        try:
+            data = await fetch(
+                "https://openrouter.ai/api/v1/models",
+                return_type="json",
+                headers={
+                    "Authorization": f"Bearer {config['OpenRouter']['openrouterApiKey']}",
+                    "HTTP-Referer": "https://discord.bot",
+                    "X-Title": "Michel Discord Bot",
+                },
+                retries=MAX_API_RETRIES,
+            )
+        except Exception as e:
+            logger.error(f"Error loading prices: {e}")
+            logger.warning("Could not load model prices, using defaults")
+            return
 
-                    self._parse_model_prices(data)
-                    logger.info(f"Loaded pricing for {len(self.model_prices)} models")
-                    return
-
-            except httpx.TimeoutException:
-                logger.warning(f"Timeout loading prices (attempt {attempt + 1}/{MAX_API_RETRIES})")
-            except httpx.HTTPStatusError as e:
-                logger.error(f"HTTP error loading prices: {e.response.status_code}")
-                break
-            except Exception as e:
-                logger.error(f"Error loading prices (attempt {attempt + 1}/{MAX_API_RETRIES}): {e}")
-
-            if attempt < MAX_API_RETRIES - 1:
-                await asyncio.sleep(2**attempt)
-
-        logger.warning("Could not load model prices, using defaults")
+        self._parse_model_prices(data)
+        logger.info(f"Loaded pricing for {len(self.model_prices)} models")
 
     def _parse_model_prices(self, data: dict) -> None:
         """Parse model pricing data from API response."""
