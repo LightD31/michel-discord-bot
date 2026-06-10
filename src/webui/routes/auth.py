@@ -41,6 +41,19 @@ def create_router(ctx: WebUIContext) -> APIRouter:
         if not code:
             raise HTTPException(status_code=400, detail="Code manquant")
 
+        # CSRF check: the state we sent must come back and match the cookie.
+        expected_state = request.cookies.get("oauth_state", "")
+        if not state or not expected_state or not secrets.compare_digest(expected_state, state):
+            rejection = HTMLResponse(
+                content=(
+                    "<h1>Connexion expirée</h1>"
+                    "<p>État OAuth invalide ou expiré — relance la connexion.</p>"
+                ),
+                status_code=403,
+            )
+            rejection.delete_cookie("oauth_state")
+            return rejection
+
         session = await ctx.oauth.exchange_code(code)
         if not session:
             return HTMLResponse(
@@ -65,7 +78,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
         """Logout and invalidate the session."""
         token = request.cookies.get(COOKIE_NAME)
         if token:
-            ctx.oauth.invalidate_session(token)
+            await ctx.oauth.invalidate_session(token)
         response = RedirectResponse(url="/")
         response.delete_cookie(COOKIE_NAME)
         return response

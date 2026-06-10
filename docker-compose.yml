@@ -3,7 +3,9 @@ services:
     container_name: discord_bot
     image: ghcr.io/lightd31/michel-discord-bot:latest
     ports:
-      - "8080:8080"
+      # Web UI bound to loopback only — front it with a reverse proxy
+      # (Caddy/Nginx/Traefik) for TLS. Use "8080:8080" to expose it directly.
+      - "127.0.0.1:8080:8080"
     environment:
       # Toggle extra debug logging (file/line in log records). Default off.
       MICHEL_DEBUG: "${MICHEL_DEBUG:-false}"

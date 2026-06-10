@@ -7,6 +7,9 @@ The frontend catch-all router must be mounted **last** so API routes match
 first.
 """
 
+import asyncio
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 
 from src.core import logging as logutil
@@ -46,6 +49,18 @@ from src.webui.sse import logs as logs_sse
 
 logger = logutil.init_logger("webui.app")
 
+# How often the background task evicts expired sessions (memory + MongoDB).
+_SESSION_CLEANUP_INTERVAL_SECONDS = 1800.0
+
+
+async def _session_cleanup_loop(oauth: DiscordOAuth) -> None:
+    while True:
+        await asyncio.sleep(_SESSION_CLEANUP_INTERVAL_SECONDS)
+        try:
+            await oauth.purge_expired()
+        except Exception as e:
+            logger.warning("Session cleanup tick failed: %s", e)
+
 
 def create_app(bot=None, bot_loop=None) -> FastAPI:
     """Create and configure the FastAPI application.
@@ -84,7 +99,24 @@ def create_app(bot=None, bot_loop=None) -> FastAPI:
     if not WebUILogHandler.get_instance():
         install_log_handler(max_entries=2000)
 
-    app = FastAPI(title="Michel Bot Dashboard", docs_url=None, redoc_url=None)
+    @asynccontextmanager
+    async def lifespan(_app: FastAPI):
+        # Runs on uvicorn's own loop: restore persisted sessions so a bot
+        # restart doesn't log every admin out, then keep them pruned.
+        try:
+            from src.webui.sessions import SessionRepository
+
+            await SessionRepository().ensure_indexes()
+        except Exception as e:
+            logger.warning("Web UI session TTL index setup failed: %s", e)
+        await oauth.restore_sessions()
+        cleanup_task = asyncio.create_task(_session_cleanup_loop(oauth))
+        try:
+            yield
+        finally:
+            cleanup_task.cancel()
+
+    app = FastAPI(title="Michel Bot Dashboard", docs_url=None, redoc_url=None, lifespan=lifespan)
 
     ctx = WebUIContext(bot=bot, bot_loop=bot_loop, oauth=oauth)
 
