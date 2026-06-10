@@ -95,24 +95,49 @@ def extract_answer(text: str) -> str | None:
 def pick_weighted_message(
     config: dict[str, Any],
     list_key: str,
-    weights_key: str,
     default: str,
     **format_kwargs: Any,
 ) -> str:
     """Pick a random message from ``config[list_key]`` using weights, then format it.
 
+    Entries are ``{"text": str, "weight": number}`` objects. Bare strings are
+    accepted with weight 1 so an unmigrated config degrades gracefully instead
+    of crashing the welcome/birthday/level-up message.
+
     Example::
 
         msg = pick_weighted_message(
             srv_cfg,
-            "birthdayMessageList", "birthdayMessageWeights",
+            "birthdayMessageList",
             "Joyeux anniversaire {mention} !",
             mention=member.mention, age=age,
         )
     """
-    messages = config.get(list_key, [default])
-    weights = config.get(weights_key, [1] * len(messages))
-    chosen: str = random.choices(messages, weights=weights)[0]
+    entries = config.get(list_key) or []
+    texts: list[str] = []
+    weights: list[float] = []
+    for entry in entries:
+        if isinstance(entry, dict):
+            text = entry.get("text")
+            if not isinstance(text, str) or not text:
+                continue
+            raw_weight = entry.get("weight", 1)
+            try:
+                weight = max(float(raw_weight), 0.0)
+            except (TypeError, ValueError):
+                weight = 1.0
+        elif isinstance(entry, str) and entry:
+            text, weight = entry, 1.0
+        else:
+            continue
+        texts.append(text)
+        weights.append(weight)
+    if not texts:
+        texts, weights = [default], [1.0]
+    if not any(weights):
+        # random.choices raises when every weight is 0 — treat as all-equal.
+        weights = [1.0] * len(texts)
+    chosen: str = random.choices(texts, weights=weights)[0]
     return chosen.format(**format_kwargs)
 
 

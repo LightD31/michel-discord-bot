@@ -17,9 +17,10 @@ from interactions import IntervalTrigger, Task
 from src.core import logging as logutil
 from src.core.config import load_config
 from src.core.logging import DEBUG
-from src.core.migrations import migrate_config_module_keys
+from src.core.migrations import migrate_config_module_keys, migrate_weighted_message_lists
 
 migrate_config_module_keys()
+migrate_weighted_message_lists()
 config, _, _ = load_config()
 
 DEV_GUILD = config["discord"]["devGuildId"]

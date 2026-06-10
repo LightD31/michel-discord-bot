@@ -33,20 +33,18 @@ class WelcomeConfig(SchemaBase):
         default=True,
         description="Joindre une image générée avec l'avatar et le pseudo du membre.",
     )
-    welcomeMessageList: list[str] = ui(
+    welcomeMessageList: list[dict] = ui(
         "Messages de bienvenue",
         "messagelist",
         description="Liste de messages avec poids de probabilité.",
-        default=["Bienvenue {mention} !"],
-        weight_field="welcomeMessageWeights",
+        default=[{"text": "Bienvenue {mention} !", "weight": 1}],
         variables="{mention}",
     )
-    leaveMessageList: list[str] = ui(
+    leaveMessageList: list[dict] = ui(
         "Messages de départ",
         "messagelist",
         description="Liste de messages de départ avec poids de probabilité.",
-        default=["{username} nous a quittés."],
-        weight_field="leaveMessageWeights",
+        default=[{"text": "{username} nous a quittés.", "weight": 1}],
         variables="{username}",
     )
 
@@ -97,7 +95,6 @@ class WelcomeExtension(Extension):
         filled_message = pick_weighted_message(
             serv_config,
             "welcomeMessageList",
-            "welcomeMessageWeights",
             "Bienvenue {mention} !",
             mention=event.member.mention,
         )
@@ -121,15 +118,13 @@ class WelcomeExtension(Extension):
             return
         serv_config: dict = module_config.get(str(event.guild.id), {})
         logger.debug(
-            "Message : %s\n, Weights : %s\nChannel : %s",
+            "Messages : %s\nChannel : %s",
             serv_config.get("leaveMessageList"),
-            serv_config.get("leaveMessageWeights"),
             serv_config.get("welcomeChannelId"),
         )
         filled_message = pick_weighted_message(
             serv_config,
             "leaveMessageList",
-            "leaveMessageWeights",
             "Au revoir **{mention}** !",
             mention=event.member.username,
         )

@@ -146,7 +146,6 @@ class LevelingMixin:
         formatted_message = pick_weighted_message(
             guild_config,
             "levelUpMessageList",
-            "levelUpMessageWeights",
             DEFAULT_LEVEL_UP_MESSAGE,
             mention=message.author.mention,
             lvl=new_level,

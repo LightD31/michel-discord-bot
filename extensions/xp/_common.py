@@ -63,12 +63,11 @@ class XpConfig(SchemaBase):
             "supérieur est franchi."
         ),
     )
-    levelUpMessageList: list[str] = ui(
+    levelUpMessageList: list[dict] = ui(
         "Messages de level-up",
         "messagelist",
         description="Liste de messages avec poids de probabilité.",
-        default=["Bravo {mention}, tu as atteint le niveau {lvl} !"],
-        weight_field="levelUpMessageWeights",
+        default=[{"text": "Bravo {mention}, tu as atteint le niveau {lvl} !", "weight": 1}],
         variables="{mention}, {lvl}",
     )
 
