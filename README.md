@@ -115,7 +115,6 @@ src/                    # Shared infrastructure
 │   ├── errors.py       #   base exception hierarchy
 │   ├── images.py       #   Pillow helpers (rank cards, etc.)
 │   ├── text.py         #   markdown escaping & text utilities
-│   └── migrations.py   #   config-key migrations run at startup
 ├── discord_ext/        # interactions.py-dependent UI helpers
 │   ├── embeds.py       #   color palette, spacer field, timestamp formatter
 │   ├── messages.py     #   send_error/success, persistent-message bootstrap
@@ -210,7 +209,7 @@ All configuration lives in `config/config.json`. The top-level structure contain
 - **`extensions`** — optional map of `"extensions.<name>": bool` to explicitly enable or disable discovered extensions (overrides the underscore-prefix default).
 - **Per-module configs** — Each extension reads its own section via `load_config("module_name")`, which returns the global config, the per-guild config for that module, and the list of guilds where the module is enabled.
 
-Config is loaded through `src.core.config`, which provides atomic writes and a reactive `ConfigStore` so the Web UI and running extensions stay in sync. A `migrate_config_module_keys()` pass runs at startup to rewrite legacy key names.
+Config is loaded through `src.core.config`, which provides atomic writes and a reactive `ConfigStore` so the Web UI and running extensions stay in sync.
 
 Modules can be toggled per server through the Web UI or directly in the JSON file.
 

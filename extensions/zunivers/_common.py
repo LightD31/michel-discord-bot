@@ -1,7 +1,6 @@
 """Shared config schema, logger, and module-level state for the zunivers extension.
 
-Config key ``moduleZunivers`` — migrated from the legacy ``moduleColoc`` key
-at startup by :func:`src.core.migrations.migrate_config_module_keys`.
+Config key ``moduleZunivers`` (formerly ``moduleColoc``).
 """
 
 from src.core import logging as logutil

@@ -45,7 +45,7 @@ Three-layer split. Respect the boundaries:
 - **`extensions/`** — Discord-facing layer. Each entry is either `extensions/<name>.py` or a package `extensions/<name>/__init__.py` containing an `interactions.Extension` subclass plus a module-level `setup(bot)` factory. Auto-discovered by `main.py` at startup.
 - **`features/`** — Pure domain logic and persistence. **Must not import `interactions`** — this is what makes features unit-testable. Each feature owns a `repository.py` that reads/writes MongoDB.
 - **`src/`** — Shared infrastructure.
-  - `src/core/` is framework-free (config, db, http, logging, errors, migrations, images, text). Strictly typed under mypy.
+  - `src/core/` is framework-free (config, db, http, logging, errors, images, text). Strictly typed under mypy.
   - `src/discord_ext/` holds interactions.py-dependent UI helpers (embeds, paginator, autocomplete, persistent messages).
   - `src/integrations/` holds external-API clients with **no Discord imports** (Spotify, Notion, Minecraft RCON).
   - `src/webui/` is the optional FastAPI dashboard (run in a daemon thread alongside the bot).
@@ -78,7 +78,7 @@ Each Discord server gets its own MongoDB database named `guild_{guild_id}`; cros
 
 ### Config
 
-All config lives in `config/config.json`. Loaded through `src.core.config.load_config(module_name)`, which returns `(global_config, per_guild_module_config, enabled_guild_ids)`. The store is reactive so the Web UI and running extensions stay in sync. `migrate_config_module_keys()` runs at startup to rewrite legacy keys — add new entries there when renaming config paths.
+All config lives in `config/config.json`. Loaded through `src.core.config.load_config(module_name)`, which returns `(global_config, per_guild_module_config, enabled_guild_ids)`. The store is reactive so the Web UI and running extensions stay in sync. When renaming config paths, ship a one-time startup migration (idempotent, runs before `load_config`) and delete it once deployed configs are converted.
 
 ### Async everywhere
 
