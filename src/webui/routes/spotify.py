@@ -55,7 +55,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
     @router.get("/api/spotify/status")
     async def api_spotify_status(request: Request):
         """Report whether the Spotify token cache is populated and valid."""
-        ctx.require_admin(request)
+        ctx.require_developer(request)
         status = get_token_status()
         status["callback_url"] = _callback_url()
         if status.get("authorized"):
@@ -65,7 +65,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
     @router.get("/spotify/auth/start")
     async def spotify_auth_start(request: Request):
         """Begin Spotify OAuth: redirect the admin to Spotify's authorize page."""
-        ctx.require_admin(request)
+        ctx.require_developer(request)
         redirect_uri = _callback_url()
         if not redirect_uri.endswith(CALLBACK_PATH) or redirect_uri == CALLBACK_PATH:
             raise HTTPException(
@@ -104,7 +104,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
         error: str = "",
     ):
         """Receive Spotify's redirect and exchange the code for a token."""
-        ctx.require_admin(request)
+        ctx.require_developer(request)
 
         if error:
             return _result_page(ok=False, message=f"Spotify a refusé l'autorisation : {error}")

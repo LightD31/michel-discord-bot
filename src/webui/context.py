@@ -102,6 +102,8 @@ class WebUIContext:
 
     def is_admin_user(self, session: Session) -> bool:
         """Admin if user has MANAGE_GUILD/ADMINISTRATOR on any bot guild."""
+        if self.oauth.is_developer(session):
+            return True
         if self.bot and self.bot.guilds:
             bot_guild_ids = {str(g.id) for g in self.bot.guilds}
             managed = self.oauth.get_user_managed_guilds(session)
@@ -112,6 +114,22 @@ class WebUIContext:
         session = self.require_session(request)
         if not self.is_admin_user(session):
             raise HTTPException(status_code=403, detail="Accès réservé aux administrateurs")
+        return session
+
+    def user_manages_guild(self, session: Session, guild_id: str | int) -> bool:
+        """True if the user owns/administers/manages *this* guild (or is developer)."""
+        if self.oauth.is_developer(session):
+            return True
+        managed = {g["id"] for g in self.oauth.get_user_managed_guilds(session)}
+        return str(guild_id) in managed
+
+    def require_guild_admin(self, request: Request, guild_id: str | int) -> Session:
+        """Per-guild authorization — managing one guild grants nothing on the others."""
+        session = self.require_session(request)
+        if not self.user_manages_guild(session, guild_id):
+            raise HTTPException(
+                status_code=403, detail="Accès réservé aux administrateurs de ce serveur"
+            )
         return session
 
     def require_developer(self, request: Request) -> Session:

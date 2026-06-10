@@ -2681,8 +2681,8 @@
     // ── Navigation ────────────────────────────────────
     function navigate(page, serverId = null, moduleName = null) {
         // Restrict admin-only pages for non-admin users
-        const adminPages = ['global', 'server', 'module'];
-        const developerPages = ['extensions', 'logs'];
+        const adminPages = ['server', 'module'];
+        const developerPages = ['global', 'extensions', 'logs'];
         if (adminPages.includes(page) && !isAdmin()) {
             page = 'home';
             serverId = null;
@@ -4809,18 +4809,16 @@
                         <div class="nav-item ${state.currentPage === 'home' ? 'active' : ''}" onclick="navigate('home')">
                             <span class="icon">🏠</span> Accueil
                         </div>
-                        ${isAdmin() ? `
+                        ${isDeveloper() ? `
                         <div class="nav-item ${state.currentPage === 'global' ? 'active' : ''}" onclick="navigate('global')">
                             <span class="icon">⚙️</span> Config globale
                         </div>
-                        ${isDeveloper() ? `
                         <div class="nav-item ${state.currentPage === 'extensions' ? 'active' : ''}" onclick="navigate('extensions')">
                             <span class="icon">🧩</span> Extensions
                         </div>
                         <div class="nav-item ${state.currentPage === 'logs' ? 'active' : ''}" onclick="navigate('logs')">
                             <span class="icon">📋</span> Logs
                         </div>
-                        ` : ''}
                         ` : ''}
                     </div>
                     ${isAdmin() ? `
@@ -4960,7 +4958,7 @@
 
         // ── Quick Actions ──────────────────────────────
         const loadedExts = (state.extensions || []).filter(e => e.loaded).length;
-        const quickActionsHtml = `
+        const quickActionsHtml = !isDeveloper() ? '' : `
             <div class="section-label">Actions rapides</div>
             <div class="quick-actions-grid">
                 <button class="quick-action-btn" onclick="navigate('global')">
@@ -4968,7 +4966,6 @@
                     <span class="quick-action-label">Config globale</span>
                     <span class="quick-action-sub">Tokens, APIs…</span>
                 </button>
-                ${isDeveloper() ? `
                 <button class="quick-action-btn" onclick="navigate('extensions')">
                     <span class="quick-action-icon">🧩</span>
                     <span class="quick-action-label">Extensions</span>
@@ -4984,7 +4981,6 @@
                     <span class="quick-action-label">Logs</span>
                     <span class="quick-action-sub">Temps réel</span>
                 </button>
-                ` : ''}
                 <button class="quick-action-btn" onclick="downloadConfig()">
                     <span class="quick-action-icon">⬇️</span>
                     <span class="quick-action-label">Exporter</span>
@@ -5560,7 +5556,7 @@
             toast(`${moduleName} ${enabled ? 'activé' : 'désactivé'}${reloadSuffix}`,
                 result?.reload?.error ? 'warning' : 'success');
             await loadServers();
-            await loadConfig();
+            if (isDeveloper()) await loadConfig();
             render();
         } catch (e) { /* handled by api() */ }
     }
@@ -5869,7 +5865,7 @@
                 toast(`Configuration sauvegardée, rechargement échoué : ${result.reload.error}`, 'warning');
             }
             await loadServers();
-            await loadConfig();
+            if (isDeveloper()) await loadConfig();
             render();
         } catch (e) { /* handled by api() */ }
     }
@@ -6197,7 +6193,7 @@
                 toast(`Configuration sauvegardée, rechargement échoué : ${result.reload.error}`, 'warning');
             }
             await loadServers();
-            await loadConfig();
+            if (isDeveloper()) await loadConfig();
             render();
         });
     }
@@ -6281,7 +6277,10 @@
         if (state.user) {
             const promises = [loadBotInfo()];
             if (isAdmin()) {
-                promises.push(loadServers(), loadModules(), loadSchemas(), loadConfig(), loadLogs(), loadExtensions());
+                promises.push(loadServers(), loadModules(), loadSchemas());
+            }
+            if (isDeveloper()) {
+                promises.push(loadConfig(), loadLogs(), loadExtensions());
             }
             await Promise.all(promises);
         }
@@ -6291,7 +6290,7 @@
         if (hashParams.get('spotify_auth')) {
             const ok = hashParams.get('spotify_auth') === 'ok';
             toast(hashParams.get('msg') || (ok ? 'Spotify connecté' : 'Échec Spotify'), ok ? 'success' : 'error');
-            if (isAdmin()) {
+            if (isDeveloper()) {
                 await loadSpotifyAuth();
                 navigate('global');
             }

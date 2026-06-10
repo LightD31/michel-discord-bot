@@ -120,7 +120,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
     @router.get("/api/servers/{server_id}/roles")
     async def api_list_roles(request: Request, server_id: str):
         """List assignable roles in a guild (for the role-picker)."""
-        ctx.require_admin(request)
+        ctx.require_guild_admin(request, server_id)
 
         async def _fetch():
             try:
@@ -165,7 +165,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
 
     @router.get("/api/servers/{server_id}/rolemenus")
     async def api_list_rolemenus(request: Request, server_id: str):
-        ctx.require_admin(request)
+        ctx.require_guild_admin(request, server_id)
         repo = ReactionRolesRepository(server_id)
         try:
             menus = await repo.list()
@@ -176,7 +176,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
 
     @router.post("/api/servers/{server_id}/rolemenus")
     async def api_create_rolemenu(request: Request, server_id: str, body: RoleMenuCreate):
-        session = ctx.require_admin(request)
+        session = ctx.require_guild_admin(request, server_id)
 
         async def _create():
             guild, channel = await _resolve_guild_and_channel(ctx.bot, server_id, body.channel_id)
@@ -225,7 +225,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
     async def api_update_rolemenu(
         request: Request, server_id: str, menu_id: str, body: RoleMenuUpdate
     ):
-        ctx.require_admin(request)
+        ctx.require_guild_admin(request, server_id)
 
         async def _update():
             repo = ReactionRolesRepository(server_id)
@@ -285,7 +285,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
 
     @router.delete("/api/servers/{server_id}/rolemenus/{menu_id}")
     async def api_delete_rolemenu(request: Request, server_id: str, menu_id: str):
-        ctx.require_admin(request)
+        ctx.require_guild_admin(request, server_id)
 
         async def _delete():
             repo = ReactionRolesRepository(server_id)

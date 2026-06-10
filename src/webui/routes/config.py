@@ -21,8 +21,8 @@ def create_router(ctx: WebUIContext) -> APIRouter:
 
     @router.get("/api/config")
     async def api_get_config(request: Request):
-        """Get the full configuration."""
-        ctx.require_admin(request)
+        """Get the full configuration (contains secrets — developer only)."""
+        ctx.require_developer(request)
         data = ctx.get_full_config()
         return JSONResponse(data)
 
@@ -65,15 +65,15 @@ def create_router(ctx: WebUIContext) -> APIRouter:
 
     @router.get("/api/global-config")
     async def api_get_global_config(request: Request):
-        """Get global (non-server-specific) configuration."""
-        ctx.require_admin(request)
+        """Get global configuration (contains secrets — developer only)."""
+        ctx.require_developer(request)
         data = ctx.get_full_config()
         return JSONResponse(data.get("config", {}))
 
     @router.put("/api/global-config/{section}")
     async def api_update_global_config(request: Request, section: str, body: GlobalConfigUpdate):
-        """Update a section of the global configuration."""
-        ctx.require_admin(request)
+        """Update a section of the global configuration (developer only)."""
+        ctx.require_developer(request)
         data = ctx.get_full_config()
         data.setdefault("config", {})[section] = body.config
         ctx.save_config(data)
@@ -87,7 +87,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
         Query params:
             dry_run: if true, return what would be removed without saving.
         """
-        ctx.require_admin(request)
+        ctx.require_developer(request)
         data = ctx.get_full_config()
         removed: list[dict] = []
 
