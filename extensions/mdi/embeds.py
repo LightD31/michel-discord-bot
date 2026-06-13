@@ -285,7 +285,7 @@ class EmbedsMixin:
         desc_lines.append(f"-# {' · '.join(sub_parts)}")
         embed.description = "\n".join(desc_lines)
 
-        games_text = self._games_block(match)
+        games_text = self._games_block(match, team)
         if games_text:
             embed.add_field(name="Donjons", value=games_text, inline=False)
 
@@ -329,7 +329,7 @@ class EmbedsMixin:
             desc_lines.append(f"-# 📺 Replay : {watch}")
         embed.description = "\n".join(desc_lines)
 
-        games_text = self._games_block(match)
+        games_text = self._games_block(match, team)
         if games_text:
             embed.add_field(name="Donjons", value=games_text, inline=False)
 
@@ -366,12 +366,12 @@ class EmbedsMixin:
         second_score = f"**{second_wins}**" if second_wins > first_wins else f"{second_wins}"
         return f"{first_bold} {first_score} — {second_score} {second_bold}"
 
-    def _games_block(self, match: MatchSnapshot) -> str:
+    def _games_block(self, match: MatchSnapshot, team: TeamRef | None) -> str:
         lines: list[str] = []
         for game in match.games:
             if game.status == "skip":
                 continue
-            lines.append(self._game_line(game, match))
+            lines.append(self._game_line(game, match, team))
         return "\n".join(lines)
 
     @staticmethod
@@ -419,7 +419,9 @@ class EmbedsMixin:
             lines.append(f"-# ↳ S{i + 1}  {s1}  ·  {s2}")
         return "\n".join(lines)
 
-    def _game_line(self, game: GameSnapshot, match: MatchSnapshot) -> str:
+    def _game_line(
+        self, game: GameSnapshot, match: MatchSnapshot, team: TeamRef | None = None
+    ) -> str:
         dungeon = game.dungeon_name or game.dungeon_short_name or "Donjon TBD"
         level = f" +{game.mythic_level}" if game.mythic_level else ""
 
@@ -447,7 +449,16 @@ class EmbedsMixin:
             splits = self._splits_lines(game.first_team_splits, game.second_team_splits)
             return "\n".join(p for p in (header, teams_line, splits) if p)
 
-        header = f"🏆 `G{game.game_order}` **{dungeon}{level}**"
+        # Marker is from the tracked team's perspective: 🏆 if they won this
+        # dungeon, ❌ if they lost it. Falls back to 🏆 only when no team is
+        # tracked (we can't tell whose win it is).
+        if team is not None and game.winner_team_id == team.id:
+            marker = STATUS_EMOJI_TERMINAL_WIN
+        elif team is not None:
+            marker = STATUS_EMOJI_TERMINAL_LOSS
+        else:
+            marker = STATUS_EMOJI_TERMINAL_WIN
+        header = f"{marker} `G{game.game_order}` **{dungeon}{level}**"
         first_won = game.winner_team_id == first_id
         second_won = game.winner_team_id == second_id
         t1 = self._team_summary(
