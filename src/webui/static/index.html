@@ -1724,7 +1724,7 @@
 
         .rssfeed-row {
             display: grid;
-            grid-template-columns: 1fr 1.5fr 1fr 1fr 0.8fr auto;
+            grid-template-columns: 1fr 1.5fr 1fr 1fr 0.8fr auto auto;
             gap: 10px;
             align-items: center;
         }
@@ -1816,6 +1816,73 @@
             gap: 6px;
             font-size: 13px;
             color: var(--text-secondary);
+        }
+
+        /* Preset feeds (LootScraper game presets) render in a locked compact
+           view so the carefully-built embed templates can't be mangled by
+           accident. The "Édition avancée" toggle reveals the full editor. */
+        .rssfeed-preset-banner {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .rssfeed-preset-badge {
+            font-size: 12px;
+            font-weight: 600;
+            padding: 2px 8px;
+            border-radius: 999px;
+            background: var(--accent);
+            color: #fff;
+            white-space: nowrap;
+        }
+
+        .rssfeed-preset-name {
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .rssfeed-preset-hint {
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+
+        .btn-rss-advanced {
+            padding: 6px 10px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            color: var(--text-secondary);
+            font-size: 13px;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+
+        .btn-rss-advanced:hover {
+            border-color: var(--accent);
+            color: var(--text-primary);
+        }
+
+        .rssfeed-advanced {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        /* Collapsed: hide the advanced editor for every entry, and for presets
+           also hide the identity fields (id/url/label/mode) so only the channel
+           picker stays editable. */
+        .rssfeed-entry[data-advanced="off"] .rssfeed-advanced {
+            display: none;
+        }
+
+        .rssfeed-entry.preset[data-advanced="off"] .rssfeed-identity {
+            display: none;
+        }
+
+        .rssfeed-entry.preset[data-advanced="off"] .rssfeed-row {
+            grid-template-columns: 1fr auto auto;
         }
 
         @media (max-width: 900px) {
@@ -3980,12 +4047,25 @@
         if (!/^#[0-9a-fA-F]{6}$/.test(color)) color = '#5865F2';
         const showImage = cfg.embed_show_image !== false;
         const showLinkButton = !!cfg.embed_show_link_button;
+        // Feeds that came from a known preset render locked/compact by default so
+        // the curated embed templates can't be broken by accident. Advanced editing
+        // stays one click away via the toggle.
+        const isPreset = !!(typeof RSS_PRESETS !== 'undefined' && RSS_PRESETS[feedId]);
+        const advanced = isPreset ? 'off' : 'on';
+        const advancedLabel = isPreset ? '⚙️ Édition avancée' : '▾ Réduire';
+        const presetName = escapeHtml(cfg.label || feedId || '');
+        const banner = isPreset ? `
+                <div class="rssfeed-preset-banner">
+                    <span class="rssfeed-preset-badge">🎮 Préréglage</span>
+                    <span class="rssfeed-preset-name">${presetName}</span>
+                    <span class="rssfeed-preset-hint">Mise en forme gérée automatiquement — choisissez le salon ci-dessous.</span>
+                </div>` : '';
         return `
-            <div class="rssfeed-entry" data-mode="${mode}">
+            <div class="rssfeed-entry${isPreset ? ' preset' : ''}" data-mode="${mode}" data-advanced="${advanced}">${banner}
                 <div class="rssfeed-row">
-                    <input type="text" data-rss-field="feed_id" value="${escapeHtml(feedId || '')}" placeholder="ex: epic-free">
-                    <input type="text" data-rss-field="url" value="${escapeHtml(cfg.url || '')}" placeholder="https://exemple.com/feed.xml">
-                    <input type="text" data-rss-field="label" value="${escapeHtml(cfg.label || '')}" placeholder="Libellé (optionnel)">
+                    <input class="rssfeed-identity" type="text" data-rss-field="feed_id" value="${escapeHtml(feedId || '')}" placeholder="ex: epic-free">
+                    <input class="rssfeed-identity" type="text" data-rss-field="url" value="${escapeHtml(cfg.url || '')}" placeholder="https://exemple.com/feed.xml">
+                    <input class="rssfeed-identity" type="text" data-rss-field="label" value="${escapeHtml(cfg.label || '')}" placeholder="Libellé (optionnel)">
                     <div class="channel-picker" data-rss-field="channel_id" data-current="${safeChannel}">
                         <select class="form-input channel-picker-select">
                             <option value="">— Salon par défaut —</option>
@@ -3994,41 +4074,44 @@
                         <input type="text" class="form-input channel-picker-manual" value="${safeChannel}" placeholder="ID de salon" style="display:none;">
                         <button type="button" class="btn-channel-toggle" onclick="toggleChannelPickerMode(this)" title="Saisie manuelle">✎</button>
                     </div>
-                    <select data-rss-field="mode" onchange="onRssModeChange(this)">
+                    <select class="rssfeed-identity" data-rss-field="mode" onchange="onRssModeChange(this)">
                         <option value="text" ${mode === 'text' ? 'selected' : ''}>Texte</option>
                         <option value="embed" ${mode === 'embed' ? 'selected' : ''}>Embed</option>
                     </select>
+                    <button type="button" class="btn-rss-advanced" onclick="toggleRssAdvanced(this)" title="Afficher / masquer l'éditeur complet">${advancedLabel}</button>
                     <button class="btn-remove-entry" onclick="this.closest('.rssfeed-entry').remove()" title="Supprimer">✕</button>
                 </div>
-                <div class="rssfeed-template-row">
-                    <span class="rssfeed-field-label">Modèle texte</span>
-                    <textarea data-rss-field="template" rows="2" placeholder="ex: **{label}** — [{title}]({link})">${escapeHtml(cfg.template || '')}</textarea>
-                </div>
-                <div class="rssfeed-embed-panel">
-                    <span class="rssfeed-field-label">Couleur</span>
-                    <input type="color" data-rss-field="embed_color" value="${color}">
-                    <span class="rssfeed-field-label">Image</span>
-                    <label class="rssfeed-toggle">
-                        <input type="checkbox" data-rss-field="embed_show_image" ${showImage ? 'checked' : ''}>
-                        <span>Afficher l'image détectée</span>
-                    </label>
-                    <span class="rssfeed-field-label">Titre embed</span>
-                    <input type="text" data-rss-field="embed_title" value="${escapeHtml(cfg.embed_title || '')}" placeholder="{title}">
-                    <span class="rssfeed-field-label">Description</span>
-                    <textarea data-rss-field="embed_description" rows="4" placeholder="{summary}">${escapeHtml(cfg.embed_description || '')}</textarea>
-                    <span class="rssfeed-field-label">Bouton lien</span>
-                    <label class="rssfeed-toggle">
-                        <input type="checkbox" data-rss-field="embed_show_link_button" ${showLinkButton ? 'checked' : ''}>
-                        <span>Afficher un bouton vers l'article</span>
-                    </label>
-                    <span class="rssfeed-field-label">Libellé bouton</span>
-                    <input type="text" data-rss-field="embed_link_button_label" value="${escapeHtml(cfg.embed_link_button_label || '')}" placeholder="Voir l'article">
-                </div>
-                <div class="messagelist-variables" style="margin-top:8px;">
-                    <span>Variables : </span>
-                    ${['{title}','{link}','{summary}','{label}','{author}','{image}','{published_date}'].map(v =>
-                        `<button type="button" class="var-chip" data-var="${v}" onmousedown="insertVariable(event,this)">${v}</button>`
-                    ).join('')}
+                <div class="rssfeed-advanced">
+                    <div class="rssfeed-template-row">
+                        <span class="rssfeed-field-label">Modèle texte</span>
+                        <textarea data-rss-field="template" rows="2" placeholder="ex: **{label}** — [{title}]({link})">${escapeHtml(cfg.template || '')}</textarea>
+                    </div>
+                    <div class="rssfeed-embed-panel">
+                        <span class="rssfeed-field-label">Couleur</span>
+                        <input type="color" data-rss-field="embed_color" value="${color}">
+                        <span class="rssfeed-field-label">Image</span>
+                        <label class="rssfeed-toggle">
+                            <input type="checkbox" data-rss-field="embed_show_image" ${showImage ? 'checked' : ''}>
+                            <span>Afficher l'image détectée</span>
+                        </label>
+                        <span class="rssfeed-field-label">Titre embed</span>
+                        <input type="text" data-rss-field="embed_title" value="${escapeHtml(cfg.embed_title || '')}" placeholder="{title}">
+                        <span class="rssfeed-field-label">Description</span>
+                        <textarea data-rss-field="embed_description" rows="4" placeholder="{summary}">${escapeHtml(cfg.embed_description || '')}</textarea>
+                        <span class="rssfeed-field-label">Bouton lien</span>
+                        <label class="rssfeed-toggle">
+                            <input type="checkbox" data-rss-field="embed_show_link_button" ${showLinkButton ? 'checked' : ''}>
+                            <span>Afficher un bouton vers l'article</span>
+                        </label>
+                        <span class="rssfeed-field-label">Libellé bouton</span>
+                        <input type="text" data-rss-field="embed_link_button_label" value="${escapeHtml(cfg.embed_link_button_label || '')}" placeholder="Voir l'article">
+                    </div>
+                    <div class="messagelist-variables" style="margin-top:8px;">
+                        <span>Variables : </span>
+                        ${['{title}','{link}','{summary}','{label}','{author}','{image}','{published_date}'].map(v =>
+                            `<button type="button" class="var-chip" data-var="${v}" onmousedown="insertVariable(event,this)">${v}</button>`
+                        ).join('')}
+                    </div>
                 </div>
             </div>`;
     }
@@ -4036,6 +4119,14 @@
     function onRssModeChange(select) {
         const entry = select.closest('.rssfeed-entry');
         if (entry) entry.dataset.mode = select.value;
+    }
+
+    function toggleRssAdvanced(btn) {
+        const entry = btn.closest('.rssfeed-entry');
+        if (!entry) return;
+        const on = entry.dataset.advanced === 'on';
+        entry.dataset.advanced = on ? 'off' : 'on';
+        btn.textContent = on ? '⚙️ Édition avancée' : '▾ Réduire';
     }
 
     function addRssFeedEntry(btn) {
