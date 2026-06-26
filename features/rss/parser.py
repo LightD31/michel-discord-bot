@@ -133,6 +133,63 @@ def _text(elem: Element | None) -> str:
     return "".join(parts).strip()
 
 
+def _element_to_html(elem: Element) -> str:
+    """Re-serialize an XML subtree into an HTML string, namespaces dropped.
+
+    Atom ``<content type="xhtml">`` stores its body as real XML child
+    elements (``<div xmlns="…/xhtml"><ul><li><b>…</b></li>…``), so collecting
+    only the text would throw away every tag before :func:`strip_html` ever
+    sees it. Emitting the markup back as an HTML string lets ``strip_html``
+    translate ``<b>``/``<a>``/``<li>`` etc. into Discord markdown. Only the
+    attributes ``strip_html`` cares about (``href``, ``src``) are preserved;
+    the local tag name is used so namespace prefixes don't leak through.
+    """
+    tag = _localname(elem.tag)
+    attrs = ""
+    href = elem.get("href")
+    src = elem.get("src")
+    if href:
+        attrs += f' href="{href}"'
+    if src:
+        attrs += f' src="{src}"'
+    parts = [f"<{tag}{attrs}>"]
+    if elem.text:
+        parts.append(elem.text)
+    for child in elem:
+        parts.append(_element_to_html(child))
+        if child.tail:
+            parts.append(child.tail)
+    parts.append(f"</{tag}>")
+    return "".join(parts)
+
+
+def _html_content(elem: Element | None) -> str:
+    """Return the HTML body of a content/summary/description element.
+
+    Feeds expose entry bodies two ways and we have to handle both before
+    handing off to :func:`strip_html`:
+
+    * **Escaped string** (RSS ``<description>``, Atom ``type="html"``) — the
+      markup arrives as text, so the parsed element has no children and
+      ``elem.text`` already *is* the HTML string.
+    * **Real child elements** (Atom ``type="xhtml"``, or a feed that left HTML
+      unescaped) — the markup parsed into child nodes, so we re-serialize the
+      subtree with :func:`_element_to_html` to recover the tags.
+    """
+    if elem is None:
+        return ""
+    if len(elem):
+        parts: list[str] = []
+        if elem.text:
+            parts.append(elem.text)
+        for child in elem:
+            parts.append(_element_to_html(child))
+            if child.tail:
+                parts.append(child.tail)
+        return "".join(parts)
+    return elem.text or ""
+
+
 def _find_local(parent: Element, name: str) -> Element | None:
     """Find a direct child by local name regardless of namespace."""
     for child in parent:
@@ -248,7 +305,9 @@ def _parse_atom_entry(entry: Element) -> RssEntry | None:
         eid = link or title
     if not eid:
         return None
-    raw_summary = _text(_find_local(entry, "summary")) or _text(_find_local(entry, "content"))
+    raw_summary = _html_content(_find_local(entry, "summary")) or _html_content(
+        _find_local(entry, "content")
+    )
     published_text = _text(_find_local(entry, "published")) or _text(_find_local(entry, "updated"))
     return RssEntry(
         entry_id=eid,
@@ -268,7 +327,7 @@ def _parse_rss_item(item: Element) -> RssEntry | None:
     eid = guid or link or title
     if not eid:
         return None
-    raw_summary = _text(_find_local(item, "description"))
+    raw_summary = _html_content(_find_local(item, "description"))
     published_text = _text(_find_local(item, "pubDate"))
     author = _text(_find_local(item, "author")) or _text(_find_local(item, "creator"))
     return RssEntry(
