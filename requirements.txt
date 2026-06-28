@@ -24,7 +24,7 @@ asyncio==4.0.0
     # via pykuma
 asyncio-dgram==3.0.0
     # via mcstatus
-asyncssh==2.23.1
+asyncssh==2.24.0
     # via michel-discord-bot (pyproject.toml)
 attrs==26.1.0
     # via
@@ -112,7 +112,7 @@ jiter==0.15.0
     # via openai
 markdown-it-py==4.2.0
     # via rich
-mcstatus==13.1.0
+mcstatus==14.0.0
     # via michel-discord-bot (pyproject.toml)
 mdurl==0.1.2
     # via markdown-it-py
@@ -149,7 +149,7 @@ pydantic==2.13.4
     #   michel-discord-bot (pyproject.toml)
     #   fastapi
     #   openai
-pydantic-core==2.46.4
+pydantic-core==2.47.0
     # via pydantic
 pyfactorybridge==1.0.1
     # via michel-discord-bot (pyproject.toml)
