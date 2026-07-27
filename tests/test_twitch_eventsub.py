@@ -258,8 +258,8 @@ async def test_start_eventsub_subscribes_a_shared_streamer_once(monkeypatch):
     monkeypatch.setattr(eventsub_module, "Twitch", _fake_twitch_factory())
     monkeypatch.setattr(eventsub_module, "UserAuthenticationStorageHelper", _FakeAuthHelper)
     ext.update = _noop
-    ext.client_id = "id"
-    ext.client_secret = "secret"
+    ext.client_id = "test-client-id"
+    ext.client_secret = "test-client-secret"  # pragma: allowlist secret
 
     await ext._start_eventsub()
 
