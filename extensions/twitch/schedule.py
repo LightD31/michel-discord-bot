@@ -235,15 +235,15 @@ class ScheduleMixin:
         )
     )
     async def update(self):
-        """Periodic healthcheck: restart EventSub if down, refresh every streamer."""
-        if self.eventsub is None or self.eventsub.active_session is None:
-            logger.warning("EventSub is not running")
-            try:
-                await self.eventsub.stop()
-                await self.twitch.close()
-            except Exception as e:
-                logger.error("Error during cleanup: %s", e)
-            await self.on_startup()
+        """Periodic refresh of every streamer's planning message and Discord event.
+
+        EventSub liveness is handled by ``eventsub_watchdog``; this used to try
+        to recover it by calling ``on_startup()``, which only re-fetches
+        channels and never restarts the websocket.
+        """
+        if self.twitch is None:
+            logger.warning("Twitch client is not ready, skipping update")
+            return
 
         for _, streamer in self.streamers.items():
             if streamer.user_id:

@@ -8,6 +8,7 @@ from interactions import Embed, EmbedFooter
 from twitchAPI.helper import first
 from twitchAPI.object.api import ChannelInformation, Stream, TwitchUser
 from twitchAPI.object.eventsub import ChannelUpdateEvent
+from twitchAPI.type import VideoType
 
 from src.core import logging as logutil
 from src.discord_ext.embeds import Colors
@@ -258,7 +259,7 @@ class NotificationsMixin:
             vod_url = None
             try:
                 videos = self.twitch.get_videos(
-                    user_id=streamer.user_id, video_type="archive", first=1
+                    user_id=streamer.user_id, video_type=VideoType.ARCHIVE, first=1
                 )
                 async for video in videos:
                     if streamer.stream_id and video.stream_id == streamer.stream_id:
