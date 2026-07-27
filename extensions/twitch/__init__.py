@@ -7,6 +7,7 @@ change detection live in their own submodules (mixin classes combined below).
 """
 
 import asyncio
+import contextlib
 import json
 import os
 from collections import defaultdict
@@ -86,6 +87,8 @@ class TwitchExtension(
         self.eventsub = None
         self.twitch = None
         self.stop = False
+        self._run_lock = asyncio.Lock()
+        self._hydrated = asyncio.Event()
         self.timezone = pytz.timezone("Europe/Paris")
 
         os.makedirs(EMOTE_CACHE_DIR, exist_ok=True)
@@ -208,6 +211,18 @@ class TwitchExtension(
         logger.info("Waiting for bot to be ready")
         await self.bot.wait_until_ready()
 
+        try:
+            await self._hydrate_streamers()
+        finally:
+            # Released even on failure: on_ready waits on this before starting
+            # EventSub, and a half-hydrated registry still beats never starting.
+            self._hydrated.set()
+
+        self.check_new_emotes.start()
+        logger.info("Starting TwitchExtension")
+
+    async def _hydrate_streamers(self) -> None:
+        """Resolve each streamer's channels, planning message and scheduled event."""
         await self._load_streamer_states()
 
         # Pre-fetch each guild's bot-owned scheduled events once so we can
@@ -236,50 +251,25 @@ class TwitchExtension(
                     owned.append(event)
             bot_events_by_guild[guild_id] = owned
 
+        # Each step is isolated: a planning message that can't be fetched or
+        # recreated (deleted channel, missing permissions) must not abort the
+        # rest, or notif_channel stays None and every live/update/end
+        # notification for that streamer is silently dropped.
         for streamer_key, streamer in self.streamers.items():
             try:
-                if streamer.planning_channel_id:
-                    streamer.channel = await self.bot.fetch_channel(streamer.planning_channel_id)
+                await self._hydrate_planning_message(streamer)
+            except Exception as e:
+                logger.error("Error initializing planning message for %s: %s", streamer_key, e)
 
-                    msg = None
-                    if (
-                        streamer.planning_message_id
-                        and streamer.channel
-                        and hasattr(streamer.channel, "fetch_message")
-                    ):
-                        try:
-                            msg = await streamer.channel.fetch_message(streamer.planning_message_id)
-                        except Exception as e:
-                            logger.warning(
-                                "Streamer %s: could not fetch planning message %s (%s); recreating",
-                                streamer.streamer_id,
-                                streamer.planning_message_id,
-                                e,
-                            )
-                    if msg is None and streamer.channel and hasattr(streamer.channel, "send"):
-                        msg = await streamer.channel.send(
-                            f"Initialisation du planning de {streamer.streamer_id}…"
-                        )
-                        if streamer.planning_pin:
-                            try:
-                                await msg.pin()
-                            except Exception as e:
-                                logger.warning("Could not pin planning message: %s", e)
-                        _save_streamer_channel_message(
-                            str(streamer.guild_id),
-                            streamer.streamer_id,
-                            str(streamer.channel.id),
-                            str(msg.id),
-                            streamer.planning_pin,
-                        )
-                        streamer.planning_message_id = int(msg.id)
-                    streamer.message = msg
-
+            try:
                 if streamer.notification_channel_id:
                     streamer.notif_channel = await self.bot.fetch_channel(
                         streamer.notification_channel_id
                     )
+            except Exception as e:
+                logger.error("Error fetching notification channel for %s: %s", streamer_key, e)
 
+            try:
                 # Attach the bot-owned scheduled event whose external_location
                 # URL matches this streamer's Twitch login (case-insensitive).
                 # Falls back to claiming an unclaimed bot event only when this
@@ -289,20 +279,66 @@ class TwitchExtension(
                     streamer, bot_events_by_guild.get(streamer.guild_id, [])
                 )
             except Exception as e:
-                logger.error(f"Error initializing channels for streamer {streamer_key}: {e}")
+                logger.error("Error matching scheduled event for %s: %s", streamer_key, e)
 
-        self.check_new_emotes.start()
-        logger.info("Starting TwitchExtension")
+    async def _hydrate_planning_message(self, streamer: StreamerInfo) -> None:
+        """Fetch (or recreate) the streamer's planning message, if configured."""
+        if not streamer.planning_channel_id:
+            return
+
+        streamer.channel = await self.bot.fetch_channel(streamer.planning_channel_id)
+
+        msg = None
+        if (
+            streamer.planning_message_id
+            and streamer.channel
+            and hasattr(streamer.channel, "fetch_message")
+        ):
+            try:
+                msg = await streamer.channel.fetch_message(streamer.planning_message_id)
+            except Exception as e:
+                logger.warning(
+                    "Streamer %s: could not fetch planning message %s (%s); recreating",
+                    streamer.streamer_id,
+                    streamer.planning_message_id,
+                    e,
+                )
+        if msg is None and streamer.channel and hasattr(streamer.channel, "send"):
+            msg = await streamer.channel.send(
+                f"Initialisation du planning de {streamer.streamer_id}…"
+            )
+            if streamer.planning_pin:
+                try:
+                    await msg.pin()
+                except Exception as e:
+                    logger.warning("Could not pin planning message: %s", e)
+            _save_streamer_channel_message(
+                str(streamer.guild_id),
+                streamer.streamer_id,
+                str(streamer.channel.id),
+                str(msg.id),
+                streamer.planning_pin,
+            )
+            streamer.planning_message_id = int(msg.id)
+        streamer.message = msg
 
     @listen()
     async def on_ready(self):
-        try:
-            await self.eventsub.stop()
-        except Exception:
-            logger.info("EventSub is not running")
         await self.bot.wait_until_ready()
-        asyncio.create_task(self.run())
-        self.update.start()
+        # Notification channels must be resolved before EventSub can deliver
+        # anything, otherwise a stream going live during startup is dropped.
+        # Bounded, so a stalled hydration can never leave EventSub unstarted.
+        with contextlib.suppress(TimeoutError):
+            await asyncio.wait_for(self._hydrated.wait(), timeout=60)
+        # Ready fires again on every gateway reconnect; rebuilding a healthy
+        # websocket (and re-calling Task.start, which leaks a second loop)
+        # would only churn subscriptions.
+        if not self.eventsub_is_alive():
+            asyncio.create_task(self.run())
+        if not self.update.running:
+            self.update.start()
+        if not self.eventsub_watchdog.running:
+            self.eventsub_watchdog.start()
 
     def stop_on_signal(self, signum, frame):
         """SIGTERM handler — trigger graceful shutdown."""
@@ -312,14 +348,9 @@ class TwitchExtension(
 
     async def cleanup(self):
         """Close the EventSub websocket + Twitch client then stop the bot."""
-        try:
-            await self.eventsub.stop()
-            await self.twitch.close()
-        except Exception as e:
-            logger.error("Error during cleanup: %s", e)
-        else:
-            logger.info("TwitchExtension stopped")
-            await self.bot.stop()
+        await self._shutdown_eventsub()
+        logger.info("TwitchExtension stopped")
+        await self.bot.stop()
 
     # ─── Slash commands ───────────────────────────────────────────────
 

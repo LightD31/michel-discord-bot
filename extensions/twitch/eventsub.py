@@ -1,10 +1,11 @@
 """Twitch EventSub websocket lifecycle and live-state event handlers."""
 
 import asyncio
+import contextlib
 import os
 import signal
 
-from interactions import IntervalTrigger, OrTrigger, TimeTrigger, listen
+from interactions import IntervalTrigger, OrTrigger, Task, TimeTrigger
 from twitchAPI.eventsub.websocket import EventSubWebsocket
 from twitchAPI.helper import first
 from twitchAPI.oauth import UserAuthenticationStorageHelper
@@ -14,13 +15,21 @@ from twitchAPI.object.eventsub import (
     StreamOnlineEvent,
 )
 from twitchAPI.twitch import Twitch
-from twitchAPI.type import AuthScope
+from twitchAPI.type import AuthScope, EventSubSubscriptionConflict
 
 from src.core import logging as logutil
 
 from ._common import ensure_utc
 
 logger = logutil.init_logger(os.path.basename(__file__))
+
+# EventSub topics subscribed for every tracked broadcaster, as
+# (EventSubWebsocket method, handler attribute) pairs.
+EVENT_SUBSCRIPTIONS = (
+    ("listen_stream_online", "on_live_start"),
+    ("listen_stream_offline", "on_live_end"),
+    ("listen_channel_update_v2", "on_update"),
+)
 
 
 class EventSubMixin:
@@ -34,63 +43,154 @@ class EventSubMixin:
             logger.error(f"Error getting stream data for user {user_id}: {e}")
             return None
 
-    async def run(self):
-        """Start the Twitch API + EventSub websocket and subscribe all streamers."""
-        try:
-            self.twitch = await Twitch(self.client_id, self.client_secret)
-            helper = UserAuthenticationStorageHelper(
-                twitch=self.twitch,
-                scopes=[AuthScope.USER_READ_SUBSCRIPTIONS],
-                storage_path="./data/twitchcreds.json",
+    def eventsub_is_alive(self) -> bool:
+        """Whether the EventSub websocket can still deliver events.
+
+        twitchAPI gives us no public liveness flag, and its own state is not
+        enough: when the receive loop hits a websocket error (or fails to
+        re-establish a dropped connection) it breaks out for good, yet
+        ``_running`` stays ``True`` and ``active_session`` keeps pointing at the
+        dead session. The socket thread even stays alive, so the process looks
+        perfectly healthy while every EventSub notification silently stops.
+        The receive task finishing is the only reliable signal, so check it.
+        """
+        if self.eventsub is None or self.twitch is None:
+            return False
+        if not getattr(self.eventsub, "_running", False):
+            return False
+        if self.eventsub.active_session is None:
+            return False
+        tasks = getattr(self.eventsub, "_tasks", None) or []
+        return not any(task.done() for task in tasks)
+
+    async def _shutdown_eventsub(self) -> None:
+        """Best-effort teardown of the current websocket and Twitch client."""
+        if self.eventsub is not None:
+            try:
+                await self.eventsub.stop()
+            except Exception as e:
+                logger.debug("EventSub was not running: %s", e)
+            self.eventsub = None
+        if self.twitch is not None:
+            try:
+                await self.twitch.close()
+            except Exception as e:
+                logger.debug("Error closing Twitch client: %s", e)
+            self.twitch = None
+
+    async def _subscribe_streamer(self, user_id: str, streamer_id: str) -> None:
+        """Subscribe every EventSub topic for one broadcaster.
+
+        Each topic is subscribed independently on purpose: sharing a single
+        ``try`` meant that one failure (a duplicate subscription, a transient
+        Twitch error) skipped the topics registered after it. Because
+        ``stream.online`` came first, that left channels receiving live
+        notifications while stream updates and stream ends never arrived.
+        """
+        for method_name, handler_name in EVENT_SUBSCRIPTIONS:
+            try:
+                await getattr(self.eventsub, method_name)(
+                    broadcaster_user_id=user_id,
+                    callback=getattr(self, handler_name),
+                )
+            except EventSubSubscriptionConflict:
+                logger.debug("%s already subscribed for %s", method_name, streamer_id)
+            except Exception as e:
+                logger.error("Error subscribing %s for %s: %s", method_name, streamer_id, e)
+
+    async def _start_eventsub(self) -> None:
+        """(Re)create the Twitch client + websocket and subscribe every streamer."""
+        await self._shutdown_eventsub()
+
+        self.twitch = await Twitch(self.client_id, self.client_secret)
+        helper = UserAuthenticationStorageHelper(
+            twitch=self.twitch,
+            scopes=[AuthScope.USER_READ_SUBSCRIPTIONS],
+            storage_path="./data/twitchcreds.json",
+        )
+        await helper.bind()
+
+        self.eventsub = EventSubWebsocket(
+            self.twitch,
+            callback_loop=asyncio.get_running_loop(),
+            revocation_handler=self.on_revocation,
+        )
+        logger.info("Starting EventSub")
+        self.eventsub.start()
+
+        # Resolve every configured login, but subscribe once per broadcaster:
+        # the same streamer can be followed by several guilds and Twitch
+        # rejects duplicate subscriptions on a session with a 409.
+        subscribed: set[str] = set()
+        for streamer in self.streamers.values():
+            try:
+                user = await first(self.twitch.get_users(logins=[streamer.streamer_id]))
+            except Exception as e:
+                logger.error("Error resolving Twitch user %s: %s", streamer.streamer_id, e)
+                continue
+            if not user:
+                logger.error("Could not find Twitch user for %s", streamer.streamer_id)
+                continue
+
+            streamer.user_id = user.id
+            if user.id in subscribed:
+                continue
+            subscribed.add(user.id)
+            await self._subscribe_streamer(user.id, streamer.streamer_id)
+            logger.info(
+                "Registered event subscriptions for %s (ID: %s)", streamer.streamer_id, user.id
             )
-            await helper.bind()
 
-            self.eventsub = EventSubWebsocket(
-                self.twitch,
-                callback_loop=asyncio.get_event_loop(),
-                revocation_handler=self.on_revocation,
-            )
-            logger.info("Starting EventSub")
-            self.eventsub.start()
+        await self.update()
 
-            for _, streamer in self.streamers.items():
-                try:
-                    user = await first(self.twitch.get_users(logins=[streamer.streamer_id]))
-                    if user:
-                        streamer.user_id = user.id
-
-                        await self.eventsub.listen_stream_online(
-                            broadcaster_user_id=user.id, callback=self.on_live_start
-                        )
-                        await self.eventsub.listen_stream_offline(
-                            broadcaster_user_id=user.id, callback=self.on_live_end
-                        )
-                        await self.eventsub.listen_channel_update_v2(
-                            broadcaster_user_id=user.id, callback=self.on_update
-                        )
-                        logger.info(
-                            f"Registered event subscriptions for {streamer.streamer_id} (ID: {user.id})"
-                        )
-                    else:
-                        logger.error(f"Could not find Twitch user for {streamer.streamer_id}")
-                except Exception as e:
-                    logger.error(f"Error subscribing to events for {streamer.streamer_id}: {e}")
-
-            await self.update()
-
+        # Only valid from the main thread; the watchdog in main.py covers the rest.
+        with contextlib.suppress(ValueError):
             signal.signal(signal.SIGTERM, self.stop_on_signal)
-            while self.stop is False:
-                await asyncio.sleep(1)
-        except Exception as e:
-            logger.error(f"Error in run method: {e}")
-            await asyncio.sleep(30)
-            asyncio.create_task(self.run())
 
-    @listen()
+    async def run(self):
+        """Start (or restart) the Twitch API + EventSub websocket.
+
+        Safe to call repeatedly: concurrent calls are collapsed and any previous
+        websocket is torn down first, so reconnects can't pile up orphaned
+        sockets. Returns once EventSub is up rather than parking a coroutine on
+        a sleep loop.
+        """
+        if self._run_lock.locked():
+            logger.info("EventSub startup already in progress, skipping duplicate run()")
+            return
+
+        async with self._run_lock:
+            while not self.stop:
+                try:
+                    await self._start_eventsub()
+                except Exception as e:
+                    logger.error("Error starting EventSub: %s", e)
+                else:
+                    return
+                await asyncio.sleep(30)
+
+    @Task.create(IntervalTrigger(minutes=5))
+    async def eventsub_watchdog(self):
+        """Restart EventSub when its websocket has silently gone deaf.
+
+        Without this, a dropped connection ends notifications until someone
+        restarts the bot — the scheduled ``update`` task keeps refreshing the
+        planning message and Discord event by polling, so nothing else looks
+        broken.
+        """
+        if self.stop or self._run_lock.locked() or self.eventsub_is_alive():
+            return
+        logger.warning("EventSub websocket is no longer receiving events, restarting it")
+        await self.run()
+
     async def on_revocation(self, data):
+        """twitchAPI callback fired when Twitch revokes one of our subscriptions.
+
+        This is not a Discord event: decorating it with ``@listen()`` replaced it
+        with an unbound ``Listener``, so twitchAPI's revocation path raised a
+        ``TypeError`` and EventSub was never restarted.
+        """
         logger.error("Revocation detected: %s", data)
-        await self.eventsub.stop()
-        await self.twitch.close()
         asyncio.create_task(self.run())
 
     async def on_live_start(self, data: StreamOnlineEvent):
