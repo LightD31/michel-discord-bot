@@ -12,7 +12,6 @@ from interactions import (
     ScheduledEventType,
     Task,
     Timestamp,
-    TimestampStyles,
 )
 from mcstatus import JavaServer
 
@@ -28,6 +27,7 @@ from ._common import (
     MODPACK_VERSION,
     SERVER_TYPE,
     STATUS_URL,
+    build_stats_embed,
     logger,
 )
 
@@ -57,13 +57,7 @@ class StatusMixin:
             except IndexError:
                 embed2_timestamp = Timestamp.utcnow()
 
-            embed2 = Embed(
-                title="Stats",
-                description=f"Actualisé toutes les heures\nDernière actualisation : {embed2_timestamp.format(TimestampStyles.RelativeTime)}",
-                images=("attachment://stats.png"),
-                color=BrandColors.BLURPLE,
-                timestamp=embed2_timestamp,
-            )
+            embed2 = build_stats_embed(embed2_timestamp)
 
             players_online = 0
             try:

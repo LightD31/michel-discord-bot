@@ -16,6 +16,7 @@ from interactions import Client, Extension, Task, TimeTrigger, listen
 
 from features.xp import RANK_CACHE_TTL, USER_CACHE_TTL, TTLCache, XpRepository
 from src.core.db import mongo_manager
+from src.discord_ext.paginator import CustomPaginator
 
 from ._common import XpConfig, enabled_servers, logger, module_config
 from .commands import CommandsMixin
@@ -34,6 +35,7 @@ class XpExtension(Extension, LevelingMixin, VoiceMixin, CommandsMixin, Leaderboa
         self._rank_cache = TTLCache(ttl=RANK_CACHE_TTL)
         self._repos: dict[str, XpRepository] = {}
         self._voice_sessions: dict[tuple[str, str], float] = {}
+        self._leaderboard_paginators: dict[str, CustomPaginator] = {}
 
         self._validate_config()
         logger.debug("enabled_servers for XP module: %s", enabled_servers)

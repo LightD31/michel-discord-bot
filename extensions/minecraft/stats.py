@@ -5,16 +5,13 @@ from io import BytesIO, StringIO
 import pandas as pd
 import prettytable
 from interactions import (
-    BrandColors,
     Embed,
     File,
     OrTrigger,
     Task,
     Timestamp,
-    TimestampStyles,
     TimeTrigger,
 )
-from interactions.client.utils import timestamp_converter
 
 from features.minecraft import get_config as get_mc_config
 from src.core.images import create_dynamic_image
@@ -25,6 +22,7 @@ from ._common import (
     SFTP_PORT,
     SFTP_USERNAME,
     SFTPS_PASSWORD,
+    build_stats_embed,
     logger,
 )
 
@@ -45,12 +43,17 @@ class StatsMixin:
         player_stats = await self._get_player_stats()
         table = self._create_stats_table(player_stats)
 
-        embed2 = Embed(
-            title="Stats",
-            description=f"Actualisé toutes les heures à Xh10\nProchaine actualisation : {timestamp_converter(str(self.stats.next_run)).format(TimestampStyles.RelativeTime)}",
-            images=("attachment://stats.png"),
-            color=BrandColors.BLURPLE,
-            timestamp=Timestamp.utcnow().isoformat(),
+        # Only move the "last refreshed" stamp when the table actually moved.
+        # Holding it otherwise is what lets the whole payload compare equal, so
+        # an hour with no activity costs no edit at all.
+        table_string = table.get_string() if table else None
+        previous = message.embeds[1].timestamp if len(message.embeds) > 1 else None
+        unchanged = table_string is not None and table_string == self._last_stats_table
+        self._last_stats_table = table_string
+        # Whole seconds only: the rendered label has second granularity anyway, and a
+        # sub-second tail would just be one more thing to differ on round-trip.
+        embed2 = build_stats_embed(
+            previous if unchanged and previous else Timestamp.utcnow().replace(microsecond=0)
         )
 
         await self._update_stats_message(message, embed1, embed2, table)
@@ -109,7 +112,7 @@ class StatsMixin:
         """Update the stats message with caching logic."""
         if not table:
             await edit_message_if_changed(
-                message, content="", embeds=[embed1, embed2], ignore_timestamp=True, logger=logger
+                message, content="", embeds=[embed1, embed2], logger=logger
             )
             logger.warning("No statistics table to display")
             return
@@ -118,7 +121,7 @@ class StatsMixin:
 
         if table_string in self.image_cache:
             await edit_message_if_changed(
-                message, content="", embeds=[embed1, embed2], ignore_timestamp=True, logger=logger
+                message, content="", embeds=[embed1, embed2], logger=logger
             )
             logger.debug("Image retrieved from cache")
         else:

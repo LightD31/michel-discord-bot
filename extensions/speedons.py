@@ -1,12 +1,11 @@
 import asyncio
 import os
-from datetime import datetime, timedelta
+from datetime import datetime
 
 import pytz
 from interactions import (
     BaseChannel,
     Client,
-    ComponentContext,
     Embed,
     Extension,
     IntervalTrigger,
@@ -16,12 +15,12 @@ from interactions import (
     listen,
     utils,
 )
-from interactions.ext import paginators
 
 from src.core import logging as logutil
 from src.core.config import load_config
 from src.core.http import fetch
 from src.discord_ext.messages import edit_message_if_changed, fetch_or_create_persistent_message
+from src.discord_ext.paginator import CustomPaginator
 from src.webui.schemas import (
     SchemaBase,
     enabled_field,
@@ -108,6 +107,7 @@ class SpeedonsExtension(Extension):
         self.channel: BaseChannel | None = None
         self.message: Message | None = None
         self.message2: Message | None = None
+        self.paginator: CustomPaginator | None = None
 
     async def _ensure_messages(self) -> bool:
         if self.message is None:
@@ -172,7 +172,7 @@ class SpeedonsExtension(Extension):
         # Fetch amount
         amount = float(amount_data["amount"])
         embed = Embed(
-            title=f"Speedons 4 ({amount:.2f}€) (Actualisation {utils.timestamp_converter(datetime.now(pytz.utc) + timedelta(minutes=5)).format(TimestampStyles.RelativeTime)})",
+            title=f"Speedons 4 ({amount:.2f}€)",
             timestamp=datetime.now(pytz.UTC),
             color=0xDBEA2B,
             thumbnail="https://speedons.fr/static/b476f2d8ad4a19d2393eb4cff9486cc9/c6b81/icon.png",
@@ -237,7 +237,7 @@ class SpeedonsExtension(Extension):
             ):
                 current_run = i
                 embedlive = Embed(
-                    title=f"Run en cours ({amount:.2f}€) (Actualisation {utils.timestamp_converter(datetime.now(pytz.utc) + timedelta(minutes=5)).format(TimestampStyles.RelativeTime)})",
+                    title=f"Run en cours ({amount:.2f}€)",
                     timestamp=datetime.now(pytz.UTC),
                     color=0xDBEA2B,
                     thumbnail="https://speedons.fr/static/b476f2d8ad4a19d2393eb4cff9486cc9/c6b81/icon.png",
@@ -262,19 +262,24 @@ class SpeedonsExtension(Extension):
             if len(embed.fields) == 5:
                 embeds.append(embed)
                 embed = Embed(
-                    title=f"Speedons 4 ({amount:.2f}€) (Actualisation {utils.timestamp_converter(datetime.now(pytz.utc) + timedelta(minutes=5)).format(TimestampStyles.RelativeTime)})",
+                    title=f"Speedons 4 ({amount:.2f}€)",
                     timestamp=datetime.now(pytz.UTC),
                     color=0xDBEA2B,
                 )
             i = i + 1
         embeds.append(embed)
-        paginator = CustomPaginator.create_from_embeds(self.bot, *embeds, timeout=3600)
-        if current_run is not None:
-            paginator.page_index = int(current_run / 5)
+        if self.paginator is None:
+            self.paginator = CustomPaginator.create_from_embeds(self.bot, *embeds, timeout=3600)
+        # Same landing page as before this paginator was reused: the live run if
+        # there is one, otherwise back to the first page.
+        self.paginator.set_pages(
+            embeds, page_index=int(current_run / 5) if current_run is not None else 0
+        )
+        paginator_dict = self.paginator.to_dict()
         await edit_message_if_changed(
             self.message,
-            embeds=paginator.to_dict()["embeds"],
-            components=paginator.to_dict()["components"],
+            embeds=paginator_dict["embeds"],
+            components=paginator_dict["components"],
             ignore_timestamp=True,
             logger=logger,
         )
@@ -292,29 +297,3 @@ class SpeedonsExtension(Extension):
             ignore_timestamp=True,
             logger=logger,
         )
-
-
-class CustomPaginator(paginators.Paginator):
-    # Override the functions here
-    async def _on_button(self, ctx: ComponentContext, *args, **kwargs) -> Message | None:
-        if self._timeout_task:
-            self._timeout_task.ping.set()
-        match ctx.custom_id.split("|")[1]:
-            case "first":
-                self.page_index = 0
-            case "last":
-                self.page_index = len(self.pages) - 1
-            case "next":
-                if (self.page_index + 1) < len(self.pages):
-                    self.page_index += 1
-            case "back":
-                if self.page_index >= 1:
-                    self.page_index -= 1
-            case "select":
-                self.page_index = int(ctx.values[0])
-            case "callback":
-                if self.callback:
-                    return await self.callback(ctx)
-
-        await ctx.edit_origin(**self.to_dict())
-        return None
