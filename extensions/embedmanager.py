@@ -21,8 +21,8 @@ from interactions import (
     Extension,
 )
 
+from features.links import shorten_keyed
 from src.core import logging as logutil
-from src.discord_ext.links import shorten_embeds
 from src.webui.schemas import (
     SchemaBase,
     enabled_field,
@@ -114,15 +114,46 @@ def build_embeds(embeds_config: list[dict]) -> list[Embed]:
     return embeds
 
 
-async def build_embeds_with_short_links(embeds_config: list[dict]) -> list[Embed]:
-    """Build the embeds, routing every configured link through Shlink.
+async def shorten_links_config(embeds_config: list[dict], guild_id: str) -> list[dict]:
+    """Return *embeds_config* with every link URL replaced by its short URL.
 
-    The dashboard stores raw URLs, so the short URLs are minted at publish
-    time. Republishing an unchanged embed yields the same short URLs (the
-    shortener memoizes them), which keeps ``edit_message_if_changed`` from
-    rewriting the message for nothing.
+    Each link gets its own short URL *slot*, keyed by guild + embed title +
+    link title, so editing a link's target in the dashboard retargets the
+    existing short URL instead of minting a new one — short links already
+    shared in Discord keep working. Renaming the embed or the link is a new
+    slot (and therefore a new short URL), since the slug follows the name.
     """
-    return await shorten_embeds(build_embeds(embeds_config), tags=["embedmanager"])
+    shortened: list[dict] = []
+    for index, embed_data in enumerate(embeds_config, start=1):
+        if not isinstance(embed_data, dict):
+            shortened.append(embed_data)
+            continue
+        embed_copy = dict(embed_data)
+        embed_title = str(embed_copy.get("title") or f"embed-{index}")
+        links = embed_copy.get("links")
+        if isinstance(links, list):
+            new_links = []
+            for link_index, link_data in enumerate(links, start=1):
+                if not isinstance(link_data, dict) or not link_data.get("url"):
+                    new_links.append(link_data)
+                    continue
+                link_copy = dict(link_data)
+                link_title = str(link_copy.get("title") or f"lien-{link_index}")
+                link_copy["url"] = await shorten_keyed(
+                    f"{guild_id}-{embed_title}-{link_title}",
+                    str(link_copy["url"]),
+                    title=f"{embed_title} — {link_title}",
+                    tags=["embedmanager"],
+                )
+                new_links.append(link_copy)
+            embed_copy["links"] = new_links
+        shortened.append(embed_copy)
+    return shortened
+
+
+async def build_embeds_with_short_links(embeds_config: list[dict], guild_id: str) -> list[Embed]:
+    """Build the embeds with every configured link routed through Shlink."""
+    return build_embeds(await shorten_links_config(embeds_config, guild_id))
 
 
 class EmbedManagerExtension(Extension):

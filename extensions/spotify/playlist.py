@@ -21,7 +21,7 @@ from interactions import (
 )
 from interactions.client.utils import timestamp_converter
 
-from features.links import shorten_url
+from features.links import shorten_keyed
 from features.messages import finishList, startList
 from src.core import logging as logutil
 from src.core.text import milliseconds_to_string
@@ -266,7 +266,12 @@ class PlaylistMixin:
                 f"**{milliseconds_to_string(server.snapshot.get('duration', 0))}**"
             )
             if server.links.dashboard:
-                dashboard = await shorten_url(server.links.dashboard, tags=["spotify"])
+                dashboard = await shorten_keyed(
+                    f"spotify-dashboard-{server.guild_id}",
+                    server.links.dashboard,
+                    title="Dashboard playlist",
+                    tags=["spotify"],
+                )
                 recap_content += f"\nDashboard : {dashboard}"
             try:
                 if server.recap_message is None:

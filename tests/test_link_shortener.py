@@ -14,6 +14,7 @@ from features.links.shortener import (
     is_media_url,
     replace_urls,
     should_shorten,
+    slot_slug,
 )
 from src.integrations.shlink import ShlinkClient, ShlinkError, ShlinkSettings, _error_detail
 
@@ -125,6 +126,7 @@ class _FakeClient:
         self.error = error
         self.calls: list[str] = []
         self.cache: dict[str, str] = {}
+        self.slots: dict[str, str] = {}
 
     async def shorten(self, long_url, *, title=None, tags=None, use_cache=True):
         self.calls.append(long_url)
@@ -134,6 +136,16 @@ class _FakeClient:
 
     def cache_get(self, long_url, *, allow_stale=False):
         return self.cache.get(long_url)
+
+    async def retarget_or_create(self, slug, long_url, *, title=None, tags=None):
+        self.calls.append(long_url)
+        if self.error:
+            raise self.error
+        self.slots[slug] = long_url
+        return f"https://exemple.link/{slug}"
+
+    def slot_get(self, slug):
+        return f"https://exemple.link/{slug}" if slug in self.slots else None
 
 
 def _patch(monkeypatch, client, settings):
@@ -205,6 +217,55 @@ async def test_shorten_text_noop_when_disabled(monkeypatch):
     assert await links.shorten_text(text) == text
 
 
+async def test_shorten_keyed_uses_the_slot_slug(monkeypatch):
+    client = _FakeClient()
+    _patch(monkeypatch, client, _settings())
+    short = await links.shorten_keyed("Spotify dashboard 42", "https://example.com/a")
+    assert short == "https://exemple.link/spotify-dashboard-42"
+    assert client.slots["spotify-dashboard-42"] == "https://example.com/a"
+
+
+async def test_shorten_keyed_keeps_the_link_when_the_target_changes(monkeypatch):
+    """Editing the configured URL must retarget the slot, not mint a new link."""
+    client = _FakeClient()
+    _patch(monkeypatch, client, _settings())
+    first = await links.shorten_keyed("spotify-dashboard-42", "https://example.com/a")
+    second = await links.shorten_keyed("spotify-dashboard-42", "https://example.com/b")
+    assert first == second == "https://exemple.link/spotify-dashboard-42"
+    assert client.slots["spotify-dashboard-42"] == "https://example.com/b"
+
+
+async def test_shorten_keyed_falls_back_to_the_known_slot_url(monkeypatch):
+    client = _FakeClient()
+    _patch(monkeypatch, client, _settings())
+    await links.shorten_keyed("slot-a", "https://example.com/a")
+    client.error = ShlinkError("down")
+    assert await links.shorten_keyed("slot-a", "https://example.com/b") == (
+        "https://exemple.link/slot-a"
+    )
+
+
+async def test_shorten_keyed_returns_original_on_unusable_key(monkeypatch):
+    client = _FakeClient()
+    _patch(monkeypatch, client, _settings())
+    assert await links.shorten_keyed("///", "https://example.com/a") == "https://example.com/a"
+    assert client.calls == []
+
+
+async def test_shorten_keyed_passthrough_when_disabled(monkeypatch):
+    client = _FakeClient()
+    _patch(monkeypatch, client, _settings(enabled=False))
+    assert await links.shorten_keyed("slot", "https://example.com/a") == "https://example.com/a"
+    assert client.calls == []
+
+
+def test_slot_slug_normalizes_and_truncates():
+    assert slot_slug("Spotify Dashboard — 12345") == "spotify-dashboard-12345"
+    assert slot_slug("A" * 200) == "a" * 64
+    with pytest.raises(ValueError):
+        slot_slug("  ---  ")
+
+
 # ── Client plumbing ─────────────────────────────────────────────────
 
 
@@ -264,3 +325,65 @@ def test_quote_keeps_short_code_in_one_path_segment():
 
     assert _quote("../../admin") == "..%2F..%2Fadmin"
     assert _quote("abc123") == "abc123"
+
+
+class _RecordingClient(ShlinkClient):
+    """Real client with the transport stubbed, to exercise the slot logic."""
+
+    def __init__(self, existing: dict | None = None):
+        super().__init__()
+        self.existing = existing
+        self.requests: list[tuple[str, str, dict | None]] = []
+
+    async def _request(self, method, path, *, params=None, json=None, settings=None):
+        self.requests.append((method, path, json))
+        if method == "GET" and path.startswith("short-urls/"):
+            if self.existing is None:
+                raise ShlinkError("Not found", status=404)
+            return self.existing
+        if method == "POST":
+            self.existing = {
+                "shortCode": (json or {}).get("customSlug", "auto"),
+                "shortUrl": f"https://exemple.link/{(json or {}).get('customSlug', 'auto')}",
+                "longUrl": (json or {})["longUrl"],
+            }
+            return self.existing
+        if method == "PATCH":
+            assert self.existing is not None
+            self.existing = {**self.existing, "longUrl": (json or {})["longUrl"]}
+            return self.existing
+        return None
+
+
+async def test_retarget_or_create_creates_the_slug_when_missing():
+    client = _RecordingClient(existing=None)
+    short = await client.retarget_or_create("slot-a", "https://example.com/a")
+    assert short == "https://exemple.link/slot-a"
+    methods = [m for m, _, _ in client.requests]
+    assert methods == ["GET", "POST"]
+    # A slot owns its slug, so the create must not reuse an unrelated match.
+    assert client.requests[1][2]["findIfExists"] is False
+    assert client.requests[1][2]["customSlug"] == "slot-a"
+
+
+async def test_retarget_or_create_patches_an_existing_slug():
+    client = _RecordingClient(
+        existing={
+            "shortCode": "slot-a",
+            "shortUrl": "https://exemple.link/slot-a",
+            "longUrl": "https://example.com/old",
+        }
+    )
+    short = await client.retarget_or_create("slot-a", "https://example.com/new")
+    assert short == "https://exemple.link/slot-a"
+    assert [m for m, _, _ in client.requests] == ["GET", "PATCH"]
+    assert client.requests[1][2]["longUrl"] == "https://example.com/new"
+
+
+async def test_retarget_or_create_skips_the_api_when_the_target_is_unchanged():
+    client = _RecordingClient(existing=None)
+    await client.retarget_or_create("slot-a", "https://example.com/a")
+    client.requests.clear()
+    short = await client.retarget_or_create("slot-a", "https://example.com/a")
+    assert short == "https://exemple.link/slot-a"
+    assert client.requests == []

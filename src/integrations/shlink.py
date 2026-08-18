@@ -109,6 +109,8 @@ class ShlinkClient:
     def __init__(self) -> None:
         # long URL -> (short URL, inserted_at)
         self._cache: dict[str, tuple[str, float]] = {}
+        # slug -> (long URL, short URL): what each managed slot currently targets
+        self._slots: dict[str, tuple[str, str]] = {}
 
     # ── Cache ────────────────────────────────────────────────────────
 
@@ -141,6 +143,7 @@ class ShlinkClient:
     def cache_clear(self) -> None:
         """Drop every memoized mapping (called after a dashboard mutation)."""
         self._cache.clear()
+        self._slots.clear()
 
     # ── Transport ────────────────────────────────────────────────────
 
@@ -238,6 +241,64 @@ class ShlinkClient:
         short_url = str(created["shortUrl"])
         self.cache_put(long_url, short_url)
         return short_url
+
+    async def retarget_or_create(
+        self,
+        slug: str,
+        long_url: str,
+        *,
+        title: str | None = None,
+        tags: list[str] | None = None,
+    ) -> str:
+        """Point the short URL *slug* at *long_url*, creating it if needed.
+
+        This is the "one short link per slot" mode: the slug is derived from
+        *what the link is* (a guild's Spotify dashboard, an Embed-manager
+        entry), not from its target. When the configured target changes, the
+        existing short URL is **retargeted** with a PATCH instead of a new
+        short URL being minted — so links already shared in Discord keep
+        working and point at the new destination.
+        """
+        known = self._slots.get(slug)
+        if known and known[0] == long_url:
+            return known[1]
+
+        existing: dict[str, Any] | None
+        try:
+            existing = await self.get_short_url(slug)
+        except ShlinkError as e:
+            if e.status != 404:
+                raise
+            existing = None
+
+        if existing:
+            short_url = str(existing.get("shortUrl") or "")
+            if existing.get("longUrl") != long_url:
+                updated = await self.update_short_url(slug, long_url=long_url, title=title)
+                short_url = str(updated.get("shortUrl") or short_url)
+                logger.info("Shlink slot %s retargeted to %s", slug, long_url)
+        else:
+            created = await self.create_short_url(
+                long_url,
+                title=title,
+                tags=tags,
+                custom_slug=slug,
+                # A slot owns its slug: reusing an unrelated short URL that
+                # happens to share the target would break retargeting later.
+                find_if_exists=False,
+            )
+            short_url = str(created["shortUrl"])
+
+        if not short_url:
+            raise ShlinkError(f"Réponse Shlink sans shortUrl pour le slug {slug}.")
+        self._slots[slug] = (long_url, short_url)
+        self.cache_put(long_url, short_url)
+        return short_url
+
+    def slot_get(self, slug: str) -> str | None:
+        """Last short URL known for *slug* (used as a fallback on API errors)."""
+        known = self._slots.get(slug)
+        return known[1] if known else None
 
     async def list_short_urls(
         self,

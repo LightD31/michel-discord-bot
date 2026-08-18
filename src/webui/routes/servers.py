@@ -393,7 +393,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
 
                 # Rebuilt on the bot loop: shortening does HTTP, and the shared
                 # aiohttp session is per-loop.
-                embeds = await build_embeds_with_short_links(embeds_config)
+                embeds = await build_embeds_with_short_links(embeds_config, server_id)
 
                 message = await fetch_or_create_persistent_message(
                     ctx.bot,

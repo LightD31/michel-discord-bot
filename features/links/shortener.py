@@ -60,6 +60,25 @@ _MEDIA_EXTENSIONS = (
 )
 
 
+# Slugs are the identity of a managed short link: they must stay stable across
+# restarts and target changes, so they are derived from the *slot* name only.
+_SLUG_INVALID_RE = re.compile(r"[^a-z0-9]+")
+SLUG_MAX_LENGTH = 64
+
+
+def slot_slug(key: str) -> str:
+    """Normalize a slot key into a Shlink-safe custom slug.
+
+    ``"Spotify dashboard 12345"`` → ``"spotify-dashboard-12345"``. Raises
+    :class:`ValueError` when nothing usable is left, since an empty slug would
+    silently hand the slot back to Shlink's random generator.
+    """
+    slug = _SLUG_INVALID_RE.sub("-", key.strip().lower()).strip("-")[:SLUG_MAX_LENGTH].strip("-")
+    if not slug:
+        raise ValueError(f"Clé de lien court invalide : {key!r}")
+    return slug
+
+
 def clean_url(url: str) -> str:
     """Strip trailing punctuation and unbalanced closing parentheses from *url*."""
     cleaned = url.rstrip(_TRAILING_PUNCTUATION)
@@ -153,10 +172,12 @@ def replace_urls(text: str, mapping: dict[str, str]) -> str:
 
 
 __all__ = [
+    "SLUG_MAX_LENGTH",
     "URL_RE",
     "clean_url",
     "extract_urls",
     "is_media_url",
     "replace_urls",
     "should_shorten",
+    "slot_slug",
 ]

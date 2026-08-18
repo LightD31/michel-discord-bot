@@ -22,6 +22,7 @@ from features.links.shortener import (
     is_media_url,
     replace_urls,
     should_shorten,
+    slot_slug,
 )
 from src.core import logging as logutil
 from src.integrations.shlink import ShlinkError, get_settings, shlink_client
@@ -61,6 +62,52 @@ async def shorten_url(url: str, *, title: str | None = None, tags: list[str] | N
     return shlink_client.cache_get(url, allow_stale=True) or url
 
 
+async def shorten_keyed(
+    key: str,
+    url: str,
+    *,
+    title: str | None = None,
+    tags: list[str] | None = None,
+) -> str:
+    """Return a *stable* short URL for the link slot named by *key*.
+
+    Unlike :func:`shorten_url`, the short URL is tied to the slot rather than
+    to the target: the slug comes from *key*, so when the configured URL
+    changes the existing short link is retargeted (PATCH) instead of a second
+    one being created. Links already posted in Discord keep resolving, now to
+    the new destination.
+
+    Use it for links that have an identity — a guild's Spotify dashboard, an
+    Embed-manager entry — and :func:`shorten_url` for one-off targets such as
+    an RSS entry, where every URL is its own thing.
+    """
+    if not url:
+        return url
+    settings = get_settings()
+    if not (settings.enabled and settings.configured):
+        return url
+    if not should_shorten(
+        url,
+        short_hosts=settings.short_hosts,
+        excluded_domains=settings.excluded_domains,
+    ):
+        return url
+    try:
+        slug = slot_slug(key)
+    except ValueError as e:
+        logger.warning("%s — lien non raccourci", e)
+        return url
+    try:
+        return await shlink_client.retarget_or_create(slug, url, title=title, tags=tags)
+    except ShlinkError as e:
+        logger.warning("Shlink slot %s failed for %s: %s", slug, url, e)
+    except Exception as e:  # noqa: BLE001 — a shortener outage must not lose the post
+        logger.warning("Unexpected Shlink error for slot %s: %s", slug, e)
+    # Same reasoning as shorten_url: prefer the slot's last known short URL so
+    # a refreshed message keeps rendering the same payload.
+    return shlink_client.slot_get(slug) or shlink_client.cache_get(url, allow_stale=True) or url
+
+
 async def shorten_text(text: str, *, tags: list[str] | None = None) -> str:
     """Replace every shortenable URL found in *text* with its short URL.
 
@@ -92,8 +139,10 @@ __all__ = [
     "extract_urls",
     "is_media_url",
     "replace_urls",
+    "shorten_keyed",
     "shorten_text",
     "shorten_url",
     "shortening_enabled",
     "should_shorten",
+    "slot_slug",
 ]
