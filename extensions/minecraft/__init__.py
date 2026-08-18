@@ -32,6 +32,7 @@ class Minecraft(Extension, StatusMixin, StatsMixin):
     def __init__(self, client):
         self.client = client
         self.image_cache = {}
+        self._last_stats_table: str | None = None
         self.serverColoc = None
         self.channel_edit_timestamp = datetime.fromtimestamp(0)
         self.scheduled_event = None

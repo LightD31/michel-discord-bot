@@ -2,6 +2,8 @@
 
 import os
 
+from interactions import BrandColors, Embed, Timestamp, TimestampStyles
+
 from src.core import logging as logutil
 from src.core.config import load_config
 from src.webui.schemas import (
@@ -118,6 +120,30 @@ STATUS_URL = module_config.get("minecraftStatusUrl", "")
 FOOTER_TEXT = module_config.get("minecraftFooterText", "")
 SERVER_TYPE = module_config.get("minecraftServerType", "")
 
+
+def build_stats_embed(refreshed_at: Timestamp) -> Embed:
+    """The "Stats" embed, rendered identically by both tasks that touch it.
+
+    The hourly stats task regenerates the table image; the 30 s status poll
+    rebuilds the whole message and has to reproduce this embed byte for byte,
+    or every poll would look like a change.
+
+    ``refreshed_at`` is a fixed instant, never ``now()``: Discord renders the
+    relative label client-side and keeps "il y a 5 minutes" current on its own,
+    so the bot never has to rewrite the message just to advance a clock.
+    """
+    return Embed(
+        title="Stats",
+        description=(
+            "Actualisé toutes les heures à Xh10\n"
+            f"Dernière actualisation : {refreshed_at.format(TimestampStyles.RelativeTime)}"
+        ),
+        images="attachment://stats.png",
+        color=BrandColors.BLURPLE,
+        timestamp=refreshed_at,
+    )
+
+
 __all__ = [
     "CHANNEL_ID_KUBZ",
     "FOOTER_TEXT",
@@ -137,6 +163,7 @@ __all__ = [
     "SFTP_PORT",
     "SFTP_USERNAME",
     "STATUS_URL",
+    "build_stats_embed",
     "config",
     "enabled_servers",
     "logger",

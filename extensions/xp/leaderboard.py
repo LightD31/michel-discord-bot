@@ -37,6 +37,7 @@ class LeaderboardMixin:
     _db_connected: bool
     _user_cache: TTLCache
     _repos: dict[str, XpRepository]
+    _leaderboard_paginators: dict[str, CustomPaginator]
 
     def _repo(self, guild_id: str) -> XpRepository: ...  # provided by LevelingMixin
 
@@ -174,7 +175,12 @@ class LeaderboardMixin:
             guild_config["xpMessageId"] = str(message.id)
 
             embeds = await self._build_leaderboard_embeds(guild)
-            paginator = CustomPaginator.create_from_embeds(self.bot, *embeds)
+            paginator = self._leaderboard_paginators.get(guild_id)
+            if paginator is None:
+                paginator = CustomPaginator.create_from_embeds(self.bot, *embeds)
+                self._leaderboard_paginators[guild_id] = paginator
+            # Refreshes always render page 1, as they did before this was reused.
+            paginator.set_pages(embeds, page_index=0)
 
             logger.debug("Updating leaderboard for %s", guild.name)
             paginator_dict = paginator.to_dict()

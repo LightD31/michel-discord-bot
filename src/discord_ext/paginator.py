@@ -25,6 +25,26 @@ from src.core.config import load_discord2name
 class CustomPaginator(paginators.Paginator):
     """Custom paginator with overridden button handling."""
 
+    def set_pages(self, pages: list, *, page_index: int | None = None) -> None:
+        """Swap in freshly rendered pages, keeping this paginator's identity.
+
+        Building a new ``Paginator`` mints a new ``_uuid``, which every button
+        ``custom_id`` is derived from — so a refresher that rebuilt its
+        paginator each cycle handed the message different components every
+        time, and no change check could ever find the render unchanged. Worse,
+        each construction registers another component callback under that uuid
+        and ``Client.add_component_callback`` raises on duplicates, so the old
+        ones can only accumulate.
+
+        Reusing one instance per persistent message keeps the custom_ids
+        stable, keeps a single live callback, and leaves the buttons wired to
+        the pages currently on screen.
+        """
+        self.pages = list(pages)
+        if page_index is not None:
+            self.page_index = page_index
+        self.page_index = max(0, min(self.page_index, len(self.pages) - 1))
+
     async def _on_button(self, ctx: ComponentContext, *args, **kwargs) -> Message | None:
         if self._timeout_task:
             self._timeout_task.ping.set()
