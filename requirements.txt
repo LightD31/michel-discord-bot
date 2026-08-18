@@ -9,13 +9,14 @@ aiohttp==3.14.3
     #   twitchapi
 aiosignal==1.4.0
     # via aiohttp
-annotated-doc==0.0.4
+annotated-doc==0.0.5
     # via fastapi
 annotated-types==0.8.0
     # via pydantic
 anyio==4.14.2
     # via
     #   httpx
+    #   httpx2
     #   openai
     #   sse-starlette
     #   starlette
@@ -44,11 +45,11 @@ certifi==2026.7.22
     #   httpcore
     #   httpx
     #   requests
-cffi==2.1.0
+cffi==2.1.1
     # via
     #   cryptography
     #   curl-cffi
-charset-normalizer==3.4.9
+charset-normalizer==3.5.1
     # via requests
 click==8.4.2
     # via uvicorn
@@ -58,9 +59,9 @@ colorama==0.4.6 ; sys_platform == 'win32'
     #   tqdm
 croniter==6.2.4
     # via discord-py-interactions
-cryptography==49.0.0
+cryptography==50.0.0
     # via asyncssh
-curl-cffi==0.15.0
+curl-cffi==0.16.0
     # via michel-discord-bot (pyproject.toml)
 defusedxml==0.7.1
     # via michel-discord-bot (pyproject.toml)
@@ -80,7 +81,7 @@ emoji==2.15.0
     #   discord-py-interactions
 enum-tools==0.13.0
     # via twitchapi
-fastapi==0.140.7
+fastapi==0.141.1
     # via michel-discord-bot (pyproject.toml)
 frozenlist==1.8.0
     # via
@@ -89,32 +90,34 @@ frozenlist==1.8.0
 h11==0.16.0
     # via
     #   httpcore
+    #   httpcore2
     #   uvicorn
     #   wsproto
 httpcore==1.0.9
     # via httpx
+httpcore2==2.10.0 ; sys_platform != 'emscripten'
+    # via httpx2
 httptools==0.8.0
     # via uvicorn
 httpx==0.28.1
-    # via
-    #   notion-client
-    #   openai
-idna==3.18
+    # via notion-client
+httpx2==2.10.0
+    # via openai
+httpx2-jsfetch==1.0 ; sys_platform == 'emscripten'
+    # via httpx2
+idna==3.19
     # via
     #   anyio
     #   httpx
+    #   httpx2
     #   requests
     #   yarl
 isodate==0.7.2
     # via michel-discord-bot (pyproject.toml)
 jiter==0.16.0
     # via openai
-markdown-it-py==4.2.0
-    # via rich
-mcstatus==14.0.0
+mcstatus==14.1.0
     # via michel-discord-bot (pyproject.toml)
-mdurl==0.1.2
-    # via markdown-it-py
 motor==3.7.1
     # via michel-discord-bot (pyproject.toml)
 multidict==6.7.1
@@ -125,11 +128,11 @@ nbtlib==2.0.4
     # via michel-discord-bot (pyproject.toml)
 notion-client==3.1.0
     # via michel-discord-bot (pyproject.toml)
-numpy==2.5.1
+numpy==2.5.2
     # via
     #   nbtlib
     #   pandas
-openai==2.48.0
+openai==3.2.0
     # via michel-discord-bot (pyproject.toml)
 pandas==3.0.5
     # via michel-discord-bot (pyproject.toml)
@@ -152,10 +155,8 @@ pydantic-core==2.46.4
     # via pydantic
 pyfactorybridge==1.0.1
     # via michel-discord-bot (pyproject.toml)
-pygments==2.20.0
-    # via
-    #   enum-tools
-    #   rich
+pygments==2.21.0
+    # via enum-tools
 pykuma==1.0.4
     # via michel-discord-bot (pyproject.toml)
 pymongo==4.17.0
@@ -166,13 +167,13 @@ python-dateutil==2.9.0.post0
     #   croniter
     #   pandas
     #   twitchapi
-python-dotenv==1.2.2
+python-dotenv==1.2.3
     # via
     #   michel-discord-bot (pyproject.toml)
     #   uvicorn
-python-engineio==4.13.3
+python-engineio==4.13.5
     # via python-socketio
-python-socketio==5.16.3
+python-socketio==5.16.4
     # via michel-discord-bot (pyproject.toml)
 pytz==2026.3.post1
     # via michel-discord-bot (pyproject.toml)
@@ -180,7 +181,7 @@ pyyaml==6.0.3
     # via uvicorn
 rdoclient==1.5.0
     # via michel-discord-bot (pyproject.toml)
-redis==8.0.1
+redis==8.1.0
     # via spotipy
 requests==2.34.2
     # via
@@ -188,8 +189,6 @@ requests==2.34.2
     #   pykuma
     #   rdoclient
     #   spotipy
-rich==15.0.0
-    # via curl-cffi
 simple-websocket==1.1.0
     # via python-engineio
 six==1.17.0
@@ -198,13 +197,13 @@ six==1.17.0
     #   rdoclient
 sniffio==1.3.1
     # via openai
-soupsieve==2.9.1
+soupsieve==2.9.2
     # via beautifulsoup4
 spotipy==2.26.0
     # via michel-discord-bot (pyproject.toml)
-sse-starlette==3.4.6
+sse-starlette==3.4.8
     # via michel-discord-bot (pyproject.toml)
-starlette==1.3.1
+starlette==1.6.0
     # via
     #   fastapi
     #   sse-starlette
@@ -212,6 +211,10 @@ tomli==2.4.1
     # via discord-py-interactions
 tqdm==4.70.0
     # via openai
+truststore==0.10.4 ; sys_platform != 'emscripten'
+    # via
+    #   httpcore2
+    #   httpx2
 twitchapi==4.5.0
     # via michel-discord-bot (pyproject.toml)
 typing-extensions==4.16.0
@@ -227,7 +230,7 @@ typing-extensions==4.16.0
     #   pyfactorybridge
     #   twitchapi
     #   typing-inspection
-typing-inspection==0.4.2
+typing-inspection==0.4.4
     # via
     #   fastapi
     #   pydantic
@@ -237,7 +240,7 @@ urllib3==2.7.0
     # via
     #   requests
     #   spotipy
-uvicorn==0.51.0
+uvicorn==0.52.3
     # via michel-discord-bot (pyproject.toml)
 uvloop==0.22.1 ; sys_platform != 'win32'
     # via
@@ -247,7 +250,7 @@ watchfiles==1.2.0
     # via uvicorn
 wcwidth==0.8.2
     # via prettytable
-websockets==16.1.1
+websockets==17.0.1
     # via uvicorn
 wsproto==1.3.2
     # via simple-websocket
