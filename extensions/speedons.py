@@ -21,7 +21,7 @@ from interactions.ext import paginators
 from src.core import logging as logutil
 from src.core.config import load_config
 from src.core.http import fetch
-from src.discord_ext.messages import fetch_or_create_persistent_message
+from src.discord_ext.messages import edit_message_if_changed, fetch_or_create_persistent_message
 from src.webui.schemas import (
     SchemaBase,
     enabled_field,
@@ -271,12 +271,16 @@ class SpeedonsExtension(Extension):
         paginator = CustomPaginator.create_from_embeds(self.bot, *embeds, timeout=3600)
         if current_run is not None:
             paginator.page_index = int(current_run / 5)
-        await self.message.edit(
+        await edit_message_if_changed(
+            self.message,
             embeds=paginator.to_dict()["embeds"],
             components=paginator.to_dict()["components"],
+            ignore_timestamp=True,
+            logger=logger,
         )
 
-        await self.message2.edit(
+        await edit_message_if_changed(
+            self.message2,
             content="",
             embed=embedlive
             or Embed(
@@ -285,6 +289,8 @@ class SpeedonsExtension(Extension):
                 color=0xDBEA2B,
                 thumbnail="https://speedons.fr/static/b476f2d8ad4a19d2393eb4cff9486cc9/c6b81/icon.png",
             ),
+            ignore_timestamp=True,
+            logger=logger,
         )
 
 

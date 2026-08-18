@@ -11,6 +11,7 @@ from features.vlrgg import (
     fetch_match_details,
 )
 from src.discord_ext.embeds import Colors
+from src.discord_ext.messages import edit_message_if_changed
 
 from ._common import (
     DEFAULT_EMBED_COLOR,
@@ -60,7 +61,9 @@ class NotificationsMixin:
         embeds, ongoing_matches = await self._fetch_team_schedule(tc)
         await self._handle_match_transitions(ongoing_matches, team_state)
         if team_state.schedule_message and embeds:
-            await team_state.schedule_message.edit(embeds=embeds)
+            await edit_message_if_changed(
+                team_state.schedule_message, embeds=embeds, ignore_timestamp=True, logger=logger
+            )
 
     async def _update_team_live(self, team_state: TeamState) -> None:
         """Met à jour les scores live d'une équipe via VLR.gg."""
@@ -204,7 +207,9 @@ class NotificationsMixin:
                 )
             embed.set_footer(text="Mise à jour automatique • Source: VLR.gg")
 
-            await message.edit(embeds=[embed])
+            await edit_message_if_changed(
+                message, embeds=[embed], ignore_timestamp=True, logger=logger
+            )
             logger.debug(f"Message live VLR.gg mis à jour pour {match_id}: {score1}-{score2}")
         except Exception as e:
             logger.exception(f"Erreur mise à jour VLR.gg message live: {e}")
@@ -323,9 +328,12 @@ class NotificationsMixin:
 
             embed.set_footer(text="Match terminé • Source: VLR.gg")
 
-            await message.edit(
+            await edit_message_if_changed(
+                message,
                 content=f"{result_emoji} **Match terminé!** {result_emoji}",
                 embeds=[embed],
+                ignore_timestamp=True,
+                logger=logger,
             )
             logger.info(f"Match terminé: {team1} {score1}-{score2} {team2}")
         except Exception as e:

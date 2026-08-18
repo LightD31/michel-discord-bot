@@ -15,7 +15,7 @@ from pyfactorybridge import API
 
 from src.core import logging as logutil
 from src.core.config import load_config
-from src.discord_ext.messages import fetch_or_create_persistent_message
+from src.discord_ext.messages import edit_message_if_changed, fetch_or_create_persistent_message
 from src.webui.schemas import (
     SchemaBase,
     enabled_field,
@@ -146,7 +146,9 @@ class Satisfactory(Extension):
                 inline=False,
             )
 
-            await message.edit(content="", embed=embed)
+            await edit_message_if_changed(
+                message, content="", embed=embed, ignore_timestamp=True, logger=logger
+            )
             logger.debug("Updated Satisfactory status: %d players, tier %s", players, tier)
         except Exception as e:
             logger.error("Failed to update Satisfactory message: %s", e)

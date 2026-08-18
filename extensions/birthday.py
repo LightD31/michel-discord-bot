@@ -41,7 +41,7 @@ from src.core.config import load_config
 from src.core.errors import DatabaseError, ValidationError
 from src.core.text import pick_weighted_message
 from src.discord_ext.embeds import Colors
-from src.discord_ext.messages import fetch_user_safe, require_guild
+from src.discord_ext.messages import edit_message_if_changed, fetch_user_safe, require_guild
 from src.discord_ext.paginator import CustomPaginator
 from src.webui.schemas import SchemaBase, enabled_field, register_module, ui
 
@@ -289,7 +289,9 @@ class BirthdayExtension(Extension):
             else:
                 await button_ctx.edit_origin(content="Suppression annulée.", components=[])
         except TimeoutError:
-            await msg.edit(content="Temps écoulé, suppression annulée.", components=[])
+            await edit_message_if_changed(
+                msg, content="Temps écoulé, suppression annulée.", components=[], logger=logger
+            )
 
     @anniversaire.subcommand(
         sub_cmd_name="liste",

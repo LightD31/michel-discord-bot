@@ -25,7 +25,11 @@ from features.messages import finishList, startList
 from src.core import logging as logutil
 from src.core.text import milliseconds_to_string
 from src.discord_ext.embeds import Colors
-from src.discord_ext.messages import fetch_or_create_persistent_message, send_error
+from src.discord_ext.messages import (
+    edit_message_if_changed,
+    fetch_or_create_persistent_message,
+    send_error,
+)
 from src.integrations.spotify import spotifymongoformat
 
 from ._common import (
@@ -275,7 +279,9 @@ class PlaylistMixin:
                         logger=logger,
                     )
                 if server.recap_message is not None:
-                    await server.recap_message.edit(content=recap_content)
+                    await edit_message_if_changed(
+                        server.recap_message, content=recap_content, logger=logger
+                    )
             except Exception as e:
                 logger.error("Error while trying to edit recap message: %s", e)
 

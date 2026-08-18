@@ -9,7 +9,7 @@ from interactions import Embed, Task, TimeTrigger
 
 from src.core import logging as logutil
 from src.discord_ext.embeds import Colors
-from src.discord_ext.messages import fetch_or_create_persistent_message
+from src.discord_ext.messages import edit_message_if_changed, fetch_or_create_persistent_message
 
 from ._common import ConfrerieError, enabled_servers, module_config
 
@@ -96,12 +96,15 @@ class StatsMixin:
             footer = await self._create_embed_footer()
             embed.set_footer(text=footer.text, icon_url=footer.icon_url)
 
-            await self._recap_message.edit(
+            await edit_message_if_changed(
+                self._recap_message,
                 content=(
                     "Retrouvez tous les textes en [cliquant ici]"
                     "(https://drndvs.link/Confrerie 'Notion de la confrérie')"
                 ),
                 embed=embed,
+                ignore_timestamp=True,
+                logger=logger,
             )
         except Exception as e:
             logger.error(f"Erreur lors de la mise à jour du message: {e}")

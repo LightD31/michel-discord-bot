@@ -9,9 +9,12 @@ from __future__ import annotations
 
 import contextlib
 import logging
+from collections.abc import Sequence
 from typing import Any
+from urllib.parse import urlsplit
 
-from interactions import Client, Message, SlashContext, ThreadChannel
+from interactions import Client, Embed, Message, SlashContext, ThreadChannel
+from interactions.models.discord.components import process_components
 
 # ---------------------------------------------------------------------------
 # Ephemeral responses
@@ -88,6 +91,159 @@ async def unarchive_if_thread(
     except Exception as e:  # noqa: BLE001 — log and continue; not fatal
         if logger:
             logger.warning("Could not unarchive thread %s: %s", getattr(channel, "id", "?"), e)
+
+
+# ---------------------------------------------------------------------------
+# Change-aware message edit
+# ---------------------------------------------------------------------------
+
+# Payload keys we know how to diff against a message's current state. Anything
+# else (files, attachments, flags, …) is opaque, so we edit unconditionally.
+_COMPARABLE_KEYS = ("content", "embed", "embeds", "components")
+_OPAQUE_KEYS = ("file", "files", "attachments")
+
+# Embed sub-objects whose ``url`` Discord rewrites when the embed points at an
+# uploaded file (``attachment://x.png`` becomes a CDN link on the way back).
+_EMBED_URL_HOLDERS = ("image", "thumbnail", "footer", "author")
+_ATTACHMENT_CDN_HOSTS = ("cdn.discordapp.com", "media.discordapp.net")
+
+
+def _canonical_attachment_url(url: Any) -> Any:
+    """Collapse a CDN attachment link back to its ``attachment://name`` form.
+
+    An embed built locally says ``attachment://stats.png``; the copy Discord
+    echoes back says ``https://cdn.discordapp.com/attachments/…/stats.png?ex=…``.
+    Without this the two never compare equal and the diff is useless for every
+    embed that renders an uploaded image.
+    """
+    if not isinstance(url, str) or not url:
+        return url
+    parsed = urlsplit(url)
+    if parsed.scheme in ("http", "https"):
+        if parsed.netloc not in _ATTACHMENT_CDN_HOSTS:
+            return url
+        if not parsed.path.startswith("/attachments/"):
+            return url
+        return f"attachment://{parsed.path.rsplit('/', 1)[-1]}"
+    return url
+
+
+def _normalize_embed_urls(embed: dict[str, Any]) -> dict[str, Any]:
+    for key in _EMBED_URL_HOLDERS:
+        holder = embed.get(key)
+        if not isinstance(holder, dict):
+            continue
+        for url_key in ("url", "icon_url"):
+            if url_key in holder:
+                holder[url_key] = _canonical_attachment_url(holder[url_key])
+    return embed
+
+
+def _normalize_embeds(value: Any, *, ignore_timestamp: bool = False) -> list[dict[str, Any]] | None:
+    """Render embeds (objects or raw dicts) into comparable plain dicts.
+
+    ``Embed.to_dict()`` already drops the fields Discord injects server-side
+    (``type``, ``proxy_url``, ``width``/``height``, ``video``, ``provider``), so
+    round-tripping both sides through it makes a locally built embed comparable
+    with the one Discord echoed back.
+    """
+    if value is None:
+        return None
+    if isinstance(value, dict) or not isinstance(value, Sequence) or isinstance(value, str):
+        value = [value]
+
+    out: list[dict[str, Any]] = []
+    for item in value:
+        if item is None:
+            continue
+        if isinstance(item, dict):
+            try:
+                item = Embed.from_dict(item)
+            except Exception:  # noqa: BLE001 — unparseable: compare the raw dict
+                out.append(item)
+                continue
+        rendered = item.to_dict() if hasattr(item, "to_dict") else item
+        if isinstance(rendered, dict):
+            rendered = _normalize_embed_urls(rendered)
+            if ignore_timestamp:
+                rendered.pop("timestamp", None)
+        out.append(rendered)
+    return out
+
+
+def _payload_differs(
+    message: Message, payload: dict[str, Any], *, ignore_timestamp: bool = False
+) -> bool:
+    """True when ``payload`` would change what the message currently displays.
+
+    Biased towards ``True``: anything we cannot compare confidently counts as a
+    change, so the worst case is the redundant edit we already did before.
+    """
+    if any(payload.get(key) is not None for key in _OPAQUE_KEYS):
+        return True
+    if not any(key in payload and payload[key] is not None for key in _COMPARABLE_KEYS):
+        return True
+
+    content = payload.get("content")
+    if content is not None and (content or "") != (getattr(message, "content", "") or ""):
+        return True
+
+    new_embeds = payload.get("embeds")
+    if new_embeds is None:
+        new_embeds = payload.get("embed")
+    if new_embeds is not None and _normalize_embeds(
+        new_embeds, ignore_timestamp=ignore_timestamp
+    ) != _normalize_embeds(
+        getattr(message, "embeds", None) or [], ignore_timestamp=ignore_timestamp
+    ):
+        return True
+
+    components = payload.get("components")
+    return components is not None and process_components(components) != process_components(
+        getattr(message, "components", None) or []
+    )
+
+
+async def edit_message_if_changed(
+    message: Message,
+    *,
+    logger: logging.Logger | None = None,
+    force: bool = False,
+    ignore_timestamp: bool = False,
+    **payload: Any,
+) -> bool:
+    """Edit ``message`` only when the payload actually changes what it shows.
+
+    The order here is the contract every caller relies on:
+
+    1. Diff the requested payload against the message's current state and bail
+       out when nothing changed — no API call, and crucially no thread side
+       effect (a periodic refresh must not keep resurrecting an archived
+       thread just to write the same bytes back).
+    2. Only once something *did* change, check whether the message lives in an
+       archived thread, and unarchive it if so.
+    3. Perform the edit.
+
+    ``force=True`` skips step 1 for callers that already know the payload is
+    new (or that pass content we cannot diff, such as freshly rendered images).
+
+    ``ignore_timestamp=True`` drops the embed ``timestamp`` from the comparison.
+    Use it on periodic refreshers that stamp ``datetime.now()`` on every render:
+    there the timestamp is a "when we last polled" marker, not information, and
+    leaving it in makes every cycle look like a change.
+
+    Returns ``True`` when an edit was sent, ``False`` when it was a no-op.
+    """
+    if not force and not _payload_differs(message, payload, ignore_timestamp=ignore_timestamp):
+        if logger:
+            logger.debug(
+                "Skipping edit of message %s: nothing changed", getattr(message, "id", "?")
+            )
+        return False
+
+    await unarchive_if_thread(getattr(message, "channel", None), logger=logger)
+    await message.edit(**payload)
+    return True
 
 
 # ---------------------------------------------------------------------------
@@ -173,6 +329,7 @@ async def fetch_or_create_persistent_message(
 
 
 __all__ = [
+    "edit_message_if_changed",
     "fetch_or_create_persistent_message",
     "fetch_user_safe",
     "require_guild",

@@ -16,7 +16,12 @@ from interactions import (
 
 from features.suggestions import Suggestion
 from src.discord_ext.embeds import Colors
-from src.discord_ext.messages import require_guild, send_error, send_success
+from src.discord_ext.messages import (
+    edit_message_if_changed,
+    require_guild,
+    send_error,
+    send_success,
+)
 
 from ._common import (
     STATUS_COLORS,
@@ -282,9 +287,11 @@ class CommandsMixin:
                     msg = await channel.fetch_message(int(suggestion.message_id))
                     if msg:
                         # Disable vote buttons once a decision has been made.
-                        await msg.edit(
+                        await edit_message_if_changed(
+                            msg,
                             embeds=[embed],
                             components=_vote_components(sugg_id, disabled=True),
+                            logger=logger,
                         )
                         if not anonymous:
                             await channel.send(  # type: ignore[union-attr]

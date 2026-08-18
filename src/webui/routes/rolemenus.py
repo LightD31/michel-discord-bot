@@ -19,6 +19,7 @@ from features.reactionroles import (
     RoleMenuEntry,
 )
 from src.core import logging as logutil
+from src.discord_ext.messages import edit_message_if_changed
 from src.discord_ext.rolemenus import MAX_ENTRIES, build_components, build_embed
 from src.webui.context import WebUIContext
 
@@ -264,7 +265,9 @@ def create_router(ctx: WebUIContext) -> APIRouter:
                         if msg:
                             embed = build_embed(new_title, new_description, new_entries)
                             components = build_components(menu_id, new_entries)
-                            await msg.edit(embeds=[embed], components=components)
+                            await edit_message_if_changed(
+                                msg, embeds=[embed], components=components, logger=logger
+                            )
                 except Exception as e:
                     logger.warning("Could not edit role menu message %s: %s", menu_id, e)
 

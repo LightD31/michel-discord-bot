@@ -7,6 +7,7 @@ from interactions.api.events import MessageReactionAdd, MessageReactionRemove
 
 from features.starboard import StarEntry
 from src.discord_ext.embeds import Colors
+from src.discord_ext.messages import edit_message_if_changed
 
 from ._common import get_guild_settings, logger
 
@@ -206,7 +207,7 @@ class ListenersMixin:
                     msg = await channel.fetch_message(int(existing.mirror_message_id))
                     if msg:
                         embed = _build_embed(message, count, emoji)
-                        await msg.edit(embeds=[embed])
+                        await edit_message_if_changed(msg, embeds=[embed], logger=logger)
             except Exception as e:
                 logger.warning("Could not refresh starboard mirror: %s", e)
             await repo.update_count(str(message.id), count)
@@ -232,7 +233,7 @@ class ListenersMixin:
                         msg = await channel.fetch_message(int(existing.mirror_message_id))
                         if msg:
                             embed = _build_embed(message, count, emoji)
-                            await msg.edit(embeds=[embed])
+                            await edit_message_if_changed(msg, embeds=[embed], logger=logger)
                 except Exception as e:
                     logger.warning("Could not refresh starboard mirror: %s", e)
                 await repo.update_count(str(message.id), count)

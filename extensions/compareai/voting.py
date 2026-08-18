@@ -20,7 +20,7 @@ from interactions import (
 from interactions.api.events import Component
 from interactions.client.errors import CommandOnCooldown
 
-from src.discord_ext.messages import send_error, send_success
+from src.discord_ext.messages import edit_message_if_changed, send_error, send_success
 
 from ._common import (
     VOTE_TIMEOUT_SECONDS,
@@ -159,7 +159,9 @@ class VotingMixin:
 
             try:
                 if len(new_content) <= 2000:
-                    await message_info.edit(content=new_content, components=[])
+                    await edit_message_if_changed(
+                        message_info, content=new_content, components=[], logger=logger
+                    )
                 else:
                     await message_info.delete()
                     await self._split_and_send_message(ctx, new_content)
@@ -194,7 +196,9 @@ class VotingMixin:
             )
 
             if len(timeout_content) <= 2000:
-                await message_info.edit(content=timeout_content, components=[])
+                await edit_message_if_changed(
+                    message_info, content=timeout_content, components=[], logger=logger
+                )
             else:
                 await message_info.delete()
                 await self._split_and_send_message(ctx, timeout_content)

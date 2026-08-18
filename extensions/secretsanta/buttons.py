@@ -9,7 +9,7 @@ from interactions import ComponentContext, Embed, component_callback
 from features.secretsanta import SecretSantaSession
 from src.core import logging as logutil
 from src.discord_ext.embeds import Colors
-from src.discord_ext.messages import fetch_user_safe
+from src.discord_ext.messages import edit_message_if_changed, fetch_user_safe
 
 from ._common import create_join_buttons
 
@@ -131,6 +131,11 @@ class ButtonsMixin:
                 color=Colors.SECRET_SANTA_SUCCESS,
             )
 
-            await ctx.message.edit(embed=embed, components=create_join_buttons(session.context_id))
+            await edit_message_if_changed(
+                ctx.message,
+                embed=embed,
+                components=create_join_buttons(session.context_id),
+                logger=logger,
+            )
         except Exception as e:
             logger.error(f"Failed to update session message: {e}")

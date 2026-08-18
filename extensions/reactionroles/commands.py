@@ -16,7 +16,12 @@ from interactions import (
 
 from features.reactionroles import RoleMenu, RoleMenuEntry
 from src.discord_ext.embeds import Colors
-from src.discord_ext.messages import require_guild, send_error, send_success
+from src.discord_ext.messages import (
+    edit_message_if_changed,
+    require_guild,
+    send_error,
+    send_success,
+)
 
 from ._common import MAX_ENTRIES, build_components, build_embed, enabled_servers_int, logger
 
@@ -261,7 +266,7 @@ class CommandsMixin:
                     msg = await channel.fetch_message(int(menu.message_id))
                     if msg:
                         embed = build_embed(new_title, new_description, menu.entries)
-                        await msg.edit(embeds=[embed])
+                        await edit_message_if_changed(msg, embeds=[embed], logger=logger)
             except Exception as e:
                 logger.warning("Could not edit role menu message %s: %s", menu.message_id, e)
 

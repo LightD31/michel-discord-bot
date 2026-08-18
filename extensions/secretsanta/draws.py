@@ -21,7 +21,7 @@ from features.secretsanta import (
 from src.core import logging as logutil
 from src.core.config import load_discord2name
 from src.discord_ext.embeds import Colors
-from src.discord_ext.messages import fetch_user_safe, send_error
+from src.discord_ext.messages import edit_message_if_changed, fetch_user_safe, send_error
 
 from ._common import DATA_DIR, create_join_buttons, get_context_id
 
@@ -205,9 +205,11 @@ class DrawsMixin:
                     channel = self.bot.get_channel(session.channel_id)
                     if channel:
                         message = await channel.fetch_message(session.message_id)
-                        await message.edit(
+                        await edit_message_if_changed(
+                            message,
                             embed=draw_embed,
                             components=create_join_buttons(context_id, disabled=True),
+                            logger=logger,
                         )
                 except Exception as e:
                     logger.error(f"Failed to update session message: {e}")

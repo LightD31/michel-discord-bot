@@ -4,7 +4,8 @@ Modules
 -------
 - :mod:`src.discord_ext.embeds`       — color palette, spacer field, timestamp formatter
 - :mod:`src.discord_ext.messages`     — send_error/success, require_guild, fetch_user_safe,
-                                        persistent-message bootstrapping, thread unarchive
+                                        persistent-message bootstrapping, thread unarchive,
+                                        change-aware message editing
 - :mod:`src.discord_ext.autocomplete` — shared autocomplete handlers + guild-enabled check
 - :mod:`src.discord_ext.paginator`    — CustomPaginator + reaction-poll formatter
 

@@ -41,7 +41,12 @@ from interactions.api.events import MessageReactionAdd, MessageReactionRemove
 from features.giveaway import MAX_WINNERS, Giveaway, GiveawayRepository, pick_winners
 from features.polls import parse_duration  # reused: same DSL as /poll
 from src.discord_ext.embeds import Colors, format_discord_timestamp
-from src.discord_ext.messages import require_guild, send_error, send_success
+from src.discord_ext.messages import (
+    edit_message_if_changed,
+    require_guild,
+    send_error,
+    send_success,
+)
 
 from ._common import (
     enabled_servers,
@@ -387,7 +392,7 @@ class GiveawayExtension(Extension):
                 cancelled=True,
             )
             try:
-                await message.edit(embeds=[embed])
+                await edit_message_if_changed(message, embeds=[embed], logger=logger)
             except Exception as e:
                 logger.warning("Could not edit cancelled giveaway message: %s", e)
         await send_success(ctx, "Giveaway annulé.")
@@ -550,7 +555,7 @@ class GiveawayExtension(Extension):
                 entrants=entrants,
             )
             try:
-                await message.edit(embeds=[embed])
+                await edit_message_if_changed(message, embeds=[embed], logger=logger)
             except Exception as e:
                 logger.debug("Could not refresh giveaway participants for %s: %s", giveaway.id, e)
 
@@ -621,7 +626,7 @@ class GiveawayExtension(Extension):
             entry_count=len(entrants),
         )
         try:
-            await message.edit(embeds=[embed])
+            await edit_message_if_changed(message, embeds=[embed], logger=logger)
         except Exception as e:
             logger.warning("Could not edit closed giveaway %s: %s", giveaway.id, e)
 

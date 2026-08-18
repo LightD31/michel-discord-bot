@@ -384,7 +384,10 @@ def create_router(ctx: WebUIContext) -> APIRouter:
         try:
 
             async def _publish():
-                from src.discord_ext.messages import fetch_or_create_persistent_message
+                from src.discord_ext.messages import (
+                    edit_message_if_changed,
+                    fetch_or_create_persistent_message,
+                )
 
                 message = await fetch_or_create_persistent_message(
                     ctx.bot,
@@ -399,7 +402,9 @@ def create_router(ctx: WebUIContext) -> APIRouter:
                 )
                 if message is None:
                     raise RuntimeError("Impossible de créer ou récupérer le message cible")
-                await message.edit(content="", embeds=discord_embeds)
+                await edit_message_if_changed(
+                    message, content="", embeds=discord_embeds, logger=logger
+                )
 
             future = asyncio.run_coroutine_threadsafe(_publish(), bot_loop)
             await asyncio.wrap_future(future)

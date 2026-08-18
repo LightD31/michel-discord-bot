@@ -8,6 +8,7 @@ from interactions import Embed, File, IntervalTrigger, Task, utils
 
 from src.core import logging as logutil
 from src.core.http import fetch
+from src.discord_ext.messages import edit_message_if_changed
 
 from ._common import API_URL, MILESTONE_INTERVAL, STREAMLABS_API_URL, UPDATE_INTERVAL
 
@@ -92,7 +93,9 @@ class TasksMixin:
 
                 file = File("data/Zevent_logo.png")
                 if self.message:
-                    await self.message.edit(embeds=embeds, content="", files=[file])
+                    await edit_message_if_changed(
+                        self.message, embeds=embeds, content="", files=[file], logger=logger
+                    )
                     logger.debug("Pre-event countdown message updated successfully")
                 return
             if concert_active or not self._is_main_event_started():
@@ -134,7 +137,9 @@ class TasksMixin:
 
                 file = File("data/Zevent_logo.png")
                 if self.message:
-                    await self.message.edit(embeds=embeds, content="", files=[file])
+                    await edit_message_if_changed(
+                        self.message, embeds=embeds, content="", files=[file], logger=logger
+                    )
                     logger.debug("Concert phase message updated successfully")
 
                 await self.check_and_send_milestone(total_int if data else 0)
@@ -194,7 +199,9 @@ class TasksMixin:
                 file = File("data/Zevent_logo.png")
 
                 if self.message:
-                    await self.message.edit(embeds=embeds, content="", files=[file])
+                    await edit_message_if_changed(
+                        self.message, embeds=embeds, content="", files=[file], logger=logger
+                    )
                     logger.debug("Message updated successfully")
 
                 await self.check_and_send_milestone(total_int)
@@ -233,6 +240,8 @@ class TasksMixin:
             simple_embed.timestamp = utils.timestamp_converter(datetime.now())
 
             if self.message:
-                await self.message.edit(embeds=[simple_embed], content="")
+                await edit_message_if_changed(
+                    self.message, embeds=[simple_embed], content="", logger=logger
+                )
         except Exception as e:
             logger.error(f"Failed to send simplified update: {e}")

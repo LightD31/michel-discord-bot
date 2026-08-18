@@ -18,6 +18,7 @@ from interactions.client.utils import timestamp_converter
 
 from features.minecraft import get_config as get_mc_config
 from src.core.images import create_dynamic_image
+from src.discord_ext.messages import edit_message_if_changed
 
 from ._common import (
     SFTP_HOST,
@@ -107,14 +108,18 @@ class StatsMixin:
     async def _update_stats_message(self, message, embed1, embed2, table):
         """Update the stats message with caching logic."""
         if not table:
-            await message.edit(content="", embeds=[embed1, embed2])
+            await edit_message_if_changed(
+                message, content="", embeds=[embed1, embed2], ignore_timestamp=True, logger=logger
+            )
             logger.warning("No statistics table to display")
             return
 
         table_string = table.get_string()
 
         if table_string in self.image_cache:
-            await message.edit(content="", embeds=[embed1, embed2])
+            await edit_message_if_changed(
+                message, content="", embeds=[embed1, embed2], ignore_timestamp=True, logger=logger
+            )
             logger.debug("Image retrieved from cache")
         else:
             self._optimize_image_cache()
@@ -123,7 +128,9 @@ class StatsMixin:
             image, imageIO = create_dynamic_image(table_string)
             self.image_cache[table_string] = (image, imageIO)
             image = File(create_dynamic_image(table_string)[1], "stats.png")
-            await message.edit(content="", embeds=[embed1, embed2], file=image)
+            await edit_message_if_changed(
+                message, content="", embeds=[embed1, embed2], file=image, logger=logger
+            )
             logger.debug("New image generated and cached")
 
     def _optimize_image_cache(self):

@@ -15,7 +15,7 @@ from interactions import (
 from features.secretsanta import SecretSantaSession
 from src.core import logging as logutil
 from src.discord_ext.embeds import Colors
-from src.discord_ext.messages import fetch_user_safe, send_error
+from src.discord_ext.messages import edit_message_if_changed, fetch_user_safe, send_error
 
 from ._common import create_join_buttons, get_context_id
 
@@ -170,7 +170,9 @@ class SessionsMixin:
                         description="Cette session de Père Noël Secret a été annulée.",
                         color=Colors.SECRET_SANTA_ACCENT,
                     )
-                    await message.edit(embed=embed, components=[])
+                    await edit_message_if_changed(
+                        message, embed=embed, components=[], logger=logger
+                    )
             except Exception as e:
                 logger.error(f"Failed to update cancelled session message: {e}")
 

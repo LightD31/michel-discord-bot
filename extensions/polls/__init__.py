@@ -45,7 +45,7 @@ from features.polls import (
 from src.core import logging as logutil
 from src.core.config import load_config
 from src.discord_ext.embeds import Colors, format_discord_timestamp
-from src.discord_ext.messages import send_error
+from src.discord_ext.messages import edit_message_if_changed, send_error
 from src.discord_ext.paginator import format_poll
 
 from .buttons import PollButtonsMixin, render_results_field, update_poll_embed, vote_components
@@ -201,7 +201,7 @@ class PollsExtension(Extension, PollButtonsMixin):
                 )
                 embed.title = f"🔒 {embed.title}"
                 embed.color = Colors.WARNING
-                await fresh.edit(embed=embed)
+                await edit_message_if_changed(fresh, embed=embed, logger=logger)
                 with contextlib.suppress(Exception):
                     await fresh.clear_all_reactions()
             except Exception as e:
@@ -335,7 +335,9 @@ class PollsExtension(Extension, PollButtonsMixin):
 
         name, value = render_results_field(poll)
         embed.add_field(name=name, value=value, inline=False)
-        await message.edit(embed=embed, components=vote_components(poll))
+        await edit_message_if_changed(
+            message, embed=embed, components=vote_components(poll), logger=logger
+        )
 
     @Task.create(IntervalTrigger(seconds=30))
     async def check_closing_polls(self) -> None:
@@ -366,7 +368,9 @@ class PollsExtension(Extension, PollButtonsMixin):
             embed.title = f"🔒 {embed.title}"
         update_poll_embed(embed, poll)
         try:
-            await message.edit(embed=embed, components=vote_components(poll))
+            await edit_message_if_changed(
+                message, embed=embed, components=vote_components(poll), logger=logger
+            )
         except Exception as e:
             logger.warning("Could not edit closed poll %s: %s", poll.id, e)
         await self._poll_repo(guild_id).mark_closed(poll.id)
@@ -386,7 +390,7 @@ class PollsExtension(Extension, PollButtonsMixin):
                 return
             if event.message.embeds[0].color == Colors.UTIL:
                 embed = await format_poll(event)
-                await event.message.edit(embed=embed)
+                await edit_message_if_changed(event.message, embed=embed, logger=logger)
 
     @listen(MessageReactionRemove)
     async def on_message_reaction_remove(self, event: MessageReactionRemove):
@@ -403,7 +407,7 @@ class PollsExtension(Extension, PollButtonsMixin):
                 return
             if event.message.embeds[0].color == Colors.UTIL:
                 embed = await format_poll(event)
-                await event.message.edit(embed=embed)
+                await edit_message_if_changed(event.message, embed=embed, logger=logger)
 
     @slash_command(
         name="editpoll",
@@ -492,7 +496,7 @@ class PollsExtension(Extension, PollButtonsMixin):
             for i in range(option_count):
                 await message.add_reaction(POLL_EMOJIS[i])
 
-        await message.edit(embed=embed)
+        await edit_message_if_changed(message, embed=embed, logger=logger)
         logger.info("Poll edited")
         await ctx.send("Sondage modifié", ephemeral=True)
 
