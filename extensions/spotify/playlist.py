@@ -256,9 +256,6 @@ class PlaylistMixin:
 
         if server.recap_channel_id:
             recap_content = (
-                f"Dernière màj de la playlist "
-                f"{Timestamp.utcnow().format(TimestampStyles.RelativeTime)}, "
-                f"si c'était il y a plus d'**une minute**, il y a probablement un problème\n"
                 f"`/addsong Titre et artiste de la chanson` pour ajouter une chanson\n"
                 f"Il y a actuellement **{server.snapshot.get('length', 0)}** chansons dans la "
                 f"playlist, pour un total de "
