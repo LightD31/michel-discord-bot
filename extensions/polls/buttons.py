@@ -1,5 +1,6 @@
 """Button-based voting for anonymous and ranked-choice polls."""
 
+import os
 import re
 
 from interactions import ActionRow, Button, ButtonStyle, ComponentContext, Embed, component_callback
@@ -12,7 +13,11 @@ from features.polls import (
     tally_first_past_post,
     tally_ranked_choice,
 )
+from src.core import logging as logutil
 from src.discord_ext.embeds import Colors
+from src.discord_ext.messages import edit_message_if_changed
+
+logger = logutil.init_logger(os.path.basename(__file__))
 
 VOTE_PREFIX = "poll_vote"
 RESET_PREFIX = "poll_reset"
@@ -157,7 +162,7 @@ class PollButtonsMixin:
         try:
             embed = ctx.message.embeds[0]
             update_poll_embed(embed, poll)
-            await ctx.message.edit(embed=embed)
+            await edit_message_if_changed(ctx.message, embed=embed, logger=logger)
         except Exception:
             pass
         await ctx.send(feedback, ephemeral=True)
@@ -182,7 +187,7 @@ class PollButtonsMixin:
         try:
             embed = ctx.message.embeds[0]
             update_poll_embed(embed, poll)
-            await ctx.message.edit(embed=embed)
+            await edit_message_if_changed(ctx.message, embed=embed, logger=logger)
         except Exception:
             pass
         await ctx.send("Classement réinitialisé.", ephemeral=True)

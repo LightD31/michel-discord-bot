@@ -23,7 +23,11 @@ from src.core import logging as logutil
 from src.core.config import load_config
 from src.core.http import fetch
 from src.core.text import escape_md
-from src.discord_ext.messages import fetch_or_create_persistent_message, send_error
+from src.discord_ext.messages import (
+    edit_message_if_changed,
+    fetch_or_create_persistent_message,
+    send_error,
+)
 from src.webui.schemas import (
     SchemaBase,
     enabled_field,
@@ -184,7 +188,9 @@ class StreamlabsCharityExtension(Extension):
             self.create_cause_embed(campaign_data),
             self.create_streamers_embed(members_str_online, members_str_offline, members_dict),
         ]
-        await message.edit(content="", embeds=embeds)
+        await edit_message_if_changed(
+            message, content="", embeds=embeds, ignore_timestamp=True, logger=logger
+        )
 
     def categorize_members(self, members_dict):
         online_members = [
@@ -297,7 +303,9 @@ class StreamlabsCharityExtension(Extension):
             self.create_cause_embed(campaign_data),
             self.create_final_members_embed(members_str),
         ]
-        await message.edit(content="", embeds=embeds)
+        await edit_message_if_changed(
+            message, content="", embeds=embeds, ignore_timestamp=True, logger=logger
+        )
 
     def list_members(self, members_dict):
         return [escape_md(member["display_name"]) for member in members_dict.values()]

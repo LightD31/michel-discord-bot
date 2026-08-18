@@ -15,7 +15,11 @@ from features.xp import (
 from src.core.errors import DatabaseError
 from src.core.text import format_number
 from src.discord_ext.embeds import Colors
-from src.discord_ext.messages import fetch_or_create_persistent_message, fetch_user_safe
+from src.discord_ext.messages import (
+    edit_message_if_changed,
+    fetch_or_create_persistent_message,
+    fetch_user_safe,
+)
 from src.discord_ext.paginator import CustomPaginator
 
 from ._common import EMBED_COLOR, TIMEZONE, enabled_servers, logger, module_config
@@ -174,10 +178,13 @@ class LeaderboardMixin:
 
             logger.debug("Updating leaderboard for %s", guild.name)
             paginator_dict = paginator.to_dict()
-            await message.edit(
+            await edit_message_if_changed(
+                message,
                 content="",
                 embeds=paginator_dict["embeds"],
                 components=paginator_dict["components"],
+                ignore_timestamp=True,
+                logger=logger,
             )
         except Exception as e:
             logger.error(

@@ -24,6 +24,7 @@ from twitchAPI.type import TwitchResourceNotFound
 
 from src.core import logging as logutil
 from src.discord_ext.embeds import Colors
+from src.discord_ext.messages import edit_message_if_changed
 
 from ._common import StreamerInfo, ensure_utc
 
@@ -199,8 +200,13 @@ class ScheduleMixin:
                     live_embed = await self.create_stream_embed(
                         stream, streamer.user_id, offline=False, data=data
                     )
-                    await streamer.message.edit(
-                        content="", embed=[embed, live_embed], components=[]
+                    await edit_message_if_changed(
+                        streamer.message,
+                        content="",
+                        embed=[embed, live_embed],
+                        components=[],
+                        ignore_timestamp=True,
+                        logger=logger,
                     )
                 except Exception as e:
                     logger.error(f"Error editing message for {streamer.streamer_id}: {e}")
@@ -220,7 +226,13 @@ class ScheduleMixin:
                     offline_embed = await self.create_stream_embed(
                         None, streamer.user_id, offline=True, data=data
                     )
-                    await streamer.message.edit(content="", embed=[embed, offline_embed])
+                    await edit_message_if_changed(
+                        streamer.message,
+                        content="",
+                        embed=[embed, offline_embed],
+                        ignore_timestamp=True,
+                        logger=logger,
+                    )
                 except Exception as e:
                     logger.error(f"Error editing message for {streamer.streamer_id}: {e}")
 

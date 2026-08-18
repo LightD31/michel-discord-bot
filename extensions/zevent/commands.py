@@ -6,6 +6,7 @@ from interactions import SlashContext, slash_command
 
 from src.core import logging as logutil
 from src.core.http import fetch
+from src.discord_ext.messages import edit_message_if_changed
 
 from ._common import API_URL
 
@@ -51,7 +52,9 @@ class CommandsMixin:
             embeds = self.ensure_embeds_fit_limit(embeds)
 
             if self.message:
-                await self.message.edit(embeds=embeds, content="")
+                await edit_message_if_changed(
+                    self.message, embeds=embeds, content="", logger=logger
+                )
                 await ctx.send("Embed final créé avec succès", ephemeral=True)
             else:
                 await ctx.send("Erreur: Message non trouvé", ephemeral=True)

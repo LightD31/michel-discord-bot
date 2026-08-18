@@ -4,7 +4,7 @@ import re
 
 from interactions import ComponentContext, component_callback
 
-from src.discord_ext.messages import send_error
+from src.discord_ext.messages import edit_message_if_changed, send_error
 
 from ._common import VOTE_PREFIX, get_guild_settings, logger
 
@@ -60,7 +60,7 @@ class ButtonsMixin:
                 if field.name == "Votes":
                     field.value = f"👍 {up} · 👎 {down}"
                     break
-            await ctx.message.edit(embeds=[embed])
+            await edit_message_if_changed(ctx.message, embeds=[embed], logger=logger)
         except Exception as e:
             logger.warning("Could not refresh suggestion #%s embed: %s", sugg_id, e)
 

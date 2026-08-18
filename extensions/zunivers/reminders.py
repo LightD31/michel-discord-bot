@@ -27,7 +27,7 @@ from features.coloc.constants import (
     get_advent_calendar_url,
     get_reminder_message,
 )
-from src.discord_ext.messages import fetch_user_safe
+from src.discord_ext.messages import edit_message_if_changed, fetch_user_safe
 
 from ._common import enabled_servers, logger, module_config
 
@@ -173,7 +173,9 @@ class RemindersMixin:
                 ctx.user.display_name,
             )
         except TimeoutError:
-            await message.edit(content="Aucun rappel sélectionné.", components=[])
+            await edit_message_if_changed(
+                message, content="Aucun rappel sélectionné.", components=[], logger=logger
+            )
 
     @Task.create(IntervalTrigger(minutes=1))
     async def reminder_checker(self):

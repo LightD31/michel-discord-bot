@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any
 from interactions import IntervalTrigger, Task
 
 from features.mdi import MatchSnapshot
+from src.discord_ext.messages import edit_message_if_changed
 
 from ._common import (
     LIVE_INTERVAL_MINUTES,
@@ -178,7 +179,7 @@ class NotificationsMixin:
             channel_id = str(channel.id)
         else:
             try:
-                await msg.edit(embeds=[embed])
+                await edit_message_if_changed(msg, embeds=[embed], logger=logger)
             except Exception as e:
                 logger.warning(
                     "MDI: could not edit match %s in guild %s: %s", match.id, state.server_id, e
@@ -275,7 +276,7 @@ class NotificationsMixin:
             if state.schedule_last_hash == new_hash:
                 return
             try:
-                await state.schedule_message.edit(embeds=[embed])
+                await edit_message_if_changed(state.schedule_message, embeds=[embed], logger=logger)
                 state.schedule_last_hash = new_hash
                 return
             except Exception as e:

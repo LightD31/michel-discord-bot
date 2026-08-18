@@ -16,6 +16,8 @@ from interactions import (
 )
 from mcstatus import JavaServer
 
+from src.discord_ext.messages import edit_message_if_changed
+
 from ._common import (
     FOOTER_TEXT,
     MINECRAFT_ADDRESS,
@@ -76,7 +78,9 @@ class StatusMixin:
             except BrokenPipeError:
                 embed1, name = self._create_sleeping_embed(message)
 
-            await message.edit(content="", embeds=[embed1, embed2])
+            await edit_message_if_changed(
+                message, content="", embeds=[embed1, embed2], ignore_timestamp=True, logger=logger
+            )
             await self._update_channel_name(channel, name)
             await self._update_scheduled_event(channel, players_online)
         except Exception as e:

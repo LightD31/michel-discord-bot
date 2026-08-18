@@ -28,7 +28,7 @@ from interactions.client.utils import timestamp_converter
 
 from features.spotify import VoteCooldown
 from src.core import logging as logutil
-from src.discord_ext.messages import fetch_user_safe, send_error
+from src.discord_ext.messages import edit_message_if_changed, fetch_user_safe, send_error
 from src.integrations.spotify import spotifymongoformat
 
 from ._common import (
@@ -95,13 +95,15 @@ class VotesMixin:
                 f"{timestamp_converter(new_time).format(TimestampStyles.RelativeTime)}"
             )
             embed_original.timestamp = new_time
-            await message.edit(
+            await edit_message_if_changed(
+                message,
                 content=(
                     f"Pas assez de votes ({total_votes}/3), le vote est prolongé de 24h !\n"
                     f"Voulez-vous **conserver** cette chanson dans playlist ? "
                     f"(poke <@{song['added_by']}>)"
                 ),
                 embeds=[embed_original],
+                logger=logger,
             )
             logger.info(f"Vote prolongé de 24h car seulement {total_votes} votes")
             return
@@ -121,7 +123,8 @@ class VotesMixin:
                 embedtype=EmbedType.VOTE_LOSE,
                 time=Timestamp.now(),
             )
-            await message.edit(
+            await edit_message_if_changed(
+                message,
                 content="La chanson a été supprimée.",
                 embeds=[
                     embed,
@@ -134,6 +137,7 @@ class VotesMixin:
                     ),
                 ],
                 components=[],
+                logger=logger,
             )
             sp.playlist_remove_all_occurrences_of_items(server.playlist_id, [track_id])
             await server.repo.delete_playlist_item(track_id)
@@ -149,7 +153,8 @@ class VotesMixin:
                 embedtype=EmbedType.VOTE_WIN,
                 time=Timestamp.now(),
             )
-            await message.edit(
+            await edit_message_if_changed(
+                message,
                 content="La chanson a été conservée.",
                 embeds=[
                     embed,
@@ -162,6 +167,7 @@ class VotesMixin:
                     ),
                 ],
                 components=[],
+                logger=logger,
             )
             await server.repo.set_vote_state(track_id, "conservée")
             logger.info("La chanson a été conservée.")
@@ -273,7 +279,7 @@ class VotesMixin:
             total = conserver + supprimer + menfou
             embed_original.fields[4].value = f"{total} vote{'s' if total > 1 else ''} ({users})"
 
-            await ctx.message.edit(embeds=[embed_original])
+            await edit_message_if_changed(ctx.message, embeds=[embed_original], logger=logger)
 
             if ctx.custom_id == "annuler":
                 await ctx.send("Ton vote a bien été annulé ! 🗳️", ephemeral=True)
@@ -552,7 +558,7 @@ class VotesMixin:
         users = ", ".join(users)
         embed_original = event.ctx.message.embeds[0]
         embed_original.fields[4].value = f"{yes + no} vote{'s' if yes + no > 1 else ''} ({users})"
-        await event.ctx.message.edit(embeds=[embed_original])
+        await edit_message_if_changed(event.ctx.message, embeds=[embed_original], logger=logger)
         if vote == "annuler":
             await event.ctx.send("Ton vote a bien été annulé ! 🗳️", ephemeral=True)
         else:
@@ -610,10 +616,12 @@ class VotesMixin:
                 time=Timestamp.utcnow(),
                 person=data[song_id]["author_id"],
             )
-            await message.edit(
+            await edit_message_if_changed(
+                message,
                 content="La chanson a été ajoutée à la playlist.",
                 embeds=[embed, await embed_message_vote_add(yes_votes, no_votes, users)],
                 components=[],
+                logger=logger,
             )
             logger.info("La chanson a été ajoutée à la playlist.")
         else:
@@ -624,10 +632,12 @@ class VotesMixin:
                 time=Timestamp.utcnow(),
                 person=data[song_id]["author_id"],
             )
-            await message.edit(
+            await edit_message_if_changed(
+                message,
                 content="La chanson n'a pas été ajoutée à la playlist.",
                 embeds=[embed, await embed_message_vote_add(yes_votes, no_votes, users)],
                 components=[],
+                logger=logger,
             )
             logger.info("La chanson n'a pas été ajoutée à la playlist.")
         data.pop(song_id)
