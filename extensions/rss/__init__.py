@@ -37,6 +37,7 @@ from interactions import (
     slash_option,
 )
 
+from features.links import shorten_url
 from features.rss import RssEntry, RssRepository
 from features.rss.network import fetch_feed
 from src.core.errors import IntegrationError
@@ -127,6 +128,21 @@ def _render_text(feed_id: str, feed_cfg: dict, entry: RssEntry) -> str:
     if len(rendered) > 2000:
         rendered = rendered[:1999].rstrip() + "…"
     return rendered
+
+
+async def _with_short_link(entry: RssEntry, feed_id: str) -> RssEntry:
+    """Return *entry* with its link routed through Shlink, when enabled.
+
+    Shortening happens once per entry, before rendering, so the text template,
+    the embed URL and the link button all point at the same short URL. Returns
+    the entry untouched when shortening is off or the call fails.
+    """
+    if not entry.link:
+        return entry
+    short = await shorten_url(entry.link, title=entry.title or None, tags=["rss", feed_id])
+    if short == entry.link:
+        return entry
+    return entry.model_copy(update={"link": short})
 
 
 def _parse_color(value: object) -> int | None:
@@ -322,6 +338,7 @@ class RssExtension(Extension):
         posted_ids: list[str] = []
         for entry in new_entries:
             try:
+                entry = await _with_short_link(entry, feed_id)
                 components = _build_link_button(feed_cfg, entry)
                 send_kwargs: dict = {}
                 if components is not None:

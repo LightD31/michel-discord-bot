@@ -69,6 +69,7 @@ A modular, multi-guild Discord bot built with **interactions.py**. Michel ships 
 | **Zunivers / Coloc** | Daily reminders, event tracking, Hardcore season monitoring, corporation recaps, and Advent calendar for the Zunivers collectible game. |
 | **VLR.gg Tracker** | Valorant esports match tracking — schedules, live score updates, and post-match results from VLR.gg. |
 | **MDI Tracker** | Mythic Dungeon International (World of Warcraft) tracking via the Raider.IO API. |
+| **Shlink** | Shortens the external links the bot posts (RSS entries, YouTube uploads) through a self-hosted [Shlink](https://shlink.io) instance, and manages the short links from the dashboard. |
 | **Uptime** | Mirrors Uptime Kuma status updates into channels via Socket.IO — periodic status embeds and maintenance notifications. |
 | **Minecraft** | Server status monitoring and player stats via SFTP/RCON. *(disabled by default)* |
 | **Satisfactory** | Game server status via pyfactorybridge. |
@@ -107,6 +108,7 @@ features/               # Domain logic — pure Python, no Discord imports
 ├── xp/                 #   level curve, TTL cache, rank card, repository
 ├── moderation/         #   duration parsing, automod filters, models, repository
 ├── rss/                #   feed parser, network, repository
+├── links/              #   URL shortening rules on top of the Shlink client
 └── …                   #   one package per feature; each owns its repository.py
 
 src/                    # Shared infrastructure
@@ -126,6 +128,7 @@ src/                    # Shared infrastructure
 ├── integrations/       # Pure external-API clients (no Discord imports)
 │   ├── spotify.py      #   Spotipy auth with lazy client, vote counting
 │   ├── notion.py       #   Notion API client
+│   ├── shlink.py       #   Shlink URL shortener (CRUD + shortening cache)
 │   └── minecraft_rcon.py
 ├── webui/              # FastAPI dashboard
 │   ├── app.py          #   router assembly + session restore on startup
@@ -134,7 +137,7 @@ src/                    # Shared infrastructure
 │   ├── context.py      #   WebUIContext + authorization helpers
 │   ├── schemas.py      #   @register_module / @register_section Pydantic registry
 │   ├── routes/         #   auth, bot, config, extensions, servers, rolemenus,
-│   │                   #   moderation, spotify, frontend (SPA catch-all)
+│   │                   #   moderation, spotify, shlink, frontend (SPA catch-all)
 │   ├── sse/            #   live log streaming over Server-Sent Events
 │   ├── log_handler.py  #   in-memory ring buffer feeding the log view
 │   └── static/         #   single-page app (index.html)
@@ -256,7 +259,8 @@ An optional FastAPI-based dashboard, enabled when `webui.enabled` is `true` in c
 - **Authentication** — Discord OAuth2 with CSRF-protected state and MongoDB-persisted sessions (TTL-indexed, httponly cookies).
 - **Authorization tiers** — Any authenticated user sees the guilds they manage (`MANAGE_GUILD`/`ADMINISTRATOR` or guild owner); user IDs listed in `webui.developerUserIds` additionally get global config, extension reload, and live logs.
 - **Schema-driven forms** — Module and global config forms are generated from the Pydantic schemas registered via `@register_module` / `@register_section` in `src/webui/schemas.py`.
-- **Custom views** — Reaction-role menu builder (`routes/rolemenus.py`), moderation infraction browser (`routes/moderation.py`), and Spotify OAuth management (`routes/spotify.py`) go beyond plain forms and call back into Discord through the bot client.
+- **Custom views** — Reaction-role menu builder (`routes/rolemenus.py`), moderation infraction browser (`routes/moderation.py`), Spotify OAuth management (`routes/spotify.py`), and the short-link manager (`routes/shlink.py`) go beyond plain forms and call back into Discord or an external API.
+- **Short links** — The developer-only « Liens courts » page lists the Shlink instance's short URLs and creates, retargets, retags or deletes them; Shlink stays the source of truth (nothing is mirrored into MongoDB).
 - **Live logs** — Streaming over Server-Sent Events from an in-memory ring buffer (developer-only).
 - **Frontend** — A single-page app in `src/webui/static/index.html`; `routes/frontend.py` catch-alls unknown paths back to it.
 

@@ -2650,6 +2650,16 @@
         logAutoScroll: true,
         logStreaming: false,
         logVerbose: false,
+        // Short-link manager (Shlink) state
+        shlink: {
+            status: null,
+            items: [],
+            pagination: {},
+            page: 1,
+            search: '',
+            editing: null,
+            loading: false,
+        },
     };
 
     let modalSaveCallback = null;
@@ -2768,7 +2778,7 @@
     function navigate(page, serverId = null, moduleName = null) {
         // Restrict admin-only pages for non-admin users
         const adminPages = ['server', 'module'];
-        const developerPages = ['global', 'extensions', 'logs'];
+        const developerPages = ['global', 'extensions', 'logs', 'links'];
         if (adminPages.includes(page) && !isAdmin()) {
             page = 'home';
             serverId = null;
@@ -2795,6 +2805,11 @@
 
         if (page === 'global') {
             loadSpotifyAuth().then(() => render());
+        }
+
+        if (page === 'links') {
+            state.shlink.editing = null;
+            loadShortLinks().then(() => render());
         }
 
         render();
@@ -4913,6 +4928,9 @@
                         <div class="nav-item ${state.currentPage === 'extensions' ? 'active' : ''}" onclick="navigate('extensions')">
                             <span class="icon">🧩</span> Extensions
                         </div>
+                        <div class="nav-item ${state.currentPage === 'links' ? 'active' : ''}" onclick="navigate('links')">
+                            <span class="icon">🔗</span> Liens courts
+                        </div>
                         <div class="nav-item ${state.currentPage === 'logs' ? 'active' : ''}" onclick="navigate('logs')">
                             <span class="icon">📋</span> Logs
                         </div>
@@ -4948,8 +4966,266 @@
             case 'extensions': return renderExtensionsPage();
             case 'server': return renderServerPage();
             case 'module': return renderModulePage();
+            case 'links': return renderShortLinksPage();
             case 'logs': return renderLogsPage();
             default: return renderHomePage();
+        }
+    }
+
+    // ── Short Links (Shlink) ──────────────────────────
+    async function loadShortLinks() {
+        state.shlink.loading = true;
+        try {
+            state.shlink.status = await api('/api/shlink/status');
+            if (!state.shlink.status?.configured) {
+                state.shlink.items = [];
+                state.shlink.pagination = {};
+                return;
+            }
+            const params = new URLSearchParams();
+            params.set('page', String(state.shlink.page || 1));
+            if (state.shlink.search) params.set('search', state.shlink.search);
+            const data = await api(`/api/shlink/short-urls?${params}`);
+            state.shlink.items = data?.short_urls || [];
+            state.shlink.pagination = data?.pagination || {};
+        } catch (e) {
+            state.shlink.items = [];
+            state.shlink.pagination = {};
+        } finally {
+            state.shlink.loading = false;
+        }
+    }
+
+    function renderShortLinkRow(item) {
+        const editing = state.shlink.editing === item.short_code;
+        const code = escapeHtml(item.short_code);
+        if (editing) {
+            return `
+                <div style="border:1px solid var(--accent); border-radius:var(--radius); padding:12px; margin-bottom:8px; display:flex; flex-direction:column; gap:8px;">
+                    <div><a href="${escapeHtml(item.short_url)}" target="_blank" rel="noopener">${escapeHtml(item.short_url)}</a></div>
+                    <div>
+                        <label class="form-label">URL de destination</label>
+                        <input type="url" class="form-input" id="shlink-edit-url" value="${escapeHtml(item.long_url)}">
+                    </div>
+                    <div>
+                        <label class="form-label">Titre</label>
+                        <input type="text" class="form-input" id="shlink-edit-title" value="${escapeHtml(item.title)}" placeholder="Optionnel">
+                    </div>
+                    <div>
+                        <label class="form-label">Tags (séparés par des virgules)</label>
+                        <input type="text" class="form-input" id="shlink-edit-tags" value="${escapeHtml((item.tags || []).join(', '))}">
+                    </div>
+                    <div style="display:flex; gap:6px; justify-content:flex-end;">
+                        <button class="btn btn-ghost btn-sm" onclick="cancelEditShortLink()">Annuler</button>
+                        <button class="btn btn-success btn-sm" onclick="saveShortLink('${code}')">💾 Enregistrer</button>
+                    </div>
+                </div>
+            `;
+        }
+        const tags = (item.tags || []).map(t =>
+            `<span style="background:var(--bg-tertiary); border-radius:var(--radius); padding:2px 8px; font-size:12px; color:var(--text-secondary);">${escapeHtml(t)}</span>`
+        ).join(' ');
+        return `
+            <div style="border:1px solid var(--border); border-radius:var(--radius); padding:12px; margin-bottom:8px; display:flex; flex-direction:column; gap:6px;">
+                <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap;">
+                    <div style="min-width:0;">
+                        <a href="${escapeHtml(item.short_url)}" target="_blank" rel="noopener"><strong>${escapeHtml(item.short_url)}</strong></a>
+                        ${item.title ? `<span style="color:var(--text-muted); margin-left:8px;">${escapeHtml(item.title)}</span>` : ''}
+                    </div>
+                    <div style="display:flex; gap:6px; align-items:center;">
+                        <span style="color:var(--text-muted); font-size:12px;">${item.visits ?? 0} visite(s)</span>
+                        <button class="btn btn-ghost btn-sm" onclick="copyShortLink('${escapeHtml(item.short_url)}')" title="Copier">📋</button>
+                        <button class="btn btn-ghost btn-sm" onclick="startEditShortLink('${code}')">✏️ Modifier</button>
+                        <button class="btn btn-ghost btn-sm" style="color:var(--danger)" onclick="deleteShortLink('${code}')">🗑️</button>
+                    </div>
+                </div>
+                <div style="font-size:13px; color:var(--text-secondary); word-break:break-all;">↳ ${escapeHtml(item.long_url)}</div>
+                ${tags ? `<div style="display:flex; gap:4px; flex-wrap:wrap;">${tags}</div>` : ''}
+            </div>
+        `;
+    }
+
+    function renderShortLinksPage() {
+        const s = state.shlink;
+        const st = s.status || {};
+        if (!st.configured) {
+            return `
+                <div class="page-header">
+                    <h2>Liens courts</h2>
+                    <p>Raccourcisseur Shlink — création, modification et suppression des liens publiés par le bot.</p>
+                </div>
+                <div class="empty-state">
+                    <div class="icon">🔗</div>
+                    <h3>Shlink n'est pas configuré</h3>
+                    <p>Renseignez l'URL de l'instance et la clé API dans la section « Shlink » de la
+                    <a href="#" onclick="navigate('global'); return false;">config globale</a>.</p>
+                </div>
+            `;
+        }
+        const pag = s.pagination || {};
+        const currentPage = pag.currentPage || s.page || 1;
+        const pagesCount = pag.pagesCount || 1;
+        return `
+            <div class="page-header">
+                <h2>Liens courts</h2>
+                <p>
+                    Instance : <a href="${escapeHtml(st.base_url)}" target="_blank" rel="noopener">${escapeHtml(st.base_url)}</a> ·
+                    Raccourcissement automatique des liens du bot :
+                    ${st.enabled
+                        ? '<span style="color:var(--success)">activé</span>'
+                        : '<span style="color:var(--text-muted)">désactivé</span>'}
+                    (<a href="#" onclick="navigate('global'); return false;">config globale</a>)
+                </p>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <div>
+                        <div class="card-title">Nouveau lien court</div>
+                        <div class="card-subtitle">Le slug est généré automatiquement s'il est laissé vide.</div>
+                    </div>
+                </div>
+                <div style="display:flex; flex-direction:column; gap:12px;">
+                    <div>
+                        <label class="form-label">URL de destination</label>
+                        <input type="url" class="form-input" id="shlink-new-url" placeholder="https://exemple.com/une-page-tres-longue">
+                    </div>
+                    <div style="display:flex; gap:12px; flex-wrap:wrap;">
+                        <div style="flex:1; min-width:180px;">
+                            <label class="form-label">Titre</label>
+                            <input type="text" class="form-input" id="shlink-new-title" placeholder="Optionnel">
+                        </div>
+                        <div style="flex:1; min-width:180px;">
+                            <label class="form-label">Slug personnalisé</label>
+                            <input type="text" class="form-input" id="shlink-new-slug" placeholder="ma-page">
+                        </div>
+                        <div style="flex:1; min-width:180px;">
+                            <label class="form-label">Tags (séparés par des virgules)</label>
+                            <input type="text" class="form-input" id="shlink-new-tags" placeholder="${escapeHtml((st.default_tags || []).join(', '))}">
+                        </div>
+                    </div>
+                    <div style="display:flex; justify-content:flex-end;">
+                        <button class="btn btn-primary btn-sm" onclick="createShortLink()">➕ Créer</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card" style="margin-top:16px;">
+                <div class="card-header">
+                    <div>
+                        <div class="card-title">Liens existants</div>
+                        <div class="card-subtitle">${pag.totalItems ?? s.items.length} lien(s) · page ${currentPage} / ${pagesCount}</div>
+                    </div>
+                    <div style="display:flex; gap:8px;">
+                        <input type="text" class="form-input" id="shlink-search" style="width:200px;"
+                            placeholder="Rechercher…" value="${escapeHtml(s.search || '')}"
+                            onkeydown="if(event.key==='Enter'){searchShortLinks();}">
+                        <button class="btn btn-primary btn-sm" onclick="searchShortLinks()">🔍</button>
+                    </div>
+                </div>
+                ${s.loading
+                    ? '<div class="loading"><div class="spinner"></div></div>'
+                    : s.items.length === 0
+                        ? `<div class="empty-state"><h3>Aucun lien</h3><p>Créez-en un avec le formulaire ci-dessus.</p></div>`
+                        : s.items.map(renderShortLinkRow).join('')}
+                ${pagesCount > 1 ? `
+                    <div style="display:flex; gap:8px; justify-content:center; margin-top:12px;">
+                        <button class="btn btn-ghost btn-sm" ${currentPage <= 1 ? 'disabled' : ''} onclick="gotoShortLinkPage(${currentPage - 1})">← Précédent</button>
+                        <button class="btn btn-ghost btn-sm" ${currentPage >= pagesCount ? 'disabled' : ''} onclick="gotoShortLinkPage(${currentPage + 1})">Suivant →</button>
+                    </div>
+                ` : ''}
+            </div>
+        `;
+    }
+
+    function _shlinkTags(value) {
+        return (value || '').split(',').map(t => t.trim()).filter(Boolean);
+    }
+
+    async function createShortLink() {
+        const url = document.getElementById('shlink-new-url')?.value.trim();
+        if (!url) {
+            toast('URL de destination requise', 'error');
+            return;
+        }
+        try {
+            await api('/api/shlink/short-urls', {
+                method: 'POST',
+                body: JSON.stringify({
+                    long_url: url,
+                    title: document.getElementById('shlink-new-title')?.value.trim() || null,
+                    custom_slug: document.getElementById('shlink-new-slug')?.value.trim() || null,
+                    tags: _shlinkTags(document.getElementById('shlink-new-tags')?.value),
+                }),
+            });
+            toast('Lien court créé', 'success');
+            state.shlink.page = 1;
+            await loadShortLinks();
+            render();
+        } catch (e) { /* handled by api() */ }
+    }
+
+    function startEditShortLink(shortCode) {
+        state.shlink.editing = shortCode;
+        render();
+    }
+
+    function cancelEditShortLink() {
+        state.shlink.editing = null;
+        render();
+    }
+
+    async function saveShortLink(shortCode) {
+        const url = document.getElementById('shlink-edit-url')?.value.trim();
+        if (!url) {
+            toast('URL de destination requise', 'error');
+            return;
+        }
+        try {
+            await api(`/api/shlink/short-urls/${encodeURIComponent(shortCode)}`, {
+                method: 'PATCH',
+                body: JSON.stringify({
+                    long_url: url,
+                    title: document.getElementById('shlink-edit-title')?.value.trim() || '',
+                    tags: _shlinkTags(document.getElementById('shlink-edit-tags')?.value),
+                }),
+            });
+            toast('Lien court mis à jour', 'success');
+            state.shlink.editing = null;
+            await loadShortLinks();
+            render();
+        } catch (e) { /* handled by api() */ }
+    }
+
+    async function deleteShortLink(shortCode) {
+        if (!confirm(`Supprimer le lien court « ${shortCode} » ? Les visiteurs recevront une erreur 404.`)) return;
+        try {
+            await api(`/api/shlink/short-urls/${encodeURIComponent(shortCode)}`, { method: 'DELETE' });
+            toast('Lien court supprimé', 'success');
+            await loadShortLinks();
+            render();
+        } catch (e) { /* handled by api() */ }
+    }
+
+    async function searchShortLinks() {
+        state.shlink.search = document.getElementById('shlink-search')?.value.trim() || '';
+        state.shlink.page = 1;
+        await loadShortLinks();
+        render();
+    }
+
+    async function gotoShortLinkPage(page) {
+        state.shlink.page = Math.max(1, page);
+        await loadShortLinks();
+        render();
+    }
+
+    async function copyShortLink(shortUrl) {
+        try {
+            await navigator.clipboard.writeText(shortUrl);
+            toast('Lien copié', 'success');
+        } catch (e) {
+            toast('Copie impossible', 'error');
         }
     }
 

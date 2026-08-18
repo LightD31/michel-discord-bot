@@ -330,8 +330,48 @@ class ShlinkSection(SchemaBase):
     __label__ = "Shlink"
     __icon__ = "🔗"
 
+    enabled: bool = ui(
+        "Raccourcir automatiquement",
+        "boolean",
+        default=False,
+        description=(
+            "Raccourcit les liens externes publiés par le bot (entrées de "
+            "flux RSS et notifications YouTube). Les liens Discord, les "
+            "images et les liens déjà raccourcis ne sont jamais touchés. La "
+            "page « Liens courts » du dashboard reste utilisable même si "
+            "cette option est désactivée."
+        ),
+    )
+    shlinkBaseUrl: str = ui(
+        "URL de l'instance",
+        "url",
+        required=True,
+        description="URL de l'instance Shlink, par exemple https://exemple.link.",
+    )
     shlinkApiKey: str = secret_field(
         "Clé API", required=True, description="Clé API Shlink pour raccourcir les URLs."
+    )
+    shlinkDomain: str | None = ui(
+        "Domaine court",
+        "string",
+        description=(
+            "Domaine à utiliser pour les liens créés, si l'instance en gère "
+            "plusieurs. Vide = domaine par défaut de l'instance."
+        ),
+    )
+    shlinkTags: list[str] = ui(
+        "Tags par défaut",
+        "list",
+        default=["michel-bot"],
+        description="Tags appliqués à chaque lien court créé par le bot.",
+    )
+    shlinkExcludedDomains: list[str] = ui(
+        "Domaines exclus",
+        "list",
+        description=(
+            "Domaines dont les liens ne doivent jamais être raccourcis "
+            "(sous-domaines inclus), par exemple twitch.tv."
+        ),
     )
 
 

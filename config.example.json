@@ -40,7 +40,14 @@
             "randomOrgApiKey": ""
         },
         "shlink": {
-            "shlinkApiKey": ""
+            "enabled": false,
+            "shlinkBaseUrl": "",
+            "shlinkApiKey": "",
+            "shlinkDomain": "",
+            "shlinkTags": [
+                "michel-bot"
+            ],
+            "shlinkExcludedDomains": []
         },
         "spotify": {
             "spotifyClientId": "",
