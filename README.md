@@ -69,7 +69,7 @@ A modular, multi-guild Discord bot built with **interactions.py**. Michel ships 
 | **Zunivers / Coloc** | Daily reminders, event tracking, Hardcore season monitoring, corporation recaps, and Advent calendar for the Zunivers collectible game. |
 | **VLR.gg Tracker** | Valorant esports match tracking — schedules, live score updates, and post-match results from VLR.gg. |
 | **MDI Tracker** | Mythic Dungeon International (World of Warcraft) tracking via the Raider.IO API. |
-| **Shlink** | Shortens the external links the bot posts (RSS entries, YouTube uploads) through a self-hosted [Shlink](https://shlink.io) instance, and manages the short links from the dashboard. |
+| **Shlink** | Shortens the external links the bot posts (RSS entries, YouTube uploads, Embed manager links, MDI, Streamlabs, recap messages) through a self-hosted [Shlink](https://shlink.io) instance, and manages the short links from the dashboard. |
 | **Uptime** | Mirrors Uptime Kuma status updates into channels via Socket.IO — periodic status embeds and maintenance notifications. |
 | **Minecraft** | Server status monitoring and player stats via SFTP/RCON. *(disabled by default)* |
 | **Satisfactory** | Game server status via pyfactorybridge. |
@@ -261,6 +261,7 @@ An optional FastAPI-based dashboard, enabled when `webui.enabled` is `true` in c
 - **Schema-driven forms** — Module and global config forms are generated from the Pydantic schemas registered via `@register_module` / `@register_section` in `src/webui/schemas.py`.
 - **Custom views** — Reaction-role menu builder (`routes/rolemenus.py`), moderation infraction browser (`routes/moderation.py`), Spotify OAuth management (`routes/spotify.py`), and the short-link manager (`routes/shlink.py`) go beyond plain forms and call back into Discord or an external API.
 - **Short links** — The developer-only « Liens courts » page lists the Shlink instance's short URLs and creates, retargets, retags or deletes them; Shlink stays the source of truth (nothing is mirrored into MongoDB).
+- **No URLs in the code** — every user-facing link, icon and third-party endpoint is a `url` config field (per-guild module config or a global section), so dashboards, playlists, GIFs, logos and self-hosted API bases are edited from the Web UI. Unset URLs degrade gracefully: the embed field is omitted, or the task logs and skips.
 - **Live logs** — Streaming over Server-Sent Events from an in-memory ring buffer (developer-only).
 - **Frontend** — A single-page app in `src/webui/static/index.html`; `routes/frontend.py` catch-alls unknown paths back to it.
 

@@ -7,6 +7,7 @@ from typing import Any
 
 from interactions import Embed, Task, TimeTrigger
 
+from features.links import shorten_url
 from src.core import logging as logutil
 from src.discord_ext.embeds import Colors
 from src.discord_ext.messages import edit_message_if_changed, fetch_or_create_persistent_message
@@ -96,12 +97,18 @@ class StatsMixin:
             footer = await self._create_embed_footer()
             embed.set_footer(text=footer.text, icon_url=footer.icon_url)
 
+            texts_url = module_config.get("confrerieTextsUrl") or ""
+            if texts_url:
+                texts_url = await shorten_url(texts_url, tags=["confrerie"])
+                content = (
+                    f"Retrouvez tous les textes en [cliquant ici]({texts_url} "
+                    "'Notion de la confrérie')"
+                )
+            else:
+                content = ""
             await edit_message_if_changed(
                 self._recap_message,
-                content=(
-                    "Retrouvez tous les textes en [cliquant ici]"
-                    "(https://drndvs.link/Confrerie 'Notion de la confrérie')"
-                ),
+                content=content,
                 embed=embed,
                 ignore_timestamp=True,
                 logger=logger,

@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any
 
 from interactions import IntervalTrigger, Task
 
+from features.links import shorten_url
 from features.mdi import MatchSnapshot
 from src.discord_ext.messages import edit_message_if_changed
 
@@ -26,8 +27,16 @@ if TYPE_CHECKING:  # pragma: no cover
 _INACTIVE_POLL_INTERVAL_SECONDS = 1800.0  # 30 min
 
 
-def _event_url(event_slug: str) -> str:
-    return f"https://raider.io/events/{event_slug}"
+async def _event_url(event_slug: str) -> str:
+    """Raider.IO event page, shortened when Shlink is enabled.
+
+    The URL is stable for a whole event, and the shortener memoizes it, so the
+    refreshed schedule/match embeds keep rendering the same string and
+    ``edit_message_if_changed`` still skips no-op edits.
+    """
+    return await shorten_url(
+        f"https://raider.io/events/{event_slug}", title=f"MDI — {event_slug}", tags=["mdi"]
+    )
 
 
 class NotificationsMixin:
@@ -118,8 +127,8 @@ class NotificationsMixin:
         new_hash = self._match_hash(match)
         phase = self._match_phase(match)
         doc = state.matches.get(match.id)
-        event_url = _event_url(gc.event_slug)
-        embed = self._build_match_embed(match, team, event_url)
+        event_url = await _event_url(gc.event_slug)
+        embed = self._build_match_embed(match, team, event_url, gc.icon_url)
 
         if doc is None:
             if phase == "scheduled":
@@ -267,7 +276,7 @@ class NotificationsMixin:
             return
 
         embed = self._build_schedule_embed(
-            state.tracked_team, gc.team_slug, matches, _event_url(gc.event_slug)
+            state.tracked_team, gc.team_slug, matches, await _event_url(gc.event_slug), gc.icon_url
         )
         new_hash = self._schedule_hash(matches)
 

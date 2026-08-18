@@ -20,7 +20,6 @@ from ._common import (
     EMBED_COLOR_LOSS,
     EMBED_COLOR_SCHEDULED,
     EMBED_COLOR_WIN,
-    RAIDERIO_ICON_URL,
     STATUS_EMOJI_LIVE,
     STATUS_EMOJI_SCHEDULED,
     STATUS_EMOJI_TERMINAL_LOSS,
@@ -47,12 +46,18 @@ class EmbedsMixin:
         return f"🟡 À venir · {EVENT_TITLE}"
 
     @classmethod
-    def _set_event_author(cls, embed: Embed, event_url: str | None, phase: str) -> None:
-        """Attach the Raider.IO branded author block at the top of *embed*."""
+    def _set_event_author(
+        cls, embed: Embed, event_url: str | None, phase: str, icon_url: str | None = None
+    ) -> None:
+        """Attach the event's branded author block at the top of *embed*.
+
+        ``icon_url`` comes from the guild config — no icon is baked into the
+        code, so an unset field simply renders the author line without one.
+        """
         embed.set_author(
             name=cls._author_label(phase),
             url=event_url,
-            icon_url=RAIDERIO_ICON_URL,
+            icon_url=icon_url or None,
         )
 
     def _score_heading(self, match: MatchSnapshot) -> str:
@@ -94,6 +99,7 @@ class EmbedsMixin:
         team_slug: str,
         matches: list[MatchSnapshot],
         event_url: str | None = None,
+        icon_url: str | None = None,
     ) -> Embed:
         """Build the pinned planning embed."""
         team_name = team.name if team else team_slug.capitalize()
@@ -109,7 +115,7 @@ class EmbedsMixin:
             embed.url = event_url
         if team and team.icon_logo_url:
             embed.set_thumbnail(url=team.icon_logo_url)
-        self._set_event_author(embed, event_url, "schedule")
+        self._set_event_author(embed, event_url, "schedule", icon_url)
 
         if not matches:
             embed.add_field(
@@ -217,15 +223,19 @@ class EmbedsMixin:
     # ── Match embed (3 variants) ─────────────────────────────────────────────
 
     def _build_match_embed(
-        self, match: MatchSnapshot, team: TeamRef | None, event_url: str | None = None
+        self,
+        match: MatchSnapshot,
+        team: TeamRef | None,
+        event_url: str | None = None,
+        icon_url: str | None = None,
     ) -> Embed:
         """Build the embed for a single match in its current phase."""
         phase = self._match_phase(match)
         if phase == "terminal":
-            return self._build_terminal_embed(match, team, event_url)
+            return self._build_terminal_embed(match, team, event_url, icon_url)
         if phase == "live":
-            return self._build_live_embed(match, team, event_url)
-        return self._build_scheduled_embed(match, team, event_url)
+            return self._build_live_embed(match, team, event_url, icon_url)
+        return self._build_scheduled_embed(match, team, event_url, icon_url)
 
     def _embed_title(self, match: MatchSnapshot, prefix_emoji: str = "") -> str:
         first = match.first_team.name if match.first_team else "TBD"
@@ -238,7 +248,11 @@ class EmbedsMixin:
         return f"**{match.bracket_title}** — {EmbedsMixin._position_label(match)} · Match {match.match_order}"
 
     def _build_scheduled_embed(
-        self, match: MatchSnapshot, team: TeamRef | None, event_url: str | None
+        self,
+        match: MatchSnapshot,
+        team: TeamRef | None,
+        event_url: str | None,
+        icon_url: str | None = None,
     ) -> Embed:
         embed = Embed(
             title=self._embed_title(match, STATUS_EMOJI_SCHEDULED),
@@ -261,11 +275,15 @@ class EmbedsMixin:
 
         if team and team.icon_logo_url:
             embed.set_thumbnail(url=team.icon_logo_url)
-        self._set_event_author(embed, event_url, "scheduled")
+        self._set_event_author(embed, event_url, "scheduled", icon_url)
         return embed
 
     def _build_live_embed(
-        self, match: MatchSnapshot, team: TeamRef | None, event_url: str | None
+        self,
+        match: MatchSnapshot,
+        team: TeamRef | None,
+        event_url: str | None,
+        icon_url: str | None = None,
     ) -> Embed:
         embed = Embed(
             title=self._embed_title(match, STATUS_EMOJI_LIVE),
@@ -291,12 +309,16 @@ class EmbedsMixin:
 
         if team and team.icon_logo_url:
             embed.set_thumbnail(url=team.icon_logo_url)
-        self._set_event_author(embed, event_url, "live")
+        self._set_event_author(embed, event_url, "live", icon_url)
         embed.set_footer(text="Mise à jour automatique")
         return embed
 
     def _build_terminal_embed(
-        self, match: MatchSnapshot, team: TeamRef | None, event_url: str | None
+        self,
+        match: MatchSnapshot,
+        team: TeamRef | None,
+        event_url: str | None,
+        icon_url: str | None = None,
     ) -> Embed:
         if team is not None and match.winner_team_id == team.id:
             emoji = STATUS_EMOJI_TERMINAL_WIN
@@ -335,7 +357,7 @@ class EmbedsMixin:
 
         if team and team.icon_logo_url:
             embed.set_thumbnail(url=team.icon_logo_url)
-        self._set_event_author(embed, event_url, "terminal")
+        self._set_event_author(embed, event_url, "terminal", icon_url)
         embed.set_footer(text="Match terminé")
         return embed
 

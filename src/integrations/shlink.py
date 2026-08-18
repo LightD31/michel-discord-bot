@@ -112,12 +112,21 @@ class ShlinkClient:
 
     # ── Cache ────────────────────────────────────────────────────────
 
-    def cache_get(self, long_url: str) -> str | None:
+    def cache_get(self, long_url: str, *, allow_stale: bool = False) -> str | None:
+        """Return the memoized short URL for *long_url*.
+
+        ``allow_stale`` keeps an expired entry instead of dropping it. Callers
+        use it as a last resort when the API call failed: a slightly old short
+        URL still resolves, and re-rendering a periodically refreshed embed
+        with the *same* URL is what keeps ``edit_message_if_changed`` quiet.
+        """
         entry = self._cache.get(long_url)
         if entry is None:
             return None
         short_url, inserted_at = entry
         if time.time() - inserted_at > _CACHE_TTL_SECONDS:
+            if allow_stale:
+                return short_url
             self._cache.pop(long_url, None)
             return None
         return short_url

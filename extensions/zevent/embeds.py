@@ -10,6 +10,7 @@ from src.core import logging as logutil
 from ._common import (
     EVENT_START_DATE,
     MAIN_EVENT_START_DATE,
+    TWITCH_URL,
     StreamerInfo,
     split_streamer_list,
 )
@@ -110,7 +111,7 @@ class EmbedsMixin:
             embed.description = (
                 f"🎵 **Concert en direct !** 🔴\n"
                 f"Total récolté : {total_amount}\n\n"
-                f"▶️ [Regarder sur Twitch](https://www.twitch.tv/zevent)\n\n"
+                f"{f'▶️ [Regarder sur Twitch]({TWITCH_URL})' if TWITCH_URL else ''}\n\n"
                 f"🕒 Le Zevent commence {main_event_timestamp.format(TimestampStyles.RelativeTime)}\n"
                 f"📅 Début du marathon: {main_event_timestamp.format(TimestampStyles.LongDateTime)}"
             )

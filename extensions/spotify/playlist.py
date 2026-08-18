@@ -21,6 +21,7 @@ from interactions import (
 )
 from interactions.client.utils import timestamp_converter
 
+from features.links import shorten_url
 from features.messages import finishList, startList
 from src.core import logging as logutil
 from src.core.text import milliseconds_to_string
@@ -96,6 +97,7 @@ class PlaylistMixin:
                 time=Timestamp.utcnow(),
                 person=ctx.author.username,
                 icon=ctx.author.avatar.url,
+                guild_id=ctx.guild_id,
             )
             await ctx.send(
                 content=(
@@ -211,6 +213,7 @@ class PlaylistMixin:
                             embedtype=EmbedType.ADD,
                             time=dt,
                             person=server.discord2name.get(song["added_by"], song["added_by"]),
+                            guild_id=server.guild_id,
                         )
                         await channel.send(
                             content=(
@@ -240,6 +243,7 @@ class PlaylistMixin:
                             track=track,
                             embedtype=EmbedType.DELETE,
                             time=Timestamp.utcnow(),
+                            guild_id=server.guild_id,
                         )
                         channel = await self.bot.fetch_channel(server.channel_id)
                         await channel.send(
@@ -259,9 +263,11 @@ class PlaylistMixin:
                 f"`/addsong Titre et artiste de la chanson` pour ajouter une chanson\n"
                 f"Il y a actuellement **{server.snapshot.get('length', 0)}** chansons dans la "
                 f"playlist, pour un total de "
-                f"**{milliseconds_to_string(server.snapshot.get('duration', 0))}**\n"
-                f"Dashboard : https://drndvs.link/StatsPlaylist"
+                f"**{milliseconds_to_string(server.snapshot.get('duration', 0))}**"
             )
+            if server.links.dashboard:
+                dashboard = await shorten_url(server.links.dashboard, tags=["spotify"])
+                recap_content += f"\nDashboard : {dashboard}"
             try:
                 if server.recap_message is None:
                     server.recap_message = await fetch_or_create_persistent_message(
@@ -309,6 +315,7 @@ class PlaylistMixin:
                 embedtype=EmbedType.INFOS,
                 time=song["added_at"],
                 person=song["added_by"],
+                guild_id=server.guild_id,
             )
         else:
             song = spotifymongoformat(
@@ -320,6 +327,7 @@ class PlaylistMixin:
                 embedtype=EmbedType.INFOS,
                 time=Timestamp.utcnow(),
                 person=votes.get("added_by", "Inconnu"),
+                guild_id=server.guild_id,
             )
         if votes:
             if votes.get("votes"):
@@ -339,6 +347,7 @@ class PlaylistMixin:
                         menfou=menfou,
                         users=users,
                         color=Colors.SPOTIFY,
+                        guild_id=server.guild_id,
                         description=(
                             f"Vote effectué le {date}\n"
                             f"La chanson a été **{votes.get('state', '')}**"

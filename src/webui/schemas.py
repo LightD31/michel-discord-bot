@@ -375,6 +375,22 @@ class ShlinkSection(SchemaBase):
     )
 
 
+@register_section("vlrgg")
+class VlrggSection(SchemaBase):
+    __label__ = "VLR.gg"
+    __icon__ = "🎯"
+
+    vlrggApiUrl: str = ui(
+        "URL de l'API",
+        "url",
+        required=True,
+        description=(
+            "URL de base du déploiement de l'API VLR.gg utilisé par le "
+            "tracker Valorant. Vide = aucune requête n'est envoyée."
+        ),
+    )
+
+
 @register_section("random")
 class RandomSection(SchemaBase):
     __label__ = "Random.org"

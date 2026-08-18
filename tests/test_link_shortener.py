@@ -124,12 +124,16 @@ class _FakeClient:
         self.result = result
         self.error = error
         self.calls: list[str] = []
+        self.cache: dict[str, str] = {}
 
     async def shorten(self, long_url, *, title=None, tags=None, use_cache=True):
         self.calls.append(long_url)
         if self.error:
             raise self.error
         return self.result
+
+    def cache_get(self, long_url, *, allow_stale=False):
+        return self.cache.get(long_url)
 
 
 def _patch(monkeypatch, client, settings):
@@ -175,6 +179,14 @@ async def test_shorten_url_falls_back_on_unexpected_error(monkeypatch):
     client = _FakeClient(error=RuntimeError("kaboom"))
     _patch(monkeypatch, client, _settings())
     assert await links.shorten_url("https://example.com/a") == "https://example.com/a"
+
+
+async def test_shorten_url_reuses_stale_short_url_on_failure(monkeypatch):
+    """A refreshed embed must keep its short URL through a Shlink outage."""
+    client = _FakeClient(error=ShlinkError("down"))
+    client.cache["https://example.com/a"] = "https://exemple.link/old"
+    _patch(monkeypatch, client, _settings())
+    assert await links.shorten_url("https://example.com/a") == "https://exemple.link/old"
 
 
 async def test_shorten_text_rewrites_only_candidates(monkeypatch):

@@ -66,6 +66,9 @@
             "uptimeKumaToken": "",
             "uptimeKumaApiKey": ""
         },
+        "vlrgg": {
+            "vlrggApiUrl": ""
+        },
         "webui": {
             "enabled": false,
             "host": "0.0.0.0",
@@ -102,6 +105,7 @@
                 "confrerieRecapPinMessage": false,
                 "confrerieDefiChannelId": "",
                 "confrerieNewTextChannelId": "",
+                "confrerieTextsUrl": "",
                 "confrerieOwnerId": ""
             },
             "moduleEmbedManager": {
@@ -128,7 +132,8 @@
                 "eventSlug": "mdi-midnight-season-1",
                 "teamSlug": "mandatory",
                 "pinSchedule": true,
-                "pingRoleId": ""
+                "pingRoleId": "",
+                "iconUrl": ""
             },
             "moduleMinecraft": {
                 "enabled": false,
@@ -166,7 +171,8 @@
             },
             "moduleOlympics": {
                 "enabled": false,
-                "olympicsChannelId": ""
+                "olympicsChannelId": "",
+                "olympicsLogoUrl": ""
             },
             "moduleReactionRoles": {
                 "enabled": false
@@ -193,8 +199,8 @@
                 "enabled": false,
                 "speedonsChannelId": "",
                 "speedonsPinMessages": false,
-                "speedonsApiUrl": "https://tracker.speedons.fr/api/campaigns?slug=2025",
-                "speedonsIconUrl": "https://speedons.fr/static/b476f2d8ad4a19d2393eb4cff9486cc9/c6b81/icon.png"
+                "speedonsApiUrl": "",
+                "speedonsIconUrl": ""
             },
             "moduleSpotify": {
                 "enabled": false,
@@ -204,6 +210,10 @@
                 "spotifyNewPlaylistId": "",
                 "spotifyRecapChannelId": "",
                 "spotifyRecapPinMessage": false,
+                "spotifyDashboardUrl": "",
+                "spotifyPlaylistUrl": "",
+                "spotifyNewPlaylistUrl": "",
+                "spotifyIconUrl": "",
                 "spotifyUsers": {}
             },
             "moduleStarboard": {
@@ -220,7 +230,7 @@
                 "enabled": false,
                 "streamlabsChannelId": "",
                 "streamlabsPinMessage": false,
-                "streamlabsTeamUrl": "https://streamlabscharity.com/teams/@streamers-4-palestinians/streamers-4-palestinians"
+                "streamlabsTeamUrl": ""
             },
             "moduleSuggestions": {
                 "enabled": false,
@@ -301,7 +311,8 @@
                 "enabled": false,
                 "zeventChannelId": "",
                 "zeventPinMessage": false,
-                "zeventStreamlabsApiUrl": "https://streamlabscharity.com/api/v1/teams/@zevent-2025/zevent-2025",
+                "zeventStreamlabsApiUrl": "",
+                "zeventTwitchUrl": "",
                 "zeventEventStartDate": "2025-09-04T17:55:00+00:00",
                 "zeventMainEventStartDate": "2025-09-05T16:00:00+00:00",
                 "zeventUpdateInterval": 30,
@@ -310,7 +321,12 @@
             "moduleZunivers": {
                 "enabled": false,
                 "colocZuniversChannelId": "",
-                "journaReminderRoleId": ""
+                "journaReminderRoleId": "",
+                "journaNormalLink": "",
+                "journaHardcoreLink": "",
+                "zuniversHardcoreImageUrl": "",
+                "colocFesseGifUrl": "",
+                "colocMassageGifUrl": ""
             }
         }
     }

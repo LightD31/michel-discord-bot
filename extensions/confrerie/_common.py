@@ -58,6 +58,14 @@ class ConfrerieConfig(SchemaBase):
         "channel",
         description="Salon pour les notifications de nouveaux textes.",
     )
+    confrerieTextsUrl: str | None = ui(
+        "Lien « tous les textes »",
+        "url",
+        description=(
+            "Lien affiché au-dessus du message de récap (Notion de la "
+            "confrérie). Vide = aucune phrase d'introduction."
+        ),
+    )
     confrerieOwnerId: str | None = ui(
         "ID propriétaire",
         "string",

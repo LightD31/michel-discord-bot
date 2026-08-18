@@ -24,6 +24,37 @@ class ZuniversConfig(SchemaBase):
         "role",
         description="Rôle mentionné quand le /journa quotidien n'a pas été posté à 22h.",
     )
+    journaNormalLink: str | None = ui(
+        "Lien du salon /journa",
+        "url",
+        description=(
+            "Lien Discord vers le salon où lancer /journa. Vide = le rappel "
+            "affiche `/journa` sans lien."
+        ),
+    )
+    journaHardcoreLink: str | None = ui(
+        "Lien du salon /journa hardcore",
+        "url",
+        description=(
+            "Lien Discord vers le salon où lancer /journa en mode hardcore. "
+            "Vide = le rappel hardcore n'affiche pas de lien."
+        ),
+    )
+    zuniversHardcoreImageUrl: str | None = ui(
+        "Image saison hardcore",
+        "url",
+        description="Image affichée dans l'embed de saison hardcore. Vide = aucune image.",
+    )
+    colocFesseGifUrl: str | None = ui(
+        "GIF /fesse",
+        "url",
+        description="GIF envoyé par la commande /fesse. Vide = commande sans réponse.",
+    )
+    colocMassageGifUrl: str | None = ui(
+        "GIF /massageducul",
+        "url",
+        description="GIF envoyé par la commande /massageducul. Vide = commande sans réponse.",
+    )
 
 
 logger = logutil.init_logger("extensions.zunivers")

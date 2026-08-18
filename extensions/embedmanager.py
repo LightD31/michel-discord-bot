@@ -22,6 +22,7 @@ from interactions import (
 )
 
 from src.core import logging as logutil
+from src.discord_ext.links import shorten_embeds
 from src.webui.schemas import (
     SchemaBase,
     enabled_field,
@@ -111,6 +112,17 @@ def build_embeds(embeds_config: list[dict]) -> list[Embed]:
         embeds.append(embed)
 
     return embeds
+
+
+async def build_embeds_with_short_links(embeds_config: list[dict]) -> list[Embed]:
+    """Build the embeds, routing every configured link through Shlink.
+
+    The dashboard stores raw URLs, so the short URLs are minted at publish
+    time. Republishing an unchanged embed yields the same short URLs (the
+    shortener memoizes them), which keeps ``edit_message_if_changed`` from
+    rewriting the message for nothing.
+    """
+    return await shorten_embeds(build_embeds(embeds_config), tags=["embedmanager"])
 
 
 class EmbedManagerExtension(Extension):

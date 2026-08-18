@@ -23,6 +23,7 @@ from src.core import logging as logutil
 from src.core.config import load_config
 from src.core.http import fetch
 from src.core.text import escape_md
+from src.discord_ext.links import shorten_embeds
 from src.discord_ext.messages import (
     edit_message_if_changed,
     fetch_or_create_persistent_message,
@@ -60,8 +61,11 @@ class StreamlabsCharityConfig(SchemaBase):
     streamlabsTeamUrl: str = ui(
         "URL de la team",
         "url",
-        default="https://streamlabscharity.com/teams/@streamers-4-palestinians/streamers-4-palestinians",
-        description="URL publique de la team Streamlabs Charity.",
+        required=True,
+        description=(
+            "URL publique de la team Streamlabs Charity suivie, "
+            "ex. https://streamlabscharity.com/teams/@equipe/campagne."
+        ),
     )
     streamlabsMessageId: str | None = hidden_message_id("Message suivi", "streamlabsChannelId")
 
@@ -69,14 +73,12 @@ class StreamlabsCharityConfig(SchemaBase):
 logger = logutil.init_logger(os.path.basename(__file__))
 
 # Constants
-DEFAULT_STREAMLABS_URL = (
-    "https://streamlabscharity.com/teams/@streamers-4-palestinians/streamers-4-palestinians"
-)
 COLOR = 0x005EA5
 
 _config, _module_config, _enabled_servers = load_config("moduleStreamlabsCharity")
 _guild_cfg = _module_config.get(_enabled_servers[0], {}) if _enabled_servers else {}
-STREAMLABS_URL = _guild_cfg.get("streamlabsTeamUrl") or DEFAULT_STREAMLABS_URL
+# Configured per guild in the Web UI; empty means the tracker stays idle.
+STREAMLABS_URL = _guild_cfg.get("streamlabsTeamUrl") or ""
 
 
 class StreamlabsCharityExtension(Extension):
@@ -127,6 +129,9 @@ class StreamlabsCharityExtension(Extension):
 
     @Task.create(IntervalTrigger(minutes=1))
     async def streamlabscharity(self):
+        if not STREAMLABS_URL:
+            logger.debug("Streamlabs team URL not configured; skipping")
+            return
         try:
             message = await self._get_message()
             if message is None:
@@ -183,11 +188,14 @@ class StreamlabsCharityExtension(Extension):
         online_members, offline_members = self.categorize_members(members_dict)
         members_str_online = self.split_members(online_members)
         members_str_offline = self.split_members(offline_members)
-        embeds = [
-            self.create_campaign_embed(campaign_data),
-            self.create_cause_embed(campaign_data),
-            self.create_streamers_embed(members_str_online, members_str_offline, members_dict),
-        ]
+        embeds = await shorten_embeds(
+            [
+                self.create_campaign_embed(campaign_data),
+                self.create_cause_embed(campaign_data),
+                self.create_streamers_embed(members_str_online, members_str_offline, members_dict),
+            ],
+            tags=["streamlabs"],
+        )
         await edit_message_if_changed(
             message, content="", embeds=embeds, ignore_timestamp=True, logger=logger
         )
@@ -229,7 +237,7 @@ class StreamlabsCharityExtension(Extension):
                 f"pour **{campaign_data['campaign']['causable']['display_name']}**.\n\n"
                 f"{campaign_data['campaign']['page_settings']['description']}"
             ),
-            url=STREAMLABS_URL,
+            url=STREAMLABS_URL or None,
             color=COLOR,
         )
 
@@ -290,6 +298,9 @@ class StreamlabsCharityExtension(Extension):
     @slash_command("endcharitycount")
     async def endcharitycount(self, ctx):
         await ctx.send("Fin de la collecte de fond", ephemeral=True)
+        if not STREAMLABS_URL:
+            await send_error(ctx, "URL de la team Streamlabs non configurée.")
+            return
         message = await self._get_message()
         if message is None:
             await send_error(ctx, "Message Streamlabs non configuré.")
@@ -298,11 +309,14 @@ class StreamlabsCharityExtension(Extension):
         members_dict = await self.fetch_members_data(campaign_data["id"])
         members_list = self.list_members(members_dict)
         members_str = self.split_members(members_list)
-        embeds = [
-            self.create_campaign_embed(campaign_data),
-            self.create_cause_embed(campaign_data),
-            self.create_final_members_embed(members_str),
-        ]
+        embeds = await shorten_embeds(
+            [
+                self.create_campaign_embed(campaign_data),
+                self.create_cause_embed(campaign_data),
+                self.create_final_members_embed(members_str),
+            ],
+            tags=["streamlabs"],
+        )
         await edit_message_if_changed(
             message, content="", embeds=embeds, ignore_timestamp=True, logger=logger
         )

@@ -54,7 +54,11 @@ async def shorten_url(url: str, *, title: str | None = None, tags: list[str] | N
         logger.warning("Shlink shortening failed for %s: %s", url, e)
     except Exception as e:  # noqa: BLE001 — a shortener outage must not lose the post
         logger.warning("Unexpected Shlink error for %s: %s", url, e)
-    return url
+    # Fall back to the last short URL we minted for this link, even an expired
+    # one: a periodically refreshed embed must keep rendering the same URL
+    # through a Shlink outage instead of flipping back to the long one and
+    # churning an edit on every cycle.
+    return shlink_client.cache_get(url, allow_stale=True) or url
 
 
 async def shorten_text(text: str, *, tags: list[str] | None = None) -> str:

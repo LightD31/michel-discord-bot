@@ -24,6 +24,7 @@ from features.coloc.constants import (
     ADVENT_CALENDAR_REMINDERS,
     PARIS_TZ,
     ReminderType,
+    format_journa_link,
     get_advent_calendar_url,
     get_reminder_message,
 )
@@ -230,7 +231,14 @@ class RemindersMixin:
             )
 
             if not journa_done:
-                message = random.choice(get_reminder_message(reminder_type))
+                link_key = (
+                    "journaHardcoreLink"
+                    if reminder_type == ReminderType.HARDCORE
+                    else "journaNormalLink"
+                )
+                message = random.choice(get_reminder_message(reminder_type)).format(
+                    journa=format_journa_link(module_config.get(link_key))
+                )
                 await user.send(message)
                 logger.info(f"Sent {reminder_type.value} reminder to {user.display_name}")
 
