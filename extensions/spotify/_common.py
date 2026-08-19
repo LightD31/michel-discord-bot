@@ -8,6 +8,7 @@ package root.
 import io
 import os
 import re
+from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
 from typing import Any
@@ -72,6 +73,34 @@ class SpotifyConfig(SchemaBase):
     spotifyRecapMessageId: str | None = hidden_message_id(
         "ID message récap", "spotifyRecapChannelId"
     )
+    spotifyDashboardUrl: str | None = ui(
+        "Lien du dashboard des votes",
+        "url",
+        description=(
+            "Lien affiché sous les votes et dans le message de récap. Vide = aucun lien affiché."
+        ),
+    )
+    spotifyPlaylistUrl: str | None = ui(
+        "Lien d'écoute de la playlist",
+        "url",
+        description=(
+            "Lien « Ecouter la playlist » ajouté aux embeds d'ajout et de "
+            "suppression. Vide = champ masqué."
+        ),
+    )
+    spotifyNewPlaylistUrl: str | None = ui(
+        "Lien d'écoute des découvertes",
+        "url",
+        description=(
+            "Lien « Ecouter les récents » ajouté aux embeds d'ajout et de "
+            "suppression. Vide = champ masqué."
+        ),
+    )
+    spotifyIconUrl: str | None = ui(
+        "Icône des embeds",
+        "url",
+        description="Icône affichée en pied des embeds Spotify. Vide = aucune icône.",
+    )
     spotifyUsers: dict[str, Any] = ui(
         "Mapping Spotify → Discord",
         "spotifymap",
@@ -87,11 +116,6 @@ config, module_config, enabled_servers = load_config("moduleSpotify")
 DEV_GUILD = config["discord"]["devGuildId"]
 DATA_FOLDER = config["misc"]["dataFolder"]
 COOLDOWN_TIME = 1
-
-SPOTIFY_ICON_URL = (
-    "https://upload.wikimedia.org/wikipedia/commons/thumb/1/19/"
-    "Spotify_logo_without_text.svg/200px-Spotify_logo_without_text.svg.png"
-)
 
 # ``sp`` is a lazy proxy from ``src.integrations.spotify`` — the real spotipy
 # client is built on first use so the bot still starts when the token cache is
@@ -153,6 +177,37 @@ class VoteManager:
         await self.repo.save_addwithvote_vote(author_id, vote, song)
 
 
+@dataclass(frozen=True)
+class SpotifyLinks:
+    """Per-guild links shown in the Spotify embeds.
+
+    Every one is configured from the Web UI — nothing is hardcoded here. An
+    empty value simply means "don't show this link".
+    """
+
+    dashboard: str = ""
+    playlist: str = ""
+    new_playlist: str = ""
+    icon: str = ""
+
+    @classmethod
+    def from_config(cls, server_config: dict) -> "SpotifyLinks":
+        return cls(
+            dashboard=str(server_config.get("spotifyDashboardUrl") or ""),
+            playlist=str(server_config.get("spotifyPlaylistUrl") or ""),
+            new_playlist=str(server_config.get("spotifyNewPlaylistUrl") or ""),
+            icon=str(server_config.get("spotifyIconUrl") or ""),
+        )
+
+
+def guild_links(guild_id: str | int | None) -> SpotifyLinks:
+    """Return the configured links for *guild_id* (defaults when unknown)."""
+    if guild_id is None:
+        return SpotifyLinks()
+    server = SERVERS.get(str(guild_id))
+    return server.links if server else SpotifyLinks()
+
+
 class ServerData:
     """Holds per-server configuration, state, and the per-guild repository."""
 
@@ -170,6 +225,7 @@ class ServerData:
         if not self.spotify2discord:
             self.spotify2discord = server_config.get("spotifyIdToDiscordId", {})
 
+        self.links = SpotifyLinks.from_config(server_config)
         self.channel_id = server_config.get("spotifyChannelId")
         self.playlist_id = server_config.get("spotifyPlaylistId")
         self.new_playlist_id = server_config.get("spotifyNewPlaylistId")
@@ -199,11 +255,18 @@ async def embed_song(
     embedtype: EmbedType,
     time: datetime,
     person: str = None,
-    icon: str = SPOTIFY_ICON_URL,
+    icon: str | None = None,
+    guild_id: str | int | None = None,
 ) -> tuple[interactions.Embed, interactions.File | None]:
-    """Build a Discord embed describing a Spotify track, plus an optional preview file."""
+    """Build a Discord embed describing a Spotify track, plus an optional preview file.
+
+    ``guild_id`` selects the guild's configured dashboard/playlist links; the
+    corresponding field is omitted when the guild left the link empty.
+    """
     if not person:
         person = song.get("added_by", "")
+    links = guild_links(guild_id)
+    icon = icon or links.icon
 
     embed_settings = {
         EmbedType.ADD: {
@@ -310,25 +373,28 @@ async def embed_song(
 
     if embedtype == EmbedType.VOTE:
         embed.add_field(name="Votes", value="Pas encore de votes", inline=False)
-        embed.add_field(
-            name="\u200b",
-            value="Dashboard votes: https://drndvs.link/StatsPlaylist",
-            inline=False,
-        )
+        if links.dashboard:
+            embed.add_field(
+                name="\u200b",
+                value=f"Dashboard votes: {links.dashboard}",
+                inline=False,
+            )
 
     if embedtype in {EmbedType.ADD, EmbedType.DELETE}:
-        embed.add_field(
-            name="\u200b",
-            value="[Ecouter la playlist](https://drndvs.link/LaPlaylistDeLaGuilde)",
-            inline=False,
-        )
-        embed.add_field(
-            name="\u200b",
-            value="[Ecouter les récents](https://drndvs.link/LesDecouvertesDeLaGuilde)",
-            inline=True,
-        )
+        if links.playlist:
+            embed.add_field(
+                name="\u200b",
+                value=f"[Ecouter la playlist]({links.playlist})",
+                inline=False,
+            )
+        if links.new_playlist:
+            embed.add_field(
+                name="\u200b",
+                value=f"[Ecouter les récents]({links.new_playlist})",
+                inline=True,
+            )
 
-    embed.set_footer(text=settings["footer"], icon_url=icon)
+    embed.set_footer(text=settings["footer"], icon_url=icon or None)
     embed.timestamp = time
 
     return embed, preview_file
@@ -341,6 +407,7 @@ async def embed_message_vote(
     users="",
     color=interactions.MaterialColors.ORANGE,
     description="",
+    guild_id: str | int | None = None,
 ):
     """Build the keep/remove/menfou tally embed attached under a vote message."""
     embed = interactions.Embed(color=color, description=description)
@@ -359,9 +426,11 @@ async def embed_message_vote(
         value=f"{menfou} vote{'s' if menfou > 1 else ''}",
         inline=True,
     )
+    links = guild_links(guild_id)
     embed.add_field(name="\u200b", value=f"Votes de {', '.join(users)}")
-    embed.add_field(name="\u200b", value="Dashboard votes: https://drndvs.link/StatsPlaylist")
-    embed.set_footer(text="Nettoyeur de Playlist", icon_url=SPOTIFY_ICON_URL)
+    if links.dashboard:
+        embed.add_field(name="\u200b", value=f"Dashboard votes: {links.dashboard}")
+    embed.set_footer(text="Nettoyeur de Playlist", icon_url=links.icon or None)
     embed.timestamp = interactions.utils.timestamp_converter(datetime.now())
     return embed
 
@@ -372,6 +441,7 @@ async def embed_message_vote_add(
     users="",
     color=interactions.MaterialColors.ORANGE,
     description="",
+    guild_id: str | int | None = None,
 ):
     """Build the yes/no tally embed attached under an add-with-vote message."""
     embed = interactions.Embed(color=color, description=description)
@@ -386,6 +456,6 @@ async def embed_message_vote_add(
         inline=True,
     )
     embed.add_field(name="\u200b", value=f"Votes de {', '.join(users)}")
-    embed.set_footer(text="", icon_url=SPOTIFY_ICON_URL)
+    embed.set_footer(text="", icon_url=guild_links(guild_id).icon or None)
     embed.timestamp = interactions.utils.timestamp_converter(datetime.now())
     return embed

@@ -16,13 +16,6 @@ class ReminderType(StrEnum):
     HARDCORE = "HARDCORE"
 
 
-# Discord channel/role hardcoded links
-JOURNA_NORMAL_LINK: Final[str] = (
-    "https://discord.com/channels/138283154589876224/808432657838768168"
-)
-JOURNA_HARDCORE_LINK: Final[str] = (
-    "https://discord.com/channels/138283154589876224/1263861962744270958"
-)
 CALENDAR_URL_TEMPLATE: Final[str] = "https://zunivers.zerator.com/calendrier-festif/{username}"
 
 # API URLs
@@ -51,29 +44,29 @@ CRYSTAL_EMOJI: Final[str] = "<:eraCristal:1265266545655812118>"
 
 # Reminder messages
 NORMAL_REMINDERS: Final[list[str]] = [
-    f"Tu n'as pas encore fait ton [/journa]({JOURNA_NORMAL_LINK}) normal aujourd'hui !",
-    f"Hé ! N'oublie pas ton [/journa]({JOURNA_NORMAL_LINK}) du jour !",
-    f"Petit rappel : ton [/journa]({JOURNA_NORMAL_LINK}) t'attend !",
-    f"Il est temps de faire ton [/journa]({JOURNA_NORMAL_LINK}) quotidien !",
-    f"Ton [/journa]({JOURNA_NORMAL_LINK}) du jour t'attend !",
-    f"Psst... Tu as pensé à ton [/journa]({JOURNA_NORMAL_LINK}) aujourd'hui ?",
-    f"Allez, c'est le moment de faire ton [/journa]({JOURNA_NORMAL_LINK}) !",
-    f"N'oublie pas de valider ta journée avec ton [/journa]({JOURNA_NORMAL_LINK}) !",
-    f"Ton [/journa]({JOURNA_NORMAL_LINK}) quotidien n'attend que toi !",
-    f"Rappel amical : il est temps de faire ton [/journa]({JOURNA_NORMAL_LINK}) !",
+    "Tu n'as pas encore fait ton {journa} normal aujourd'hui !",
+    "Hé ! N'oublie pas ton {journa} du jour !",
+    "Petit rappel : ton {journa} t'attend !",
+    "Il est temps de faire ton {journa} quotidien !",
+    "Ton {journa} du jour t'attend !",
+    "Psst... Tu as pensé à ton {journa} aujourd'hui ?",
+    "Allez, c'est le moment de faire ton {journa} !",
+    "N'oublie pas de valider ta journée avec ton {journa} !",
+    "Ton {journa} quotidien n'attend que toi !",
+    "Rappel amical : il est temps de faire ton {journa} !",
 ]
 
 HARDCORE_REMINDERS: Final[list[str]] = [
-    f"Tu n'as pas encore fait ton [/journa]({JOURNA_HARDCORE_LINK}) hardcore aujourd'hui !",
-    f"Attention ! Ton [/journa]({JOURNA_HARDCORE_LINK}) hardcore du jour n'est pas fait !",
-    f"Ne laisse pas passer ton [/journa]({JOURNA_HARDCORE_LINK}) hardcore aujourd'hui !",
-    f"Rappel crucial : ton [/journa]({JOURNA_HARDCORE_LINK}) hardcore t'attend !",
-    f"Dernier appel pour ton [/journa]({JOURNA_HARDCORE_LINK}) hardcore du jour !",
-    f"URGENT : Ton [/journa]({JOURNA_HARDCORE_LINK}) hardcore n'est pas fait !",
-    f"Mode hardcore activé ! N'oublie pas ton [/journa]({JOURNA_HARDCORE_LINK}) !",
-    f"Ton aventure hardcore t'attend avec ton [/journa]({JOURNA_HARDCORE_LINK}) !",
-    f"Pas de repos pour les braves ! Fais ton [/journa]({JOURNA_HARDCORE_LINK}) hardcore !",
-    f"Le mode hardcore ne pardonne pas : fais ton [/journa]({JOURNA_HARDCORE_LINK}) maintenant !",
+    "Tu n'as pas encore fait ton {journa} hardcore aujourd'hui !",
+    "Attention ! Ton {journa} hardcore du jour n'est pas fait !",
+    "Ne laisse pas passer ton {journa} hardcore aujourd'hui !",
+    "Rappel crucial : ton {journa} hardcore t'attend !",
+    "Dernier appel pour ton {journa} hardcore du jour !",
+    "URGENT : Ton {journa} hardcore n'est pas fait !",
+    "Mode hardcore activé ! N'oublie pas ton {journa} !",
+    "Ton aventure hardcore t'attend avec ton {journa} !",
+    "Pas de repos pour les braves ! Fais ton {journa} hardcore !",
+    "Le mode hardcore ne pardonne pas : fais ton {journa} maintenant !",
 ]
 
 ADVENT_CALENDAR_REMINDERS: Final[list[str]] = [
@@ -115,8 +108,17 @@ def get_bonus_value_description(bonus_type: str, level: int) -> str:
     return descriptions.get(bonus_type, f"Niveau {level}")
 
 
+def format_journa_link(link: str | None) -> str:
+    """Render the ``/journa`` mention used inside the reminder templates.
+
+    The channel link is configured per guild in the Web UI; without one the
+    command is rendered as plain code instead of a dead link.
+    """
+    return f"[/journa]({link})" if link else "`/journa`"
+
+
 def get_reminder_message(reminder_type: ReminderType) -> list[str]:
-    """Get the list of reminder messages for a specific type."""
+    """Get the reminder templates for a specific type (format with ``journa=``)."""
     if reminder_type == ReminderType.HARDCORE:
         return HARDCORE_REMINDERS
     return NORMAL_REMINDERS

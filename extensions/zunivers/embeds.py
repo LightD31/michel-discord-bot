@@ -10,12 +10,13 @@ from interactions import Embed, File
 from features.coloc.constants import (
     BONUS_TYPE_NAMES,
     CURRENCY_EMOJI,
-    JOURNA_HARDCORE_LINK,
     ReminderType,
     get_bonus_value_description,
 )
 from features.coloc.utils import format_event_items, parse_zunivers_date
 from src.discord_ext.embeds import SPACER_FIELD, Colors, format_discord_timestamp
+
+from ._common import module_config
 
 
 def create_event_embed(
@@ -136,12 +137,16 @@ def create_season_embed(season: dict, season_type: str) -> Embed:
             inline=False,
         )
 
-    embed.set_image(url="https://zunivers.zerator.com/assets/logo-hc.webp")
+    image_url = module_config.get("zuniversHardcoreImageUrl") or ""
+    if image_url:
+        embed.set_image(url=image_url)
 
     if is_start:
+        journa_link = module_config.get("journaHardcoreLink") or ""
+        journa = f"[/journa]({journa_link})" if journa_link else "`/journa`"
         embed.add_field(
             name="⚠️ Mode Hardcore",
-            value=f"Attention ! En mode hardcore, un oubli de [/journa]({JOURNA_HARDCORE_LINK}) et on recommence tout !",
+            value=f"Attention ! En mode hardcore, un oubli de {journa} et on recommence tout !",
             inline=False,
         )
 

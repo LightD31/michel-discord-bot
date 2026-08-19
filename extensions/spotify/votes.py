@@ -122,6 +122,7 @@ class VotesMixin:
                 track=track,
                 embedtype=EmbedType.VOTE_LOSE,
                 time=Timestamp.now(),
+                guild_id=server.guild_id,
             )
             await edit_message_if_changed(
                 message,
@@ -134,6 +135,7 @@ class VotesMixin:
                         menfou=menfou,
                         users=users,
                         color=MaterialColors.DEEP_ORANGE,
+                        guild_id=server.guild_id,
                     ),
                 ],
                 components=[],
@@ -152,6 +154,7 @@ class VotesMixin:
                 track=track,
                 embedtype=EmbedType.VOTE_WIN,
                 time=Timestamp.now(),
+                guild_id=server.guild_id,
             )
             await edit_message_if_changed(
                 message,
@@ -164,6 +167,7 @@ class VotesMixin:
                         menfou=menfou,
                         users=users,
                         color=MaterialColors.LIME,
+                        guild_id=server.guild_id,
                     ),
                 ],
                 components=[],
@@ -191,6 +195,7 @@ class VotesMixin:
             track=track,
             embedtype=EmbedType.VOTE,
             time=str(self.randomvote.next_run),
+            guild_id=server.guild_id,
         )
         message = await channel.send(
             content=(
@@ -503,6 +508,7 @@ class VotesMixin:
                     time=time_deadline,
                     person=ctx.author.id,
                     icon=ctx.author.avatar.url,
+                    guild_id=ctx.guild_id,
                 )
                 message = await ctx.send(
                     content=(
@@ -615,11 +621,17 @@ class VotesMixin:
                 embedtype=EmbedType.VOTE_WIN,
                 time=Timestamp.utcnow(),
                 person=data[song_id]["author_id"],
+                guild_id=server.guild_id,
             )
             await edit_message_if_changed(
                 message,
                 content="La chanson a été ajoutée à la playlist.",
-                embeds=[embed, await embed_message_vote_add(yes_votes, no_votes, users)],
+                embeds=[
+                    embed,
+                    await embed_message_vote_add(
+                        yes_votes, no_votes, users, guild_id=server.guild_id
+                    ),
+                ],
                 components=[],
                 logger=logger,
             )
@@ -631,11 +643,17 @@ class VotesMixin:
                 embedtype=EmbedType.VOTE_LOSE,
                 time=Timestamp.utcnow(),
                 person=data[song_id]["author_id"],
+                guild_id=server.guild_id,
             )
             await edit_message_if_changed(
                 message,
                 content="La chanson n'a pas été ajoutée à la playlist.",
-                embeds=[embed, await embed_message_vote_add(yes_votes, no_votes, users)],
+                embeds=[
+                    embed,
+                    await embed_message_vote_add(
+                        yes_votes, no_votes, users, guild_id=server.guild_id
+                    ),
+                ],
                 components=[],
                 logger=logger,
             )

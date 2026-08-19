@@ -7,6 +7,7 @@ import aiohttp
 import isodate
 from interactions import BaseChannel, Client, Extension, IntervalTrigger, Task, listen
 
+from features.links import shorten_text
 from features.youtube import YoutubeRepository
 from src.core import logging as logutil
 from src.core.config import load_config
@@ -120,6 +121,9 @@ class YoutubeExtension(Extension):
                         rendered = template.format(video_id=video_id, handle=handle, label=label)
                     except (KeyError, IndexError):
                         rendered = f"https://www.youtube.com/watch?v={video_id}"
+                    # Shortens every link the template rendered — the video URL
+                    # and any extra link the guild added to its template.
+                    rendered = await shorten_text(rendered, tags=["youtube", handle])
                     await channel.send(rendered)
             await self.save_youtube_data(youtube_data)
 

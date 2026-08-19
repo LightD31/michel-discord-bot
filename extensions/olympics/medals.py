@@ -15,6 +15,7 @@ from ._common import (
     _get_flag,
     enabled_servers,
     logger,
+    module_config,
 )
 
 
@@ -150,9 +151,9 @@ class MedalsMixin:
                 )
 
         embed.set_footer(text="JO d'hiver Milan-Cortina 2026")
-        embed.set_thumbnail(
-            url="https://stillmed.olympics.com/media/Images/OlympicOrg/Games/Winter/Milano-Cortina-2026/Milano-Cortina-2026-Logo.png"
-        )
+        logo_url = module_config.get("olympicsLogoUrl") or ""
+        if logo_url:
+            embed.set_thumbnail(url=logo_url)
 
         return embed
 

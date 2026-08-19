@@ -67,6 +67,14 @@ class MDIConfig(SchemaBase):
         "role",
         description="Rôle mentionné quand un nouveau match commence (optionnel).",
     )
+    iconUrl: str | None = ui(
+        "Icône des embeds",
+        "url",
+        description=(
+            "Icône affichée à côté du nom de l'événement dans les embeds "
+            "(logo Raider.IO par exemple). Vide = aucune icône."
+        ),
+    )
 
 
 logger = logutil.init_logger(os.path.basename(__file__))
@@ -90,9 +98,6 @@ STATUS_EMOJI_TERMINAL_WIN = "🏆"
 STATUS_EMOJI_TERMINAL_LOSS = "❌"
 STATUS_EMOJI_TERMINAL_NEUTRAL = "🏁"
 
-RAIDERIO_ICON_URL = "https://cdn.raiderio.net/images/brand/icon-180.png"
-
-
 # ── Dataclasses ───────────────────────────────────────────────────────────────
 
 
@@ -107,6 +112,7 @@ class GuildConfig:
     team_slug: str
     pin_schedule: bool
     ping_role_id: str | None
+    icon_url: str | None
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> GuildConfig:
@@ -130,6 +136,7 @@ class GuildConfig:
             or DEFAULT_TEAM_SLUG,
             pin_schedule=bool(data.get("pinSchedule", True)),
             ping_role_id=(data.get("pingRoleId") or "") or None,
+            icon_url=(data.get("iconUrl") or "") or None,
         )
 
 
@@ -204,7 +211,6 @@ __all__ = [
     "LIVE_INTERVAL_MINUTES",
     "MDIConfig",
     "MODULE_KEY",
-    "RAIDERIO_ICON_URL",
     "SCHEDULE_INTERVAL_MINUTES",
     "STATUS_EMOJI_LIVE",
     "STATUS_EMOJI_SCHEDULED",

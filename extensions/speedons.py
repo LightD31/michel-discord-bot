@@ -59,14 +59,13 @@ class SpeedonsConfig(SchemaBase):
     speedonsApiUrl: str = ui(
         "URL API",
         "url",
+        required=True,
         description="URL de base de l'API Speedons (inclut le slug de la campagne).",
-        default="https://tracker.speedons.fr/api/campaigns?slug=2025",
     )
-    speedonsIconUrl: str = ui(
+    speedonsIconUrl: str | None = ui(
         "URL de l'icône",
         "url",
-        description="URL de l'icône affichée dans les embeds.",
-        default="https://speedons.fr/static/b476f2d8ad4a19d2393eb4cff9486cc9/c6b81/icon.png",
+        description="Icône affichée dans les embeds. Vide = aucune icône.",
     )
 
 
@@ -75,10 +74,9 @@ logger = logutil.init_logger(os.path.basename(__file__))
 _, _module_config, _enabled_servers = load_config("moduleSpeedons")
 _cfg = _module_config.get(_enabled_servers[0], {}) if _enabled_servers else {}
 
-BASE_URL = _cfg.get("speedonsApiUrl", "https://tracker.speedons.fr/api/campaigns?slug=2025")
-ICON_URL = _cfg.get(
-    "speedonsIconUrl", "https://speedons.fr/static/b476f2d8ad4a19d2393eb4cff9486cc9/c6b81/icon.png"
-)
+# Both come from the guild config — the code carries no Speedons URL.
+BASE_URL = _cfg.get("speedonsApiUrl", "")
+ICON_URL = _cfg.get("speedonsIconUrl") or None
 COLOR = 0xDBEA2B
 
 
@@ -175,7 +173,7 @@ class SpeedonsExtension(Extension):
             title=f"Speedons 4 ({amount:.2f}€)",
             timestamp=datetime.now(pytz.UTC),
             color=0xDBEA2B,
-            thumbnail="https://speedons.fr/static/b476f2d8ad4a19d2393eb4cff9486cc9/c6b81/icon.png",
+            thumbnail=ICON_URL,
         )
         # Create an incentive dict
         incentives = {}
@@ -240,7 +238,7 @@ class SpeedonsExtension(Extension):
                     title=f"Run en cours ({amount:.2f}€)",
                     timestamp=datetime.now(pytz.UTC),
                     color=0xDBEA2B,
-                    thumbnail="https://speedons.fr/static/b476f2d8ad4a19d2393eb4cff9486cc9/c6b81/icon.png",
+                    thumbnail=ICON_URL,
                 )
                 embedlive.add_field(
                     name=event["properties"].get(
@@ -292,7 +290,7 @@ class SpeedonsExtension(Extension):
                 title=f"Pas de run en cours ({amount:.2f}€)",
                 timestamp=datetime.now(pytz.UTC),
                 color=0xDBEA2B,
-                thumbnail="https://speedons.fr/static/b476f2d8ad4a19d2393eb4cff9486cc9/c6b81/icon.png",
+                thumbnail=ICON_URL,
             ),
             ignore_timestamp=True,
             logger=logger,

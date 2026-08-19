@@ -3,7 +3,6 @@
 from features.vlrgg.client import (
     CACHE_TTL,
     ROUND_ABBREVIATIONS,
-    VLRGG_API_URL,
     _clean_vlr_text,
     check_api_health,
     enrich_match_from_details,
@@ -17,6 +16,7 @@ from features.vlrgg.client import (
     fetch_upcoming_matches,
     filter_team_matches,
     format_vlr_date,
+    get_api_url,
     normalize_team_match,
     parse_vlrgg_timestamp,
     vlrgg_request,
@@ -26,7 +26,6 @@ from features.vlrgg.repository import VlrggLiveRepository
 __all__ = [
     "CACHE_TTL",
     "ROUND_ABBREVIATIONS",
-    "VLRGG_API_URL",
     "VlrggLiveRepository",
     "_clean_vlr_text",
     "check_api_health",
@@ -41,6 +40,7 @@ __all__ = [
     "fetch_upcoming_matches",
     "filter_team_matches",
     "format_vlr_date",
+    "get_api_url",
     "normalize_team_match",
     "parse_vlrgg_timestamp",
     "vlrgg_request",

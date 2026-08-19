@@ -41,8 +41,18 @@ class ZeventConfig(SchemaBase):
     zeventStreamlabsApiUrl: str = ui(
         "URL Streamlabs",
         "url",
-        description="URL de l'API Streamlabs Charity pour les dons.",
-        default="https://streamlabscharity.com/api/v1/teams/@zevent-2025/zevent-2025",
+        required=True,
+        description=(
+            "URL de l'API Streamlabs Charity de l'équipe suivie, "
+            "ex. https://streamlabscharity.com/api/v1/teams/@<equipe>/<campagne>."
+        ),
+    )
+    zeventTwitchUrl: str | None = ui(
+        "Chaîne Twitch de l'événement",
+        "url",
+        description=(
+            "Lien « Regarder sur Twitch » affiché pendant le concert. Vide = aucun lien affiché."
+        ),
     )
     zeventEventStartDate: str = ui(
         "Début de l'événement",
@@ -92,10 +102,9 @@ GUILD_ID = _enabled_servers[0] if _enabled_servers else None
 API_URL = "https://zevent.fr/api/"
 PLANNING_API_URL = "https://zevent-api.gdoc.fr/events"
 STREAMERS_API_URL = "https://zevent-api.gdoc.fr/streamers"
-STREAMLABS_API_URL = _cfg.get(
-    "zeventStreamlabsApiUrl",
-    "https://streamlabscharity.com/api/v1/teams/@zevent-2025/zevent-2025",
-)
+# Configured per guild in the Web UI — no team URL is baked into the code.
+STREAMLABS_API_URL = _cfg.get("zeventStreamlabsApiUrl", "")
+TWITCH_URL = _cfg.get("zeventTwitchUrl", "")
 
 UPDATE_INTERVAL = int(_cfg.get("zeventUpdateInterval", 30))
 MILESTONE_INTERVAL = int(_cfg.get("zeventMilestoneInterval", 100000))

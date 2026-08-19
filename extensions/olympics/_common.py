@@ -21,6 +21,14 @@ class OlympicsConfig(SchemaBase):
         required=True,
         description="Salon pour les alertes de médailles.",
     )
+    olympicsLogoUrl: str | None = ui(
+        "Logo des embeds",
+        "url",
+        description=(
+            "Vignette affichée sur les embeds médailles (logo officiel de "
+            "l'édition). Vide = aucune vignette."
+        ),
+    )
 
 
 logger = logutil.init_logger(os.path.basename(__file__))

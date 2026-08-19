@@ -15,6 +15,12 @@ from ._common import API_URL, MILESTONE_INTERVAL, STREAMLABS_API_URL, UPDATE_INT
 logger = logutil.init_logger(os.path.basename(__file__))
 
 
+async def _no_streamlabs_data() -> None:
+    """Placeholder awaitable used when no Streamlabs team URL is configured."""
+    logger.warning("Zevent: aucune URL Streamlabs configurée — total des dons indisponible.")
+    return None
+
+
 class TasksMixin:
     """Periodic Zevent refresh that rebuilds and edits the pinned message."""
 
@@ -28,9 +34,13 @@ class TasksMixin:
             now_date = datetime.now().date()
             target_day = self._get_planning_day(now_date)
 
+            # The Streamlabs team URL is configured per guild; without it the
+            # donation total is simply unavailable (the rest still renders).
             data, streamlabs_data = await asyncio.gather(
                 fetch(API_URL, return_type="json"),
-                fetch(STREAMLABS_API_URL, return_type="json"),
+                fetch(STREAMLABS_API_URL, return_type="json")
+                if STREAMLABS_API_URL
+                else _no_streamlabs_data(),
                 return_exceptions=True,
             )
 

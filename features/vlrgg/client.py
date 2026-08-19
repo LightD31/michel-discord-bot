@@ -1,7 +1,8 @@
 """Client pour l'API non-officielle VLR.gg (V2).
 
 Source unique pour les données de matchs Valorant.
-API: https://vlr.drndvs.fr (déploiement custom)
+L'URL de l'API (déploiement self-hosted) est configurée dans la section
+« VLR.gg » de la config globale — aucune URL n'est codée en dur ici.
 
 Endpoints V2 utilisés:
 - /v2/team/matches?id=X — historique des matchs d'une équipe (results + upcoming)
@@ -9,7 +10,7 @@ Endpoints V2 utilisés:
 - /v2/match/details?match_id=X — détails complets d'un match
 - /v2/team?id=X — profil d'équipe
 
-Note: Un cache avec TTL court est utilisé (API self-hosted sur vlr.drndvs.fr).
+Note: Un cache avec TTL court est utilisé (API self-hosted).
 """
 
 import asyncio
@@ -20,12 +21,23 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from src.core import logging as logutil
+from src.core.config import config_store
 from src.core.http import fetch
 from src.discord_ext.embeds import format_discord_timestamp
 
 logger = logutil.init_logger(__name__)
 
-VLRGG_API_URL = "https://vlr.drndvs.fr"
+
+def get_api_url() -> str:
+    """Base URL of the VLR.gg API deployment, from the global config.
+
+    Read on each call so a dashboard edit applies without a restart. Empty
+    when unconfigured — callers then skip the request instead of hitting a
+    hardcoded host.
+    """
+    section = config_store.get().get("config", {}).get("vlrgg") or {}
+    return str(section.get("vlrggApiUrl") or "").strip().rstrip("/")
+
 
 # Limite de requêtes concurrentes vers l'API (éviter les 502 sur le serveur self-hosted)
 _api_semaphore = asyncio.Semaphore(2)
@@ -87,7 +99,14 @@ async def vlrgg_request(endpoint: str, params: dict[str, str] | None = None) -> 
             logger.debug(f"VLR.gg cache hit pour {key} (âge: {age:.0f}s)")
             return cached_data
 
-    url = f"{VLRGG_API_URL}/{endpoint}"
+    api_url = get_api_url()
+    if not api_url:
+        logger.warning(
+            "VLR.gg: aucune URL d'API configurée (config globale → VLR.gg) — requête ignorée."
+        )
+        return {}
+
+    url = f"{api_url}/{endpoint}"
     try:
         async with _api_semaphore:
             data: dict[str, Any] = await fetch(url, params=params, return_type="json")  # type: ignore[assignment]
@@ -218,7 +237,7 @@ def expand_round_name(round_str: str) -> str:
     return round_str
 
 
-# L'API VLR.gg (vlr.drndvs.fr) restitue les dates de /team/matches dans
+# L'API VLR.gg restitue les dates de /team/matches dans
 # l'heure locale de son serveur (Europe/Paris) — ex: "8:00 pm" correspond
 # à 20h CEST/CET. ZoneInfo gère le passage à l'heure d'été automatiquement.
 _VLR_TIMEZONE = ZoneInfo("Europe/Paris")

@@ -380,14 +380,20 @@ def create_router(ctx: WebUIContext) -> APIRouter:
         discord_embeds = build_embeds(embeds_config)
         if not discord_embeds:
             raise HTTPException(status_code=500, detail="Erreur lors de la génération des embeds")
+        embed_count = len(discord_embeds)
 
         try:
 
             async def _publish():
+                from extensions.embedmanager import build_embeds_with_short_links
                 from src.discord_ext.messages import (
                     edit_message_if_changed,
                     fetch_or_create_persistent_message,
                 )
+
+                # Rebuilt on the bot loop: shortening does HTTP, and the shared
+                # aiohttp session is per-loop.
+                embeds = await build_embeds_with_short_links(embeds_config, server_id)
 
                 message = await fetch_or_create_persistent_message(
                     ctx.bot,
@@ -402,9 +408,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
                 )
                 if message is None:
                     raise RuntimeError("Impossible de créer ou récupérer le message cible")
-                await edit_message_if_changed(
-                    message, content="", embeds=discord_embeds, logger=logger
-                )
+                await edit_message_if_changed(message, content="", embeds=embeds, logger=logger)
 
             future = asyncio.run_coroutine_threadsafe(_publish(), bot_loop)
             await asyncio.wrap_future(future)
@@ -412,6 +416,6 @@ def create_router(ctx: WebUIContext) -> APIRouter:
             logger.error(f"EmbedManager publish failed for server {server_id}: {e}")
             raise HTTPException(status_code=500, detail=str(e)) from e
 
-        return JSONResponse({"status": "ok", "count": len(discord_embeds)})
+        return JSONResponse({"status": "ok", "count": embed_count})
 
     return router
