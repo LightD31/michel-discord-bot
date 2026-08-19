@@ -8,7 +8,7 @@ Assembled as a mixin composition mirroring the vlrgg/minecraft packages:
 - :mod:`.corporation` — CorporationMixin: daily recap + /corpo
 
 Migrated from the legacy ``extensions/coloc`` package. The fun commands that
-used to live there (/fesse, /massageducul) are now per-server entries of
+used to live there are now per-server entries of
 :mod:`extensions.customcommands`.
 """
 

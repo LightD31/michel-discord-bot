@@ -30,22 +30,32 @@ GUILD = "123456789012345678"
 
 def test_parses_a_full_entry():
     parsed = parse_commands(
-        [{"name": "fesse", "description": "Fesses", "responses": ["https://a/gif.gif", "paf"]}]
+        [
+            {
+                "name": "blague",
+                "description": "Raconte une blague",
+                "responses": ["https://a/gif.gif", "paf"],
+            }
+        ]
     )
     assert parsed.errors == []
     assert parsed.commands == [
-        CustomCommand(name="fesse", description="Fesses", responses=["https://a/gif.gif", "paf"])
+        CustomCommand(
+            name="blague",
+            description="Raconte une blague",
+            responses=["https://a/gif.gif", "paf"],
+        )
     ]
 
 
 def test_normalizes_names_and_defaults_the_description():
-    parsed = parse_commands([{"name": "  Massage Du Cul ", "responses": ["ok"]}])
-    assert [c.name for c in parsed.commands] == ["massage-du-cul"]
+    parsed = parse_commands([{"name": "  Blague Du Jour ", "responses": ["ok"]}])
+    assert [c.name for c in parsed.commands] == ["blague-du-jour"]
     assert parsed.commands[0].description  # never empty — Discord requires one
 
 
 def test_normalize_name_is_idempotent():
-    assert normalize_name("Massage  Du Cul") == normalize_name("massage-du-cul") == "massage-du-cul"
+    assert normalize_name("Blague  Du Jour") == normalize_name("blague-du-jour") == "blague-du-jour"
     assert normalize_name(None) == ""
 
 
@@ -69,12 +79,15 @@ def test_drops_unusable_entries_with_a_reason(entry):
 
 def test_tolerates_a_non_list_config():
     assert parse_commands(None).commands == []
-    assert parse_commands({"name": "fesse"}).commands == []
+    assert parse_commands({"name": "blague"}).commands == []
 
 
 def test_accepts_string_and_object_responses():
     parsed = parse_commands(
-        [{"name": "fesse", "responses": "seule"}, {"name": "autre", "responses": [{"text": "obj"}]}]
+        [
+            {"name": "blague", "responses": "seule"},
+            {"name": "autre", "responses": [{"text": "obj"}]},
+        ]
     )
     assert [c.responses for c in parsed.commands] == [["seule"], ["obj"]]
 
@@ -82,8 +95,8 @@ def test_accepts_string_and_object_responses():
 def test_deduplicates_responses_and_names():
     parsed = parse_commands(
         [
-            {"name": "fesse", "responses": ["a", "a", "b"]},
-            {"name": "FESSE", "responses": ["c"]},
+            {"name": "blague", "responses": ["a", "a", "b"]},
+            {"name": "BLAGUE", "responses": ["c"]},
         ]
     )
     assert [c.responses for c in parsed.commands] == [["a", "b"]]
@@ -104,7 +117,7 @@ def test_caps_the_number_of_commands_per_guild():
 
 
 def test_pick_response_only_returns_configured_responses():
-    command = CustomCommand(name="fesse", description="d", responses=["a", "b"])
+    command = CustomCommand(name="blague", description="d", responses=["a", "b"])
     picks = {pick_response(command, random.Random(seed)) for seed in range(20)}
     assert picks and picks <= {"a", "b"}
 
@@ -134,7 +147,13 @@ def test_registers_configured_commands_for_each_guild(config_file):
             GUILD: {
                 "moduleCustomCommands": {
                     "enabled": True,
-                    "commands": [{"name": "fesse", "description": "Fesses", "responses": ["paf"]}],
+                    "commands": [
+                        {
+                            "name": "blague",
+                            "description": "Raconte une blague",
+                            "responses": ["paf"],
+                        }
+                    ],
                 }
             },
             "999": {"moduleCustomCommands": {"enabled": False, "commands": []}},
@@ -145,8 +164,8 @@ def test_registers_configured_commands_for_each_guild(config_file):
     extension._register_all()
 
     scope = bot.interactions_by_scope[int(GUILD)]
-    assert set(scope) == {"fesse"}
-    assert str(scope["fesse"].description) == "Fesses"
+    assert set(scope) == {"blague"}
+    assert str(scope["blague"].description) == "Raconte une blague"
     assert 999 not in bot.interactions_by_scope  # module disabled there
 
 
@@ -183,7 +202,7 @@ def test_drop_unregisters_what_it_added(config_file):
             GUILD: {
                 "moduleCustomCommands": {
                     "enabled": True,
-                    "commands": [{"name": "fesse", "responses": ["paf"]}],
+                    "commands": [{"name": "blague", "responses": ["paf"]}],
                 }
             }
         }
@@ -191,10 +210,10 @@ def test_drop_unregisters_what_it_added(config_file):
     bot = make_bot()
     extension = CustomCommandsExtension(bot)
     extension._register_all()
-    assert "fesse" in bot.interactions_by_scope[int(GUILD)]
+    assert "blague" in bot.interactions_by_scope[int(GUILD)]
 
     extension.drop()
-    assert "fesse" not in bot.interactions_by_scope[int(GUILD)]
+    assert "blague" not in bot.interactions_by_scope[int(GUILD)]
 
 
 @pytest.mark.asyncio
@@ -204,7 +223,7 @@ async def test_the_registered_command_answers_with_a_configured_response(config_
             GUILD: {
                 "moduleCustomCommands": {
                     "enabled": True,
-                    "commands": [{"name": "fesse", "responses": ["paf", "pif"]}],
+                    "commands": [{"name": "blague", "responses": ["paf", "pif"]}],
                 }
             }
         }
@@ -215,7 +234,7 @@ async def test_the_registered_command_answers_with_a_configured_response(config_
     bot = make_bot()
     extension = CustomCommandsExtension(bot)
     extension._register_all()
-    command = bot.interactions_by_scope[int(GUILD)]["fesse"]
+    command = bot.interactions_by_scope[int(GUILD)]["blague"]
 
     sent: list[str] = []
 
