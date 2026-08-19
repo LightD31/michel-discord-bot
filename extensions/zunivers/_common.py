@@ -46,16 +46,6 @@ class ZuniversConfig(SchemaBase):
         "url",
         description="Image affichée dans l'embed de saison hardcore. Vide = aucune image.",
     )
-    colocFesseGifUrl: str | None = ui(
-        "GIF /fesse",
-        "url",
-        description="GIF envoyé par la commande /fesse. Vide = commande sans réponse.",
-    )
-    colocMassageGifUrl: str | None = ui(
-        "GIF /massageducul",
-        "url",
-        description="GIF envoyé par la commande /massageducul. Vide = commande sans réponse.",
-    )
 
 
 logger = logutil.init_logger("extensions.zunivers")

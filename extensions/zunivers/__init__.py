@@ -7,8 +7,9 @@ Assembled as a mixin composition mirroring the vlrgg/minecraft packages:
 - :mod:`.events` — EventsMixin: Zunivers events + hardcore season tracking
 - :mod:`.corporation` — CorporationMixin: daily recap + /corpo
 
-Migrated from the legacy ``extensions/coloc`` package. Non-Zunivers coloc
-commands (/fesse, /massageducul) remain in :mod:`extensions.coloc`.
+Migrated from the legacy ``extensions/coloc`` package. The fun commands that
+used to live there (/fesse, /massageducul) are now per-server entries of
+:mod:`extensions.customcommands`.
 """
 
 from interactions import Client, Extension, GuildText, listen
