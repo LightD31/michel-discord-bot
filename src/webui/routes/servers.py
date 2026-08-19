@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
+from features.customcommands import MODULE_KEY as CUSTOM_COMMANDS_MODULE
 from src.core import logging as logutil
 from src.core.config import load_config as bot_load_config
 from src.webui.context import WebUIContext, build_module_to_extension_map
@@ -52,6 +53,41 @@ def _try_reload_extension_for_module(ctx: WebUIContext, module_name: str) -> dic
             "error": f"Échec du rechargement ({type(e).__name__}). Voir les logs.",
             "skipped": False,
         }
+
+
+# A guild-scoped sync is a couple of Discord API calls; give it room without
+# leaving the dashboard hanging if the bot loop is wedged.
+_COMMAND_SYNC_TIMEOUT_SECONDS = 30.0
+
+
+async def _sync_guild_commands(ctx: WebUIContext, server_id: str) -> dict:
+    """Push this guild's slash commands to Discord after a custom-command edit.
+
+    The extension reload above re-registers the commands on the client; Discord
+    only learns about them once the scope is synced. Runs on the bot loop —
+    ``synchronise_interactions`` uses the bot's HTTP client.
+
+    Returns ``{"synced": bool, "error": str|None}``.
+    """
+    if not ctx.bot or not ctx.bot_loop_alive():
+        return {"synced": False, "error": "Bot non disponible"}
+    assert ctx.bot_loop is not None
+    try:
+        future = asyncio.run_coroutine_threadsafe(
+            ctx.bot.synchronise_interactions(scopes=[int(server_id)]), ctx.bot_loop
+        )
+        await asyncio.wait_for(asyncio.wrap_future(future), timeout=_COMMAND_SYNC_TIMEOUT_SECONDS)
+    except TimeoutError:
+        logger.error("Command sync timed out for server %s", server_id)
+        return {"synced": False, "error": "Synchronisation des commandes trop longue"}
+    except Exception as e:
+        logger.error("Command sync failed for server %s: %s", server_id, e)
+        return {
+            "synced": False,
+            "error": f"Échec de la synchronisation ({type(e).__name__}). Voir les logs.",
+        }
+    logger.info("Synced slash commands for server %s", server_id)
+    return {"synced": True, "error": None}
 
 
 def create_router(ctx: WebUIContext) -> APIRouter:
@@ -325,7 +361,10 @@ def create_router(ctx: WebUIContext) -> APIRouter:
             session.user_id,
         )
         reload_result = _try_reload_extension_for_module(ctx, module_name)
-        return JSONResponse({"status": "ok", "reload": reload_result})
+        response: dict = {"status": "ok", "reload": reload_result}
+        if module_name == CUSTOM_COMMANDS_MODULE:
+            response["commandSync"] = await _sync_guild_commands(ctx, server_id)
+        return JSONResponse(response)
 
     @router.post("/api/servers/{server_id}/modules/{module_name}/toggle")
     async def api_toggle_module(
@@ -352,7 +391,10 @@ def create_router(ctx: WebUIContext) -> APIRouter:
             session.user_id,
         )
         reload_result = _try_reload_extension_for_module(ctx, module_name)
-        return JSONResponse({"status": "ok", "enabled": body.enabled, "reload": reload_result})
+        response: dict = {"status": "ok", "enabled": body.enabled, "reload": reload_result}
+        if module_name == CUSTOM_COMMANDS_MODULE:
+            response["commandSync"] = await _sync_guild_commands(ctx, server_id)
+        return JSONResponse(response)
 
     @router.post("/api/servers/{server_id}/modules/moduleEmbedManager/publish")
     async def api_embedmanager_publish(request: Request, server_id: str):

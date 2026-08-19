@@ -108,6 +108,10 @@
                 "confrerieTextsUrl": "",
                 "confrerieOwnerId": ""
             },
+            "moduleCustomCommands": {
+                "enabled": false,
+                "commands": []
+            },
             "moduleEmbedManager": {
                 "enabled": false,
                 "channelId": "",
@@ -324,9 +328,7 @@
                 "journaReminderRoleId": "",
                 "journaNormalChannelId": "",
                 "journaHardcoreChannelId": "",
-                "zuniversHardcoreImageUrl": "",
-                "colocFesseGifUrl": "",
-                "colocMassageGifUrl": ""
+                "zuniversHardcoreImageUrl": ""
             }
         }
     }

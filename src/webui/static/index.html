@@ -2221,6 +2221,114 @@
             }
         }
 
+        /* ── Custom Command List Editor ─────────────── */
+        .commandlist-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .commandlist-entry {
+            background: var(--bg-primary);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .commandlist-entry-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .commandlist-entry-title {
+            font-weight: 600;
+            color: var(--text-primary);
+            font-family: 'Consolas', monospace;
+            flex: 1;
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .commandlist-entry-fields {
+            display: grid;
+            grid-template-columns: 1fr 2fr;
+            gap: 8px;
+        }
+
+        .commandlist-entry-fields .form-input {
+            width: 100%;
+        }
+
+        .commandlist-field-label {
+            font-size: 11px;
+            color: var(--text-muted);
+        }
+
+        .commandlist-responses {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            padding-top: 8px;
+            border-top: 1px solid var(--border);
+        }
+
+        .commandlist-responses-label {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .commandlist-response-entry {
+            display: grid;
+            grid-template-columns: 1fr auto;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .commandlist-response-entry input {
+            width: 100%;
+            padding: 6px 8px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            color: var(--text-primary);
+            font-size: 12px;
+            outline: none;
+        }
+
+        .commandlist-response-entry input:focus {
+            border-color: var(--accent);
+        }
+
+        .commandlist-response-entry .btn-remove-response {
+            background: none;
+            border: none;
+            color: var(--danger);
+            cursor: pointer;
+            font-size: 16px;
+            padding: 4px 6px;
+            border-radius: var(--radius);
+            line-height: 1;
+        }
+
+        .commandlist-response-entry .btn-remove-response:hover {
+            background: rgba(248, 63, 67, 0.1);
+        }
+
+        @media (max-width: 768px) {
+            .commandlist-entry-fields {
+                grid-template-columns: 1fr;
+            }
+        }
+
         /* ── Embed List Editor ──────────────────────── */
         .embedlist-list {
             display: flex;
@@ -3440,6 +3548,43 @@
                     html += `<button type="button" class="btn-add-entry" onclick="addMessageEntry(this)">+ Ajouter un message</button>`;
                     break;
 
+                case 'commandlist': {
+                    const commands = Array.isArray(value) ? value : [];
+                    html += `<div class="commandlist-list" data-field="${key}" data-type="commandlist">`;
+                    commands.forEach((cmd) => {
+                        const cmdName = typeof cmd?.name === 'string' ? cmd.name : '';
+                        const cmdDesc = typeof cmd?.description === 'string' ? cmd.description : '';
+                        const responses = Array.isArray(cmd?.responses) ? cmd.responses : [];
+                        html += `<div class="commandlist-entry">`;
+                        html += `<div class="commandlist-entry-header">`;
+                        html += `<div class="commandlist-entry-title">/${escapeHtml(cmdName) || 'nouvelle-commande'}</div>`;
+                        html += `<button type="button" class="btn-remove-embed" onclick="this.closest('.commandlist-entry').remove()" title="Supprimer cette commande">✕</button>`;
+                        html += `</div>`;
+                        html += `<div class="commandlist-entry-fields">`;
+                        html += `<div><label class="commandlist-field-label">Nom</label>`;
+                        html += `<input type="text" class="form-input" data-cmd-field="name" value="${escapeHtml(cmdName)}" placeholder="fesse" maxlength="32" oninput="updateCommandTitle(this)"></div>`;
+                        html += `<div><label class="commandlist-field-label">Description</label>`;
+                        html += `<input type="text" class="form-input" data-cmd-field="description" value="${escapeHtml(cmdDesc)}" placeholder="Fesses" maxlength="100"></div>`;
+                        html += `</div>`;
+                        html += `<div class="commandlist-responses">`;
+                        html += `<div class="commandlist-responses-label">Réponses (tirées au hasard)</div>`;
+                        responses.forEach((response) => {
+                            const text = typeof response === 'string' ? response : String(response?.text ?? '');
+                            html += `
+                                <div class="commandlist-response-entry">
+                                    <input type="text" data-response-field="text" value="${escapeHtml(text)}" placeholder="https://exemple.com/gif.gif ou un texte" maxlength="2000">
+                                    <button type="button" class="btn-remove-response" onclick="this.closest('.commandlist-response-entry').remove()" title="Supprimer">✕</button>
+                                </div>`;
+                        });
+                        html += `</div>`;
+                        html += `<button type="button" class="btn-add-link" onclick="addCommandResponse(this)">+ Ajouter une réponse</button>`;
+                        html += `</div>`;
+                    });
+                    html += `</div>`;
+                    html += `<button type="button" class="btn-add-embed" onclick="addCommandEntry(this)">+ Ajouter une commande</button>`;
+                    break;
+                }
+
                 case 'embedlist':
                     const embeds = Array.isArray(value) ? value : [];
                     html += `<div class="embedlist-list" data-field="${key}" data-type="embedlist">`;
@@ -3566,6 +3711,9 @@
                     // Handled separately below
                     continue;
                 case 'messagelist':
+                    // Handled separately below
+                    continue;
+                case 'commandlist':
                     // Handled separately below
                     continue;
                 case 'embedlist':
@@ -3817,6 +3965,27 @@
             if (messages.length > 0) {
                 result[key] = messages;
             }
+        }
+
+        // Collect commandlist fields
+        const commandLists = form.querySelectorAll('[data-type="commandlist"]');
+        for (const list of commandLists) {
+            const key = list.dataset.field;
+            const commands = [];
+            for (const entry of list.querySelectorAll('.commandlist-entry')) {
+                const name = entry.querySelector('[data-cmd-field="name"]')?.value?.trim();
+                const description = entry.querySelector('[data-cmd-field="description"]')?.value?.trim();
+                const responses = [];
+                for (const responseEntry of entry.querySelectorAll('.commandlist-response-entry')) {
+                    const text = responseEntry.querySelector('[data-response-field="text"]')?.value?.trim();
+                    if (text) responses.push(text);
+                }
+                if (name) {
+                    commands.push({ name, description: description || '', responses });
+                }
+            }
+            // Always assigned: removing the last command must persist as [].
+            result[key] = commands;
         }
 
         // Collect embedlist fields
@@ -4419,6 +4588,56 @@
         `;
         list.appendChild(entry);
         entry.querySelector('input').focus();
+    }
+
+    function addCommandEntry(btn) {
+        const list = btn.previousElementSibling;
+        if (!list) return;
+        const entry = document.createElement('div');
+        entry.className = 'commandlist-entry';
+        entry.innerHTML = `
+            <div class="commandlist-entry-header">
+                <div class="commandlist-entry-title">/nouvelle-commande</div>
+                <button type="button" class="btn-remove-embed" onclick="this.closest('.commandlist-entry').remove()" title="Supprimer cette commande">✕</button>
+            </div>
+            <div class="commandlist-entry-fields">
+                <div><label class="commandlist-field-label">Nom</label>
+                <input type="text" class="form-input" data-cmd-field="name" value="" placeholder="fesse" maxlength="32" oninput="updateCommandTitle(this)"></div>
+                <div><label class="commandlist-field-label">Description</label>
+                <input type="text" class="form-input" data-cmd-field="description" value="" placeholder="Fesses" maxlength="100"></div>
+            </div>
+            <div class="commandlist-responses">
+                <div class="commandlist-responses-label">Réponses (tirées au hasard)</div>
+            </div>
+            <button type="button" class="btn-add-link" onclick="addCommandResponse(this)">+ Ajouter une réponse</button>
+        `;
+        list.appendChild(entry);
+        // A command without a response is dropped at load, so start with one.
+        addCommandResponse(entry.querySelector('.btn-add-link'));
+        entry.querySelector('[data-cmd-field="name"]').focus();
+    }
+
+    function addCommandResponse(btn) {
+        const commandEntry = btn.closest('.commandlist-entry');
+        if (!commandEntry) return;
+        const container = commandEntry.querySelector('.commandlist-responses');
+        const responseEntry = document.createElement('div');
+        responseEntry.className = 'commandlist-response-entry';
+        responseEntry.innerHTML = `
+            <input type="text" data-response-field="text" value="" placeholder="https://exemple.com/gif.gif ou un texte" maxlength="2000">
+            <button type="button" class="btn-remove-response" onclick="this.closest('.commandlist-response-entry').remove()" title="Supprimer">✕</button>
+        `;
+        container.appendChild(responseEntry);
+        responseEntry.querySelector('input').focus();
+    }
+
+    function updateCommandTitle(input) {
+        const entry = input.closest('.commandlist-entry');
+        const title = entry?.querySelector('.commandlist-entry-title');
+        if (title) {
+            // Mirror the server-side normalisation: lowercase, no spaces.
+            title.textContent = '/' + (input.value.trim().toLowerCase().replace(/\s+/g, '-') || 'nouvelle-commande');
+        }
     }
 
     function addEmbedEntry(btn, fieldKey) {
@@ -5917,8 +6136,10 @@
                 : result?.reload?.error
                     ? ` — rechargement échoué : ${result.reload.error}`
                     : '';
-            toast(`${moduleName} ${enabled ? 'activé' : 'désactivé'}${reloadSuffix}`,
-                result?.reload?.error ? 'warning' : 'success');
+            const syncSuffix = commandSyncSuffix(result);
+            const failed = !!result?.reload?.error || !!(result?.commandSync && !result.commandSync.synced);
+            toast(`${moduleName} ${enabled ? 'activé' : 'désactivé'}${reloadSuffix}${syncSuffix}`,
+                failed ? 'warning' : 'success');
             await loadServers();
             if (isDeveloper()) await loadConfig();
             render();
@@ -6198,6 +6419,14 @@
     }
 
     // ── Module save/reload ────────────────────────────
+    // Custom commands are pushed to Discord right after the save; report it.
+    function commandSyncSuffix(result) {
+        if (!result?.commandSync) return '';
+        return result.commandSync.synced
+            ? ' — commandes synchronisées avec Discord'
+            : ` — synchronisation des commandes échouée : ${result.commandSync.error}`;
+    }
+
     async function saveModuleForm(serverId, moduleName, formId) {
         try {
             const values = collectFormValues(formId);
@@ -6215,10 +6444,13 @@
                 method: 'PUT',
                 body: JSON.stringify({ config }),
             });
+            const syncSuffix = commandSyncSuffix(result);
+            const syncFailed = !!(result?.commandSync && !result.commandSync.synced);
             if (result?.reload?.reloaded) {
-                toast('Configuration sauvegardée et extension rechargée !', 'success');
+                toast(`Configuration sauvegardée et extension rechargée !${syncSuffix}`,
+                    syncFailed ? 'warning' : 'success');
             } else if (result?.reload?.skipped || !result?.reload) {
-                toast('Configuration sauvegardée !', 'success');
+                toast(`Configuration sauvegardée !${syncSuffix}`, syncFailed ? 'warning' : 'success');
             } else {
                 toast(`Configuration sauvegardée, rechargement échoué : ${result.reload.error}`, 'warning');
             }
@@ -6543,10 +6775,13 @@
                 method: 'PUT',
                 body: JSON.stringify({ config: newData }),
             });
+            const syncSuffix = commandSyncSuffix(result);
+            const syncFailed = !!(result?.commandSync && !result.commandSync.synced);
             if (result?.reload?.reloaded) {
-                toast('Configuration sauvegardée et extension rechargée !', 'success');
+                toast(`Configuration sauvegardée et extension rechargée !${syncSuffix}`,
+                    syncFailed ? 'warning' : 'success');
             } else if (result?.reload?.skipped || !result?.reload) {
-                toast('Configuration sauvegardée !', 'success');
+                toast(`Configuration sauvegardée !${syncSuffix}`, syncFailed ? 'warning' : 'success');
             } else {
                 toast(`Configuration sauvegardée, rechargement échoué : ${result.reload.error}`, 'warning');
             }

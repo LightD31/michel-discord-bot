@@ -43,6 +43,7 @@ A modular, multi-guild Discord bot built with **interactions.py**. Michel ships 
 | **Secret Santa** | Organize a Secret Santa entirely in Discord — registrations, forbidden pairings, random draw, and DM delivery. |
 | **Reaction Roles** | Self-assignable roles via persistent buttons, with a menu builder in the Web UI. |
 | **Reminders** | `/reminder` with optional recurrence and extra recipients, DM delivery with a snooze button, persisted and restored across restarts. |
+| **Custom Commands** | Slash commands defined per server from the Web UI — a name, a description, and a pool of responses (GIF links or plain text) picked at random. New commands reach Discord without a restart. |
 | **Random** | `/pick` (random choice from a list) and `/dice` (configurable die roll) powered by Random.org. |
 | **User Info** | Per-user profile lookup and shared member-tracking stats. |
 | **Tricount** | Shared expense tracker — groups, expenses, recurring charges, balances, and chart reports. |
@@ -66,7 +67,7 @@ A modular, multi-guild Discord bot built with **interactions.py**. Michel ships 
 | **RSS** | Generic feed poller (RSS / Atom / Steam / Epic / subreddit) with per-feed channel and message-template overrides. |
 | **AI Compare** | Ask a question and compare answers from multiple LLMs via OpenRouter, then vote for the best. |
 | **Confrérie** | Literary guild features backed by the Notion API — reading stats, challenges, publisher management. |
-| **Zunivers / Coloc** | Daily reminders, event tracking, Hardcore season monitoring, corporation recaps, and Advent calendar for the Zunivers collectible game. |
+| **Zunivers** | Daily reminders, event tracking, Hardcore season monitoring, corporation recaps, and Advent calendar for the Zunivers collectible game. |
 | **VLR.gg Tracker** | Valorant esports match tracking — schedules, live score updates, and post-match results from VLR.gg. |
 | **MDI Tracker** | Mythic Dungeon International (World of Warcraft) tracking via the Raider.IO API. |
 | **Shlink** | Shortens the external links the bot posts (RSS entries, YouTube uploads, Embed manager links, MDI, Streamlabs, recap messages) through a self-hosted [Shlink](https://shlink.io) instance, and manages the short links from the dashboard. |
@@ -248,7 +249,7 @@ To disable, use the Web UI or set `"extensions.myext": false` in `config.json`. 
 
 **Composition convention** — When an extension grows beyond ~200 lines, promote it to a package and split responsibilities into mixin modules (`leveling.py`, `commands.py`, `leaderboard.py`, …) assembled via multiple inheritance in `__init__.py`. Shared constants and the Pydantic config schema go in `_common.py`. Domain logic (persistence, pure functions, API clients) moves into a matching `features/<name>/` package so it can be tested without Discord.
 
-A few extensions intentionally share config rather than registering their own module: `polls` and `reminders` read `moduleUtils` (owned by `admin`), and `coloc` rides on `moduleZunivers`.
+A few extensions intentionally share config rather than registering their own module: `polls` and `reminders` read `moduleUtils` (owned by `admin`).
 
 ---
 
