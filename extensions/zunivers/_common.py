@@ -65,22 +65,17 @@ module_config = module_config[enabled_servers[0]] if enabled_servers else {}
 
 GUILD_ID = enabled_servers[0] if enabled_servers else ""
 
-# Channel picker keys, with the URL field each one replaced. The legacy key is
-# still read so a config filled in before the switch keeps working; drop the
-# fallback once the deployed configs use the picker.
-JOURNA_CHANNEL_KEYS: dict[ReminderType, tuple[str, str]] = {
-    ReminderType.NORMAL: ("journaNormalChannelId", "journaNormalLink"),
-    ReminderType.HARDCORE: ("journaHardcoreChannelId", "journaHardcoreLink"),
+# Config key holding the channel each reminder type points at.
+JOURNA_CHANNEL_KEYS: dict[ReminderType, str] = {
+    ReminderType.NORMAL: "journaNormalChannelId",
+    ReminderType.HARDCORE: "journaHardcoreChannelId",
 }
 
 
 def journa_link(reminder_type: ReminderType) -> str:
     """Return the configured ``/journa`` channel link ("" when unset)."""
-    channel_key, legacy_key = JOURNA_CHANNEL_KEYS[reminder_type]
-    channel_id = str(module_config.get(channel_key) or "").strip()
-    if channel_id:
-        return discord_channel_link(GUILD_ID, channel_id)
-    return str(module_config.get(legacy_key) or "").strip()
+    channel_id = module_config.get(JOURNA_CHANNEL_KEYS[reminder_type])
+    return discord_channel_link(GUILD_ID, channel_id)
 
 
 __all__ = [
