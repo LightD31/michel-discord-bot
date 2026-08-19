@@ -326,8 +326,8 @@
                 "enabled": false,
                 "colocZuniversChannelId": "",
                 "journaReminderRoleId": "",
-                "journaNormalChannelId": "",
-                "journaHardcoreChannelId": "",
+                "journaNormalLink": "",
+                "journaHardcoreLink": "",
                 "zuniversHardcoreImageUrl": ""
             }
         }
