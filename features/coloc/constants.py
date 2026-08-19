@@ -108,20 +108,6 @@ def get_bonus_value_description(bonus_type: str, level: int) -> str:
     return descriptions.get(bonus_type, f"Niveau {level}")
 
 
-def discord_channel_link(guild_id: str | int | None, channel_id: str | int | None) -> str:
-    """Build a Discord jump link to a channel; ``""`` when an id is missing.
-
-    Accepts a channel id (what the Web UI's channel picker stores) and returns
-    the ``https://discord.com/channels/<guild>/<channel>`` URL the reminders
-    link to.
-    """
-    guild = str(guild_id or "").strip()
-    channel = str(channel_id or "").strip()
-    if not guild or not channel:
-        return ""
-    return f"https://discord.com/channels/{guild}/{channel}"
-
-
 def format_journa_link(link: str | None) -> str:
     """Render the ``/journa`` mention used inside the reminder templates.
 

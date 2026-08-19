@@ -3,7 +3,6 @@
 Config key ``moduleZunivers`` (formerly ``moduleColoc``).
 """
 
-from features.coloc.constants import ReminderType, discord_channel_link
 from src.core import logging as logutil
 from src.core.config import load_config
 from src.webui.schemas import SchemaBase, enabled_field, register_module, ui
@@ -25,19 +24,19 @@ class ZuniversConfig(SchemaBase):
         "role",
         description="Rôle mentionné quand le /journa quotidien n'a pas été posté à 22h.",
     )
-    journaNormalChannelId: str | None = ui(
-        "Salon /journa",
-        "channel",
+    journaNormalLink: str | None = ui(
+        "Lien du salon /journa",
+        "url",
         description=(
-            "Salon vers lequel pointe le rappel /journa. Vide = le rappel "
+            "Lien Discord vers le salon où lancer /journa. Vide = le rappel "
             "affiche `/journa` sans lien."
         ),
     )
-    journaHardcoreChannelId: str | None = ui(
-        "Salon /journa hardcore",
-        "channel",
+    journaHardcoreLink: str | None = ui(
+        "Lien du salon /journa hardcore",
+        "url",
         description=(
-            "Salon vers lequel pointe le rappel /journa en mode hardcore. "
+            "Lien Discord vers le salon où lancer /journa en mode hardcore. "
             "Vide = le rappel hardcore n'affiche pas de lien."
         ),
     )
@@ -53,27 +52,10 @@ logger = logutil.init_logger("extensions.zunivers")
 config, module_config, enabled_servers = load_config("moduleZunivers")
 module_config = module_config[enabled_servers[0]] if enabled_servers else {}
 
-GUILD_ID = enabled_servers[0] if enabled_servers else ""
-
-# Config key holding the channel each reminder type points at.
-JOURNA_CHANNEL_KEYS: dict[ReminderType, str] = {
-    ReminderType.NORMAL: "journaNormalChannelId",
-    ReminderType.HARDCORE: "journaHardcoreChannelId",
-}
-
-
-def journa_link(reminder_type: ReminderType) -> str:
-    """Return the configured ``/journa`` channel link ("" when unset)."""
-    channel_id = module_config.get(JOURNA_CHANNEL_KEYS[reminder_type])
-    return discord_channel_link(GUILD_ID, channel_id)
-
-
 __all__ = [
-    "GUILD_ID",
     "ZuniversConfig",
     "config",
     "enabled_servers",
-    "journa_link",
     "logger",
     "module_config",
 ]
