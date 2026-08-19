@@ -322,8 +322,8 @@
                 "enabled": false,
                 "colocZuniversChannelId": "",
                 "journaReminderRoleId": "",
-                "journaNormalLink": "",
-                "journaHardcoreLink": "",
+                "journaNormalChannelId": "",
+                "journaHardcoreChannelId": "",
                 "zuniversHardcoreImageUrl": "",
                 "colocFesseGifUrl": "",
                 "colocMassageGifUrl": ""
