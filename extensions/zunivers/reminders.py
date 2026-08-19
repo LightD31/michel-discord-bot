@@ -30,7 +30,7 @@ from features.coloc.constants import (
 )
 from src.discord_ext.messages import edit_message_if_changed, fetch_user_safe
 
-from ._common import enabled_servers, logger, module_config
+from ._common import enabled_servers, journa_link, logger, module_config
 
 
 class RemindersMixin:
@@ -231,13 +231,8 @@ class RemindersMixin:
             )
 
             if not journa_done:
-                link_key = (
-                    "journaHardcoreLink"
-                    if reminder_type == ReminderType.HARDCORE
-                    else "journaNormalLink"
-                )
                 message = random.choice(get_reminder_message(reminder_type)).format(
-                    journa=format_journa_link(module_config.get(link_key))
+                    journa=format_journa_link(journa_link(reminder_type))
                 )
                 await user.send(message)
                 logger.info(f"Sent {reminder_type.value} reminder to {user.display_name}")
