@@ -95,13 +95,13 @@ h11==0.16.0
     #   wsproto
 httpcore==1.0.9
     # via httpx
-httpcore2==2.10.0 ; sys_platform != 'emscripten'
+httpcore2==2.12.0 ; sys_platform != 'emscripten'
     # via httpx2
 httptools==0.8.0
     # via uvicorn
 httpx==0.28.1
     # via notion-client
-httpx2==2.10.0
+httpx2==2.12.0
     # via openai
 httpx2-jsfetch==1.0 ; sys_platform == 'emscripten'
     # via httpx2
@@ -132,7 +132,7 @@ numpy==2.5.2
     # via
     #   nbtlib
     #   pandas
-openai==3.2.0
+openai==3.3.1
     # via michel-discord-bot (pyproject.toml)
 pandas==3.0.5
     # via michel-discord-bot (pyproject.toml)
@@ -151,7 +151,7 @@ pydantic==2.13.4
     #   michel-discord-bot (pyproject.toml)
     #   fastapi
     #   openai
-pydantic-core==2.46.4
+pydantic-core==2.48.0
     # via pydantic
 pyfactorybridge==1.0.1
     # via michel-discord-bot (pyproject.toml)
@@ -240,7 +240,7 @@ urllib3==2.7.0
     # via
     #   requests
     #   spotipy
-uvicorn==0.52.3
+uvicorn==0.52.4
     # via michel-discord-bot (pyproject.toml)
 uvloop==0.22.1 ; sys_platform != 'win32'
     # via
