@@ -62,6 +62,11 @@ class TasksMixin:
             if planning_data is None:
                 logger.warning("Planning data not available")
 
+            # Sample before any embed is built so the velocity window advances
+            # once per cycle regardless of which phase renders.
+            if isinstance(data, dict):
+                self.record_donation_sample(self._safe_get_data(data, ["live"], []))
+
             concert_active = await self._is_concert_active()
 
             if not self._is_event_started():

@@ -192,6 +192,9 @@ def upcoming_shows(shows: list[Show], now: datetime, limit: int | None = None) -
 
 DEFAULT_PROGRESS_WEIGHT = 1.0
 DEFAULT_OFFLINE_FACTOR = 0.5
+DEFAULT_VELOCITY_WEIGHT = 2.0
+# A goal this many minutes out counts as half as urgent as one landing now.
+VELOCITY_HORIZON_MINUTES = 10.0
 
 
 def goal_progress(participant: Participant) -> float:
@@ -214,11 +217,46 @@ def is_live(participant: Participant, live_logins: set[str] | None = None) -> bo
     return participant.twitch_login in live_logins
 
 
+def velocity_bonus(
+    eta_minutes: float | None,
+    velocity_weight: float = DEFAULT_VELOCITY_WEIGHT,
+    horizon: float = VELOCITY_HORIZON_MINUTES,
+) -> float:
+    """Additive lift for a goal whose remaining amount is being eaten through.
+
+    ``weight / (1 + eta / horizon)`` — full weight for a goal landing now,
+    half of it at the horizon, tapering to nothing for one hours away. A goal
+    going nowhere (``eta_minutes`` is ``None``) gets exactly zero.
+
+    Additive on purpose. The base score is logarithmic in euros, so a
+    *multiplicative* boost would scale with how big the streamer already is:
+    it lifted the leaders by whole points while moving a mid-tier channel by a
+    fraction of one, which is the opposite of surfacing a raid. Adding instead
+    makes the lift mean something absolute — at the default weight, a goal
+    about to fall counts for as much as having raised a hundred times more.
+    """
+    if eta_minutes is None:
+        return 0.0
+    weight = max(velocity_weight, 0.0)
+    span = max(horizon, 1e-9)
+    return weight / (1.0 + max(eta_minutes, 0.0) / span)
+
+
+def goal_remaining(participant: Participant) -> float:
+    """Euros still needed for ``participant``'s next goal."""
+    goal = participant.next_goal
+    if goal is None:
+        return 0.0
+    return max(goal.amount - participant.amount_raised, 0.0)
+
+
 def goal_score(
     participant: Participant,
     progress_weight: float = DEFAULT_PROGRESS_WEIGHT,
     offline_factor: float = DEFAULT_OFFLINE_FACTOR,
     live_logins: set[str] | None = None,
+    etas: dict[str, float] | None = None,
+    velocity_weight: float = DEFAULT_VELOCITY_WEIGHT,
 ) -> float:
     """Rank a pending goal by imminence, streamer size, and whether it's watchable.
 
@@ -245,7 +283,9 @@ def goal_score(
     # term drops out and the ranking becomes pure prominence.
     base = (progress**weight) * math.log10(1 + max(participant.amount_raised, 0.0))
     live = is_live(participant, live_logins)
-    return base * (1.0 if live else min(max(offline_factor, 0.0), 1.0))
+    base *= 1.0 if live else min(max(offline_factor, 0.0), 1.0)
+    eta = (etas or {}).get(participant.twitch_login)
+    return base + velocity_bonus(eta, velocity_weight)
 
 
 def upcoming_goals(
@@ -254,6 +294,8 @@ def upcoming_goals(
     progress_weight: float = DEFAULT_PROGRESS_WEIGHT,
     offline_factor: float = DEFAULT_OFFLINE_FACTOR,
     live_logins: set[str] | None = None,
+    etas: dict[str, float] | None = None,
+    velocity_weight: float = DEFAULT_VELOCITY_WEIGHT,
 ) -> list[Participant]:
     """Participants with a pending goal, most worth watching first.
 
@@ -267,7 +309,7 @@ def upcoming_goals(
     ranked = sorted(
         with_goals,
         key=lambda p: (
-            -goal_score(p, progress_weight, offline_factor, live_logins),
+            -goal_score(p, progress_weight, offline_factor, live_logins, etas, velocity_weight),
             -(p.next_goal.amount if p.next_goal else 0.0),
             p.display_name.lower(),
         ),

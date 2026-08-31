@@ -4,7 +4,11 @@ import os
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
-from features.zevent.stats import DEFAULT_OFFLINE_FACTOR, DEFAULT_PROGRESS_WEIGHT
+from features.zevent.stats import (
+    DEFAULT_OFFLINE_FACTOR,
+    DEFAULT_PROGRESS_WEIGHT,
+    DEFAULT_VELOCITY_WEIGHT,
+)
 from src.core import logging as logutil
 from src.core.config import load_config
 from src.webui.schemas import (
@@ -122,6 +126,18 @@ class ZeventConfig(SchemaBase):
             "streamers en direct devant."
         ),
     )
+    zeventGoalsVelocityWeight: float = ui(
+        "Poids de la vitesse (donation goals)",
+        "number",
+        default=DEFAULT_VELOCITY_WEIGHT,
+        step=0.1,
+        description=(
+            "Remonte les objectifs sur le point de tomber au rythme actuel des dons "
+            "— typiquement quand une communauté se mobilise pour en faire tomber un. "
+            "0 = ignorer la vitesse ; 2 = un objectif imminent pèse autant qu'une "
+            "cagnotte cent fois plus grosse."
+        ),
+    )
     zeventMilestoneInterval: int = ui(
         "Intervalle des paliers (dons)",
         "number",
@@ -187,6 +203,11 @@ GOALS_PROGRESS_WEIGHT = _parse_weight(
     _cfg.get("zeventGoalsProgressWeight", DEFAULT_PROGRESS_WEIGHT),
     DEFAULT_PROGRESS_WEIGHT,
     "poids de progression",
+)
+GOALS_VELOCITY_WEIGHT = _parse_weight(
+    _cfg.get("zeventGoalsVelocityWeight", DEFAULT_VELOCITY_WEIGHT),
+    DEFAULT_VELOCITY_WEIGHT,
+    "poids de vitesse",
 )
 GOALS_OFFLINE_FACTOR = _parse_weight(
     _cfg.get("zeventGoalsOfflineFactor", DEFAULT_OFFLINE_FACTOR),
