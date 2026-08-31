@@ -7,6 +7,15 @@ from datetime import datetime
 
 
 @dataclass(frozen=True)
+class DonationGoal:
+    """A streamer's next unmet donation goal."""
+
+    name: str
+    amount: float
+    """Euros (the API reports centimes)."""
+
+
+@dataclass(frozen=True)
 class Participant:
     """One participating channel as reported by the stats API."""
 
@@ -19,6 +28,7 @@ class Participant:
     live: bool
     amount_raised: float
     """Euros (the API reports centimes)."""
+    next_goal: DonationGoal | None = None
 
 
 @dataclass(frozen=True)

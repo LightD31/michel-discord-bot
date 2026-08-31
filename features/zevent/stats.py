@@ -18,7 +18,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any
 
-from features.zevent.models import Participant, Show
+from features.zevent.models import DonationGoal, Participant, Show
 
 # Only the on-site venue counts as "LAN". The satellite locations the API
 # reports (``remote_zbase``, ``remote_villa``, ``remote_ankama``, …) are
@@ -58,6 +58,20 @@ def _twitch_socials(entry: dict) -> tuple[str, str]:
     return login, twitch_id
 
 
+def _parse_goal(entry: dict) -> DonationGoal | None:
+    """Parse ``next_donation_goal``; ``None`` when absent or unusable."""
+    goal = entry.get("next_donation_goal")
+    if not isinstance(goal, dict):
+        return None
+    amount = goal.get("amount")
+    if not isinstance(amount, int | float):
+        return None
+    name = str(goal.get("name") or "").strip()
+    if not name:
+        return None
+    return DonationGoal(name=name, amount=float(amount) / 100)
+
+
 def parse_participants(payload: Any) -> list[Participant]:
     """Parse the ``donation_goals/overview`` payload into :class:`Participant`.
 
@@ -86,6 +100,7 @@ def parse_participants(payload: Any) -> list[Participant]:
                 raw_location=raw_location,
                 live=bool(entry.get("live")),
                 amount_raised=(float(amount) / 100) if isinstance(amount, int | float) else 0.0,
+                next_goal=_parse_goal(entry),
             )
         )
     return participants
@@ -174,6 +189,26 @@ def upcoming_shows(shows: list[Show], now: datetime, limit: int | None = None) -
     return pending[:limit] if limit is not None else pending
 
 
+def upcoming_goals(participants: list[Participant], limit: int | None = None) -> list[Participant]:
+    """Participants with a pending goal, closest to being reached first.
+
+    Live streamers come first: a goal that might be hit on stream right now is
+    the interesting one. Within each group the smallest remaining gap wins.
+    """
+    with_goals = [p for p in participants if p.next_goal is not None]
+    ranked = sorted(
+        with_goals,
+        key=lambda p: (
+            not p.live,
+            max((p.next_goal.amount if p.next_goal else 0.0) - p.amount_raised, 0.0),
+            # Deterministic tiebreak: many goals share a round amount, and
+            # letting API order decide would churn the rendered embed.
+            p.display_name.lower(),
+        ),
+    )
+    return ranked[:limit] if limit is not None else ranked
+
+
 def select_event(events: Any, now: datetime, event_id: str | None = None) -> dict | None:
     """Pick the event to track out of the API's ``/events`` listing.
 
@@ -211,6 +246,24 @@ def select_event(events: Any, now: datetime, event_id: str | None = None) -> dic
     if dated:
         return max(dated, key=lambda e: window(e)[0] or datetime.min.replace(tzinfo=UTC))
     return None
+
+
+def event_schedule(event: dict | None) -> tuple[datetime | None, datetime | None]:
+    """Return ``(event start, fundraising start)`` for a stats-API event.
+
+    ``schedule.start`` is when the event opens (the pre-event concert in 2026)
+    and ``schedule_raising.start`` when donations open (the marathon proper) —
+    exactly the two instants the tracker counts down to, so they need not be
+    configured by hand each year.
+    """
+    if not isinstance(event, dict):
+        return None, None
+
+    def _start(key: str) -> datetime | None:
+        block = event.get(key)
+        return parse_datetime(block.get("start")) if isinstance(block, dict) else None
+
+    return _start("schedule"), _start("schedule_raising")
 
 
 def _contains(bounds: tuple[datetime | None, datetime | None], now: datetime) -> bool:

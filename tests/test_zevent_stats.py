@@ -9,12 +9,14 @@ from features.zevent.stats import (
     LAN,
     ONLINE,
     build_location_index,
+    event_schedule,
     location_bucket,
     parse_datetime,
     parse_participants,
     parse_shows,
     resolve_location,
     select_event,
+    upcoming_goals,
     upcoming_shows,
 )
 
@@ -25,8 +27,8 @@ OVERVIEW_SAMPLE = [
         "location": "lan",
         "live": False,
         "amount_raised": 125050,
-        "donation_goals_count": 0,
-        "next_donation_goal": None,
+        "donation_goals_count": 14,
+        "next_donation_goal": {"name": "Je compte jusqu'à 1 000", "amount": 200000},
         "socials": {"twitch": {"id": "77452537", "login": "alderiate"}},
     },
     {
@@ -34,7 +36,8 @@ OVERVIEW_SAMPLE = [
         "name": "Aducine",
         "location": "remote",
         "live": True,
-        "amount_raised": 0,
+        "amount_raised": 5000,
+        "next_donation_goal": {"name": "Apéro handcam", "amount": 800000},
         "socials": {"twitch": {"id": "44842076", "login": "aducine"}},
     },
     {
@@ -261,3 +264,96 @@ def test_parse_datetime_handles_z_suffix_and_naive_values() -> None:
     assert parse_datetime("") is None
     assert parse_datetime(None) is None
     assert parse_datetime("not a date") is None
+
+
+# ── donation goals ───────────────────────────────────────────────────
+
+
+def test_parse_participants_reads_the_next_goal() -> None:
+    by_login = {p.twitch_login: p for p in parse_participants(OVERVIEW_SAMPLE)}
+
+    alderiate = by_login["alderiate"]
+    assert alderiate.next_goal is not None
+    assert alderiate.next_goal.name == "Je compte jusqu'à 1 000"
+    assert alderiate.next_goal.amount == 2000.0  # centimes -> euros
+
+    # Flonflon's fixture entry has no goal at all.
+    assert by_login["flonflon"].next_goal is None
+
+
+def test_parse_goal_rejects_unusable_entries() -> None:
+    def one(goal: object) -> object:
+        payload = [
+            {
+                "name": "X",
+                "location": "lan",
+                "amount_raised": 0,
+                "next_donation_goal": goal,
+                "socials": {"twitch": {"id": "1", "login": "x"}},
+            }
+        ]
+        return parse_participants(payload)[0].next_goal
+
+    assert one(None) is None
+    assert one("nope") is None
+    assert one({"name": "no amount"}) is None
+    assert one({"amount": 100}) is None  # no name
+    assert one({"name": "   ", "amount": 100}) is None
+
+
+def test_upcoming_goals_puts_live_streamers_first_then_closest() -> None:
+    participants = parse_participants(OVERVIEW_SAMPLE)
+    ranked = upcoming_goals(participants)
+
+    # Aducine is live (gap 8000 - 50 = 7950); Alderiate is offline with a
+    # smaller gap (2000 - 1250.50 = 749.50) but still sorts after.
+    assert [p.twitch_login for p in ranked] == ["aducine", "alderiate"]
+    assert upcoming_goals(participants, limit=1)[0].twitch_login == "aducine"
+
+
+def test_upcoming_goals_is_empty_without_goals() -> None:
+    assert upcoming_goals([]) == []
+    no_goals = [p for p in parse_participants(OVERVIEW_SAMPLE) if p.next_goal is None]
+    assert upcoming_goals(no_goals) == []
+
+
+# ── event schedule ───────────────────────────────────────────────────
+
+
+def test_event_schedule_splits_open_and_fundraising_starts() -> None:
+    event = {
+        "schedule": {"start": "2026-09-03T18:00:00Z", "end": "2026-09-07T00:00:00Z"},
+        "schedule_raising": {"start": "2026-09-04T16:00:00Z", "end": "2026-09-07T00:00:00Z"},
+    }
+    start, raising = event_schedule(event)
+    assert start == datetime(2026, 9, 3, 18, 0, tzinfo=UTC)
+    assert raising == datetime(2026, 9, 4, 16, 0, tzinfo=UTC)
+
+
+def test_event_schedule_tolerates_missing_blocks() -> None:
+    assert event_schedule(None) == (None, None)
+    assert event_schedule({}) == (None, None)
+    assert event_schedule({"schedule": "nope"}) == (None, None)
+    start, raising = event_schedule({"schedule": {"start": "2026-09-03T18:00:00Z"}})
+    assert start == datetime(2026, 9, 3, 18, 0, tzinfo=UTC)
+    assert raising is None
+
+
+def test_upcoming_goals_ranking_is_deterministic_on_ties() -> None:
+    """Equal gaps must not let payload order churn the rendered embed."""
+
+    def entry(name: str, login: str) -> dict:
+        return {
+            "name": name,
+            "location": "remote",
+            "live": False,
+            "amount_raised": 0,
+            "next_donation_goal": {"name": "same goal", "amount": 100},
+            "socials": {"twitch": {"id": login, "login": login}},
+        }
+
+    forward = parse_participants([entry("Zoe", "zoe"), entry("alice", "alice")])
+    backward = parse_participants([entry("alice", "alice"), entry("Zoe", "zoe")])
+
+    assert [p.display_name for p in upcoming_goals(forward)] == ["alice", "Zoe"]
+    assert [p.display_name for p in upcoming_goals(backward)] == ["alice", "Zoe"]

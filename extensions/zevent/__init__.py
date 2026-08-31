@@ -19,7 +19,11 @@ from src.discord_ext.messages import fetch_or_create_persistent_message
 from ._common import (
     CHANNEL_ID,
     EVENT_NAME,
+    EVENT_START_OVERRIDE,
+    FALLBACK_EVENT_START,
+    FALLBACK_MAIN_EVENT_START,
     GUILD_ID,
+    MAIN_EVENT_START_OVERRIDE,
     MESSAGE_ID,
     PIN_MESSAGE,
     config,
@@ -49,6 +53,10 @@ class Zevent(Extension, ApiMixin, StreamsMixin, EmbedsMixin, TasksMixin, Command
         self._stats_event_time = None
         self.STATS_EVENT_CACHE_TTL = timedelta(hours=6)
         self._event_title: str = EVENT_NAME or "Zevent"
+        # Replaced by the stats API's schedule on the first resolve unless the
+        # operator pinned them in the dashboard.
+        self._event_start = EVENT_START_OVERRIDE or FALLBACK_EVENT_START
+        self._main_event_start = MAIN_EVENT_START_OVERRIDE or FALLBACK_MAIN_EVENT_START
         self._participant_cache: list[Participant] = []
         self._participant_cache_time = None
         self._location_index: dict[str, str] = {}
