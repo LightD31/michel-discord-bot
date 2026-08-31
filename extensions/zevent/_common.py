@@ -54,20 +54,42 @@ class ZeventConfig(SchemaBase):
             "Lien « Regarder sur Twitch » affiché pendant le concert. Vide = aucun lien affiché."
         ),
     )
+    zeventStatsApiUrl: str = ui(
+        "URL de l'API statistiques",
+        "url",
+        required=True,
+        description=(
+            "Base de l'API EvenMoreStats servant le planning et la répartition "
+            "LAN/à distance (sans slash final). Vide = planning et LAN indisponibles."
+        ),
+    )
+    zeventStatsEventId: str | None = ui(
+        "Identifiant de l'édition",
+        "string",
+        description=(
+            "UUID de l'édition sur l'API statistiques. Vide = détection automatique "
+            "(édition en cours, sinon la prochaine)."
+        ),
+    )
+    zeventEventName: str | None = ui(
+        "Nom affiché de l'édition",
+        "string",
+        description=("Titre de l'embed principal. Vide = nom renvoyé par l'API statistiques."),
+    )
     zeventEventStartDate: str = ui(
         "Début de l'événement",
         "string",
         description=(
             "Date/heure de début du concert pré-événement "
-            "(ISO 8601, ex: 2025-09-04T17:55:00+00:00)."
+            "(ISO 8601, ex: 2026-09-03T18:00:00+00:00)."
         ),
-        default="2025-09-04T17:55:00+00:00",
+        default="2026-09-03T18:00:00+00:00",
     )
     zeventMainEventStartDate: str = ui(
         "Début du Zevent",
         "string",
         description="Date/heure de début du Zevent principal (ISO 8601).",
-        default="2025-09-05T16:00:00+00:00",
+        default="2026-09-04T16:00:00+00:00",
     )
     zeventUpdateInterval: int = ui(
         "Intervalle de mise à jour (secondes)",
@@ -100,8 +122,12 @@ PIN_MESSAGE = bool(_cfg.get("zeventPinMessage", False))
 GUILD_ID = _enabled_servers[0] if _enabled_servers else None
 
 API_URL = "https://zevent.fr/api/"
-PLANNING_API_URL = "https://zevent-api.gdoc.fr/events"
-STREAMERS_API_URL = "https://zevent-api.gdoc.fr/streamers"
+# The planning/streamer host used until 2025 (zevent-api.gdoc.fr) is gone; the
+# planning and the LAN/remote split now come from the EvenMoreStats API, whose
+# base URL is configured per guild in the Web UI.
+STATS_API_URL = (_cfg.get("zeventStatsApiUrl") or "").rstrip("/")
+STATS_EVENT_ID = _cfg.get("zeventStatsEventId") or ""
+EVENT_NAME = _cfg.get("zeventEventName") or ""
 # Configured per guild in the Web UI — no team URL is baked into the code.
 STREAMLABS_API_URL = _cfg.get("zeventStreamlabsApiUrl", "")
 TWITCH_URL = _cfg.get("zeventTwitchUrl", "")
@@ -111,11 +137,11 @@ MILESTONE_INTERVAL = int(_cfg.get("zeventMilestoneInterval", 100000))
 
 EVENT_START_DATE = _parse_event_dt(
     _cfg.get("zeventEventStartDate", ""),
-    datetime(2025, 9, 4, 17, 55, 0, tzinfo=UTC),
+    datetime(2026, 9, 3, 18, 0, 0, tzinfo=UTC),
 )
 MAIN_EVENT_START_DATE = _parse_event_dt(
     _cfg.get("zeventMainEventStartDate", ""),
-    datetime(2025, 9, 5, 16, 0, 0, tzinfo=UTC),
+    datetime(2026, 9, 4, 16, 0, 0, tzinfo=UTC),
 )
 
 

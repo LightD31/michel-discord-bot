@@ -79,7 +79,7 @@ A modular, multi-guild Discord bot built with **interactions.py**. Michel ships 
 
 | Module | Description |
 |--------|-------------|
-| **Zevent** | Zevent 2025 charity marathon tracker — amount raised, streamer status, milestones. *(disabled by default)* |
+| **Zevent** | Zevent charity marathon tracker — amount raised, streamer status, planning, milestones. Follows the current edition automatically. *(disabled by default)* |
 | **Olympics** | Medal tracking for the Milan-Cortina 2026 Winter Olympics. *(disabled by default)* |
 | **Speedons** | Speedons speedrun charity marathon tracker. *(disabled by default)* |
 | **Streamlabs Charity** | Charity campaign amount & streamer status tracker. |

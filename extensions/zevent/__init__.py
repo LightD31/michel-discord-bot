@@ -12,11 +12,13 @@ from datetime import timedelta
 from interactions import BaseChannel, Client, Extension, Message, listen
 from twitchAPI.twitch import Twitch
 
+from features.zevent.models import Participant, Show
 from src.core import logging as logutil
 from src.discord_ext.messages import fetch_or_create_persistent_message
 
 from ._common import (
     CHANNEL_ID,
+    EVENT_NAME,
     GUILD_ID,
     MESSAGE_ID,
     PIN_MESSAGE,
@@ -43,10 +45,15 @@ class Zevent(Extension, ApiMixin, StreamsMixin, EmbedsMixin, TasksMixin, Command
         self._milestone_lock = asyncio.Lock()
         self.last_data_cache: dict | None = None
         self.last_update_time = None
-        self._streamer_cache: dict[str, str] = {}
-        self._streamer_cache_time = None
-        self.STREAMER_CACHE_TTL = timedelta(hours=24)
-        self._planning_cache: list | None = None
+        self._stats_event: dict | None = None
+        self._stats_event_time = None
+        self.STATS_EVENT_CACHE_TTL = timedelta(hours=6)
+        self._event_title: str = EVENT_NAME or "Zevent"
+        self._participant_cache: list[Participant] = []
+        self._participant_cache_time = None
+        self._location_index: dict[str, str] = {}
+        self.PARTICIPANT_CACHE_TTL = timedelta(minutes=10)
+        self._planning_cache: list[Show] | None = None
         self._planning_cache_time = None
         self.PLANNING_CACHE_TTL = timedelta(minutes=15)
 
@@ -72,6 +79,9 @@ class Zevent(Extension, ApiMixin, StreamsMixin, EmbedsMixin, TasksMixin, Command
                 config["twitch"]["twitchClientId"],
                 config["twitch"]["twitchClientSecret"],
             )
+            # Resolve the tracked edition up front so the embed title is right
+            # on the very first render, even if zevent.fr is unreachable.
+            await self._ensure_stats_event()
             logger.info("Zevent extension initialized successfully")
             self.zevent.start()
             await self.zevent()

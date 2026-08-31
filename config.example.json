@@ -317,8 +317,11 @@
                 "zeventPinMessage": false,
                 "zeventStreamlabsApiUrl": "",
                 "zeventTwitchUrl": "",
-                "zeventEventStartDate": "2025-09-04T17:55:00+00:00",
-                "zeventMainEventStartDate": "2025-09-05T16:00:00+00:00",
+                "zeventStatsApiUrl": "",
+                "zeventStatsEventId": "",
+                "zeventEventName": "",
+                "zeventEventStartDate": "2026-09-03T18:00:00+00:00",
+                "zeventMainEventStartDate": "2026-09-04T16:00:00+00:00",
                 "zeventUpdateInterval": 30,
                 "zeventMilestoneInterval": 100000
             },

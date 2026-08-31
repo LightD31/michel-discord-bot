@@ -95,7 +95,7 @@ class TasksMixin:
                         embeds.append(top_donations_embed)
 
                     if planning_data and isinstance(planning_data, list):
-                        embeds.append(await self.create_planning_embed(planning_data))
+                        embeds.append(self.create_planning_embed(planning_data))
                 else:
                     embeds = [self.create_main_embed("0 €")]
 
@@ -139,7 +139,7 @@ class TasksMixin:
                         embeds.append(top_donations_embed)
 
                     if planning_data and isinstance(planning_data, list):
-                        embeds.append(await self.create_planning_embed(planning_data))
+                        embeds.append(self.create_planning_embed(planning_data))
                 else:
                     embeds = [self.create_main_embed("Données indisponibles")]
 
@@ -202,7 +202,7 @@ class TasksMixin:
                     embeds.append(top_donations_embed)
 
                 if planning_data and isinstance(planning_data, list):
-                    embeds.append(await self.create_planning_embed(planning_data))
+                    embeds.append(self.create_planning_embed(planning_data))
 
                 embeds = self.ensure_embeds_fit_limit(embeds)
 
