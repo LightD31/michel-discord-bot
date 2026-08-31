@@ -12,6 +12,7 @@ from src.core import logging as logutil
 from ._common import (
     GOALS_OFFLINE_FACTOR,
     GOALS_PROGRESS_WEIGHT,
+    GOALS_VELOCITY_WEIGHT,
     TWITCH_URL,
     StreamerInfo,
     split_streamer_list,
@@ -279,12 +280,15 @@ class EmbedsMixin:
         the embed entirely rather than render an empty one.
         """
         live_logins = getattr(self, "_live_logins", None)
+        etas = self.goal_etas()
         pending = upcoming_goals(
             participants,
             limit=MAX_DONATION_GOALS,
             progress_weight=GOALS_PROGRESS_WEIGHT,
             offline_factor=GOALS_OFFLINE_FACTOR,
             live_logins=live_logins,
+            etas=etas,
+            velocity_weight=GOALS_VELOCITY_WEIGHT,
         )
         if not pending:
             return None
@@ -304,9 +308,11 @@ class EmbedsMixin:
             name = escape_markdown(participant.display_name)
             marker = "🔴" if is_live(participant, live_logins) else "⚫"
             remaining = max(goal.amount - participant.amount_raised, 0.0)
+            eta = etas.get(participant.twitch_login)
+            soon = f" · ~{eta:.0f} min à ce rythme" if eta is not None and eta <= 60 else ""
             entry = (
                 f"{marker} **{name}** — {escape_markdown(goal.name)}\n"
-                f"　{format_euros(goal.amount)} (reste {format_euros(remaining)})"
+                f"　{format_euros(goal.amount)} (reste {format_euros(remaining)}){soon}"
             )
             if used + len(entry) + 1 > 1024:
                 break

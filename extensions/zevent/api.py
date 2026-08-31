@@ -9,10 +9,12 @@ from features.zevent.models import Participant, Show
 from features.zevent.stats import (
     build_location_index,
     event_schedule,
+    goal_remaining,
     parse_participants,
     parse_shows,
     select_event,
 )
+from features.zevent.velocity import DonationVelocity
 from src.core import logging as logutil
 from src.core.http import fetch
 
@@ -39,6 +41,7 @@ class ApiMixin:
     _participant_cache: list[Participant]
     _location_index: dict[str, str]
     _planning_cache: list[Show] | None
+    _velocity: DonationVelocity
     _event_gate: RetryGate
     _participant_gate: RetryGate
     _planning_gate: RetryGate
@@ -157,6 +160,42 @@ class ApiMixin:
         self._planning_gate.succeeded(now)
         logger.info(f"Planning cache updated with {len(shows)} shows")
         return shows
+
+    def record_donation_sample(self, live_entries: list[dict]) -> None:
+        """Feed the velocity tracker from the payload the loop already has.
+
+        ``zevent.fr`` reports a per-streamer total every refresh, so measuring
+        the rate costs no extra request — and certainly none against the
+        community stats API, whose 10-minute cache is far too coarse to notice
+        a goal being pushed over.
+        """
+        amounts: dict[str, float] = {}
+        for entry in live_entries:
+            login = str(entry.get("twitch") or "").lower()
+            if not login:
+                continue
+            amount = self._safe_get_data(entry, ["donationAmount", "number"], 0) or 0
+            amounts[login] = float(amount)
+        if amounts:
+            self._velocity.record(amounts, datetime.now())
+
+    def goal_etas(self) -> dict[str, float]:
+        """Minutes to each participant's next goal at its current rate.
+
+        The remaining amount comes from the stats API (the same figure the
+        goals are defined against) while the rate is measured on ``zevent.fr``
+        samples. Mixing them is deliberate: a constant offset between the two
+        sources cancels out in a difference, so the rate stays sound even if
+        the absolute totals disagree slightly.
+        """
+        etas: dict[str, float] = {}
+        for participant in self._participant_cache:
+            if participant.next_goal is None:
+                continue
+            eta = self._velocity.eta_minutes(participant.twitch_login, goal_remaining(participant))
+            if eta is not None:
+                etas[participant.twitch_login] = eta
+        return etas
 
     def _validate_api_data(self, data: Any, data_type: str) -> bool:
         try:

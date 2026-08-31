@@ -14,6 +14,7 @@ from twitchAPI.twitch import Twitch
 
 from features.zevent.backoff import RetryGate
 from features.zevent.models import Participant, Show
+from features.zevent.velocity import DonationVelocity
 from src.core import logging as logutil
 from src.discord_ext.messages import fetch_or_create_persistent_message
 
@@ -68,6 +69,10 @@ class Zevent(Extension, ApiMixin, StreamsMixin, EmbedsMixin, TasksMixin, Command
         self._participant_cache: list[Participant] = []
         self._location_index: dict[str, str] = {}
         self._participant_gate = RetryGate(timedelta(minutes=10))
+        # Measured from the zevent.fr payload the refresh loop already pulls,
+        # so a goal being pushed over is visible without touching the
+        # community stats API any harder.
+        self._velocity = DonationVelocity()
         self._planning_cache: list[Show] | None = None
         # The schedule barely moves during the event; 15 minutes was needless.
         self._planning_gate = RetryGate(timedelta(minutes=30))
