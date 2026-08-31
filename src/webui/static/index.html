@@ -3301,6 +3301,7 @@
                 case 'number':
                     html += `<input type="number" class="form-input" data-field="${key}" data-type="number"
                         value="${hasValue ? value : (field.default ?? '')}"
+                        ${field.step != null ? `step="${field.step}"` : ''}
                         placeholder="${field.default != null ? 'Défaut: ' + field.default : ''}">`;
                     break;
 

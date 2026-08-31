@@ -10,6 +10,8 @@ from features.zevent.stats import upcoming_goals, upcoming_shows
 from src.core import logging as logutil
 
 from ._common import (
+    GOALS_OFFLINE_FACTOR,
+    GOALS_PROGRESS_WEIGHT,
     TWITCH_URL,
     StreamerInfo,
     split_streamer_list,
@@ -276,7 +278,12 @@ class EmbedsMixin:
         Returns ``None`` when nobody has a pending goal, so the caller can drop
         the embed entirely rather than render an empty one.
         """
-        pending = upcoming_goals(participants, limit=MAX_DONATION_GOALS)
+        pending = upcoming_goals(
+            participants,
+            limit=MAX_DONATION_GOALS,
+            progress_weight=GOALS_PROGRESS_WEIGHT,
+            offline_factor=GOALS_OFFLINE_FACTOR,
+        )
         if not pending:
             return None
 

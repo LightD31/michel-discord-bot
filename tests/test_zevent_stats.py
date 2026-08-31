@@ -10,6 +10,7 @@ from features.zevent.stats import (
     ONLINE,
     build_location_index,
     event_schedule,
+    goal_score,
     location_bucket,
     parse_datetime,
     parse_participants,
@@ -301,14 +302,17 @@ def test_parse_goal_rejects_unusable_entries() -> None:
     assert one({"name": "   ", "amount": 100}) is None
 
 
-def test_upcoming_goals_puts_live_streamers_first_then_closest() -> None:
+def test_upcoming_goals_ranks_on_score_not_live_status() -> None:
+    """Being live is a display marker, not a ranking key.
+
+    Aducine is live but has raised 50 € against an 8 000 € goal (0.6%);
+    Alderiate is offline at 1 250 € of 2 000 € (63%), so it leads.
+    """
     participants = parse_participants(OVERVIEW_SAMPLE)
     ranked = upcoming_goals(participants)
 
-    # Aducine is live (gap 8000 - 50 = 7950); Alderiate is offline with a
-    # smaller gap (2000 - 1250.50 = 749.50) but still sorts after.
-    assert [p.twitch_login for p in ranked] == ["aducine", "alderiate"]
-    assert upcoming_goals(participants, limit=1)[0].twitch_login == "aducine"
+    assert [p.twitch_login for p in ranked] == ["alderiate", "aducine"]
+    assert upcoming_goals(participants, limit=1)[0].twitch_login == "alderiate"
 
 
 def test_upcoming_goals_is_empty_without_goals() -> None:
@@ -357,3 +361,152 @@ def test_upcoming_goals_ranking_is_deterministic_on_ties() -> None:
 
     assert [p.display_name for p in upcoming_goals(forward)] == ["alice", "Zoe"]
     assert [p.display_name for p in upcoming_goals(backward)] == ["alice", "Zoe"]
+
+
+# ── goal ranking ─────────────────────────────────────────────────────
+#
+# Rows below are real entries from the ZEvent 2025 payload
+# (/events/{2025}/donation_goals/overview), trimmed to the fields the parser
+# reads. They cover the case the first implementation got wrong: ranking by
+# absolute remaining gap put Kalaxee (1 € raised, 5 € goal) above every
+# headline streamer, because a small gap and a small streamer are the same
+# thing under that metric.
+
+
+def _entry(name, raised, goal, live=False, loc="lan"):  # noqa: FBT002
+    return {
+        "name": name,
+        "location": loc,
+        "live": live,
+        "amount_raised": raised,  # centimes, as the API reports
+        "next_donation_goal": {"name": f"objectif {name}", "amount": goal},
+        "socials": {"twitch": {"id": name.lower(), "login": name.lower()}},
+    }
+
+
+ZEVENT_2025_SAMPLE = [
+    _entry("Kalaxee", 100, 500, loc="remote"),  # 1 € raised, 5 € goal, 20%
+    _entry("lastbaroudeur", 100, 10_000, loc="remote"),  # 1 € raised, 100 € goal, 1%
+    _entry("Clemovitch", 42_085_200, 45_000_000),  # 420 852 € raised, 94%
+    _entry("AntoineDaniel", 121_883_800, 200_000_000),  # 1 218 838 € raised, 61%
+    _entry("ZeratoR", 115_421_200, 1_000_000_000),  # 1 154 212 € raised, 12%
+    _entry("MoMaN", 4_798_100, 5_000_000),  # 47 981 € raised, 96%
+]
+
+
+def test_tiny_streamers_no_longer_lead_the_ranking() -> None:
+    """The regression: a 1 €-raised channel outranking every headline name."""
+    ranked = upcoming_goals(parse_participants(ZEVENT_2025_SAMPLE), limit=3)
+    names = [p.display_name for p in ranked]
+
+    assert "Kalaxee" not in names
+    assert "lastbaroudeur" not in names
+    assert names[0] == "Clemovitch"  # 94% of a 450 000 € goal
+
+
+def test_progress_weight_slides_between_prominence_and_imminence() -> None:
+    participants = parse_participants(ZEVENT_2025_SAMPLE)
+
+    # weight 0 drops the progress term entirely: biggest fundraiser wins even
+    # though it is only 61% of the way there.
+    assert upcoming_goals(participants, progress_weight=0.0)[0].display_name == "AntoineDaniel"
+
+    # weight 1 balances the two: Clemovitch (94% of 450 000 €) leads.
+    assert upcoming_goals(participants, progress_weight=1.0)[0].display_name == "Clemovitch"
+
+    # A high weight favours whoever is nearest their goal — MoMaN at 96%,
+    # despite raising a tenth of what Clemovitch did.
+    assert upcoming_goals(participants, progress_weight=8.0)[0].display_name == "MoMaN"
+
+
+def test_a_huge_but_distant_goal_does_not_lead() -> None:
+    """ZeratoR raised the second-most but sits at 12% of a 10 M € goal."""
+    ranked = upcoming_goals(parse_participants(ZEVENT_2025_SAMPLE))
+    assert ranked[0].display_name != "ZeratoR"
+
+
+def test_negative_weight_is_clamped_not_inverted() -> None:
+    participants = parse_participants(ZEVENT_2025_SAMPLE)
+    assert [p.display_name for p in upcoming_goals(participants, progress_weight=-5.0)] == [
+        p.display_name for p in upcoming_goals(participants, progress_weight=0.0)
+    ]
+
+
+def test_before_the_event_the_biggest_goal_leads() -> None:
+    """Every amount is zero pre-event, so scores tie and goal size decides.
+
+    Without that tiebreak the ordering fell back to alphabetical, which is how
+    a list of 1 € joke openers ended up in the embed.
+    """
+    pre_event = [
+        _entry("ZZZ_big", 0, 10_000_000),  # 100 000 € pledge
+        _entry("aaa_small", 0, 100),  # 1 € opener, alphabetically first
+        _entry("mmm_mid", 0, 100_000),  # 1 000 €
+    ]
+    participants = parse_participants(pre_event)
+    assert all(p.amount_raised == 0 for p in participants)
+    assert all(goal_score(p) == 0.0 for p in participants)
+
+    assert [p.display_name for p in upcoming_goals(participants)] == [
+        "ZZZ_big",
+        "mmm_mid",
+        "aaa_small",
+    ]
+
+
+def test_goal_score_is_zero_without_a_goal_amount() -> None:
+    (p,) = parse_participants([_entry("x", 5_000, 0)])
+    assert goal_score(p) == 0.0
+
+
+# ── online status ────────────────────────────────────────────────────
+
+
+def test_being_live_breaks_a_tie_between_equal_goals() -> None:
+    """Presence is a factor, not an override."""
+    pair = [
+        _entry("offline_one", 10_000, 20_000, live=False),
+        _entry("live_one", 10_000, 20_000, live=True),
+    ]
+    ranked = upcoming_goals(parse_participants(pair))
+    assert [p.display_name for p in ranked] == ["live_one", "offline_one"]
+
+
+def test_presence_does_not_override_a_far_better_goal() -> None:
+    """The bug the first version had: live-first put a 0.6% goal on top."""
+    mixed = [
+        # live, but barely started: 50 € of an 8 000 € goal
+        _entry("live_barely_started", 5_000, 800_000, live=True),
+        # offline, but nearly there: 420 852 € of a 450 000 € goal
+        _entry("offline_nearly_there", 42_085_200, 45_000_000, live=False),
+    ]
+    ranked = upcoming_goals(parse_participants(mixed))
+    assert ranked[0].display_name == "offline_nearly_there"
+
+
+def test_offline_factor_bounds() -> None:
+    mixed = parse_participants(
+        [
+            _entry("offline_big", 42_085_200, 45_000_000, live=False),
+            _entry("live_small", 1_000, 2_000, live=True),
+        ]
+    )
+    # 1.0 ignores the stream status: the big offline goal still wins.
+    assert upcoming_goals(mixed, offline_factor=1.0)[0].display_name == "offline_big"
+    # 0.0 zeroes every offline score, so any live streamer comes first.
+    assert upcoming_goals(mixed, offline_factor=0.0)[0].display_name == "live_small"
+    # Out-of-range values are clamped rather than inverting the ranking.
+    assert [p.display_name for p in upcoming_goals(mixed, offline_factor=5.0)] == [
+        p.display_name for p in upcoming_goals(mixed, offline_factor=1.0)
+    ]
+    assert [p.display_name for p in upcoming_goals(mixed, offline_factor=-5.0)] == [
+        p.display_name for p in upcoming_goals(mixed, offline_factor=0.0)
+    ]
+
+
+def test_offline_factor_is_neutral_when_nobody_is_live() -> None:
+    """A uniform factor must not reshuffle an all-offline field."""
+    participants = parse_participants(ZEVENT_2025_SAMPLE)
+    assert not any(p.live for p in participants)
+    baseline = [p.display_name for p in upcoming_goals(participants, offline_factor=1.0)]
+    assert [p.display_name for p in upcoming_goals(participants, offline_factor=0.3)] == baseline

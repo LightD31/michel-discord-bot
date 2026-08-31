@@ -4,6 +4,7 @@ import os
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
+from features.zevent.stats import DEFAULT_OFFLINE_FACTOR, DEFAULT_PROGRESS_WEIGHT
 from src.core import logging as logutil
 from src.core.config import load_config
 from src.webui.schemas import (
@@ -99,6 +100,28 @@ class ZeventConfig(SchemaBase):
         description="Fréquence de mise à jour du message en secondes. Nécessite un redémarrage.",
         default=30,
     )
+    zeventGoalsProgressWeight: float = ui(
+        "Poids de la progression (donation goals)",
+        "number",
+        default=1.0,
+        step=0.1,
+        description=(
+            "Arbitre le classement des « Prochains donation goals » entre notoriété "
+            "et imminence. 0 = uniquement les plus gros collecteurs ; 1 = équilibré ; "
+            "au-delà, priorité croissante aux objectifs sur le point d'être atteints."
+        ),
+    )
+    zeventGoalsOfflineFactor: float = ui(
+        "Pénalité hors ligne (donation goals)",
+        "number",
+        default=DEFAULT_OFFLINE_FACTOR,
+        step=0.1,
+        description=(
+            "Multiplie le score des streamers hors ligne dans « Prochains donation "
+            "goals ». 1 = ignorer le statut du live ; 0 = faire passer tous les "
+            "streamers en direct devant."
+        ),
+    )
     zeventMilestoneInterval: int = ui(
         "Intervalle des paliers (dons)",
         "number",
@@ -143,6 +166,34 @@ TWITCH_URL = _cfg.get("zeventTwitchUrl", "")
 
 UPDATE_INTERVAL = int(_cfg.get("zeventUpdateInterval", 30))
 MILESTONE_INTERVAL = int(_cfg.get("zeventMilestoneInterval", 100000))
+
+
+def _parse_weight(value: object, default: float, name: str, maximum: float | None = None) -> float:
+    """Read one goals-ranking knob, falling back on an unusable setting."""
+    try:
+        weight = float(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return default
+    if weight < 0:
+        logger.warning(f"Zevent: {name} négatif ({weight}), 0 utilisé.")
+        return 0.0
+    if maximum is not None and weight > maximum:
+        logger.warning(f"Zevent: {name} au-delà de {maximum} ({weight}), {maximum} utilisé.")
+        return maximum
+    return weight
+
+
+GOALS_PROGRESS_WEIGHT = _parse_weight(
+    _cfg.get("zeventGoalsProgressWeight", DEFAULT_PROGRESS_WEIGHT),
+    DEFAULT_PROGRESS_WEIGHT,
+    "poids de progression",
+)
+GOALS_OFFLINE_FACTOR = _parse_weight(
+    _cfg.get("zeventGoalsOfflineFactor", DEFAULT_OFFLINE_FACTOR),
+    DEFAULT_OFFLINE_FACTOR,
+    "pénalité hors ligne",
+    maximum=1.0,
+)
 
 # Set only to pin the countdown by hand; otherwise the dates come from the
 # stats API's event schedule (`schedule.start` / `schedule_raising.start`).
