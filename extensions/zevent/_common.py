@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from features.zevent.stats import (
+    DEFAULT_GOALS_COUNT,
     DEFAULT_OFFLINE_FACTOR,
     DEFAULT_PROGRESS_WEIGHT,
     DEFAULT_VELOCITY_WEIGHT,
@@ -126,6 +127,16 @@ class ZeventConfig(SchemaBase):
             "streamers en direct devant."
         ),
     )
+    zeventGoalsCount: int = ui(
+        "Nombre de donation goals affichés",
+        "number",
+        default=DEFAULT_GOALS_COUNT,
+        description=(
+            "Combien d'objectifs afficher dans « Prochains donation goals ». "
+            "0 masque complètement l'embed. Le champ Discord étant plafonné à "
+            "1024 caractères, un nombre élevé peut être réduit à l'affichage."
+        ),
+    )
     zeventGoalsVelocityWeight: float = ui(
         "Poids de la vitesse (donation goals)",
         "number",
@@ -203,6 +214,31 @@ GOALS_PROGRESS_WEIGHT = _parse_weight(
     _cfg.get("zeventGoalsProgressWeight", DEFAULT_PROGRESS_WEIGHT),
     DEFAULT_PROGRESS_WEIGHT,
     "poids de progression",
+)
+
+
+def _parse_count(value: object, default: int, name: str, maximum: int) -> int:
+    """Read a whole-number display limit, falling back on an unusable setting."""
+    try:
+        count = int(float(value))  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return default
+    if count < 0:
+        logger.warning(f"Zevent: {name} négatif ({count}), 0 utilisé.")
+        return 0
+    if count > maximum:
+        logger.warning(f"Zevent: {name} au-delà de {maximum} ({count}), {maximum} utilisé.")
+        return maximum
+    return count
+
+
+# Discord allows 25 fields per embed; beyond that the 1024-character field cap
+# truncates anyway, so there is nothing to gain from a larger setting.
+GOALS_COUNT = _parse_count(
+    _cfg.get("zeventGoalsCount", DEFAULT_GOALS_COUNT),
+    DEFAULT_GOALS_COUNT,
+    "nombre de donation goals",
+    maximum=25,
 )
 GOALS_VELOCITY_WEIGHT = _parse_weight(
     _cfg.get("zeventGoalsVelocityWeight", DEFAULT_VELOCITY_WEIGHT),

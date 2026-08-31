@@ -8,8 +8,10 @@ from interactions import Embed, TimestampStyles, utils
 from features.zevent.models import Participant, Show
 from features.zevent.stats import is_live, upcoming_goals, upcoming_shows
 from src.core import logging as logutil
+from src.core.text import take_within_budget
 
 from ._common import (
+    GOALS_COUNT,
     GOALS_OFFLINE_FACTOR,
     GOALS_PROGRESS_WEIGHT,
     GOALS_VELOCITY_WEIGHT,
@@ -21,8 +23,9 @@ from ._common import (
 # Cap on planning entries so a full-event listing can't crowd out the rest of
 # the message (Discord allows 25 fields / 6000 chars across all embeds).
 MAX_PLANNING_ENTRIES = 6
-# Same reasoning for the donation-goal leaderboard.
-MAX_DONATION_GOALS = 5
+# Discord's ceiling is 6000 characters across every embed in a message; the
+# margin absorbs the parts the size estimate cannot see.
+EMBED_TOTAL_BUDGET = 5800
 
 logger = logutil.init_logger(os.path.basename(__file__))
 
@@ -67,7 +70,9 @@ class EmbedsMixin:
     def calculate_total_embeds_size(self, embeds: list[Embed]) -> int:
         return sum(self.calculate_embed_size(embed) for embed in embeds)
 
-    def ensure_embeds_fit_limit(self, embeds: list[Embed], max_size: int = 5800) -> list[Embed]:
+    def ensure_embeds_fit_limit(
+        self, embeds: list[Embed], max_size: int = EMBED_TOTAL_BUDGET
+    ) -> list[Embed]:
         """Trim trailing fields / embeds so the message stays under Discord's limit."""
         total_size = self.calculate_total_embeds_size(embeds)
 
@@ -157,6 +162,12 @@ class EmbedsMixin:
 
         return embed
 
+    def remaining_embed_budget(
+        self, embeds: list[Embed], max_size: int = EMBED_TOTAL_BUDGET
+    ) -> int:
+        """Characters still free once ``embeds`` are accounted for."""
+        return max(max_size - self.calculate_total_embeds_size(embeds), 0)
+
     def create_location_embed(
         self,
         title: str,
@@ -165,22 +176,9 @@ class EmbedsMixin:
         finished=False,
         viewers_count: str | None = None,
         total_count: int | None = None,
+        max_chars: int | None = None,
     ) -> Embed:
-        displayed_count = len(streams)
-        actual_count = total_count if total_count is not None else displayed_count
-
-        if "distance" in title and actual_count > displayed_count and not finished:
-            embed_title = f"Top {displayed_count}/{actual_count} {title}"
-        else:
-            embed_title = f"Les {actual_count} {title}"
-
-        embed = Embed(title=embed_title, color=0x59AF37)
-
-        if viewers_count and not finished and self._is_event_started():
-            embed.description = f"Viewers: {viewers_count}"
-
-        embed.set_footer("Source: zevent.fr / Twitch ❤️")
-        embed.timestamp = utils.timestamp_converter(datetime.now())
+        actual_count = total_count if total_count is not None else len(streams)
 
         if finished:
             online_streamers = list(streams.values())
@@ -197,21 +195,43 @@ class EmbedsMixin:
             offline_streamers = [s for s in streams.values() if not s.is_online]
             status = "Streamers en ligne"
 
+        def render(streamer: StreamerInfo) -> str:
+            if withlink:
+                return f"[{streamer.display_name}](https://www.twitch.tv/{streamer.twitch_name})"
+            return streamer.display_name.replace("_", "\\_")
+
+        # Spend the budget on the groups in order, so a tight message keeps the
+        # live streamers and drops offline ones rather than truncating blindly.
+        groups: list[tuple[str, list[str]]] = []
+        displayed_count = 0
+        budget = max_chars if max_chars is not None else None
         for stream_status, streamers in [
             (status, online_streamers),
             ("Hors-ligne", offline_streamers),
         ]:
             if not streamers:
                 continue
+            names = [render(s) for s in streamers]
+            if budget is not None:
+                names, spent = take_within_budget(names, budget)
+                budget -= spent
+            displayed_count += len(names)
+            if names:
+                groups.append((stream_status, names))
 
-            streamer_list = ", ".join(
-                f"[{s.display_name}](https://www.twitch.tv/{s.twitch_name})"
-                if withlink
-                else s.display_name.replace("_", "\\_")
-                for s in streamers
-            )
+        if "distance" in title and actual_count > displayed_count and not finished:
+            embed_title = f"Top {displayed_count}/{actual_count} {title}"
+        else:
+            embed_title = f"Les {actual_count} {title}"
 
-            chunks = split_streamer_list(streamer_list, max_length=1024)
+        embed = Embed(title=embed_title, color=0x59AF37)
+        if viewers_count and not finished and self._is_event_started():
+            embed.description = f"Viewers: {viewers_count}"
+        embed.set_footer("Source: zevent.fr / Twitch ❤️")
+        embed.timestamp = utils.timestamp_converter(datetime.now())
+
+        for stream_status, names in groups:
+            chunks = split_streamer_list(", ".join(names), max_length=1024)
             for i, chunk in enumerate(chunks, 1):
                 field_name = (
                     stream_status if len(chunks) == 1 else f"{stream_status} {i}/{len(chunks)}"
@@ -281,9 +301,12 @@ class EmbedsMixin:
         """
         live_logins = getattr(self, "_live_logins", None)
         etas = self.goal_etas()
+        if GOALS_COUNT <= 0:
+            return None
+
         pending = upcoming_goals(
             participants,
-            limit=MAX_DONATION_GOALS,
+            limit=GOALS_COUNT,
             progress_weight=GOALS_PROGRESS_WEIGHT,
             offline_factor=GOALS_OFFLINE_FACTOR,
             live_logins=live_logins,

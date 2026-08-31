@@ -47,6 +47,30 @@ def format_number(num: float) -> str:
 # ---------------------------------------------------------------------------
 
 
+def take_within_budget(
+    entries: list[str], budget: int, separator: str = ", "
+) -> tuple[list[str], int]:
+    """Take entries in order while their joined length fits ``budget``.
+
+    Discord caps an embed field at 1024 characters and a whole message's
+    embeds at 6000, so a list of arbitrary length has to be cut somewhere.
+    Cutting by entry count is the wrong axis — it either wastes the budget or
+    overruns it depending on how long the names happen to be.
+
+    Returns the entries kept and the characters they cost, counting the
+    separators that will join them.
+    """
+    kept: list[str] = []
+    used = 0
+    for entry in entries:
+        cost = len(entry) + (len(separator) if kept else 0)
+        if used + cost > budget:
+            break
+        kept.append(entry)
+        used += cost
+    return kept, used
+
+
 def escape_md(text: str) -> str:
     """Escape Markdown special characters."""
     return re.sub(r"([_*\[\]()~`>#+\-=|{}.!])", r"\\\1", text)
