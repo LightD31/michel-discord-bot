@@ -190,6 +190,7 @@ def upcoming_shows(shows: list[Show], now: datetime, limit: int | None = None) -
     return pending[:limit] if limit is not None else pending
 
 
+DEFAULT_GOALS_COUNT = 5
 DEFAULT_PROGRESS_WEIGHT = 1.0
 DEFAULT_OFFLINE_FACTOR = 0.5
 DEFAULT_VELOCITY_WEIGHT = 2.0

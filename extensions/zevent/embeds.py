@@ -11,6 +11,7 @@ from src.core import logging as logutil
 from src.core.text import take_within_budget
 
 from ._common import (
+    GOALS_COUNT,
     GOALS_OFFLINE_FACTOR,
     GOALS_PROGRESS_WEIGHT,
     GOALS_VELOCITY_WEIGHT,
@@ -25,11 +26,6 @@ MAX_PLANNING_ENTRIES = 6
 # Discord's ceiling is 6000 characters across every embed in a message; the
 # margin absorbs the parts the size estimate cannot see.
 EMBED_TOTAL_BUDGET = 5800
-# Below this there is no room for a useful roster, so don't strand the embed
-# with two names — let it render empty and say so.
-MIN_ROSTER_BUDGET = 120
-# Same reasoning for the donation-goal leaderboard.
-MAX_DONATION_GOALS = 5
 
 logger = logutil.init_logger(os.path.basename(__file__))
 
@@ -305,9 +301,12 @@ class EmbedsMixin:
         """
         live_logins = getattr(self, "_live_logins", None)
         etas = self.goal_etas()
+        if GOALS_COUNT <= 0:
+            return None
+
         pending = upcoming_goals(
             participants,
-            limit=MAX_DONATION_GOALS,
+            limit=GOALS_COUNT,
             progress_weight=GOALS_PROGRESS_WEIGHT,
             offline_factor=GOALS_OFFLINE_FACTOR,
             live_logins=live_logins,

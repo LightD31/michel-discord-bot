@@ -121,3 +121,23 @@ def test_remaining_budget_never_goes_negative() -> None:
         "participants à distance", _roster(400), withlink=False, total_count=400
     )
     assert builder.remaining_embed_budget([huge] * 5) == 0
+
+
+# ── the donation-goals count is a display limit, not a hard-coded 5 ──
+
+
+def test_goals_count_is_clamped_and_survives_junk() -> None:
+    """The parser guards the config value the dashboard writes."""
+    from extensions.zevent._common import _parse_count
+
+    assert _parse_count(8, 5, "n", 25) == 8
+    assert _parse_count("8", 5, "n", 25) == 8  # the UI writes numbers as JSON
+    assert _parse_count(8.0, 5, "n", 25) == 8
+    # Out of range is clamped rather than inverted or unbounded.
+    assert _parse_count(-3, 5, "n", 25) == 0
+    assert _parse_count(999, 5, "n", 25) == 25
+    # Unusable values fall back to the default rather than crashing startup.
+    assert _parse_count(None, 5, "n", 25) == 5
+    assert _parse_count("huit", 5, "n", 25) == 5
+    # Zero is meaningful: it hides the embed.
+    assert _parse_count(0, 5, "n", 25) == 0
