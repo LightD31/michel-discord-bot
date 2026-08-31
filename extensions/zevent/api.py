@@ -7,6 +7,7 @@ from typing import Any
 from features.zevent.models import Participant, Show
 from features.zevent.stats import (
     build_location_index,
+    event_schedule,
     parse_participants,
     parse_shows,
     select_event,
@@ -16,8 +17,8 @@ from src.core.http import fetch
 
 from ._common import (
     EVENT_NAME,
-    EVENT_START_DATE,
-    MAIN_EVENT_START_DATE,
+    EVENT_START_OVERRIDE,
+    MAIN_EVENT_START_OVERRIDE,
     STATS_API_URL,
     STATS_EVENT_ID,
 )
@@ -33,6 +34,8 @@ class ApiMixin:
     _stats_event: dict | None
     _stats_event_time: datetime | None
     _event_title: str
+    _event_start: datetime
+    _main_event_start: datetime
     _participant_cache: list[Participant]
     _participant_cache_time: datetime | None
     _location_index: dict[str, str]
@@ -44,7 +47,7 @@ class ApiMixin:
 
     def _get_planning_day(self, now_date: date) -> str:
         """Day to request planning for: pin to event start until it's reached."""
-        zevent_start = EVENT_START_DATE.date()
+        zevent_start = self._event_start.date()
         target = zevent_start if now_date < zevent_start else now_date
         return target.strftime("%Y-%m-%d")
 
@@ -80,6 +83,16 @@ class ApiMixin:
         self._stats_event_time = datetime.now()
         if not EVENT_NAME:
             self._event_title = str(event.get("name") or "") or self._event_title
+
+        api_start, api_raising_start = event_schedule(event)
+        if EVENT_START_OVERRIDE is None and api_start is not None:
+            self._event_start = api_start
+        if MAIN_EVENT_START_OVERRIDE is None and api_raising_start is not None:
+            self._main_event_start = api_raising_start
+        logger.info(
+            f"Zevent dates: événement {self._event_start.isoformat()}, "
+            f"marathon {self._main_event_start.isoformat()}"
+        )
         return event
 
     async def _stats_event_url(self, path: str) -> str | None:
@@ -186,10 +199,10 @@ class ApiMixin:
             return default
 
     def _is_event_started(self) -> bool:
-        return datetime.now(UTC) >= EVENT_START_DATE
+        return datetime.now(UTC) >= self._event_start
 
     def _is_main_event_started(self) -> bool:
-        return datetime.now(UTC) >= MAIN_EVENT_START_DATE
+        return datetime.now(UTC) >= self._main_event_start
 
     async def _is_zevent_channel_live(self) -> bool:
         """True when ``twitch.tv/zevent`` currently has a live stream."""

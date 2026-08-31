@@ -1,6 +1,5 @@
-"""Twitch API helpers: categorise streamers, count viewers, sort by followers."""
+"""Twitch API helpers: categorise streamers by location and count viewers."""
 
-import inspect
 import os
 
 from features.zevent.stats import LAN, ONLINE, resolve_location
@@ -38,21 +37,22 @@ class StreamsMixin:
 
             batch_size = 100
             live_streamers = set()
-            user_ids = {}
 
             for i in range(0, len(twitch_usernames), batch_size):
                 batch = twitch_usernames[i : i + batch_size]
                 async for stream in self.twitch.get_streams(user_login=batch):
                     live_streamers.add(stream.user_login.lower())
-                    user_ids[stream.user_login.lower()] = stream.user_id
 
             for stream in streams:
                 location = resolve_location(stream, self._location_index)
                 twitch_name = stream.get("twitch", "").lower()
                 display_name = stream.get("display", "Unknown")
                 is_online = twitch_name in live_streamers
+                donation_amount = self._safe_get_data(stream, ["donationAmount", "number"], 0) or 0
 
-                streamer_info = StreamerInfo(display_name, twitch_name, is_online, location)
+                streamer_info = StreamerInfo(
+                    display_name, twitch_name, is_online, location, float(donation_amount)
+                )
                 categorized[location][display_name] = streamer_info
                 categorized["_totals"][location] += 1
 
@@ -61,13 +61,21 @@ class StreamsMixin:
                 live_online = [s for s in online_streamers if s.is_online]
 
                 if len(live_online) < 100:
-                    offline_online = [s for s in online_streamers if not s.is_online]
-                    offline_with_followers = await self._get_streamers_with_followers(
-                        offline_online, user_ids
+                    # Fill the remaining slots with the biggest fundraisers.
+                    # This used to rank by Twitch follower count, which cost two
+                    # sequential API calls per offline streamer (~400 per refresh
+                    # for a full remote roster) — more than the refresh interval
+                    # allows. The donation total already rides along in the
+                    # zevent.fr payload and is the more meaningful order here.
+                    # Name breaks ties so the selection stays stable across
+                    # refreshes: before the event nobody has raised anything,
+                    # and API ordering alone would churn the embed.
+                    offline_online = sorted(
+                        (s for s in online_streamers if not s.is_online),
+                        key=lambda s: (-s.donation_amount, s.display_name.lower()),
                     )
                     needed = 100 - len(live_online)
-                    top_offline = offline_with_followers[:needed]
-                    selected_streamers = live_online + top_offline
+                    selected_streamers = live_online + offline_online[:needed]
                 else:
                     selected_streamers = live_online[:100]
 
@@ -77,56 +85,6 @@ class StreamsMixin:
             logger.error(f"Error categorizing streams: {e}")
 
         return categorized
-
-    async def _follower_count(self, broadcaster_id: str) -> int:
-        """Return the follower count for ``broadcaster_id``.
-
-        twitchAPI 4.x returns a ``ChannelFollowersResult`` with ``.total``; older
-        versions returned an async generator with no cheap total. Handle both.
-        """
-        call = self.twitch.get_channel_followers(broadcaster_id=broadcaster_id, first=1)
-        if inspect.isasyncgen(call):
-            count = 0
-            try:
-                async for _ in call:
-                    count += 1
-            except Exception:
-                pass
-            return count
-        result = await call
-        return int(getattr(result, "total", 0) or 0)
-
-    async def _get_streamers_with_followers(
-        self, streamers: list[StreamerInfo], user_ids: dict[str, str]
-    ) -> list[StreamerInfo]:
-        streamers_with_counts = []
-
-        try:
-            for streamer in streamers:
-                try:
-                    user_id = user_ids.get(streamer.twitch_name.lower())
-                    if user_id:
-                        follower_count = await self._follower_count(user_id)
-                        streamers_with_counts.append((streamer, follower_count))
-                    else:
-                        user_list = [
-                            user
-                            async for user in self.twitch.get_users(logins=[streamer.twitch_name])
-                        ]
-                        if user_list:
-                            follower_count = await self._follower_count(user_list[0].id)
-                            streamers_with_counts.append((streamer, follower_count))
-                        else:
-                            streamers_with_counts.append((streamer, 0))
-                except Exception as e:
-                    logger.debug(f"Failed to get followers for {streamer.twitch_name}: {e}")
-                    streamers_with_counts.append((streamer, 0))
-
-            streamers_with_counts.sort(key=lambda x: x[1], reverse=True)
-            return [streamer for streamer, _ in streamers_with_counts]
-        except Exception as e:
-            logger.error(f"Error getting streamers with followers: {e}")
-            return streamers
 
     async def get_total_viewers_from_twitch(self, streams: list[dict]) -> str:
         """Cumulative viewer count across all live streams, formatted with spaces."""

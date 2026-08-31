@@ -76,20 +76,22 @@ class ZeventConfig(SchemaBase):
         "string",
         description=("Titre de l'embed principal. Vide = nom renvoyé par l'API statistiques."),
     )
-    zeventEventStartDate: str = ui(
+    zeventEventStartDate: str | None = ui(
         "Début de l'événement",
         "string",
         description=(
-            "Date/heure de début du concert pré-événement "
-            "(ISO 8601, ex: 2026-09-03T18:00:00+00:00)."
+            "Forcer la date/heure de début du concert pré-événement "
+            "(ISO 8601, ex: 2026-09-03T18:00:00+00:00). "
+            "Vide = déduit de l'API statistiques."
         ),
-        default="2026-09-03T18:00:00+00:00",
     )
-    zeventMainEventStartDate: str = ui(
+    zeventMainEventStartDate: str | None = ui(
         "Début du Zevent",
         "string",
-        description="Date/heure de début du Zevent principal (ISO 8601).",
-        default="2026-09-04T16:00:00+00:00",
+        description=(
+            "Forcer la date/heure de début du Zevent principal (ISO 8601). "
+            "Vide = déduit de l'API statistiques."
+        ),
     )
     zeventUpdateInterval: int = ui(
         "Intervalle de mise à jour (secondes)",
@@ -109,11 +111,16 @@ config, _module_config, _enabled_servers = load_config("moduleZevent")
 _cfg = _module_config.get(_enabled_servers[0], {}) if _enabled_servers else {}
 
 
-def _parse_event_dt(iso_str: str, default: datetime) -> datetime:
+def _parse_event_dt(iso_str: str) -> datetime | None:
+    """Parse a configured override, or ``None`` when unset/unparseable."""
+    if not iso_str:
+        return None
     try:
-        return datetime.fromisoformat(iso_str) if iso_str else default
+        parsed = datetime.fromisoformat(iso_str)
     except ValueError:
-        return default
+        logger.warning(f"Zevent: date de configuration illisible ({iso_str!r}), ignorée.")
+        return None
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
 
 
 CHANNEL_ID = int(_cfg.get("zeventChannelId") or 0) or None
@@ -135,14 +142,15 @@ TWITCH_URL = _cfg.get("zeventTwitchUrl", "")
 UPDATE_INTERVAL = int(_cfg.get("zeventUpdateInterval", 30))
 MILESTONE_INTERVAL = int(_cfg.get("zeventMilestoneInterval", 100000))
 
-EVENT_START_DATE = _parse_event_dt(
-    _cfg.get("zeventEventStartDate", ""),
-    datetime(2026, 9, 3, 18, 0, 0, tzinfo=UTC),
-)
-MAIN_EVENT_START_DATE = _parse_event_dt(
-    _cfg.get("zeventMainEventStartDate", ""),
-    datetime(2026, 9, 4, 16, 0, 0, tzinfo=UTC),
-)
+# Set only to pin the countdown by hand; otherwise the dates come from the
+# stats API's event schedule (`schedule.start` / `schedule_raising.start`).
+EVENT_START_OVERRIDE = _parse_event_dt(_cfg.get("zeventEventStartDate") or "")
+MAIN_EVENT_START_OVERRIDE = _parse_event_dt(_cfg.get("zeventMainEventStartDate") or "")
+
+# Last resort only: no override configured *and* the stats API unreachable on a
+# cold start. Once the API answers, its schedule wins over these.
+FALLBACK_EVENT_START = datetime(2026, 9, 3, 18, 0, 0, tzinfo=UTC)
+FALLBACK_MAIN_EVENT_START = datetime(2026, 9, 4, 16, 0, 0, tzinfo=UTC)
 
 
 @dataclass
@@ -151,6 +159,8 @@ class StreamerInfo:
     twitch_name: str
     is_online: bool
     location: str
+    donation_amount: float = 0.0
+    """Euros raised, used to rank which offline streamers get a slot."""
 
 
 def split_streamer_list(streamer_list: str, max_length: int = 1024) -> list[str]:

@@ -5,13 +5,11 @@ from datetime import UTC, datetime, timedelta
 
 from interactions import Embed, TimestampStyles, utils
 
-from features.zevent.models import Show
-from features.zevent.stats import upcoming_shows
+from features.zevent.models import Participant, Show
+from features.zevent.stats import upcoming_goals, upcoming_shows
 from src.core import logging as logutil
 
 from ._common import (
-    EVENT_START_DATE,
-    MAIN_EVENT_START_DATE,
     TWITCH_URL,
     StreamerInfo,
     split_streamer_list,
@@ -20,8 +18,25 @@ from ._common import (
 # Cap on planning entries so a full-event listing can't crowd out the rest of
 # the message (Discord allows 25 fields / 6000 chars across all embeds).
 MAX_PLANNING_ENTRIES = 6
+# Same reasoning for the donation-goal leaderboard.
+MAX_DONATION_GOALS = 5
 
 logger = logutil.init_logger(os.path.basename(__file__))
+
+
+def format_euros(amount: float) -> str:
+    """Format euros the way the rest of the tracker does: spaces, no decimals."""
+    return f"{amount:,.0f} €".replace(",", " ")
+
+
+def escape_markdown(text: str) -> str:
+    """Neutralise the markdown Discord would interpret in free-text values.
+
+    Goal names are written by streamers, so they can carry any of these.
+    """
+    for char in ("\\", "*", "_", "~", "`", "|"):
+        text = text.replace(char, f"\\{char}")
+    return text
 
 
 class EmbedsMixin:
@@ -106,14 +121,14 @@ class EmbedsMixin:
         if finished:
             embed.description = f"Total récolté: {total_amount}"
         elif not self._is_event_started():
-            event_timestamp = utils.timestamp_converter(EVENT_START_DATE)
+            event_timestamp = utils.timestamp_converter(self._event_start)
             embed.description = (
                 f"🕒 Le concert pré-événement commence {event_timestamp.format(TimestampStyles.RelativeTime)}\n\n"
                 f"📅 Concert : {event_timestamp.format(TimestampStyles.LongDateTime)}\n"
-                f"📅 Zevent : {utils.timestamp_converter(MAIN_EVENT_START_DATE).format(TimestampStyles.LongDateTime)}"
+                f"📅 Zevent : {utils.timestamp_converter(self._main_event_start).format(TimestampStyles.LongDateTime)}"
             )
         elif concert_status == "concert_live":
-            main_event_timestamp = utils.timestamp_converter(MAIN_EVENT_START_DATE)
+            main_event_timestamp = utils.timestamp_converter(self._main_event_start)
             embed.description = (
                 f"🎵 **Concert en direct !** 🔴\n"
                 f"Total récolté : {total_amount}\n\n"
@@ -122,7 +137,7 @@ class EmbedsMixin:
                 f"📅 Début du marathon: {main_event_timestamp.format(TimestampStyles.LongDateTime)}"
             )
         elif not self._is_main_event_started():
-            main_event_timestamp = utils.timestamp_converter(MAIN_EVENT_START_DATE)
+            main_event_timestamp = utils.timestamp_converter(self._main_event_start)
             embed.description = (
                 f"🕒 Le Zevent commence {main_event_timestamp.format(TimestampStyles.RelativeTime)}\n\n"
                 f"📅 Début du marathon: {main_event_timestamp.format(TimestampStyles.LongDateTime)}\n\n"
@@ -255,6 +270,46 @@ class EmbedsMixin:
 
         return embed
 
+    def create_donation_goals_embed(self, participants: list[Participant]) -> Embed | None:
+        """Streamers' next donation goals, closest to being reached first.
+
+        Returns ``None`` when nobody has a pending goal, so the caller can drop
+        the embed entirely rather than render an empty one.
+        """
+        pending = upcoming_goals(participants, limit=MAX_DONATION_GOALS)
+        if not pending:
+            return None
+
+        embed = Embed(title="🎯 Prochains donation goals", color=0x59AF37)
+        embed.set_footer("Source: evenmorestats.fr ❤️")
+        embed.timestamp = utils.timestamp_converter(datetime.now())
+
+        # Build up to the 1024-char field limit a whole entry at a time; a
+        # blind slice would cut mid-line and leave dangling markdown.
+        lines: list[str] = []
+        used = 0
+        for participant in pending:
+            goal = participant.next_goal
+            if goal is None:
+                continue
+            name = escape_markdown(participant.display_name)
+            marker = "🔴" if participant.live else "⚫"
+            remaining = max(goal.amount - participant.amount_raised, 0.0)
+            entry = (
+                f"{marker} **{name}** — {escape_markdown(goal.name)}\n"
+                f"　{format_euros(goal.amount)} (reste {format_euros(remaining)})"
+            )
+            if used + len(entry) + 1 > 1024:
+                break
+            lines.append(entry)
+            used += len(entry) + 1
+
+        if not lines:
+            return None
+
+        embed.add_field(name="À venir", value="\n".join(lines), inline=False)
+        return embed
+
     def create_top_donations_embed(self, streams: list[dict]) -> Embed | None:
         """Leaderboard embed for top streamers by donation amount (top 5, gold theme)."""
         try:
@@ -312,7 +367,7 @@ class EmbedsMixin:
                 if len(leaderboard_text) <= 1000:
                     break
 
-                max_streamers = max(10, max_streamers - 5)
+                max_streamers = max(3, max_streamers - 1)
 
             embed.add_field(name="Top donations", value=leaderboard_text, inline=False)
 
