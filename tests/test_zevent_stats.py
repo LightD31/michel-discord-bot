@@ -373,7 +373,7 @@ def test_upcoming_goals_ranking_is_deterministic_on_ties() -> None:
 # thing under that metric.
 
 
-def _entry(name, raised, goal, live=False, loc="lan"):
+def _entry(name, raised, goal, live=False, loc="lan"):  # noqa: FBT002
     return {
         "name": name,
         "location": loc,
@@ -457,3 +457,56 @@ def test_before_the_event_the_biggest_goal_leads() -> None:
 def test_goal_score_is_zero_without_a_goal_amount() -> None:
     (p,) = parse_participants([_entry("x", 5_000, 0)])
     assert goal_score(p) == 0.0
+
+
+# ── online status ────────────────────────────────────────────────────
+
+
+def test_being_live_breaks_a_tie_between_equal_goals() -> None:
+    """Presence is a factor, not an override."""
+    pair = [
+        _entry("offline_one", 10_000, 20_000, live=False),
+        _entry("live_one", 10_000, 20_000, live=True),
+    ]
+    ranked = upcoming_goals(parse_participants(pair))
+    assert [p.display_name for p in ranked] == ["live_one", "offline_one"]
+
+
+def test_presence_does_not_override_a_far_better_goal() -> None:
+    """The bug the first version had: live-first put a 0.6% goal on top."""
+    mixed = [
+        # live, but barely started: 50 € of an 8 000 € goal
+        _entry("live_barely_started", 5_000, 800_000, live=True),
+        # offline, but nearly there: 420 852 € of a 450 000 € goal
+        _entry("offline_nearly_there", 42_085_200, 45_000_000, live=False),
+    ]
+    ranked = upcoming_goals(parse_participants(mixed))
+    assert ranked[0].display_name == "offline_nearly_there"
+
+
+def test_offline_factor_bounds() -> None:
+    mixed = parse_participants(
+        [
+            _entry("offline_big", 42_085_200, 45_000_000, live=False),
+            _entry("live_small", 1_000, 2_000, live=True),
+        ]
+    )
+    # 1.0 ignores the stream status: the big offline goal still wins.
+    assert upcoming_goals(mixed, offline_factor=1.0)[0].display_name == "offline_big"
+    # 0.0 zeroes every offline score, so any live streamer comes first.
+    assert upcoming_goals(mixed, offline_factor=0.0)[0].display_name == "live_small"
+    # Out-of-range values are clamped rather than inverting the ranking.
+    assert [p.display_name for p in upcoming_goals(mixed, offline_factor=5.0)] == [
+        p.display_name for p in upcoming_goals(mixed, offline_factor=1.0)
+    ]
+    assert [p.display_name for p in upcoming_goals(mixed, offline_factor=-5.0)] == [
+        p.display_name for p in upcoming_goals(mixed, offline_factor=0.0)
+    ]
+
+
+def test_offline_factor_is_neutral_when_nobody_is_live() -> None:
+    """A uniform factor must not reshuffle an all-offline field."""
+    participants = parse_participants(ZEVENT_2025_SAMPLE)
+    assert not any(p.live for p in participants)
+    baseline = [p.display_name for p in upcoming_goals(participants, offline_factor=1.0)]
+    assert [p.display_name for p in upcoming_goals(participants, offline_factor=0.3)] == baseline

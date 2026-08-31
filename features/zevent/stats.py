@@ -191,6 +191,7 @@ def upcoming_shows(shows: list[Show], now: datetime, limit: int | None = None) -
 
 
 DEFAULT_PROGRESS_WEIGHT = 1.0
+DEFAULT_OFFLINE_FACTOR = 0.5
 
 
 def goal_progress(participant: Participant) -> float:
@@ -201,29 +202,43 @@ def goal_progress(participant: Participant) -> float:
     return min(participant.amount_raised / goal.amount, 1.0)
 
 
-def goal_score(participant: Participant, progress_weight: float = DEFAULT_PROGRESS_WEIGHT) -> float:
-    """Rank a pending goal by how imminent it is *and* how big the streamer is.
+def goal_score(
+    participant: Participant,
+    progress_weight: float = DEFAULT_PROGRESS_WEIGHT,
+    offline_factor: float = DEFAULT_OFFLINE_FACTOR,
+) -> float:
+    """Rank a pending goal by imminence, streamer size, and whether it's watchable.
 
-    ``progress ** weight * log10(1 + raised)``. The log matters: donation
-    totals span roughly six orders of magnitude (1 € to over 1 M €) while
-    progress spans one, so multiplying the raw amount would let money drown
-    out imminence entirely and surface the same few names all event.
+    ``progress ** weight * log10(1 + raised) * (live ? 1 : offline_factor)``.
 
-    ``progress_weight`` slides between the two concerns — ``0`` ignores
+    The log matters: donation totals span roughly six orders of magnitude
+    (1 € to over 1 M €) while progress spans one, so multiplying the raw
+    amount would let money drown out imminence entirely and surface the same
+    few names all event.
+
+    ``progress_weight`` slides between the first two concerns — ``0`` ignores
     progress and ranks purely by amount raised, ``1`` balances them, and
     higher values increasingly favour goals about to be reached.
+
+    ``offline_factor`` demotes goals nobody can currently watch fall, without
+    letting presence override everything: an earlier version sorted live
+    streamers strictly first, which put a live channel at 0.6% of its goal
+    above an offline one at 63%. ``1`` ignores the stream status entirely,
+    ``0`` pushes every offline streamer behind the live ones.
     """
     weight = max(progress_weight, 0.0)
     progress = goal_progress(participant)
     # 0 ** 0 is 1 in Python, which is what we want at weight 0: the progress
     # term drops out and the ranking becomes pure prominence.
-    return (progress**weight) * math.log10(1 + max(participant.amount_raised, 0.0))
+    base = (progress**weight) * math.log10(1 + max(participant.amount_raised, 0.0))
+    return base * (1.0 if participant.live else min(max(offline_factor, 0.0), 1.0))
 
 
 def upcoming_goals(
     participants: list[Participant],
     limit: int | None = None,
     progress_weight: float = DEFAULT_PROGRESS_WEIGHT,
+    offline_factor: float = DEFAULT_OFFLINE_FACTOR,
 ) -> list[Participant]:
     """Participants with a pending goal, most worth watching first.
 
@@ -237,7 +252,7 @@ def upcoming_goals(
     ranked = sorted(
         with_goals,
         key=lambda p: (
-            -goal_score(p, progress_weight),
+            -goal_score(p, progress_weight, offline_factor),
             -(p.next_goal.amount if p.next_goal else 0.0),
             p.display_name.lower(),
         ),
