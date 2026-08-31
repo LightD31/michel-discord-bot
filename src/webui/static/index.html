@@ -5752,7 +5752,9 @@
                 toast(`${extPath} ${enabled ? 'activée' : 'désactivée'} dans la config, mais erreur : ${result.error}`, 'warning');
             } else {
                 const status = result?.loaded ? 'chargée' : 'déchargée';
-                toast(`${extPath} ${enabled ? 'activée' : 'désactivée'} et ${status}`, 'success');
+                const syncSuffix = commandSyncSuffix(result);
+                const syncFailed = !!(result?.commandSync && !result.commandSync.synced);
+                toast(`${extPath} ${enabled ? 'activée' : 'désactivée'} et ${status}${syncSuffix}`, syncFailed ? 'warning' : 'success');
             }
             await loadExtensions();
             await loadBotInfo();
@@ -6420,7 +6422,7 @@
     }
 
     // ── Module save/reload ────────────────────────────
-    // Custom commands are pushed to Discord right after the save; report it.
+    // Commands are pushed to Discord right after a save/reload/toggle; report it.
     function commandSyncSuffix(result) {
         if (!result?.commandSync) return '';
         return result.commandSync.synced
@@ -6801,10 +6803,12 @@
             if (result) {
                 const ok = result.reloaded?.length || 0;
                 const fail = result.failed?.length || 0;
+                const syncSuffix = commandSyncSuffix(result);
+                const syncFailed = !!(result?.commandSync && !result.commandSync.synced);
                 if (fail > 0) {
                     toast(`${ok} rechargée(s), ${fail} en erreur : ${result.failed.map(f => f.name).join(', ')}`, 'error');
                 } else {
-                    toast(`${ok} extension(s) rechargée(s) — config appliquée !`, 'success');
+                    toast(`${ok} extension(s) rechargée(s) — config appliquée !${syncSuffix}`, syncFailed ? 'warning' : 'success');
                 }
             }
         } catch (e) { /* handled by api() */ }
@@ -6813,8 +6817,10 @@
 
     async function reloadExtension(extName) {
         try {
-            await api(`/api/reload/${extName}`, { method: 'POST' });
-            toast(`${extName} rechargée — config appliquée !`, 'success');
+            const result = await api(`/api/reload/${extName}`, { method: 'POST' });
+            const syncSuffix = commandSyncSuffix(result);
+            const syncFailed = !!(result?.commandSync && !result.commandSync.synced);
+            toast(`${extName} rechargée — config appliquée !${syncSuffix}`, syncFailed ? 'warning' : 'success');
         } catch (e) { /* handled by api() */ }
     }
 

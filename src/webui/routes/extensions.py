@@ -7,6 +7,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from src.core import logging as logutil
+from src.webui.botops import ExtensionAction, run_extension_op, sync_commands
 from src.webui.context import WebUIContext
 
 logger = logutil.init_logger("webui.routes.extensions")
@@ -19,6 +20,23 @@ class ExtensionToggle(BaseModel):
 def create_router(ctx: WebUIContext) -> APIRouter:
     router = APIRouter()
 
+    async def _sync_all_commands() -> str | None:
+        """Push the reloaded command set to Discord. Returns an error message, or None.
+
+        A failed sync doesn't invalidate the reload itself, so it's reported
+        alongside the result rather than raised.
+        """
+        try:
+            await sync_commands(ctx)
+        except TimeoutError:
+            logger.error("Command sync timed out after an extension change")
+            return "Synchronisation des commandes trop longue"
+        except Exception as e:
+            logger.error("Command sync failed after an extension change: %s", e)
+            return f"Échec de la synchronisation ({type(e).__name__}). Voir les logs."
+        logger.info("Synced slash commands after an extension change")
+        return None
+
     @router.post("/api/reload")
     async def api_reload_all(request: Request):
         """Reload all extensions to apply config changes."""
@@ -29,13 +47,26 @@ def create_router(ctx: WebUIContext) -> APIRouter:
         results: dict[str, list] = {"reloaded": [], "failed": []}
         for ext_path in ctx.get_extension_module_paths():
             try:
-                ctx.bot.reload_extension(ext_path)
+                await run_extension_op(ctx, "reload", ext_path)
                 results["reloaded"].append(ext_path)
                 logger.info(f"Reloaded extension: {ext_path}")
             except Exception as e:
                 results["failed"].append({"name": ext_path, "error": str(e)})
                 logger.error(f"Failed to reload {ext_path}: {e}")
-        return JSONResponse(results)
+
+        # One sync for the whole pass, and only once every extension is back:
+        # the client deletes commands it no longer knows about, so syncing
+        # around a failed reload would drop that extension's commands from
+        # Discord.
+        sync_error = None
+        if results["failed"]:
+            sync_error = "Synchronisation ignorée : au moins une extension n'a pas rechargé"
+            logger.warning("Skipping command sync: %d extension(s) failed", len(results["failed"]))
+        else:
+            sync_error = await _sync_all_commands()
+        return JSONResponse(
+            {**results, "commandSync": {"synced": not sync_error, "error": sync_error}}
+        )
 
     @router.post("/api/reload/{ext_name:path}")
     async def api_reload_one(request: Request, ext_name: str):
@@ -44,12 +75,21 @@ def create_router(ctx: WebUIContext) -> APIRouter:
         if not ctx.bot:
             raise HTTPException(status_code=503, detail="Bot non disponible")
         try:
-            ctx.bot.reload_extension(ext_name)
+            await run_extension_op(ctx, "reload", ext_name)
             logger.info(f"Reloaded extension: {ext_name}")
-            return JSONResponse({"status": "ok", "extension": ext_name})
+        except HTTPException:
+            raise
         except Exception as e:
             logger.error(f"Failed to reload {ext_name}: {e}")
             raise HTTPException(status_code=500, detail=str(e)) from e
+        sync_error = await _sync_all_commands()
+        return JSONResponse(
+            {
+                "status": "ok",
+                "extension": ext_name,
+                "commandSync": {"synced": not sync_error, "error": sync_error},
+            }
+        )
 
     @router.get("/api/extensions")
     async def api_list_extensions(request: Request):
@@ -108,21 +148,22 @@ def create_router(ctx: WebUIContext) -> APIRouter:
 
         loaded = ext_name in set(ctx.get_extension_module_paths()) if ctx.bot else False
         error = None
+        command_sync = None  # stays None when no sync was attempted
         if ctx.bot:
+            action: ExtensionAction = "load" if body.enabled else "unload"
             try:
-                if body.enabled:
-                    ctx.bot.load_extension(ext_name)
-                    loaded = True
-                    logger.info(f"Loaded extension: {ext_name}")
-                else:
-                    ctx.bot.unload_extension(ext_name)
-                    loaded = False
-                    logger.info(f"Unloaded extension: {ext_name}")
+                await run_extension_op(ctx, action, ext_name)
+                loaded = body.enabled
+                logger.info("%sed extension: %s", action.capitalize(), ext_name)
             except Exception as e:
-                action = "load" if body.enabled else "unload"
                 error = f"Échec ({type(e).__name__}). Voir les logs."
                 logger.error(f"Failed to {action} {ext_name}: {e}")
                 loaded = ext_name in set(ctx.get_extension_module_paths())
+            else:
+                # Toggling an extension adds or removes its commands, so this
+                # is the one reload path that always needs Discord told.
+                sync_error = await _sync_all_commands()
+                command_sync = {"synced": not sync_error, "error": sync_error}
 
         return JSONResponse(
             {
@@ -131,6 +172,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
                 "enabled": body.enabled,
                 "loaded": loaded,
                 "error": error,
+                "commandSync": command_sync,
             }
         )
 
