@@ -86,29 +86,20 @@ class StreamsMixin:
                 categorized["_totals"][location] += 1
 
             if ONLINE in categorized:
-                online_streamers = list(categorized[ONLINE].values())
-                live_online = [s for s in online_streamers if s.is_online]
-
-                if len(live_online) < 100:
-                    # Fill the remaining slots with the biggest fundraisers.
-                    # This used to rank by Twitch follower count, which cost two
-                    # sequential API calls per offline streamer (~400 per refresh
-                    # for a full remote roster) — more than the refresh interval
-                    # allows. The donation total already rides along in the
-                    # zevent.fr payload and is the more meaningful order here.
-                    # Name breaks ties so the selection stays stable across
-                    # refreshes: before the event nobody has raised anything,
-                    # and API ordering alone would churn the embed.
-                    offline_online = sorted(
-                        (s for s in online_streamers if not s.is_online),
-                        key=lambda s: (-s.donation_amount, s.display_name.lower()),
-                    )
-                    needed = 100 - len(live_online)
-                    selected_streamers = live_online + offline_online[:needed]
-                else:
-                    selected_streamers = live_online[:100]
-
-                categorized[ONLINE] = {s.display_name: s for s in selected_streamers}
+                # Order rather than truncate: the embed keeps as many as the
+                # message's character budget allows, so whatever is dropped
+                # should be the least interesting. Live streamers first, then
+                # the biggest fundraisers — the donation total rides along in
+                # the zevent.fr payload, unlike the Twitch follower count this
+                # once used, which cost two sequential API calls per offline
+                # streamer. Name breaks ties so the selection stays stable
+                # across refreshes: before the event nobody has raised
+                # anything, and API ordering alone would churn the embed.
+                ordered = sorted(
+                    categorized[ONLINE].values(),
+                    key=lambda s: (not s.is_online, -s.donation_amount, s.display_name.lower()),
+                )
+                categorized[ONLINE] = {s.display_name: s for s in ordered}
 
         except Exception as e:
             logger.error(f"Error categorizing streams: {e}")

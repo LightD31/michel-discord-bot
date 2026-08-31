@@ -24,6 +24,23 @@ async def _no_streamlabs_data() -> None:
 class TasksMixin:
     """Periodic Zevent refresh that rebuilds and edits the pinned message."""
 
+    def _remote_roster_embed(self, streams: dict, viewers: str | None, others: list) -> Embed:
+        """Build the remote-participants embed with the leftover character budget.
+
+        It is built last and inserted back into place: the roster is the one
+        part of the message that can absorb any amount of space, so it takes
+        what the fixed-size embeds leave rather than being capped at an
+        arbitrary number of names.
+        """
+        return self.create_location_embed(
+            "participants à distance",
+            streams["Online"],
+            withlink=False,
+            viewers_count=viewers,
+            total_count=self._get_stream_total_count(streams, "Online"),
+            max_chars=self.remaining_embed_budget(others),
+        )
+
     @Task.create(IntervalTrigger(seconds=UPDATE_INTERVAL))
     async def zevent(self):
         total_amount = "Données indisponibles"
@@ -81,13 +98,6 @@ class TasksMixin:
                             viewers_count=None,
                             total_count=self._get_stream_total_count(streams, "LAN"),
                         ),
-                        self.create_location_embed(
-                            "participants à distance",
-                            streams["Online"],
-                            withlink=False,
-                            viewers_count=None,
-                            total_count=self._get_stream_total_count(streams, "Online"),
-                        ),
                     ]
 
                     top_donations_embed = self.create_top_donations_embed(
@@ -102,6 +112,8 @@ class TasksMixin:
                     goals_embed = self.create_donation_goals_embed(self._participant_cache)
                     if goals_embed:
                         embeds.append(goals_embed)
+
+                    embeds.insert(2, self._remote_roster_embed(streams, None, embeds))
                 else:
                     embeds = [self.create_main_embed("0 €")]
 
@@ -129,13 +141,6 @@ class TasksMixin:
                             viewers_count=None,
                             total_count=self._get_stream_total_count(streams, "LAN"),
                         ),
-                        self.create_location_embed(
-                            "participants à distance",
-                            streams["Online"],
-                            withlink=False,
-                            viewers_count=None,
-                            total_count=self._get_stream_total_count(streams, "Online"),
-                        ),
                     ]
 
                     top_donations_embed = self.create_top_donations_embed(
@@ -150,6 +155,8 @@ class TasksMixin:
                     goals_embed = self.create_donation_goals_embed(self._participant_cache)
                     if goals_embed:
                         embeds.append(goals_embed)
+
+                    embeds.insert(2, self._remote_roster_embed(streams, None, embeds))
                 else:
                     embeds = [self.create_main_embed("Données indisponibles")]
 
@@ -196,13 +203,6 @@ class TasksMixin:
                         viewers_count=viewers_data["LAN"],
                         total_count=self._get_stream_total_count(streams, "LAN"),
                     ),
-                    self.create_location_embed(
-                        "participants à distance",
-                        streams["Online"],
-                        withlink=False,
-                        viewers_count=viewers_data["Online"],
-                        total_count=self._get_stream_total_count(streams, "Online"),
-                    ),
                 ]
 
                 top_donations_embed = self.create_top_donations_embed(
@@ -217,6 +217,8 @@ class TasksMixin:
                 goals_embed = self.create_donation_goals_embed(self._participant_cache)
                 if goals_embed:
                     embeds.append(goals_embed)
+
+                embeds.insert(2, self._remote_roster_embed(streams, viewers_data["Online"], embeds))
 
                 embeds = self.ensure_embeds_fit_limit(embeds)
 
