@@ -13,6 +13,7 @@ from interactions import BaseChannel, Client, Extension, Message, listen
 from twitchAPI.twitch import Twitch
 
 from features.zevent.backoff import RetryGate
+from features.zevent.history import DonationCurve
 from features.zevent.models import Participant, Show
 from features.zevent.velocity import DonationVelocity
 from src.core import logging as logutil
@@ -72,6 +73,11 @@ class Zevent(Extension, ApiMixin, StreamsMixin, EmbedsMixin, TasksMixin, Command
         # Measured from the zevent.fr payload the refresh loop already pulls,
         # so a goal being pushed over is visible without touching the
         # community stats API any harder.
+        self._stats_events: list[dict] = []
+        # A finished edition's curve never changes; refresh it rarely, and let
+        # the gate widen that further if the cache is unreachable.
+        self._reference_curve: DonationCurve | None = None
+        self._reference_gate = RetryGate(timedelta(hours=12))
         self._velocity = DonationVelocity()
         self._planning_cache: list[Show] | None = None
         # The schedule barely moves during the event; 15 minutes was needless.

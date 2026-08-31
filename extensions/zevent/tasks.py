@@ -2,10 +2,11 @@
 
 import asyncio
 import os
-from datetime import datetime
+from datetime import UTC, datetime
 
 from interactions import Embed, File, IntervalTrigger, Task, utils
 
+from features.zevent.history import compare_milestone
 from src.core import logging as logutil
 from src.core.http import fetch
 from src.discord_ext.messages import edit_message_if_changed
@@ -236,6 +237,21 @@ class TasksMixin:
             logger.error(f"Unexpected error in zevent task: {e}")
             await self.send_simplified_update(total_amount)
 
+    async def _milestone_comparison(self, milestone: float) -> str | None:
+        """Place this milestone against the same point of a past edition.
+
+        Never lets the comparison break the announcement: a milestone reached
+        is worth saying on its own, and the extra line is a bonus.
+        """
+        try:
+            curve = await self._ensure_reference_curve()
+            if curve is None:
+                return None
+            return compare_milestone(curve, milestone, datetime.now(UTC), self._main_event_start)
+        except Exception as e:
+            logger.error(f"Comparaison de palier indisponible : {e}")
+            return None
+
     async def check_and_send_milestone(self, total_amount: float):
         # Serialize the read-modify-write on last_milestone so overlapping
         # task runs can't both pass the comparison and announce twice.
@@ -247,6 +263,9 @@ class TasksMixin:
                     milestone_message = f"🎉 Nouveau palier atteint : {current_milestone:,} € récoltés ! 🎉".replace(
                         ",", " "
                     )
+                    comparison = await self._milestone_comparison(current_milestone)
+                    if comparison:
+                        milestone_message += f"\n{comparison}"
                     if self.channel and hasattr(self.channel, "send"):
                         await self.channel.send(milestone_message)
                     else:

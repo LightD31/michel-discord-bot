@@ -127,6 +127,23 @@ class ZeventConfig(SchemaBase):
             "streamers en direct devant."
         ),
     )
+    zeventMetricsBaseUrl: str | None = ui(
+        "URL du cache de métriques",
+        "url",
+        description=(
+            "Base des fichiers de métriques par édition (sans slash final), qui "
+            "servent la comparaison avec les années précédentes dans les paliers. "
+            "Vide = aucune comparaison affichée."
+        ),
+    )
+    zeventCompareEventId: str | None = ui(
+        "Édition de référence",
+        "string",
+        description=(
+            "UUID de l'édition à laquelle se comparer. Vide = détection automatique "
+            "(la précédente édition de la même série qui publie des métriques)."
+        ),
+    )
     zeventGoalsCount: int = ui(
         "Nombre de donation goals affichés",
         "number",
@@ -186,6 +203,10 @@ API_URL = "https://zevent.fr/api/"
 # so that is what the embeds credit.
 STATS_API_URL = (_cfg.get("zeventStatsApiUrl") or "").rstrip("/")
 STATS_EVENT_ID = _cfg.get("zeventStatsEventId") or ""
+# Served from the project's object-storage cache, not its API host, and static
+# once an edition is over — so reading it costs the community project nothing.
+METRICS_BASE_URL = (_cfg.get("zeventMetricsBaseUrl") or "").rstrip("/")
+COMPARE_EVENT_ID = _cfg.get("zeventCompareEventId") or ""
 EVENT_NAME = _cfg.get("zeventEventName") or ""
 # Configured per guild in the Web UI — no team URL is baked into the code.
 STREAMLABS_API_URL = _cfg.get("zeventStreamlabsApiUrl", "")
