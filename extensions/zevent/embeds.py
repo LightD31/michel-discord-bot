@@ -223,7 +223,7 @@ class EmbedsMixin:
     def create_planning_embed(self, shows: list[Show]) -> Embed:
         """Upcoming planning entries, rendered from the stats API's ``shows``."""
         embed = Embed(title="Prochains évènements", color=0x59AF37)
-        embed.set_footer("Source: evenmorestats.fr ❤️")
+        embed.set_footer("Source: zevent.gdoc.fr ❤️")
         embed.timestamp = utils.timestamp_converter(datetime.now())
 
         pending = upcoming_shows(shows, datetime.now(UTC), limit=MAX_PLANNING_ENTRIES)
@@ -281,7 +281,7 @@ class EmbedsMixin:
             return None
 
         embed = Embed(title="🎯 Prochains donation goals", color=0x59AF37)
-        embed.set_footer("Source: evenmorestats.fr ❤️")
+        embed.set_footer("Source: zevent.gdoc.fr ❤️")
         embed.timestamp = utils.timestamp_converter(datetime.now())
 
         # Build up to the 1024-char field limit a whole entry at a time; a

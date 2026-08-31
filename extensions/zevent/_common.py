@@ -129,9 +129,11 @@ PIN_MESSAGE = bool(_cfg.get("zeventPinMessage", False))
 GUILD_ID = _enabled_servers[0] if _enabled_servers else None
 
 API_URL = "https://zevent.fr/api/"
-# The planning/streamer host used until 2025 (zevent-api.gdoc.fr) is gone; the
-# planning and the LAN/remote split now come from the EvenMoreStats API, whose
-# base URL is configured per guild in the Web UI.
+# Planning and the LAN/remote split still come from the same community project
+# (zevent.gdoc.fr) the tracker has always used; only its API moved hosts, from
+# zevent-api.gdoc.fr (now 404) to an EvenMoreStats-hosted backend. That base URL
+# is configured per guild in the Web UI — the site itself is the data's source,
+# so that is what the embeds credit.
 STATS_API_URL = (_cfg.get("zeventStatsApiUrl") or "").rstrip("/")
 STATS_EVENT_ID = _cfg.get("zeventStatsEventId") or ""
 EVENT_NAME = _cfg.get("zeventEventName") or ""
