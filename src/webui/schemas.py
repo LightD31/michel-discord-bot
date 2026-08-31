@@ -46,11 +46,16 @@ def ui(
     variables: str = "",
     key_label: str = "",
     value_label: str = "",
+    step: float | None = None,
 ) -> Any:
     """Build a Pydantic ``Field(...)`` carrying UI metadata in ``json_schema_extra['ui']``.
 
     ``default=_UNSET`` (the sentinel) means "no default declared" — the UI
     omits the ``default`` key and the Pydantic field defaults to ``None``.
+
+    ``step`` applies to ``number`` fields: without it the browser assumes a
+    step of 1 and marks a decimal entry invalid, so any field meant to accept
+    fractions must declare one.
     """
     meta: dict[str, Any] = {"label": label, "type": type, "required": required}
     if description:
@@ -69,6 +74,8 @@ def ui(
         meta["hidden"] = True
     if channel_field:
         meta["channelField"] = channel_field
+    if step is not None:
+        meta["step"] = step
 
     field_default = default if default is not _UNSET else None
     return Field(default=field_default, json_schema_extra={"ui": meta})

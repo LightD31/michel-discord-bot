@@ -323,6 +323,7 @@
                 "zeventEventStartDate": "",
                 "zeventMainEventStartDate": "",
                 "zeventUpdateInterval": 30,
+                "zeventGoalsProgressWeight": 1.0,
                 "zeventMilestoneInterval": 100000
             },
             "moduleZunivers": {

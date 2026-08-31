@@ -4,6 +4,7 @@ import os
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
+from features.zevent.stats import DEFAULT_PROGRESS_WEIGHT
 from src.core import logging as logutil
 from src.core.config import load_config
 from src.webui.schemas import (
@@ -99,6 +100,17 @@ class ZeventConfig(SchemaBase):
         description="Fréquence de mise à jour du message en secondes. Nécessite un redémarrage.",
         default=30,
     )
+    zeventGoalsProgressWeight: float = ui(
+        "Poids de la progression (donation goals)",
+        "number",
+        default=1.0,
+        step=0.1,
+        description=(
+            "Arbitre le classement des « Prochains donation goals » entre notoriété "
+            "et imminence. 0 = uniquement les plus gros collecteurs ; 1 = équilibré ; "
+            "au-delà, priorité croissante aux objectifs sur le point d'être atteints."
+        ),
+    )
     zeventMilestoneInterval: int = ui(
         "Intervalle des paliers (dons)",
         "number",
@@ -143,6 +155,23 @@ TWITCH_URL = _cfg.get("zeventTwitchUrl", "")
 
 UPDATE_INTERVAL = int(_cfg.get("zeventUpdateInterval", 30))
 MILESTONE_INTERVAL = int(_cfg.get("zeventMilestoneInterval", 100000))
+
+
+def _parse_weight(value: object) -> float:
+    """Read the goals ranking weight, falling back on an unusable setting."""
+    try:
+        weight = float(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return DEFAULT_PROGRESS_WEIGHT
+    if weight < 0:
+        logger.warning(f"Zevent: poids de progression négatif ({weight}), 0 utilisé.")
+        return 0.0
+    return weight
+
+
+GOALS_PROGRESS_WEIGHT = _parse_weight(
+    _cfg.get("zeventGoalsProgressWeight", DEFAULT_PROGRESS_WEIGHT)
+)
 
 # Set only to pin the countdown by hand; otherwise the dates come from the
 # stats API's event schedule (`schedule.start` / `schedule_raising.start`).
