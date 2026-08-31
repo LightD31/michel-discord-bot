@@ -4,14 +4,16 @@ Shapes come from the community project's metrics cache
 (``metrics/{event}/global.json``): a cumulative donation curve sampled every
 ten minutes, in euros, while the file's top-level total is in centimes.
 
-Editions are compared on **day of the event and time of day**, not elapsed
-seconds — donations follow the clock, and an edition whose recording started
-at a different hour must not drag every comparison out of step.
+Editions are compared on **day of the marathon and time of day**, in Paris
+time — donations follow the audience's clock. The files are rolling windows
+rather than event recordings, so a curve rarely starts at zero and never
+reaches back to its own pre-event concert; both facts are guarded here.
 """
 
 from datetime import UTC, datetime
 
 from features.zevent.history import (
+    DISPLAY_TZ,
     align,
     amount_at,
     comparable_editions,
@@ -27,6 +29,8 @@ from features.zevent.history import (
 HOUR_MS = 3_600_000
 # 2025-09-05 16:00 UTC — a Friday, when the real 2025 curve begins.
 REF_ORIGIN = int(datetime(2025, 9, 5, 16, 0, tzinfo=UTC).timestamp() * 1000)
+# That edition's schedule_raising.start, eight hours before its curve does.
+REF_RAISING = datetime(2025, 9, 5, 8, 0, tzinfo=UTC)
 # 2026-09-04 16:00 UTC — a Friday, the real 2026 marathon start.
 THIS_START = datetime(2026, 9, 4, 16, 0, tzinfo=UTC)
 
@@ -47,8 +51,15 @@ def _payload(values: list[float], *, origin: int = REF_ORIGIN, step: int = HOUR_
     }
 
 
-CURVE = parse_metrics(_payload([0, 1_000_000, 4_000_000, 9_000_000, 16_000_000]), "2025")
+CURVE = parse_metrics(
+    _payload([0, 1_000_000, 4_000_000, 9_000_000, 16_000_000]), "2025", REF_RAISING
+)
 assert CURVE is not None
+
+
+def test_the_tz_database_is_available() -> None:
+    """Guarded explicitly: without tzdata every displayed hour is silently UTC."""
+    assert str(DISPLAY_TZ) == "Europe/Paris"
 
 
 # ── parsing ──────────────────────────────────────────────────────────
@@ -59,6 +70,22 @@ def test_parses_into_timestamps_and_euros() -> None:
     assert CURVE.start == datetime(2025, 9, 5, 16, 0, tzinfo=UTC)
     assert CURVE.points[1] == (datetime(2025, 9, 5, 17, 0, tzinfo=UTC), 1_000_000.0)
     assert CURVE.total == 16_000_000.0
+
+
+def test_the_anchor_is_the_edition_start_not_the_curve_start() -> None:
+    """The files are rolling windows; the curve's first sample means nothing."""
+    assert CURVE.anchor == REF_RAISING
+    assert CURVE.anchor != CURVE.start
+    # Without an edition start the curve's own beginning is the fallback.
+    bare = parse_metrics(_payload([0, 1_000_000]), "x")
+    assert bare is not None
+    assert bare.anchor == bare.start
+
+
+def test_the_floor_is_what_the_curve_already_held_when_it_began() -> None:
+    floored = parse_metrics(_payload([164_452, 1_000_000, 4_000_000]), "2025", REF_RAISING)
+    assert floored is not None
+    assert floored.floor == 164_452.0
 
 
 def test_unsorted_labels_are_ordered_before_anything_reads_the_start() -> None:
@@ -91,27 +118,36 @@ def test_unusable_payloads_disable_the_comparison_rather_than_raising() -> None:
 # ── calendar alignment ───────────────────────────────────────────────
 
 
-def test_align_maps_the_same_event_day_and_time_of_day() -> None:
-    # Day 0 at 20:00 in 2026 is day 0 at 20:00 in 2025 — Friday to Friday.
-    assert align(datetime(2026, 9, 4, 20, 0, tzinfo=UTC), THIS_START, CURVE.start) == datetime(
-        2025, 9, 5, 20, 0, tzinfo=UTC
-    )
+def _paris(y: int, m: int, d: int, h: int, mi: int = 0) -> datetime:
+    return datetime(y, m, d, h, mi, tzinfo=DISPLAY_TZ)
+
+
+def test_align_maps_the_same_marathon_day_and_time_of_day() -> None:
+    # Day 0 at 22:00 Paris in 2026 is day 0 at 22:00 Paris in 2025 — Friday to
+    # Friday, since both marathons open on a Friday.
+    assert align(_paris(2026, 9, 4, 22), THIS_START, CURVE.anchor) == _paris(2025, 9, 5, 22)
     # Day 2 at 18:30 — Sunday to Sunday.
-    assert align(datetime(2026, 9, 6, 18, 30, tzinfo=UTC), THIS_START, CURVE.start) == datetime(
-        2025, 9, 7, 18, 30, tzinfo=UTC
-    )
+    assert align(_paris(2026, 9, 6, 18, 30), THIS_START, CURVE.anchor) == _paris(2025, 9, 7, 18, 30)
 
 
-def test_align_keeps_the_time_of_day_when_editions_start_at_different_hours() -> None:
+def test_align_keeps_the_time_of_day_when_editions_open_at_different_hours() -> None:
     """The point of aligning on the clock rather than on elapsed time.
 
-    An edition whose recording began at noon must still map 21:00 to 21:00,
-    not to 21:00 shifted by the four-hour difference in start times.
+    2025 opened at 08:00 UTC and 2026 at 16:00; 22:00 must still map to 22:00
+    rather than being shifted by that eight-hour difference.
     """
-    noon_start = datetime(2025, 9, 5, 12, 0, tzinfo=UTC)
-    assert align(datetime(2026, 9, 5, 21, 0, tzinfo=UTC), THIS_START, noon_start) == datetime(
-        2025, 9, 6, 21, 0, tzinfo=UTC
-    )
+    assert align(_paris(2026, 9, 4, 22), THIS_START, CURVE.anchor) == _paris(2025, 9, 5, 22)
+
+
+def test_day_numbering_is_cut_at_paris_midnight_on_both_sides() -> None:
+    """Both editions split at the same local midnight, so the mapping holds.
+
+    22:30 UTC on the 5th is 00:30 Paris on the 6th — marathon day 2 by Paris
+    dates, since the marathon opened on the 4th. It maps to day 2 of 2025,
+    whose marathon opened on the 5th.
+    """
+    late = datetime(2026, 9, 5, 22, 30, tzinfo=UTC)
+    assert align(late, THIS_START, CURVE.anchor) == _paris(2025, 9, 7, 0, 30)
 
 
 # ── lookups ──────────────────────────────────────────────────────────
@@ -143,7 +179,7 @@ def test_being_ahead_of_the_reference_edition() -> None:
     line = compare_milestone(CURVE, 4_000_000, datetime(2026, 9, 4, 17, 0, tzinfo=UTC), THIS_START)
     assert line is not None
     assert "d'avance sur 2025" in line
-    assert "vendredi 5 septembre à 18 h 00" in line
+    assert "vendredi à 20 h 00" in line  # 18:00 UTC rendered in Paris time
 
 
 def test_being_behind_the_reference_edition() -> None:
@@ -165,6 +201,32 @@ def test_beating_the_reference_edition_outright() -> None:
     assert "16 000 000 €" in line
 
 
+def test_nothing_is_claimed_about_the_pre_event_concert() -> None:
+    """Remote streamers now go live before the marathon opens.
+
+    Milestones can therefore land on the Thursday. The published curves are
+    rolling windows that never reach back to their own pre-event period, so
+    there is no counterpart to compare against and the line is omitted.
+    """
+    thursday = datetime(2026, 9, 3, 20, 0, tzinfo=UTC)
+    assert compare_milestone(CURVE, 500_000, thursday, THIS_START) is None
+
+
+def test_milestones_below_the_curve_floor_are_not_guessed() -> None:
+    """2025's curve opens at 164 452 €, having missed everything before it.
+
+    Reporting its first sample as the crossing time would overstate how long
+    that edition took, making this year look better than it is.
+    """
+    floored = parse_metrics(_payload([164_452, 1_000_000, 4_000_000]), "2025", REF_RAISING)
+    assert floored is not None
+    during = datetime(2026, 9, 4, 20, 0, tzinfo=UTC)
+
+    assert compare_milestone(floored, 100_000, during, THIS_START) is None
+    # At or above the floor it can be dated, so the line comes back.
+    assert compare_milestone(floored, 1_000_000, during, THIS_START) is not None
+
+
 def test_no_comparison_without_data_or_before_the_marathon() -> None:
     assert (
         compare_milestone(None, 1_000_000, datetime(2026, 9, 4, 20, 0, tzinfo=UTC), THIS_START)
@@ -180,11 +242,13 @@ def test_no_comparison_without_data_or_before_the_marathon() -> None:
 # ── formatting ───────────────────────────────────────────────────────
 
 
-def test_format_moment_names_the_day_in_french() -> None:
-    assert format_moment(datetime(2025, 9, 7, 18, 10, tzinfo=UTC)) == (
-        "dimanche 7 septembre à 18 h 10"
-    )
-    assert format_moment(datetime(2025, 9, 5, 8, 5, tzinfo=UTC)) == "vendredi 5 septembre à 8 h 05"
+def test_format_moment_gives_the_weekday_and_hour_in_paris_time() -> None:
+    # 18:10 UTC is 20:10 in Paris; the calendar date is deliberately dropped —
+    # it belongs to a past edition and would invite the wrong comparison.
+    assert format_moment(datetime(2025, 9, 7, 18, 10, tzinfo=UTC)) == "dimanche à 20 h 10"
+    assert format_moment(datetime(2025, 9, 5, 8, 5, tzinfo=UTC)) == "vendredi à 10 h 05"
+    # Crossing midnight westward: 23:30 UTC Saturday is 01:30 Paris Sunday.
+    assert format_moment(datetime(2025, 9, 6, 23, 30, tzinfo=UTC)) == "dimanche à 1 h 30"
 
 
 def test_format_duration_is_coarse_on_purpose() -> None:

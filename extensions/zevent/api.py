@@ -16,6 +16,7 @@ from features.zevent.stats import (
     build_location_index,
     event_schedule,
     goal_remaining,
+    parse_datetime,
     parse_participants,
     parse_shows,
     select_event,
@@ -252,7 +253,15 @@ class ApiMixin:
                 logger.debug(f"No metrics for {event.get('name')}: {e}")
                 continue
 
-            curve = parse_metrics(payload, edition_label(str(event.get("name") or "")))
+            # Anchor on that edition's own fundraising start, not on the
+            # curve's first sample: these files are rolling windows.
+            schedule = event.get("schedule_raising") or event.get("schedule") or {}
+            reference_start = (
+                parse_datetime(schedule.get("start")) if isinstance(schedule, dict) else None
+            )
+            curve = parse_metrics(
+                payload, edition_label(str(event.get("name") or "")), reference_start
+            )
             if curve is not None:
                 self._reference_curve = curve
                 self._reference_gate.succeeded(now)
