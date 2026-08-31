@@ -9,6 +9,7 @@ from pydantic import BaseModel
 from features.customcommands import MODULE_KEY as CUSTOM_COMMANDS_MODULE
 from src.core import logging as logutil
 from src.core.config import load_config as bot_load_config
+from src.webui.botops import run_extension_op, sync_commands
 from src.webui.context import WebUIContext, build_module_to_extension_map
 from src.webui.secrets import mask_server_config, restore_section
 
@@ -24,15 +25,23 @@ class ConfigUpdate(BaseModel):
     config: dict
 
 
-def _try_reload_extension_for_module(ctx: WebUIContext, module_name: str) -> dict:
+async def _try_reload_extension_for_module(ctx: WebUIContext, module_name: str) -> dict:
     """Auto-reload the extension that owns ``module_name`` after a config save.
+
+    The reload runs on the bot loop (see ``src.webui.botops``) — doing it inline
+    on the Web UI loop mutates the client from the wrong thread and leaves the
+    library's command sync stranded on a loop that owns none of the bot's
+    connections.
+
+    No command sync here: a config save touches nothing Discord knows about,
+    except for custom commands, which the caller syncs for its own guild.
 
     Returns ``{"reloaded": str|None, "error": str|None, "skipped": bool}``.
     """
     SKIP_MODULES = {"discord2name", "moduleEmbedManager"}
     if module_name in SKIP_MODULES:
         return {"reloaded": None, "error": None, "skipped": True}
-    if not ctx.bot:
+    if not ctx.bot or not ctx.bot_loop_alive():
         return {"reloaded": None, "error": "Bot non disponible", "skipped": False}
     mapping = build_module_to_extension_map()
     ext_path = mapping.get(module_name)
@@ -43,7 +52,7 @@ def _try_reload_extension_for_module(ctx: WebUIContext, module_name: str) -> dic
             "skipped": False,
         }
     try:
-        ctx.bot.reload_extension(ext_path)
+        await run_extension_op(ctx, "reload", ext_path)
         logger.info(f"Auto-reloaded {ext_path} after config change for {module_name}")
         return {"reloaded": ext_path, "error": None, "skipped": False}
     except Exception as e:
@@ -55,28 +64,18 @@ def _try_reload_extension_for_module(ctx: WebUIContext, module_name: str) -> dic
         }
 
 
-# A guild-scoped sync is a couple of Discord API calls; give it room without
-# leaving the dashboard hanging if the bot loop is wedged.
-_COMMAND_SYNC_TIMEOUT_SECONDS = 30.0
-
-
 async def _sync_guild_commands(ctx: WebUIContext, server_id: str) -> dict:
     """Push this guild's slash commands to Discord after a custom-command edit.
 
     The extension reload above re-registers the commands on the client; Discord
-    only learns about them once the scope is synced. Runs on the bot loop —
-    ``synchronise_interactions`` uses the bot's HTTP client.
+    only learns about them once the scope is synced.
 
     Returns ``{"synced": bool, "error": str|None}``.
     """
     if not ctx.bot or not ctx.bot_loop_alive():
         return {"synced": False, "error": "Bot non disponible"}
-    assert ctx.bot_loop is not None
     try:
-        future = asyncio.run_coroutine_threadsafe(
-            ctx.bot.synchronise_interactions(scopes=[int(server_id)]), ctx.bot_loop
-        )
-        await asyncio.wait_for(asyncio.wrap_future(future), timeout=_COMMAND_SYNC_TIMEOUT_SECONDS)
+        await sync_commands(ctx, scopes=[int(server_id)])
     except TimeoutError:
         logger.error("Command sync timed out for server %s", server_id)
         return {"synced": False, "error": "Synchronisation des commandes trop longue"}
@@ -360,7 +359,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
             session.username,
             session.user_id,
         )
-        reload_result = _try_reload_extension_for_module(ctx, module_name)
+        reload_result = await _try_reload_extension_for_module(ctx, module_name)
         response: dict = {"status": "ok", "reload": reload_result}
         if module_name == CUSTOM_COMMANDS_MODULE:
             response["commandSync"] = await _sync_guild_commands(ctx, server_id)
@@ -390,7 +389,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
             session.username,
             session.user_id,
         )
-        reload_result = _try_reload_extension_for_module(ctx, module_name)
+        reload_result = await _try_reload_extension_for_module(ctx, module_name)
         response: dict = {"status": "ok", "enabled": body.enabled, "reload": reload_result}
         if module_name == CUSTOM_COMMANDS_MODULE:
             response["commandSync"] = await _sync_guild_commands(ctx, server_id)

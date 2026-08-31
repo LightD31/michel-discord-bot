@@ -12,6 +12,7 @@ focused modules (``routes/`` and ``sse/``) instead of one 1 000-line file.
 from __future__ import annotations
 
 import asyncio
+import inspect
 import os
 from dataclasses import dataclass
 from typing import Any
@@ -46,6 +47,30 @@ class WebUIContext:
             raise HTTPException(status_code=503, detail="Bot non disponible")
         assert self.bot_loop is not None
         return self.bot_loop
+
+    async def run_on_bot_loop(self, func, *args, timeout: float, **kwargs) -> Any:
+        """Run *func* on the bot's event loop and await its result from here.
+
+        The Web UI serves requests on its own uvicorn loop in a daemon thread,
+        so anything that touches the running client — the aiohttp session, the
+        interaction registry, ``Task.start()`` — has to be dispatched onto the
+        bot loop instead of being called inline. *func* may be a plain callable
+        or return an awaitable; both are resolved on the bot loop.
+
+        Raises ``HTTPException(503)`` if the bot loop is gone, ``TimeoutError``
+        if the loop doesn't get to the call in time, and otherwise whatever
+        *func* raises.
+        """
+        loop = self.require_bot_loop()
+
+        async def _runner() -> Any:
+            result = func(*args, **kwargs)
+            if inspect.isawaitable(result):
+                result = await result
+            return result
+
+        future = asyncio.run_coroutine_threadsafe(_runner(), loop)
+        return await asyncio.wait_for(asyncio.wrap_future(future), timeout=timeout)
 
     # --- Config I/O ---------------------------------------------------
 
