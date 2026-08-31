@@ -1,9 +1,10 @@
 """Zevent / Streamlabs / stats API access with small in-memory caches."""
 
 import os
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, datetime
 from typing import Any
 
+from features.zevent.backoff import RetryGate
 from features.zevent.models import Participant, Show
 from features.zevent.stats import (
     build_location_index,
@@ -32,24 +33,15 @@ class ApiMixin:
     # Declared here (rather than inferred from ``Zevent.__init__``) so mypy
     # sees the nullable cache slots for what they are.
     _stats_event: dict | None
-    _stats_event_time: datetime | None
     _event_title: str
     _event_start: datetime
     _main_event_start: datetime
     _participant_cache: list[Participant]
-    _participant_cache_time: datetime | None
     _location_index: dict[str, str]
     _planning_cache: list[Show] | None
-    _planning_cache_time: datetime | None
-    STATS_EVENT_CACHE_TTL: timedelta
-    PARTICIPANT_CACHE_TTL: timedelta
-    PLANNING_CACHE_TTL: timedelta
-
-    def _get_planning_day(self, now_date: date) -> str:
-        """Day to request planning for: pin to event start until it's reached."""
-        zevent_start = self._event_start.date()
-        target = zevent_start if now_date < zevent_start else now_date
-        return target.strftime("%Y-%m-%d")
+    _event_gate: RetryGate
+    _participant_gate: RetryGate
+    _planning_gate: RetryGate
 
     async def _ensure_stats_event(self) -> dict | None:
         """Resolve (and cache) the stats-API event this tracker follows.
@@ -59,28 +51,29 @@ class ApiMixin:
         """
         if not STATS_API_URL:
             return None
-        if (
-            self._stats_event_time
-            and datetime.now() - self._stats_event_time < self.STATS_EVENT_CACHE_TTL
-            and self._stats_event is not None
-        ):
+        now = datetime.now()
+        if not self._event_gate.ready(now):
             return self._stats_event
 
         try:
             events = await fetch(f"{STATS_API_URL}/events", return_type="json")
         except Exception as e:
-            logger.error(f"Failed to fetch stats events: {e}")
+            self._event_gate.failed(now)
+            logger.error(f"Failed to fetch stats events ({self._event_gate.failures}x): {e}")
             return self._stats_event
 
         event = select_event(events, datetime.now(UTC), STATS_EVENT_ID or None)
         if event is None:
+            # A reachable API with nothing to track is not a transient error,
+            # but retrying it every cycle would still hammer the server.
+            self._event_gate.failed(now)
             logger.warning("No matching event found on the stats API")
             return self._stats_event
 
         if not self._stats_event or self._stats_event.get("id") != event.get("id"):
             logger.info(f"Tracking stats event {event.get('name')} ({event.get('id')})")
         self._stats_event = event
-        self._stats_event_time = datetime.now()
+        self._event_gate.succeeded(now)
         if not EVENT_NAME:
             self._event_title = str(event.get("name") or "") or self._event_title
 
@@ -109,10 +102,8 @@ class ApiMixin:
         ``zevent.fr`` stopped serving a ``location`` on its streamer entries, so
         this is what tells the two location embeds apart.
         """
-        if (
-            self._participant_cache_time
-            and datetime.now() - self._participant_cache_time < self.PARTICIPANT_CACHE_TTL
-        ):
+        now = datetime.now()
+        if not self._participant_gate.ready(now):
             return self._participant_cache
 
         url = await self._stats_event_url("donation_goals/overview")
@@ -122,33 +113,33 @@ class ApiMixin:
         try:
             payload = await fetch(url, return_type="json")
         except Exception as e:
-            logger.error(f"Failed to fetch participants: {e}")
+            self._participant_gate.failed(now)
+            logger.error(f"Failed to fetch participants ({self._participant_gate.failures}x): {e}")
             return self._participant_cache
 
         participants = parse_participants(payload)
         if not participants:
+            self._participant_gate.failed(now)
             logger.warning("Participants API returned no usable entry; keeping previous cache")
             return self._participant_cache
 
         self._participant_cache = participants
         self._location_index = build_location_index(participants)
-        self._participant_cache_time = datetime.now()
+        self._participant_gate.succeeded(now)
         lan = sum(1 for p in participants if p.location == "LAN")
         logger.info(f"Participant cache updated: {len(participants)} entries ({lan} on site)")
         return participants
 
-    async def _ensure_planning_cache(self, target_day: str) -> list[Show] | None:
-        """Return cached planning shows for ``target_day``, refreshing after TTL.
+    async def _ensure_planning_cache(self) -> list[Show] | None:
+        """Return the cached planning, refreshing on the gate's cadence.
 
-        The day filter is what the API expects, but on a day with nothing
-        scheduled it returns an empty list; fall back to the full listing so the
-        embed can still show what is coming up next.
+        The API takes a ``?day=`` filter, but the whole schedule is a dozen
+        entries and the embed renders whatever comes next regardless of day —
+        so one unfiltered fetch replaces a day-filtered call plus the
+        empty-day fallback that used to double it.
         """
-        if (
-            self._planning_cache_time
-            and datetime.now() - self._planning_cache_time < self.PLANNING_CACHE_TTL
-            and self._planning_cache is not None
-        ):
+        now = datetime.now()
+        if not self._planning_gate.ready(now) and self._planning_cache is not None:
             return self._planning_cache
 
         url = await self._stats_event_url("shows")
@@ -156,18 +147,15 @@ class ApiMixin:
             return self._planning_cache
 
         try:
-            payload = await fetch(f"{url}?day={target_day}", return_type="json")
-            shows = parse_shows(payload)
-            if not shows:
-                payload = await fetch(url, return_type="json")
-                shows = parse_shows(payload)
+            shows = parse_shows(await fetch(url, return_type="json"))
         except Exception as e:
-            logger.error(f"Failed to update planning cache: {e}")
+            self._planning_gate.failed(now)
+            logger.error(f"Failed to update planning cache ({self._planning_gate.failures}x): {e}")
             return self._planning_cache
 
         self._planning_cache = shows
-        self._planning_cache_time = datetime.now()
-        logger.info(f"Planning cache updated with {len(shows)} shows for {target_day}")
+        self._planning_gate.succeeded(now)
+        logger.info(f"Planning cache updated with {len(shows)} shows")
         return shows
 
     def _validate_api_data(self, data: Any, data_type: str) -> bool:

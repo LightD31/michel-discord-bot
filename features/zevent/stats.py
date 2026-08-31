@@ -202,10 +202,23 @@ def goal_progress(participant: Participant) -> float:
     return min(participant.amount_raised / goal.amount, 1.0)
 
 
+def is_live(participant: Participant, live_logins: set[str] | None = None) -> bool:
+    """Whether ``participant`` is streaming, preferring a fresh Twitch set.
+
+    ``live_logins`` comes from the Twitch poll the refresh loop already runs
+    every cycle. The stats API also reports a ``live`` flag, but it is cached
+    for minutes at a time, so it only stands in when Twitch is unavailable.
+    """
+    if live_logins is None:
+        return participant.live
+    return participant.twitch_login in live_logins
+
+
 def goal_score(
     participant: Participant,
     progress_weight: float = DEFAULT_PROGRESS_WEIGHT,
     offline_factor: float = DEFAULT_OFFLINE_FACTOR,
+    live_logins: set[str] | None = None,
 ) -> float:
     """Rank a pending goal by imminence, streamer size, and whether it's watchable.
 
@@ -231,7 +244,8 @@ def goal_score(
     # 0 ** 0 is 1 in Python, which is what we want at weight 0: the progress
     # term drops out and the ranking becomes pure prominence.
     base = (progress**weight) * math.log10(1 + max(participant.amount_raised, 0.0))
-    return base * (1.0 if participant.live else min(max(offline_factor, 0.0), 1.0))
+    live = is_live(participant, live_logins)
+    return base * (1.0 if live else min(max(offline_factor, 0.0), 1.0))
 
 
 def upcoming_goals(
@@ -239,6 +253,7 @@ def upcoming_goals(
     limit: int | None = None,
     progress_weight: float = DEFAULT_PROGRESS_WEIGHT,
     offline_factor: float = DEFAULT_OFFLINE_FACTOR,
+    live_logins: set[str] | None = None,
 ) -> list[Participant]:
     """Participants with a pending goal, most worth watching first.
 
@@ -252,7 +267,7 @@ def upcoming_goals(
     ranked = sorted(
         with_goals,
         key=lambda p: (
-            -goal_score(p, progress_weight, offline_factor),
+            -goal_score(p, progress_weight, offline_factor, live_logins),
             -(p.next_goal.amount if p.next_goal else 0.0),
             p.display_name.lower(),
         ),

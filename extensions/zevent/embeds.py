@@ -6,7 +6,7 @@ from datetime import UTC, datetime, timedelta
 from interactions import Embed, TimestampStyles, utils
 
 from features.zevent.models import Participant, Show
-from features.zevent.stats import upcoming_goals, upcoming_shows
+from features.zevent.stats import is_live, upcoming_goals, upcoming_shows
 from src.core import logging as logutil
 
 from ._common import (
@@ -278,11 +278,13 @@ class EmbedsMixin:
         Returns ``None`` when nobody has a pending goal, so the caller can drop
         the embed entirely rather than render an empty one.
         """
+        live_logins = getattr(self, "_live_logins", None)
         pending = upcoming_goals(
             participants,
             limit=MAX_DONATION_GOALS,
             progress_weight=GOALS_PROGRESS_WEIGHT,
             offline_factor=GOALS_OFFLINE_FACTOR,
+            live_logins=live_logins,
         )
         if not pending:
             return None
@@ -300,7 +302,7 @@ class EmbedsMixin:
             if goal is None:
                 continue
             name = escape_markdown(participant.display_name)
-            marker = "🔴" if participant.live else "⚫"
+            marker = "🔴" if is_live(participant, live_logins) else "⚫"
             remaining = max(goal.amount - participant.amount_raised, 0.0)
             entry = (
                 f"{marker} **{name}** — {escape_markdown(goal.name)}\n"
