@@ -145,34 +145,34 @@ def align(when: datetime, this_start: datetime, reference_start: datetime) -> da
     )
 
 
-def amount_at(curve: DonationCurve, when: datetime) -> float | None:
-    """Euros raised by ``when`` in that edition, interpolated between samples.
+def reached_at(curve: DonationCurve, amount: float) -> datetime | None:
+    """When that edition reached ``amount``; ``None`` if it never did.
 
-    ``None`` before the curve starts; past its end the final total stands —
-    the edition was simply over by then.
+    Interpolated linearly within the bracketing pair rather than rounded up to
+    the next sample. The curves are sampled every ten minutes in 2025 and every
+    thirty in 2024, so returning the sample itself would quantise every
+    comparison to that step — enough to swamp the small leads this is meant to
+    report. A donation total only ever climbs, so a straight line across one
+    short gap cannot invert the ordering.
     """
-    if not curve.points or when < curve.points[0][0]:
+    if not curve.points:
         return None
-    if when >= curve.points[-1][0]:
-        return curve.total
+
+    first_when, first_value = curve.points[0]
+    if first_value >= amount:
+        # Already past it when recording began: the true crossing is at or
+        # before this sample, so this is the earliest moment we can name.
+        return first_when
 
     previous = curve.points[0]
-    for point in curve.points[1:]:
-        if point[0] >= when:
-            span = (point[0] - previous[0]).total_seconds()
-            if span <= 0:
-                return point[1]
-            ratio = (when - previous[0]).total_seconds() / span
-            return previous[1] + ratio * (point[1] - previous[1])
-        previous = point
-    return curve.total
-
-
-def reached_at(curve: DonationCurve, amount: float) -> datetime | None:
-    """When that edition first reached ``amount``; ``None`` if it never did."""
-    for when, value in curve.points:
+    for when, value in curve.points[1:]:
         if value >= amount:
-            return when
+            climbed = value - previous[1]
+            if climbed <= 0:  # flat segment; nothing to interpolate across
+                return when
+            ratio = (amount - previous[1]) / climbed
+            return previous[0] + (when - previous[0]) * ratio
+        previous = (when, value)
     return None
 
 

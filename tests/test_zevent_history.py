@@ -16,7 +16,6 @@ from datetime import UTC, datetime
 from features.zevent.history import (
     DISPLAY_TZ,
     align,
-    amount_at,
     comparable_editions,
     compare_milestone,
     edition_label,
@@ -157,22 +156,41 @@ def test_day_numbering_is_cut_at_paris_midnight_on_both_sides() -> None:
 # ── lookups ──────────────────────────────────────────────────────────
 
 
-def test_amount_at_interpolates_between_samples() -> None:
-    assert amount_at(CURVE, datetime(2025, 9, 5, 17, 0, tzinfo=UTC)) == 1_000_000.0
-    # Half way between the 17:00 and 18:00 samples.
-    assert amount_at(CURVE, datetime(2025, 9, 5, 17, 30, tzinfo=UTC)) == 2_500_000.0
-
-
-def test_amount_at_outside_the_curve() -> None:
-    assert amount_at(CURVE, datetime(2025, 9, 5, 15, 0, tzinfo=UTC)) is None
-    # Past the end the edition was simply over; the final total stands.
-    assert amount_at(CURVE, datetime(2025, 9, 9, 0, 0, tzinfo=UTC)) == 16_000_000.0
-
-
-def test_reached_at_finds_the_first_crossing() -> None:
+def test_reached_at_lands_on_a_sample_when_the_value_matches_one() -> None:
     assert reached_at(CURVE, 1_000_000) == datetime(2025, 9, 5, 17, 0, tzinfo=UTC)
-    assert reached_at(CURVE, 1_000_001) == datetime(2025, 9, 5, 18, 0, tzinfo=UTC)
     assert reached_at(CURVE, 99_000_000) is None
+
+
+def test_reached_at_interpolates_inside_the_bracketing_pair() -> None:
+    """Rounding up to the next sample would quantise every comparison.
+
+    The fixture climbs 1 M€ -> 4 M€ between 17:00 and 18:00, so 2.5 M€ was
+    crossed half way through, at 17:30 — not at 18:00.
+    """
+    assert reached_at(CURVE, 2_500_000) == datetime(2025, 9, 5, 17, 30, tzinfo=UTC)
+    # A quarter of the way up that same segment.
+    assert reached_at(CURVE, 1_750_000) == datetime(2025, 9, 5, 17, 15, tzinfo=UTC)
+
+
+def test_reached_at_is_monotonic_in_the_amount_asked_for() -> None:
+    """A larger milestone can never be reported as crossed earlier."""
+    moments = [reached_at(CURVE, amount) for amount in range(100_000, 16_000_000, 250_000)]
+    assert all(m is not None for m in moments)
+    assert moments == sorted(moments)  # type: ignore[type-var]
+
+
+def test_reached_at_names_the_first_sample_when_it_already_exceeds() -> None:
+    """The crossing happened at or before recording began; say the earliest."""
+    floored = parse_metrics(_payload([164_452, 1_000_000]), "2025", REF_RAISING)
+    assert floored is not None
+    assert reached_at(floored, 164_452) == floored.start
+    assert reached_at(floored, 100_000) == floored.start
+
+
+def test_reached_at_handles_a_flat_segment_without_dividing_by_zero() -> None:
+    flat = parse_metrics(_payload([0, 1_000_000, 1_000_000, 4_000_000]), "x")
+    assert flat is not None
+    assert reached_at(flat, 1_000_000) == datetime(2025, 9, 5, 17, 0, tzinfo=UTC)
 
 
 # ── the notification line ────────────────────────────────────────────
