@@ -5,6 +5,12 @@ from datetime import UTC, datetime
 from typing import Any
 
 from features.zevent.backoff import RetryGate
+from features.zevent.history import (
+    DonationCurve,
+    comparable_editions,
+    edition_label,
+    parse_metrics,
+)
 from features.zevent.models import Participant, Show
 from features.zevent.stats import (
     build_location_index,
@@ -19,14 +25,20 @@ from src.core import logging as logutil
 from src.core.http import fetch
 
 from ._common import (
+    COMPARE_EVENT_ID,
     EVENT_NAME,
     EVENT_START_OVERRIDE,
     MAIN_EVENT_START_OVERRIDE,
+    METRICS_BASE_URL,
     STATS_API_URL,
     STATS_EVENT_ID,
 )
 
 logger = logutil.init_logger(os.path.basename(__file__))
+
+# How many editions back to try before giving up: the older files are not
+# published (they answer 403), so one miss must not end the search.
+MAX_REFERENCE_LOOKBACK = 4
 
 
 class ApiMixin:
@@ -41,6 +53,9 @@ class ApiMixin:
     _participant_cache: list[Participant]
     _location_index: dict[str, str]
     _planning_cache: list[Show] | None
+    _stats_events: list[dict]
+    _reference_curve: DonationCurve | None
+    _reference_gate: RetryGate
     _velocity: DonationVelocity
     _event_gate: RetryGate
     _participant_gate: RetryGate
@@ -64,6 +79,9 @@ class ApiMixin:
             self._event_gate.failed(now)
             logger.error(f"Failed to fetch stats events ({self._event_gate.failures}x): {e}")
             return self._stats_event
+
+        if isinstance(events, list):
+            self._stats_events = [e for e in events if isinstance(e, dict)]
 
         event = select_event(events, datetime.now(UTC), STATS_EVENT_ID or None)
         if event is None:
@@ -196,6 +214,57 @@ class ApiMixin:
             if eta is not None:
                 etas[participant.twitch_login] = eta
         return etas
+
+    async def _ensure_reference_curve(self) -> DonationCurve | None:
+        """Load a past edition's donation curve, for the milestone comparison.
+
+        The metrics files are static once an edition is over and live on the
+        project's cache bucket rather than its API host, so this is refreshed
+        rarely and is not part of the API budget the rest of the tracker
+        watches so carefully.
+        """
+        if not METRICS_BASE_URL:
+            return None
+        now = datetime.now()
+        if not self._reference_gate.ready(now):
+            return self._reference_curve
+
+        tracked = await self._ensure_stats_event()
+        if tracked is None:
+            return self._reference_curve
+
+        if COMPARE_EVENT_ID:
+            candidates = [e for e in self._stats_events if e.get("id") == COMPARE_EVENT_ID]
+        else:
+            candidates = comparable_editions(self._stats_events, tracked)
+
+        # Not every edition has a metrics file — the older ones 403 — so walk
+        # back until one answers rather than giving up on the first miss.
+        for event in candidates[:MAX_REFERENCE_LOOKBACK]:
+            event_id = str(event.get("id") or "")
+            if not event_id:
+                continue
+            try:
+                payload = await fetch(
+                    f"{METRICS_BASE_URL}/{event_id}/global.json", return_type="json"
+                )
+            except Exception as e:
+                logger.debug(f"No metrics for {event.get('name')}: {e}")
+                continue
+
+            curve = parse_metrics(payload, edition_label(str(event.get("name") or "")))
+            if curve is not None:
+                self._reference_curve = curve
+                self._reference_gate.succeeded(now)
+                logger.info(
+                    f"Comparaison Zevent: édition {curve.label}, "
+                    f"{len(curve.points)} points, total {curve.total:,.0f} €"
+                )
+                return curve
+
+        self._reference_gate.failed(now)
+        logger.warning("Aucune édition de référence exploitable pour la comparaison")
+        return self._reference_curve
 
     def _validate_api_data(self, data: Any, data_type: str) -> bool:
         try:

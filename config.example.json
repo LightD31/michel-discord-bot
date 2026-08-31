@@ -325,6 +325,8 @@
                 "zeventUpdateInterval": 30,
                 "zeventGoalsProgressWeight": 1.0,
                 "zeventGoalsOfflineFactor": 0.5,
+                "zeventMetricsBaseUrl": "",
+                "zeventCompareEventId": "",
                 "zeventGoalsCount": 5,
                 "zeventGoalsVelocityWeight": 2.0,
                 "zeventMilestoneInterval": 100000
