@@ -3,6 +3,7 @@
 import inspect
 import os
 
+from features.zevent.stats import LAN, ONLINE, resolve_location
 from src.core import logging as logutil
 
 from ._common import StreamerInfo
@@ -21,10 +22,14 @@ class StreamsMixin:
         return 0
 
     async def categorize_streams(self, streams: list[dict]) -> dict[str, dict[str, StreamerInfo]]:
-        categorized = {"LAN": {}, "Online": {}, "_totals": {"LAN": 0, "Online": 0}}
+        categorized = {LAN: {}, ONLINE: {}, "_totals": {LAN: 0, ONLINE: 0}}
 
         if not streams or not self.twitch:
             return categorized
+
+        # zevent.fr no longer ships a ``location`` on its live entries; the
+        # LAN/remote split comes from the stats API, keyed by Twitch login/id.
+        await self._ensure_participant_cache()
 
         try:
             twitch_usernames = list(
@@ -42,7 +47,7 @@ class StreamsMixin:
                     user_ids[stream.user_login.lower()] = stream.user_id
 
             for stream in streams:
-                location = stream.get("location", "Online")
+                location = resolve_location(stream, self._location_index)
                 twitch_name = stream.get("twitch", "").lower()
                 display_name = stream.get("display", "Unknown")
                 is_online = twitch_name in live_streamers
@@ -51,8 +56,8 @@ class StreamsMixin:
                 categorized[location][display_name] = streamer_info
                 categorized["_totals"][location] += 1
 
-            if "Online" in categorized:
-                online_streamers = list(categorized["Online"].values())
+            if ONLINE in categorized:
+                online_streamers = list(categorized[ONLINE].values())
                 live_online = [s for s in online_streamers if s.is_online]
 
                 if len(live_online) < 100:
@@ -66,7 +71,7 @@ class StreamsMixin:
                 else:
                     selected_streamers = live_online[:100]
 
-                categorized["Online"] = {s.display_name: s for s in selected_streamers}
+                categorized[ONLINE] = {s.display_name: s for s in selected_streamers}
 
         except Exception as e:
             logger.error(f"Error categorizing streams: {e}")
@@ -151,9 +156,11 @@ class StreamsMixin:
             if not streams or not self.twitch:
                 return {"LAN": "N/A", "Online": "N/A", "Total": "N/A"}
 
-            streams_by_location = {"LAN": [], "Online": []}
+            await self._ensure_participant_cache()
+
+            streams_by_location: dict[str, list[str]] = {LAN: [], ONLINE: []}
             for stream in streams:
-                location = stream.get("location", "Online")
+                location = resolve_location(stream, self._location_index)
                 twitch_name = stream.get("twitch", "")
                 if twitch_name:
                     streams_by_location[location].append(twitch_name)

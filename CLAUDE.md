@@ -118,5 +118,5 @@ Motor (MongoDB), aiohttp (HTTP), asyncssh (SFTP), native async RCON. Never block
 - Most user-facing strings are French — match existing language when editing command descriptions and embeds.
 - `interactions.py` here is the `discord-py-interactions` package — not `discord.py`. Use `interactions.Extension`, `@slash_command`, `@listen()`, `@interactions.Task.create(IntervalTrigger(...))`.
 - Real tests exist under `tests/` (core db/http/config, Web UI auth and config saving, giveaway draw, moderation, MDI client, RSS parser, weighted messages). Coverage is measured over `src` and `features` — when adding domain logic to `features/`, add a matching test. `tests/test_smoke.py` is a leftover placeholder.
-- Several extensions are tied to dated events (zevent → 2025, olympics → Milan-Cortina 2026, speedons → 2025 API slug). They ship config-disabled rather than deleted.
+- Several extensions are tied to dated events (olympics → Milan-Cortina 2026, speedons → 2025 API slug). They ship config-disabled rather than deleted. `zevent` is no longer year-pinned: it resolves the edition from the stats API's `/events` listing (override with `zeventStatsEventId`), so only the two start dates need refreshing each year.
 - `grafana/` holds standalone Grafana dashboard exports (spotify, xp); nothing in the code references them.

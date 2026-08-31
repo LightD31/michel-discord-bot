@@ -1,0 +1,220 @@
+"""Parsers for the EvenMoreStats event API used by the Zevent tracker.
+
+The 2026 edition moved the planning and the LAN/remote split off ``zevent.fr``:
+
+- ``zevent.fr/api/`` still serves donation totals, viewer counts and the
+  per-streamer list, but its entries no longer carry a ``location`` field.
+- The former planning host (``zevent-api.gdoc.fr``) is gone (404). Planning
+  and participant metadata now come from the EvenMoreStats API:
+  ``/events``, ``/events/{id}/donation_goals/overview`` and
+  ``/events/{id}/shows``.
+
+Pure parsing only — the HTTP calls live in ``extensions/zevent/api.py`` so this
+module stays importable (and testable) without the ``aiohttp`` chain.
+"""
+
+from __future__ import annotations
+
+from datetime import UTC, datetime
+from typing import Any
+
+from features.zevent.models import Participant, Show
+
+# Only the on-site venue counts as "LAN". The satellite locations the API
+# reports (``remote_zbase``, ``remote_villa``, ``remote_ankama``, …) are
+# remote setups and belong with the online participants.
+LAN_LOCATIONS = frozenset({"lan", "on_site", "onsite"})
+
+LAN = "LAN"
+ONLINE = "Online"
+
+
+def location_bucket(raw: str | None) -> str:
+    """Map a stats-API ``location`` onto the bucket the embeds render."""
+    if not raw:
+        return ONLINE
+    return LAN if raw.strip().lower() in LAN_LOCATIONS else ONLINE
+
+
+def parse_datetime(value: Any) -> datetime | None:
+    """Parse an ISO-8601 timestamp, tolerating a trailing ``Z`` and ``None``."""
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
+
+
+def _twitch_socials(entry: dict) -> tuple[str, str]:
+    """Return ``(login, id)`` from an entry's ``socials.twitch`` block."""
+    socials = entry.get("socials")
+    twitch = socials.get("twitch") if isinstance(socials, dict) else None
+    if not isinstance(twitch, dict):
+        return "", ""
+    login = str(twitch.get("login") or "").lower()
+    twitch_id = str(twitch.get("id") or "")
+    return login, twitch_id
+
+
+def parse_participants(payload: Any) -> list[Participant]:
+    """Parse the ``donation_goals/overview`` payload into :class:`Participant`.
+
+    Entries without a usable Twitch login are dropped: the tracker matches them
+    against the ``zevent.fr`` streamer list by login, so an entry we cannot key
+    is of no use downstream.
+    """
+    if not isinstance(payload, list):
+        return []
+
+    participants: list[Participant] = []
+    for entry in payload:
+        if not isinstance(entry, dict):
+            continue
+        login, twitch_id = _twitch_socials(entry)
+        if not login:
+            continue
+        raw_location = str(entry.get("location") or "")
+        amount = entry.get("amount_raised")
+        participants.append(
+            Participant(
+                display_name=str(entry.get("name") or login),
+                twitch_login=login,
+                twitch_id=twitch_id,
+                location=location_bucket(raw_location),
+                raw_location=raw_location,
+                live=bool(entry.get("live")),
+                amount_raised=(float(amount) / 100) if isinstance(amount, int | float) else 0.0,
+            )
+        )
+    return participants
+
+
+def build_location_index(participants: list[Participant]) -> dict[str, str]:
+    """Index participants by Twitch login *and* Twitch id onto their bucket.
+
+    Keying on both means a ``zevent.fr`` entry still resolves when one of the
+    two identifiers is missing or the login was changed on one side only.
+    """
+    index: dict[str, str] = {}
+    for participant in participants:
+        if participant.twitch_login:
+            index[participant.twitch_login] = participant.location
+        if participant.twitch_id:
+            index[participant.twitch_id] = participant.location
+    return index
+
+
+def resolve_location(stream: dict, index: dict[str, str]) -> str:
+    """Bucket one ``zevent.fr`` live entry, preferring its own ``location``.
+
+    ``zevent.fr`` dropped the field in 2026 but may bring it back; when it is
+    present it wins, otherwise the stats-API index decides, and an unknown
+    streamer falls back to ``Online`` (the far larger group).
+    """
+    own = stream.get("location")
+    if isinstance(own, str) and own:
+        return location_bucket(own) if own not in (LAN, ONLINE) else own
+
+    login = str(stream.get("twitch") or "").lower()
+    if login and login in index:
+        return index[login]
+    twitch_id = str(stream.get("twitch_id") or "")
+    if twitch_id and twitch_id in index:
+        return index[twitch_id]
+    return ONLINE
+
+
+def parse_shows(payload: Any) -> list[Show]:
+    """Parse the ``shows`` payload into :class:`Show` objects, sorted by start."""
+    if not isinstance(payload, list):
+        return []
+
+    shows: list[Show] = []
+    for entry in payload:
+        if not isinstance(entry, dict):
+            continue
+        schedule = entry.get("schedule")
+        schedule = schedule if isinstance(schedule, dict) else {}
+
+        hosts: list[str] = []
+        guests: list[str] = []
+        for participant in entry.get("participants") or []:
+            if not isinstance(participant, dict):
+                continue
+            name = str(participant.get("streamer_name") or "").strip()
+            if not name:
+                continue
+            if str(participant.get("role") or "").lower() == "host":
+                hosts.append(name)
+            else:
+                guests.append(name)
+
+        shows.append(
+            Show(
+                name=str(entry.get("name") or "Événement"),
+                description=str(entry.get("description") or ""),
+                start=parse_datetime(schedule.get("start")),
+                end=parse_datetime(schedule.get("end")),
+                all_day=bool(entry.get("all_day")),
+                hosts=hosts,
+                guests=guests,
+            )
+        )
+
+    return sorted(
+        shows, key=lambda s: (s.start is None, s.start or datetime.min.replace(tzinfo=UTC))
+    )
+
+
+def upcoming_shows(shows: list[Show], now: datetime, limit: int | None = None) -> list[Show]:
+    """Shows that have not finished yet, oldest first, optionally capped."""
+    pending = [s for s in shows if s.end is None or s.end > now]
+    return pending[:limit] if limit is not None else pending
+
+
+def select_event(events: Any, now: datetime, event_id: str | None = None) -> dict | None:
+    """Pick the event to track out of the API's ``/events`` listing.
+
+    An explicit ``event_id`` always wins. Otherwise: the edition currently
+    running, else the next one to start, else the most recent past one — so the
+    tracker follows the new edition as soon as the API publishes it, without a
+    config change every year.
+    """
+    if not isinstance(events, list):
+        return None
+    candidates = [e for e in events if isinstance(e, dict)]
+    if not candidates:
+        return None
+
+    if event_id:
+        for event in candidates:
+            if str(event.get("id") or "") == event_id:
+                return event
+        return None
+
+    def window(event: dict) -> tuple[datetime | None, datetime | None]:
+        schedule = event.get("schedule")
+        schedule = schedule if isinstance(schedule, dict) else {}
+        return parse_datetime(schedule.get("start")), parse_datetime(schedule.get("end"))
+
+    running = [e for e in candidates if _contains(window(e), now)]
+    if running:
+        return min(running, key=lambda e: window(e)[0] or datetime.max.replace(tzinfo=UTC))
+
+    upcoming = [e for e in candidates if (window(e)[0] or datetime.min.replace(tzinfo=UTC)) > now]
+    if upcoming:
+        return min(upcoming, key=lambda e: window(e)[0] or datetime.max.replace(tzinfo=UTC))
+
+    dated = [e for e in candidates if window(e)[0] is not None]
+    if dated:
+        return max(dated, key=lambda e: window(e)[0] or datetime.min.replace(tzinfo=UTC))
+    return None
+
+
+def _contains(bounds: tuple[datetime | None, datetime | None], now: datetime) -> bool:
+    start, end = bounds
+    if start is None or end is None:
+        return False
+    return start <= now <= end

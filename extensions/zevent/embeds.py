@@ -5,6 +5,8 @@ from datetime import UTC, datetime, timedelta
 
 from interactions import Embed, TimestampStyles, utils
 
+from features.zevent.models import Show
+from features.zevent.stats import upcoming_shows
 from src.core import logging as logutil
 
 from ._common import (
@@ -14,6 +16,10 @@ from ._common import (
     StreamerInfo,
     split_streamer_list,
 )
+
+# Cap on planning entries so a full-event listing can't crowd out the rest of
+# the message (Discord allows 25 fields / 6000 chars across all embeds).
+MAX_PLANNING_ENTRIES = 6
 
 logger = logutil.init_logger(os.path.basename(__file__))
 
@@ -95,7 +101,7 @@ class EmbedsMixin:
         finished: bool = False,
         concert_status: str | None = None,
     ) -> Embed:
-        embed = Embed(title="Zevent 2025", color=0x59AF37)
+        embed = Embed(title=self._event_title, color=0x59AF37)
 
         if finished:
             embed.description = f"Total récolté: {total_amount}"
@@ -199,88 +205,53 @@ class EmbedsMixin:
 
         return embed
 
-    async def create_planning_embed(self, events: list[dict]) -> Embed:
+    def create_planning_embed(self, shows: list[Show]) -> Embed:
+        """Upcoming planning entries, rendered from the stats API's ``shows``."""
         embed = Embed(title="Prochains évènements", color=0x59AF37)
-        embed.set_footer("Source: zevent.gdoc.fr ❤️")
+        embed.set_footer("Source: evenmorestats.fr ❤️")
         embed.timestamp = utils.timestamp_converter(datetime.now())
 
-        current_time = datetime.now(UTC)
+        pending = upcoming_shows(shows, datetime.now(UTC), limit=MAX_PLANNING_ENTRIES)
 
-        upcoming_events = []
-        for event in events:
-            finished_at = event.get("end_date") or ""
-            if finished_at:
-                try:
-                    end_time = datetime.fromisoformat(finished_at.replace("Z", "+00:00")).replace(
-                        tzinfo=UTC
-                    )
-                    if end_time > current_time:
-                        upcoming_events.append(event)
-                except (ValueError, TypeError):
-                    upcoming_events.append(event)
-            else:
-                upcoming_events.append(event)
-
-        sorted_events = sorted(upcoming_events, key=lambda x: x.get("start_date") or "")
-
-        await self._ensure_streamer_cache()
-
-        for event in sorted_events:
+        for show in pending:
             try:
-                start_at = event.get("start_date") or ""
-                finished_at = event.get("end_date") or ""
-
-                if not start_at or not finished_at:
+                if show.start is None:
                     continue
 
-                start_time = datetime.fromisoformat(start_at.replace("Z", "+00:00")).replace(
-                    tzinfo=UTC
-                )
-                end_time = datetime.fromisoformat(finished_at.replace("Z", "+00:00")).replace(
-                    tzinfo=UTC
-                )
-
-                field_name = event.get("name", "Événement")
-
-                duration = end_time - start_time
-
-                time_str = (
-                    f"{str(utils.timestamp_converter(start_time)).format(TimestampStyles.LongDateTime)} - "
-                    f"{str(utils.timestamp_converter(end_time)).format(TimestampStyles.ShortTime)}"
-                    if duration >= timedelta(minutes=20)
-                    else f"{str(utils.timestamp_converter(start_time)).format(TimestampStyles.LongDateTime)}"
-                )
+                start_ts = utils.timestamp_converter(show.start)
+                if show.all_day or show.end is None:
+                    time_str = start_ts.format(TimestampStyles.LongDate)
+                elif show.end - show.start >= timedelta(minutes=20):
+                    time_str = (
+                        f"{start_ts.format(TimestampStyles.LongDateTime)} - "
+                        f"{utils.timestamp_converter(show.end).format(TimestampStyles.ShortTime)}"
+                    )
+                else:
+                    time_str = start_ts.format(TimestampStyles.LongDateTime)
 
                 field_value = f"{time_str}\n"
 
-                if event.get("description"):
-                    field_value += f"{event['description']}\n"
+                if show.description:
+                    field_value += f"{show.description}\n"
 
-                participants = event.get("participants") or {}
+                if show.hosts:
+                    hosts = ", ".join(name.replace("_", "\\_") for name in show.hosts)
+                    field_value += f"Hosts: {hosts}\n"
 
-                hosts_names = []
-                for hid in participants.get("host", []):
-                    name = self._streamer_cache.get(hid) or hid
-                    hosts_names.append(name.replace("_", "\\_"))
-
-                if hosts_names:
-                    field_value += f"Hosts: {', '.join(hosts_names)}\n"
-
-                part_names = []
-                for pid in participants.get("participant", []):
-                    name = self._streamer_cache.get(pid) or pid
-                    part_names.append(name.replace("_", "\\_"))
-
-                if part_names:
-                    if len(part_names) > 20:
-                        shown = ", ".join(part_names[:20])
-                        field_value += f"Participants ({len(part_names)}): {shown}..."
+                if show.guests:
+                    guests = [name.replace("_", "\\_") for name in show.guests]
+                    if len(guests) > 20:
+                        shown = ", ".join(guests[:20])
+                        field_value += f"Participants ({len(guests)}): {shown}..."
                     else:
-                        field_value += f"Participants: {', '.join(part_names)}"
+                        field_value += f"Participants: {', '.join(guests)}"
 
-                embed.add_field(name=field_name, value=field_value, inline=True)
+                embed.add_field(name=show.name, value=field_value, inline=True)
             except Exception as e:
-                logger.error(f"Error processing event: {e}")
+                logger.error(f"Error processing show '{show.name}': {e}")
+
+        if not embed.fields:
+            embed.add_field(name="Status", value="Aucun évènement à venir", inline=False)
 
         return embed
 
