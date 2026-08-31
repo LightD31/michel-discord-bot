@@ -1,17 +1,29 @@
 """Twitch API helpers: categorise streamers by location and count viewers."""
 
 import os
+from datetime import datetime, timedelta
 
 from features.zevent.stats import LAN, ONLINE, resolve_location
 from src.core import logging as logutil
 
-from ._common import StreamerInfo
+from ._common import UPDATE_INTERVAL, StreamerInfo
 
 logger = logutil.init_logger(os.path.basename(__file__))
+
+# One Twitch poll serves every consumer within a refresh cycle. Half the
+# refresh interval guarantees exactly one poll per cycle: long enough for the
+# second consumer to reuse it, short enough never to span two cycles.
+_SNAPSHOT_TTL = timedelta(seconds=max(UPDATE_INTERVAL / 2, 1))
 
 
 class StreamsMixin:
     """Resolve stream status via the Twitch API and aggregate viewer counts."""
+
+    # Declared here rather than inferred from ``Zevent.__init__`` so mypy sees
+    # the snapshot slots; this mixin owns them.
+    _live_logins: set[str]
+    _stream_viewers: dict[str, int]
+    _stream_snapshot_time: datetime | None
 
     def _get_stream_total_count(self, streams: dict, location: str) -> int:
         totals = streams.get("_totals", {})
@@ -19,6 +31,32 @@ class StreamsMixin:
             count = totals.get(location, 0)
             return count if isinstance(count, int) else 0
         return 0
+
+    async def _refresh_stream_snapshot(self, streams: list[dict]) -> dict[str, int]:
+        """Poll Twitch once per cycle for who is live and how many watch them.
+
+        ``categorize_streams`` and ``get_viewers_by_location`` both need this
+        and used to fetch it separately, doubling the Twitch traffic for
+        identical data. They now share one snapshot.
+        """
+        now = datetime.now()
+        if self._stream_snapshot_time and now - self._stream_snapshot_time < _SNAPSHOT_TTL:
+            return self._stream_viewers
+
+        logins = list({stream.get("twitch", "") for stream in streams if stream.get("twitch")})
+        viewers: dict[str, int] = {}
+        batch_size = 100
+        for i in range(0, len(logins), batch_size):
+            batch = logins[i : i + batch_size]
+            async for stream in self.twitch.get_streams(user_login=batch):
+                viewers[stream.user_login.lower()] = stream.viewer_count
+
+        self._stream_viewers = viewers
+        # Twitch is polled every refresh, so it knows who is live now; the
+        # community stats API is cached for minutes and would lag behind.
+        self._live_logins = set(viewers)
+        self._stream_snapshot_time = now
+        return viewers
 
     async def categorize_streams(self, streams: list[dict]) -> dict[str, dict[str, StreamerInfo]]:
         categorized = {LAN: {}, ONLINE: {}, "_totals": {LAN: 0, ONLINE: 0}}
@@ -31,17 +69,8 @@ class StreamsMixin:
         await self._ensure_participant_cache()
 
         try:
-            twitch_usernames = list(
-                {stream.get("twitch", "") for stream in streams if stream.get("twitch")}
-            )
-
-            batch_size = 100
-            live_streamers = set()
-
-            for i in range(0, len(twitch_usernames), batch_size):
-                batch = twitch_usernames[i : i + batch_size]
-                async for stream in self.twitch.get_streams(user_login=batch):
-                    live_streamers.add(stream.user_login.lower())
+            await self._refresh_stream_snapshot(streams)
+            live_streamers = self._live_logins
 
             for stream in streams:
                 location = resolve_location(stream, self._location_index)
@@ -123,16 +152,7 @@ class StreamsMixin:
                 if twitch_name:
                     streams_by_location[location].append(twitch_name)
 
-            all_twitch_usernames = list(
-                {stream.get("twitch", "") for stream in streams if stream.get("twitch")}
-            )
-            live_streams_data = {}
-
-            batch_size = 100
-            for i in range(0, len(all_twitch_usernames), batch_size):
-                batch = all_twitch_usernames[i : i + batch_size]
-                async for stream in self.twitch.get_streams(user_login=batch):
-                    live_streams_data[stream.user_login.lower()] = stream.viewer_count
+            live_streams_data = await self._refresh_stream_snapshot(streams)
 
             viewers_by_location = {"LAN": 0, "Online": 0}
             for location, streamers in streams_by_location.items():

@@ -11,6 +11,7 @@ from features.zevent.stats import (
     build_location_index,
     event_schedule,
     goal_score,
+    is_live,
     location_bucket,
     parse_datetime,
     parse_participants,
@@ -510,3 +511,43 @@ def test_offline_factor_is_neutral_when_nobody_is_live() -> None:
     assert not any(p.live for p in participants)
     baseline = [p.display_name for p in upcoming_goals(participants, offline_factor=1.0)]
     assert [p.display_name for p in upcoming_goals(participants, offline_factor=0.3)] == baseline
+
+
+# ── presence comes from Twitch, not the cached API flag ──────────────
+
+
+def test_live_logins_from_twitch_override_the_cached_flag() -> None:
+    """The stats API is cached for minutes; Twitch is polled every refresh."""
+    entries = [
+        # Cached as offline, but Twitch says they just went live.
+        _entry("JustWentLive", 10_000, 20_000, live=False),
+        # Cached as live, but Twitch says the stream already ended.
+        _entry("JustWentOffline", 10_000, 20_000, live=True),
+    ]
+    participants = parse_participants(entries)
+    fresh = {"justwentlive"}
+
+    assert is_live(participants[0], fresh) is True
+    assert is_live(participants[1], fresh) is False
+
+    ranked = upcoming_goals(participants, live_logins=fresh)
+    assert ranked[0].display_name == "JustWentLive"
+
+
+def test_without_twitch_data_the_cached_flag_still_applies() -> None:
+    """Twitch may be unavailable; the API flag is the fallback, not a hard fail."""
+    participants = parse_participants(
+        [
+            _entry("cached_offline", 10_000, 20_000, live=False),
+            _entry("cached_live", 10_000, 20_000, live=True),
+        ]
+    )
+    assert is_live(participants[1], None) is True
+    assert upcoming_goals(participants, live_logins=None)[0].display_name == "cached_live"
+
+
+def test_an_empty_live_set_means_nobody_is_live() -> None:
+    """An empty set is 'Twitch says nobody', distinct from None ('no data')."""
+    participants = parse_participants([_entry("cached_live", 10_000, 20_000, live=True)])
+    assert is_live(participants[0], set()) is False
+    assert is_live(participants[0], None) is True

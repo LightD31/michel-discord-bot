@@ -31,9 +31,6 @@ class TasksMixin:
 
         try:
             logger.debug("Fetching data from APIs...")
-            now_date = datetime.now().date()
-            target_day = self._get_planning_day(now_date)
-
             # The Streamlabs team URL is configured per guild; without it the
             # donation total is simply unavailable (the rest still renders).
             data, streamlabs_data = await asyncio.gather(
@@ -44,7 +41,7 @@ class TasksMixin:
                 return_exceptions=True,
             )
 
-            planning_data = await self._ensure_planning_cache(target_day)
+            planning_data = await self._ensure_planning_cache()
 
             data = (
                 data
