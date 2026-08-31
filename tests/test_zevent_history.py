@@ -5,9 +5,10 @@ Shapes come from the community project's metrics cache
 ten minutes, in euros, while the file's top-level total is in centimes.
 
 Editions are compared on **day of the marathon and time of day**, in Paris
-time — donations follow the audience's clock. The files are rolling windows
-rather than event recordings, so a curve rarely starts at zero and never
-reaches back to its own pre-event concert; both facts are guarded here.
+time — donations follow the audience's clock. Coverage varies by edition: the
+2024 file records its whole fundraising window exactly, while the 2025 one is
+truncated at both ends and opens at 164 452 € already raised. No curve reaches
+back to its own pre-event concert. Both facts are guarded here.
 """
 
 from datetime import UTC, datetime
@@ -73,7 +74,10 @@ def test_parses_into_timestamps_and_euros() -> None:
 
 
 def test_the_anchor_is_the_edition_start_not_the_curve_start() -> None:
-    """The files are rolling windows; the curve's first sample means nothing."""
+    """A curve's first sample is not reliably the edition's start.
+
+    2024's coincides with it exactly; 2025's is eight hours late.
+    """
     assert CURVE.anchor == REF_RAISING
     assert CURVE.anchor != CURVE.start
     # Without an edition start the curve's own beginning is the fallback.
@@ -204,9 +208,9 @@ def test_beating_the_reference_edition_outright() -> None:
 def test_nothing_is_claimed_about_the_pre_event_concert() -> None:
     """Remote streamers now go live before the marathon opens.
 
-    Milestones can therefore land on the Thursday. The published curves are
-    rolling windows that never reach back to their own pre-event period, so
-    there is no counterpart to compare against and the line is omitted.
+    Milestones can therefore land on the Thursday. No published curve reaches
+    back to its own pre-event period, so there is no counterpart to compare
+    against and the line is omitted.
     """
     thursday = datetime(2026, 9, 3, 20, 0, tzinfo=UTC)
     assert compare_milestone(CURVE, 500_000, thursday, THIS_START) is None

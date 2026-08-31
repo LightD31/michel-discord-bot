@@ -10,11 +10,13 @@ elapsed time. Donations follow the clock: evenings peak, nights go quiet. The
 honest question is "where were we last year on the second evening at 21:00",
 and a weekday reads better than "after 53 hours".
 
-The anchor is each edition's own ``schedule_raising.start``, not its curve's
-first sample: these files are rolling windows, not event recordings. The 2025
-curve begins eight hours after that edition opened and already sits at
-164 452 €, so anything below a curve's floor has no knowable crossing time and
-is reported as unknown rather than guessed.
+Coverage varies by edition, so nothing may be assumed about it. The 2024 file
+is an exact recording — it starts and ends on that edition's fundraising
+window to the minute, and its final value matches the API total. The 2025 file
+is truncated at both ends: it opens eight hours late at 164 452 € already
+raised and stops nearly three hours early, 480 000 € short of the API total.
+Anything below a curve's floor therefore has no knowable crossing time and is
+reported as unknown rather than guessed.
 
 Pure parsing and arithmetic — the fetch lives in ``extensions/zevent/api.py``.
 """
@@ -77,8 +79,9 @@ class DonationCurve:
     def floor(self) -> float:
         """Euros already raised at the curve's first sample.
 
-        The files are rolling windows, so a curve rarely starts at zero: 2025
-        opens at 164 452 €. Nothing below this can be dated from it.
+        Not always zero: the 2024 file starts at 8 174 € and the 2025 one at
+        164 452 €, having missed that edition's first eight hours. Nothing
+        below this figure can be dated from the curve.
         """
         return self.points[0][1] if self.points else 0.0
 
@@ -263,9 +266,9 @@ def compare_milestone(
     if curve is None or not curve.points:
         return None
 
-    # Before the marathon opens there is nothing to compare against: the
-    # published curves are rolling windows that do not reach back to their own
-    # pre-event concert, so a Thursday milestone has no counterpart.
+    # Before the marathon opens there is nothing to compare against: no
+    # published curve reaches back to its own pre-event concert, so a Thursday
+    # milestone has no counterpart.
     if now < this_start:
         return None
 

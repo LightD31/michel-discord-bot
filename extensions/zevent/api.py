@@ -253,8 +253,10 @@ class ApiMixin:
                 logger.debug(f"No metrics for {event.get('name')}: {e}")
                 continue
 
-            # Anchor on that edition's own fundraising start, not on the
-            # curve's first sample: these files are rolling windows.
+            # Anchor on that edition's own fundraising start. It coincides
+            # with the curve for 2024; for 2025 the curve begins eight hours
+            # later, though both fall on the same day so the alignment is
+            # unaffected either way.
             schedule = event.get("schedule_raising") or event.get("schedule") or {}
             reference_start = (
                 parse_datetime(schedule.get("start")) if isinstance(schedule, dict) else None
