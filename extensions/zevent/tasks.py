@@ -247,8 +247,7 @@ class TasksMixin:
             curve = await self._ensure_reference_curve()
             if curve is None:
                 return None
-            elapsed = (datetime.now(UTC) - self._main_event_start).total_seconds()
-            return compare_milestone(curve, milestone, elapsed)
+            return compare_milestone(curve, milestone, datetime.now(UTC), self._main_event_start)
         except Exception as e:
             logger.error(f"Comparaison de palier indisponible : {e}")
             return None

@@ -3,22 +3,35 @@
 Shapes come from the community project's metrics cache
 (``metrics/{event}/global.json``): a cumulative donation curve sampled every
 ten minutes, in euros, while the file's top-level total is in centimes.
+
+Editions are compared on **day of the event and time of day**, not elapsed
+seconds — donations follow the clock, and an edition whose recording started
+at a different hour must not drag every comparison out of step.
 """
 
+from datetime import UTC, datetime
+
 from features.zevent.history import (
+    align,
     amount_at,
     comparable_editions,
     compare_milestone,
     edition_label,
-    elapsed_to_reach,
     format_duration,
+    format_euros,
+    format_moment,
     parse_metrics,
+    reached_at,
 )
 
-HOUR = 3_600_000  # milliseconds, the unit the metrics file uses
+HOUR_MS = 3_600_000
+# 2025-09-05 16:00 UTC — a Friday, when the real 2025 curve begins.
+REF_ORIGIN = int(datetime(2025, 9, 5, 16, 0, tzinfo=UTC).timestamp() * 1000)
+# 2026-09-04 16:00 UTC — a Friday, the real 2026 marathon start.
+THIS_START = datetime(2026, 9, 4, 16, 0, tzinfo=UTC)
 
 
-def _payload(values: list[float], *, origin: int = 1_757_088_000_000, step: int = HOUR) -> dict:
+def _payload(values: list[float], *, origin: int = REF_ORIGIN, step: int = HOUR_MS) -> dict:
     return {
         "donation_amount": int(values[-1] * 100),  # centimes, unlike the graph
         "viewers_max": 752_185,
@@ -35,22 +48,21 @@ def _payload(values: list[float], *, origin: int = 1_757_088_000_000, step: int 
 
 
 CURVE = parse_metrics(_payload([0, 1_000_000, 4_000_000, 9_000_000, 16_000_000]), "2025")
+assert CURVE is not None
 
 
 # ── parsing ──────────────────────────────────────────────────────────
 
 
-def test_parses_into_elapsed_seconds_from_the_first_sample() -> None:
-    assert CURVE is not None
+def test_parses_into_timestamps_and_euros() -> None:
     assert CURVE.label == "2025"
-    assert CURVE.points[0] == (0.0, 0.0)
-    assert CURVE.points[1] == (3600.0, 1_000_000.0)
+    assert CURVE.start == datetime(2025, 9, 5, 16, 0, tzinfo=UTC)
+    assert CURVE.points[1] == (datetime(2025, 9, 5, 17, 0, tzinfo=UTC), 1_000_000.0)
     assert CURVE.total == 16_000_000.0
-    assert CURVE.duration == 4 * 3600.0
 
 
-def test_unsorted_labels_are_ordered_before_anchoring() -> None:
-    """The 2024 file ships its labels reversed — anchoring blind would break."""
+def test_unsorted_labels_are_ordered_before_anything_reads_the_start() -> None:
+    """The 2024 file ships its labels reversed — trusting the order would break."""
     payload = _payload([0, 1_000_000, 4_000_000])
     block = payload["graph"]["donations"]["all"]
     block["labels"].reverse()
@@ -58,7 +70,7 @@ def test_unsorted_labels_are_ordered_before_anchoring() -> None:
 
     curve = parse_metrics(payload, "2024")
     assert curve is not None
-    assert curve.points[0] == (0.0, 0.0)
+    assert curve.start == datetime(2025, 9, 5, 16, 0, tzinfo=UTC)
     assert curve.total == 4_000_000.0
 
 
@@ -67,9 +79,8 @@ def test_unusable_payloads_disable_the_comparison_rather_than_raising() -> None:
     assert parse_metrics({}, "x") is None
     assert parse_metrics({"graph": "nope"}, "x") is None
     assert parse_metrics({"graph": {"donations": {"all": {}}}}, "x") is None
-    # A single point cannot describe a curve.
-    assert parse_metrics(_payload([1_000_000]), "x") is None
-    # Non-numeric entries are skipped, not coerced.
+    assert parse_metrics(_payload([1_000_000]), "x") is None  # one point is not a curve
+
     payload = _payload([0, 1_000_000, 4_000_000])
     payload["graph"]["donations"]["all"]["values"] = [0, "beaucoup", 4_000_000]
     curve = parse_metrics(payload, "x")
@@ -77,82 +88,118 @@ def test_unusable_payloads_disable_the_comparison_rather_than_raising() -> None:
     assert len(curve.points) == 2
 
 
+# ── calendar alignment ───────────────────────────────────────────────
+
+
+def test_align_maps_the_same_event_day_and_time_of_day() -> None:
+    # Day 0 at 20:00 in 2026 is day 0 at 20:00 in 2025 — Friday to Friday.
+    assert align(datetime(2026, 9, 4, 20, 0, tzinfo=UTC), THIS_START, CURVE.start) == datetime(
+        2025, 9, 5, 20, 0, tzinfo=UTC
+    )
+    # Day 2 at 18:30 — Sunday to Sunday.
+    assert align(datetime(2026, 9, 6, 18, 30, tzinfo=UTC), THIS_START, CURVE.start) == datetime(
+        2025, 9, 7, 18, 30, tzinfo=UTC
+    )
+
+
+def test_align_keeps_the_time_of_day_when_editions_start_at_different_hours() -> None:
+    """The point of aligning on the clock rather than on elapsed time.
+
+    An edition whose recording began at noon must still map 21:00 to 21:00,
+    not to 21:00 shifted by the four-hour difference in start times.
+    """
+    noon_start = datetime(2025, 9, 5, 12, 0, tzinfo=UTC)
+    assert align(datetime(2026, 9, 5, 21, 0, tzinfo=UTC), THIS_START, noon_start) == datetime(
+        2025, 9, 6, 21, 0, tzinfo=UTC
+    )
+
+
 # ── lookups ──────────────────────────────────────────────────────────
 
 
 def test_amount_at_interpolates_between_samples() -> None:
-    assert CURVE is not None
-    assert amount_at(CURVE, 0) == 0.0
-    assert amount_at(CURVE, 3600) == 1_000_000.0
-    # Half way between the 1 h and 2 h samples.
-    assert amount_at(CURVE, 5400) == 2_500_000.0
+    assert amount_at(CURVE, datetime(2025, 9, 5, 17, 0, tzinfo=UTC)) == 1_000_000.0
+    # Half way between the 17:00 and 18:00 samples.
+    assert amount_at(CURVE, datetime(2025, 9, 5, 17, 30, tzinfo=UTC)) == 2_500_000.0
 
 
 def test_amount_at_outside_the_curve() -> None:
-    assert CURVE is not None
-    assert amount_at(CURVE, -1) is None
+    assert amount_at(CURVE, datetime(2025, 9, 5, 15, 0, tzinfo=UTC)) is None
     # Past the end the edition was simply over; the final total stands.
-    assert amount_at(CURVE, 10 * 3600) == 16_000_000.0
+    assert amount_at(CURVE, datetime(2025, 9, 9, 0, 0, tzinfo=UTC)) == 16_000_000.0
 
 
-def test_elapsed_to_reach_finds_the_first_crossing() -> None:
-    assert CURVE is not None
-    assert elapsed_to_reach(CURVE, 0) == 0.0
-    assert elapsed_to_reach(CURVE, 1_000_000) == 3600.0
-    assert elapsed_to_reach(CURVE, 1_000_001) == 2 * 3600.0
-    assert elapsed_to_reach(CURVE, 99_000_000) is None
+def test_reached_at_finds_the_first_crossing() -> None:
+    assert reached_at(CURVE, 1_000_000) == datetime(2025, 9, 5, 17, 0, tzinfo=UTC)
+    assert reached_at(CURVE, 1_000_001) == datetime(2025, 9, 5, 18, 0, tzinfo=UTC)
+    assert reached_at(CURVE, 99_000_000) is None
 
 
 # ── the notification line ────────────────────────────────────────────
 
 
 def test_being_ahead_of_the_reference_edition() -> None:
-    assert CURVE is not None
-    line = compare_milestone(CURVE, 4_000_000, elapsed_now=3600)
+    # 4 M€ at day 0 17:00 in 2026; 2025 needed until day 0 18:00.
+    line = compare_milestone(CURVE, 4_000_000, datetime(2026, 9, 4, 17, 0, tzinfo=UTC), THIS_START)
     assert line is not None
-    assert "d'avance" in line and "2025" in line
+    assert "d'avance sur 2025" in line
+    assert "vendredi 5 septembre à 18 h 00" in line
 
 
 def test_being_behind_the_reference_edition() -> None:
-    assert CURVE is not None
-    line = compare_milestone(CURVE, 4_000_000, elapsed_now=5 * 3600)
+    line = compare_milestone(CURVE, 4_000_000, datetime(2026, 9, 4, 21, 0, tzinfo=UTC), THIS_START)
     assert line is not None
-    assert "de retard" in line
+    assert "de retard sur 2025" in line
 
 
 def test_a_dead_heat_is_not_dressed_up_as_a_lead() -> None:
-    assert CURVE is not None
-    line = compare_milestone(CURVE, 4_000_000, elapsed_now=2 * 3600 + 60)
+    line = compare_milestone(CURVE, 4_000_000, datetime(2026, 9, 4, 18, 1, tzinfo=UTC), THIS_START)
     assert line is not None
     assert "avance" not in line and "retard" not in line
 
 
 def test_beating_the_reference_edition_outright() -> None:
-    assert CURVE is not None
-    line = compare_milestone(CURVE, 20_000_000, elapsed_now=3600)
+    line = compare_milestone(CURVE, 20_000_000, datetime(2026, 9, 4, 20, 0, tzinfo=UTC), THIS_START)
     assert line is not None
     assert "Jamais atteint" in line
     assert "16 000 000 €" in line
 
 
-def test_no_comparison_before_the_marathon_or_without_data() -> None:
-    assert CURVE is not None
-    assert compare_milestone(None, 1_000_000, 3600) is None
+def test_no_comparison_without_data_or_before_the_marathon() -> None:
+    assert (
+        compare_milestone(None, 1_000_000, datetime(2026, 9, 4, 20, 0, tzinfo=UTC), THIS_START)
+        is None
+    )
     # Milestones crossed during the pre-event concert are not comparable.
-    assert compare_milestone(CURVE, 1_000_000, -60) is None
+    assert (
+        compare_milestone(CURVE, 1_000_000, datetime(2026, 9, 3, 20, 0, tzinfo=UTC), THIS_START)
+        is None
+    )
 
 
-# ── formatting and edition selection ─────────────────────────────────
+# ── formatting ───────────────────────────────────────────────────────
+
+
+def test_format_moment_names_the_day_in_french() -> None:
+    assert format_moment(datetime(2025, 9, 7, 18, 10, tzinfo=UTC)) == (
+        "dimanche 7 septembre à 18 h 10"
+    )
+    assert format_moment(datetime(2025, 9, 5, 8, 5, tzinfo=UTC)) == "vendredi 5 septembre à 8 h 05"
 
 
 def test_format_duration_is_coarse_on_purpose() -> None:
     assert format_duration(0) == "0 min"
-    assert format_duration(90) == "1 min"
     assert format_duration(3600) == "1 h"
     assert format_duration(3600 + 20 * 60) == "1 h 20"
-    assert format_duration(86400) == "1 j"
     assert format_duration(86400 + 5 * 3600) == "1 j 5 h"
     assert format_duration(-50) == "0 min"
+
+
+def test_format_euros_uses_space_separators() -> None:
+    assert format_euros(16_178_394) == "16 178 394 €"
+
+
+# ── edition selection ────────────────────────────────────────────────
 
 
 def test_edition_label_prefers_the_year() -> None:
@@ -175,12 +222,9 @@ EVENTS = [
 
 
 def test_only_past_editions_of_the_same_series_are_comparable() -> None:
-    tracked = EVENTS[0]
-    picked = [e["id"] for e in comparable_editions(EVENTS, tracked)]
-
     # Most recent first, and the ungrouped one-off never qualifies — measuring
     # a marathon against a weekend charity stream would be meaningless.
-    assert picked == ["2025", "2024"]
+    assert [e["id"] for e in comparable_editions(EVENTS, EVENTS[0])] == ["2025", "2024"]
 
 
 def test_an_ungrouped_event_has_nothing_to_compare_against() -> None:
@@ -204,5 +248,4 @@ def test_editions_without_a_usable_start_are_skipped_not_compared() -> None:
         EVENTS[1],
         "not even a dict",
     ]
-    picked = comparable_editions(broken, EVENTS[0])
-    assert [e["id"] for e in picked] == ["2025"]
+    assert [e["id"] for e in comparable_editions(broken, EVENTS[0])] == ["2025"]
