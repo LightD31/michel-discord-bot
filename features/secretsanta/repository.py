@@ -8,7 +8,7 @@ import os
 from dataclasses import asdict
 from datetime import datetime
 
-from src.core.db import mongo_manager
+from src.core.db import mongo_manager, translates_db_errors
 from src.core.logging import init_logger
 
 from .models import SecretSantaSession
@@ -32,6 +32,7 @@ class SecretSantaRepository:
             db["secret_santa_banned_pairs"],
         )
 
+    @translates_db_errors
     async def get_session(self, context_id: str) -> SecretSantaSession | None:
         sessions_col, _, _ = self._collections(context_id)
         doc = await sessions_col.find_one({"_id": context_id})
@@ -40,6 +41,7 @@ class SecretSantaRepository:
         doc["context_id"] = doc.pop("_id")
         return SecretSantaSession(**doc)
 
+    @translates_db_errors
     async def save_session(self, session: SecretSantaSession) -> None:
         sessions_col, _, _ = self._collections(session.context_id)
         data = asdict(session)
@@ -47,6 +49,7 @@ class SecretSantaRepository:
         await sessions_col.update_one({"_id": data["_id"]}, {"$set": data}, upsert=True)
         logger.info(f"Session saved for {session.context_id}")
 
+    @translates_db_errors
     async def delete_session(self, context_id: str) -> bool:
         sessions_col, _, _ = self._collections(context_id)
         result = await sessions_col.delete_one({"_id": context_id})
@@ -55,6 +58,7 @@ class SecretSantaRepository:
             return True
         return False
 
+    @translates_db_errors
     async def read_banned_pairs(self, context_id: str) -> list[tuple[int, int]]:
         _, _, banned_pairs_col = self._collections(context_id)
         doc = await banned_pairs_col.find_one({"_id": context_id})
@@ -62,6 +66,7 @@ class SecretSantaRepository:
             return [tuple(p) for p in doc.get("pairs", [])]
         return []
 
+    @translates_db_errors
     async def write_banned_pairs(
         self, context_id: str, banned_pairs: list[tuple[int, int]]
     ) -> None:
@@ -73,6 +78,7 @@ class SecretSantaRepository:
         )
         logger.info(f"Banned pairs updated for {context_id}")
 
+    @translates_db_errors
     async def save_draw_results(self, context_id: str, draw_results: list[tuple[int, int]]) -> None:
         _, draw_results_col, _ = self._collections(context_id)
         await draw_results_col.update_one(
@@ -87,6 +93,7 @@ class SecretSantaRepository:
         )
         logger.info(f"Draw results saved for {context_id}")
 
+    @translates_db_errors
     async def get_draw_results(self, context_id: str) -> list[tuple[int, int]] | None:
         _, draw_results_col, _ = self._collections(context_id)
         doc = await draw_results_col.find_one({"_id": context_id})

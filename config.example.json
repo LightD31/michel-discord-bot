@@ -76,7 +76,8 @@
             "baseUrl": "",
             "clientId": "",
             "clientSecret": "",
-            "developerUserIds": []
+            "developerUserIds": [],
+            "trustedProxies": []
         },
         "youtube": {
             "youtubeApiKey": ""

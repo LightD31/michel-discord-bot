@@ -18,6 +18,7 @@ from twitchAPI.twitch import Twitch
 from twitchAPI.type import AuthScope, EventSubSubscriptionConflict
 
 from src.core import logging as logutil
+from src.core.tasks import spawn
 
 from ._common import ensure_utc
 
@@ -191,7 +192,7 @@ class EventSubMixin:
         ``TypeError`` and EventSub was never restarted.
         """
         logger.error("Revocation detected: %s", data)
-        asyncio.create_task(self.run())
+        spawn(self.run(), name="twitch-eventsub-revocation-restart", log=logger)
 
     async def on_live_start(self, data: StreamOnlineEvent):
         """EventSub callback: a streamer just went live."""

@@ -7,7 +7,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
 from src.core import logging as logutil
 from src.webui.context import COOKIE_NAME, WebUIContext
-from src.webui.ratelimit import RateLimiter, client_ip
+from src.webui.ratelimit import RateLimiter, client_ip, request_is_https
 
 logger = logutil.init_logger("webui.routes.auth")
 
@@ -17,22 +17,15 @@ AUTH_RATE_LIMIT = 10
 AUTH_RATE_WINDOW_SECONDS = 60.0
 
 
-def _is_https(request: Request) -> bool:
-    """Whether the request reached us over HTTPS (honors X-Forwarded-Proto)."""
-    forwarded = request.headers.get("x-forwarded-proto", "").split(",")[0].strip().lower()
-    if forwarded:
-        return forwarded == "https"
-    return request.url.scheme == "https"
-
-
 def create_router(ctx: WebUIContext) -> APIRouter:
     router = APIRouter()
     auth_limiter = RateLimiter(AUTH_RATE_LIMIT, AUTH_RATE_WINDOW_SECONDS)
 
     def _throttle(request: Request) -> None:
-        retry_after = auth_limiter.check(client_ip(request))
+        key = client_ip(request, ctx.trusted_proxies)
+        retry_after = auth_limiter.check(key)
         if retry_after:
-            logger.warning("Auth rate limit hit for %s", client_ip(request))
+            logger.warning("Auth rate limit hit for %s", key)
             raise HTTPException(
                 status_code=429,
                 detail="Trop de tentatives de connexion — réessaie dans un instant.",
@@ -52,7 +45,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
             httponly=True,
             max_age=300,
             samesite="lax",
-            secure=_is_https(request),
+            secure=request_is_https(request, ctx.trusted_proxies),
         )
         return response
 
@@ -90,7 +83,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
             httponly=True,
             max_age=86400,
             samesite="lax",
-            secure=_is_https(request),
+            secure=request_is_https(request, ctx.trusted_proxies),
         )
         response.delete_cookie("oauth_state")
         return response

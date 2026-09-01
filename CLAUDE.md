@@ -22,7 +22,7 @@ ruff format --check .       # CI runs --check; drop --check to apply
 ruff check --fix .
 
 # Type check (src.core.* is strict, rest is lenient; runs in CI on every PR)
-mypy src
+mypy src features
 pre-commit run mypy --hook-stage manual   # same check via the opt-in hook
 
 # Tests
@@ -33,7 +33,10 @@ pytest --cov=src --cov=features --cov-report=term  # with coverage (CI)
 # Pre-commit (ruff lint+format, detect-secrets, hygiene hooks; mypy is manual-stage only)
 pre-commit run --all-files
 
-# Regenerate config.example.json after adding/changing Web UI schemas
+# Regenerate config.example.json after adding/changing Web UI schemas.
+# Needs a config/config.json in place (copy config.example.json over) because
+# several extensions read config at import time; the script now exits
+# non-zero if any extension fails to import, and CI checks the result for drift.
 python scripts/generate_config_example.py
 
 # Docker (production layout — mounts ./config, ./data, ./logs)
@@ -48,10 +51,10 @@ docker compose up -d
 
 ## Architecture
 
-Three-layer split (~33k lines). Respect the boundaries:
+Three-layer split (~38k lines, excluding tests). Respect the boundaries:
 
 - **`extensions/`** — Discord-facing layer (35 entries). Each is either `extensions/<name>.py` or a package `extensions/<name>/__init__.py` containing an `interactions.Extension` subclass plus a module-level `setup(bot)` factory. Auto-discovered by `main.py` at startup.
-- **`features/`** — Pure domain logic and persistence. **Must not import `interactions`** — this is what makes features unit-testable. Domain code returns plain data (bytes, dicts, models) and lets the extension build Discord objects. Each feature owns a `repository.py` that reads/writes MongoDB and translates driver exceptions into `src.core.errors.DatabaseError` so extensions never import `pymongo` (see `features/xp/repository.py`).
+- **`features/`** — Pure domain logic and persistence. **Must not import `interactions`** — this is what makes features unit-testable. Domain code returns plain data (bytes, dicts, models) and lets the extension build Discord objects. Each feature owns a `repository.py` that reads/writes MongoDB and translates driver exceptions into `src.core.errors.DatabaseError` so extensions never import `pymongo` — decorate methods with `@translates_db_errors` from `src.core.db` (see `features/xp/repository.py`), or raise `DatabaseError` explicitly with a contextual message (see `features/moderation/repository.py`). `bson` counts as the driver too: a repository method taking an id a user typed accepts a `str` and parses the `ObjectId` itself, so a malformed id is an ordinary "not found" rather than an `InvalidId` escaping into a command handler.
 - **`src/`** — Shared infrastructure.
   - `src/core/` is framework-free (config, db, http, logging, errors, images, text). Strictly typed under mypy.
   - `src/discord_ext/` holds interactions.py-dependent UI helpers (embeds, paginator, autocomplete, persistent messages). Renderers shared between an extension and a WebUI route also live here (e.g. `rolemenus.py`).
@@ -108,6 +111,10 @@ All config lives in `config/config.json`: a `config` key for global sections and
 ### Async everywhere
 
 Motor (MongoDB), aiohttp (HTTP), asyncssh (SFTP), native async RCON. Never block the event loop. Use the shared aiohttp session from `src.core.http` rather than creating per-call clients — it adds retry with jittered backoff and redacts credentials from logged URLs.
+
+Background work that isn't an `interactions` `@Task.create` trigger goes through `spawn()` (`src.core.tasks`), never bare `asyncio.create_task(...)`: the loop holds tasks only weakly, so a discarded handle can be garbage-collected mid-await and cancelled with no traceback. `spawn()` keeps the reference until completion and logs whatever the coroutine raised.
+
+Anything that hands work between the bot loop and the Web UI's uvicorn loop has to cross threads explicitly. `asyncio.Queue`, `Future` and friends are not thread-safe — dispatch with `loop.call_soon_threadsafe(...)` (see `src/webui/log_handler.py`) or, for the Web UI calling into the bot, `ctx.run_on_bot_loop(...)`.
 
 ## Notes
 

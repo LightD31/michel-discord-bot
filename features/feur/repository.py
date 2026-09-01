@@ -3,7 +3,7 @@
 import os
 
 from features.feur.models import FeurStats
-from src.core.db import mongo_manager
+from src.core.db import mongo_manager, translates_db_errors
 from src.core.logging import init_logger
 
 logger = init_logger(os.path.basename(__file__))
@@ -16,6 +16,7 @@ class FeurRepository:
     def _col(self):
         return mongo_manager.get_guild_collection(self._guild_id, "feur_stats")
 
+    @translates_db_errors
     async def get_guild_stats(self) -> FeurStats:
         doc = await self._col().find_one({"_id": "guild_total"})
         if doc:
@@ -26,6 +27,7 @@ class FeurRepository:
             )
         return FeurStats()
 
+    @translates_db_errors
     async def get_user_stats(self, user_id: str) -> FeurStats:
         doc = await self._col().find_one({"_id": f"user_{user_id}"})
         if doc:
@@ -36,6 +38,7 @@ class FeurRepository:
             )
         return FeurStats()
 
+    @translates_db_errors
     async def record_event(self, user_id: str, feur_type: str) -> None:
         """Atomically increment guild-total and per-user counters."""
         await self._col().update_one(
@@ -45,6 +48,7 @@ class FeurRepository:
             {"_id": f"user_{user_id}"}, {"$inc": {"total": 1, feur_type: 1}}, upsert=True
         )
 
+    @translates_db_errors
     async def get_all_user_totals(self) -> list[tuple[str, int]]:
         """Return (user_id_str, total) pairs for all users in the guild."""
         result = []

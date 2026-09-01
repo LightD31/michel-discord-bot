@@ -1,10 +1,15 @@
 """Generate ``config.example.json`` from the Web UI schema registry.
 
 ``config/`` is gitignored, so the config shape only exists in code — this
-script materializes it. Every extension is imported (best-effort) so its
+script materializes it. Every extension is imported so its
 ``@register_module`` / ``@register_section`` schemas land in the registry,
 then a skeleton is emitted: declared defaults where available, otherwise an
 empty value matching the field type.
+
+An extension that fails to import is a hard error: its schema would be absent
+from the registry and the emitted example would quietly lack that module's
+section. Several extensions read ``config/config.json`` at import time, so run
+this with a config in place (``config.example.json`` copied over is enough).
 
 Usage::
 
@@ -83,8 +88,17 @@ def _skeleton_from_fields(fields: dict[str, dict[str, Any]]) -> dict[str, Any]:
 
 def build_example() -> dict[str, Any]:
     failures = _import_extensions()
-    for failure in failures:
-        print(f"warning: skipped {failure}", file=sys.stderr)
+    if failures:
+        # An extension that fails to import never registers its schema, so the
+        # generated example would silently lose that module's section. Refuse
+        # to write a truncated example rather than hand operators a config
+        # skeleton that is missing keys the bot expects.
+        for failure in failures:
+            print(f"error: could not import {failure}", file=sys.stderr)
+        raise SystemExit(
+            f"{len(failures)} extension(s) failed to import — "
+            "config.example.json would be missing their sections."
+        )
 
     from src.webui import schemas as schemas_module
 

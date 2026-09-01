@@ -109,7 +109,7 @@ async def vlrgg_request(endpoint: str, params: dict[str, str] | None = None) -> 
     url = f"{api_url}/{endpoint}"
     try:
         async with _api_semaphore:
-            data: dict[str, Any] = await fetch(url, params=params, return_type="json")  # type: ignore[assignment]
+            data: dict[str, Any] = await fetch(url, params=params, return_type="json")
         _cache[key] = (time.monotonic(), data)
         return data
     except Exception as e:
@@ -511,7 +511,8 @@ async def fetch_team_matches_by_id(team_id: str, page: int = 1) -> list[dict[str
     data = await vlrgg_request("v2/team/matches", {"id": team_id, "page": str(page)})
     inner = data.get("data", {})
     if isinstance(inner, dict):
-        return inner.get("matches", inner.get("segments", []))
+        matches = inner.get("matches", inner.get("segments", []))
+        return matches if isinstance(matches, list) else []
     return inner if isinstance(inner, list) else []
 
 

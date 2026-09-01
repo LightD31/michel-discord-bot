@@ -66,7 +66,9 @@ jobs:
           pip install -r requirements.txt -e ".[dev]"
 
       - name: Mypy (src/core strict; rest lenient)
-        run: mypy src
+        # features/ is the framework-free layer the architecture sets aside for
+        # testable domain logic — exactly where annotations pay off most.
+        run: mypy src features
 
   test:
     runs-on: ubuntu-latest
@@ -138,6 +140,44 @@ jobs:
           uv pip compile pyproject.toml -o /tmp/requirements.txt --universal --quiet
           if ! diff <(grep -v '^ *#' requirements.txt) <(grep -v '^ *#' /tmp/requirements.txt); then
             echo "::error::requirements.txt is out of sync with pyproject.toml — regenerate with: uv pip compile pyproject.toml -o requirements.txt --universal"
+            exit 1
+          fi
+
+  config-example:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@v7
+        with:
+          # Keep in sync with the Dockerfile base image — CI must test the
+          # interpreter the bot ships on.
+          python-version: "3.14"
+          cache: pip
+
+      - name: Install locked runtime deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -e ".[dev]"
+
+      - name: Check config.example.json matches the Web UI schemas
+        # Mirrors the lockfile job: the generated example is committed, so a
+        # schema change that forgets to regenerate it must fail here rather
+        # than leave operators with an example missing the new keys. The
+        # generator exits non-zero if an extension fails to import, which
+        # would otherwise silently drop that module's section.
+        run: |
+          # Several extensions read config/config.json at import time, and the
+          # generator has to import them all to collect their schemas. The
+          # committed example is a valid seed: the output is built from the
+          # schema registry, not from this file.
+          mkdir -p config && cp config.example.json config/config.json
+          python scripts/generate_config_example.py
+          if ! git diff --exit-code -- config.example.json; then
+            echo "::error::config.example.json is out of date — regenerate with: python scripts/generate_config_example.py"
             exit 1
           fi
 

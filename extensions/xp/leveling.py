@@ -67,7 +67,7 @@ class LevelingMixin:
             logger.debug("No XP given to %s due to cooldown.", user_id)
             return
 
-        await self._update_user_xp(guild_id, user_id, stats, message)
+        await self._update_user_xp(guild_id, user_id, message)
 
     def _is_valid_xp_message(self, message: Message) -> bool:
         if message.guild is None:
@@ -108,21 +108,25 @@ class LevelingMixin:
     def _is_on_cooldown(current_time: float, last_time: float) -> bool:
         return current_time - last_time < XP_COOLDOWN_SECONDS
 
-    async def _update_user_xp(
-        self, guild_id: str, user_id: str, stats: dict, message: Message
-    ) -> None:
+    async def _update_user_xp(self, guild_id: str, user_id: str, message: Message) -> None:
         xp_gained = random.randint(XP_MIN, XP_MAX)
-        new_xp = stats.get("xp", 0) + xp_gained
-        new_msg = stats.get("msg", 0) + 1
         repo = self._repo(guild_id)
 
         try:
-            await repo.update_xp(user_id, new_xp, new_msg, message.created_at.timestamp())
+            updated = await repo.award_xp(user_id, xp_gained, 1, message.created_at.timestamp())
             self._invalidate_rank_cache(guild_id)
             logger.debug("Gave %s XP.", user_id)
         except DatabaseError as e:
             logger.error("Failed to update XP for %s: %s", user_id, e)
             return
+
+        if updated is None:
+            logger.debug("XP row for %s disappeared mid-update; skipping level check.", user_id)
+            return
+
+        # The post-increment total from the database, not stats + xp_gained:
+        # a concurrent voice-tick award would make the local sum wrong.
+        new_xp = updated.get("xp", 0)
 
         try:
             await repo.log_event(user_id, xp_gained, new_xp, message.created_at)
@@ -130,7 +134,7 @@ class LevelingMixin:
             logger.warning("Failed to log XP event for %s: %s", user_id, e)
 
         new_level, _, _ = calculate_level(new_xp)
-        old_level = stats.get("lvl", 0)
+        old_level = updated.get("lvl", 0)
         if new_level > old_level:
             await self._handle_level_up(guild_id, user_id, new_level, message)
 

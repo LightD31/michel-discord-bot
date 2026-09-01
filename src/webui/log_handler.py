@@ -54,7 +54,8 @@ class WebUILogHandler(logging.Handler):
     def __init__(self, max_entries: int = 2000):
         super().__init__()
         self.buffer: deque[LogEntry] = deque(maxlen=max_entries)
-        self._listeners: list[asyncio.Queue] = []
+        # (queue, owning loop) — see subscribe() for why the loop is kept.
+        self._listeners: list[tuple[asyncio.Queue, asyncio.AbstractEventLoop]] = []
         self.setLevel(logging.DEBUG)
         WebUILogHandler._instance = self
 
@@ -78,27 +79,43 @@ class WebUILogHandler(logging.Handler):
                 filename=record.filename,
             )
             self.buffer.append(entry)
-            # Notify all SSE listeners (non-blocking), prune dead queues
+            # Notify all SSE listeners (non-blocking), prune dead queues.
             dead = []
-            for queue in self._listeners:
+            for queue, loop in self._listeners:
+                if loop.is_closed():
+                    dead.append((queue, loop))
+                    continue
                 try:
-                    queue.put_nowait(entry)
-                except asyncio.QueueFull:
-                    # Queue is full — consumer is too slow or dead.
-                    # Drain the oldest entry to make room and retry once.
-                    try:
-                        queue.get_nowait()
-                        queue.put_nowait(entry)
-                    except Exception:
-                        dead.append(queue)
-                except Exception:
-                    dead.append(queue)
-            # Remove dead queues
-            for q in dead:
+                    # emit() runs on whichever thread logged the record — the
+                    # bot loop's, usually — while the queue and the coroutine
+                    # awaiting it belong to the Web UI's uvicorn loop.
+                    # asyncio.Queue is not thread-safe, so the put has to be
+                    # handed to the owning loop rather than performed here.
+                    loop.call_soon_threadsafe(self._offer, queue, entry)
+                except RuntimeError:
+                    # Loop shut down between the is_closed() check and now.
+                    dead.append((queue, loop))
+            for listener in dead:
                 with contextlib.suppress(ValueError):
-                    self._listeners.remove(q)
+                    self._listeners.remove(listener)
         except Exception:
             self.handleError(record)
+
+    @staticmethod
+    def _offer(queue: asyncio.Queue, entry: LogEntry) -> None:
+        """Enqueue *entry*, dropping the oldest item if the consumer lags.
+
+        Runs on the queue's own loop (scheduled by :meth:`emit`), so the
+        non-thread-safe queue operations below are safe here.
+        """
+        try:
+            queue.put_nowait(entry)
+        except asyncio.QueueFull:
+            # Consumer is too slow: make room and prefer the newer entry.
+            with contextlib.suppress(asyncio.QueueEmpty):
+                queue.get_nowait()
+            with contextlib.suppress(asyncio.QueueFull):
+                queue.put_nowait(entry)
 
     def get_recent(
         self,
@@ -130,15 +147,21 @@ class WebUILogHandler(logging.Handler):
         return [e.to_dict() for e in entries[-count:]]
 
     def subscribe(self) -> asyncio.Queue:
-        """Create a new SSE listener queue."""
+        """Create a new SSE listener queue, bound to the calling loop.
+
+        The loop is captured here so :meth:`emit` — which runs on whichever
+        thread logged the record — can hand entries back to the loop that owns
+        the queue instead of touching it directly.
+        """
         queue: asyncio.Queue = asyncio.Queue(maxsize=100)
-        self._listeners.append(queue)
+        self._listeners.append((queue, asyncio.get_running_loop()))
         return queue
 
     def unsubscribe(self, queue: asyncio.Queue):
         """Remove an SSE listener queue."""
-        with contextlib.suppress(ValueError):
-            self._listeners.remove(queue)
+        for listener in [entry for entry in self._listeners if entry[0] is queue]:
+            with contextlib.suppress(ValueError):
+                self._listeners.remove(listener)
         # Drain the queue to release any held LogEntry references
         while not queue.empty():
             try:

@@ -26,13 +26,16 @@ Usage::
 """
 
 import asyncio
+import functools
 import json
 import os
 import shutil
+from collections.abc import Awaitable, Callable
 from datetime import datetime
 from pathlib import Path
 from typing import ClassVar, Optional
 
+import pymongo.errors
 from motor.motor_asyncio import (
     AsyncIOMotorClient,
     AsyncIOMotorCollection,
@@ -41,12 +44,39 @@ from motor.motor_asyncio import (
 
 from src.core import logging as _logging
 from src.core.config import load_config
+from src.core.errors import DatabaseError
 
 logger = _logging.init_logger(os.path.basename(__file__))
 
 # Database naming conventions
 GLOBAL_DB_NAME = "global"
 GUILD_DB_PREFIX = "guild_"
+
+
+def translates_db_errors[**P, R](func: Callable[P, Awaitable[R]]) -> Callable[P, Awaitable[R]]:
+    """Re-raise ``pymongo`` errors from a repository method as :class:`DatabaseError`.
+
+    Repositories under ``features/<name>/`` are the only layer allowed to touch
+    the driver, so this is where driver exceptions stop. Extensions catch
+    :class:`~src.core.errors.DatabaseError` and never need to import
+    ``pymongo`` to handle a Mongo outage.
+
+    Usage::
+
+        class ThingRepository:
+            @translates_db_errors
+            async def load(self) -> dict | None:
+                return await self._col().find_one({"_id": "x"})
+    """
+
+    @functools.wraps(func)
+    async def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
+        try:
+            return await func(*args, **kwargs)
+        except pymongo.errors.PyMongoError as e:
+            raise DatabaseError(str(e)) from e
+
+    return wrapper
 
 
 class MongoManager:

@@ -29,47 +29,70 @@ def _build_valid_receivers(
     }
 
 
-def _has_valid_future(
-    givers: list[int],
-    start_index: int,
-    available_receivers: set[int],
+class _SearchBudget:
+    """Bounds a backtracking search so a pathological ban list can't hang the caller.
+
+    Finding a Hamiltonian cycle is NP-hard in general, and the draw runs inline
+    in a slash-command handler. Exhausting the budget is reported as "no
+    assignment found", which the caller already handles.
+    """
+
+    def __init__(self, limit: int) -> None:
+        self.remaining = limit
+
+    def spend(self) -> bool:
+        """Consume one node expansion; ``False`` once the budget is spent."""
+        self.remaining -= 1
+        return self.remaining > 0
+
+
+# Generous for the group sizes a Discord Secret Santa sees (a full search over
+# 20 participants with no bans settles in far fewer steps), low enough that an
+# unsatisfiable ban list gives up in well under a second.
+_MAX_SEARCH_STEPS = 200_000
+
+
+def _backtrack_cycle(
+    start: int,
+    current: int,
+    unvisited: set[int],
     valid_receivers: dict[int, list[int]],
-) -> bool:
-    """Forward checking: verify all future givers still have at least one candidate."""
-    for i in range(start_index, len(givers)):
-        giver = givers[i]
-        if not any(r in available_receivers for r in valid_receivers[giver]):
-            return False
-    return True
-
-
-def _backtrack_assign(
-    givers: list[int],
-    index: int,
     assignments: dict[int, int],
-    available_receivers: set[int],
-    valid_receivers: dict[int, list[int]],
+    budget: _SearchBudget,
 ) -> bool:
-    if index == len(givers):
-        return True
+    """Extend the single gift-giving cycle from *current*, backtracking on dead ends.
 
-    giver = givers[index]
-    candidates = [r for r in valid_receivers[giver] if r in available_receivers]
+    The cycle is grown one participant at a time: every step consumes a member
+    of *unvisited*, and the final step must close the loop back to *start*.
+    That last check is what makes the result one cycle rather than merely a
+    derangement — a derangement is free to split into several disjoint loops.
+    """
+    if not unvisited:
+        # Everyone is on the path; the assignment is only valid if the last
+        # giver may give to the participant the cycle started from.
+        if start in valid_receivers[current]:
+            assignments[current] = start
+            return True
+        return False
+
+    if not budget.spend():
+        return False
+
+    candidates = [r for r in valid_receivers[current] if r in unvisited]
     random.shuffle(candidates)
+    # Warnsdorff-style ordering: visit the most constrained successor first so
+    # dead ends surface early instead of after a deep fruitless descent.
+    candidates.sort(key=lambda c: sum(1 for r in valid_receivers[c] if r in unvisited))
 
     for receiver in candidates:
-        assignments[giver] = receiver
-        available_receivers.remove(receiver)
+        assignments[current] = receiver
+        unvisited.remove(receiver)
 
-        if _has_valid_future(
-            givers, index + 1, available_receivers, valid_receivers
-        ) and _backtrack_assign(
-            givers, index + 1, assignments, available_receivers, valid_receivers
-        ):
+        if _backtrack_cycle(start, receiver, unvisited, valid_receivers, assignments, budget):
             return True
 
-        available_receivers.add(receiver)
-        del assignments[giver]
+        unvisited.add(receiver)
+        del assignments[current]
 
     return False
 
@@ -79,9 +102,14 @@ def generate_valid_assignments(
 ) -> list[tuple[int, int]] | None:
     """Generate a single-cycle Secret Santa assignment using smart backtracking.
 
-    Uses constraint propagation, the MRV (Minimum Remaining Values) heuristic,
-    forward checking, and shuffled candidate ordering for variety. Returns
-    ``None`` when no valid single-cycle assignment exists.
+    Every participant gives to exactly one other and receives from exactly one
+    other, and following the chain visits everybody before returning to the
+    start — so the draw can never degenerate into two people swapping gifts
+    with each other while the rest form their own loop.
+
+    Returns ``None`` when no valid single-cycle assignment exists (or when the
+    search budget runs out); callers that can live with several independent
+    loops fall back to :func:`generate_assignments_with_subgroups`.
     """
     if len(participant_ids) < 2:
         return None
@@ -93,16 +121,22 @@ def generate_valid_assignments(
             logger.warning(f"No valid receivers for participant {giver}")
             return None
 
-    givers = participant_ids.copy()
-    random.shuffle(givers)
-    givers.sort(key=lambda g: len(valid_receivers[g]))
-
+    # The cycle is a loop, so its starting point is arbitrary — candidate
+    # shuffling inside the search is what varies the draw between runs.
+    start = participant_ids[0]
     assignments: dict[int, int] = {}
-    available_receivers = set(participant_ids)
+    unvisited = set(participant_ids) - {start}
+    budget = _SearchBudget(_MAX_SEARCH_STEPS)
 
-    if _backtrack_assign(givers, 0, assignments, available_receivers, valid_receivers):
+    if _backtrack_cycle(start, start, unvisited, valid_receivers, assignments, budget):
         return [(giver, assignments[giver]) for giver in participant_ids]
 
+    if budget.remaining <= 0:
+        logger.warning(
+            "Single-cycle search gave up after %d steps for %d participants",
+            _MAX_SEARCH_STEPS,
+            len(participant_ids),
+        )
     return None
 
 

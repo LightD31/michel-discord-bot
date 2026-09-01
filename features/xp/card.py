@@ -110,7 +110,7 @@ def render_rank_card(
     rank_text = f"#{rank}" + (f" / {member_count}" if member_count else "") if rank else "—"
     rank_font = ImageFont.truetype(_FONT_PATH, 26)
     rank_bbox = draw.textbbox((0, 0), rank_text, font=rank_font)
-    rank_w = rank_bbox[2] - rank_bbox[0]
+    rank_w = int(rank_bbox[2] - rank_bbox[0])
     chip_w = rank_w + 28
     chip_h = 38
     chip_x = CARD_WIDTH - PADDING - chip_w
