@@ -43,11 +43,20 @@ class TrustedProxies:
     def __init__(self, networks: Sequence[str] | None = None) -> None:
         entries = networks if networks else DEFAULT_TRUSTED_PROXIES
         self._networks = []
-        for entry in entries:
+        for position, entry in enumerate(entries, start=1):
             try:
                 self._networks.append(ipaddress.ip_network(entry.strip(), strict=False))
             except ValueError:
-                logger.warning("Ignoring invalid webui.trustedProxies entry %r", entry)
+                # The offending value is deliberately not echoed. It is read
+                # straight out of config.json, and this branch runs precisely
+                # when something unexpected landed in the key — a secret pasted
+                # into the wrong field would otherwise be written to the log in
+                # clear text. The position is enough to find it.
+                logger.warning(
+                    "Ignoring webui.trustedProxies entry #%d: not a valid IP address "
+                    "or CIDR range.",
+                    position,
+                )
 
     def trusts(self, address: str | None) -> bool:
         """True if *address* is one of the proxies we put in front of ourselves."""

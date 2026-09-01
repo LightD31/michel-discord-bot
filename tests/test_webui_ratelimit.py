@@ -1,5 +1,7 @@
 """Tests for the auth-endpoint rate limiter."""
 
+import logging
+
 from src.webui import ratelimit
 from src.webui.ratelimit import (
     RateLimiter,
@@ -164,6 +166,22 @@ def test_invalid_entries_are_skipped_not_fatal():
     policy = TrustedProxies(["not-a-network", "127.0.0.1"])
     assert policy.trusts("127.0.0.1")
     assert not policy.trusts("10.0.0.1")
+
+
+def test_an_invalid_entry_is_never_echoed_into_the_logs(caplog):
+    """The values come from config.json, which also holds secrets.
+
+    This branch runs exactly when something unexpected is in the key, so a
+    credential pasted into the wrong field must not reach the log. The warning
+    reports the position instead, which is enough to locate it.
+    """
+    with caplog.at_level(logging.WARNING, logger=ratelimit.logger.name):
+        TrustedProxies(["127.0.0.1", "hunter2-not-a-cidr"])
+
+    assert len(caplog.records) == 1
+    message = caplog.records[0].getMessage()
+    assert "hunter2" not in message
+    assert "#2" in message
 
 
 # --- scheme detection ------------------------------------------------------
