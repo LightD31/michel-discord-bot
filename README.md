@@ -88,7 +88,7 @@ A modular, multi-guild Discord bot built with **interactions.py**. Michel ships 
 
 ## Architecture
 
-The codebase (~33k lines) is split into three top-level layers, each with a clear role:
+The codebase (~38k lines, excluding tests) is split into three top-level layers, each with a clear role:
 
 ```
 main.py                 # Entry point — discovers & loads extensions, starts client,

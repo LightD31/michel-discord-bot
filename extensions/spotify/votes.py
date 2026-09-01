@@ -678,12 +678,16 @@ class VotesMixin:
             except Exception as e:
                 logger.error("Error in check_for_end for server %s: %s", server.guild_id, e)
 
-    @slash_command(
-        name="nextvote",
-        description="Force le prochain vote PAS TOUCHE",
-        scopes=[DEV_GUILD],
-    )
-    async def nextvote(self, ctx: SlashContext):
+    async def _nextvote(self, ctx: SlashContext):
         """Dev-only: force an immediate close+restart of the daily vote cycle."""
         await self.randomvote()
         await ctx.send("Vote forcé", ephemeral=True)
+
+    # Registered only when a dev guild is configured — see DEV_GUILD in
+    # _common.py for why an unset one must not reach the decorator.
+    if DEV_GUILD:
+        nextvote = slash_command(
+            name="nextvote",
+            description="Force le prochain vote PAS TOUCHE",
+            scopes=[DEV_GUILD],
+        )(_nextvote)

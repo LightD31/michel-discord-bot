@@ -18,6 +18,7 @@ from src.core.config import load_config as bot_load_config
 from src.webui.auth import DiscordOAuth
 from src.webui.context import WebUIContext
 from src.webui.log_handler import WebUILogHandler, install_log_handler
+from src.webui.ratelimit import TrustedProxies
 from src.webui.routes import (
     auth as auth_routes,
 )
@@ -121,7 +122,12 @@ def create_app(bot=None, bot_loop=None) -> FastAPI:
 
     app = FastAPI(title="Michel Bot Dashboard", docs_url=None, redoc_url=None, lifespan=lifespan)
 
-    ctx = WebUIContext(bot=bot, bot_loop=bot_loop, oauth=oauth)
+    ctx = WebUIContext(
+        bot=bot,
+        bot_loop=bot_loop,
+        oauth=oauth,
+        trusted_proxies=TrustedProxies(webui_config.get("trustedProxies") or None),
+    )
 
     # Order: API routers first, frontend catch-all last.
     app.include_router(auth_routes.create_router(ctx))

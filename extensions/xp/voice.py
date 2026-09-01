@@ -123,9 +123,8 @@ class VoiceMixin:
                 self._invalidate_rank_cache(guild_id)
                 self._voice_sessions[key] = now
                 return
-            new_xp = stats.get("xp", 0) + xp_gained
-            new_msg = stats.get("msg", 0)
-            await repo.update_xp(user_id, new_xp, new_msg, now)
+            # Message count is untouched here — a voice tick is not a message.
+            updated = await repo.award_xp(user_id, xp_gained, 0, now)
             self._invalidate_rank_cache(guild_id)
         except DatabaseError as e:
             logger.error("Voice XP DB error for %s in %s: %s", user_id, guild_id, e)
@@ -133,8 +132,13 @@ class VoiceMixin:
 
         self._voice_sessions[key] = now
 
-        new_level, _, _ = calculate_level(new_xp)
-        old_level = stats.get("lvl", 0)
+        if updated is None:
+            return
+
+        # Post-increment totals from the database, so a message award landing
+        # in the same tick is counted rather than overwritten.
+        new_level, _, _ = calculate_level(updated.get("xp", 0))
+        old_level = updated.get("lvl", 0)
         if new_level > old_level:
             # We don't have a "message" object here; pass the voice channel so
             # the level-up handler can announce in the user's current channel.

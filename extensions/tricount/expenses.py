@@ -2,7 +2,6 @@
 
 import os
 
-from bson import ObjectId
 from interactions import (
     AutocompleteContext,
     Embed,
@@ -236,12 +235,7 @@ class ExpensesMixin:
             )
             return
 
-        try:
-            expense = await repo.find_expense_in_group(ObjectId(depense_id), group["_id"])
-        except Exception:
-            await ctx.send("❌ ID de dépense invalide.", ephemeral=True)
-            return
-
+        expense = await repo.find_expense_in_group(depense_id, group["_id"])
         if not expense:
             await ctx.send("❌ Dépense non trouvée dans ce groupe.", ephemeral=True)
             return
@@ -279,7 +273,9 @@ class ExpensesMixin:
             await ctx.send("❌ Aucune modification spécifiée.", ephemeral=True)
             return
 
-        await repo.update_expense_fields(ObjectId(depense_id), modifications)
+        if not await repo.update_expense_fields(depense_id, modifications):
+            await ctx.send("❌ Dépense non trouvée dans ce groupe.", ephemeral=True)
+            return
 
         embed = Embed(
             title="✅ Dépense modifiée",

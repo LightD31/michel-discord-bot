@@ -14,13 +14,14 @@ from __future__ import annotations
 import asyncio
 import inspect
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from fastapi import HTTPException, Request
 
 from src.core import logging as logutil
 from src.webui.auth import DiscordOAuth, Session
+from src.webui.ratelimit import TrustedProxies
 
 logger = logutil.init_logger("webui.context")
 
@@ -34,6 +35,8 @@ class WebUIContext:
     bot: Any
     bot_loop: asyncio.AbstractEventLoop | None
     oauth: DiscordOAuth
+    # Which peers' X-Forwarded-* headers may be believed; see ratelimit.py.
+    trusted_proxies: TrustedProxies = field(default_factory=TrustedProxies)
 
     # --- Bot loop dispatch -------------------------------------------
 

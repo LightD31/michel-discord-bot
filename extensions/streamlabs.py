@@ -22,6 +22,7 @@ from twitchAPI.type import AuthScope
 from src.core import logging as logutil
 from src.core.config import load_config
 from src.core.http import fetch
+from src.core.tasks import spawn
 from src.core.text import escape_md
 from src.discord_ext.links import shorten_embeds
 from src.discord_ext.messages import (
@@ -112,7 +113,7 @@ class StreamlabsCharityExtension(Extension):
     @listen()
     async def on_startup(self):
         self.streamlabscharity.start()
-        asyncio.create_task(self.run())
+        spawn(self.run(), name="streamlabs-twitch-auth", log=logger)
 
     async def run(self):
         try:

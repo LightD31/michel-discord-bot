@@ -4,29 +4,13 @@ Public methods raise :class:`src.core.errors.DatabaseError` instead of driver
 exceptions, so callers in ``extensions/`` never need to import ``pymongo``.
 """
 
-import functools
-from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
 import pymongo
 
-from src.core.db import mongo_manager
-from src.core.errors import DatabaseError
-
-
-def _translates_db_errors[**P, R](func: Callable[P, Awaitable[R]]) -> Callable[P, Awaitable[R]]:
-    """Re-raise ``pymongo`` errors as :class:`DatabaseError`."""
-
-    @functools.wraps(func)
-    async def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
-        try:
-            return await func(*args, **kwargs)
-        except pymongo.errors.PyMongoError as e:
-            raise DatabaseError(str(e)) from e
-
-    return wrapper
+from src.core.db import mongo_manager, translates_db_errors
 
 
 @dataclass
@@ -60,7 +44,7 @@ class XpRepository:
     def _events(self):
         return mongo_manager.get_guild_collection(self.guild_id, "xp_events")
 
-    @_translates_db_errors
+    @translates_db_errors
     async def ensure_indexes(self) -> None:
         await self._xp().create_index([("xp", pymongo.DESCENDING)], background=True)
         await self._xp().create_index([("time", pymongo.DESCENDING)], background=True)
@@ -68,7 +52,7 @@ class XpRepository:
             [("user_id", pymongo.ASCENDING), ("ts", pymongo.ASCENDING)], background=True
         )
 
-    @_translates_db_errors
+    @translates_db_errors
     async def ensure_collection(self, guild_name: str | None = None) -> bool:
         """Create the xp collection for this guild if missing. Returns ``True`` if it was created."""
         guild_db = mongo_manager.get_guild_db(self.guild_id)
@@ -79,11 +63,11 @@ class XpRepository:
         await self.ensure_indexes()
         return True
 
-    @_translates_db_errors
+    @translates_db_errors
     async def get_user(self, user_id: str) -> dict[str, Any] | None:
         return await self._xp().find_one({"_id": user_id})
 
-    @_translates_db_errors
+    @translates_db_errors
     async def insert_new_user(self, user_id: str, initial_xp: int, timestamp: float) -> None:
         try:
             await self._xp().insert_one(
@@ -93,24 +77,42 @@ class XpRepository:
             # Concurrent first-XP race: another handler just created the user — benign.
             return
 
-    @_translates_db_errors
-    async def update_xp(self, user_id: str, new_xp: int, new_msg: int, timestamp: float) -> None:
-        await self._xp().update_one(
-            {"_id": user_id},
-            {"$set": {"xp": new_xp, "time": timestamp, "msg": new_msg}},
-        )
+    @translates_db_errors
+    async def award_xp(
+        self, user_id: str, xp_gained: int, message_delta: int, timestamp: float
+    ) -> dict[str, Any] | None:
+        """Credit XP atomically and return the document as it stands afterwards.
 
-    @_translates_db_errors
+        The increment is applied server-side with ``$inc`` rather than by
+        writing back a total computed from an earlier read: a message award and
+        a voice-tick award racing for the same user both land, instead of the
+        slower one silently overwriting the other. The returned document is the
+        authoritative post-increment state, so callers derive the new level
+        from it rather than from their own stale arithmetic.
+
+        Returns ``None`` when the user has no row yet.
+        """
+        result: dict[str, Any] | None = await self._xp().find_one_and_update(
+            {"_id": user_id},
+            {
+                "$inc": {"xp": xp_gained, "msg": message_delta},
+                "$set": {"time": timestamp},
+            },
+            return_document=pymongo.ReturnDocument.AFTER,
+        )
+        return result
+
+    @translates_db_errors
     async def set_level(self, user_id: str, level: int) -> None:
         await self._xp().update_one({"_id": user_id}, {"$set": {"lvl": level}}, upsert=True)
 
-    @_translates_db_errors
+    @translates_db_errors
     async def log_event(self, user_id: str, xp_gained: int, total_xp: int, ts: datetime) -> None:
         await self._events().insert_one(
             {"user_id": user_id, "xp_gained": xp_gained, "total_xp": total_xp, "ts": ts}
         )
 
-    @_translates_db_errors
+    @translates_db_errors
     async def get_user_rank(self, user_id: str) -> int | None:
         """Return the 1-indexed rank of ``user_id`` ordered by XP desc. ``None`` if absent."""
         pipeline = [
@@ -136,7 +138,7 @@ class XpRepository:
                 return rank
         return None
 
-    @_translates_db_errors
+    @translates_db_errors
     async def list_all_sorted_by_xp(self) -> list[dict[str, Any]]:
         cursor = self._xp().find().sort("xp", -1)
         return await cursor.to_list(length=None)

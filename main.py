@@ -82,9 +82,10 @@ async def _heartbeat_task():
 def _watchdog_loop():
     """Exit the process if the heartbeat goes stale.
 
-    Runs in a non-daemon thread so it survives event-loop death. Combined with
-    Docker's restart policy, this gives us automatic recovery from wedged
-    gateway connections.
+    Runs in a daemon thread: it only needs to outlive a wedged event loop, and
+    the main thread stays parked in ``client.start()`` for as long as the
+    process is alive. Combined with Docker's restart policy, this gives us
+    automatic recovery from wedged gateway connections.
     """
     started = time.time()
     while True:

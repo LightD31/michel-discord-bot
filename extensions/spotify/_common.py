@@ -113,7 +113,13 @@ class SpotifyConfig(SchemaBase):
 
 config, module_config, enabled_servers = load_config("moduleSpotify")
 
-DEV_GUILD = config["discord"]["devGuildId"]
+# ``devGuildId`` is optional. Left unset it is an empty string, which
+# interactions.py rejects when it converts a command's scopes to snowflakes —
+# and because that conversion happens at decoration time, an unset dev guild
+# used to take the whole Spotify extension down at import with nothing but an
+# ExtensionLoadException in the log. ``None`` here means "no dev guild", and
+# the dev-only command is simply not registered.
+DEV_GUILD = str(config.get("discord", {}).get("devGuildId") or "").strip() or None
 DATA_FOLDER = config["misc"]["dataFolder"]
 COOLDOWN_TIME = 1
 

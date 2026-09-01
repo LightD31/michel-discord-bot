@@ -31,6 +31,7 @@ from interactions import (
 from features.twitch import TwitchStateRepository
 from src.core import logging as logutil
 from src.core.config import CONFIG_PATH, load_config
+from src.core.tasks import spawn
 from src.discord_ext.messages import send_error, send_success
 
 from ._common import StreamerInfo, ensure_utc
@@ -334,7 +335,7 @@ class TwitchExtension(
         # websocket (and re-calling Task.start, which leaks a second loop)
         # would only churn subscriptions.
         if not self.eventsub_is_alive():
-            asyncio.create_task(self.run())
+            spawn(self.run(), name="twitch-eventsub", log=logger)
         if not self.update.running:
             self.update.start()
         if not self.eventsub_watchdog.running:
@@ -344,7 +345,7 @@ class TwitchExtension(
         """SIGTERM handler — trigger graceful shutdown."""
         self.stop = True
         logger.info("Stopping TwitchExtension")
-        asyncio.create_task(self.cleanup())
+        spawn(self.cleanup(), name="twitch-shutdown", log=logger)
 
     async def cleanup(self):
         """Close the EventSub websocket + Twitch client then stop the bot."""

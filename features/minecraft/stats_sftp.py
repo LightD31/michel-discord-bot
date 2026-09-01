@@ -4,6 +4,7 @@ import json
 import os
 import time
 from io import BytesIO
+from typing import cast
 
 import asyncssh
 import nbtlib
@@ -11,6 +12,15 @@ import nbtlib
 from src.core import logging as logutil
 
 logger = logutil.init_logger(os.path.basename(__file__))
+
+
+def _as_text(path: bytes | str) -> str:
+    """Normalize an SFTP path to ``str``.
+
+    asyncssh's glob() is typed as returning bytes even for a str pattern,
+    and returns whichever the pattern was at runtime.
+    """
+    return path.decode("utf-8", "replace") if isinstance(path, bytes) else path
 
 
 class MinecraftStatsCache:
@@ -91,7 +101,7 @@ async def get_all_player_stats_optimized(sftp: asyncssh.SFTPClient):
         tasks = []
 
         for stats_file in stats_files:
-            uuid = stats_file.removeprefix("world/stats/").removesuffix(".json")
+            uuid = _as_text(stats_file).removeprefix("world/stats/").removesuffix(".json")
             nbt_file = f"world/playerdata/{uuid}.dat"
             player_name = uuid_to_name.get(uuid, uuid)
 
@@ -207,7 +217,9 @@ async def read_nbt_file(sftp: asyncssh.SFTPClient, nbt_file):
     async with sftp.open(nbt_file, "rb") as f:
         logger.debug(f"Reading {nbt_file}")
         data = await f.read()
-        return nbtlib.File.parse(gzip.GzipFile(fileobj=BytesIO(data)))
+        # asyncssh's stubs type read() as str regardless of the "rb" mode the
+        # file was opened with; the payload here is the raw gzip stream.
+        return nbtlib.File.parse(gzip.GzipFile(fileobj=BytesIO(cast(bytes, data))))
 
 
 # Fonction de compatibilité avec l'ancien code

@@ -1,6 +1,6 @@
 """Olympics repository — persistence for the medal-notification state."""
 
-from src.core.db import mongo_manager
+from src.core.db import mongo_manager, translates_db_errors
 
 
 class OlympicsStateRepository:
@@ -9,6 +9,7 @@ class OlympicsStateRepository:
     def _col(self):
         return mongo_manager.get_global_collection("olympics_state")
 
+    @translates_db_errors
     async def load_known_medals(self) -> set[str] | None:
         """Return the set of already-notified medal keys, or None on first run."""
         doc = await self._col().find_one({"_id": "known_medals"})
@@ -16,6 +17,7 @@ class OlympicsStateRepository:
             return None
         return set(doc.get("medals", []))
 
+    @translates_db_errors
     async def save_known_medals(self, medals: set[str]) -> None:
         await self._col().update_one(
             {"_id": "known_medals"},

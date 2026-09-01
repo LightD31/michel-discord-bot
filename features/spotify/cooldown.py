@@ -6,6 +6,7 @@ entries automatically so the collection stays bounded across bot lifetimes.
 
 import os
 import time
+from datetime import UTC, datetime, timedelta
 
 import pymongo
 
@@ -57,15 +58,13 @@ class VoteCooldown:
 
     async def record(self, user_id: str) -> None:
         await self._ensure_indexes()
-        from datetime import datetime, timedelta
-
         try:
             await self._col().update_one(
                 {"_id": user_id},
                 {
                     "$set": {
                         "last_vote_ts": time.time(),
-                        "expires_at": datetime.utcnow() + timedelta(seconds=self._cooldown),
+                        "expires_at": datetime.now(UTC) + timedelta(seconds=self._cooldown),
                     }
                 },
                 upsert=True,

@@ -15,7 +15,7 @@ from typing import Any
 
 from pymongo import ReturnDocument
 
-from src.core.db import mongo_manager
+from src.core.db import mongo_manager, translates_db_errors
 
 PLAYLIST_COLLECTION = "playlistItemsFull"
 VOTES_COLLECTION = "votes"
@@ -36,10 +36,12 @@ class SpotifyRepository:
 
     # --- vote_infos ----------------------------------------------------
 
+    @translates_db_errors
     async def get_vote_infos(self) -> dict[str, Any] | None:
         """Return the raw ``current`` vote-infos document, if any."""
         return await self._col(VOTE_INFOS_COLLECTION).find_one({"_id": "current"})
 
+    @translates_db_errors
     async def save_vote_infos(self, vote_infos: dict[str, Any]) -> None:
         await self._col(VOTE_INFOS_COLLECTION).update_one(
             {"_id": "current"}, {"$set": vote_infos}, upsert=True
@@ -47,10 +49,12 @@ class SpotifyRepository:
 
     # --- snapshot --------------------------------------------------------
 
+    @translates_db_errors
     async def get_snapshot(self) -> dict[str, Any] | None:
         """Return the raw ``current`` snapshot document, if any."""
         return await self._col(SNAPSHOT_COLLECTION).find_one({"_id": "current"})
 
+    @translates_db_errors
     async def save_snapshot(self, snapshot: dict[str, Any]) -> None:
         await self._col(SNAPSHOT_COLLECTION).update_one(
             {"_id": "current"}, {"$set": snapshot}, upsert=True
@@ -58,10 +62,12 @@ class SpotifyRepository:
 
     # --- reminders -------------------------------------------------------
 
+    @translates_db_errors
     async def list_reminders(self) -> list[dict[str, Any]]:
         """Return every reminder document."""
         return [doc async for doc in self._col(REMINDERS_COLLECTION).find()]
 
+    @translates_db_errors
     async def replace_reminders(self, docs: list[dict[str, Any]]) -> None:
         """Wipe the reminders collection and insert the given documents."""
         col = self._col(REMINDERS_COLLECTION)
@@ -71,52 +77,64 @@ class SpotifyRepository:
 
     # --- playlistItemsFull -------------------------------------------------
 
+    @translates_db_errors
     async def playlist_track_ids(self) -> list[str]:
         """Return the distinct ``_id`` values of the mirrored playlist."""
         return await self._col(PLAYLIST_COLLECTION).distinct("_id")
 
+    @translates_db_errors
     async def add_playlist_item(self, song: dict[str, Any]) -> None:
         await self._col(PLAYLIST_COLLECTION).insert_one(song)
 
+    @translates_db_errors
     async def get_playlist_item(self, track_id: str) -> dict[str, Any] | None:
         return await self._col(PLAYLIST_COLLECTION).find_one({"_id": track_id})
 
+    @translates_db_errors
     async def pop_playlist_item(self, track_id: str) -> dict[str, Any] | None:
         """Delete a playlist item and return the removed document."""
         return await self._col(PLAYLIST_COLLECTION).find_one_and_delete({"_id": track_id})
 
+    @translates_db_errors
     async def delete_playlist_item(self, track_id: str) -> None:
         await self._col(PLAYLIST_COLLECTION).delete_one({"_id": track_id})
 
+    @translates_db_errors
     async def find_playlist_items(self, query: dict[str, Any]) -> dict[str, dict[str, Any]]:
         """Return playlist documents matching ``query``, keyed by ``_id``."""
         return {item["_id"]: item async for item in self._col(PLAYLIST_COLLECTION).find(query)}
 
     # --- votes -------------------------------------------------------------
 
+    @translates_db_errors
     async def get_votes_doc(self, track_id: str) -> dict[str, Any] | None:
         return await self._col(VOTES_COLLECTION).find_one({"_id": track_id})
 
+    @translates_db_errors
     async def voted_track_ids(self) -> list[str]:
         """Return the distinct ``_id`` values of tracks already polled."""
         return await self._col(VOTES_COLLECTION).distinct("_id")
 
+    @translates_db_errors
     async def find_vote_docs(self, query: dict[str, Any]) -> dict[str, dict[str, Any]]:
         """Return vote documents matching ``query``, keyed by ``_id``."""
         return {item["_id"]: item async for item in self._col(VOTES_COLLECTION).find(query)}
 
+    @translates_db_errors
     async def init_vote_doc(self, track_id: str, fields: dict[str, Any]) -> None:
         """Upsert the vote document opened for a new daily poll."""
         await self._col(VOTES_COLLECTION).update_one(
             {"_id": track_id}, {"$set": fields}, upsert=True
         )
 
+    @translates_db_errors
     async def set_vote_state(self, track_id: str, state: str) -> dict[str, Any] | None:
         """Mark a closed poll as kept/removed; returns the pre-update document."""
         return await self._col(VOTES_COLLECTION).find_one_and_update(
             {"_id": track_id}, {"$set": {"state": state}}
         )
 
+    @translates_db_errors
     async def record_vote(self, track_id: str, user_id: str, vote: str) -> dict[str, Any] | None:
         """Set a user's vote and return the updated document."""
         return await self._col(VOTES_COLLECTION).find_one_and_update(
@@ -126,6 +144,7 @@ class SpotifyRepository:
             return_document=ReturnDocument.AFTER,
         )
 
+    @translates_db_errors
     async def remove_vote(self, track_id: str, user_id: str) -> dict[str, Any] | None:
         """Unset a user's vote and return the updated document."""
         return await self._col(VOTES_COLLECTION).find_one_and_update(
@@ -136,6 +155,7 @@ class SpotifyRepository:
 
     # --- addwithvotes --------------------------------------------------------
 
+    @translates_db_errors
     async def load_addwithvote_data(self) -> dict[str, dict[str, Any]]:
         """Return all pending add-with-vote entries keyed by song id (sans ``_id``)."""
         data: dict[str, dict[str, Any]] = {}
@@ -144,15 +164,18 @@ class SpotifyRepository:
             data[song_id] = {k: v for k, v in doc.items() if k != "_id"}
         return data
 
+    @translates_db_errors
     async def save_addwithvote_data(self, data: dict[str, dict[str, Any]]) -> None:
         """Upsert every add-with-vote entry of ``data``."""
         col = self._col(ADDWITHVOTES_COLLECTION)
         for song_id, song_data in data.items():
             await col.update_one({"_id": song_id}, {"$set": song_data}, upsert=True)
 
+    @translates_db_errors
     async def get_addwithvote_doc(self, song_id: str) -> dict[str, Any] | None:
         return await self._col(ADDWITHVOTES_COLLECTION).find_one({"_id": song_id})
 
+    @translates_db_errors
     async def save_addwithvote_vote(self, author_id: str, vote: str, song_id: str) -> None:
         await self._col(ADDWITHVOTES_COLLECTION).update_one(
             {"_id": song_id}, {"$set": {f"votes.{author_id}": vote}}

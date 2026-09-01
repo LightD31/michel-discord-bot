@@ -119,37 +119,3 @@ __all__ = [
     "tally_first_past_post",
     "tally_ranked_choice",
 ]
-
-
-# Light sanity tests so behavior is documented in source.
-if __name__ == "__main__":
-    # Plurality: option 0 wins
-    counts = tally_first_past_post({"a": [0], "b": [0], "c": [1]}, num_options=3)
-    assert counts == [2, 1, 0], counts
-
-    # Ranked: A wins outright with majority of first-choice votes.
-    rounds, winner = tally_ranked_choice(
-        {"a": [0, 1], "b": [0, 2], "c": [1, 0], "d": [1, 0], "e": [0, 1]}, 3
-    )
-    assert winner == 0, (rounds, winner)
-
-    # Ranked: requires runoff. 2-2-1 -> eliminate 2 -> redistribute.
-    rounds, winner = tally_ranked_choice(
-        {
-            "a": [0, 2],
-            "b": [0, 2],
-            "c": [1, 2],
-            "d": [1, 2],
-            "e": [2, 0],
-        },
-        3,
-    )
-    # After eliminating option 2 (count 1), e's vote moves to 0 → 0 wins 3-2.
-    assert winner == 0, (rounds, winner)
-
-    assert parse_duration("30m") == 1800
-    assert parse_duration("2h") == 7200
-    assert parse_duration("1d") == 86400
-    assert parse_duration("90") == 5400
-    assert parse_duration("bad") is None
-    print("polls.tally self-tests passed")

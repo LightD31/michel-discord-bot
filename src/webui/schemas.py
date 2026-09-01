@@ -477,3 +477,13 @@ class WebuiSection(SchemaBase):
         required=False,
         description="IDs Discord autorisés à accéder aux pages Extensions et Logs (réservées au développeur).",
     )
+    trustedProxies: list[str] = ui(
+        "Proxys de confiance",
+        "list",
+        required=False,
+        description=(
+            "Adresses ou plages CIDR des reverse proxys devant le dashboard. "
+            "Les en-têtes X-Forwarded-For / X-Forwarded-Proto ne sont pris en compte "
+            "que s'ils viennent de l'une d'elles. Vide = loopback et réseaux privés."
+        ),
+    )

@@ -6,13 +6,14 @@ single document), hence the global collection.
 
 from typing import Any
 
-from src.core.db import mongo_manager
+from src.core.db import mongo_manager, translates_db_errors
 
 
 class TwitchStateRepository:
     def _col(self):
         return mongo_manager.get_global_collection("twitch_streamer_state")
 
+    @translates_db_errors
     async def load_all(self) -> dict[str, dict[str, Any]]:
         """Return every streamer-state document, keyed by streamer id."""
         states: dict[str, dict[str, Any]] = {}
@@ -20,6 +21,7 @@ class TwitchStateRepository:
             states[doc["_id"]] = doc
         return states
 
+    @translates_db_errors
     async def save(self, streamer_id: str, fields: dict[str, Any]) -> None:
         await self._col().update_one({"_id": streamer_id}, {"$set": fields}, upsert=True)
 
@@ -36,6 +38,7 @@ class TwitchEmotesRepository:
     def _col(self):
         return mongo_manager.get_global_collection(f"twitch_emotes_{self._streamer_id}")
 
+    @translates_db_errors
     async def load_all(self) -> dict[str, dict[str, Any]]:
         """Return emotes keyed by emote id, as ``{name, cached_file}`` dicts."""
         data: dict[str, dict[str, Any]] = {}
@@ -46,9 +49,11 @@ class TwitchEmotesRepository:
             }
         return data
 
+    @translates_db_errors
     async def insert_many(self, docs: list[dict[str, Any]]) -> None:
         await self._col().insert_many(docs)
 
+    @translates_db_errors
     async def replace_all(self, docs: list[dict[str, Any]]) -> None:
         await self._col().delete_many({})
         if docs:

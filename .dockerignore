@@ -6,3 +6,11 @@ logs
 discordbot
 .dockerignore
 config
+
+# Never ship repository history or development-only trees in the runtime image.
+.git
+.github
+.venv
+.venv-*
+tests
+grafana

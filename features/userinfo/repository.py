@@ -5,7 +5,7 @@ import os
 import pymongo
 import pymongo.errors
 
-from src.core.db import mongo_manager
+from src.core.db import mongo_manager, translates_db_errors
 from src.core.logging import init_logger
 
 logger = init_logger(os.path.basename(__file__))
@@ -18,6 +18,7 @@ class UserInfoRepository:
     def _col(self):
         return mongo_manager.get_guild_collection(self._guild_id, "users")
 
+    @translates_db_errors
     async def bulk_upsert(self, members_data: list[dict]) -> None:
         """Upsert a batch of members. Each dict must have id, username, display_name."""
         if not members_data:
@@ -36,6 +37,7 @@ class UserInfoRepository:
         except pymongo.errors.PyMongoError as e:
             logger.warning("Failed to bulk-sync users for guild %s: %s", self._guild_id, e)
 
+    @translates_db_errors
     async def upsert(self, user_id: str, username: str, display_name: str) -> None:
         try:
             await self._col().update_one(
@@ -46,6 +48,7 @@ class UserInfoRepository:
         except pymongo.errors.PyMongoError as e:
             logger.warning("Failed to upsert user %s in guild %s: %s", user_id, self._guild_id, e)
 
+    @translates_db_errors
     async def delete(self, user_id: str) -> None:
         try:
             await self._col().delete_one({"_id": user_id})

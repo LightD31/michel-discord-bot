@@ -3,7 +3,6 @@
 import os
 from datetime import datetime, timedelta
 
-from bson import ObjectId
 from dateutil.relativedelta import relativedelta
 from interactions import (
     AutocompleteContext,
@@ -216,13 +215,8 @@ class RecurringMixin:
     async def depense_recurrente_arreter(self, ctx: SlashContext, recurrence_id: str):
         if not await require_guild(ctx):
             return
-        try:
-            obj_id = ObjectId(recurrence_id)
-        except Exception:
-            await ctx.send("❌ ID invalide.", ephemeral=True)
-            return
         modified_count = await TricountRepository(ctx.guild.id).stop_recurring(
-            obj_id, ctx.author.id
+            recurrence_id, ctx.author.id
         )
         if modified_count == 0:
             await ctx.send("❌ Récurrence introuvable ou déjà arrêtée.", ephemeral=True)

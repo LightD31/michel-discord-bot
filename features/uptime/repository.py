@@ -2,7 +2,7 @@
 
 import os
 
-from src.core.db import mongo_manager
+from src.core.db import mongo_manager, translates_db_errors
 from src.core.logging import init_logger
 
 logger = init_logger(os.path.basename(__file__))
@@ -17,6 +17,7 @@ class UptimeRepository:
     def _col(self, guild_id: str):
         return mongo_manager.get_guild_collection(guild_id, self.COLLECTION)
 
+    @translates_db_errors
     async def load_all(self, guild_ids: list[str]) -> dict[str, dict]:
         """Return ``{guild_id: {sensor_id: monitor_config, ...}, ...}``."""
         result: dict[str, dict] = {}
@@ -29,6 +30,7 @@ class UptimeRepository:
                 logger.error("Failed to load uptime monitors for guild %s: %s", guild_id, e)
         return result
 
+    @translates_db_errors
     async def save_all(self, monitors: dict[str, dict]) -> None:
         for guild_id, sensors in monitors.items():
             try:

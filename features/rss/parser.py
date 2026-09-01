@@ -368,15 +368,15 @@ def parse_feed(body: str) -> list[RssEntry]:
         channel = _find_local(root, "channel")
         if channel is None:
             return out
-        for item in _findall_local(channel, "item"):
-            parsed = _parse_rss_item(item)
+        for element in _findall_local(channel, "item"):
+            parsed = _parse_rss_item(element)
             if parsed is not None:
                 out.append(parsed)
         return out
     if local == "RDF":
         # RSS 1.0 — ``<item>`` elements are siblings of ``<channel>``.
-        for item in _findall_local(root, "item"):
-            parsed = _parse_rss_item(item)
+        for element in _findall_local(root, "item"):
+            parsed = _parse_rss_item(element)
             if parsed is not None:
                 out.append(parsed)
         return out
