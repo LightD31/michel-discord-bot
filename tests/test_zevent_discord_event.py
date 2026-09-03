@@ -14,6 +14,7 @@ from features.zevent.discord_event import (
     MAX_NAME,
     SCHEDULED,
     amount_line,
+    build_name,
     plan_scheduled_event,
     resolve_end,
 )
@@ -91,6 +92,31 @@ def test_finished_forces_completion_mid_event() -> None:
     assert plan.status == COMPLETED
 
 
+# ─── Name ─────────────────────────────────────────────────────────────
+
+
+def test_the_name_carries_the_running_total() -> None:
+    """Discord lists events by name, so the figure reads without opening one."""
+    plan = _plan(MAIN_START + timedelta(hours=5), total=1_284_990)
+    assert plan.name == "ZEvent 2026 — 1 284 990 €"
+
+
+def test_the_name_is_just_the_edition_before_donations_open() -> None:
+    assert _plan(EVENT_START - timedelta(days=2)).name == "ZEvent 2026"
+
+
+def test_a_finished_edition_keeps_its_final_total_in_the_name() -> None:
+    plan = _plan(EVENT_END + timedelta(hours=1), total=1_284_990)
+    assert plan.name == "ZEvent 2026 — 1 284 990 €"
+
+
+def test_the_total_survives_a_very_long_edition_name() -> None:
+    """The cap trims the edition, never the figure members are watching."""
+    name = build_name("Z" * 500, 1_284_990)
+    assert len(name) == MAX_NAME
+    assert name.endswith(" — 1 284 990 €")
+
+
 # ─── Description ──────────────────────────────────────────────────────
 
 
@@ -146,3 +172,8 @@ def test_name_and_description_stay_within_discord_limits() -> None:
 
 def test_an_empty_title_falls_back_to_a_usable_name() -> None:
     assert _plan(EVENT_START - timedelta(days=2), title="").name == "Zevent"
+
+
+def test_a_trimmed_edition_name_keeps_no_trailing_space() -> None:
+    name = build_name(f"{'Z' * 84} 2026", 1_284_990)
+    assert " —" in name and "  —" not in name

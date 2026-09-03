@@ -2,8 +2,9 @@
 
 Discord's own UI already shows an event's start and end in each viewer's
 timezone, so the description carries only what Discord cannot render on its
-own: which phase the edition is in and how much has been raised. Editing a
-scheduled event notifies nobody, so that total is refreshed as it moves.
+own: which phase the edition is in and how much has been raised — the total
+riding in the name too, so it reads from the server's event list. Editing a
+scheduled event notifies nobody, so it is refreshed as it moves.
 
 Pure logic — the extension layer turns a :class:`ScheduledEventPlan` into
 ``interactions`` calls, so the phase rules stay unit-testable without a
@@ -27,6 +28,10 @@ COMPLETED = "completed"
 # Discord's own caps on a guild scheduled event.
 MAX_NAME = 100
 MAX_DESCRIPTION = 1000
+
+# Name shown when the stats API has not given the edition one yet.
+DEFAULT_NAME = "Zevent"
+NAME_SEPARATOR = " — "
 
 # Used when the stats API publishes no end for the edition: the marathon runs
 # about three days, and Discord requires an end time for an external event.
@@ -57,6 +62,27 @@ def resolve_end(
     if event_end is not None and event_end > latest_start:
         return event_end
     return latest_start + FALLBACK_DURATION
+
+
+def build_name(title: str, total: float | None) -> str:
+    """The event's name: the edition, plus the running total once there is one.
+
+    Discord lists events by name, so the figure is legible from the server's
+    event list without opening anything. When the 100-character cap bites, the
+    edition name gives way rather than the total — the total is the part
+    members are watching.
+    """
+    base = title or DEFAULT_NAME
+    if total is None or total <= 0:
+        return base[:MAX_NAME]
+
+    suffix = f"{NAME_SEPARATOR}{format_euros(total)}"
+    room = MAX_NAME - len(suffix)
+    if room <= 0:
+        # A total long enough to fill the name on its own is not reachable in
+        # euros, but the slice keeps Discord from rejecting the payload.
+        return suffix.lstrip()[:MAX_NAME]
+    return f"{base[:room].rstrip()}{suffix}"
 
 
 def amount_line(total: float | None) -> str | None:
@@ -127,7 +153,7 @@ def plan_scheduled_event(
         lines.append(f"📊 [Suivi en direct]({tracker_url})")
 
     return ScheduledEventPlan(
-        name=(title or "Zevent")[:MAX_NAME],
+        name=build_name(title, total),
         description="\n\n".join(lines)[:MAX_DESCRIPTION],
         start=event_start,
         end=end,
