@@ -9,6 +9,7 @@ from features.zevent.stats import (
     LAN,
     ONLINE,
     build_location_index,
+    event_end,
     event_schedule,
     goal_score,
     is_live,
@@ -342,6 +343,18 @@ def test_event_schedule_tolerates_missing_blocks() -> None:
     start, raising = event_schedule({"schedule": {"start": "2026-09-03T18:00:00Z"}})
     assert start == datetime(2026, 9, 3, 18, 0, tzinfo=UTC)
     assert raising is None
+
+
+def test_event_end_reads_the_closing_instant() -> None:
+    event = {"schedule": {"start": "2026-09-03T18:00:00Z", "end": "2026-09-07T00:00:00Z"}}
+    assert event_end(event) == datetime(2026, 9, 7, 0, 0, tzinfo=UTC)
+
+
+def test_event_end_tolerates_missing_blocks() -> None:
+    assert event_end(None) is None
+    assert event_end({}) is None
+    assert event_end({"schedule": "nope"}) is None
+    assert event_end({"schedule": {"start": "2026-09-03T18:00:00Z"}}) is None
 
 
 def test_upcoming_goals_ranking_is_deterministic_on_ties() -> None:

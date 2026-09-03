@@ -375,6 +375,18 @@ def event_schedule(event: dict | None) -> tuple[datetime | None, datetime | None
     return _start("schedule"), _start("schedule_raising")
 
 
+def event_end(event: dict | None) -> datetime | None:
+    """Return ``schedule.end`` — when the edition closes — or ``None``.
+
+    Only the Discord scheduled event needs it: the embeds count down to the two
+    starts, but an external Discord event must declare an end.
+    """
+    if not isinstance(event, dict):
+        return None
+    schedule = event.get("schedule")
+    return parse_datetime(schedule.get("end")) if isinstance(schedule, dict) else None
+
+
 def _contains(bounds: tuple[datetime | None, datetime | None], now: datetime) -> bool:
     start, end = bounds
     if start is None or end is None:

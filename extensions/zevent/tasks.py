@@ -87,6 +87,10 @@ class TasksMixin:
 
             concert_active = await self._is_concert_active()
 
+            # Kept in step with the same payload the embeds render, so the
+            # guild's scheduled event never contradicts the pinned message.
+            await self.sync_scheduled_event(data, streamlabs_data, concert_active)
+
             if not self._is_event_started():
                 if data:
                     streams = await self.categorize_streams(self._safe_get_data(data, ["live"], []))

@@ -9,10 +9,11 @@ import asyncio
 import os
 from datetime import timedelta
 
-from interactions import BaseChannel, Client, Extension, Message, listen
+from interactions import BaseChannel, Client, Extension, Message, ScheduledEvent, listen
 from twitchAPI.twitch import Twitch
 
 from features.zevent.backoff import RetryGate
+from features.zevent.discord_event import ScheduledEventPlan
 from features.zevent.history import DonationCurve
 from features.zevent.models import Participant, Show
 from features.zevent.velocity import DonationVelocity
@@ -21,6 +22,7 @@ from src.discord_ext.messages import fetch_or_create_persistent_message
 
 from ._common import (
     CHANNEL_ID,
+    EVENT_END_OVERRIDE,
     EVENT_NAME,
     EVENT_START_OVERRIDE,
     FALLBACK_EVENT_START,
@@ -33,6 +35,7 @@ from ._common import (
 )
 from .api import ApiMixin
 from .commands import CommandsMixin
+from .discord_event import DiscordEventMixin
 from .embeds import EmbedsMixin
 from .streams import StreamsMixin
 from .tasks import TasksMixin
@@ -40,7 +43,15 @@ from .tasks import TasksMixin
 logger = logutil.init_logger(os.path.basename(__file__))
 
 
-class Zevent(Extension, ApiMixin, StreamsMixin, EmbedsMixin, TasksMixin, CommandsMixin):
+class Zevent(
+    Extension,
+    ApiMixin,
+    StreamsMixin,
+    EmbedsMixin,
+    DiscordEventMixin,
+    TasksMixin,
+    CommandsMixin,
+):
     """Live Zevent tracker — refreshes a pinned message on a fixed interval."""
 
     def __init__(self, client: Client):
@@ -62,6 +73,15 @@ class Zevent(Extension, ApiMixin, StreamsMixin, EmbedsMixin, TasksMixin, Command
         # operator pinned them in the dashboard.
         self._event_start = EVENT_START_OVERRIDE or FALLBACK_EVENT_START
         self._main_event_start = MAIN_EVENT_START_OVERRIDE or FALLBACK_MAIN_EVENT_START
+        # Only the Discord scheduled event needs an end; unset, the planner
+        # falls back on a duration past the start.
+        self._event_end = EVENT_END_OVERRIDE
+        self._scheduled_event: ScheduledEvent | None = None
+        # What was last pushed to that event — `ScheduledEvent.edit()` leaves
+        # the model it edits untouched, so this is what the diff runs against.
+        self._applied_plan: ScheduledEventPlan | None = None
+        self._last_event_total: float | None = None
+        self._event_finished = False
         # Twitch logins seen live on the last poll, shared with the embeds so
         # the goals ranking uses fresh presence rather than the cached flag.
         self._live_logins: set[str] = set()
@@ -108,6 +128,9 @@ class Zevent(Extension, ApiMixin, StreamsMixin, EmbedsMixin, TasksMixin, Command
             # Resolve the tracked edition up front so the embed title is right
             # on the very first render, even if zevent.fr is unreachable.
             await self._ensure_stats_event()
+            # Re-attach the scheduled event this bot created before the restart
+            # so the refresh loop edits it instead of creating a duplicate.
+            await self.recover_scheduled_event()
             logger.info("Zevent extension initialized successfully")
             self.zevent.start()
             await self.zevent()

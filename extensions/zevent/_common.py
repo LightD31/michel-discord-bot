@@ -60,6 +60,16 @@ class ZeventConfig(SchemaBase):
             "Lien « Regarder sur Twitch » affiché pendant le concert. Vide = aucun lien affiché."
         ),
     )
+    zeventManageDiscordEvent: bool = ui(
+        "Créer un événement Discord",
+        "boolean",
+        default=False,
+        description=(
+            "Publier l'édition suivie comme événement programmé du serveur "
+            "(dates, phase en cours, total récolté). Nécessite la chaîne Twitch "
+            "de l'événement, qui sert de lieu."
+        ),
+    )
     zeventStatsApiUrl: str = ui(
         "URL de l'API statistiques",
         "url",
@@ -97,6 +107,14 @@ class ZeventConfig(SchemaBase):
         description=(
             "Forcer la date/heure de début du Zevent principal (ISO 8601). "
             "Vide = déduit de l'API statistiques."
+        ),
+    )
+    zeventEventEndDate: str | None = ui(
+        "Fin de l'événement",
+        "string",
+        description=(
+            "Forcer la date/heure de fin de l'édition (ISO 8601), utilisée par "
+            "l'événement Discord. Vide = déduit de l'API statistiques."
         ),
     )
     zeventUpdateInterval: int = ui(
@@ -212,6 +230,8 @@ EVENT_NAME = _cfg.get("zeventEventName") or ""
 STREAMLABS_API_URL = _cfg.get("zeventStreamlabsApiUrl", "")
 TWITCH_URL = _cfg.get("zeventTwitchUrl", "")
 
+MANAGE_DISCORD_EVENT = bool(_cfg.get("zeventManageDiscordEvent", False))
+
 UPDATE_INTERVAL = int(_cfg.get("zeventUpdateInterval", 30))
 MILESTONE_INTERVAL = int(_cfg.get("zeventMilestoneInterval", 100000))
 
@@ -277,6 +297,9 @@ GOALS_OFFLINE_FACTOR = _parse_weight(
 # stats API's event schedule (`schedule.start` / `schedule_raising.start`).
 EVENT_START_OVERRIDE = _parse_event_dt(_cfg.get("zeventEventStartDate") or "")
 MAIN_EVENT_START_OVERRIDE = _parse_event_dt(_cfg.get("zeventMainEventStartDate") or "")
+# The end only feeds the Discord scheduled event; unset, it comes from the
+# stats API's `schedule.end`, and failing that from a duration past the start.
+EVENT_END_OVERRIDE = _parse_event_dt(_cfg.get("zeventEventEndDate") or "")
 
 # Last resort only: no override configured *and* the stats API unreachable on a
 # cold start. Once the API answers, its schedule wins over these.
