@@ -59,7 +59,9 @@ class Zevent(
         self.channel: BaseChannel | None = None
         self.message: Message | None = None
         self.twitch: Twitch | None = None
-        self.last_milestone = 0
+        # ``None`` until the first total is read: the first reading is the
+        # baseline, not an announcement.
+        self.last_milestone: int | None = None
         self._milestone_lock = asyncio.Lock()
         self.last_data_cache: dict | None = None
         self.last_update_time = None
@@ -134,6 +136,8 @@ class Zevent(
             # Re-attach the scheduled event this bot created before the restart
             # so the refresh loop edits it instead of creating a duplicate.
             await self.recover_scheduled_event()
+            # After the edition is resolved: the marker is stored per edition.
+            await self.load_milestone_marker()
             logger.info("Zevent extension initialized successfully")
             self.zevent.start()
             await self.zevent()
