@@ -31,7 +31,7 @@ MAX_DESCRIPTION = 1000
 
 # Name shown when the stats API has not given the edition one yet.
 DEFAULT_NAME = "Zevent"
-NAME_SEPARATOR = " — "
+NAME_SEPARATOR = " - "
 
 # Used when the stats API publishes no end for the edition: the marathon runs
 # about three days, and Discord requires an end time for an external event.
