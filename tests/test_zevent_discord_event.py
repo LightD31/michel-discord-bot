@@ -1,7 +1,7 @@
 """Unit tests for ``features.zevent.discord_event``.
 
 The plan drives a real Discord scheduled event, so the phase rules and the
-description's stability under a live donation total are what matter here.
+rendering of a live donation total are what matter here.
 """
 
 from datetime import UTC, datetime, timedelta
@@ -13,8 +13,8 @@ from features.zevent.discord_event import (
     MAX_DESCRIPTION,
     MAX_NAME,
     SCHEDULED,
+    amount_line,
     plan_scheduled_event,
-    quantized_total,
     resolve_end,
 )
 
@@ -94,22 +94,17 @@ def test_finished_forces_completion_mid_event() -> None:
 # ─── Description ──────────────────────────────────────────────────────
 
 
-def test_total_is_rounded_down_to_the_step() -> None:
-    plan = _plan(MAIN_START + timedelta(hours=5), total=1_284_990, amount_step=100_000)
-    assert "Plus de 1 200 000 € récoltés." in plan.description
+def test_the_live_total_is_rendered_as_is() -> None:
+    """Editing an event notifies nobody, so the figure need not be rounded."""
+    plan = _plan(MAIN_START + timedelta(hours=5), total=1_284_990)
+    assert "1 284 990 € récoltés." in plan.description
 
 
-def test_description_is_stable_while_the_total_stays_in_the_same_step() -> None:
-    """The point of the rounding: no Discord edit per refresh cycle."""
+def test_the_description_follows_the_total_as_it_moves() -> None:
     now = MAIN_START + timedelta(hours=5)
-    first = _plan(now, total=1_284_990, amount_step=100_000)
-    second = _plan(now, total=1_299_999, amount_step=100_000)
-    assert first.description == second.description
-
-
-def test_no_amount_line_below_the_first_step() -> None:
-    plan = _plan(MAIN_START + timedelta(hours=5), total=42_000, amount_step=100_000)
-    assert "récoltés" not in plan.description
+    first = _plan(now, total=1_284_990)
+    second = _plan(now, total=1_285_120)
+    assert first.description != second.description
 
 
 def test_no_amount_line_before_donations_open() -> None:
@@ -126,13 +121,13 @@ def test_no_tracker_link_when_the_message_is_missing() -> None:
     assert "Suivi en direct" not in _plan(MAIN_START + timedelta(hours=5)).description
 
 
-# ─── Quantization ─────────────────────────────────────────────────────
+# ─── Amount line ──────────────────────────────────────────────────────
 
 
-def test_quantized_total_handles_missing_and_disabled_steps() -> None:
-    assert quantized_total(None) is None
-    assert quantized_total(1_000_000, step=0) is None
-    assert quantized_total(-5.0) is None
+def test_amount_line_is_omitted_when_there_is_nothing_to_announce() -> None:
+    assert amount_line(None) is None
+    assert amount_line(0.0) is None
+    assert amount_line(-5.0) is None
 
 
 # ─── Discord's own limits ─────────────────────────────────────────────

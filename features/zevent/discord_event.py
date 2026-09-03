@@ -2,7 +2,8 @@
 
 Discord's own UI already shows an event's start and end in each viewer's
 timezone, so the description carries only what Discord cannot render on its
-own: which phase the edition is in and how much has been raised.
+own: which phase the edition is in and how much has been raised. Editing a
+scheduled event notifies nobody, so that total is refreshed as it moves.
 
 Pure logic — the extension layer turns a :class:`ScheduledEventPlan` into
 ``interactions`` calls, so the phase rules stay unit-testable without a
@@ -26,12 +27,6 @@ COMPLETED = "completed"
 # Discord's own caps on a guild scheduled event.
 MAX_NAME = 100
 MAX_DESCRIPTION = 1000
-
-# The pinned message is the live ticker; the scheduled event only carries a
-# headline. Rounding the total down to a step keeps the description stable for
-# long stretches — rendering it to the euro would mean one Discord edit per
-# refresh cycle for a figure nobody reads that precisely.
-DEFAULT_AMOUNT_STEP = 100_000
 
 # Used when the stats API publishes no end for the edition: the marathon runs
 # about three days, and Discord requires an end time for an external event.
@@ -64,16 +59,15 @@ def resolve_end(
     return latest_start + FALLBACK_DURATION
 
 
-def quantized_total(total: float | None, step: int = DEFAULT_AMOUNT_STEP) -> float | None:
-    """Round ``total`` down to ``step``; ``None`` below the first step.
+def amount_line(total: float | None) -> str | None:
+    """The donation line, or ``None`` while there is nothing to announce.
 
-    Below one step there is nothing worth announcing — "plus de 0 €" is noise —
-    and a non-positive step disables the line entirely.
+    Editing a scheduled event notifies nobody, so the figure tracks the live
+    total rather than being rounded to keep the description still.
     """
-    if total is None or step <= 0:
+    if total is None or total <= 0:
         return None
-    floored = (int(total) // step) * step
-    return float(floored) if floored > 0 else None
+    return f"💰 {format_euros(total)} récoltés."
 
 
 def _phase_line(
@@ -101,7 +95,6 @@ def plan_scheduled_event(
     concert_active: bool = False,
     finished: bool = False,
     tracker_url: str | None = None,
-    amount_step: int = DEFAULT_AMOUNT_STEP,
 ) -> ScheduledEventPlan:
     """Describe the scheduled event for the current instant.
 
@@ -127,9 +120,9 @@ def plan_scheduled_event(
             concert_active=concert_active,
         )
     ]
-    amount = quantized_total(total, amount_step)
+    amount = amount_line(total)
     if amount is not None:
-        lines.append(f"💰 Plus de {format_euros(amount)} récoltés.")
+        lines.append(amount)
     if tracker_url:
         lines.append(f"📊 [Suivi en direct]({tracker_url})")
 

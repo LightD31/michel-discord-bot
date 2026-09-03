@@ -30,7 +30,7 @@ from features.zevent.discord_event import (
 )
 from src.core import logging as logutil
 
-from ._common import GUILD_ID, MANAGE_DISCORD_EVENT, MILESTONE_INTERVAL, TWITCH_URL
+from ._common import GUILD_ID, MANAGE_DISCORD_EVENT, TWITCH_URL
 
 logger = logutil.init_logger(os.path.basename(__file__))
 
@@ -166,9 +166,8 @@ class DiscordEventMixin:
             _, self._last_event_total = self.get_total_amount(
                 data, streamlabs_data if isinstance(streamlabs_data, dict) else None
             )
-        # A failed fetch must not walk the announced total back: the figure only
-        # ever grows, so the last one known stays truthful — and rewriting the
-        # description on every API blip would be a Discord edit for nothing.
+        # A failed fetch must not walk the announced total back: the figure
+        # only ever grows, so the last one known stays truthful.
         total = self._last_event_total
         # ``/zevent_finish`` sticks: the refresh loop keeps running afterwards,
         # and it must not resurrect the event it just closed.
@@ -183,7 +182,6 @@ class DiscordEventMixin:
             concert_active=concert_active,
             finished=self._event_finished,
             tracker_url=self.message.jump_url if self.message else None,
-            amount_step=MILESTONE_INTERVAL,
         )
 
     async def sync_scheduled_event(

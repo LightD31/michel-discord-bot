@@ -1,9 +1,9 @@
 """Behaviour tests for the Zevent Discord scheduled-event sync.
 
-The refresh loop runs every 30 seconds, so the property that matters most is
-that a cycle with nothing new to say makes no Discord call at all. That is not
-obvious: ``ScheduledEvent.edit()`` leaves the model it edits untouched, so the
-fakes here deliberately do the same.
+Editing a scheduled event notifies nobody, so the description tracks the live
+total — but a cycle with nothing new to say must still make no Discord call at
+all. That is not obvious: ``ScheduledEvent.edit()`` leaves the model it edits
+untouched, so the fakes here deliberately do the same.
 """
 
 import asyncio
@@ -113,7 +113,6 @@ def _enable_module(monkeypatch):
     monkeypatch.setattr(module, "MANAGE_DISCORD_EVENT", True)
     monkeypatch.setattr(module, "TWITCH_URL", TWITCH_URL)
     monkeypatch.setattr(module, "GUILD_ID", GUILD_ID)
-    monkeypatch.setattr(module, "MILESTONE_INTERVAL", 100_000)
 
 
 @pytest.fixture
@@ -150,34 +149,38 @@ def test_creates_an_active_event_mid_marathon(now) -> None:
     assert created["end_time"] == EVENT_END
     # Discord refuses a start in the past, so a running edition starts now.
     assert created["start_time"] == now["now"] + module.START_LEAD
-    assert "Plus de 1 200 000 € récoltés." in created["description"]
+    assert "1 250 000 € récoltés." in created["description"]
     assert tracker._scheduled_event.edits == [{"status": ScheduledEventStatus.ACTIVE}]
 
 
 def test_an_unchanged_cycle_makes_no_discord_call(now) -> None:
-    """The regression this file exists for: no edit per refresh tick."""
+    """The regression this file exists for: no edit when nothing moved.
+
+    ``edit()`` never refreshes the model, so a diff run against the fetched
+    object would re-send the same payload on every tick.
+    """
     tracker = Tracker(FakeGuild())
     run(tracker.sync_scheduled_event(payload(1_250_000), None, concert_active=False))
     event = tracker._scheduled_event
     event.edits.clear()
 
     for _ in range(3):
-        run(tracker.sync_scheduled_event(payload(1_255_000), None, concert_active=False))
+        run(tracker.sync_scheduled_event(payload(1_250_000), None, concert_active=False))
 
     assert event.edits == []
 
 
-def test_crossing_a_step_rewrites_the_description_once(now) -> None:
+def test_a_moving_total_is_pushed_once_per_change(now) -> None:
     tracker = Tracker(FakeGuild())
     run(tracker.sync_scheduled_event(payload(1_250_000), None, concert_active=False))
     event = tracker._scheduled_event
     event.edits.clear()
 
     run(tracker.sync_scheduled_event(payload(1_300_500), None, concert_active=False))
-    run(tracker.sync_scheduled_event(payload(1_301_000), None, concert_active=False))
+    run(tracker.sync_scheduled_event(payload(1_300_500), None, concert_active=False))
 
     assert len(event.edits) == 1
-    assert "Plus de 1 300 000 € récoltés." in event.edits[0]["description"]
+    assert "1 300 500 € récoltés." in event.edits[0]["description"]
 
 
 def test_announced_event_is_started_when_the_edition_opens(now) -> None:
