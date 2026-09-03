@@ -145,7 +145,7 @@ def test_creates_an_active_event_mid_marathon(now) -> None:
 
     assert len(guild.created) == 1
     created = guild.created[0]
-    assert created["name"] == "ZEvent 2026 — 1 250 000 €"
+    assert created["name"] == "ZEvent 2026 - 1 250 000 €"
     assert created["external_location"] == TWITCH_URL
     assert created["end_time"] == EVENT_END
     # Discord refuses a start in the past, so a running edition starts now.
@@ -182,7 +182,7 @@ def test_a_moving_total_is_pushed_once_per_change(now) -> None:
     run(tracker.sync_scheduled_event(payload(1_300_500), None, concert_active=False))
 
     assert len(event.edits) == 1
-    assert event.edits[0]["name"] == "ZEvent 2026 — 1 300 500 €"
+    assert event.edits[0]["name"] == "ZEvent 2026 - 1 300 500 €"
     assert "1 300 500 € récoltés." in event.edits[0]["description"]
 
 
