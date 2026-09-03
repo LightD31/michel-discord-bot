@@ -136,6 +136,8 @@ class Zevent(
             # Re-attach the scheduled event this bot created before the restart
             # so the refresh loop edits it instead of creating a duplicate.
             await self.recover_scheduled_event()
+            # After the edition is resolved: the marker is stored per edition.
+            await self.load_milestone_marker()
             logger.info("Zevent extension initialized successfully")
             self.zevent.start()
             await self.zevent()

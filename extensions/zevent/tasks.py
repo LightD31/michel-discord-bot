@@ -7,11 +7,18 @@ from datetime import UTC, datetime
 from interactions import Embed, File, IntervalTrigger, Task, utils
 
 from features.zevent.history import compare_milestone
+from features.zevent.repository import ZeventStateRepository
 from src.core import logging as logutil
 from src.core.http import fetch
 from src.discord_ext.messages import edit_message_if_changed
 
-from ._common import API_URL, MILESTONE_INTERVAL, STREAMLABS_API_URL, UPDATE_INTERVAL
+from ._common import (
+    API_URL,
+    GUILD_ID,
+    MILESTONE_INTERVAL,
+    STREAMLABS_API_URL,
+    UPDATE_INTERVAL,
+)
 
 logger = logutil.init_logger(os.path.basename(__file__))
 
@@ -257,14 +264,54 @@ class TasksMixin:
             logger.error(f"Comparaison de palier indisponible : {e}")
             return None
 
+    async def load_milestone_marker(self) -> None:
+        """Restore the last announced milestone for the tracked edition.
+
+        Without this a restart resets the marker, and whatever milestone the
+        edition crossed while the bot was down would never be announced. Keyed
+        by edition, so a new one starts announcing from its own first palier.
+        """
+        if GUILD_ID is None:
+            return
+        event = self._stats_event or {}
+        event_id = str(event.get("id") or "") or None
+        try:
+            stored = await ZeventStateRepository(GUILD_ID).load_milestone(event_id)
+        except Exception as e:
+            # Deliberately broad: a repository raises DatabaseError, but a
+            # deployment with no `mongodb.url` at all raises RuntimeError before
+            # the driver is ever reached. Neither is worth stalling the tracker
+            # for — the first reading becomes the baseline, as before.
+            logger.error(f"Palier de dons illisible en base : {e}")
+            return
+        if stored is not None:
+            self.last_milestone = stored
+            logger.info(f"Palier de dons repris à {stored}")
+
+    async def _store_milestone_marker(self, milestone: int) -> None:
+        """Persist the marker so a restart resumes where the run left off."""
+        if GUILD_ID is None:
+            return
+        event = self._stats_event or {}
+        try:
+            await ZeventStateRepository(GUILD_ID).save_milestone(
+                str(event.get("id") or "") or None, milestone
+            )
+        except Exception as e:
+            # Broad on purpose (see `load_milestone_marker`): persistence only
+            # buys resilience across restarts, and must never cost an
+            # announcement or break the refresh cycle that calls this.
+            logger.error(f"Palier de dons non enregistré : {e}")
+
     async def check_and_send_milestone(self, total_amount: float):
         """Announce a newly crossed donation milestone, once.
 
-        The first reading of a run only establishes the baseline: a restart
-        mid-edition must not replay every milestone already passed. That
-        baseline is tracked as ``None`` rather than ``0`` — an edition opens at
-        zero, so treating zero as "nothing seen yet" swallowed the very first
-        milestone of every event.
+        With no marker for this edition — its first run — the first reading
+        only establishes the baseline: a tracker joining an edition already in
+        progress must not replay every milestone behind it. That baseline is
+        tracked as ``None`` rather than ``0``: an edition opens at zero, so
+        treating zero as "nothing seen yet" swallowed the very first milestone
+        of every event.
         """
         # Serialize the read-modify-write on last_milestone so overlapping
         # task runs can't both pass the comparison and announce twice.
@@ -274,6 +321,7 @@ class TasksMixin:
             if self.last_milestone is None:
                 self.last_milestone = current_milestone
                 logger.debug(f"Palier de départ: {current_milestone}")
+                await self._store_milestone_marker(current_milestone)
                 return
 
             if current_milestone > self.last_milestone:
@@ -292,6 +340,7 @@ class TasksMixin:
                         "Cannot send milestone message: channel not available or doesn't support sending"
                     )
                 self.last_milestone = current_milestone
+                await self._store_milestone_marker(current_milestone)
 
     async def send_simplified_update(self, total_amount: str):
         """Fallback embed used when API fetch and cache both fail."""
