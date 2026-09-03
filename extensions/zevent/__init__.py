@@ -80,6 +80,9 @@ class Zevent(
         # What was last pushed to that event — `ScheduledEvent.edit()` leaves
         # the model it edits untouched, so this is what the diff runs against.
         self._applied_plan: ScheduledEventPlan | None = None
+        # Cover already uploaded, so the image is fetched once per process
+        # rather than on every refresh.
+        self._applied_cover_url: str | None = None
         self._last_event_total: float | None = None
         self._event_finished = False
         # Twitch logins seen live on the last poll, shared with the embeds so

@@ -103,6 +103,7 @@ class Tracker(ApiMixin, DiscordEventMixin):
         self._event_end = event_end
         self._scheduled_event = None
         self._applied_plan = None
+        self._applied_cover_url = None
         self._last_event_total = None
         self._event_finished = False
 
@@ -314,6 +315,106 @@ def test_ignores_an_already_completed_event(now) -> None:
     run(tracker.recover_scheduled_event())
 
     assert tracker._scheduled_event is None
+
+
+# ─── Cover image ──────────────────────────────────────────────────────
+
+
+@pytest.fixture
+def cover(monkeypatch):
+    """Serve a configured cover, counting how often it is downloaded."""
+    state = {"downloads": 0, "status": 200, "body": b"PNG-bytes"}
+    monkeypatch.setattr(module, "EVENT_COVER_URL", "https://example.invalid/cover.png")
+
+    class FakeResponse:
+        def __init__(self):
+            self.status = state["status"]
+
+        async def read(self):
+            return state["body"]
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc):
+            return False
+
+    class FakeSession:
+        def get(self, url):
+            state["downloads"] += 1
+            return FakeResponse()
+
+    async def fake_session():
+        return FakeSession()
+
+    monkeypatch.setattr(module.http_client, "session", fake_session)
+    return state
+
+
+def test_the_cover_is_uploaded_with_the_new_event(now, cover) -> None:
+    tracker = Tracker(FakeGuild())
+
+    run(tracker.sync_scheduled_event(payload(1_250_000), None, concert_active=False))
+
+    assert tracker.guild.created[0]["cover_image"] == b"PNG-bytes"
+    assert cover["downloads"] == 1
+
+
+def test_the_cover_is_not_re_uploaded_on_later_cycles(now, cover) -> None:
+    """It is decoration, not state: fetching it once per process is enough."""
+    tracker = Tracker(FakeGuild())
+    run(tracker.sync_scheduled_event(payload(1_250_000), None, concert_active=False))
+    event = tracker._scheduled_event
+
+    run(tracker.sync_scheduled_event(payload(1_300_000), None, concert_active=False))
+
+    assert cover["downloads"] == 1
+    assert "cover_image" not in event.edits[0]
+
+
+def test_a_recovered_event_gets_the_cover_on_the_next_cycle(now, cover) -> None:
+    existing = FakeScheduledEvent(
+        name="ZEvent 2026",
+        description="",
+        start_time=EVENT_START,
+        end_time=EVENT_END,
+        location=TWITCH_URL,
+    )
+    tracker = Tracker(FakeGuild([existing]))
+    run(tracker.recover_scheduled_event())
+
+    run(tracker.sync_scheduled_event(payload(1_250_000), None, concert_active=False))
+
+    assert existing.edits[0]["cover_image"] == b"PNG-bytes"
+
+
+def test_an_unreachable_cover_is_attempted_once_and_dropped(now, cover) -> None:
+    """A 404 must not cost a download per refresh — the event ships without it."""
+    cover["status"] = 404
+    tracker = Tracker(FakeGuild())
+
+    run(tracker.sync_scheduled_event(payload(1_250_000), None, concert_active=False))
+    run(tracker.sync_scheduled_event(payload(1_300_000), None, concert_active=False))
+
+    assert tracker.guild.created[0]["cover_image"] is None
+    assert cover["downloads"] == 1
+
+
+def test_an_oversized_cover_is_refused(now, cover) -> None:
+    cover["body"] = b"x" * (module.MAX_COVER_BYTES + 1)
+    tracker = Tracker(FakeGuild())
+
+    run(tracker.sync_scheduled_event(payload(1_250_000), None, concert_active=False))
+
+    assert tracker.guild.created[0]["cover_image"] is None
+
+
+def test_no_cover_configured_means_no_upload(now) -> None:
+    tracker = Tracker(FakeGuild())
+
+    run(tracker.sync_scheduled_event(payload(1_250_000), None, concert_active=False))
+
+    assert tracker.guild.created[0]["cover_image"] is None
 
 
 # ─── Opt-out ──────────────────────────────────────────────────────────

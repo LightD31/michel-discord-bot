@@ -319,6 +319,7 @@
                 "zeventStreamlabsApiUrl": "",
                 "zeventTwitchUrl": "",
                 "zeventManageDiscordEvent": false,
+                "zeventEventCoverUrl": "",
                 "zeventStatsApiUrl": "",
                 "zeventStatsEventId": "",
                 "zeventEventName": "",

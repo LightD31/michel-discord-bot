@@ -29,8 +29,9 @@ from features.zevent.discord_event import (
     plan_scheduled_event,
 )
 from src.core import logging as logutil
+from src.core.http import http_client
 
-from ._common import GUILD_ID, MANAGE_DISCORD_EVENT, TWITCH_URL
+from ._common import EVENT_COVER_URL, GUILD_ID, MANAGE_DISCORD_EVENT, TWITCH_URL
 
 logger = logutil.init_logger(os.path.basename(__file__))
 
@@ -43,6 +44,9 @@ MIN_DURATION = timedelta(minutes=1)
 # Discord echoes back the timestamps it stored, which need not match ours to
 # the microsecond; only a real schedule change should trigger an edit.
 SAME_INSTANT_TOLERANCE = timedelta(seconds=30)
+# Discord rejects an oversized cover outright; refusing to upload one is a
+# clearer failure than a 400 buried in the refresh loop.
+MAX_COVER_BYTES = 8 * 1024 * 1024
 
 # Statuses a recovered event can still be driven from. A completed or canceled
 # one is history: adopting it would only produce failing edits.
@@ -76,6 +80,7 @@ class DiscordEventMixin:
     # sees the nullable cache slots for what they are.
     _scheduled_event: ScheduledEvent | None
     _applied_plan: ScheduledEventPlan | None
+    _applied_cover_url: str | None
     _last_event_total: float | None
     _event_finished: bool
     _event_title: str
@@ -109,6 +114,47 @@ class DiscordEventMixin:
         """
         return bool(MANAGE_DISCORD_EVENT and TWITCH_URL and GUILD_ID is not None)
 
+    async def _fetch_cover(self) -> bytes | None:
+        """Download the configured cover, or ``None`` when there is none to use.
+
+        Recorded as attempted either way by the caller: the cover is decoration,
+        so a URL that 404s or times out must not be re-fetched on every refresh.
+        """
+        if not EVENT_COVER_URL:
+            return None
+        try:
+            session = await http_client.session()
+            async with session.get(EVENT_COVER_URL) as response:
+                if response.status != 200:
+                    logger.warning(
+                        f"Zevent: couverture indisponible (HTTP {response.status}), ignorée."
+                    )
+                    return None
+                data = await response.read()
+        except Exception as e:
+            logger.warning(f"Zevent: couverture inaccessible ({e}), ignorée.")
+            return None
+
+        if len(data) > MAX_COVER_BYTES:
+            logger.warning(f"Zevent: couverture trop lourde ({len(data)} octets), ignorée.")
+            return None
+        return data
+
+    async def _pending_cover(self) -> bytes | None:
+        """The cover to upload now, or ``None`` when the event already has it.
+
+        The configured URL is read at import, so this fires at most once per
+        process — on creation, or on the first refresh after a restart or a
+        dashboard reload picked up a new URL.
+        """
+        if not EVENT_COVER_URL or self._applied_cover_url == EVENT_COVER_URL:
+            return None
+        cover = await self._fetch_cover()
+        # Stamped even on failure, so a broken URL costs one attempt, not one
+        # per refresh cycle.
+        self._applied_cover_url = EVENT_COVER_URL
+        return cover
+
     async def _event_guild(self) -> Guild | None:
         if GUILD_ID is None:
             return None
@@ -129,6 +175,7 @@ class DiscordEventMixin:
         """
         self._scheduled_event = None
         self._applied_plan = None
+        self._applied_cover_url = None
         if not self._event_enabled():
             return
 
@@ -216,6 +263,7 @@ class DiscordEventMixin:
             start = datetime.now(UTC) + START_LEAD
         end = max(plan.end, start + MIN_DURATION)
 
+        cover = await self._pending_cover()
         event = await guild.create_scheduled_event(
             name=plan.name,
             event_type=ScheduledEventType.EXTERNAL,
@@ -223,6 +271,8 @@ class DiscordEventMixin:
             start_time=start,
             end_time=end,
             description=plan.description,
+            # ``None`` is what the library itself treats as "no cover".
+            cover_image=cover,
         )
         if plan.status == ACTIVE:
             await event.edit(status=ScheduledEventStatus.ACTIVE)
@@ -270,6 +320,9 @@ class DiscordEventMixin:
             changes["start_time"] = plan.start
         if not _same_instant(end, plan.end):
             changes["end_time"] = plan.end
+        cover = await self._pending_cover()
+        if cover is not None:
+            changes["cover_image"] = cover
 
         try:
             if changes:

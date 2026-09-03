@@ -70,6 +70,14 @@ class ZeventConfig(SchemaBase):
             "de l'événement, qui sert de lieu."
         ),
     )
+    zeventEventCoverUrl: str | None = ui(
+        "Image de couverture de l'événement",
+        "url",
+        description=(
+            "Bannière de l'événement Discord (800x320 recommandé). "
+            "Vide = aucune image de couverture."
+        ),
+    )
     zeventStatsApiUrl: str = ui(
         "URL de l'API statistiques",
         "url",
@@ -231,6 +239,8 @@ STREAMLABS_API_URL = _cfg.get("zeventStreamlabsApiUrl", "")
 TWITCH_URL = _cfg.get("zeventTwitchUrl", "")
 
 MANAGE_DISCORD_EVENT = bool(_cfg.get("zeventManageDiscordEvent", False))
+# Uploaded once to the Discord event; unset simply means no cover image.
+EVENT_COVER_URL = _cfg.get("zeventEventCoverUrl") or ""
 
 UPDATE_INTERVAL = int(_cfg.get("zeventUpdateInterval", 30))
 MILESTONE_INTERVAL = int(_cfg.get("zeventMilestoneInterval", 100000))
