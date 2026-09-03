@@ -51,6 +51,10 @@ class CommandsMixin:
 
             embeds = self.ensure_embeds_fit_limit(embeds)
 
+            # The recap freezes the tracker, so the guild's scheduled event has
+            # nothing left to announce either.
+            await self.sync_scheduled_event(data, None, concert_active=False, finished=True)
+
             if self.message:
                 await edit_message_if_changed(
                     self.message, embeds=embeds, content="", logger=logger

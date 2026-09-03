@@ -14,6 +14,7 @@ from features.zevent.history import (
 from features.zevent.models import Participant, Show
 from features.zevent.stats import (
     build_location_index,
+    event_end,
     event_schedule,
     goal_remaining,
     parse_datetime,
@@ -27,6 +28,7 @@ from src.core.http import fetch
 
 from ._common import (
     COMPARE_EVENT_ID,
+    EVENT_END_OVERRIDE,
     EVENT_NAME,
     EVENT_START_OVERRIDE,
     MAIN_EVENT_START_OVERRIDE,
@@ -51,6 +53,7 @@ class ApiMixin:
     _event_title: str
     _event_start: datetime
     _main_event_start: datetime
+    _event_end: datetime | None
     _participant_cache: list[Participant]
     _location_index: dict[str, str]
     _planning_cache: list[Show] | None
@@ -104,6 +107,8 @@ class ApiMixin:
             self._event_start = api_start
         if MAIN_EVENT_START_OVERRIDE is None and api_raising_start is not None:
             self._main_event_start = api_raising_start
+        if EVENT_END_OVERRIDE is None:
+            self._event_end = event_end(event) or self._event_end
         logger.info(
             f"Zevent dates: événement {self._event_start.isoformat()}, "
             f"marathon {self._main_event_start.isoformat()}"

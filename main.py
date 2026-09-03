@@ -52,7 +52,7 @@ INTENTS = (
     | interactions.Intents.MESSAGE_CONTENT  # feur keyword match, automod filters
     | interactions.Intents.GUILD_MESSAGE_REACTIONS  # giveaway, polls, starboard
     | interactions.Intents.GUILD_VOICE_STATES  # xp voice activity
-    | interactions.Intents.GUILD_SCHEDULED_EVENTS  # minecraft status events
+    | interactions.Intents.GUILD_SCHEDULED_EVENTS  # minecraft, twitch, zevent scheduled events
 )
 
 client = interactions.Client(
