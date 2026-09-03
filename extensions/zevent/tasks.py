@@ -174,7 +174,8 @@ class TasksMixin:
                     )
                     logger.debug("Concert phase message updated successfully")
 
-                await self.check_and_send_milestone(total_int if data else 0)
+                if data:
+                    await self.check_and_send_milestone(total_int)
                 return
 
             if not data and not self.last_data_cache:
@@ -257,25 +258,39 @@ class TasksMixin:
             return None
 
     async def check_and_send_milestone(self, total_amount: float):
+        """Announce a newly crossed donation milestone, once.
+
+        The first reading of a run only establishes the baseline: a restart
+        mid-edition must not replay every milestone already passed. That
+        baseline is tracked as ``None`` rather than ``0`` — an edition opens at
+        zero, so treating zero as "nothing seen yet" swallowed the very first
+        milestone of every event.
+        """
         # Serialize the read-modify-write on last_milestone so overlapping
         # task runs can't both pass the comparison and announce twice.
         async with self._milestone_lock:
             current_milestone = int(total_amount // MILESTONE_INTERVAL * MILESTONE_INTERVAL)
 
+            if self.last_milestone is None:
+                self.last_milestone = current_milestone
+                logger.debug(f"Palier de départ: {current_milestone}")
+                return
+
             if current_milestone > self.last_milestone:
-                if self.last_milestone != 0:
-                    milestone_message = f"🎉 Nouveau palier atteint : {current_milestone:,} € récoltés ! 🎉".replace(
+                milestone_message = (
+                    f"🎉 Nouveau palier atteint : {current_milestone:,} € récoltés ! 🎉".replace(
                         ",", " "
                     )
-                    comparison = await self._milestone_comparison(current_milestone)
-                    if comparison:
-                        milestone_message += f"\n{comparison}"
-                    if self.channel and hasattr(self.channel, "send"):
-                        await self.channel.send(milestone_message)
-                    else:
-                        logger.error(
-                            "Cannot send milestone message: channel not available or doesn't support sending"
-                        )
+                )
+                comparison = await self._milestone_comparison(current_milestone)
+                if comparison:
+                    milestone_message += f"\n{comparison}"
+                if self.channel and hasattr(self.channel, "send"):
+                    await self.channel.send(milestone_message)
+                else:
+                    logger.error(
+                        "Cannot send milestone message: channel not available or doesn't support sending"
+                    )
                 self.last_milestone = current_milestone
 
     async def send_simplified_update(self, total_amount: str):

@@ -59,7 +59,9 @@ class Zevent(
         self.channel: BaseChannel | None = None
         self.message: Message | None = None
         self.twitch: Twitch | None = None
-        self.last_milestone = 0
+        # ``None`` until the first total is read: the first reading is the
+        # baseline, not an announcement.
+        self.last_milestone: int | None = None
         self._milestone_lock = asyncio.Lock()
         self.last_data_cache: dict | None = None
         self.last_update_time = None
