@@ -15,6 +15,8 @@ from ._common import (
     GOALS_OFFLINE_FACTOR,
     GOALS_PROGRESS_WEIGHT,
     GOALS_VELOCITY_WEIGHT,
+    PLANNING_COUNT,
+    SHOW_OFFLINE_STREAMERS,
     STATS_API_URL,
     STREAMLABS_API_URL,
     TWITCH_URL,
@@ -37,9 +39,6 @@ def source_footer(*sources: str | None) -> str:
     return f"Source: {' / '.join(named)} ❤️" if named else ""
 
 
-# Cap on planning entries so a full-event listing can't crowd out the rest of
-# the message (Discord allows 25 fields / 6000 chars across all embeds).
-MAX_PLANNING_ENTRIES = 6
 # Discord's ceiling is 6000 characters across every embed in a message; the
 # margin absorbs the parts the size estimate cannot see.
 EMBED_TOTAL_BUDGET = 5800
@@ -217,7 +216,13 @@ class EmbedsMixin:
             online_streamers = all_streamers
         else:
             online_streamers = [s for s in streams.values() if s.is_online]
-            offline_streamers = [s for s in streams.values() if not s.is_online]
+            # Hidden by configuration, the offline roster simply isn't built.
+            # The two branches above are untouched: neither draws an
+            # online/offline distinction, and the final recap must keep
+            # listing everyone.
+            offline_streamers = (
+                [s for s in streams.values() if not s.is_online] if SHOW_OFFLINE_STREAMERS else []
+            )
             status = "Streamers en ligne"
 
         def render(streamer: StreamerInfo) -> str:
@@ -229,6 +234,7 @@ class EmbedsMixin:
         # live streamers and drops offline ones rather than truncating blindly.
         groups: list[tuple[str, list[str]]] = []
         displayed_count = 0
+        truncated = False
         budget = max_chars if max_chars is not None else None
         for stream_status, streamers in [
             (status, online_streamers),
@@ -240,11 +246,16 @@ class EmbedsMixin:
             if budget is not None:
                 names, spent = take_within_budget(names, budget)
                 budget -= spent
+            if len(names) < len(streamers):
+                truncated = True
             displayed_count += len(names)
             if names:
                 groups.append((stream_status, names))
 
-        if "distance" in title and actual_count > displayed_count and not finished:
+        # "Top x/y" means the message ran out of room — not that offline
+        # streamers were filtered out on purpose, which is a setting, not a
+        # shortfall.
+        if "distance" in title and truncated and not finished:
             embed_title = f"Top {displayed_count}/{actual_count} {title}"
         else:
             embed_title = f"Les {actual_count} {title}"
@@ -276,13 +287,20 @@ class EmbedsMixin:
 
         return embed
 
-    def create_planning_embed(self, shows: list[Show]) -> Embed:
-        """Upcoming planning entries, rendered from the stats API's ``shows``."""
+    def create_planning_embed(self, shows: list[Show]) -> Embed | None:
+        """Upcoming planning entries, rendered from the stats API's ``shows``.
+
+        ``None`` when the guild set the count to zero — the embed is dropped
+        from the message entirely rather than rendered empty.
+        """
+        if PLANNING_COUNT <= 0:
+            return None
+
         embed = Embed(title="Prochains évènements", color=0x59AF37)
         embed.set_footer(source_footer(SOURCE_STATS))
         embed.timestamp = utils.timestamp_converter(datetime.now())
 
-        pending = upcoming_shows(shows, datetime.now(UTC), limit=MAX_PLANNING_ENTRIES)
+        pending = upcoming_shows(shows, datetime.now(UTC), limit=PLANNING_COUNT)
 
         for show in pending:
             try:

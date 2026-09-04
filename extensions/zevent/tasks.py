@@ -119,7 +119,9 @@ class TasksMixin:
                         embeds.append(top_donations_embed)
 
                     if planning_data and isinstance(planning_data, list):
-                        embeds.append(self.create_planning_embed(planning_data))
+                        planning_embed = self.create_planning_embed(planning_data)
+                        if planning_embed:
+                            embeds.append(planning_embed)
 
                     goals_embed = self.create_donation_goals_embed(self._participant_cache)
                     if goals_embed:
@@ -162,7 +164,9 @@ class TasksMixin:
                         embeds.append(top_donations_embed)
 
                     if planning_data and isinstance(planning_data, list):
-                        embeds.append(self.create_planning_embed(planning_data))
+                        planning_embed = self.create_planning_embed(planning_data)
+                        if planning_embed:
+                            embeds.append(planning_embed)
 
                     goals_embed = self.create_donation_goals_embed(self._participant_cache)
                     if goals_embed:
@@ -225,7 +229,9 @@ class TasksMixin:
                     embeds.append(top_donations_embed)
 
                 if planning_data and isinstance(planning_data, list):
-                    embeds.append(self.create_planning_embed(planning_data))
+                    planning_embed = self.create_planning_embed(planning_data)
+                    if planning_embed:
+                        embeds.append(planning_embed)
 
                 goals_embed = self.create_donation_goals_embed(self._participant_cache)
                 if goals_embed:

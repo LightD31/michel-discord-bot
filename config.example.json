@@ -334,6 +334,8 @@
                 "zeventMetricsBaseUrl": "",
                 "zeventCompareEventId": "",
                 "zeventGoalsCount": 5,
+                "zeventShowOfflineStreamers": true,
+                "zeventPlanningCount": 6,
                 "zeventGoalsVelocityWeight": 2.0,
                 "zeventMilestoneInterval": 100000
             },

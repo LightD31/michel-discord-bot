@@ -1,9 +1,12 @@
-"""Every embed footer credits exactly the sources that fed it.
+"""Embed footers credit exactly the sources that fed them, and the display
+counts follow the guild's configuration.
 
 Both optional data sources are configured per guild, so the credit has to
 follow the configuration: naming a source the tracker never reached would be
 a lie, and omitting one it leans on is what this file exists to prevent.
 """
+
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -17,7 +20,7 @@ from extensions.zevent.embeds import (
     EmbedsMixin,
     source_footer,
 )
-from features.zevent.models import DonationGoal, Participant
+from features.zevent.models import DonationGoal, Participant, Show
 
 
 class _Embeds(EmbedsMixin):
@@ -115,3 +118,40 @@ def test_the_goals_embed_credits_both_the_goals_and_the_pace(monkeypatch) -> Non
     embed = _Embeds().create_donation_goals_embed(participants)
     assert embed is not None
     assert embed.footer.text == f"Source: {SOURCE_STATS} / {SOURCE_ZEVENT} ❤️"
+
+
+# ─── Planning count ───────────────────────────────────────────────────
+
+
+def _shows(count: int) -> list[Show]:
+    start = datetime.now(UTC) + timedelta(hours=1)
+    return [
+        Show(
+            name=f"Show {i}",
+            description="",
+            start=start + timedelta(hours=i),
+            end=start + timedelta(hours=i, minutes=30),
+            all_day=False,
+        )
+        for i in range(count)
+    ]
+
+
+def test_the_planning_shows_as_many_entries_as_configured(monkeypatch) -> None:
+    monkeypatch.setattr(module, "PLANNING_COUNT", 3)
+    embed = _Embeds().create_planning_embed(_shows(10))
+    assert embed is not None
+    assert len(embed.fields) == 3
+
+
+def test_the_planning_embed_is_dropped_when_the_count_is_zero(monkeypatch) -> None:
+    """Zero hides it entirely rather than rendering an empty embed."""
+    monkeypatch.setattr(module, "PLANNING_COUNT", 0)
+    assert _Embeds().create_planning_embed(_shows(10)) is None
+
+
+def test_fewer_shows_than_configured_renders_them_all(monkeypatch) -> None:
+    monkeypatch.setattr(module, "PLANNING_COUNT", 10)
+    embed = _Embeds().create_planning_embed(_shows(2))
+    assert embed is not None
+    assert len(embed.fields) == 2
