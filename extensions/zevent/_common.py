@@ -199,6 +199,17 @@ class ZeventConfig(SchemaBase):
             "1024 caractères, un nombre élevé peut être réduit à l'affichage."
         ),
     )
+    zeventShowOfflineStreamers: bool = ui(
+        "Afficher les streamers hors-ligne",
+        "boolean",
+        default=True,
+        description=(
+            "Lister aussi les streamers hors-ligne dans « présents sur place » "
+            "et « participants à distance ». Désactivé, seuls les streamers en "
+            "direct apparaissent. Sans effet sur le récapitulatif final, qui "
+            "liste tout le monde."
+        ),
+    )
     zeventPlanningCount: int = ui(
         "Nombre d'évènements du planning affichés",
         "number",
@@ -328,6 +339,8 @@ GOALS_COUNT = _parse_count(
 )
 # Même plafond que les donation goals : Discord n'accepte que 25 champs par
 # embed, et le budget de 6000 caractères mord bien avant.
+SHOW_OFFLINE_STREAMERS = bool(_cfg.get("zeventShowOfflineStreamers", True))
+
 PLANNING_COUNT = _parse_count(
     _cfg.get("zeventPlanningCount", DEFAULT_PLANNING_COUNT),
     DEFAULT_PLANNING_COUNT,

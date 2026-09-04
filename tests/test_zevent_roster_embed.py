@@ -5,6 +5,7 @@ real constraint is Discord's 6000-character ceiling shared across every embed,
 so the roster now takes whatever the other embeds leave.
 """
 
+from extensions.zevent import embeds as module
 from extensions.zevent._common import StreamerInfo
 from extensions.zevent.embeds import EMBED_TOTAL_BUDGET, EmbedsMixin
 
@@ -141,3 +142,71 @@ def test_goals_count_is_clamped_and_survives_junk() -> None:
     assert _parse_count("huit", 5, "n", 25) == 5
     # Zero is meaningful: it hides the embed.
     assert _parse_count(0, 5, "n", 25) == 0
+
+
+# ─── Hiding offline streamers ─────────────────────────────────────────
+
+
+def _headers(embed) -> list[str]:
+    return [field.name for field in embed.fields]
+
+
+def test_offline_streamers_are_listed_by_default(monkeypatch) -> None:
+    monkeypatch.setattr(module, "SHOW_OFFLINE_STREAMERS", True)
+    embed = _Embeds().create_location_embed(
+        "streamers présents sur place", _roster(10, live=3), withlink=False, total_count=10
+    )
+    assert "Hors-ligne" in " ".join(_headers(embed))
+    assert len(_names_in(embed)) == 10
+
+
+def test_the_toggle_hides_them_on_site(monkeypatch) -> None:
+    monkeypatch.setattr(module, "SHOW_OFFLINE_STREAMERS", False)
+    embed = _Embeds().create_location_embed(
+        "streamers présents sur place", _roster(10, live=3), withlink=False, total_count=10
+    )
+    assert "Hors-ligne" not in " ".join(_headers(embed))
+    assert len(_names_in(embed)) == 3
+
+
+def test_the_toggle_hides_them_remotely_too(monkeypatch) -> None:
+    monkeypatch.setattr(module, "SHOW_OFFLINE_STREAMERS", False)
+    embed = _Embeds().create_location_embed(
+        "participants à distance", _roster(50, live=4), withlink=False, total_count=50
+    )
+    assert "Hors-ligne" not in " ".join(_headers(embed))
+    assert len(_names_in(embed)) == 4
+
+
+def test_hiding_offline_is_not_reported_as_a_truncation(monkeypatch) -> None:
+    """ "Top x/y" means the message ran out of room, not that a filter applied."""
+    monkeypatch.setattr(module, "SHOW_OFFLINE_STREAMERS", False)
+    embed = _Embeds().create_location_embed(
+        "participants à distance",
+        _roster(50, live=4),
+        withlink=False,
+        total_count=50,
+        max_chars=5000,
+    )
+    assert not embed.title.startswith("Top")
+
+
+def test_a_budget_shortfall_is_still_reported_as_a_truncation(monkeypatch) -> None:
+    monkeypatch.setattr(module, "SHOW_OFFLINE_STREAMERS", True)
+    embed = _Embeds().create_location_embed(
+        "participants à distance", _roster(300), withlink=False, total_count=300, max_chars=200
+    )
+    assert embed.title.startswith("Top")
+
+
+def test_the_final_recap_still_lists_everyone(monkeypatch) -> None:
+    """After the event nobody is live; the recap must not come out empty."""
+    monkeypatch.setattr(module, "SHOW_OFFLINE_STREAMERS", False)
+    embed = _Embeds().create_location_embed(
+        "streamers présents sur place",
+        _roster(10),
+        withlink=False,
+        finished=True,
+        total_count=10,
+    )
+    assert len(_names_in(embed)) == 10

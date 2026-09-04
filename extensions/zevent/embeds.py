@@ -16,6 +16,7 @@ from ._common import (
     GOALS_PROGRESS_WEIGHT,
     GOALS_VELOCITY_WEIGHT,
     PLANNING_COUNT,
+    SHOW_OFFLINE_STREAMERS,
     STATS_API_URL,
     STREAMLABS_API_URL,
     TWITCH_URL,
@@ -215,7 +216,13 @@ class EmbedsMixin:
             online_streamers = all_streamers
         else:
             online_streamers = [s for s in streams.values() if s.is_online]
-            offline_streamers = [s for s in streams.values() if not s.is_online]
+            # Hidden by configuration, the offline roster simply isn't built.
+            # The two branches above are untouched: neither draws an
+            # online/offline distinction, and the final recap must keep
+            # listing everyone.
+            offline_streamers = (
+                [s for s in streams.values() if not s.is_online] if SHOW_OFFLINE_STREAMERS else []
+            )
             status = "Streamers en ligne"
 
         def render(streamer: StreamerInfo) -> str:
@@ -227,6 +234,7 @@ class EmbedsMixin:
         # live streamers and drops offline ones rather than truncating blindly.
         groups: list[tuple[str, list[str]]] = []
         displayed_count = 0
+        truncated = False
         budget = max_chars if max_chars is not None else None
         for stream_status, streamers in [
             (status, online_streamers),
@@ -238,11 +246,16 @@ class EmbedsMixin:
             if budget is not None:
                 names, spent = take_within_budget(names, budget)
                 budget -= spent
+            if len(names) < len(streamers):
+                truncated = True
             displayed_count += len(names)
             if names:
                 groups.append((stream_status, names))
 
-        if "distance" in title and actual_count > displayed_count and not finished:
+        # "Top x/y" means the message ran out of room — not that offline
+        # streamers were filtered out on purpose, which is a setting, not a
+        # shortfall.
+        if "distance" in title and truncated and not finished:
             embed_title = f"Top {displayed_count}/{actual_count} {title}"
         else:
             embed_title = f"Les {actual_count} {title}"
