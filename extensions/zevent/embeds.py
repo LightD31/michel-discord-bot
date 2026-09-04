@@ -15,6 +15,7 @@ from ._common import (
     GOALS_OFFLINE_FACTOR,
     GOALS_PROGRESS_WEIGHT,
     GOALS_VELOCITY_WEIGHT,
+    PLANNING_COUNT,
     STATS_API_URL,
     STREAMLABS_API_URL,
     TWITCH_URL,
@@ -37,9 +38,6 @@ def source_footer(*sources: str | None) -> str:
     return f"Source: {' / '.join(named)} ❤️" if named else ""
 
 
-# Cap on planning entries so a full-event listing can't crowd out the rest of
-# the message (Discord allows 25 fields / 6000 chars across all embeds).
-MAX_PLANNING_ENTRIES = 6
 # Discord's ceiling is 6000 characters across every embed in a message; the
 # margin absorbs the parts the size estimate cannot see.
 EMBED_TOTAL_BUDGET = 5800
@@ -276,13 +274,20 @@ class EmbedsMixin:
 
         return embed
 
-    def create_planning_embed(self, shows: list[Show]) -> Embed:
-        """Upcoming planning entries, rendered from the stats API's ``shows``."""
+    def create_planning_embed(self, shows: list[Show]) -> Embed | None:
+        """Upcoming planning entries, rendered from the stats API's ``shows``.
+
+        ``None`` when the guild set the count to zero — the embed is dropped
+        from the message entirely rather than rendered empty.
+        """
+        if PLANNING_COUNT <= 0:
+            return None
+
         embed = Embed(title="Prochains évènements", color=0x59AF37)
         embed.set_footer(source_footer(SOURCE_STATS))
         embed.timestamp = utils.timestamp_converter(datetime.now())
 
-        pending = upcoming_shows(shows, datetime.now(UTC), limit=MAX_PLANNING_ENTRIES)
+        pending = upcoming_shows(shows, datetime.now(UTC), limit=PLANNING_COUNT)
 
         for show in pending:
             try:

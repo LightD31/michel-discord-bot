@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from features.zevent.stats import (
     DEFAULT_GOALS_COUNT,
     DEFAULT_OFFLINE_FACTOR,
+    DEFAULT_PLANNING_COUNT,
     DEFAULT_PROGRESS_WEIGHT,
     DEFAULT_VELOCITY_WEIGHT,
 )
@@ -198,6 +199,16 @@ class ZeventConfig(SchemaBase):
             "1024 caractères, un nombre élevé peut être réduit à l'affichage."
         ),
     )
+    zeventPlanningCount: int = ui(
+        "Nombre d'évènements du planning affichés",
+        "number",
+        default=DEFAULT_PLANNING_COUNT,
+        description=(
+            "Combien d'évènements afficher dans « Prochains évènements ». "
+            "0 masque complètement l'embed. Chaque entrée occupant un champ "
+            "Discord, un nombre élevé peut être réduit à l'affichage."
+        ),
+    )
     zeventGoalsVelocityWeight: float = ui(
         "Poids de la vitesse (donation goals)",
         "number",
@@ -313,6 +324,14 @@ GOALS_COUNT = _parse_count(
     _cfg.get("zeventGoalsCount", DEFAULT_GOALS_COUNT),
     DEFAULT_GOALS_COUNT,
     "nombre de donation goals",
+    maximum=25,
+)
+# Même plafond que les donation goals : Discord n'accepte que 25 champs par
+# embed, et le budget de 6000 caractères mord bien avant.
+PLANNING_COUNT = _parse_count(
+    _cfg.get("zeventPlanningCount", DEFAULT_PLANNING_COUNT),
+    DEFAULT_PLANNING_COUNT,
+    "nombre d'évènements du planning",
     maximum=25,
 )
 GOALS_VELOCITY_WEIGHT = _parse_weight(
