@@ -18,7 +18,7 @@ from extensions.zevent.api import ApiMixin
 from extensions.zevent.discord_event import DiscordEventMixin
 
 GUILD_ID = 809125340280520724
-TWITCH_URL = "https://twitch.tv/zevent"
+TWITCH_URL = "https://zevent.fr"
 BOT_ID = 999
 
 EVENT_START = datetime(2026, 9, 3, 18, 0, tzinfo=UTC)
