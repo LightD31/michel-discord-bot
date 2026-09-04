@@ -15,6 +15,7 @@ from features.zevent.discord_event import (
     SCHEDULED,
     amount_line,
     build_name,
+    event_location,
     plan_scheduled_event,
     resolve_end,
 )
@@ -143,6 +144,27 @@ def test_tracker_link_is_included_when_known() -> None:
     assert "[Suivi en direct](https://discord.com/channels/1/2/3)" in plan.description
 
 
+def test_the_stats_site_is_credited_alongside_the_tracker() -> None:
+    """Planning, LAN split and goals all come from that community project."""
+    plan = _plan(
+        MAIN_START + timedelta(hours=5),
+        tracker_url="https://discord.com/channels/1/2/3",
+        stats_url="https://zevent.gdoc.fr",
+    )
+    assert "[Statistiques](https://zevent.gdoc.fr)" in plan.description
+    assert "[Suivi en direct](https://discord.com/channels/1/2/3)" in plan.description
+
+
+def test_the_stats_link_stands_alone_without_a_tracker_message() -> None:
+    plan = _plan(MAIN_START + timedelta(hours=5), stats_url="https://zevent.gdoc.fr")
+    assert "[Statistiques](https://zevent.gdoc.fr)" in plan.description
+    assert "Suivi en direct" not in plan.description
+
+
+def test_no_stats_link_when_none_is_configured() -> None:
+    assert "Statistiques" not in _plan(MAIN_START + timedelta(hours=5)).description
+
+
 def test_no_tracker_link_when_the_message_is_missing() -> None:
     assert "Suivi en direct" not in _plan(MAIN_START + timedelta(hours=5)).description
 
@@ -177,3 +199,40 @@ def test_an_empty_title_falls_back_to_a_usable_name() -> None:
 def test_a_trimmed_edition_name_keeps_no_trailing_space() -> None:
     name = build_name(f"{'Z' * 84} 2026", 1_284_990)
     assert " -" in name and "  -" not in name
+
+
+# ─── Location ─────────────────────────────────────────────────────────
+
+TWITCH = "https://twitch.tv/zevent"
+SITE = "https://zevent.fr"
+
+
+def _location(now, twitch=TWITCH, site=SITE) -> str:
+    return event_location(now=now, main_event_start=MAIN_START, twitch_url=twitch, website_url=site)
+
+
+def test_the_concert_window_points_at_the_single_twitch_channel() -> None:
+    assert _location(EVENT_START + timedelta(hours=1)) == TWITCH
+
+
+def test_before_the_edition_opens_the_concert_channel_already_applies() -> None:
+    assert _location(EVENT_START - timedelta(days=2)) == TWITCH
+
+
+def test_the_marathon_points_at_the_site() -> None:
+    """No single channel any more — every participant is on their own."""
+    assert _location(MAIN_START) == SITE
+    assert _location(MAIN_START + timedelta(days=1)) == SITE
+
+
+def test_either_url_alone_stands_in_for_the_other() -> None:
+    assert _location(MAIN_START + timedelta(hours=1), site="") == TWITCH
+    assert _location(EVENT_START + timedelta(hours=1), twitch="") == SITE
+    assert _location(MAIN_START, twitch="", site="") == ""
+
+
+def test_the_plan_carries_the_location_for_its_phase() -> None:
+    concert = _plan(EVENT_START + timedelta(hours=1), twitch_url=TWITCH, website_url=SITE)
+    marathon = _plan(MAIN_START + timedelta(hours=1), twitch_url=TWITCH, website_url=SITE)
+    assert concert.location == TWITCH
+    assert marathon.location == SITE

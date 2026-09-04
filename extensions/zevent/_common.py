@@ -60,6 +60,24 @@ class ZeventConfig(SchemaBase):
             "Lien « Regarder sur Twitch » affiché pendant le concert. Vide = aucun lien affiché."
         ),
     )
+    zeventWebsiteUrl: str | None = ui(
+        "Site de l'événement",
+        "url",
+        description=(
+            "Lieu de l'événement Discord une fois le marathon lancé : chaque "
+            "streamer diffuse alors sur sa propre chaîne, le site est le point "
+            "de rassemblement. Vide = la chaîne Twitch reste utilisée."
+        ),
+    )
+    zeventStatsSiteUrl: str | None = ui(
+        "Site des statistiques",
+        "url",
+        description=(
+            "Site du projet communautaire de statistiques (planning, répartition "
+            "LAN/à distance, donation goals), dont les données alimentent le "
+            "suivi. Affiché comme lien dans l'événement Discord. Vide = aucun lien."
+        ),
+    )
     zeventManageDiscordEvent: bool = ui(
         "Créer un événement Discord",
         "boolean",
@@ -237,6 +255,12 @@ EVENT_NAME = _cfg.get("zeventEventName") or ""
 # Configured per guild in the Web UI — no team URL is baked into the code.
 STREAMLABS_API_URL = _cfg.get("zeventStreamlabsApiUrl", "")
 TWITCH_URL = _cfg.get("zeventTwitchUrl", "")
+# Lieu de l'événement Discord après le concert d'ouverture; voir
+# `features.zevent.discord_event.event_location`.
+WEBSITE_URL = _cfg.get("zeventWebsiteUrl") or ""
+# Le site du projet communautaire derrière STATS_API_URL : c'est lui que le
+# suivi crédite, l'API n'étant que sa façade.
+STATS_SITE_URL = _cfg.get("zeventStatsSiteUrl") or ""
 
 MANAGE_DISCORD_EVENT = bool(_cfg.get("zeventManageDiscordEvent", False))
 # Uploaded once to the Discord event; unset simply means no cover image.

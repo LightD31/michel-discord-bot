@@ -15,10 +15,27 @@ from ._common import (
     GOALS_OFFLINE_FACTOR,
     GOALS_PROGRESS_WEIGHT,
     GOALS_VELOCITY_WEIGHT,
+    STATS_API_URL,
+    STREAMLABS_API_URL,
     TWITCH_URL,
     StreamerInfo,
     split_streamer_list,
 )
+
+# Sources credited in the embed footers. Only what actually fed an embed is
+# named: crediting a source the tracker never reached would be a lie, and the
+# Streamlabs team URL and the stats API are both optional per guild.
+SOURCE_ZEVENT = "zevent.fr"
+SOURCE_STATS = "zevent.gdoc.fr"
+SOURCE_TWITCH = "Twitch"
+SOURCE_STREAMLABS = "Streamlabs Charity"
+
+
+def source_footer(*sources: str | None) -> str:
+    """``"Source: a / b ❤️"`` from the sources that are actually in play."""
+    named = [source for source in sources if source]
+    return f"Source: {' / '.join(named)} ❤️" if named else ""
+
 
 # Cap on planning entries so a full-event listing can't crowd out the rest of
 # the message (Discord allows 25 fields / 6000 chars across all embeds).
@@ -158,7 +175,15 @@ class EmbedsMixin:
 
         embed.timestamp = utils.timestamp_converter(datetime.now())
         embed.set_thumbnail("attachment://Zevent_logo.png")
-        embed.set_footer("Source: zevent.fr / Twitch ❤️")
+        embed.set_footer(
+            source_footer(
+                SOURCE_ZEVENT,
+                # Only when a team URL is configured does Streamlabs feed the
+                # total (`get_total_amount` takes the higher of the two).
+                SOURCE_STREAMLABS if STREAMLABS_API_URL else None,
+                SOURCE_TWITCH,
+            )
+        )
 
         return embed
 
@@ -227,7 +252,15 @@ class EmbedsMixin:
         embed = Embed(title=embed_title, color=0x59AF37)
         if viewers_count and not finished and self._is_event_started():
             embed.description = f"Viewers: {viewers_count}"
-        embed.set_footer("Source: zevent.fr / Twitch ❤️")
+        embed.set_footer(
+            source_footer(
+                SOURCE_ZEVENT,
+                # Without the stats API there is no LAN/remote split to credit:
+                # everyone lands in the remote bucket.
+                SOURCE_STATS if STATS_API_URL else None,
+                SOURCE_TWITCH,
+            )
+        )
         embed.timestamp = utils.timestamp_converter(datetime.now())
 
         for stream_status, names in groups:
@@ -246,7 +279,7 @@ class EmbedsMixin:
     def create_planning_embed(self, shows: list[Show]) -> Embed:
         """Upcoming planning entries, rendered from the stats API's ``shows``."""
         embed = Embed(title="Prochains évènements", color=0x59AF37)
-        embed.set_footer("Source: zevent.gdoc.fr ❤️")
+        embed.set_footer(source_footer(SOURCE_STATS))
         embed.timestamp = utils.timestamp_converter(datetime.now())
 
         pending = upcoming_shows(shows, datetime.now(UTC), limit=MAX_PLANNING_ENTRIES)
@@ -317,7 +350,9 @@ class EmbedsMixin:
             return None
 
         embed = Embed(title="🎯 Prochains donation goals", color=0x59AF37)
-        embed.set_footer("Source: zevent.gdoc.fr ❤️")
+        # The goals themselves come from the stats API; the pace that ranks
+        # them is measured on the zevent.fr totals.
+        embed.set_footer(source_footer(SOURCE_STATS, SOURCE_ZEVENT))
         embed.timestamp = utils.timestamp_converter(datetime.now())
 
         # Build up to the 1024-char field limit a whole entry at a time; a
@@ -377,7 +412,7 @@ class EmbedsMixin:
                 return None
 
             embed = Embed(title="🏆 Top Donations par streamer", color=0xFFD700)
-            embed.set_footer("Source: zevent.fr ❤️")
+            embed.set_footer(source_footer(SOURCE_ZEVENT))
             embed.timestamp = utils.timestamp_converter(datetime.now())
 
             leaderboard_text = ""

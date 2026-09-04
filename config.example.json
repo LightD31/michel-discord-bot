@@ -318,6 +318,8 @@
                 "zeventPinMessage": false,
                 "zeventStreamlabsApiUrl": "",
                 "zeventTwitchUrl": "",
+                "zeventWebsiteUrl": "",
+                "zeventStatsSiteUrl": "",
                 "zeventManageDiscordEvent": false,
                 "zeventEventCoverUrl": "",
                 "zeventStatsApiUrl": "",

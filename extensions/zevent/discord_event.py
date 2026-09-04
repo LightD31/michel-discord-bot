@@ -31,7 +31,14 @@ from features.zevent.discord_event import (
 from src.core import logging as logutil
 from src.core.http import http_client
 
-from ._common import EVENT_COVER_URL, GUILD_ID, MANAGE_DISCORD_EVENT, TWITCH_URL
+from ._common import (
+    EVENT_COVER_URL,
+    GUILD_ID,
+    MANAGE_DISCORD_EVENT,
+    STATS_SITE_URL,
+    TWITCH_URL,
+    WEBSITE_URL,
+)
 
 logger = logutil.init_logger(os.path.basename(__file__))
 
@@ -54,9 +61,9 @@ LIVE_STATUSES = frozenset({ScheduledEventStatus.SCHEDULED, ScheduledEventStatus.
 
 # Both inputs are process-level config, so the mismatch is worth saying once at
 # startup rather than on every refresh cycle.
-if MANAGE_DISCORD_EVENT and not TWITCH_URL:
+if MANAGE_DISCORD_EVENT and not (TWITCH_URL or WEBSITE_URL):
     logger.warning(
-        "Zevent: événement Discord demandé mais aucune chaîne Twitch configurée — ignoré."
+        "Zevent: événement Discord demandé mais ni chaîne Twitch ni site configurés — ignoré."
     )
 
 _STATUS_BY_DISCORD = {
@@ -108,11 +115,21 @@ class DiscordEventMixin:
     def _event_enabled(self) -> bool:
         """True when the dashboard asked for the event *and* it can be located.
 
-        An external Discord event must declare a location, and the event's own
-        Twitch channel is the only one the tracker knows — no URL is hardcoded,
-        so an unset one simply turns the feature off.
+        An external Discord event must declare a location, and the only ones
+        the tracker knows are the two configured URLs — no URL is hardcoded, so
+        having neither simply turns the feature off.
         """
-        return bool(MANAGE_DISCORD_EVENT and TWITCH_URL and GUILD_ID is not None)
+        return bool(MANAGE_DISCORD_EVENT and (TWITCH_URL or WEBSITE_URL) and GUILD_ID is not None)
+
+    @staticmethod
+    def _known_locations() -> set[str]:
+        """Every place a bot-owned event may point at, lowercased.
+
+        The location moves with the edition's phase, so recovery has to accept
+        either: matching only the current one would miss an event created
+        during the concert and leave the loop creating a duplicate.
+        """
+        return {url.lower() for url in (TWITCH_URL, WEBSITE_URL) if url}
 
     async def _fetch_cover(self) -> bytes | None:
         """Download the configured cover, or ``None`` when there is none to use.
@@ -183,7 +200,7 @@ class DiscordEventMixin:
         if guild is None:
             return
 
-        expected = TWITCH_URL.lower()
+        expected = self._known_locations()
         try:
             events = await guild.list_scheduled_events()
         except Exception as e:
@@ -193,7 +210,7 @@ class DiscordEventMixin:
         for event in events:
             if event.status not in LIVE_STATUSES:
                 continue
-            if self._event_location(event).lower() != expected:
+            if self._event_location(event).lower() not in expected:
                 continue
             try:
                 creator = await event.creator
@@ -229,6 +246,9 @@ class DiscordEventMixin:
             concert_active=concert_active,
             finished=self._event_finished,
             tracker_url=self.message.jump_url if self.message else None,
+            stats_url=STATS_SITE_URL or None,
+            twitch_url=TWITCH_URL,
+            website_url=WEBSITE_URL,
         )
 
     async def sync_scheduled_event(
@@ -267,7 +287,7 @@ class DiscordEventMixin:
         event = await guild.create_scheduled_event(
             name=plan.name,
             event_type=ScheduledEventType.EXTERNAL,
-            external_location=TWITCH_URL,
+            external_location=plan.location,
             start_time=start,
             end_time=end,
             description=plan.description,
@@ -282,7 +302,7 @@ class DiscordEventMixin:
 
     def _known_state(
         self, event: ScheduledEvent
-    ) -> tuple[str, str, datetime, datetime | None, str]:
+    ) -> tuple[str, str, str, datetime, datetime | None, str]:
         """What Discord is believed to hold for the event right now.
 
         ``ScheduledEvent.edit()`` does not refresh the model it is called on,
@@ -292,10 +312,18 @@ class DiscordEventMixin:
         """
         applied = self._applied_plan
         if applied is not None:
-            return applied.name, applied.description, applied.start, applied.end, applied.status
+            return (
+                applied.name,
+                applied.description,
+                applied.location,
+                applied.start,
+                applied.end,
+                applied.status,
+            )
         return (
             event.name or "",
             event.description or "",
+            self._event_location(event),
             event.start_time,
             event.end_time,
             _STATUS_BY_DISCORD.get(event.status, SCHEDULED),
@@ -307,13 +335,16 @@ class DiscordEventMixin:
         if event is None:
             return
 
-        name, description, start, end, status = self._known_state(event)
+        name, description, location, start, end, status = self._known_state(event)
 
         changes: dict[str, Any] = {}
         if name != plan.name:
             changes["name"] = plan.name
         if description != plan.description:
             changes["description"] = plan.description
+        # Moves once per edition, when the marathon takes over from the concert.
+        if plan.location and location != plan.location:
+            changes["external_location"] = plan.location
         # Discord rejects moving the start of an event already running, so the
         # start is only corrected while the event is still announced.
         if status == SCHEDULED and not _same_instant(start, plan.start):
@@ -346,7 +377,7 @@ class DiscordEventMixin:
         # The model does not reflect our own edits, so the status we pushed is
         # what says whether the event is running — and a running event is
         # completed rather than deleted, so it stays in the guild's history.
-        _, _, _, _, status = self._known_state(event)
+        *_, status = self._known_state(event)
         self._scheduled_event = None
         self._applied_plan = None
         try:
