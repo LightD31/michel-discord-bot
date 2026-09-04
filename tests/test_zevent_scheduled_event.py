@@ -18,7 +18,8 @@ from extensions.zevent.api import ApiMixin
 from extensions.zevent.discord_event import DiscordEventMixin
 
 GUILD_ID = 809125340280520724
-TWITCH_URL = "https://zevent.fr"
+TWITCH_URL = "https://twitch.tv/zevent"
+WEBSITE_URL = "https://zevent.fr"
 BOT_ID = 999
 
 EVENT_START = datetime(2026, 9, 3, 18, 0, tzinfo=UTC)
@@ -113,6 +114,7 @@ def _enable_module(monkeypatch):
     """Turn the feature on: its config is empty outside a configured guild."""
     monkeypatch.setattr(module, "MANAGE_DISCORD_EVENT", True)
     monkeypatch.setattr(module, "TWITCH_URL", TWITCH_URL)
+    monkeypatch.setattr(module, "WEBSITE_URL", WEBSITE_URL)
     monkeypatch.setattr(module, "GUILD_ID", GUILD_ID)
 
 
@@ -146,7 +148,7 @@ def test_creates_an_active_event_mid_marathon(now) -> None:
     assert len(guild.created) == 1
     created = guild.created[0]
     assert created["name"] == "ZEvent 2026 - 1 250 000 €"
-    assert created["external_location"] == TWITCH_URL
+    assert created["external_location"] == WEBSITE_URL
     assert created["end_time"] == EVENT_END
     # Discord refuses a start in the past, so a running edition starts now.
     assert created["start_time"] == now["now"] + module.START_LEAD
@@ -317,6 +319,92 @@ def test_ignores_an_already_completed_event(now) -> None:
     assert tracker._scheduled_event is None
 
 
+# ─── Location ─────────────────────────────────────────────────────────
+
+
+def test_the_concert_points_at_the_twitch_channel(now) -> None:
+    """One channel carries the opening concert, so that is where to send people."""
+    now["now"] = EVENT_START + timedelta(hours=1)
+    tracker = Tracker(FakeGuild())
+
+    run(tracker.sync_scheduled_event(payload(0), None, concert_active=True))
+
+    assert tracker.guild.created[0]["external_location"] == TWITCH_URL
+
+
+def test_the_location_moves_to_the_site_when_the_marathon_starts(now) -> None:
+    """From then on every participant streams on their own channel."""
+    now["now"] = EVENT_START + timedelta(hours=1)
+    tracker = Tracker(FakeGuild())
+    run(tracker.sync_scheduled_event(payload(0), None, concert_active=True))
+    event = tracker._scheduled_event
+    event.edits.clear()
+
+    now["now"] = MAIN_START + timedelta(minutes=1)
+    run(tracker.sync_scheduled_event(payload(120_000), None, concert_active=False))
+
+    assert event.edits[0]["external_location"] == WEBSITE_URL
+
+
+def test_the_location_is_not_rewritten_every_cycle(now) -> None:
+    tracker = Tracker(FakeGuild())
+    run(tracker.sync_scheduled_event(payload(1_250_000), None, concert_active=False))
+    event = tracker._scheduled_event
+    event.edits.clear()
+
+    run(tracker.sync_scheduled_event(payload(1_250_000), None, concert_active=False))
+
+    assert event.edits == []
+
+
+def test_an_event_created_during_the_concert_is_still_recovered(now) -> None:
+    """Recovery must accept either location, or the loop creates a duplicate."""
+    existing = FakeScheduledEvent(
+        name="ZEvent 2026",
+        description="",
+        start_time=EVENT_START,
+        end_time=EVENT_END,
+        location=TWITCH_URL,
+    )
+    tracker = Tracker(FakeGuild([existing]))
+
+    run(tracker.recover_scheduled_event())
+
+    assert tracker._scheduled_event is existing
+    run(tracker.sync_scheduled_event(payload(1_250_000), None, concert_active=False))
+    assert tracker.guild.created == []
+    assert existing.edits[0]["external_location"] == WEBSITE_URL
+
+
+def test_only_a_twitch_channel_configured_keeps_using_it(now, monkeypatch) -> None:
+    monkeypatch.setattr(module, "WEBSITE_URL", "")
+    tracker = Tracker(FakeGuild())
+
+    run(tracker.sync_scheduled_event(payload(1_250_000), None, concert_active=False))
+
+    assert tracker.guild.created[0]["external_location"] == TWITCH_URL
+
+
+def test_only_a_site_configured_uses_it_throughout(now, monkeypatch) -> None:
+    monkeypatch.setattr(module, "TWITCH_URL", "")
+    now["now"] = EVENT_START + timedelta(hours=1)
+    tracker = Tracker(FakeGuild())
+
+    run(tracker.sync_scheduled_event(payload(0), None, concert_active=True))
+
+    assert tracker.guild.created[0]["external_location"] == WEBSITE_URL
+
+
+def test_neither_url_configured_disables_the_event(now, monkeypatch) -> None:
+    monkeypatch.setattr(module, "TWITCH_URL", "")
+    monkeypatch.setattr(module, "WEBSITE_URL", "")
+    tracker = Tracker(FakeGuild())
+
+    run(tracker.sync_scheduled_event(payload(1_250_000), None, concert_active=False))
+
+    assert tracker.guild.created == []
+
+
 # ─── Cover image ──────────────────────────────────────────────────────
 
 
@@ -422,16 +510,6 @@ def test_no_cover_configured_means_no_upload(now) -> None:
 
 def test_does_nothing_when_the_module_is_off(now, monkeypatch) -> None:
     monkeypatch.setattr(module, "MANAGE_DISCORD_EVENT", False)
-    tracker = Tracker(FakeGuild())
-
-    run(tracker.sync_scheduled_event(payload(1_250_000), None, concert_active=False))
-
-    assert tracker.guild.created == []
-
-
-def test_does_nothing_without_a_twitch_channel_to_point_at(now, monkeypatch) -> None:
-    """An external Discord event needs a location, and no URL is hardcoded."""
-    monkeypatch.setattr(module, "TWITCH_URL", "")
     tracker = Tracker(FakeGuild())
 
     run(tracker.sync_scheduled_event(payload(1_250_000), None, concert_active=False))

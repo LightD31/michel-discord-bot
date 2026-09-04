@@ -4,7 +4,9 @@ Discord's own UI already shows an event's start and end in each viewer's
 timezone, so the description carries only what Discord cannot render on its
 own: which phase the edition is in and how much has been raised — the total
 riding in the name too, so it reads from the server's event list. Editing a
-scheduled event notifies nobody, so it is refreshed as it moves.
+scheduled event notifies nobody, so it is refreshed as it moves. The event's
+location follows the edition the same way: the opening concert has a single
+Twitch channel to point at, the marathon has the event's own site.
 
 Pure logic — the extension layer turns a :class:`ScheduledEventPlan` into
 ``interactions`` calls, so the phase rules stay unit-testable without a
@@ -44,6 +46,8 @@ class ScheduledEventPlan:
 
     name: str
     description: str
+    location: str
+    """Where the event points: see :func:`event_location`."""
     start: datetime
     end: datetime
     status: str
@@ -62,6 +66,23 @@ def resolve_end(
     if event_end is not None and event_end > latest_start:
         return event_end
     return latest_start + FALLBACK_DURATION
+
+
+def event_location(
+    *, now: datetime, main_event_start: datetime, twitch_url: str, website_url: str
+) -> str:
+    """Where the Discord event points at this instant.
+
+    The opening concert runs on a single Twitch channel, so that is the place
+    to send people. From the marathon on there is no single channel — every
+    participant streams on their own — and the event's own site is the hub.
+
+    Either URL alone is enough: whichever is configured stands in for the
+    other, so a half-configured module still produces a usable event.
+    """
+    if now < main_event_start:
+        return twitch_url or website_url
+    return website_url or twitch_url
 
 
 def build_name(title: str, total: float | None) -> str:
@@ -121,6 +142,9 @@ def plan_scheduled_event(
     concert_active: bool = False,
     finished: bool = False,
     tracker_url: str | None = None,
+    stats_url: str | None = None,
+    twitch_url: str = "",
+    website_url: str = "",
 ) -> ScheduledEventPlan:
     """Describe the scheduled event for the current instant.
 
@@ -149,12 +173,25 @@ def plan_scheduled_event(
     amount = amount_line(total)
     if amount is not None:
         lines.append(amount)
+    links = []
     if tracker_url:
-        lines.append(f"📊 [Suivi en direct]({tracker_url})")
+        links.append(f"📊 [Suivi en direct]({tracker_url})")
+    if stats_url:
+        # The planning, the LAN/remote split and the donation goals all come
+        # from this community project — crediting it is the least it is owed.
+        links.append(f"📈 [Statistiques]({stats_url})")
+    if links:
+        lines.append(" · ".join(links))
 
     return ScheduledEventPlan(
         name=build_name(title, total),
         description="\n\n".join(lines)[:MAX_DESCRIPTION],
+        location=event_location(
+            now=now,
+            main_event_start=main_event_start,
+            twitch_url=twitch_url,
+            website_url=website_url,
+        ),
         start=event_start,
         end=end,
         status=status,
