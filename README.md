@@ -66,7 +66,7 @@ A modular, multi-guild Discord bot built with **interactions.py**. Michel ships 
 | **Spotify** | Collaborative playlist management with song proposals, community voting, and playlist change tracking. OAuth re-authentication happens through the Web UI. |
 | **RSS** | Generic feed poller (RSS / Atom / Steam / Epic / subreddit) with per-feed channel and message-template overrides. |
 | **AI Compare** | Ask a question and compare answers from multiple LLMs via OpenRouter, then vote for the best. |
-| **Confrérie** | Literary guild features backed by the Notion API — reading stats, challenges, publisher management. |
+| **Confrérie** | Literary guild features backed by the Notion API — hourly recap stats, forum posts and `/demande` turned into drafts the owner approves, `/texte` / `/auteur` / `/outil` lookups, publisher management. |
 | **Zunivers** | Daily reminders, event tracking, Hardcore season monitoring, corporation recaps, and Advent calendar for the Zunivers collectible game. |
 | **VLR.gg Tracker** | Valorant esports match tracking — schedules, live score updates, and post-match results from VLR.gg. |
 | **MDI Tracker** | Mythic Dungeon International (World of Warcraft) tracking via the Raider.IO API. |

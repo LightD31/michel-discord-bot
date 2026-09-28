@@ -1,66 +1,54 @@
 """`/editeur` slash command: modal-driven editor entry pushed to Notion."""
 
+import asyncio
 import os
-from datetime import datetime
-from typing import Any
 
 from interactions import (
+    AutocompleteContext,
     Modal,
     ModalContext,
     OptionType,
     ParagraphText,
+    ShortText,
     SlashContext,
     modal_callback,
     slash_command,
     slash_option,
 )
 
+from features.confrerie import notion_props as np
+from features.confrerie.editors import (
+    COL_GENRES,
+    COL_GROUPE,
+    COL_PUBLICS,
+    EditorInput,
+    build_editor_properties,
+    validate_editor,
+)
 from src.core import logging as logutil
+from src.core.errors import ValidationError
 from src.discord_ext.messages import send_error
 from src.integrations.notion import NotionAPIError
 
-from ._common import (
-    ValidationError,
-    enabled_servers,
-    genres,
-    groupes,
-    module_config,
-    publics,
-)
+from ._common import autocomplete_options, enabled_servers, module_config
 
 logger = logutil.init_logger(os.path.basename(__file__))
+
+_AUTOCOMPLETE_COLUMNS = {
+    "genre_1": COL_GENRES,
+    "genre_2": COL_GENRES,
+    "genre_3": COL_GENRES,
+    "public_1": COL_PUBLICS,
+    "public_2": COL_PUBLICS,
+    "public_3": COL_PUBLICS,
+    "groupe": COL_GROUPE,
+}
 
 
 class EditorsMixin:
     """Collect, validate, and persist new editor entries to the Notion DB."""
 
-    def _validate_editor_data(self, data: dict[str, Any]) -> dict[str, Any]:
-        """Normalise and validate the free-form fields coming from ``/editeur``."""
-        name = data.get("name", "").strip()
-        if not name:
-            raise ValidationError("Le nom de l'éditeur est obligatoire")
-
-        note = data.get("note", -1)
-        if note != -1:
-            try:
-                note = float(note)
-                if not (0 <= note <= 5):
-                    raise ValidationError("La note doit être comprise entre 0 et 5")
-            except (ValueError, TypeError) as e:
-                raise ValidationError("La note doit être un nombre valide") from e
-
-        date_str = data.get("date", "").strip()
-        if date_str:
-            try:
-                datetime.strptime(date_str, "%Y-%m-%d")
-            except ValueError as e:
-                raise ValidationError("La date doit être au format YYYY-MM-DD") from e
-
-        site = data.get("site", "").strip()
-        if site and not (site.startswith("http://") or site.startswith("https://")):
-            data["site"] = f"https://{site}"
-
-        return data
+    _pending_editors: dict[int, EditorInput]
 
     @slash_command(
         name="editeur",
@@ -72,41 +60,37 @@ class EditorsMixin:
         description="Nom de l'éditeur",
         required=True,
         opt_type=OptionType.STRING,
+        max_length=200,
     )
     @slash_option(
         name="genre_1",
         description="Genre",
         required=True,
         opt_type=OptionType.STRING,
-        choices=genres,
     )
     @slash_option(
         name="public_1",
         description="Public visé",
         required=True,
         opt_type=OptionType.STRING,
-        choices=publics,
     )
     @slash_option(
         name="genre_2",
         description="Genre",
         required=False,
         opt_type=OptionType.STRING,
-        choices=genres,
     )
     @slash_option(
         name="genre_3",
         description="Genre",
         required=False,
         opt_type=OptionType.STRING,
-        choices=genres,
     )
     @slash_option(
         name="groupe",
         description="Nom du groupe éditorial",
         required=False,
         opt_type=OptionType.STRING,
-        choices=groupes,
     )
     @slash_option(
         name="site",
@@ -115,40 +99,24 @@ class EditorsMixin:
         opt_type=OptionType.STRING,
     )
     @slash_option(
-        name="note",
-        description="Note sur 5, entre 0 et 5",
-        required=False,
-        opt_type=OptionType.NUMBER,
-        min_value=0,
-        max_value=5,
-    )
-    @slash_option(
         name="public_2",
         description="Public visé",
         required=False,
         opt_type=OptionType.STRING,
-        choices=publics,
     )
     @slash_option(
         name="public_3",
         description="Public visé",
         required=False,
         opt_type=OptionType.STRING,
-        choices=publics,
     )
     @slash_option(
         name="date",
-        description="Date de création de l'éditeur (format : YYYY-MM-DD)",
+        description="Date de création de l'éditeur (format : AAAA-MM-JJ)",
         required=False,
         opt_type=OptionType.STRING,
         min_length=10,
         max_length=10,
-    )
-    @slash_option(
-        name="taille",
-        description="Taille de l'éditeur",
-        required=False,
-        opt_type=OptionType.STRING,
     )
     async def ajouterediteur(
         self,
@@ -160,130 +128,126 @@ class EditorsMixin:
         genre_3: str = "",
         groupe: str = "",
         site: str = "",
-        note: float = -1,
         public_2: str = "",
         public_3: str = "",
         date: str = "",
-        taille: str = "",
     ):
-        """Validate inputs, stash them on ``self.data``, then open the modal."""
+        """Validate the options, remember them for this user, then open the modal."""
+        db_id = module_config.get("confrerieNotionDbIdEditorsId")
+        if not db_id:
+            await send_error(ctx, "La base Notion des éditeurs n'est pas configurée.")
+            return
         try:
-            editor_data = {
-                "name": name,
-                "genres": f"{genre_1}, {genre_2}, {genre_3}",
-                "groupe": groupe,
-                "site": site,
-                "note": note,
-                "publics": f"{public_1}, {public_2}, {public_3}",
-                "date": date,
-                "taille": taille,
-            }
-
-            validated_data = self._validate_editor_data(editor_data)
-
-            modal = Modal(
-                ParagraphText(
-                    label="Présentation",
-                    custom_id="presentation",
-                    placeholder="Présentation de l'éditeur",
-                    required=False,
-                ),
-                ParagraphText(
-                    label="Commentaire",
-                    custom_id="commentaire",
-                    placeholder="Commentaire sur l'éditeur",
-                    required=False,
-                ),
-                title=f"Ajout de {name}",
-                custom_id="ajouterediteur",
+            # The modal is the interaction response: leave room in Discord's 3 s.
+            schema = await self._editor_schema(db_id, timeout=2.0)
+            editor = validate_editor(
+                name=name,
+                genres=[genre_1, genre_2, genre_3],
+                publics=[public_1, public_2, public_3],
+                groupe=groupe,
+                site=site,
+                date=date,
+                schema=schema,
             )
-
-            self.data = validated_data
-            await ctx.send_modal(modal)
         except ValidationError as e:
-            await send_error(ctx, f"Erreur de validation: {e}")
-            logger.warning(f"Validation échouée pour l'éditeur {name}: {e}")
-        except Exception as e:
-            await send_error(ctx, "Une erreur est survenue lors de la préparation du formulaire.")
-            logger.error(f"Erreur lors de la préparation du formulaire éditeur: {e}")
+            await send_error(ctx, str(e))
+            return
+
+        self._pending_editors[ctx.author.id] = editor
+        modal = Modal(
+            ParagraphText(
+                label="Ligne éditoriale",
+                custom_id="ligne_editoriale",
+                placeholder="Ce que publie l'éditeur, sa ligne, ses collections…",
+                required=False,
+                max_length=2000,
+            ),
+            ShortText(
+                label="Fondateur(s)",
+                custom_id="fondateurs",
+                required=False,
+                max_length=200,
+            ),
+            ParagraphText(
+                label="Exemples d'auteur·ices publié·es",
+                custom_id="exemples",
+                required=False,
+                max_length=1000,
+            ),
+            ParagraphText(
+                label="Commentaire",
+                custom_id="commentaire",
+                placeholder="Votre avis, votre expérience avec cet éditeur…",
+                required=False,
+                max_length=2000,
+            ),
+            title=f"Ajout de {editor.name}"[:45],
+            custom_id="ajouterediteur",
+        )
+        await ctx.send_modal(modal)
+
+    @ajouterediteur.autocomplete("genre_1")
+    @ajouterediteur.autocomplete("genre_2")
+    @ajouterediteur.autocomplete("genre_3")
+    @ajouterediteur.autocomplete("public_1")
+    @ajouterediteur.autocomplete("public_2")
+    @ajouterediteur.autocomplete("public_3")
+    @ajouterediteur.autocomplete("groupe")
+    async def ajouterediteur_autocomplete(self, ctx: AutocompleteContext):
+        column = _AUTOCOMPLETE_COLUMNS.get(str(ctx.focussed_option.name), COL_GENRES)
+        await autocomplete_options(
+            ctx,
+            self.notion_client,
+            module_config.get("confrerieNotionDbIdEditorsId"),
+            column,
+        )
 
     @modal_callback("ajouterediteur")
     async def ajouterediteur_callback(
         self,
         ctx: ModalContext,
-        commentaire: str,
-        presentation: str,
+        ligne_editoriale: str = "",
+        fondateurs: str = "",
+        exemples: str = "",
+        commentaire: str = "",
     ):
-        """Build the Notion properties from ``self.data`` and create the page."""
+        """Create the Notion page from this user's pending options + modal text."""
+        editor = self._pending_editors.pop(ctx.author.id, None)
+        if editor is None:
+            await send_error(ctx, "Données manquantes, veuillez relancer /editeur.")
+            return
+
+        editor.ligne_editoriale = ligne_editoriale
+        editor.fondateurs = fondateurs
+        editor.exemples = exemples
+        editor.commentaire = commentaire
+
+        db_id = module_config["confrerieNotionDbIdEditorsId"]
         try:
-            if not self.data:
-                await send_error(ctx, "Données manquantes, veuillez recommencer.")
-                return
-
-            properties = await self._build_editor_properties(self.data, commentaire, presentation)
-            page = await self.notion_client.create_page(
-                database_id=module_config["confrerieNotionDbIdEditorsId"],
-                properties=properties,
-            )
-
-            self.data = {}
-
-            await ctx.send(
-                f"✅ Éditeur **{self.data.get('name', 'Inconnu')}** ajouté avec succès !\n"
-                f"📋 [Voir dans Notion]({page['public_url']})",
-                ephemeral=True,
-            )
-
-            logger.info(f"Éditeur {self.data.get('name')} ajouté par {ctx.author}")
+            schema = await self._editor_schema(db_id)
+            properties, dropped = np.filter_to_schema(build_editor_properties(editor), schema)
+            if dropped:
+                logger.warning("Colonnes absentes de la base Éditeurs, ignorées : %s", dropped)
+            page = await self.notion_client.create_page(database_id=db_id, properties=properties)
         except NotionAPIError as e:
-            await send_error(ctx, f"Erreur lors de l'ajout à Notion: {e}")
-        except Exception as e:
-            await send_error(ctx, "Une erreur est survenue lors de l'ajout de l'éditeur.")
-            logger.error(f"Erreur lors de l'ajout de l'éditeur: {e}")
-        finally:
-            self.data = {}
+            logger.error("Erreur Notion lors de l'ajout de l'éditeur %s: %s", editor.name, e)
+            await send_error(ctx, "Notion a refusé l'ajout de l'éditeur, réessayez plus tard.")
+            return
 
-    async def _build_editor_properties(
-        self, data: dict[str, Any], commentaire: str, presentation: str
-    ) -> dict[str, Any]:
-        """Shape ``data`` + modal text into the Notion property payload."""
-        properties: dict[str, Any] = {
-            "Nom": {"title": [{"text": {"content": data["name"]}}]},
-            "Genre(s)": {
-                "multi_select": [
-                    {"name": genre.strip()} for genre in data["genres"].split(",") if genre.strip()
-                ]
-            },
-            "Publics": {
-                "multi_select": [
-                    {"name": public.strip()}
-                    for public in data["publics"].split(",")
-                    if public.strip()
-                ]
-            },
-        }
+        link = np.page_url(page)
+        await ctx.send(
+            f"✅ Éditeur **{editor.name}** ajouté avec succès !"
+            + (f"\n📋 [Voir dans Notion]({link})" if link else ""),
+            ephemeral=True,
+        )
+        logger.info("Éditeur %s ajouté par %s", editor.name, ctx.author)
 
-        if data.get("groupe"):
-            properties["Groupe éditorial"] = {"select": {"name": data["groupe"]}}
-
-        if data.get("site"):
-            properties["Site"] = {"url": data["site"]}
-
-        if data.get("note", -1) != -1:
-            properties["Note"] = {"number": data["note"]}
-
-        if commentaire.strip():
-            properties["Commentaire"] = {"rich_text": [{"text": {"content": commentaire.strip()}}]}
-
-        if presentation.strip():
-            properties["Présentation"] = {
-                "rich_text": [{"text": {"content": presentation.strip()}}]
-            }
-
-        if data.get("taille"):
-            properties["Taille"] = {"rich_text": [{"text": {"content": data["taille"]}}]}
-
-        if data.get("date"):
-            properties["Date création"] = {"date": {"start": data["date"]}}
-
-        return properties
+    async def _editor_schema(self, db_id: str, timeout: float | None = None) -> dict:
+        """Live schema of the Éditeurs data source ({} when Notion is unreachable)."""
+        try:
+            return await asyncio.wait_for(
+                self.notion_client.get_properties_schema(db_id), timeout=timeout
+            )
+        except (NotionAPIError, TimeoutError) as e:
+            logger.warning("Schéma Notion des éditeurs indisponible: %s", e)
+            return {}
