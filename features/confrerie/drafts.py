@@ -72,6 +72,10 @@ class Draft:
     def from_doc(cls, doc: dict[str, Any]) -> "Draft":
         data = dict(doc)
         data["id"] = data.pop("_id")
+        created = data.get("created_at")
+        if isinstance(created, datetime) and created.tzinfo is None:
+            # Motor returns naive datetimes; they were stored as UTC.
+            data["created_at"] = created.replace(tzinfo=UTC)
         known = cls.__dataclass_fields__
         return cls(**{k: v for k, v in data.items() if k in known})
 

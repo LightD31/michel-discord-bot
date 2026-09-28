@@ -41,6 +41,18 @@ class ForumsMixin:
     def _author_map(self) -> dict[str, str]:
         return module_config.get("confrerieAuthorMap") or {}
 
+    async def _display_name(self, guild, user_id) -> str:
+        """Member's display name; the raw id when they can't be fetched (left, API error)."""
+        if guild is None:
+            return str(user_id)
+        member = guild.get_member(user_id)
+        if member is None:
+            try:
+                member = await guild.fetch_member(user_id)
+            except Exception:  # noqa: BLE001 — fall back to the id, keep the draft
+                member = None
+        return member.display_name if member else str(user_id)
+
     @listen(NewThreadCreate)
     async def on_textes_post(self, event: NewThreadCreate):
         forum_id = module_config.get("confrerieTextesForumId")
@@ -57,10 +69,7 @@ class ForumsMixin:
             except AttributeError:  # parent forum not cached
                 tags = []
 
-            member = thread.guild.get_member(owner_id) if thread.guild else None
-            if member is None and thread.guild:
-                member = await thread.guild.fetch_member(owner_id)
-            display_name = member.display_name if member else str(owner_id)
+            display_name = await self._display_name(thread.guild, owner_id)
             author, mapped = resolve_author(int(owner_id), display_name, self._author_map())
 
             draft = Draft(

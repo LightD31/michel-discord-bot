@@ -6,11 +6,13 @@ buttons — the custom ids carry the draft id, so they keep working after a
 restart — and only an approval creates the page in the (public) Œuvres base.
 """
 
+import asyncio
 import os
 import re
 
 from interactions import (
     ActionRow,
+    AllowedMentions,
     Button,
     ButtonStyle,
     ComponentContext,
@@ -148,12 +150,19 @@ class ReviewMixin:
             raise BotError("moduleConfrerie n'est activé sur aucun serveur")
         return DraftRepository(guild_id)
 
-    async def _oeuvres_schema(self) -> dict:
+    async def _oeuvres_schema(self, timeout: float | None = None) -> dict:
+        """Live Œuvres schema, or {} when unavailable (option matching is then skipped).
+
+        Pass ``timeout`` on paths that must answer an interaction within
+        Discord's 3 s window.
+        """
         db_id = module_config.get("confrerieNotionDbOeuvresId")
         if not db_id:
             return {}
         try:
-            return await self.notion_client.get_properties_schema(db_id)
+            return await asyncio.wait_for(
+                self.notion_client.get_properties_schema(db_id), timeout=timeout
+            )
         except Exception as e:  # noqa: BLE001 — drafts still work without option matching
             logger.warning("Schéma Notion des œuvres indisponible: %s", e)
             return {}
@@ -162,7 +171,8 @@ class ReviewMixin:
         """Store ``draft`` and send it to the owner.
 
         Returns False when an identical draft already exists (same forum
-        thread / same member in a défi thread) or nobody could be notified.
+        thread / same member in a défi thread) or nobody could be notified —
+        in which case the draft is discarded.
         """
         repo = self._drafts()
         if not await repo.insert_if_new(draft):
@@ -170,7 +180,9 @@ class ReviewMixin:
             return False
         message = await self._send_for_review(draft)
         if message is None:
-            logger.error("Brouillon %s enregistré mais personne n'a pu être prévenu", draft.id)
+            # Nobody will ever see it: drop it so the next attempt isn't deduped away.
+            logger.error("Brouillon %s abandonné : personne n'a pu être prévenu", draft.id)
+            await repo.delete(draft.id)
             return False
         draft.review_channel_id = int(message.channel.id)
         draft.review_message_id = int(message.id)
@@ -393,6 +405,8 @@ class ReviewMixin:
                     await channel.send(
                         f"📚 « {draft.title} » a été ajouté à la base de la confrérie{link}",
                         reply_to=draft.message_id,
+                        # The title comes from a member: never let it ping @everyone.
+                        allowed_mentions=AllowedMentions(parse=[], replied_user=True),
                     )
         except Exception as e:  # noqa: BLE001 — the decision stands even if the notice fails
             logger.warning("Notification du brouillon %s impossible: %s", draft.id, e)

@@ -85,14 +85,20 @@ class ConfrerieExtension(
         super().drop()
 
     async def _warm_data_source_cache(self):
-        """Pre-resolve Notion data source ids for the configured databases."""
-        for db_id in (
-            module_config.get("confrerieNotionDbOeuvresId"),
-            module_config.get("confrerieNotionDbIdEditorsId"),
+        """Pre-resolve data source ids and schemas for the configured databases.
+
+        ``/demande`` and ``/editeur`` read the schema before opening their
+        modal, inside Discord's 3 s window: a warm cache keeps that instant.
+        """
+        for key in (
+            "confrerieNotionDbOeuvresId",
+            "confrerieNotionDbIdEditorsId",
+            "confrerieNotionDbOutilsId",
         ):
+            db_id = module_config.get(key)
             if db_id:
                 try:
-                    await self.notion_client.get_data_source_id(db_id)
+                    await self.notion_client.get_properties_schema(db_id)
                 except Exception as e:
                     logger.warning(f"Failed to cache data source for {db_id}: {e}")
 

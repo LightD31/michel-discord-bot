@@ -139,7 +139,7 @@ class BrowseMixin:
         await ctx.defer(ephemeral=prive)
         profile = author_profile(await self._oeuvres_pages(), nom)
         if profile is None:
-            await send_error(ctx, f"Aucun·e auteur·ice « {nom} » dans la base.")
+            await send_error(ctx, "Aucun·e auteur·ice de ce nom dans la base.")
             return
 
         embed = Embed(

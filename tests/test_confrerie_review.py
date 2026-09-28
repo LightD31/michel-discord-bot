@@ -89,6 +89,7 @@ class FakeChannel:
 
     async def send(self, content=None, **kwargs):
         self.sent.append((content, kwargs.get("reply_to")))
+        self.kwargs = kwargs
 
 
 class FakeBot:
@@ -189,6 +190,9 @@ async def test_approval_creates_one_page_and_replies_in_the_thread():
     content, reply_to = harness.bot.channel.sent[0]
     assert "https://confrerie.notion.site/page" in content
     assert reply_to == 3
+    # The title comes from a member: the reply must not be able to ping @everyone.
+    mentions = harness.bot.channel.kwargs["allowed_mentions"]
+    assert mentions.parse == [] and mentions.replied_user is True
 
     # A second click (or a click on a stale copy of the message) is a no-op.
     again = await _click(harness, "approve", "defi-1-2")
@@ -235,6 +239,25 @@ async def test_submit_draft_dedupes_and_records_the_review_message(monkeypatch):
     assert await harness.submit_draft(_draft()) is True
     assert harness.repo.docs["defi-1-2"]["review_message_id"] == 55
     assert await harness.submit_draft(_draft()) is False
+
+
+async def test_unreachable_owner_discards_the_draft_so_it_can_be_retried(monkeypatch):
+    harness = Harness(FakeRepo(), FakeNotion())
+
+    async def nobody(draft):
+        return None
+
+    monkeypatch.setattr(harness, "_send_for_review", nobody)
+    assert await harness.submit_draft(_draft()) is False
+    assert harness.repo.docs == {}
+
+
+def test_drafts_read_back_from_mongo_are_timezone_aware():
+    from datetime import datetime
+
+    doc = _draft().to_doc()
+    doc["created_at"] = datetime(2026, 9, 28, 12, 0)  # Motor returns naive UTC
+    assert Draft.from_doc(doc).created_at.tzinfo is not None
 
 
 def test_button_custom_ids_fit_discord_limit():

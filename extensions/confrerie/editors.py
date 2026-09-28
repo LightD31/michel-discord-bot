@@ -1,5 +1,6 @@
 """`/editeur` slash command: modal-driven editor entry pushed to Notion."""
 
+import asyncio
 import os
 
 from interactions import (
@@ -137,7 +138,8 @@ class EditorsMixin:
             await send_error(ctx, "La base Notion des éditeurs n'est pas configurée.")
             return
         try:
-            schema = await self._editor_schema(db_id)
+            # The modal is the interaction response: leave room in Discord's 3 s.
+            schema = await self._editor_schema(db_id, timeout=2.0)
             editor = validate_editor(
                 name=name,
                 genres=[genre_1, genre_2, genre_3],
@@ -240,10 +242,12 @@ class EditorsMixin:
         )
         logger.info("Éditeur %s ajouté par %s", editor.name, ctx.author)
 
-    async def _editor_schema(self, db_id: str) -> dict:
+    async def _editor_schema(self, db_id: str, timeout: float | None = None) -> dict:
         """Live schema of the Éditeurs data source ({} when Notion is unreachable)."""
         try:
-            return await self.notion_client.get_properties_schema(db_id)
-        except NotionAPIError as e:
+            return await asyncio.wait_for(
+                self.notion_client.get_properties_schema(db_id), timeout=timeout
+            )
+        except (NotionAPIError, TimeoutError) as e:
             logger.warning("Schéma Notion des éditeurs indisponible: %s", e)
             return {}

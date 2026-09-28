@@ -74,7 +74,8 @@ class RequestsMixin:
         opt_type=OptionType.STRING,
     )
     async def demande(self, ctx: SlashContext, type_: str = "", genre: str = "", defi: str = ""):
-        schema = await self._oeuvres_schema()
+        # The modal is the interaction response: leave room in Discord's 3 s.
+        schema = await self._oeuvres_schema(timeout=2.0)
         try:
             choices = {
                 "types": np.canonical_choices(
@@ -171,7 +172,6 @@ class RequestsMixin:
             logger.error("Demande de %s non enregistrée: %s", ctx.author, e)
             sent = False
         if not sent:
-            await self._drafts().delete(draft.id)
             await send_error(ctx, "Impossible de transmettre votre demande, réessayez plus tard.")
             return
 
