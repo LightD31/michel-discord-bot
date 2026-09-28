@@ -115,6 +115,15 @@ class StreamlabsCharityExtension(Extension):
         self.streamlabscharity.start()
         spawn(self.run(), name="streamlabs-twitch-auth", log=logger)
 
+    async def async_drop(self):
+        """Dashboard unload/reload: close the Twitch client the new instance will recreate."""
+        if self.twitch is not None:
+            try:
+                await self.twitch.close()
+            except Exception as e:
+                logger.debug(f"Error closing Twitch client: {e}")
+            self.twitch = None
+
     async def run(self):
         try:
             self.twitch = await Twitch(self.client_id, self.client_secret)

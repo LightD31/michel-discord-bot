@@ -7,29 +7,20 @@ logique métier vit dans ``features.confrerie``.
 """
 
 import os
-import sys
 
-# A dashboard save reloads this extension, but ``unload_extension`` only drops
-# the package module itself. Without this purge the submodules below stay
-# cached: the config snapshot in ``_common`` goes stale, and every command and
-# task — defined on the cached mixin classes, already bound to the first
-# instance — keeps running against the extension that was just unloaded.
-for _name in [m for m in sys.modules if m.startswith(f"{__name__}.")]:
-    del sys.modules[_name]
+from interactions import Client, EmbedFooter, Extension, listen
 
-from interactions import Client, EmbedFooter, Extension, listen  # noqa: E402
+from src.core import logging as logutil
+from src.integrations.notion import NotionClient
 
-from src.core import logging as logutil  # noqa: E402
-from src.integrations.notion import NotionClient  # noqa: E402
-
-from ._common import config, enabled_servers, guild_id, module_config  # noqa: E402
-from .browse import BrowseMixin  # noqa: E402
-from .editors import EditorsMixin  # noqa: E402
-from .forums import ForumsMixin  # noqa: E402
-from .requests import RequestsMixin  # noqa: E402
-from .review import ReviewMixin  # noqa: E402
-from .stats import StatsMixin  # noqa: E402
-from .updates import UpdatesMixin  # noqa: E402
+from ._common import config, enabled_servers, guild_id, module_config
+from .browse import BrowseMixin
+from .editors import EditorsMixin
+from .forums import ForumsMixin
+from .requests import RequestsMixin
+from .review import ReviewMixin
+from .stats import StatsMixin
+from .updates import UpdatesMixin
 
 logger = logutil.init_logger(os.path.basename(__file__))
 
@@ -55,10 +46,6 @@ class ConfrerieExtension(
         self._pending_editors = {}
         self._pending_demandes = {}
         self._works_cache = None
-        # A reload from the dashboard never fires Startup again: start the
-        # tasks right away when the client is already running.
-        if bot.is_ready:
-            self._start_tasks()
 
     @listen()
     async def on_startup(self):
@@ -77,12 +64,6 @@ class ConfrerieExtension(
             if not task.running:
                 task.start()
         logger.info("Tâches de l'extension Confrérie démarrées")
-
-    def drop(self) -> None:
-        """Stop the periodic tasks before the extension goes away (reload/unload)."""
-        for task in (self.confrerie, self.autoupdate):
-            task.stop()
-        super().drop()
 
     async def _warm_data_source_cache(self):
         """Pre-resolve data source ids and schemas for the configured databases.

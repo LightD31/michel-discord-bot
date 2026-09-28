@@ -100,6 +100,15 @@ Two tiers, enforced via helpers on `WebUIContext` (`src/webui/context.py`): any 
 
 The dashboard serves requests from a daemon thread with its own uvicorn loop, so **never touch the running client inline in a route**. Anything that mutates the bot — `load_extension` / `unload_extension` / `reload_extension`, a command sync, sending a message — runs on the bot loop via `ctx.run_on_bot_loop(...)`, with the extension helpers in `src/webui/botops.py` (`run_extension_op`, `sync_commands`) as the entry points. Called inline, `reload_extension` makes interactions.py schedule its `synchronise_interactions()` task on the *uvicorn* loop while the client's aiohttp session belongs to the bot loop; the task dies with `RuntimeError: Timeout context manager should be used inside a task`, and since nobody awaits it the only trace is a stray "Task exception was never retrieved" while commands silently never sync. `run_extension_op` also suppresses the library's implicit per-call sync (one unawaited task per load *and* unload) — callers do one awaited `sync_commands()` when the command set actually changed.
 
+`run_extension_op` also completes the lifecycle the library's reload leaves half-done.
+- **Before an unload or reload**, it stops every `Task` on the outgoing instance and awaits its optional `async def async_drop(self)`. It then purges the package's submodules from `sys.modules`, so `_common` (and its config snapshot) and the mixins are re-imported. Without the purge, commands and tasks defined on cached mixins stay bound to the unloaded instance.
+- **After a load or reload on a running client**, it runs the new instance's `on_startup` / `on_ready` listeners, because the gateway fires `Startup` / `Ready` only once per process.
+
+So:
+- Start background work from `@listen() async def on_startup` (idempotent: guard `Task.start()` with `if not task.running`), not from `__init__`.
+- Release anything that isn't a `Task` (a websocket, a socket.io client, a third-party API client) in `async_drop`. `twitch`, `uptime` and `streamlabs` are the examples.
+- Never re-implement reload handling inside an extension.
+
 ### Per-guild data isolation
 
 Each Discord server gets its own MongoDB database named `guild_{guild_id}`; cross-guild data lives in a shared `global` database. Access via the singleton in `src/core/db.py` (`get_guild_collection`, `get_global_collection`). Motor clients are created per event loop — the bot loop and the Web UI's uvicorn loop each get their own — so never cache a collection across loops. Repositories under `features/<name>/repository.py` encapsulate this.

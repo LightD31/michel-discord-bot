@@ -341,6 +341,11 @@ class TwitchExtension(
         if not self.eventsub_watchdog.running:
             self.eventsub_watchdog.start()
 
+    async def async_drop(self):
+        """Dashboard unload/reload: close EventSub so the new instance doesn't run a second one."""
+        self.stop = True
+        await self._shutdown_eventsub()
+
     def stop_on_signal(self, signum, frame):
         """SIGTERM handler — trigger graceful shutdown."""
         self.stop = True
