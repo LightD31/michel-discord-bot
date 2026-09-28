@@ -1,6 +1,7 @@
 """Extension Discord pour la Confrérie de la Plume.
 
-Compose les mixins (stats / updates / editors / requests) autour d'un client
+Compose les mixins (stats / updates / editors / requests / review / forums)
+autour d'un client
 Notion partagé. L'API Notion utilisée est la version ``2025-09-03`` via
 ``src.integrations.notion.NotionClient``; la logique métier vit dans
 ``features.confrerie``.
@@ -24,15 +25,25 @@ from src.integrations.notion import NotionClient  # noqa: E402
 
 from ._common import config, enabled_servers, guild_id, module_config  # noqa: E402
 from .editors import EditorsMixin  # noqa: E402
+from .forums import ForumsMixin  # noqa: E402
 from .requests import RequestsMixin  # noqa: E402
+from .review import ReviewMixin  # noqa: E402
 from .stats import StatsMixin  # noqa: E402
 from .updates import UpdatesMixin  # noqa: E402
 
 logger = logutil.init_logger(os.path.basename(__file__))
 
 
-class ConfrerieExtension(Extension, StatsMixin, UpdatesMixin, EditorsMixin, RequestsMixin):
-    """Discord extension combining the confrérie stats, updates, and slash commands."""
+class ConfrerieExtension(
+    Extension,
+    StatsMixin,
+    UpdatesMixin,
+    EditorsMixin,
+    RequestsMixin,
+    ReviewMixin,
+    ForumsMixin,
+):
+    """Discord extension combining the confrérie stats, updates, drafts and commands."""
 
     def __init__(self, bot: Client):
         self.bot: Client = bot
@@ -41,6 +52,7 @@ class ConfrerieExtension(Extension, StatsMixin, UpdatesMixin, EditorsMixin, Requ
         )
         self._recap_message = None
         self._pending_editors = {}
+        self._pending_demandes = {}
         # A reload from the dashboard never fires Startup again: start the
         # tasks right away when the client is already running.
         if bot.is_ready:

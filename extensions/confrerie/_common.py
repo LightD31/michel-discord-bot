@@ -74,7 +74,55 @@ class ConfrerieConfig(SchemaBase):
     confrerieOwnerId: str | None = ui(
         "ID propriétaire",
         "string",
-        description="ID Discord du propriétaire de la confrérie.",
+        description=(
+            "ID Discord du propriétaire de la confrérie. Il reçoit en message privé "
+            "les fiches à valider (forums, /demande)."
+        ),
+    )
+    confrerieStaffChannelId: str | None = ui(
+        "Salon de validation (repli)",
+        "channel",
+        description=(
+            "Salon où envoyer les fiches à valider quand le propriétaire ne peut pas "
+            "recevoir de message privé."
+        ),
+    )
+    confrerieTextesForumId: str | None = ui(
+        "ID du forum « textes »",
+        "string",
+        description=(
+            "Chaque nouveau fil de ce forum devient une fiche à valider (titre, "
+            "auteur·ice, tags de genre/type, lien vers le fil). Vide = désactivé."
+        ),
+    )
+    confrerieDefisForumId: str | None = ui(
+        "ID du forum « défis »",
+        "string",
+        description=(
+            "La première réponse de chaque membre dans un fil de défi (texte long, "
+            "fichier ou lien) devient une fiche à valider. Vide = désactivé."
+        ),
+    )
+    confrerieAuthorMap: dict[str, str] = ui(
+        "Auteur·ices",
+        "keyvaluemap",
+        default={},
+        description=(
+            "Associe un ID Discord au nom d'auteur·ice utilisé dans Notion "
+            "(colonne « Auteur »). Sans entrée, le pseudo Discord est proposé."
+        ),
+        key_label="ID Discord",
+        value_label="Nom dans Notion",
+    )
+    confrerieNotionDbMembresId: str | None = ui(
+        "Notion DB Répertoire des membres",
+        "string",
+        description="ID de la base « Répertoire des membres » (liens affichés par /auteur).",
+    )
+    confrerieNotionDbOutilsId: str | None = ui(
+        "Notion DB Boîte à outils",
+        "string",
+        description="ID de la base « Boîte à outils » (commande /outil). Vide = désactivé.",
     )
 
 

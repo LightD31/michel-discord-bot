@@ -42,23 +42,6 @@ class EditorInput:
     exemples: str = ""
 
 
-def _canonical_choices(values: list[str], options: list[str], label: str) -> list[str]:
-    """Map each value onto its configured option; reject unknown ones."""
-    values = np.dedupe(values)
-    if not options:
-        return values
-    result: list[str] = []
-    for value in values:
-        match = np.canonical_option(value, options)
-        if match is None:
-            raise ValidationError(
-                f"{label} inconnu·e : « {value} ». Choisissez une valeur proposée."
-            )
-        if match not in result:
-            result.append(match)
-    return result
-
-
 def validate_editor(
     *,
     name: str,
@@ -75,16 +58,22 @@ def validate_editor(
     if not name:
         raise ValidationError("Le nom de l'éditeur est obligatoire.")
 
-    genres = _canonical_choices(genres, np.schema_options(schema, COL_GENRES), "Genre")
+    genres = np.canonical_choices(
+        genres, np.schema_options(schema, COL_GENRES), "Genre", strict=True
+    )
     if not genres:
         raise ValidationError("Au moins un genre est obligatoire.")
-    publics = _canonical_choices(publics, np.schema_options(schema, COL_PUBLICS), "Public")
+    publics = np.canonical_choices(
+        publics, np.schema_options(schema, COL_PUBLICS), "Public", strict=True
+    )
     if not publics:
         raise ValidationError("Au moins un public est obligatoire.")
 
     groupe = groupe.strip()
     if groupe:
-        groupe = _canonical_choices([groupe], np.schema_options(schema, COL_GROUPE), "Groupe")[0]
+        groupe = np.canonical_choices(
+            [groupe], np.schema_options(schema, COL_GROUPE), "Groupe", strict=True
+        )[0]
 
     date = date.strip()
     if date:

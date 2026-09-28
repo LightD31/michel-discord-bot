@@ -93,3 +93,17 @@ DEFI_OPTIONS = (
     "Défi 17 : Traduction créative",
     "SBL26",
 )
+
+
+OEUVRES_SCHEMA: dict[str, Any] = {
+    "Titre": {"type": "title", "title": {}},
+    "Auteur": {"type": "multi_select", "multi_select": _options("Mahé", "Clotilde", "Akibo")},
+    "Défi": {"type": "select", "select": _options(*DEFI_OPTIONS)},
+    "Type": {"type": "multi_select", "multi_select": _options("Défi", "Nouvelle", "Poésie")},
+    "Genre": {"type": "multi_select", "multi_select": _options("Fantasy", "Science-Fiction")},
+    "Avancement": {"type": "status", "status": _options("En cours", "Terminé")},
+    "Lien / Fichier": {"type": "files", "files": {}},
+    "Note de mise à jour": {"type": "rich_text", "rich_text": {}},
+    "Update": {"type": "checkbox", "checkbox": {}},
+    "Parent item": {"type": "relation", "relation": {}},
+}

@@ -8,6 +8,8 @@ rendering instead of silently coming back empty.
 from collections.abc import Iterable
 from typing import Any
 
+from src.core.errors import ValidationError
+
 # Notion caps a single rich_text / title text object at 2000 characters.
 NOTION_TEXT_LIMIT = 2000
 
@@ -117,6 +119,29 @@ def dedupe(values: Iterable[str]) -> list[str]:
         if value and value not in seen:
             seen[value] = None
     return list(seen)
+
+
+def canonical_choices(
+    values: Iterable[str], options: list[str], label: str, *, strict: bool
+) -> list[str]:
+    """Map values onto configured options (case-insensitive).
+
+    ``strict`` rejects unknown values — members pick from autocomplete, and
+    Notion would silently create a new option for a typo. The owner editing a
+    draft is not strict: a new author or a new défi is legitimate.
+    """
+    result: list[str] = []
+    for value in dedupe(values):
+        match = canonical_option(value, options) if options else value
+        if match is None:
+            if strict:
+                raise ValidationError(
+                    f"{label} inconnu·e : « {value} ». Choisissez une valeur proposée."
+                )
+            match = value
+        if match not in result:
+            result.append(match)
+    return result
 
 
 # ── Property payload builders ────────────────────────────────────────────

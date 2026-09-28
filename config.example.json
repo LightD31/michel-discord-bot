@@ -107,7 +107,13 @@
                 "confrerieDefiChannelId": "",
                 "confrerieNewTextChannelId": "",
                 "confrerieTextsUrl": "",
-                "confrerieOwnerId": ""
+                "confrerieOwnerId": "",
+                "confrerieStaffChannelId": "",
+                "confrerieTextesForumId": "",
+                "confrerieDefisForumId": "",
+                "confrerieAuthorMap": {},
+                "confrerieNotionDbMembresId": "",
+                "confrerieNotionDbOutilsId": ""
             },
             "moduleCustomCommands": {
                 "enabled": false,
