@@ -1,10 +1,9 @@
 """Extension Discord pour la Confrérie de la Plume.
 
-Compose les mixins (stats / updates / editors / requests / review / forums)
-autour d'un client
-Notion partagé. L'API Notion utilisée est la version ``2025-09-03`` via
-``src.integrations.notion.NotionClient``; la logique métier vit dans
-``features.confrerie``.
+Compose les mixins (stats / updates / editors / requests / review / forums /
+browse) autour d'un client Notion partagé. L'API Notion utilisée est la
+version ``2025-09-03`` via ``src.integrations.notion.NotionClient``; la
+logique métier vit dans ``features.confrerie``.
 """
 
 import os
@@ -24,6 +23,7 @@ from src.core import logging as logutil  # noqa: E402
 from src.integrations.notion import NotionClient  # noqa: E402
 
 from ._common import config, enabled_servers, guild_id, module_config  # noqa: E402
+from .browse import BrowseMixin  # noqa: E402
 from .editors import EditorsMixin  # noqa: E402
 from .forums import ForumsMixin  # noqa: E402
 from .requests import RequestsMixin  # noqa: E402
@@ -42,6 +42,7 @@ class ConfrerieExtension(
     RequestsMixin,
     ReviewMixin,
     ForumsMixin,
+    BrowseMixin,
 ):
     """Discord extension combining the confrérie stats, updates, drafts and commands."""
 
@@ -53,6 +54,7 @@ class ConfrerieExtension(
         self._recap_message = None
         self._pending_editors = {}
         self._pending_demandes = {}
+        self._works_cache = None
         # A reload from the dashboard never fires Startup again: start the
         # tasks right away when the client is already running.
         if bot.is_ready:

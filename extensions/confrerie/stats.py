@@ -21,9 +21,9 @@ FIELD_BUDGET = 1024
 TOP_ROWS = 10
 
 
-def _plural(count: int, word: str, plural: str | None = None) -> str:
+def plural(count: int, word: str, plural_form: str | None = None) -> str:
     # French keeps 0 and 1 in the singular ("0 participation").
-    return f"{count} {word if count <= 1 else plural or word + 's'}"
+    return f"{count} {word if count <= 1 else plural_form or word + 's'}"
 
 
 def _lines(entries: list[str], empty: str) -> str:
@@ -36,9 +36,9 @@ def build_statistics_embed(stats: ConfrerieStats) -> Embed:
     embed = Embed(
         title="Statistiques de la confrérie",
         description=(
-            f"**{_plural(stats.total_works, 'œuvre')}** · "
-            f"**{_plural(stats.total_defi_entries, 'participation')}** aux défis · "
-            f"**{_plural(stats.author_count, 'auteur·ice')}**"
+            f"**{plural(stats.total_works, 'œuvre')}** · "
+            f"**{plural(stats.total_defi_entries, 'participation')}** aux défis · "
+            f"**{plural(stats.author_count, 'auteur·ice')}**"
         ),
         color=Colors.CONFRERIE,
         timestamp=datetime.now(),
@@ -48,7 +48,7 @@ def build_statistics_embed(stats: ConfrerieStats) -> Embed:
         name="✍️ Auteur·ices les plus prolifiques",
         value=_lines(
             [
-                f"{a.name} : **{_plural(a.works, 'œuvre')}** · {_plural(a.defis, 'défi')}"
+                f"{a.name} : **{plural(a.works, 'œuvre')}** · {plural(a.defis, 'défi')}"
                 for a in stats.authors
             ],
             "Aucun auteur trouvé",
@@ -58,7 +58,7 @@ def build_statistics_embed(stats: ConfrerieStats) -> Embed:
     embed.add_field(
         name="🎯 Défis les plus suivis",
         value=_lines(
-            [f"{name} : **{_plural(n, 'texte')}**" for name, n in stats.numbered_defis],
+            [f"{name} : **{plural(n, 'texte')}**" for name, n in stats.numbered_defis],
             "Aucun défi trouvé",
         ),
         inline=True,
@@ -67,7 +67,7 @@ def build_statistics_embed(stats: ConfrerieStats) -> Embed:
         embed.add_field(
             name="📚 Séries",
             value=_lines(
-                [f"{name} : **{_plural(n, 'texte')}**" for name, n in stats.series],
+                [f"{name} : **{plural(n, 'texte')}**" for name, n in stats.series],
                 "—",
             ),
             inline=True,
@@ -76,7 +76,7 @@ def build_statistics_embed(stats: ConfrerieStats) -> Embed:
         name, count = stats.latest_defi
         embed.add_field(
             name="🆕 Dernier défi",
-            value=f"{name} — {_plural(count, 'participation')}",
+            value=f"{name} — {plural(count, 'participation')}",
             inline=False,
         )
     if stats.in_progress:
