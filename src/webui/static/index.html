@@ -2712,6 +2712,58 @@
             .quick-actions-grid { grid-template-columns: repeat(2, 1fr); }
             .home-hero-right { gap: 16px; }
         }
+
+        /* ── XP stats ──────────────────────────────── */
+        .stats-grid.xp-stats-cards { grid-template-columns: repeat(3, 1fr); margin-bottom: 12px; }
+        .xp-stats-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 12px; margin-bottom: 12px; }
+        .xp-panel {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 12px;
+            min-width: 0;
+            margin-bottom: 12px;
+        }
+        .xp-stats-grid .xp-panel { margin-bottom: 0; }
+        .xp-panel-title { font-size: 13px; font-weight: 600; color: var(--text-secondary); margin-bottom: 10px; }
+        .xp-chart-canvas { position: relative; height: 260px; }
+        .xp-chart-fallback {
+            height: 100%; display: flex; align-items: center; justify-content: center;
+            text-align: center; color: var(--text-muted); font-size: 13px; padding: 0 12px;
+        }
+        .xp-scroll { overflow-x: auto; }
+        .xp-heatmap {
+            display: grid;
+            grid-template-columns: 40px repeat(24, minmax(16px, 1fr));
+            gap: 3px;
+            min-width: 540px;
+            font-size: 11px;
+            color: var(--text-muted);
+        }
+        .xp-heatmap-day { display: flex; align-items: center; }
+        .xp-heatmap-hour { text-align: center; }
+        .xp-heatmap-cell { aspect-ratio: 1; border-radius: 3px; background: var(--accent); }
+        .xp-heatmap-cell.zero { background: var(--bg-secondary); }
+        .xp-top-table { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 520px; }
+        .xp-top-table th {
+            text-align: left; font-weight: 600; font-size: 11px; text-transform: uppercase;
+            letter-spacing: 0.5px; color: var(--text-muted); padding: 6px 8px;
+            border-bottom: 1px solid var(--border);
+        }
+        .xp-top-table td { padding: 6px 8px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+        .xp-top-table tr:last-child td { border-bottom: none; }
+        .xp-top-table .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+        .xp-top-name { font-weight: 600; }
+        .xp-top-sub { font-size: 11px; color: var(--text-muted); }
+        .xp-progress { height: 6px; background: var(--bg-primary); border-radius: 3px; overflow: hidden; min-width: 80px; }
+        .xp-progress > div { height: 100%; background: var(--accent); }
+
+        @media (max-width: 900px) {
+            .xp-stats-grid { grid-template-columns: 1fr; }
+        }
+        @media (max-width: 480px) {
+            .stats-grid.xp-stats-cards { grid-template-columns: repeat(2, 1fr); }
+        }
     </style>
 </head>
 <body>
@@ -2758,6 +2810,8 @@
         logAutoScroll: true,
         logStreaming: false,
         logVerbose: false,
+        // XP module stats: selected window (days)
+        xpStatsDays: 30,
         // Short-link manager (Shlink) state
         shlink: {
             status: null,
@@ -5047,6 +5101,9 @@
     // ── Render ────────────────────────────────────────
     function render() {
         const app = document.getElementById('app');
+        // The page is rebuilt from scratch below: release Chart.js instances
+        // bound to the canvases about to be detached.
+        destroyXpCharts();
         if (!state.user) {
             app.innerHTML = renderLogin();
             return;
@@ -5088,6 +5145,10 @@
         // Moderation: load infraction history when on its module page.
         if (state.currentPage === 'module' && state.currentModule === 'moduleModeration' && state.currentServerId) {
             loadInfractions(state.currentServerId);
+        }
+        // XP: load activity stats and draw the charts when on its module page.
+        if (state.currentPage === 'module' && state.currentModule === 'moduleXp' && state.currentServerId) {
+            loadXpStats(state.currentServerId);
         }
     }
 
@@ -6286,6 +6347,26 @@
                 </div>
             </div>
             ` : ''}
+
+            ${mod === 'moduleXp' ? `
+            <div class="card" style="margin-top:16px;">
+                <div class="card-header">
+                    <div>
+                        <div class="card-title">📊 Statistiques</div>
+                        <div class="card-subtitle">Activité XP du serveur, heures de Paris. L'XP vocal n'est journalisé que depuis l'ajout de ce tableau de bord.</div>
+                    </div>
+                    <div class="card-actions">
+                        <select id="xp-stats-range" class="form-input" style="width:150px;" onchange="setXpStatsRange('${sid}', this.value)">
+                            ${XP_STATS_RANGES.map(d => `<option value="${d}" ${state.xpStatsDays === d ? 'selected' : ''}>${d} jours</option>`).join('')}
+                        </select>
+                        <button class="btn btn-ghost btn-sm" onclick="loadXpStats('${sid}')">🔄 Actualiser</button>
+                    </div>
+                </div>
+                <div id="xp-stats" data-server-id="${sid}">
+                    <div class="loading"><div class="spinner"></div></div>
+                </div>
+            </div>
+            ` : ''}
             ${schema && !schema.directValue ? renderExtraKeysCard(schema, modConfig) : ''}
         `;
     }
@@ -6764,6 +6845,301 @@
             toast(`Cas #${caseId} révoqué.`, 'success');
             loadInfractions(serverId);
         } catch (e) { /* handled by api() */ }
+    }
+
+    // ── XP: activity stats + charts ─────────────────────────────────────
+    // Chart.js is loaded lazily, only once an XP module page is opened.
+    // Pinned build + SRI hash: bump both together.
+    const CHARTJS_SRC = 'https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js';
+    const CHARTJS_SRI = 'sha384-jb8JQMbMoBUzgWatfe6COACi2ljcDdZQ2OxczGA3bGNeWe+6DChMTBJemed7ZnvJ';  // pragma: allowlist secret — public SRI digest
+    const XP_STATS_RANGES = [7, 30, 90, 365];
+    const XP_WEEKDAYS = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
+    const XP_MEDALS = ['🥇', '🥈', '🥉'];
+    let _chartJsPromise = null;
+    let _xpCharts = [];
+    let _xpStatsSeq = 0;
+
+    function ensureChartJs() {
+        if (window.Chart) return Promise.resolve(window.Chart);
+        if (!_chartJsPromise) {
+            _chartJsPromise = new Promise((resolve, reject) => {
+                const script = document.createElement('script');
+                script.src = CHARTJS_SRC;
+                script.integrity = CHARTJS_SRI;
+                script.crossOrigin = 'anonymous';
+                script.async = true;
+                script.onload = () => (window.Chart ? resolve(window.Chart) : reject(new Error('Chart.js introuvable')));
+                script.onerror = () => {
+                    script.remove();
+                    reject(new Error("Chart.js n'a pas pu être chargé"));
+                };
+                document.head.appendChild(script);
+            }).catch(err => {
+                _chartJsPromise = null;  // let the next load retry
+                throw err;
+            });
+        }
+        return _chartJsPromise;
+    }
+
+    function destroyXpCharts() {
+        _xpCharts.forEach(chart => { try { chart.destroy(); } catch (_) { /* already gone */ } });
+        _xpCharts = [];
+    }
+
+    function setXpStatsRange(serverId, value) {
+        const days = parseInt(value, 10);
+        if (!XP_STATS_RANGES.includes(days)) return;
+        state.xpStatsDays = days;
+        loadXpStats(serverId);
+    }
+
+    function fmtNum(n) {
+        return Number(n || 0).toLocaleString('fr-FR');
+    }
+
+    function parseIsoDay(iso) {
+        // 'YYYY-MM-DD' as a local date — new Date(iso) would parse it as UTC midnight.
+        const [y, m, d] = iso.split('-').map(Number);
+        return new Date(y, m - 1, d);
+    }
+
+    function formatVoiceMinutes(minutes) {
+        const h = Math.floor(minutes / 60);
+        const m = minutes % 60;
+        return h ? `${fmtNum(h)} h ${String(m).padStart(2, '0')}` : `${m} min`;
+    }
+
+    async function loadXpStats(serverId) {
+        const container = document.getElementById('xp-stats');
+        if (!container) return;
+        // A newer load (range change, re-render) supersedes this one.
+        const seq = ++_xpStatsSeq;
+        const stale = () => seq !== _xpStatsSeq || !container.isConnected;
+        destroyXpCharts();
+        container.innerHTML = `<div class="loading"><div class="spinner"></div></div>`;
+        let data;
+        try {
+            data = await api(`/api/servers/${encodeURIComponent(serverId)}/xp/stats?days=${state.xpStatsDays}`);
+        } catch (e) {
+            if (!stale()) {
+                container.innerHTML = `<div class="empty-state"><h3>Erreur</h3><p>${escapeHtml(e.message || String(e))}</p></div>`;
+            }
+            return;
+        }
+        if (stale()) return;
+        if (!data) {
+            container.innerHTML = `<div class="empty-state"><h3>Accès refusé</h3><p>Statistiques réservées aux administrateurs de ce serveur.</p></div>`;
+            return;
+        }
+        if (!data.summary?.members) {
+            container.innerHTML = `<div class="empty-state"><h3>Aucune donnée</h3><p>Personne n'a encore gagné d'XP sur ce serveur.</p></div>`;
+            return;
+        }
+        container.innerHTML = renderXpStats(data);
+        try {
+            await ensureChartJs();
+        } catch (e) {
+            if (stale()) return;
+            container.querySelectorAll('.xp-chart-canvas').forEach(el => {
+                el.innerHTML = `<div class="xp-chart-fallback">Graphique indisponible : Chart.js n'a pas pu être chargé.</div>`;
+            });
+            return;
+        }
+        if (stale()) return;
+        drawXpCharts(data);
+    }
+
+    function renderXpStats(data) {
+        const s = data.summary;
+        const period = `${data.days} j`;
+        const cards = [
+            ['Membres classés', fmtNum(s.members)],
+            ['XP total', fmtNum(s.total_xp)],
+            [`XP · ${period}`, fmtNum(s.period_xp)],
+            [`Membres actifs · ${period}`, fmtNum(s.active_members)],
+            [`Messages · ${period}`, fmtNum(s.period_messages)],
+            [`Vocal · ${period}`, formatVoiceMinutes(s.period_voice_minutes || 0)],
+        ];
+        return `
+            <div class="stats-grid xp-stats-cards">
+                ${cards.map(([label, value]) => `
+                    <div class="stat-card">
+                        <div class="stat-label">${escapeHtml(label)}</div>
+                        <div class="stat-value">${escapeHtml(value)}</div>
+                    </div>
+                `).join('')}
+            </div>
+            <div class="xp-stats-grid">
+                <div class="xp-panel">
+                    <div class="xp-panel-title">Activité quotidienne</div>
+                    <div class="xp-chart-canvas"><canvas id="xp-chart-activity"></canvas></div>
+                </div>
+                <div class="xp-panel">
+                    <div class="xp-panel-title">Répartition des niveaux</div>
+                    <div class="xp-chart-canvas"><canvas id="xp-chart-levels"></canvas></div>
+                </div>
+            </div>
+            <div class="xp-panel">
+                <div class="xp-panel-title">XP par jour de la semaine et par heure · ${period}</div>
+                <div class="xp-scroll">${renderXpHeatmap(data.heatmap)}</div>
+            </div>
+            <div class="xp-panel">
+                <div class="xp-panel-title">Top ${data.top.length} membres</div>
+                <div class="xp-scroll">${renderXpTopTable(data.top)}</div>
+            </div>
+        `;
+    }
+
+    function renderXpHeatmap(grid) {
+        const max = Math.max(0, ...grid.flat());
+        const hours = Array.from({ length: 24 }, (_, h) =>
+            `<div class="xp-heatmap-hour">${h % 3 === 0 ? `${h}h` : ''}</div>`).join('');
+        const rows = grid.map((row, d) => `
+            <div class="xp-heatmap-day">${XP_WEEKDAYS[d]}</div>
+            ${row.map((xp, h) => {
+                const title = escapeHtml(`${XP_WEEKDAYS[d]} ${h}h–${h + 1}h : ${fmtNum(xp)} XP`);
+                if (!xp) return `<div class="xp-heatmap-cell zero" title="${title}"></div>`;
+                const opacity = (0.15 + 0.85 * xp / max).toFixed(2);
+                return `<div class="xp-heatmap-cell" style="opacity:${opacity}" title="${title}"></div>`;
+            }).join('')}
+        `).join('');
+        return `<div class="xp-heatmap"><div></div>${hours}${rows}</div>`;
+    }
+
+    function renderXpTopTable(top) {
+        const rows = top.map(m => {
+            const pct = m.xp_to_next ? Math.min(100, Math.round(100 * m.xp_in_level / m.xp_to_next)) : 0;
+            const handle = m.username && m.username !== m.display_name ? `@${m.username}` : '';
+            return `
+                <tr>
+                    <td class="num">${XP_MEDALS[m.rank - 1] || m.rank}</td>
+                    <td>
+                        <div class="xp-top-name">${escapeHtml(m.display_name)}</div>
+                        ${handle ? `<div class="xp-top-sub">${escapeHtml(handle)}</div>` : ''}
+                    </td>
+                    <td class="num">${fmtNum(m.level)}</td>
+                    <td>
+                        <div class="xp-progress" title="${pct} %"><div style="width:${pct}%"></div></div>
+                        <div class="xp-top-sub">${fmtNum(m.xp_in_level)} / ${fmtNum(m.xp_to_next)} XP</div>
+                    </td>
+                    <td class="num">${fmtNum(m.xp)}</td>
+                    <td class="num">${fmtNum(m.messages)}</td>
+                </tr>
+            `;
+        }).join('');
+        return `
+            <table class="xp-top-table">
+                <thead>
+                    <tr>
+                        <th class="num">#</th><th>Membre</th><th class="num">Niveau</th>
+                        <th>Progression</th><th class="num">XP</th><th class="num">Messages</th>
+                    </tr>
+                </thead>
+                <tbody>${rows}</tbody>
+            </table>
+        `;
+    }
+
+    function cssVar(name, fallback) {
+        return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
+    }
+
+    function withAlpha(hex, alpha) {
+        const m = /^#([0-9a-f]{6})$/i.exec(hex);
+        if (!m) return hex;
+        const n = parseInt(m[1], 16);
+        return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
+    }
+
+    function drawXpCharts(data) {
+        destroyXpCharts();
+        const Chart = window.Chart;
+        const accent = cssVar('--accent', '#5865f2');
+        const success = cssVar('--success', '#23a55a');
+        const warning = cssVar('--warning', '#f0b232');
+        Chart.defaults.color = cssVar('--text-secondary', '#b5bac1');
+        Chart.defaults.borderColor = cssVar('--border', '#3f4147');
+        Chart.defaults.font.family = getComputedStyle(document.body).fontFamily;
+        const numTick = value => fmtNum(value);
+
+        const days = data.daily.map(d => parseIsoDay(d.date));
+        const activityCanvas = document.getElementById('xp-chart-activity');
+        if (activityCanvas) {
+            _xpCharts.push(new Chart(activityCanvas, {
+                data: {
+                    labels: days.map(d => d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })),
+                    datasets: [
+                        {
+                            type: 'bar', label: 'XP messages', data: data.daily.map(d => d.message_xp),
+                            backgroundColor: withAlpha(accent, 0.85), stack: 'xp', yAxisID: 'y', order: 2,
+                        },
+                        {
+                            type: 'bar', label: 'XP vocal', data: data.daily.map(d => d.voice_xp),
+                            backgroundColor: withAlpha(success, 0.85), stack: 'xp', yAxisID: 'y', order: 2,
+                        },
+                        {
+                            type: 'line', label: 'Membres actifs', data: data.daily.map(d => d.active_users),
+                            borderColor: warning, backgroundColor: warning, yAxisID: 'y1', order: 1,
+                            tension: 0.3, borderWidth: 2, pointRadius: data.daily.length > 60 ? 0 : 2,
+                        },
+                    ],
+                },
+                options: {
+                    maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: {
+                        legend: { position: 'bottom', labels: { boxWidth: 12 } },
+                        tooltip: {
+                            callbacks: {
+                                title: items => days[items[0].dataIndex].toLocaleDateString('fr-FR', {
+                                    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
+                                }),
+                                label: item => `${item.dataset.label} : ${fmtNum(item.parsed.y)}`,
+                            },
+                        },
+                    },
+                    scales: {
+                        x: { stacked: true, grid: { display: false }, ticks: { autoSkip: true, maxTicksLimit: 12, maxRotation: 0 } },
+                        y: { stacked: true, beginAtZero: true, title: { display: true, text: 'XP' }, ticks: { callback: numTick } },
+                        y1: {
+                            position: 'right', beginAtZero: true, grid: { drawOnChartArea: false },
+                            title: { display: true, text: 'Membres actifs' }, ticks: { precision: 0, callback: numTick },
+                        },
+                    },
+                },
+            }));
+        }
+
+        const levelsCanvas = document.getElementById('xp-chart-levels');
+        if (levelsCanvas) {
+            _xpCharts.push(new Chart(levelsCanvas, {
+                type: 'bar',
+                data: {
+                    labels: data.levels.map(l => l.level),
+                    datasets: [{
+                        label: 'Membres', data: data.levels.map(l => l.users),
+                        backgroundColor: withAlpha(accent, 0.85), borderRadius: 3,
+                    }],
+                },
+                options: {
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                title: items => `Niveau ${items[0].label}`,
+                                label: item => `${fmtNum(item.parsed.y)} membre${item.parsed.y > 1 ? 's' : ''}`,
+                            },
+                        },
+                    },
+                    scales: {
+                        x: { grid: { display: false }, title: { display: true, text: 'Niveau' } },
+                        y: { beginAtZero: true, ticks: { precision: 0 } },
+                    },
+                },
+            }));
+        }
     }
 
     async function editModuleConfigJson(serverId, moduleName) {

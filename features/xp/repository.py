@@ -10,7 +10,11 @@ from typing import Any
 
 import pymongo
 
+from features.xp.constants import XpSource
 from src.core.db import mongo_manager, translates_db_errors
+
+# Legacy events predate the ``source`` field; they were all message awards.
+_SOURCE_EXPR = {"$ifNull": ["$source", "message"]}
 
 
 @dataclass
@@ -51,6 +55,8 @@ class XpRepository:
         await self._events().create_index(
             [("user_id", pymongo.ASCENDING), ("ts", pymongo.ASCENDING)], background=True
         )
+        # Date-range scans for the dashboard stats.
+        await self._events().create_index([("ts", pymongo.ASCENDING)], background=True)
 
     @translates_db_errors
     async def ensure_collection(self, guild_name: str | None = None) -> bool:
@@ -107,9 +113,22 @@ class XpRepository:
         await self._xp().update_one({"_id": user_id}, {"$set": {"lvl": level}}, upsert=True)
 
     @translates_db_errors
-    async def log_event(self, user_id: str, xp_gained: int, total_xp: int, ts: datetime) -> None:
+    async def log_event(
+        self,
+        user_id: str,
+        xp_gained: int,
+        total_xp: int,
+        ts: datetime,
+        source: XpSource = "message",
+    ) -> None:
         await self._events().insert_one(
-            {"user_id": user_id, "xp_gained": xp_gained, "total_xp": total_xp, "ts": ts}
+            {
+                "user_id": user_id,
+                "xp_gained": xp_gained,
+                "total_xp": total_xp,
+                "ts": ts,
+                "source": source,
+            }
         )
 
     @translates_db_errors
@@ -142,6 +161,96 @@ class XpRepository:
     async def list_all_sorted_by_xp(self) -> list[dict[str, Any]]:
         cursor = self._xp().find().sort("xp", -1)
         return await cursor.to_list(length=None)
+
+    # --- Dashboard stats (aggregations over ``xp_events``) ----------------
+    #
+    # Day and hour buckets use ``$dateToString`` / ``$hour`` / ``$dayOfWeek``
+    # with a timezone (MongoDB 3.6+) rather than ``$dateTrunc`` (5.0+).
+
+    @translates_db_errors
+    async def daily_activity(self, since: datetime, tz: str) -> list[dict[str, Any]]:
+        """XP and event count per local day and source since ``since``.
+
+        Rows: ``{"day": "YYYY-MM-DD", "source": "message"|"voice", "xp": int, "events": int}``.
+        """
+        pipeline: list[dict[str, Any]] = [
+            {"$match": {"ts": {"$gte": since}}},
+            {
+                "$group": {
+                    "_id": {
+                        "day": {
+                            "$dateToString": {"format": "%Y-%m-%d", "date": "$ts", "timezone": tz}
+                        },
+                        "source": _SOURCE_EXPR,
+                    },
+                    "xp": {"$sum": "$xp_gained"},
+                    "events": {"$sum": 1},
+                }
+            },
+            {
+                "$project": {
+                    "_id": 0,
+                    "day": "$_id.day",
+                    "source": "$_id.source",
+                    "xp": 1,
+                    "events": 1,
+                }
+            },
+        ]
+        return await self._events().aggregate(pipeline).to_list(length=None)
+
+    @translates_db_errors
+    async def daily_active_users(self, since: datetime, tz: str) -> list[dict[str, Any]]:
+        """Distinct users who earned XP, per local day. Rows: ``{"day", "users"}``."""
+        pipeline: list[dict[str, Any]] = [
+            {"$match": {"ts": {"$gte": since}}},
+            {
+                "$group": {
+                    "_id": {
+                        "day": {
+                            "$dateToString": {"format": "%Y-%m-%d", "date": "$ts", "timezone": tz}
+                        },
+                        "user_id": "$user_id",
+                    }
+                }
+            },
+            {"$group": {"_id": "$_id.day", "users": {"$sum": 1}}},
+            {"$project": {"_id": 0, "day": "$_id", "users": 1}},
+        ]
+        return await self._events().aggregate(pipeline).to_list(length=None)
+
+    @translates_db_errors
+    async def count_active_users(self, since: datetime) -> int:
+        """Distinct users who earned XP at least once since ``since``."""
+        pipeline: list[dict[str, Any]] = [
+            {"$match": {"ts": {"$gte": since}}},
+            {"$group": {"_id": "$user_id"}},
+            {"$count": "users"},
+        ]
+        result = await self._events().aggregate(pipeline).to_list(length=None)
+        return int(result[0]["users"]) if result else 0
+
+    @translates_db_errors
+    async def activity_heatmap(self, since: datetime, tz: str) -> list[dict[str, Any]]:
+        """XP per local weekday and hour since ``since``.
+
+        Rows: ``{"dow": 1..7, "hour": 0..23, "xp": int}`` — ``dow`` follows
+        MongoDB's ``$dayOfWeek`` (1 = Sunday).
+        """
+        pipeline: list[dict[str, Any]] = [
+            {"$match": {"ts": {"$gte": since}}},
+            {
+                "$group": {
+                    "_id": {
+                        "dow": {"$dayOfWeek": {"date": "$ts", "timezone": tz}},
+                        "hour": {"$hour": {"date": "$ts", "timezone": tz}},
+                    },
+                    "xp": {"$sum": "$xp_gained"},
+                }
+            },
+            {"$project": {"_id": 0, "dow": "$_id.dow", "hour": "$_id.hour", "xp": 1}},
+        ]
+        return await self._events().aggregate(pipeline).to_list(length=None)
 
 
 __all__ = ["UserXpStats", "XpRepository"]

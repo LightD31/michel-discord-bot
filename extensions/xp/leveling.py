@@ -129,7 +129,7 @@ class LevelingMixin:
         new_xp = updated.get("xp", 0)
 
         try:
-            await repo.log_event(user_id, xp_gained, new_xp, message.created_at)
+            await repo.log_event(user_id, xp_gained, new_xp, message.created_at, source="message")
         except DatabaseError as e:
             logger.warning("Failed to log XP event for %s: %s", user_id, e)
 

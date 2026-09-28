@@ -1,5 +1,7 @@
 """Constants for the XP feature — award windows, cooldowns, display."""
 
+from typing import Literal
+
 XP_COOLDOWN_SECONDS = 60
 XP_MIN = 15
 XP_MAX = 25
@@ -19,11 +21,20 @@ DEFAULT_LEVEL_UP_MESSAGE = "Bravo {mention}, tu as atteint le niveau {lvl} !"
 USER_CACHE_TTL = 300  # 5 minutes
 RANK_CACHE_TTL = 60  # 1 minute
 
+# What earned an ``xp_events`` row. Events logged before voice ticks were
+# recorded carry no ``source`` field and count as ``"message"``.
+XpSource = Literal["message", "voice"]
+
+# Day/hour buckets of the dashboard stats are cut in this zone (same as the
+# extension's ``TIMEZONE``; features can't import extensions).
+STATS_TIMEZONE = "Europe/Paris"
+
 __all__ = [
     "DEFAULT_LEVEL_UP_MESSAGE",
     "LEADERBOARD_PAGE_SIZE",
     "RANK_CACHE_TTL",
     "RANK_MEDALS",
+    "STATS_TIMEZONE",
     "USER_CACHE_TTL",
     "VOICE_TICK_SECONDS",
     "VOICE_XP_PER_TICK_MAX",
@@ -31,4 +42,5 @@ __all__ = [
     "XP_COOLDOWN_SECONDS",
     "XP_MAX",
     "XP_MIN",
+    "XpSource",
 ]
