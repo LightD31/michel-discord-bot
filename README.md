@@ -32,7 +32,7 @@ A modular, multi-guild Discord bot built with **interactions.py**. Michel ships 
 
 | Module | Description |
 |--------|-------------|
-| **XP & Levels** | Message- and voice-based XP with cooldowns, level-up announcements, Pillow rank cards, and a paginated leaderboard. |
+| **XP & Levels** | Message- and voice-based XP with cooldowns, level-up announcements, Pillow rank cards, a paginated leaderboard, and a stats view in the Web UI (daily activity, level distribution, top members, weekday × hour heatmap). |
 | **Birthday** | Store birthdays with timezone support, send daily greetings, and assign a birthday role. |
 | **Welcome** | Weighted-random welcome and farewell messages, with an optional illustrated welcome card. |
 | **Feur** | Classic French joke — the bot replies "feur" when someone ends a message with "quoi", with per-user stats. |

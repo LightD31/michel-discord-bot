@@ -49,6 +49,22 @@ class UserInfoRepository:
             logger.warning("Failed to upsert user %s in guild %s: %s", user_id, self._guild_id, e)
 
     @translates_db_errors
+    async def get_names(self, user_ids: list[str]) -> dict[str, dict[str, str]]:
+        """Map each known id in ``user_ids`` to ``{"username", "display_name"}``."""
+        if not user_ids:
+            return {}
+        cursor = self._col().find(
+            {"_id": {"$in": list(user_ids)}}, {"username": 1, "display_name": 1}
+        )
+        return {
+            str(doc["_id"]): {
+                "username": doc.get("username") or "",
+                "display_name": doc.get("display_name") or "",
+            }
+            async for doc in cursor
+        }
+
+    @translates_db_errors
     async def delete(self, user_id: str) -> None:
         try:
             await self._col().delete_one({"_id": user_id})
