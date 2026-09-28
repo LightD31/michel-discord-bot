@@ -2,16 +2,71 @@
 
 import os
 from datetime import datetime
-from typing import Any
 
-from interactions import Embed, OrTrigger, Task, TimeTrigger
+from interactions import Embed, EmbedFooter, OrTrigger, Task, TimeTrigger
 
+from features.confrerie.works import Work, parse_work
+from features.links import shorten_url
 from src.core import logging as logutil
-from src.discord_ext.embeds import Colors
+from src.discord_ext.embeds import Colors, format_discord_timestamp
 
 from ._common import ConfrerieError, module_config
 
 logger = logutil.init_logger(os.path.basename(__file__))
+
+# Discord caps a message's content at 2000 characters.
+MESSAGE_LIMIT = 2000
+
+
+def _format_date(value: str) -> str:
+    try:
+        return format_discord_timestamp(datetime.fromisoformat(value), "D")
+    except ValueError:
+        return value
+
+
+async def shorten_work_links(work: Work) -> tuple[str, list[tuple[str, str]]]:
+    """Short URLs for the work's Notion page and its external links."""
+    notion_url = (
+        await shorten_url(work.url, title=work.title, tags=["confrerie"]) if work.url else ""
+    )
+    links = [
+        (label, await shorten_url(url, title=f"{work.title} — {label}", tags=["confrerie"]))
+        for label, url in work.links
+    ]
+    return notion_url, links
+
+
+def build_work_embed(
+    work: Work,
+    title: str,
+    *,
+    notion_url: str,
+    links: list[tuple[str, str]],
+    footer: EmbedFooter | None = None,
+) -> Embed:
+    """Embed describing one œuvre (update announcements and ``/texte``)."""
+    embed = Embed(title=title, color=Colors.CONFRERIE, footer=footer, timestamp=datetime.now())
+    embed.add_field(name="Titre", value=work.title[:1024], inline=True)
+    if work.authors:
+        embed.add_field(name="Auteur", value=", ".join(work.authors)[:1024], inline=True)
+    if work.type_genre:
+        embed.add_field(name="Type / Genre", value=work.type_genre[:1024], inline=False)
+    if work.status:
+        embed.add_field(name="Avancement", value=work.status, inline=True)
+    if work.last_published:
+        embed.add_field(
+            name="Dernière publication", value=_format_date(work.last_published), inline=True
+        )
+    if notion_url:
+        embed.add_field(name="Notion", value=f"[Lien vers Notion]({notion_url})", inline=True)
+    for index, (label, url) in enumerate(links[:10]):
+        embed.add_field(
+            name="Consulter" if index == 0 else "​",
+            value=f"[{label[:200]}]({url})",
+            inline=True,
+        )
+    return embed
 
 
 class UpdatesMixin:
@@ -19,102 +74,32 @@ class UpdatesMixin:
 
     async def update(self, page_id: str):
         """Fetch ``page_id`` from Notion and send its embed to the right channel."""
-        try:
-            content = await self.notion_client.retrieve_page(page_id)
+        page = await self.notion_client.retrieve_page(page_id)
+        work = parse_work(page)
 
-            channel_info = self._determine_channel_and_title(content)
-            channel = await self.bot.fetch_channel(channel_info["channel_id"])
+        if work.defi:
+            channel_id = module_config.get("confrerieDefiChannelId")
+            title = f"Nouvelle participation au {work.defi}"
+        else:
+            channel_id = module_config.get("confrerieNewTextChannelId")
+            title = "Texte mis à jour"
+        if not channel_id:
+            raise ConfrerieError("Salon d'annonce non configuré pour cette page")
 
-            if not channel or not hasattr(channel, "send"):
-                raise ConfrerieError(f"Canal introuvable ou invalide: {channel_info['channel_id']}")
+        channel = await self.bot.fetch_channel(channel_id)
+        if not channel or not hasattr(channel, "send"):
+            raise ConfrerieError(f"Canal introuvable ou invalide: {channel_id}")
 
-            embed = await self._create_update_embed(content, channel_info["title"])
-            update_message = self._extract_update_message(content)
-
-            await channel.send(update_message, embed=embed)
-            logger.info(f"Message de mise à jour envoyé pour la page {page_id}")
-        except Exception as e:
-            logger.error(f"Erreur lors de la mise à jour de la page {page_id}: {e}")
-            raise
-
-    def _determine_channel_and_title(self, content: dict[str, Any]) -> dict[str, str]:
-        defi_data = content["properties"].get("Défi", {}).get("select")
-        if defi_data:
-            return {
-                "channel_id": module_config["confrerieDefiChannelId"],
-                "title": f"Nouvelle participation au {defi_data['name']}",
-            }
-        return {
-            "channel_id": module_config["confrerieNewTextChannelId"],
-            "title": "Texte mis à jour",
-        }
-
-    async def _create_update_embed(self, content: dict[str, Any], title: str) -> Embed:
-        footer = await self._create_embed_footer()
-
-        embed = Embed(
-            title=title,
-            color=Colors.CONFRERIE,
-            footer=footer,
-            timestamp=datetime.now(),
+        notion_url, links = await shorten_work_links(work)
+        embed = build_work_embed(
+            work,
+            title,
+            notion_url=notion_url,
+            links=links,
+            footer=await self._create_embed_footer(),
         )
-
-        titre_data = content["properties"].get("Titre", {}).get("title", [])
-        if titre_data:
-            embed.add_field(name="Titre", value=titre_data[0]["plain_text"], inline=True)
-
-        auteurs_data = content["properties"].get("Auteur", {}).get("multi_select", [])
-        if auteurs_data:
-            embed.add_field(
-                name="Auteur",
-                value=", ".join(author["name"] for author in auteurs_data),
-                inline=True,
-            )
-
-        self._add_genre_field(embed, content)
-
-        embed.add_field(
-            name="Notion",
-            value=f"[Lien vers Notion]({content['public_url']})",
-            inline=True,
-        )
-
-        self._add_consultation_links(embed, content)
-
-        return embed
-
-    def _add_genre_field(self, embed: Embed, content: dict[str, Any]):
-        genre_texte = ""
-
-        type_data = content["properties"].get("Type", {}).get("select")
-        if type_data:
-            genre_texte = type_data["name"] + " "
-
-        genres_data = content["properties"].get("Genre", {}).get("multi_select", [])
-        if genres_data:
-            genre_texte += ", ".join(genre["name"] for genre in genres_data)
-
-        if genre_texte.strip():
-            embed.add_field(name="Type / Genre", value=genre_texte.strip(), inline=False)
-
-    def _add_consultation_links(self, embed: Embed, content: dict[str, Any]):
-        files_data = content["properties"].get("Lien / Fichier", {}).get("files", [])
-        first_link = True
-
-        for file in files_data:
-            external_data = file.get("external")
-            if external_data:
-                link = f"[{file.get('name', 'Lien')}]({external_data['url']})"
-                embed.add_field(
-                    name="Consulter" if first_link else "\u200b",
-                    value=link,
-                    inline=True,
-                )
-                first_link = False
-
-    def _extract_update_message(self, content: dict[str, Any]) -> str:
-        update_data = content["properties"].get("Note de mise à jour", {}).get("rich_text", [])
-        return update_data[0]["plain_text"] if update_data else ""
+        await channel.send(work.update_note[:MESSAGE_LIMIT] or None, embed=embed)
+        logger.info(f"Message de mise à jour envoyé pour la page {page_id}")
 
     @Task.create(
         OrTrigger(

@@ -1,24 +1,32 @@
-"""Extension Discord pour la gestion de la confrérie littéraire.
+"""Extension Discord pour la Confrérie de la Plume.
 
 Compose les mixins (stats / updates / editors / requests) autour d'un client
 Notion partagé. L'API Notion utilisée est la version ``2025-09-03`` via
-``src.integrations.notion.NotionClient``.
+``src.integrations.notion.NotionClient``; la logique métier vit dans
+``features.confrerie``.
 """
 
 import os
-from datetime import datetime
-from typing import Any
+import sys
 
-from interactions import Client, EmbedFooter, Extension, listen
+# A dashboard save reloads this extension, but ``unload_extension`` only drops
+# the package module itself. Without this purge the submodules below stay
+# cached: the config snapshot in ``_common`` goes stale, and every command and
+# task — defined on the cached mixin classes, already bound to the first
+# instance — keeps running against the extension that was just unloaded.
+for _name in [m for m in sys.modules if m.startswith(f"{__name__}.")]:
+    del sys.modules[_name]
 
-from src.core import logging as logutil
-from src.integrations.notion import NotionClient
+from interactions import Client, EmbedFooter, Extension, listen  # noqa: E402
 
-from ._common import config, enabled_servers, module_config
-from .editors import EditorsMixin
-from .requests import RequestsMixin
-from .stats import StatsMixin
-from .updates import UpdatesMixin
+from src.core import logging as logutil  # noqa: E402
+from src.integrations.notion import NotionClient  # noqa: E402
+
+from ._common import config, enabled_servers, guild_id, module_config  # noqa: E402
+from .editors import EditorsMixin  # noqa: E402
+from .requests import RequestsMixin  # noqa: E402
+from .stats import StatsMixin  # noqa: E402
+from .updates import UpdatesMixin  # noqa: E402
 
 logger = logutil.init_logger(os.path.basename(__file__))
 
@@ -28,27 +36,39 @@ class ConfrerieExtension(Extension, StatsMixin, UpdatesMixin, EditorsMixin, Requ
 
     def __init__(self, bot: Client):
         self.bot: Client = bot
-        self.data: dict[str, Any] = {}
-        self.notion_client = NotionClient(auth_token=config["notion"]["notionSecret"])
-        self._stats_cache: dict[str, Any] = {}
-        self._cache_timestamp: datetime | None = None
-        self._cache_duration = 300
+        self.notion_client = NotionClient(
+            auth_token=config.get("notion", {}).get("notionSecret", "")
+        )
         self._recap_message = None
+        self._pending_editors = {}
+        # A reload from the dashboard never fires Startup again: start the
+        # tasks right away when the client is already running.
+        if bot.is_ready:
+            self._start_tasks()
 
     @listen()
     async def on_startup(self):
         """Warm data-source caches and start the periodic tasks."""
+        self._start_tasks()
+        await self._warm_data_source_cache()
+
+    def _start_tasks(self) -> None:
         if not enabled_servers:
             logger.warning("moduleConfrerie is not enabled for any server, skipping startup")
             return
-        logger.info("Démarrage de l'extension Confrérie")
-        try:
-            await self._warm_data_source_cache()
-            self.confrerie.start()
-            self.autoupdate.start()
-            logger.info("Tâches de l'extension Confrérie démarrées avec succès")
-        except Exception as e:
-            logger.error(f"Erreur lors du démarrage des tâches: {e}")
+        if not config.get("notion", {}).get("notionSecret"):
+            logger.warning("Secret Notion absent (config.notion.notionSecret), tâches désactivées")
+            return
+        for task in (self.confrerie, self.autoupdate):
+            if not task.running:
+                task.start()
+        logger.info("Tâches de l'extension Confrérie démarrées")
+
+    def drop(self) -> None:
+        """Stop the periodic tasks before the extension goes away (reload/unload)."""
+        for task in (self.confrerie, self.autoupdate):
+            task.stop()
+        super().drop()
 
     async def _warm_data_source_cache(self):
         """Pre-resolve Notion data source ids for the configured databases."""
@@ -64,13 +84,9 @@ class ConfrerieExtension(Extension, StatsMixin, UpdatesMixin, EditorsMixin, Requ
 
     async def _create_embed_footer(self) -> EmbedFooter:
         """Standard footer used by stats and update embeds."""
-        try:
-            bot = await self.bot.fetch_member(self.bot.user.id, enabled_servers[0])
-            guild = await self.bot.fetch_guild(enabled_servers[0])
-            return EmbedFooter(
-                text=bot.display_name if bot else "Michel",
-                icon_url=guild.icon.url if guild and guild.icon else None,
-            )
-        except Exception as e:
-            logger.warning(f"Impossible de créer le footer: {e}")
-            return EmbedFooter(text="Michel")
+        guild = self.bot.get_guild(guild_id) if guild_id else None
+        me = guild.me if guild else None
+        return EmbedFooter(
+            text=me.display_name if me else "Michel",
+            icon_url=guild.icon.url if guild and guild.icon else None,
+        )

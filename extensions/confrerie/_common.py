@@ -1,11 +1,14 @@
-"""Shared config, domain exceptions, and slash-command choice lists."""
+"""Shared config, domain exceptions, and Notion-backed autocomplete helpers."""
 
 import os
+from typing import Any
 
-from interactions import SlashCommandChoice
+from interactions import AutocompleteContext
 
+from features.confrerie import notion_props as np
 from src.core import logging as logutil
 from src.core.config import load_config
+from src.core.errors import BotError
 from src.webui.schemas import (
     SchemaBase,
     enabled_field,
@@ -20,7 +23,7 @@ logger = logutil.init_logger(os.path.basename(__file__))
 @register_module("moduleConfrerie")
 class ConfrerieConfig(SchemaBase):
     __label__ = "Confrérie"
-    __description__ = "Intégration Notion pour la Confrérie des Traducteurs."
+    __description__ = "Intégration Notion pour la Confrérie de la Plume (textes, défis, éditeurs)."
     __icon__ = "📚"
     __category__ = "Outils"
 
@@ -51,12 +54,14 @@ class ConfrerieConfig(SchemaBase):
         "Message récap", "confrerieRecapChannelId"
     )
     confrerieDefiChannelId: str | None = ui(
-        "Salon défis", "channel", description="Salon pour les défis de traduction."
+        "Salon défis",
+        "channel",
+        description="Salon où sont annoncées les nouvelles participations aux défis.",
     )
     confrerieNewTextChannelId: str | None = ui(
         "Salon nouveaux textes",
         "channel",
-        description="Salon pour les notifications de nouveaux textes.",
+        description="Salon où sont annoncés les textes mis à jour (case « Update » cochée).",
     )
     confrerieTextsUrl: str | None = ui(
         "Lien « tous les textes »",
@@ -73,46 +78,33 @@ class ConfrerieConfig(SchemaBase):
     )
 
 
+# Read once per import. The package ``__init__`` drops these submodules from
+# ``sys.modules`` before importing them, so a dashboard reload re-reads the
+# config instead of keeping the snapshot taken at bot start.
 config, module_config, enabled_servers = load_config("moduleConfrerie")
 module_config = module_config[enabled_servers[0]] if enabled_servers else {}
+guild_id: str | None = enabled_servers[0] if enabled_servers else None
 
-NOTION_VERSION = "2025-09-03"
 
-
-class ConfrerieError(Exception):
+class ConfrerieError(BotError):
     """Base exception for Confrérie extension errors (domain-level)."""
 
 
-class ValidationError(ConfrerieError):
-    """Raised when slash-command input fails validation."""
+async def autocomplete_options(
+    ctx: AutocompleteContext, notion_client: Any, database_id: str | None, column: str
+) -> None:
+    """Answer an autocomplete with the options configured on a Notion column.
 
-
-genres = [
-    SlashCommandChoice(name="Art/Beaux livres", value="Art/Beaux livres"),
-    SlashCommandChoice(name="Aventure/voyage", value="Aventure/voyage"),
-    SlashCommandChoice(name="BD/Manga", value="BD/Manga"),
-    SlashCommandChoice(name="Conte", value="Conte"),
-    SlashCommandChoice(name="Documentaire", value="Documentaire"),
-    SlashCommandChoice(name="Essai", value="Essai"),
-    SlashCommandChoice(name="Fantasy", value="Fantasy"),
-    SlashCommandChoice(name="Feel good", value="Feel good"),
-    SlashCommandChoice(name="Historique", value="Historique"),
-    SlashCommandChoice(name="Horreur", value="Horreur"),
-    SlashCommandChoice(name="Nouvelles", value="Nouvelles"),
-    SlashCommandChoice(name="Poésie", value="Poésie"),
-    SlashCommandChoice(name="Roman", value="Roman"),
-    SlashCommandChoice(name="Science-fiction", value="Science-fiction"),
-]
-
-publics = [
-    SlashCommandChoice(name="Adulte", value="Adulte"),
-    SlashCommandChoice(name="New Adult", value="New Adult"),
-    SlashCommandChoice(name="Young Adult", value="Young Adult"),
-]
-
-groupes = [
-    SlashCommandChoice(name="Editis", value="Editis"),
-    SlashCommandChoice(name="Hachette", value="Hachette"),
-    SlashCommandChoice(name="Indépendant", value="Indépendant"),
-    SlashCommandChoice(name="Madrigall", value="Madrigall"),
-]
+    Options come from the live data-source schema, so a genre added or renamed
+    in Notion shows up here without a code change.
+    """
+    options: list[str] = []
+    if database_id:
+        try:
+            schema = await notion_client.get_properties_schema(database_id)
+            options = np.schema_options(schema, column)
+        except Exception as e:  # noqa: BLE001 — an empty list beats a failed interaction
+            logger.warning("Options Notion indisponibles pour %s: %s", column, e)
+    typed = ctx.input_text.casefold().strip()
+    matches = [opt for opt in options if typed in opt.casefold()] if typed else options
+    await ctx.send(choices=[{"name": opt[:100], "value": opt[:100]} for opt in matches[:25]])
