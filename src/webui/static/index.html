@@ -22,6 +22,13 @@
             --shadow: rgba(0,0,0,0.3);
             --radius: 8px;
             --radius-lg: 12px;
+            /* Chart marks — checked for CVD separation against --bg-card.
+               Keep/menfou/remove is a diverging set (gray = "no opinion"). */
+            --viz-series: #1aa34a;
+            --viz-keep: #3987e5;
+            --viz-neutral: #5d6068;
+            --viz-remove: #e66767;
+            --viz-grid: #35373c;
         }
 
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -2121,6 +2128,117 @@
                 display: none;
             }
         }
+
+        /* ── Charts (Spotify stats) ────────────────── */
+        .viz-root.viz-refreshing { opacity: 0.5; transition: opacity 0.2s; }
+        /* One row for the playlist, one for votes; two columns even on phones. */
+        .viz-root .stats-grid { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; margin-bottom: 8px; }
+        .viz-root .viz-grid { margin-top: 16px; }
+        .stat-card .stat-sub { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
+
+        .viz-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 12px;
+        }
+        .viz-panel {
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 14px 16px;
+            min-width: 0;
+        }
+        .viz-panel.viz-wide { grid-column: 1 / -1; }
+        .viz-panel h4 { font-size: 14px; font-weight: 600; }
+        .viz-panel .viz-sub { font-size: 12px; color: var(--text-muted); margin: 2px 0 12px; }
+        @media (max-width: 900px) {
+            .viz-grid { grid-template-columns: minmax(0, 1fr); }
+        }
+
+        .viz-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; color: var(--text-secondary); margin-bottom: 10px; }
+        .viz-legend span { display: inline-flex; align-items: center; gap: 6px; }
+        .viz-legend i { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+
+        /* Column / line charts: HTML plot so text stays crisp at any width. */
+        .viz-chart { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 8px; }
+        .viz-yaxis { position: relative; height: 160px; min-width: 20px; font-size: 11px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+        .viz-yaxis span { position: absolute; right: 0; transform: translateY(-50%); line-height: 1; }
+        .viz-plot { position: relative; height: 160px; border-bottom: 1px solid var(--border); }
+        .viz-gridline { position: absolute; left: 0; right: 0; height: 1px; background: var(--viz-grid); }
+        .viz-cols { position: absolute; inset: 0; display: flex; align-items: flex-end; }
+        .viz-band {
+            position: relative; flex: 1 1 0; min-width: 0; height: 100%;
+            display: flex; align-items: flex-end; justify-content: center; outline: none;
+        }
+        .viz-col { width: 100%; max-width: 24px; background: var(--viz-series); border-radius: 4px 4px 0 0; }
+        .viz-band:hover .viz-col, .viz-band:focus-visible .viz-col { filter: brightness(1.2); }
+        .viz-band:focus-visible { box-shadow: inset 0 0 0 1px var(--text-muted); border-radius: 2px; }
+        .viz-xaxis { display: flex; font-size: 11px; color: var(--text-muted); margin-top: 6px; font-variant-numeric: tabular-nums; }
+        .viz-xaxis span { flex: 1 1 0; min-width: 0; text-align: center; white-space: nowrap; overflow: visible; }
+        .viz-xaxis span:first-child { text-align: left; }
+        .viz-xaxis span:last-child { text-align: right; }
+
+        .viz-line-svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+        .viz-line-svg polyline { fill: none; stroke: var(--viz-series); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; vector-effect: non-scaling-stroke; }
+        .viz-dot {
+            position: absolute; width: 8px; height: 8px; margin: -4px 0 0 -4px; border-radius: 50%;
+            background: var(--viz-series); box-shadow: 0 0 0 2px var(--bg-card); pointer-events: none;
+        }
+        .viz-line-bands { position: absolute; inset: 0; display: flex; }
+        .viz-line-bands .viz-band::before {
+            content: ''; position: absolute; top: 0; bottom: 0; left: 50%; width: 1px;
+            background: var(--text-muted); opacity: 0;
+        }
+        .viz-line-bands .viz-band::after {
+            content: ''; position: absolute; left: 50%; top: var(--y, 50%); width: 8px; height: 8px;
+            margin: -4px 0 0 -4px; border-radius: 50%; background: var(--viz-series);
+            box-shadow: 0 0 0 2px var(--bg-card); opacity: 0;
+        }
+        .viz-line-bands .viz-band.viz-empty::after { display: none; }
+        .viz-line-bands .viz-band:hover::before, .viz-line-bands .viz-band:focus-visible::before { opacity: 0.6; }
+        .viz-line-bands .viz-band:hover::after, .viz-line-bands .viz-band:focus-visible::after { opacity: 1; }
+
+        /* Horizontal bar list: label · bar with the value at its tip. */
+        .viz-bars { display: grid; grid-template-columns: minmax(0, 38%) minmax(0, 1fr); gap: 6px 10px; align-items: center; font-size: 13px; }
+        .viz-bars .viz-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); }
+        .viz-bar-cell { display: flex; align-items: center; gap: 6px; min-width: 0; outline: none; }
+        .viz-bar { height: 16px; min-width: 2px; background: var(--viz-series); border-radius: 0 4px 4px 0; flex: none; }
+        .viz-bar-cell:hover .viz-bar, .viz-bar-cell:focus-visible .viz-bar { filter: brightness(1.2); }
+        .viz-bar-value { font-size: 12px; color: var(--text-primary); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+        /* Stacked keep / menfou / remove bars. */
+        .viz-stack-rows { display: grid; grid-template-columns: minmax(0, 30%) minmax(0, 1fr) auto; gap: 6px 10px; align-items: center; font-size: 13px; }
+        .viz-stack-rows .viz-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); }
+        .viz-stack-total { font-size: 12px; color: var(--text-muted); font-variant-numeric: tabular-nums; text-align: right; }
+        .viz-stack { display: flex; gap: 2px; height: 20px; min-width: 0; }
+        .viz-seg {
+            display: flex; align-items: center; justify-content: center; min-width: 3px;
+            font-size: 11px; font-weight: 600; outline: none;
+        }
+        .viz-seg:first-child { border-radius: 4px 0 0 4px; }
+        .viz-seg:last-child { border-radius: 0 4px 4px 0; }
+        .viz-seg:only-child { border-radius: 4px; }
+        .viz-seg:hover, .viz-seg:focus-visible { filter: brightness(1.2); }
+        .viz-seg.keep { background: var(--viz-keep); color: #111214; }
+        .viz-seg.neutral { background: var(--viz-neutral); color: #ffffff; }
+        .viz-seg.remove { background: var(--viz-remove); color: #111214; }
+        .viz-seg-label.viz-hidden { visibility: hidden; }
+        .viz-poll-name { font-weight: 600; margin: 6px 0 2px; overflow-wrap: anywhere; }
+
+        details.viz-data { margin-top: 10px; font-size: 12px; }
+        details.viz-data summary { cursor: pointer; color: var(--text-muted); }
+        details.viz-data table { width: 100%; border-collapse: collapse; margin-top: 8px; font-variant-numeric: tabular-nums; }
+        details.viz-data th, details.viz-data td { text-align: left; padding: 4px 6px; border-bottom: 1px solid var(--border); }
+        details.viz-data th { color: var(--text-muted); font-weight: 600; }
+        details.viz-data td.num, details.viz-data th.num { text-align: right; }
+        details.viz-data .viz-table-scroll { max-height: 240px; overflow-y: auto; }
+
+        #viz-tooltip {
+            position: fixed; z-index: 1000; pointer-events: none; display: none;
+            background: var(--bg-primary); border: 1px solid var(--border); border-radius: 6px;
+            padding: 6px 10px; box-shadow: 0 4px 12px var(--shadow); max-width: 260px;
+        }
+        #viz-tooltip strong { display: block; font-size: 14px; color: var(--text-primary); }
+        #viz-tooltip span { display: block; font-size: 12px; color: var(--text-secondary); }
 
         /* ── Message List Editor ──────────────────── */
         .messagelist-list {
@@ -5089,6 +5207,10 @@
         if (state.currentPage === 'module' && state.currentModule === 'moduleModeration' && state.currentServerId) {
             loadInfractions(state.currentServerId);
         }
+        // Spotify: draw the playlist / vote charts when on its module page.
+        if (state.currentPage === 'module' && state.currentModule === 'moduleSpotify' && state.currentServerId) {
+            loadSpotifyStats(state.currentServerId);
+        }
     }
 
     function renderLogin() {
@@ -6286,6 +6408,22 @@
                 </div>
             </div>
             ` : ''}
+            ${mod === 'moduleSpotify' ? `
+            <div class="card" style="margin-top:16px;">
+                <div class="card-header">
+                    <div>
+                        <div class="card-title">📊 Statistiques de la playlist</div>
+                        <div class="card-subtitle">Playlist et votes tels que le bot les a enregistrés.</div>
+                    </div>
+                    <div class="card-actions">
+                        <button class="btn btn-ghost btn-sm" onclick="loadSpotifyStats('${sid}', true)">↻ Actualiser</button>
+                    </div>
+                </div>
+                <div id="spotify-stats" class="viz-root" data-server-id="${sid}">
+                    <div class="loading"><div class="spinner"></div></div>
+                </div>
+            </div>
+            ` : ''}
             ${schema && !schema.directValue ? renderExtraKeysCard(schema, modConfig) : ''}
         `;
     }
@@ -6764,6 +6902,417 @@
             toast(`Cas #${caseId} révoqué.`, 'success');
             loadInfractions(serverId);
         } catch (e) { /* handled by api() */ }
+    }
+
+    // ── Spotify: playlist & vote statistics ─────────────────────────────
+    // Charts are plain HTML (plus one SVG polyline) so labels stay crisp at any
+    // width. Hover/focus tooltips read data-tip-* through textContent; every
+    // value is also reachable without them (direct labels or "Voir les données").
+    const SPOTIFY_STATS_TTL_MS = 5 * 60 * 1000;
+    const _spotifyStatsCache = {};  // serverId -> { data, nameOf, at }
+    const VOTE_KEYS = [
+        { key: 'conserver', label: 'Conserver', cls: 'keep', color: 'var(--viz-keep)' },
+        { key: 'menfou', label: 'Menfou', cls: 'neutral', color: 'var(--viz-neutral)' },
+        { key: 'supprimer', label: 'Supprimer', cls: 'remove', color: 'var(--viz-remove)' },
+    ];
+
+    const fmtInt = n => Number(n || 0).toLocaleString('fr-FR');
+    const fmtDec = n => Number(n || 0).toLocaleString('fr-FR', { maximumFractionDigits: 1 });
+    const fmtPct = r => `${(Number(r || 0) * 100).toLocaleString('fr-FR', { maximumFractionDigits: 1 })} %`;
+    const plural = (n, word) => `${fmtInt(n)} ${word}${n >= 2 ? 's' : ''}`;
+
+    function fmtClock(seconds) {  // 215 -> "3:35"
+        const s = Math.round(seconds);
+        return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+    }
+
+    function fmtLongDuration(ms) {
+        const minutes = Math.round(ms / 60000);
+        const d = Math.floor(minutes / 1440), h = Math.floor((minutes % 1440) / 60), m = minutes % 60;
+        if (d) return `${d} j ${h} h`;
+        if (h) return `${h} h ${String(m).padStart(2, '0')}`;
+        return `${m} min`;
+    }
+
+    function fmtMonth(key, long = false) {  // "2026-01" -> "janv. 26" / "janvier 2026"
+        const [y, m] = key.split('-').map(Number);
+        return new Date(y, m - 1, 1).toLocaleDateString('fr-FR',
+            long ? { month: 'long', year: 'numeric' } : { month: 'short', year: '2-digit' });
+    }
+
+    function fmtDay(key) {  // "2026-01-05" -> "05/01/2026", without a UTC shift
+        const [y, m, d] = key.split('-').map(Number);
+        return new Date(y, m - 1, d).toLocaleDateString('fr-FR');
+    }
+
+    function monthAxisLabels(months) {
+        if (months.length > 24) return months.map(m => m.endsWith('-01') ? m.slice(0, 4) : '');
+        const every = months.length > 8 ? 3 : 1;
+        return months.map((m, i) => i % every === 0 ? fmtMonth(m) : '');
+    }
+
+    function niceScale(max, integer) {
+        if (!(max > 0)) return { top: 1, ticks: [0, 1] };
+        const raw = max / 4;
+        const mag = Math.pow(10, Math.floor(Math.log10(raw)));
+        let step = [1, 2, 5, 10].map(f => f * mag).find(s => s >= raw);
+        if (integer) step = Math.max(1, Math.round(step));
+        const top = Math.ceil(max / step) * step;
+        const ticks = [];
+        for (let i = 0; i * step <= top + step / 2; i++) ticks.push(Math.round(i * step * 1000) / 1000);
+        return { top, ticks };
+    }
+
+    function tipAttrs(value, label, focusable = true) {
+        return `${focusable ? 'tabindex="0" ' : ''}data-tip-value="${escapeHtml(value)}" data-tip-label="${escapeHtml(label)}"`;
+    }
+
+    function vizPanel(title, sub, body, wide = false) {
+        return `<div class="viz-panel${wide ? ' viz-wide' : ''}">
+            <h4>${escapeHtml(title)}</h4>
+            ${sub ? `<div class="viz-sub">${escapeHtml(sub)}</div>` : ''}
+            ${body}
+        </div>`;
+    }
+
+    function vizTable(headers, rows) {
+        // headers: [{ label, num }]; rows: arrays of display strings (escaped here).
+        const cls = i => headers[i].num ? ' class="num"' : '';
+        return `<details class="viz-data"><summary>Voir les données</summary>
+            <div class="viz-table-scroll"><table>
+                <thead><tr>${headers.map((h, i) => `<th${cls(i)}>${escapeHtml(h.label)}</th>`).join('')}</tr></thead>
+                <tbody>${rows.map(r => `<tr>${r.map((c, i) => `<td${cls(i)}>${escapeHtml(c)}</td>`).join('')}</tr>`).join('')}</tbody>
+            </table></div>
+        </details>`;
+    }
+
+    function vizYAxis(ticks, top) {
+        return `<div class="viz-yaxis">${ticks.map(t =>
+            `<span style="top:${100 - t / top * 100}%">${fmtDec(t)}</span>`).join('')}</div>`;
+    }
+
+    function vizGridlines(ticks, top) {
+        return ticks.slice(1).map(t => `<div class="viz-gridline" style="top:${100 - t / top * 100}%"></div>`).join('');
+    }
+
+    function vizXAxis(points, gap) {
+        return `<div></div><div class="viz-xaxis" style="gap:${gap}px">${points.map(p =>
+            `<span>${escapeHtml(p.axisLabel || '')}</span>`).join('')}</div>`;
+    }
+
+    // Dense time series get no tab stop per column — the data table is their
+    // keyboard path; hover still works.
+    function vizColumns(points) {  // [{ value, axisLabel, tipValue, tipLabel }]
+        const { top, ticks } = niceScale(Math.max(0, ...points.map(p => p.value)), true);
+        const gap = points.length > 48 ? 1 : 2;
+        return `<div class="viz-chart">
+            ${vizYAxis(ticks, top)}
+            <div class="viz-plot">
+                ${vizGridlines(ticks, top)}
+                <div class="viz-cols" style="gap:${gap}px">${points.map(p => `
+                    <div class="viz-band" ${tipAttrs(p.tipValue, p.tipLabel, false)}>
+                        ${p.value > 0 ? `<div class="viz-col" style="height:${p.value / top * 100}%"></div>` : ''}
+                    </div>`).join('')}
+                </div>
+            </div>
+            ${vizXAxis(points, gap)}
+        </div>`;
+    }
+
+    function vizLine(points) {  // [{ value|null, axisLabel, tipValue, tipLabel }]
+        const values = points.map(p => p.value).filter(v => v != null);
+        const { top, ticks } = niceScale(Math.max(0, ...values), false);
+        const n = points.length;
+        const xPct = i => (i + 0.5) / n * 100;
+        const yPct = v => (1 - v / top) * 100;
+        // Break the line where a month had no poll instead of bridging the gap.
+        const runs = [];
+        let run = [];
+        points.forEach((p, i) => {
+            if (p.value == null) { if (run.length) runs.push(run); run = []; }
+            else run.push(i);
+        });
+        if (run.length) runs.push(run);
+        const polylines = runs.filter(r => r.length > 1).map(r =>
+            `<polyline points="${r.map(i => `${(xPct(i) * 10).toFixed(1)},${(yPct(points[i].value) * 10).toFixed(1)}`).join(' ')}"/>`).join('');
+        const lastIdx = points.map(p => p.value != null).lastIndexOf(true);
+        const dots = points.map((p, i) => {
+            const isolated = runs.some(r => r.length === 1 && r[0] === i);
+            return (isolated || i === lastIdx) && p.value != null
+                ? `<div class="viz-dot" style="left:${xPct(i)}%; top:${yPct(p.value)}%"></div>` : '';
+        }).join('');
+        return `<div class="viz-chart">
+            ${vizYAxis(ticks, top)}
+            <div class="viz-plot">
+                ${vizGridlines(ticks, top)}
+                <svg class="viz-line-svg" viewBox="0 0 1000 1000" preserveAspectRatio="none" aria-hidden="true">${polylines}</svg>
+                ${dots}
+                <div class="viz-line-bands">${points.map(p => `
+                    <div class="viz-band${p.value == null ? ' viz-empty' : ''}" style="--y:${p.value == null ? 50 : yPct(p.value)}%"
+                        ${tipAttrs(p.tipValue, p.tipLabel, false)}></div>`).join('')}
+                </div>
+            </div>
+            ${vizXAxis(points, 0)}
+        </div>`;
+    }
+
+    function vizBarList(rows) {  // [{ label, value, tipLabel }]
+        const max = Math.max(1, ...rows.map(r => r.value));
+        return `<div class="viz-bars">${rows.map(r => `
+            <div class="viz-label" title="${escapeHtml(r.label)}">${escapeHtml(r.label)}</div>
+            <div class="viz-bar-cell" ${tipAttrs(fmtInt(r.value), r.tipLabel)}>
+                <div class="viz-bar" style="width:calc((100% - 48px) * ${r.value / max})"></div>
+                <span class="viz-bar-value">${fmtInt(r.value)}</span>
+            </div>`).join('')}
+        </div>`;
+    }
+
+    function vizVoteLegend() {
+        return `<div class="viz-legend">${VOTE_KEYS.map(k =>
+            `<span><i style="background:${k.color}"></i>${k.label}</span>`).join('')}</div>`;
+    }
+
+    function vizVoteStack(tally, who = '') {
+        const total = VOTE_KEYS.reduce((sum, k) => sum + (tally[k.key] || 0), 0);
+        return `<div class="viz-stack">${VOTE_KEYS.filter(k => tally[k.key] > 0).map(k => {
+            const n = tally[k.key];
+            const label = `${who ? who + ' · ' : ''}${k.label} · ${fmtPct(n / total)}`;
+            return `<div class="viz-seg ${k.cls}" style="flex:${n} 1 0" ${tipAttrs(plural(n, 'vote'), label)}>
+                <span class="viz-seg-label">${fmtInt(n)}</span>
+            </div>`;
+        }).join('')}</div>`;
+    }
+
+    // In-segment counts only where they fit; the tooltip and table carry the rest.
+    function fitSegmentLabels(root) {
+        root.querySelectorAll('.viz-seg-label').forEach(label => {
+            label.classList.remove('viz-hidden');
+            if (label.offsetWidth + 8 > label.parentElement.clientWidth) label.classList.add('viz-hidden');
+        });
+    }
+
+    function vizTooltip() {
+        let el = document.getElementById('viz-tooltip');
+        if (!el) {
+            el = document.createElement('div');
+            el.id = 'viz-tooltip';
+            el.setAttribute('role', 'tooltip');
+            el.append(document.createElement('strong'), document.createElement('span'));
+            document.body.appendChild(el);
+        }
+        return el;
+    }
+
+    function showVizTooltip(target, x, y) {
+        const el = vizTooltip();
+        el.querySelector('strong').textContent = target.dataset.tipValue || '';
+        el.querySelector('span').textContent = target.dataset.tipLabel || '';
+        el.style.display = 'block';
+        const pad = 12, w = el.offsetWidth, h = el.offsetHeight;
+        let left = x + pad, top = y - h - pad;
+        if (left + w > window.innerWidth - 8) left = x - w - pad;
+        if (top < 8) top = y + pad;
+        el.style.left = `${Math.max(8, left)}px`;
+        el.style.top = `${top}px`;
+    }
+
+    function hideVizTooltip() {
+        const el = document.getElementById('viz-tooltip');
+        if (el) el.style.display = 'none';
+    }
+
+    function onVizPointer(e) {
+        const target = e.target.closest?.('[data-tip-value]');
+        if (target) showVizTooltip(target, e.clientX, e.clientY);
+        else hideVizTooltip();
+    }
+    document.addEventListener('pointermove', onVizPointer);
+    document.addEventListener('pointerdown', onVizPointer);
+    document.addEventListener('focusin', e => {
+        const target = e.target.closest?.('[data-tip-value]');
+        if (!target) return hideVizTooltip();
+        const r = target.getBoundingClientRect();
+        showVizTooltip(target, r.left + r.width / 2, r.top);
+    });
+    document.addEventListener('focusout', hideVizTooltip);
+    window.addEventListener('scroll', hideVizTooltip, true);
+    let _vizResizeTimer = null;
+    window.addEventListener('resize', () => {
+        clearTimeout(_vizResizeTimer);
+        _vizResizeTimer = setTimeout(() => {
+            const root = document.getElementById('spotify-stats');
+            if (root) fitSegmentLabels(root);
+        }, 150);
+    });
+
+    async function spotifyNameResolver(serverId) {
+        const members = await fetchServerMembers(serverId) || [];
+        const byId = Object.fromEntries(members.map(m => [String(m.id), m]));
+        const prenoms = getDiscord2NameMap();
+        return id => prenoms[id] || byId[id]?.display_name || byId[id]?.username || id;
+    }
+
+    async function loadSpotifyStats(serverId, force = false) {
+        const container = document.getElementById('spotify-stats');
+        if (!container) return;
+        const cached = _spotifyStatsCache[serverId];
+        if (cached) {
+            renderSpotifyStats(container, cached.data, cached.nameOf);
+            if (!force && Date.now() - cached.at < SPOTIFY_STATS_TTL_MS) return;
+            container.classList.add('viz-refreshing');  // keep the frame while refetching
+        }
+        let data, nameOf;
+        try {
+            [data, nameOf] = await Promise.all([
+                api(`/api/servers/${serverId}/spotify/stats`),
+                spotifyNameResolver(serverId),
+            ]);
+        } catch (e) {
+            const current = document.getElementById('spotify-stats');
+            if (!current) return;
+            current.classList.remove('viz-refreshing');
+            if (!cached) {
+                current.innerHTML = `<div class="empty-state"><h3>Erreur</h3><p>${escapeHtml(String(e?.message || e))}</p></div>`;
+            }
+            return;
+        }
+        // render() may have rebuilt the page (or the user left it) meanwhile.
+        const current = document.getElementById('spotify-stats');
+        if (!current || current.dataset.serverId !== String(serverId)) return;
+        if (!data) {
+            current.innerHTML = `<div class="empty-state"><h3>Accès refusé</h3><p>Statistiques réservées aux administrateurs de ce serveur.</p></div>`;
+            return;
+        }
+        _spotifyStatsCache[serverId] = { data, nameOf, at: Date.now() };
+        renderSpotifyStats(current, data, nameOf);
+    }
+
+    function renderSpotifyStats(container, d, nameOf) {
+        container.classList.remove('viz-refreshing');
+        const s = d.summary, v = d.votes;
+        if (!s.track_count && !v.polls_closed && !d.current_poll) {
+            container.innerHTML = `<div class="empty-state"><h3>Pas encore de données</h3>
+                <p>Le bot n'a pas encore synchronisé la playlist de ce serveur.</p></div>`;
+            return;
+        }
+
+        const playlistTiles = [
+            ['Titres', fmtInt(s.track_count)],
+            ['Durée totale', fmtLongDuration(s.total_duration_ms), `${fmtClock(s.avg_duration_ms / 1000)} par titre en moyenne`],
+            ['Artistes', fmtInt(s.artist_count)],
+            ['Contributeurs', fmtInt(s.contributor_count)],
+        ];
+        const voteTiles = v.polls_closed ? [
+            ['Votes clos', fmtInt(v.polls_closed), `${plural(v.kept, 'conservée')} · ${plural(v.removed, 'supprimée')}`],
+            ['Taux de suppression', fmtPct(v.removal_rate)],
+            ['Participation', fmtDec(v.avg_participation), `votants par vote · max ${fmtInt(v.max_participation)}`],
+        ] : [];
+        const tileRow = tiles => tiles.length ? `<div class="stats-grid">${tiles.map(([label, value, sub]) => `
+                <div class="stat-card">
+                    <div class="stat-label">${escapeHtml(label)}</div>
+                    <div class="stat-value">${escapeHtml(value)}</div>
+                    ${sub ? `<div class="stat-sub">${escapeHtml(sub)}</div>` : ''}
+                </div>`).join('')}
+            </div>` : '';
+
+        const panels = [];
+        const p = d.current_poll;
+        if (p) {
+            const total = p.conserver + p.menfou + p.supprimer;
+            const meta = [
+                p.date ? `Ouvert le ${fmtDay(p.date)}` : '',
+                p.added_by ? `ajoutée par ${nameOf(p.added_by)}` : '',
+            ].filter(Boolean).join(' · ');
+            const body = total
+                ? `${vizVoteLegend()}${vizVoteStack(p)}
+                   <div class="viz-sub" style="margin:8px 0 0;">${escapeHtml(`${plural(total, 'votant')} : ${p.voters.map(nameOf).join(', ')}`)}</div>`
+                : `<div class="viz-sub" style="margin:0;">Pas encore de votes.</div>`;
+            panels.push(vizPanel('Vote en cours', '',
+                `<div class="viz-poll-name">${escapeHtml(p.name)}</div>
+                 ${meta ? `<div class="viz-sub">${escapeHtml(meta)}</div>` : ''}${body}`, true));
+        }
+
+        if (d.additions_by_month.length) {
+            const months = d.additions_by_month;
+            const axis = monthAxisLabels(months.map(m => m.month));
+            panels.push(vizPanel('Ajouts par mois', 'Titres encore présents dans la playlist, par mois d\'ajout',
+                vizColumns(months.map((m, i) => ({
+                    value: m.count,
+                    axisLabel: axis[i],
+                    tipValue: plural(m.count, 'titre'),
+                    tipLabel: fmtMonth(m.month, true),
+                })))
+                + vizTable([{ label: 'Mois' }, { label: 'Titres', num: true }],
+                    months.map(m => [fmtMonth(m.month, true), fmtInt(m.count)])),
+                true));
+        }
+
+        if (d.top_contributors.length) {
+            panels.push(vizPanel('Top contributeurs', 'Titres présents dans la playlist, par personne',
+                vizBarList(d.top_contributors.map(c => ({
+                    label: nameOf(c.key),
+                    value: c.count,
+                    tipLabel: `${nameOf(c.key)} · ${fmtPct(c.count / s.track_count)} de la playlist`,
+                })))));
+        }
+
+        if (d.top_artists.length) {
+            panels.push(vizPanel('Top artistes', 'Nombre de titres par artiste',
+                vizBarList(d.top_artists.map(a => ({
+                    label: a.key,
+                    value: a.count,
+                    tipLabel: `${a.key} · ${fmtPct(a.count / s.track_count)} de la playlist`,
+                })))));
+        }
+
+        if (d.duration_buckets.length) {
+            const buckets = d.duration_buckets;
+            const labelStep = buckets.length > 16 ? 120 : 60;
+            const range = b => b.end_s == null ? `${fmtClock(b.start_s)} et plus` : `${fmtClock(b.start_s)} – ${fmtClock(b.end_s)}`;
+            panels.push(vizPanel('Durée des titres', 'Nombre de titres par tranche de 30 secondes',
+                vizColumns(buckets.map(b => ({
+                    value: b.count,
+                    axisLabel: b.start_s % labelStep === 0 ? `${fmtClock(b.start_s)}${b.end_s == null ? '+' : ''}` : '',
+                    tipValue: plural(b.count, 'titre'),
+                    tipLabel: range(b),
+                })))
+                + vizTable([{ label: 'Durée' }, { label: 'Titres', num: true }],
+                    buckets.map(b => [range(b), fmtInt(b.count)]))));
+        }
+
+        if (d.participation_by_month.length) {
+            const months = d.participation_by_month;
+            const axis = monthAxisLabels(months.map(m => m.month));
+            panels.push(vizPanel('Participation aux votes', 'Votants par vote, en moyenne sur le mois',
+                vizLine(months.map((m, i) => ({
+                    value: m.average,
+                    axisLabel: axis[i],
+                    tipValue: m.average == null ? 'Aucun vote' : `${fmtDec(m.average)} votant${m.average >= 2 ? 's' : ''} en moyenne`,
+                    tipLabel: `${fmtMonth(m.month, true)} · ${plural(m.polls, 'vote')}`,
+                })))
+                + vizTable([{ label: 'Mois' }, { label: 'Votes', num: true }, { label: 'Votants (moy.)', num: true }],
+                    months.map(m => [fmtMonth(m.month, true), fmtInt(m.polls), m.average == null ? '—' : fmtDec(m.average)]))));
+        }
+
+        if (d.voters.length) {
+            panels.push(vizPanel('Votes par personne', 'Répartition des choix sur les votes clos, par nombre de votes',
+                vizVoteLegend()
+                + `<div class="viz-stack-rows">${d.voters.map(u => {
+                    const name = nameOf(u.user_id);
+                    const total = u.conserver + u.menfou + u.supprimer;
+                    return `<div class="viz-label" title="${escapeHtml(name)}">${escapeHtml(name)}</div>
+                        ${vizVoteStack(u, name)}
+                        <div class="viz-stack-total">${fmtInt(total)}</div>`;
+                }).join('')}</div>`
+                + vizTable([{ label: 'Personne' }, ...VOTE_KEYS.map(k => ({ label: k.label, num: true })), { label: 'Total', num: true }],
+                    d.voters.map(u => [nameOf(u.user_id), ...VOTE_KEYS.map(k => fmtInt(u[k.key])),
+                        fmtInt(u.conserver + u.menfou + u.supprimer)])),
+                true));
+        }
+
+        container.innerHTML = `${tileRow(playlistTiles)}${tileRow(voteTiles)}
+            <div class="viz-grid">${panels.join('')}</div>`;
+        fitSegmentLabels(container);
     }
 
     async function editModuleConfigJson(serverId, moduleName) {

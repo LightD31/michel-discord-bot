@@ -12,6 +12,11 @@ Replaces the legacy ``/updatetoken`` slash command. The flow:
 
 The Spotify app must list ``{webui.baseUrl}/spotify/auth/callback`` as an
 allowed redirect URI, and ``spotify.spotifyRedirectUri`` in config must match.
+
+``GET /api/servers/{id}/spotify/stats`` feeds the charts on a guild's Spotify
+module page: the playlist mirror and vote archive, aggregated by
+:func:`features.spotify.aggregate`. Read-only, MongoDB only — no Spotify API
+call and nothing dispatched to the bot loop.
 """
 
 import html
@@ -21,8 +26,10 @@ from urllib.parse import quote
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
+from features.spotify import SpotifyRepository, aggregate
 from src.core import logging as logutil
 from src.core.config import config_store
+from src.core.errors import DatabaseError
 from src.integrations.spotify import (
     build_oauth,
     fetch_account_summary,
@@ -61,6 +68,23 @@ def create_router(ctx: WebUIContext) -> APIRouter:
         if status.get("authorized"):
             status["account"] = fetch_account_summary()
         return JSONResponse(status)
+
+    @router.get("/api/servers/{server_id}/spotify/stats")
+    async def api_spotify_stats(request: Request, server_id: str):
+        """Playlist and vote statistics for the guild's Spotify dashboard charts."""
+        ctx.require_guild_admin(request, server_id)
+        repo = SpotifyRepository(server_id)
+        try:
+            playlist = await repo.find_playlist_items({})
+            votes = await repo.find_vote_docs({})
+            vote_infos = await repo.get_vote_infos() or {}
+        except DatabaseError as e:
+            logger.error("Spotify stats failed for %s: %s", server_id, e)
+            raise HTTPException(
+                status_code=500, detail="Lecture des statistiques Spotify impossible."
+            ) from e
+        stats = aggregate(playlist.values(), votes.values(), vote_infos.get("track_id"))
+        return JSONResponse(stats.to_dict())
 
     @router.get("/spotify/auth/start")
     async def spotify_auth_start(request: Request):
