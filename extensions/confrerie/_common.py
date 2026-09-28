@@ -126,9 +126,8 @@ class ConfrerieConfig(SchemaBase):
     )
 
 
-# Read once per import. The package ``__init__`` drops these submodules from
-# ``sys.modules`` before importing them, so a dashboard reload re-reads the
-# config instead of keeping the snapshot taken at bot start.
+# Read once per import; a dashboard reload re-imports this module (see
+# ``src.webui.botops``), so the snapshot follows config edits.
 config, module_config, enabled_servers = load_config("moduleConfrerie")
 module_config = module_config[enabled_servers[0]] if enabled_servers else {}
 guild_id: str | None = enabled_servers[0] if enabled_servers else None

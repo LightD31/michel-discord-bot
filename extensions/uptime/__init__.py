@@ -50,6 +50,10 @@ class UptimeExtension(
         self.check_sensor_maintenance.start()
         await self.send_status_update()
 
+    async def async_drop(self):
+        """Dashboard unload/reload: close the socket.io link before a new instance opens one."""
+        await self.disconnect_socketio()
+
     async def load_maintenance_monitors(self):
         try:
             self.maintenance_monitors = await self._repository.load_all(list(enabled_servers))
