@@ -95,13 +95,13 @@ h11==0.16.0
     #   wsproto
 httpcore==1.0.9
     # via httpx
-httpcore2==2.10.0 ; sys_platform != 'emscripten'
+httpcore2==2.13.1 ; sys_platform != 'emscripten'
     # via httpx2
 httptools==0.8.0
     # via uvicorn
 httpx==0.28.1
     # via notion-client
-httpx2==2.10.0
+httpx2==2.13.1
     # via openai
 httpx2-jsfetch==1.0 ; sys_platform == 'emscripten'
     # via httpx2
