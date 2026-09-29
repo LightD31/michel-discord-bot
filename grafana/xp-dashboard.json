@@ -154,7 +154,7 @@
       "id": 3,
       "type": "timeseries",
       "title": "Activité Quotidienne",
-      "description": "XP gagné et messages actifs par jour (requires MongoDB 5.0+ for $dateTrunc)",
+      "description": "XP gagné (messages + vocal) et messages par jour (requires MongoDB 5.0+ for $dateTrunc)",
       "datasource": {
         "type": "grafana-mongodb-datasource",
         "uid": "${DS_MONGODB}"
@@ -168,8 +168,8 @@
           },
           "refId": "A",
           "queryType": "query",
-          "query": "guild_${GUILD_ID}.xp_events.aggregate([\n  {\n    \"$group\": {\n      \"_id\": {\"$dateTrunc\": {\"date\": \"$ts\", \"unit\": \"day\", \"timezone\": \"Europe/Paris\"}},\n      \"xp_gained\": {\"$sum\": \"$xp_gained\"},\n      \"messages\": {\"$sum\": 1}\n    }\n  },\n  {\"$sort\": {\"_id\": 1}},\n  {\"$project\": {\"_id\": 0, \"time\": \"$_id\", \"xp_gained\": 1, \"messages\": 1}}\n])",
-          "parsedQuery": "guild_${GUILD_ID}.xp_events.aggregate([{\"$group\":{\"_id\":{\"$dateTrunc\":{\"date\":\"$ts\",\"unit\":\"day\",\"timezone\":\"Europe/Paris\"}},\"xp_gained\":{\"$sum\":\"$xp_gained\"},\"messages\":{\"$sum\":1}}},{\"$sort\":{\"_id\":1}},{\"$project\":{\"_id\":0,\"time\":\"$_id\",\"xp_gained\":1,\"messages\":1}}])"
+          "query": "guild_${GUILD_ID}.xp_events.aggregate([\n  {\n    \"$group\": {\n      \"_id\": {\"$dateTrunc\": {\"date\": \"$ts\", \"unit\": \"day\", \"timezone\": \"Europe/Paris\"}},\n      \"xp_gained\": {\"$sum\": \"$xp_gained\"},\n      \"messages\": {\"$sum\": {\"$cond\": [{\"$eq\": [{\"$ifNull\": [\"$source\", \"message\"]}, \"message\"]}, 1, 0]}}\n    }\n  },\n  {\"$sort\": {\"_id\": 1}},\n  {\"$project\": {\"_id\": 0, \"time\": \"$_id\", \"xp_gained\": 1, \"messages\": 1}}\n])",
+          "parsedQuery": "guild_${GUILD_ID}.xp_events.aggregate([{\"$group\":{\"_id\":{\"$dateTrunc\":{\"date\":\"$ts\",\"unit\":\"day\",\"timezone\":\"Europe/Paris\"}},\"xp_gained\":{\"$sum\":\"$xp_gained\"},\"messages\":{\"$sum\":{\"$cond\":[{\"$eq\":[{\"$ifNull\":[\"$source\",\"message\"]},\"message\"]},1,0]}}}},{\"$sort\":{\"_id\":1}},{\"$project\":{\"_id\":0,\"time\":\"$_id\",\"xp_gained\":1,\"messages\":1}}])"
         }
       ],
       "options": {

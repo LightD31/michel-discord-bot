@@ -13,6 +13,7 @@ XP is only awarded when:
 
 import random
 import time
+from datetime import UTC, datetime
 
 from interactions import Client, IntervalTrigger, Task, listen
 from interactions.api.events import VoiceStateUpdate
@@ -134,6 +135,17 @@ class VoiceMixin:
 
         if updated is None:
             return
+
+        try:
+            await repo.log_event(
+                user_id,
+                xp_gained,
+                updated.get("xp", 0),
+                datetime.fromtimestamp(now, UTC),
+                source="voice",
+            )
+        except DatabaseError as e:
+            logger.warning("Failed to log voice XP event for %s: %s", user_id, e)
 
         # Post-increment totals from the database, so a message award landing
         # in the same tick is counted rather than overwritten.
