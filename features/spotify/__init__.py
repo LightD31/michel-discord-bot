@@ -2,5 +2,6 @@
 
 from features.spotify.cooldown import VoteCooldown
 from features.spotify.repository import SpotifyRepository
+from features.spotify.stats import PlaylistStats, aggregate
 
-__all__ = ["SpotifyRepository", "VoteCooldown"]
+__all__ = ["PlaylistStats", "SpotifyRepository", "VoteCooldown", "aggregate"]
