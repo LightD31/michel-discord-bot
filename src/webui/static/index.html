@@ -6997,10 +6997,9 @@
         { key: 'supprimer', label: 'Supprimer', cls: 'remove', color: 'var(--viz-remove)' },
     ];
 
-    const fmtInt = n => Number(n || 0).toLocaleString('fr-FR');
     const fmtDec = n => Number(n || 0).toLocaleString('fr-FR', { maximumFractionDigits: 1 });
     const fmtPct = r => `${(Number(r || 0) * 100).toLocaleString('fr-FR', { maximumFractionDigits: 1 })} %`;
-    const plural = (n, word) => `${fmtInt(n)} ${word}${n >= 2 ? 's' : ''}`;
+    const plural = (n, word) => `${fmtNum(n)} ${word}${n >= 2 ? 's' : ''}`;
 
     function fmtClock(seconds) {  // 215 -> "3:35"
         const s = Math.round(seconds);
@@ -7019,11 +7018,6 @@
         const [y, m] = key.split('-').map(Number);
         return new Date(y, m - 1, 1).toLocaleDateString('fr-FR',
             long ? { month: 'long', year: 'numeric' } : { month: 'short', year: '2-digit' });
-    }
-
-    function fmtDay(key) {  // "2026-01-05" -> "05/01/2026", without a UTC shift
-        const [y, m, d] = key.split('-').map(Number);
-        return new Date(y, m - 1, d).toLocaleDateString('fr-FR');
     }
 
     function monthAxisLabels(months) {
@@ -7141,9 +7135,9 @@
         const max = Math.max(1, ...rows.map(r => r.value));
         return `<div class="viz-bars">${rows.map(r => `
             <div class="viz-label" title="${escapeHtml(r.label)}">${escapeHtml(r.label)}</div>
-            <div class="viz-bar-cell" ${tipAttrs(fmtInt(r.value), r.tipLabel)}>
+            <div class="viz-bar-cell" ${tipAttrs(fmtNum(r.value), r.tipLabel)}>
                 <div class="viz-bar" style="width:calc((100% - 48px) * ${r.value / max})"></div>
-                <span class="viz-bar-value">${fmtInt(r.value)}</span>
+                <span class="viz-bar-value">${fmtNum(r.value)}</span>
             </div>`).join('')}
         </div>`;
     }
@@ -7159,7 +7153,7 @@
             const n = tally[k.key];
             const label = `${who ? who + ' · ' : ''}${k.label} · ${fmtPct(n / total)}`;
             return `<div class="viz-seg ${k.cls}" style="flex:${n} 1 0" ${tipAttrs(plural(n, 'vote'), label)}>
-                <span class="viz-seg-label">${fmtInt(n)}</span>
+                <span class="viz-seg-label">${fmtNum(n)}</span>
             </div>`;
         }).join('')}</div>`;
     }
@@ -7278,15 +7272,15 @@
         }
 
         const playlistTiles = [
-            ['Titres', fmtInt(s.track_count)],
+            ['Titres', fmtNum(s.track_count)],
             ['Durée totale', fmtLongDuration(s.total_duration_ms), `${fmtClock(s.avg_duration_ms / 1000)} par titre en moyenne`],
-            ['Artistes', fmtInt(s.artist_count)],
-            ['Contributeurs', fmtInt(s.contributor_count)],
+            ['Artistes', fmtNum(s.artist_count)],
+            ['Contributeurs', fmtNum(s.contributor_count)],
         ];
         const voteTiles = v.polls_closed ? [
-            ['Votes clos', fmtInt(v.polls_closed), `${plural(v.kept, 'conservée')} · ${plural(v.removed, 'supprimée')}`],
+            ['Votes clos', fmtNum(v.polls_closed), `${plural(v.kept, 'conservée')} · ${plural(v.removed, 'supprimée')}`],
             ['Taux de suppression', fmtPct(v.removal_rate)],
-            ['Participation', fmtDec(v.avg_participation), `votants par vote · max ${fmtInt(v.max_participation)}`],
+            ['Participation', fmtDec(v.avg_participation), `votants par vote · max ${fmtNum(v.max_participation)}`],
         ] : [];
         const tileRow = tiles => tiles.length ? `<div class="stats-grid">${tiles.map(([label, value, sub]) => `
                 <div class="stat-card">
@@ -7301,7 +7295,7 @@
         if (p) {
             const total = p.conserver + p.menfou + p.supprimer;
             const meta = [
-                p.date ? `Ouvert le ${fmtDay(p.date)}` : '',
+                p.date ? `Ouvert le ${parseIsoDay(p.date).toLocaleDateString('fr-FR')}` : '',
                 p.added_by ? `ajoutée par ${nameOf(p.added_by)}` : '',
             ].filter(Boolean).join(' · ');
             const body = total
@@ -7324,7 +7318,7 @@
                     tipLabel: fmtMonth(m.month, true),
                 })))
                 + vizTable([{ label: 'Mois' }, { label: 'Titres', num: true }],
-                    months.map(m => [fmtMonth(m.month, true), fmtInt(m.count)])),
+                    months.map(m => [fmtMonth(m.month, true), fmtNum(m.count)])),
                 true));
         }
 
@@ -7358,7 +7352,7 @@
                     tipLabel: range(b),
                 })))
                 + vizTable([{ label: 'Durée' }, { label: 'Titres', num: true }],
-                    buckets.map(b => [range(b), fmtInt(b.count)]))));
+                    buckets.map(b => [range(b), fmtNum(b.count)]))));
         }
 
         if (d.participation_by_month.length) {
@@ -7372,7 +7366,7 @@
                     tipLabel: `${fmtMonth(m.month, true)} · ${plural(m.polls, 'vote')}`,
                 })))
                 + vizTable([{ label: 'Mois' }, { label: 'Votes', num: true }, { label: 'Votants (moy.)', num: true }],
-                    months.map(m => [fmtMonth(m.month, true), fmtInt(m.polls), m.average == null ? '—' : fmtDec(m.average)]))));
+                    months.map(m => [fmtMonth(m.month, true), fmtNum(m.polls), m.average == null ? '—' : fmtDec(m.average)]))));
         }
 
         if (d.voters.length) {
@@ -7383,11 +7377,11 @@
                     const total = u.conserver + u.menfou + u.supprimer;
                     return `<div class="viz-label" title="${escapeHtml(name)}">${escapeHtml(name)}</div>
                         ${vizVoteStack(u, name)}
-                        <div class="viz-stack-total">${fmtInt(total)}</div>`;
+                        <div class="viz-stack-total">${fmtNum(total)}</div>`;
                 }).join('')}</div>`
                 + vizTable([{ label: 'Personne' }, ...VOTE_KEYS.map(k => ({ label: k.label, num: true })), { label: 'Total', num: true }],
-                    d.voters.map(u => [nameOf(u.user_id), ...VOTE_KEYS.map(k => fmtInt(u[k.key])),
-                        fmtInt(u.conserver + u.menfou + u.supprimer)])),
+                    d.voters.map(u => [nameOf(u.user_id), ...VOTE_KEYS.map(k => fmtNum(u[k.key])),
+                        fmtNum(u.conserver + u.menfou + u.supprimer)])),
                 true));
         }
 
