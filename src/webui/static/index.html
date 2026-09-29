@@ -2129,7 +2129,7 @@
             }
         }
 
-        /* ── Charts (Spotify stats) ────────────────── */
+        /* ── Spotify stats (Chart.js) ─────────────── */
         .viz-root.viz-refreshing { opacity: 0.5; transition: opacity 0.2s; }
         /* One row for the playlist, one for votes; two columns even on phones. */
         .viz-root .stats-grid { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; margin-bottom: 8px; }
@@ -2154,74 +2154,12 @@
             .viz-grid { grid-template-columns: minmax(0, 1fr); }
         }
 
-        .viz-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; color: var(--text-secondary); margin-bottom: 10px; }
-        .viz-legend span { display: inline-flex; align-items: center; gap: 6px; }
-        .viz-legend i { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
-
-        /* Column / line charts: HTML plot so text stays crisp at any width. */
-        .viz-chart { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 8px; }
-        .viz-yaxis { position: relative; height: 160px; min-width: 20px; font-size: 11px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
-        .viz-yaxis span { position: absolute; right: 0; transform: translateY(-50%); line-height: 1; }
-        .viz-plot { position: relative; height: 160px; border-bottom: 1px solid var(--border); }
-        .viz-gridline { position: absolute; left: 0; right: 0; height: 1px; background: var(--viz-grid); }
-        .viz-cols { position: absolute; inset: 0; display: flex; align-items: flex-end; }
-        .viz-band {
-            position: relative; flex: 1 1 0; min-width: 0; height: 100%;
-            display: flex; align-items: flex-end; justify-content: center; outline: none;
+        /* Chart.js canvases: the slot fixes the height, the chart fills it. */
+        .viz-canvas { position: relative; }
+        .viz-fallback {
+            height: 100%; display: flex; align-items: center; justify-content: center;
+            text-align: center; color: var(--text-muted); font-size: 13px; padding: 0 12px;
         }
-        .viz-col { width: 100%; max-width: 24px; background: var(--viz-series); border-radius: 4px 4px 0 0; }
-        .viz-band:hover .viz-col, .viz-band:focus-visible .viz-col { filter: brightness(1.2); }
-        .viz-band:focus-visible { box-shadow: inset 0 0 0 1px var(--text-muted); border-radius: 2px; }
-        .viz-xaxis { display: flex; font-size: 11px; color: var(--text-muted); margin-top: 6px; font-variant-numeric: tabular-nums; }
-        .viz-xaxis span { flex: 1 1 0; min-width: 0; text-align: center; white-space: nowrap; overflow: visible; }
-        .viz-xaxis span:first-child { text-align: left; }
-        .viz-xaxis span:last-child { text-align: right; }
-
-        .viz-line-svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
-        .viz-line-svg polyline { fill: none; stroke: var(--viz-series); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; vector-effect: non-scaling-stroke; }
-        .viz-dot {
-            position: absolute; width: 8px; height: 8px; margin: -4px 0 0 -4px; border-radius: 50%;
-            background: var(--viz-series); box-shadow: 0 0 0 2px var(--bg-card); pointer-events: none;
-        }
-        .viz-line-bands { position: absolute; inset: 0; display: flex; }
-        .viz-line-bands .viz-band::before {
-            content: ''; position: absolute; top: 0; bottom: 0; left: 50%; width: 1px;
-            background: var(--text-muted); opacity: 0;
-        }
-        .viz-line-bands .viz-band::after {
-            content: ''; position: absolute; left: 50%; top: var(--y, 50%); width: 8px; height: 8px;
-            margin: -4px 0 0 -4px; border-radius: 50%; background: var(--viz-series);
-            box-shadow: 0 0 0 2px var(--bg-card); opacity: 0;
-        }
-        .viz-line-bands .viz-band.viz-empty::after { display: none; }
-        .viz-line-bands .viz-band:hover::before, .viz-line-bands .viz-band:focus-visible::before { opacity: 0.6; }
-        .viz-line-bands .viz-band:hover::after, .viz-line-bands .viz-band:focus-visible::after { opacity: 1; }
-
-        /* Horizontal bar list: label · bar with the value at its tip. */
-        .viz-bars { display: grid; grid-template-columns: minmax(0, 38%) minmax(0, 1fr); gap: 6px 10px; align-items: center; font-size: 13px; }
-        .viz-bars .viz-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); }
-        .viz-bar-cell { display: flex; align-items: center; gap: 6px; min-width: 0; outline: none; }
-        .viz-bar { height: 16px; min-width: 2px; background: var(--viz-series); border-radius: 0 4px 4px 0; flex: none; }
-        .viz-bar-cell:hover .viz-bar, .viz-bar-cell:focus-visible .viz-bar { filter: brightness(1.2); }
-        .viz-bar-value { font-size: 12px; color: var(--text-primary); font-variant-numeric: tabular-nums; white-space: nowrap; }
-
-        /* Stacked keep / menfou / remove bars. */
-        .viz-stack-rows { display: grid; grid-template-columns: minmax(0, 30%) minmax(0, 1fr) auto; gap: 6px 10px; align-items: center; font-size: 13px; }
-        .viz-stack-rows .viz-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); }
-        .viz-stack-total { font-size: 12px; color: var(--text-muted); font-variant-numeric: tabular-nums; text-align: right; }
-        .viz-stack { display: flex; gap: 2px; height: 20px; min-width: 0; }
-        .viz-seg {
-            display: flex; align-items: center; justify-content: center; min-width: 3px;
-            font-size: 11px; font-weight: 600; outline: none;
-        }
-        .viz-seg:first-child { border-radius: 4px 0 0 4px; }
-        .viz-seg:last-child { border-radius: 0 4px 4px 0; }
-        .viz-seg:only-child { border-radius: 4px; }
-        .viz-seg:hover, .viz-seg:focus-visible { filter: brightness(1.2); }
-        .viz-seg.keep { background: var(--viz-keep); color: #111214; }
-        .viz-seg.neutral { background: var(--viz-neutral); color: #ffffff; }
-        .viz-seg.remove { background: var(--viz-remove); color: #111214; }
-        .viz-seg-label.viz-hidden { visibility: hidden; }
         .viz-poll-name { font-weight: 600; margin: 6px 0 2px; overflow-wrap: anywhere; }
 
         details.viz-data { margin-top: 10px; font-size: 12px; }
@@ -2231,14 +2169,6 @@
         details.viz-data th { color: var(--text-muted); font-weight: 600; }
         details.viz-data td.num, details.viz-data th.num { text-align: right; }
         details.viz-data .viz-table-scroll { max-height: 240px; overflow-y: auto; }
-
-        #viz-tooltip {
-            position: fixed; z-index: 1000; pointer-events: none; display: none;
-            background: var(--bg-primary); border: 1px solid var(--border); border-radius: 6px;
-            padding: 6px 10px; box-shadow: 0 4px 12px var(--shadow); max-width: 260px;
-        }
-        #viz-tooltip strong { display: block; font-size: 14px; color: var(--text-primary); }
-        #viz-tooltip span { display: block; font-size: 12px; color: var(--text-secondary); }
 
         /* ── Message List Editor ──────────────────── */
         .messagelist-list {
@@ -5222,6 +5152,7 @@
         // The page is rebuilt from scratch below: release Chart.js instances
         // bound to the canvases about to be detached.
         destroyXpCharts();
+        destroySpotifyCharts();
         if (!state.user) {
             app.innerHTML = renderLogin();
             return;
@@ -6986,15 +6917,19 @@
     }
 
     // ── Spotify: playlist & vote statistics ─────────────────────────────
-    // Charts are plain HTML (plus one SVG polyline) so labels stay crisp at any
-    // width. Hover/focus tooltips read data-tip-* through textContent; every
-    // value is also reachable without them (direct labels or "Voir les données").
+    // Drawn with Chart.js through the XP section's lazy loader (ensureChartJs).
+    // Every chart also gets a "Voir les données" table: a canvas is opaque to
+    // screen readers, and the tables stay usable if Chart.js can't load.
     const SPOTIFY_STATS_TTL_MS = 5 * 60 * 1000;
     const _spotifyStatsCache = {};  // serverId -> { data, nameOf, at }
+    let _spotifyCharts = [];
+    let _spotifyStatsSeq = 0;   // fetches: a newer load supersedes this one
+    let _spotifyRenderSeq = 0;  // draws: a newer render supersedes this one
+    // Diverging keep / no-opinion / remove set; ink = count colour inside a segment.
     const VOTE_KEYS = [
-        { key: 'conserver', label: 'Conserver', cls: 'keep', color: 'var(--viz-keep)' },
-        { key: 'menfou', label: 'Menfou', cls: 'neutral', color: 'var(--viz-neutral)' },
-        { key: 'supprimer', label: 'Supprimer', cls: 'remove', color: 'var(--viz-remove)' },
+        { key: 'conserver', label: 'Conserver', color: '--viz-keep', ink: '#111214' },
+        { key: 'menfou', label: 'Menfou', color: '--viz-neutral', ink: '#ffffff' },
+        { key: 'supprimer', label: 'Supprimer', color: '--viz-remove', ink: '#111214' },
     ];
 
     const fmtDec = n => Number(n || 0).toLocaleString('fr-FR', { maximumFractionDigits: 1 });
@@ -7020,26 +6955,16 @@
             long ? { month: 'long', year: 'numeric' } : { month: 'short', year: '2-digit' });
     }
 
+    // Long spans label each January with its year; shorter ones every 1st/3rd month.
     function monthAxisLabels(months) {
         if (months.length > 24) return months.map(m => m.endsWith('-01') ? m.slice(0, 4) : '');
         const every = months.length > 8 ? 3 : 1;
         return months.map((m, i) => i % every === 0 ? fmtMonth(m) : '');
     }
 
-    function niceScale(max, integer) {
-        if (!(max > 0)) return { top: 1, ticks: [0, 1] };
-        const raw = max / 4;
-        const mag = Math.pow(10, Math.floor(Math.log10(raw)));
-        let step = [1, 2, 5, 10].map(f => f * mag).find(s => s >= raw);
-        if (integer) step = Math.max(1, Math.round(step));
-        const top = Math.ceil(max / step) * step;
-        const ticks = [];
-        for (let i = 0; i * step <= top + step / 2; i++) ticks.push(Math.round(i * step * 1000) / 1000);
-        return { top, ticks };
-    }
-
-    function tipAttrs(value, label, focusable = true) {
-        return `${focusable ? 'tabindex="0" ' : ''}data-tip-value="${escapeHtml(value)}" data-tip-label="${escapeHtml(label)}"`;
+    function destroySpotifyCharts() {
+        _spotifyCharts.forEach(chart => { try { chart.destroy(); } catch (_) { /* already gone */ } });
+        _spotifyCharts = [];
     }
 
     function vizPanel(title, sub, body, wide = false) {
@@ -7047,6 +6972,12 @@
             <h4>${escapeHtml(title)}</h4>
             ${sub ? `<div class="viz-sub">${escapeHtml(sub)}</div>` : ''}
             ${body}
+        </div>`;
+    }
+
+    function vizCanvas(id, height, label) {
+        return `<div class="viz-canvas" style="height:${height}px">
+            <canvas id="${id}" role="img" aria-label="${escapeHtml(label)}"></canvas>
         </div>`;
     }
 
@@ -7061,164 +6992,36 @@
         </details>`;
     }
 
-    function vizYAxis(ticks, top) {
-        return `<div class="viz-yaxis">${ticks.map(t =>
-            `<span style="top:${100 - t / top * 100}%">${fmtDec(t)}</span>`).join('')}</div>`;
-    }
-
-    function vizGridlines(ticks, top) {
-        return ticks.slice(1).map(t => `<div class="viz-gridline" style="top:${100 - t / top * 100}%"></div>`).join('');
-    }
-
-    function vizXAxis(points, gap) {
-        return `<div></div><div class="viz-xaxis" style="gap:${gap}px">${points.map(p =>
-            `<span>${escapeHtml(p.axisLabel || '')}</span>`).join('')}</div>`;
-    }
-
-    // Dense time series get no tab stop per column — the data table is their
-    // keyboard path; hover still works.
-    function vizColumns(points) {  // [{ value, axisLabel, tipValue, tipLabel }]
-        const { top, ticks } = niceScale(Math.max(0, ...points.map(p => p.value)), true);
-        const gap = points.length > 48 ? 1 : 2;
-        return `<div class="viz-chart">
-            ${vizYAxis(ticks, top)}
-            <div class="viz-plot">
-                ${vizGridlines(ticks, top)}
-                <div class="viz-cols" style="gap:${gap}px">${points.map(p => `
-                    <div class="viz-band" ${tipAttrs(p.tipValue, p.tipLabel, false)}>
-                        ${p.value > 0 ? `<div class="viz-col" style="height:${p.value / top * 100}%"></div>` : ''}
-                    </div>`).join('')}
-                </div>
-            </div>
-            ${vizXAxis(points, gap)}
-        </div>`;
-    }
-
-    function vizLine(points) {  // [{ value|null, axisLabel, tipValue, tipLabel }]
-        const values = points.map(p => p.value).filter(v => v != null);
-        const { top, ticks } = niceScale(Math.max(0, ...values), false);
-        const n = points.length;
-        const xPct = i => (i + 0.5) / n * 100;
-        const yPct = v => (1 - v / top) * 100;
-        // Break the line where a month had no poll instead of bridging the gap.
-        const runs = [];
-        let run = [];
-        points.forEach((p, i) => {
-            if (p.value == null) { if (run.length) runs.push(run); run = []; }
-            else run.push(i);
-        });
-        if (run.length) runs.push(run);
-        const polylines = runs.filter(r => r.length > 1).map(r =>
-            `<polyline points="${r.map(i => `${(xPct(i) * 10).toFixed(1)},${(yPct(points[i].value) * 10).toFixed(1)}`).join(' ')}"/>`).join('');
-        const lastIdx = points.map(p => p.value != null).lastIndexOf(true);
-        const dots = points.map((p, i) => {
-            const isolated = runs.some(r => r.length === 1 && r[0] === i);
-            return (isolated || i === lastIdx) && p.value != null
-                ? `<div class="viz-dot" style="left:${xPct(i)}%; top:${yPct(p.value)}%"></div>` : '';
-        }).join('');
-        return `<div class="viz-chart">
-            ${vizYAxis(ticks, top)}
-            <div class="viz-plot">
-                ${vizGridlines(ticks, top)}
-                <svg class="viz-line-svg" viewBox="0 0 1000 1000" preserveAspectRatio="none" aria-hidden="true">${polylines}</svg>
-                ${dots}
-                <div class="viz-line-bands">${points.map(p => `
-                    <div class="viz-band${p.value == null ? ' viz-empty' : ''}" style="--y:${p.value == null ? 50 : yPct(p.value)}%"
-                        ${tipAttrs(p.tipValue, p.tipLabel, false)}></div>`).join('')}
-                </div>
-            </div>
-            ${vizXAxis(points, 0)}
-        </div>`;
-    }
-
-    function vizBarList(rows) {  // [{ label, value, tipLabel }]
-        const max = Math.max(1, ...rows.map(r => r.value));
-        return `<div class="viz-bars">${rows.map(r => `
-            <div class="viz-label" title="${escapeHtml(r.label)}">${escapeHtml(r.label)}</div>
-            <div class="viz-bar-cell" ${tipAttrs(fmtNum(r.value), r.tipLabel)}>
-                <div class="viz-bar" style="width:calc((100% - 48px) * ${r.value / max})"></div>
-                <span class="viz-bar-value">${fmtNum(r.value)}</span>
-            </div>`).join('')}
-        </div>`;
-    }
-
-    function vizVoteLegend() {
-        return `<div class="viz-legend">${VOTE_KEYS.map(k =>
-            `<span><i style="background:${k.color}"></i>${k.label}</span>`).join('')}</div>`;
-    }
-
-    function vizVoteStack(tally, who = '') {
-        const total = VOTE_KEYS.reduce((sum, k) => sum + (tally[k.key] || 0), 0);
-        return `<div class="viz-stack">${VOTE_KEYS.filter(k => tally[k.key] > 0).map(k => {
-            const n = tally[k.key];
-            const label = `${who ? who + ' · ' : ''}${k.label} · ${fmtPct(n / total)}`;
-            return `<div class="viz-seg ${k.cls}" style="flex:${n} 1 0" ${tipAttrs(plural(n, 'vote'), label)}>
-                <span class="viz-seg-label">${fmtNum(n)}</span>
-            </div>`;
-        }).join('')}</div>`;
-    }
-
-    // In-segment counts only where they fit; the tooltip and table carry the rest.
-    function fitSegmentLabels(root) {
-        root.querySelectorAll('.viz-seg-label').forEach(label => {
-            label.classList.remove('viz-hidden');
-            if (label.offsetWidth + 8 > label.parentElement.clientWidth) label.classList.add('viz-hidden');
-        });
-    }
-
-    function vizTooltip() {
-        let el = document.getElementById('viz-tooltip');
-        if (!el) {
-            el = document.createElement('div');
-            el.id = 'viz-tooltip';
-            el.setAttribute('role', 'tooltip');
-            el.append(document.createElement('strong'), document.createElement('span'));
-            document.body.appendChild(el);
-        }
-        return el;
-    }
-
-    function showVizTooltip(target, x, y) {
-        const el = vizTooltip();
-        el.querySelector('strong').textContent = target.dataset.tipValue || '';
-        el.querySelector('span').textContent = target.dataset.tipLabel || '';
-        el.style.display = 'block';
-        const pad = 12, w = el.offsetWidth, h = el.offsetHeight;
-        let left = x + pad, top = y - h - pad;
-        if (left + w > window.innerWidth - 8) left = x - w - pad;
-        if (top < 8) top = y + pad;
-        el.style.left = `${Math.max(8, left)}px`;
-        el.style.top = `${top}px`;
-    }
-
-    function hideVizTooltip() {
-        const el = document.getElementById('viz-tooltip');
-        if (el) el.style.display = 'none';
-    }
-
-    function onVizPointer(e) {
-        const target = e.target.closest?.('[data-tip-value]');
-        if (target) showVizTooltip(target, e.clientX, e.clientY);
-        else hideVizTooltip();
-    }
-    document.addEventListener('pointermove', onVizPointer);
-    document.addEventListener('pointerdown', onVizPointer);
-    document.addEventListener('focusin', e => {
-        const target = e.target.closest?.('[data-tip-value]');
-        if (!target) return hideVizTooltip();
-        const r = target.getBoundingClientRect();
-        showVizTooltip(target, r.left + r.width / 2, r.top);
-    });
-    document.addEventListener('focusout', hideVizTooltip);
-    window.addEventListener('scroll', hideVizTooltip, true);
-    let _vizResizeTimer = null;
-    window.addEventListener('resize', () => {
-        clearTimeout(_vizResizeTimer);
-        _vizResizeTimer = setTimeout(() => {
-            const root = document.getElementById('spotify-stats');
-            if (root) fitSegmentLabels(root);
-        }, 150);
-    });
+    // Inline Chart.js plugin: the value after each bar's end ('end'), or the
+    // count centred in a stacked segment when it fits ('inside').
+    const spotifyValueLabels = {
+        id: 'spotifyValueLabels',
+        afterDatasetsDraw(chart, _args, opts) {
+            const { ctx } = chart;
+            ctx.save();
+            ctx.font = `600 11px ${window.Chart.defaults.font.family}`;
+            ctx.textBaseline = 'middle';
+            chart.data.datasets.forEach((ds, di) => {
+                if (!chart.isDatasetVisible(di)) return;
+                chart.getDatasetMeta(di).data.forEach((bar, i) => {
+                    const count = ds.counts ? ds.counts[i] : ds.data[i];
+                    if (!count) return;
+                    const text = fmtNum(count);
+                    if (opts.mode === 'inside') {
+                        if (ctx.measureText(text).width + 8 > Math.abs(bar.x - bar.base)) return;
+                        ctx.fillStyle = ds.valueInk;
+                        ctx.textAlign = 'center';
+                        ctx.fillText(text, (bar.x + bar.base) / 2, bar.y);
+                    } else {
+                        ctx.fillStyle = opts.color;
+                        ctx.textAlign = 'left';
+                        ctx.fillText(text, bar.x + 6, bar.y);
+                    }
+                });
+            });
+            ctx.restore();
+        },
+    };
 
     async function spotifyNameResolver(serverId) {
         const members = await fetchServerMembers(serverId) || [];
@@ -7230,45 +7033,63 @@
     async function loadSpotifyStats(serverId, force = false) {
         const container = document.getElementById('spotify-stats');
         if (!container) return;
+        const seq = ++_spotifyStatsSeq;
+        const stale = () => seq !== _spotifyStatsSeq || !container.isConnected;
         const cached = _spotifyStatsCache[serverId];
         if (cached) {
-            renderSpotifyStats(container, cached.data, cached.nameOf);
+            showSpotifyStats(container, cached);
             if (!force && Date.now() - cached.at < SPOTIFY_STATS_TTL_MS) return;
             container.classList.add('viz-refreshing');  // keep the frame while refetching
         }
         let data, nameOf;
         try {
             [data, nameOf] = await Promise.all([
-                api(`/api/servers/${serverId}/spotify/stats`),
+                api(`/api/servers/${encodeURIComponent(serverId)}/spotify/stats`),
                 spotifyNameResolver(serverId),
             ]);
         } catch (e) {
-            const current = document.getElementById('spotify-stats');
-            if (!current) return;
-            current.classList.remove('viz-refreshing');
+            if (stale()) return;
+            container.classList.remove('viz-refreshing');
             if (!cached) {
-                current.innerHTML = `<div class="empty-state"><h3>Erreur</h3><p>${escapeHtml(String(e?.message || e))}</p></div>`;
+                container.innerHTML = `<div class="empty-state"><h3>Erreur</h3><p>${escapeHtml(e?.message || String(e))}</p></div>`;
             }
             return;
         }
-        // render() may have rebuilt the page (or the user left it) meanwhile.
-        const current = document.getElementById('spotify-stats');
-        if (!current || current.dataset.serverId !== String(serverId)) return;
+        if (stale()) return;
         if (!data) {
-            current.innerHTML = `<div class="empty-state"><h3>Accès refusé</h3><p>Statistiques réservées aux administrateurs de ce serveur.</p></div>`;
+            container.innerHTML = `<div class="empty-state"><h3>Accès refusé</h3><p>Statistiques réservées aux administrateurs de ce serveur.</p></div>`;
             return;
         }
-        _spotifyStatsCache[serverId] = { data, nameOf, at: Date.now() };
-        renderSpotifyStats(current, data, nameOf);
+        const entry = { data, nameOf, at: Date.now() };
+        _spotifyStatsCache[serverId] = entry;
+        showSpotifyStats(container, entry);
     }
 
-    function renderSpotifyStats(container, d, nameOf) {
+    async function showSpotifyStats(container, { data, nameOf }) {
+        const token = ++_spotifyRenderSeq;
+        destroySpotifyCharts();
         container.classList.remove('viz-refreshing');
+        container.innerHTML = renderSpotifyStats(data, nameOf);
+        if (!container.querySelector('canvas')) return;
+        const stale = () => token !== _spotifyRenderSeq || !container.isConnected;
+        try {
+            await ensureChartJs();
+        } catch (e) {
+            if (stale()) return;
+            container.querySelectorAll('.viz-canvas').forEach(el => {
+                el.innerHTML = `<div class="viz-fallback">Graphique indisponible : Chart.js n'a pas pu être chargé. Les valeurs restent dans « Voir les données ».</div>`;
+            });
+            return;
+        }
+        if (stale()) return;
+        drawSpotifyCharts(data, nameOf);
+    }
+
+    function renderSpotifyStats(d, nameOf) {
         const s = d.summary, v = d.votes;
         if (!s.track_count && !v.polls_closed && !d.current_poll) {
-            container.innerHTML = `<div class="empty-state"><h3>Pas encore de données</h3>
+            return `<div class="empty-state"><h3>Pas encore de données</h3>
                 <p>Le bot n'a pas encore synchronisé la playlist de ce serveur.</p></div>`;
-            return;
         }
 
         const playlistTiles = [
@@ -7289,6 +7110,9 @@
                     ${sub ? `<div class="stat-sub">${escapeHtml(sub)}</div>` : ''}
                 </div>`).join('')}
             </div>` : '';
+        const voteHeaders = [...VOTE_KEYS.map(k => ({ label: k.label, num: true })), { label: 'Total', num: true }];
+        const voteCells = r => [...VOTE_KEYS.map(k => fmtNum(r[k.key])),
+            fmtNum(VOTE_KEYS.reduce((sum, k) => sum + r[k.key], 0))];
 
         const panels = [];
         const p = d.current_poll;
@@ -7299,8 +7123,9 @@
                 p.added_by ? `ajoutée par ${nameOf(p.added_by)}` : '',
             ].filter(Boolean).join(' · ');
             const body = total
-                ? `${vizVoteLegend()}${vizVoteStack(p)}
-                   <div class="viz-sub" style="margin:8px 0 0;">${escapeHtml(`${plural(total, 'votant')} : ${p.voters.map(nameOf).join(', ')}`)}</div>`
+                ? vizCanvas('spotify-chart-poll', 76, 'Répartition des votes en cours')
+                  + `<div class="viz-sub" style="margin:8px 0 0;">${escapeHtml(`${plural(total, 'votant')} : ${p.voters.map(nameOf).join(', ')}`)}</div>`
+                  + vizTable(voteHeaders, [voteCells(p)])
                 : `<div class="viz-sub" style="margin:0;">Pas encore de votes.</div>`;
             panels.push(vizPanel('Vote en cours', '',
                 `<div class="viz-poll-name">${escapeHtml(p.name)}</div>
@@ -7308,86 +7133,221 @@
         }
 
         if (d.additions_by_month.length) {
-            const months = d.additions_by_month;
-            const axis = monthAxisLabels(months.map(m => m.month));
             panels.push(vizPanel('Ajouts par mois', 'Titres encore présents dans la playlist, par mois d\'ajout',
-                vizColumns(months.map((m, i) => ({
-                    value: m.count,
-                    axisLabel: axis[i],
-                    tipValue: plural(m.count, 'titre'),
-                    tipLabel: fmtMonth(m.month, true),
-                })))
+                vizCanvas('spotify-chart-additions', 220, 'Titres ajoutés par mois')
                 + vizTable([{ label: 'Mois' }, { label: 'Titres', num: true }],
-                    months.map(m => [fmtMonth(m.month, true), fmtNum(m.count)])),
+                    d.additions_by_month.map(m => [fmtMonth(m.month, true), fmtNum(m.count)])),
                 true));
         }
 
+        const rankTable = (rows, labelOf, head) => vizTable(
+            [{ label: head }, { label: 'Titres', num: true }, { label: 'Part', num: true }],
+            rows.map(r => [labelOf(r), fmtNum(r.count), fmtPct(r.count / s.track_count)]));
         if (d.top_contributors.length) {
             panels.push(vizPanel('Top contributeurs', 'Titres présents dans la playlist, par personne',
-                vizBarList(d.top_contributors.map(c => ({
-                    label: nameOf(c.key),
-                    value: c.count,
-                    tipLabel: `${nameOf(c.key)} · ${fmtPct(c.count / s.track_count)} de la playlist`,
-                })))));
+                vizCanvas('spotify-chart-contributors', d.top_contributors.length * 26 + 24, 'Top contributeurs')
+                + rankTable(d.top_contributors, c => nameOf(c.key), 'Personne')));
         }
-
         if (d.top_artists.length) {
             panels.push(vizPanel('Top artistes', 'Nombre de titres par artiste',
-                vizBarList(d.top_artists.map(a => ({
-                    label: a.key,
-                    value: a.count,
-                    tipLabel: `${a.key} · ${fmtPct(a.count / s.track_count)} de la playlist`,
-                })))));
+                vizCanvas('spotify-chart-artists', d.top_artists.length * 26 + 24, 'Top artistes')
+                + rankTable(d.top_artists, a => a.key, 'Artiste')));
         }
 
         if (d.duration_buckets.length) {
-            const buckets = d.duration_buckets;
-            const labelStep = buckets.length > 16 ? 120 : 60;
-            const range = b => b.end_s == null ? `${fmtClock(b.start_s)} et plus` : `${fmtClock(b.start_s)} – ${fmtClock(b.end_s)}`;
             panels.push(vizPanel('Durée des titres', 'Nombre de titres par tranche de 30 secondes',
-                vizColumns(buckets.map(b => ({
-                    value: b.count,
-                    axisLabel: b.start_s % labelStep === 0 ? `${fmtClock(b.start_s)}${b.end_s == null ? '+' : ''}` : '',
-                    tipValue: plural(b.count, 'titre'),
-                    tipLabel: range(b),
-                })))
+                vizCanvas('spotify-chart-durations', 220, 'Répartition des durées des titres')
                 + vizTable([{ label: 'Durée' }, { label: 'Titres', num: true }],
-                    buckets.map(b => [range(b), fmtNum(b.count)]))));
+                    d.duration_buckets.map(b => [durationRange(b), fmtNum(b.count)]))));
         }
 
         if (d.participation_by_month.length) {
-            const months = d.participation_by_month;
-            const axis = monthAxisLabels(months.map(m => m.month));
             panels.push(vizPanel('Participation aux votes', 'Votants par vote, en moyenne sur le mois',
-                vizLine(months.map((m, i) => ({
-                    value: m.average,
-                    axisLabel: axis[i],
-                    tipValue: m.average == null ? 'Aucun vote' : `${fmtDec(m.average)} votant${m.average >= 2 ? 's' : ''} en moyenne`,
-                    tipLabel: `${fmtMonth(m.month, true)} · ${plural(m.polls, 'vote')}`,
-                })))
+                vizCanvas('spotify-chart-participation', 220, 'Participation moyenne aux votes par mois')
                 + vizTable([{ label: 'Mois' }, { label: 'Votes', num: true }, { label: 'Votants (moy.)', num: true }],
-                    months.map(m => [fmtMonth(m.month, true), fmtNum(m.polls), m.average == null ? '—' : fmtDec(m.average)]))));
+                    d.participation_by_month.map(m => [fmtMonth(m.month, true), fmtNum(m.polls),
+                        m.average == null ? '—' : fmtDec(m.average)]))));
         }
 
         if (d.voters.length) {
             panels.push(vizPanel('Votes par personne', 'Répartition des choix sur les votes clos, par nombre de votes',
-                vizVoteLegend()
-                + `<div class="viz-stack-rows">${d.voters.map(u => {
-                    const name = nameOf(u.user_id);
-                    const total = u.conserver + u.menfou + u.supprimer;
-                    return `<div class="viz-label" title="${escapeHtml(name)}">${escapeHtml(name)}</div>
-                        ${vizVoteStack(u, name)}
-                        <div class="viz-stack-total">${fmtNum(total)}</div>`;
-                }).join('')}</div>`
-                + vizTable([{ label: 'Personne' }, ...VOTE_KEYS.map(k => ({ label: k.label, num: true })), { label: 'Total', num: true }],
-                    d.voters.map(u => [nameOf(u.user_id), ...VOTE_KEYS.map(k => fmtNum(u[k.key])),
-                        fmtNum(u.conserver + u.menfou + u.supprimer)])),
+                vizCanvas('spotify-chart-voters', d.voters.length * 30 + 56, 'Répartition des votes par personne')
+                + vizTable([{ label: 'Personne' }, ...voteHeaders],
+                    d.voters.map(u => [nameOf(u.user_id), ...voteCells(u)])),
                 true));
         }
 
-        container.innerHTML = `${tileRow(playlistTiles)}${tileRow(voteTiles)}
+        return `${tileRow(playlistTiles)}${tileRow(voteTiles)}
             <div class="viz-grid">${panels.join('')}</div>`;
-        fitSegmentLabels(container);
+    }
+
+    function durationRange(b) {
+        return b.end_s == null ? `${fmtClock(b.start_s)} et plus` : `${fmtClock(b.start_s)} – ${fmtClock(b.end_s)}`;
+    }
+
+    function drawSpotifyCharts(d, nameOf) {
+        destroySpotifyCharts();
+        const Chart = window.Chart;
+        applyChartTheme(Chart);
+        const series = cssVar('--viz-series', '#1aa34a');
+        const grid = cssVar('--viz-grid', '#35373c');
+        const surface = cssVar('--bg-card', '#2b2d31');
+        const ink = cssVar('--text-primary', '#f2f3f5');
+        const s = d.summary;
+        const add = (id, config) => {
+            const canvas = document.getElementById(id);
+            if (canvas) _spotifyCharts.push(new Chart(canvas, config));
+        };
+        const countAxis = { beginAtZero: true, grid: { color: grid }, ticks: { precision: 0, maxTicksLimit: 6, callback: v => fmtNum(v) } };
+        const labelAxis = labels => ({
+            grid: { display: false },
+            ticks: { autoSkip: false, maxRotation: 0, callback: (_v, i) => labels[i] || '' },
+        });
+        const truncate = (text, max) => text.length > max ? `${text.slice(0, max - 1)}…` : text;
+
+        // One bar series: months or duration buckets.
+        const columns = (id, labels, axisLabels, values, title, label) => add(id, {
+            type: 'bar',
+            data: {
+                labels,
+                datasets: [{ data: values, backgroundColor: series, borderRadius: 4, maxBarThickness: 24 }],
+            },
+            options: {
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: { callbacks: { title: items => title(items[0].dataIndex), label: item => label(item.parsed.y) } },
+                },
+                scales: { x: labelAxis(axisLabels), y: countAxis },
+            },
+        });
+
+        // Ranked horizontal bars with the value at the tip.
+        const ranking = (id, rows, labelOf) => add(id, {
+            type: 'bar',
+            data: {
+                labels: rows.map(labelOf),
+                datasets: [{ data: rows.map(r => r.count), backgroundColor: series, borderRadius: 4, maxBarThickness: 16 }],
+            },
+            options: {
+                indexAxis: 'y',
+                maintainAspectRatio: false,
+                layout: { padding: { right: 36 } },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: { callbacks: {
+                        label: item => `${plural(item.parsed.x, 'titre')} · ${fmtPct(item.parsed.x / s.track_count)} de la playlist`,
+                    } },
+                    spotifyValueLabels: { mode: 'end', color: ink },
+                },
+                scales: {
+                    x: { display: false, beginAtZero: true },
+                    y: { grid: { display: false }, ticks: { callback(v) { return truncate(this.getLabelForValue(v), 22); } } },
+                },
+            },
+            plugins: [spotifyValueLabels],
+        });
+
+        // keep | menfou | remove, horizontal and stacked. `percent` draws each
+        // row at 100 % (voters); otherwise raw counts on hidden axes (open poll).
+        const voteStack = (id, labels, rows, percent) => {
+            const totals = rows.map(r => VOTE_KEYS.reduce((sum, k) => sum + (r[k.key] || 0), 0));
+            add(id, {
+                type: 'bar',
+                data: {
+                    labels,
+                    datasets: VOTE_KEYS.map(k => ({
+                        label: k.label,
+                        data: rows.map((r, i) => percent ? (totals[i] ? r[k.key] / totals[i] * 100 : 0) : r[k.key]),
+                        counts: rows.map(r => r[k.key]),
+                        valueInk: k.ink,
+                        backgroundColor: cssVar(k.color, '#808080'),
+                        // A surface-coloured edge keeps a 2 px gap between segments.
+                        borderColor: surface,
+                        borderWidth: { right: 2 },
+                        borderSkipped: 'start',
+                        borderRadius: 4,
+                        maxBarThickness: 20,
+                    })),
+                },
+                options: {
+                    indexAxis: 'y',
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { position: 'top', align: 'start', labels: { boxWidth: 10, boxHeight: 10 } },
+                        tooltip: { callbacks: {
+                            label: item => {
+                                const n = item.dataset.counts[item.dataIndex];
+                                const total = totals[item.dataIndex];
+                                return `${item.dataset.label} : ${plural(n, 'vote')} (${fmtPct(total ? n / total : 0)})`;
+                            },
+                        } },
+                        spotifyValueLabels: { mode: 'inside' },
+                    },
+                    scales: {
+                        x: {
+                            stacked: true, display: percent, max: percent ? 100 : totals[0],
+                            grid: { color: grid }, ticks: { callback: v => `${v} %` },
+                        },
+                        y: { stacked: true, display: percent, grid: { display: false } },
+                    },
+                },
+                plugins: [spotifyValueLabels],
+            });
+        };
+
+        if (d.current_poll) voteStack('spotify-chart-poll', [''], [d.current_poll], false);
+
+        const months = d.additions_by_month;
+        columns('spotify-chart-additions', months.map(m => fmtMonth(m.month)),
+            monthAxisLabels(months.map(m => m.month)), months.map(m => m.count),
+            i => fmtMonth(months[i].month, true), n => plural(n, 'titre'));
+
+        ranking('spotify-chart-contributors', d.top_contributors, c => nameOf(c.key));
+        ranking('spotify-chart-artists', d.top_artists, a => a.key);
+
+        const buckets = d.duration_buckets;
+        const labelStep = buckets.length > 16 ? 120 : 60;
+        columns('spotify-chart-durations', buckets.map(durationRange),
+            buckets.map(b => b.start_s % labelStep === 0 ? `${fmtClock(b.start_s)}${b.end_s == null ? '+' : ''}` : ''),
+            buckets.map(b => b.count), i => durationRange(buckets[i]), n => plural(n, 'titre'));
+
+        // Monthly turnout; months without a poll are null, which breaks the line.
+        const part = d.participation_by_month;
+        const has = i => part[i] && part[i].average != null;
+        const lastIdx = part.map((_, i) => has(i)).lastIndexOf(true);
+        const dotted = i => i === lastIdx || (has(i) && !has(i - 1) && !has(i + 1));
+        add('spotify-chart-participation', {
+            type: 'line',
+            data: {
+                labels: part.map(m => fmtMonth(m.month)),
+                datasets: [{
+                    data: part.map(m => m.average),
+                    borderColor: series, backgroundColor: series, borderWidth: 2, tension: 0, spanGaps: false,
+                    pointRadius: ctx => dotted(ctx.dataIndex) ? 4 : 0,
+                    pointHoverRadius: 5, pointBorderColor: surface, pointBorderWidth: 2,
+                }],
+            },
+            options: {
+                maintainAspectRatio: false,
+                interaction: { mode: 'index', intersect: false },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: { callbacks: {
+                        title: items => fmtMonth(part[items[0].dataIndex].month, true),
+                        label: item => `${fmtDec(item.parsed.y)} votant${item.parsed.y >= 2 ? 's' : ''} en moyenne · ${plural(part[item.dataIndex].polls, 'vote')}`,
+                    } },
+                },
+                scales: {
+                    x: labelAxis(monthAxisLabels(part.map(m => m.month))),
+                    y: { beginAtZero: true, grid: { color: grid } },
+                },
+            },
+        });
+
+        voteStack('spotify-chart-voters',
+            d.voters.map(u => `${truncate(nameOf(u.user_id), 18)} (${fmtNum(u.conserver + u.menfou + u.supprimer)})`),
+            d.voters, true);
     }
 
     // ── XP: activity stats + charts ─────────────────────────────────────
@@ -7595,15 +7555,21 @@
         return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
     }
 
+    // Shared by every Chart.js view (XP, Spotify): axis text, gridlines and font
+    // follow the dashboard's theme tokens.
+    function applyChartTheme(Chart) {
+        Chart.defaults.color = cssVar('--text-secondary', '#b5bac1');
+        Chart.defaults.borderColor = cssVar('--border', '#3f4147');
+        Chart.defaults.font.family = getComputedStyle(document.body).fontFamily;
+    }
+
     function drawXpCharts(data) {
         destroyXpCharts();
         const Chart = window.Chart;
         const accent = cssVar('--accent', '#5865f2');
         const success = cssVar('--success', '#23a55a');
         const warning = cssVar('--warning', '#f0b232');
-        Chart.defaults.color = cssVar('--text-secondary', '#b5bac1');
-        Chart.defaults.borderColor = cssVar('--border', '#3f4147');
-        Chart.defaults.font.family = getComputedStyle(document.body).fontFamily;
+        applyChartTheme(Chart);
         const numTick = value => fmtNum(value);
 
         const days = data.daily.map(d => parseIsoDay(d.date));
