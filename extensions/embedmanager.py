@@ -61,7 +61,7 @@ class EmbedManagerConfig(SchemaBase):
     )
 
 
-logger = logutil.init_logger(os.path.basename(__file__))
+logger = logutil.init_logger(__name__)
 
 
 def build_embeds(embeds_config: list[dict]) -> list[Embed]:

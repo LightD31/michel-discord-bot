@@ -45,7 +45,7 @@ from ._common import (
     sp,
 )
 
-logger = logutil.init_logger(os.path.basename(__file__))
+logger = logutil.init_logger(__name__)
 
 # Mongo-backed per-user cooldown shared across both button handlers
 # (conserver/supprimer/menfou + addwithvote). TTL indexes auto-expire entries.

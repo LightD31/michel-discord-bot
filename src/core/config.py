@@ -20,7 +20,7 @@ from typing import Any, Optional, cast
 
 from src.core import logging as _logging
 
-logger = _logging.init_logger(os.path.basename(__file__))
+logger = _logging.init_logger(__name__)
 
 CONFIG_PATH = os.path.join("config", "config.json")
 

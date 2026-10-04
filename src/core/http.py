@@ -21,7 +21,6 @@ Usage::
 from __future__ import annotations
 
 import asyncio
-import os
 import random
 import threading
 from typing import Any, ClassVar
@@ -32,7 +31,7 @@ from aiohttp import ClientError, ClientSession, ClientTimeout
 from src.core import logging as _logging
 from src.core.errors import HttpError
 
-logger = _logging.init_logger(os.path.basename(__file__))
+logger = _logging.init_logger(__name__)
 
 _SENSITIVE_QUERY_KEYS = ("token", "access_token", "key", "api_key", "apikey", "password", "secret")
 

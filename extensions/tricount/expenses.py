@@ -25,7 +25,7 @@ from ._common import (
     guild_currency,
 )
 
-logger = logutil.init_logger(os.path.basename(__file__))
+logger = logutil.init_logger(__name__)
 
 
 class ExpensesMixin:

@@ -4,7 +4,6 @@ A tiny TTL-indexed collection stores the last vote time per user. Mongo expires
 entries automatically so the collection stays bounded across bot lifetimes.
 """
 
-import os
 import time
 from datetime import UTC, datetime, timedelta
 
@@ -13,7 +12,7 @@ import pymongo
 from src.core.db import mongo_manager
 from src.core.logging import init_logger
 
-logger = init_logger(os.path.basename(__file__))
+logger = init_logger(__name__)
 
 COLLECTION = "spotify_vote_cooldowns"
 

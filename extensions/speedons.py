@@ -69,7 +69,7 @@ class SpeedonsConfig(SchemaBase):
     )
 
 
-logger = logutil.init_logger(os.path.basename(__file__))
+logger = logutil.init_logger(__name__)
 
 _, _module_config, _enabled_servers = load_config("moduleSpeedons")
 _cfg = _module_config.get(_enabled_servers[0], {}) if _enabled_servers else {}

@@ -28,7 +28,6 @@ Usage::
 import asyncio
 import functools
 import json
-import os
 import shutil
 from collections.abc import Awaitable, Callable
 from datetime import datetime
@@ -46,7 +45,7 @@ from src.core import logging as _logging
 from src.core.config import load_config
 from src.core.errors import DatabaseError
 
-logger = _logging.init_logger(os.path.basename(__file__))
+logger = _logging.init_logger(__name__)
 
 # Database naming conventions
 GLOBAL_DB_NAME = "global"

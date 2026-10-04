@@ -3,8 +3,6 @@
 The original message id doubles as the document ``_id`` for O(1) lookup.
 """
 
-import os
-
 import pymongo
 
 from features.starboard.models import StarEntry
@@ -12,7 +10,7 @@ from src.core.db import mongo_manager
 from src.core.errors import DatabaseError
 from src.core.logging import init_logger
 
-logger = init_logger(os.path.basename(__file__))
+logger = init_logger(__name__)
 
 COLLECTION = "starboard"
 

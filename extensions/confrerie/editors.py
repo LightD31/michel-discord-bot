@@ -32,7 +32,7 @@ from src.integrations.notion import NotionAPIError
 
 from ._common import autocomplete_options, enabled_servers, module_config
 
-logger = logutil.init_logger(os.path.basename(__file__))
+logger = logutil.init_logger(__name__)
 
 _AUTOCOMPLETE_COLUMNS = {
     "genre_1": COL_GENRES,

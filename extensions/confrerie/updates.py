@@ -12,7 +12,7 @@ from src.discord_ext.embeds import Colors, format_discord_timestamp
 
 from ._common import ConfrerieError, module_config
 
-logger = logutil.init_logger(os.path.basename(__file__))
+logger = logutil.init_logger(__name__)
 
 # Discord caps a message's content at 2000 characters.
 MESSAGE_LIMIT = 2000

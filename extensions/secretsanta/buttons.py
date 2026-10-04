@@ -13,7 +13,7 @@ from src.discord_ext.messages import edit_message_if_changed, fetch_user_safe
 
 from ._common import create_join_buttons
 
-logger = logutil.init_logger(os.path.basename(__file__))
+logger = logutil.init_logger(__name__)
 
 
 class ButtonsMixin:

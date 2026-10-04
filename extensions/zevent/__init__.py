@@ -40,7 +40,7 @@ from .embeds import EmbedsMixin
 from .streams import StreamsMixin
 from .tasks import TasksMixin
 
-logger = logutil.init_logger(os.path.basename(__file__))
+logger = logutil.init_logger(__name__)
 
 
 class Zevent(

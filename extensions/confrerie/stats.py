@@ -15,7 +15,7 @@ from src.discord_ext.messages import edit_message_if_changed, fetch_or_create_pe
 
 from ._common import ConfrerieError, guild_id, module_config
 
-logger = logutil.init_logger(os.path.basename(__file__))
+logger = logutil.init_logger(__name__)
 
 FIELD_BUDGET = 1024
 TOP_ROWS = 10

@@ -14,8 +14,6 @@ Thin async layer over :mod:`src.integrations.shlink` and the pure helpers in
 
 from __future__ import annotations
 
-import os
-
 from features.links.shortener import (
     clean_url,
     extract_urls,
@@ -27,7 +25,7 @@ from features.links.shortener import (
 from src.core import logging as logutil
 from src.integrations.shlink import ShlinkError, get_settings, shlink_client
 
-logger = logutil.init_logger(os.path.basename(__file__))
+logger = logutil.init_logger(__name__)
 
 
 def shortening_enabled() -> bool:

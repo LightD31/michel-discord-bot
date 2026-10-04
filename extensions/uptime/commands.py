@@ -21,7 +21,7 @@ from src.discord_ext.messages import send_error
 
 from ._common import config, enabled_servers
 
-logger = logutil.init_logger(os.path.basename(__file__))
+logger = logutil.init_logger(__name__)
 
 
 class CommandsMixin:

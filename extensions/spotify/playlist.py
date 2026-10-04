@@ -45,7 +45,7 @@ from ._common import (
     sp,
 )
 
-logger = logutil.init_logger(os.path.basename(__file__))
+logger = logutil.init_logger(__name__)
 
 
 class PlaylistMixin:

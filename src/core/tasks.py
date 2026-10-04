@@ -20,13 +20,12 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import os
 from collections.abc import Coroutine
 from typing import Any
 
 from src.core import logging as _logging
 
-logger = _logging.init_logger(os.path.basename(__file__))
+logger = _logging.init_logger(__name__)
 
 # Strong references to in-flight tasks, discarded as each one completes. This
 # set is the whole point of the module: without it the loop's weak reference is

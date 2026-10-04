@@ -4,7 +4,6 @@ Guild contexts use per-guild databases; DM / group-DM contexts fall back to the
 global database.
 """
 
-import os
 from dataclasses import asdict
 from datetime import datetime
 
@@ -13,7 +12,7 @@ from src.core.logging import init_logger
 
 from .models import SecretSantaSession
 
-logger = init_logger(os.path.basename(__file__))
+logger = init_logger(__name__)
 
 
 class SecretSantaRepository:

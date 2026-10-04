@@ -1,11 +1,9 @@
 """MongoDB I/O for the Uptime feature — per-guild maintenance monitor configs."""
 
-import os
-
 from src.core.db import mongo_manager, translates_db_errors
 from src.core.logging import init_logger
 
-logger = init_logger(os.path.basename(__file__))
+logger = init_logger(__name__)
 
 
 class UptimeRepository:

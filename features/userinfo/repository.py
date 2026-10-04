@@ -1,14 +1,12 @@
 """UserInfo repository — keeps the per-guild `users` collection in sync."""
 
-import os
-
 import pymongo
 import pymongo.errors
 
 from src.core.db import mongo_manager, translates_db_errors
 from src.core.logging import init_logger
 
-logger = init_logger(os.path.basename(__file__))
+logger = init_logger(__name__)
 
 
 class UserInfoRepository:

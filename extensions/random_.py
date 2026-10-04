@@ -20,7 +20,7 @@ from features.messages import chooseList
 from features.random import validate_choices, validate_die_faces
 from src.core import logging as logutil
 
-logger = logutil.init_logger(os.path.basename(__file__))
+logger = logutil.init_logger(__name__)
 
 DEFAULT_SEPARATOR = ";"
 

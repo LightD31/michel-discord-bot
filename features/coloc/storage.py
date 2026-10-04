@@ -1,13 +1,11 @@
 """Storage manager for persisting reminders and event states using MongoDB."""
 
-import os
-
 from src.core import logging as logutil
 from src.core.db import mongo_manager
 
 from .models import EventState, ReminderCollection
 
-logger = logutil.init_logger(os.path.basename(__file__))
+logger = logutil.init_logger(__name__)
 
 
 class StorageManager:

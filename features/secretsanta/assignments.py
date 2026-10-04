@@ -1,11 +1,10 @@
 """Pure Secret Santa assignment algorithms (no I/O, no Discord)."""
 
-import os
 import random
 
 from src.core.logging import init_logger
 
-logger = init_logger(os.path.basename(__file__))
+logger = init_logger(__name__)
 
 
 def is_valid_assignment(giver: int, receiver: int, banned_pairs: list[tuple[int, int]]) -> bool:

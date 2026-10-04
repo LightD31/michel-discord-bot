@@ -1,7 +1,6 @@
 import asyncio
 import gzip
 import json
-import os
 import time
 from io import BytesIO
 from typing import cast
@@ -11,7 +10,7 @@ import nbtlib
 
 from src.core import logging as logutil
 
-logger = logutil.init_logger(os.path.basename(__file__))
+logger = logutil.init_logger(__name__)
 
 
 def _as_text(path: bytes | str) -> str:

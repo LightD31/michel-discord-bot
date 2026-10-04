@@ -1,6 +1,5 @@
 """MongoDB I/O for RSS feed bookkeeping — one document per ``feed_id`` per guild."""
 
-import os
 from datetime import datetime
 
 from features.rss.models import RssFeedState
@@ -8,7 +7,7 @@ from src.core.db import mongo_manager
 from src.core.errors import DatabaseError
 from src.core.logging import init_logger
 
-logger = init_logger(os.path.basename(__file__))
+logger = init_logger(__name__)
 
 COLLECTION = "rss"
 # How many seen entry ids to keep per feed. Larger = more dedupe history but

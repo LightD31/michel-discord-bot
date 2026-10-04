@@ -44,7 +44,7 @@ def source_footer(*sources: str | None) -> str:
 # margin absorbs the parts the size estimate cannot see.
 EMBED_TOTAL_BUDGET = 5800
 
-logger = logutil.init_logger(os.path.basename(__file__))
+logger = logutil.init_logger(__name__)
 
 
 def format_euros(amount: float) -> str:

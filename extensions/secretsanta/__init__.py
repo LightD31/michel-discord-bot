@@ -17,7 +17,7 @@ from .buttons import ButtonsMixin
 from .draws import DrawsMixin
 from .sessions import SessionsMixin
 
-logger = logutil.init_logger(os.path.basename(__file__))
+logger = logutil.init_logger(__name__)
 
 
 class SecretSantaExtension(Extension, SessionsMixin, DrawsMixin, BansMixin, ButtonsMixin):

@@ -50,7 +50,7 @@ from src.discord_ext.paginator import format_poll
 
 from .buttons import PollButtonsMixin, render_results_field, update_poll_embed, vote_components
 
-logger = logutil.init_logger(os.path.basename(__file__))
+logger = logutil.init_logger(__name__)
 _, _utils_module_config, enabled_servers = load_config("moduleUtils")
 enabled_servers_int = [int(s) for s in enabled_servers]  # type: ignore[misc]
 

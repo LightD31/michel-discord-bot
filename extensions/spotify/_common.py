@@ -37,7 +37,7 @@ from src.webui.schemas import (
     ui,
 )
 
-logger = logutil.init_logger(os.path.basename(__file__))
+logger = logutil.init_logger(__name__)
 
 
 @register_module("moduleSpotify")

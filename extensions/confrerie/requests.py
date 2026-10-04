@@ -30,7 +30,7 @@ from src.discord_ext.messages import send_error
 
 from ._common import autocomplete_options, enabled_servers, guild_id, module_config
 
-logger = logutil.init_logger(os.path.basename(__file__))
+logger = logutil.init_logger(__name__)
 
 _AUTOCOMPLETE_COLUMNS = {"type": COL_TYPE, "genre": COL_GENRE, "defi": COL_DEFI}
 

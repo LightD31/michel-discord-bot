@@ -8,7 +8,7 @@ from features.uptime import normalize_status
 from src.core import logging as logutil
 from src.discord_ext.embeds import Colors
 
-logger = logutil.init_logger(os.path.basename(__file__))
+logger = logutil.init_logger(__name__)
 
 
 class NotificationsMixin:

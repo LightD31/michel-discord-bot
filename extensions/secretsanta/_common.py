@@ -30,7 +30,7 @@ class SecretSantaConfig(SchemaBase):
     enabled: bool = enabled_field()
 
 
-logger = logutil.init_logger(os.path.basename(__file__))
+logger = logutil.init_logger(__name__)
 config, module_config, enabled_servers = load_config("moduleSecretSanta")
 
 DATA_DIR = Path("data/secret_santa")
