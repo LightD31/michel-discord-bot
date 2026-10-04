@@ -114,7 +114,7 @@ mcstatus==14.2.0
     # via michel-discord-bot (pyproject.toml)
 motor==3.7.1
     # via michel-discord-bot (pyproject.toml)
-multidict==6.9.1
+multidict==7.0.0
     # via
     #   aiohttp
     #   yarl
@@ -147,7 +147,7 @@ pydantic==2.13.5
     #   michel-discord-bot (pyproject.toml)
     #   fastapi
     #   openai
-pydantic-core==2.46.5
+pydantic-core==2.49.0
     # via pydantic
 pyfactorybridge==1.0.1
     # via michel-discord-bot (pyproject.toml)
