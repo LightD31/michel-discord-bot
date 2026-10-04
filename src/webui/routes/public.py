@@ -1,26 +1,33 @@
-"""Unauthenticated, read-only endpoints behind the per-guild public dashboards.
+"""Read-only endpoints behind the per-guild public dashboards, plus their admin side.
 
 Each guild can publish its XP and Spotify statistics at
-``/public/{guild_id}/xp`` and ``/public/{guild_id}/spotify`` (pages served by
-the SPA). Opt-in per module through the ``publicDashboard`` flag — see
-:mod:`src.webui.public_links`. Anything not explicitly published answers the
-same 404 as an unknown guild, so the endpoints don't reveal which guilds the
-bot is configured for.
+``/public/{token}/xp`` and ``/public/{token}/spotify`` (pages served by the
+SPA). ``token`` is the guild's random ``publicDashboardToken``, never its id.
+Opt-in per module through the ``publicDashboard`` flag; see
+:mod:`src.webui.public_links`. An unknown token and an unpublished page answer
+the same 404, so the endpoints reveal nothing about which guilds exist.
 
-The payloads reuse the admin module-page aggregations with two differences:
+The payloads reuse the admin module-page aggregations with these differences:
 
 - no Discord ids: XP rows keep only the display name, and Spotify user ids are
   replaced by the member's name server-side;
+- the open Spotify poll shows only its title, date, who added the track and
+  how many people voted. The tally and the voters' names stay hidden until it
+  closes, so the page can't sway it;
 - results are cached per guild (and window) for :data:`CACHE_TTL_SECONDS`, and
   concurrent misses share one computation, so anonymous traffic costs at most
   one MongoDB aggregation per guild per period.
+
+Guild admins fetch the link from ``GET /api/servers/{id}/public-dashboard``
+(minting the token on first use) and revoke it with
+``POST /api/servers/{id}/public-dashboard/rotate``.
 """
 
 import asyncio
 from collections.abc import Awaitable, Callable
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 
 from features.userinfo.repository import UserInfoRepository
@@ -29,7 +36,13 @@ from src.core import logging as logutil
 from src.core.config import config_store
 from src.core.errors import DatabaseError
 from src.webui.context import WebUIContext
-from src.webui.public_links import enabled_public_dashboards, public_dashboard_enabled
+from src.webui.public_links import (
+    enabled_public_dashboards,
+    ensure_public_token,
+    find_guild_by_token,
+    public_dashboard_enabled,
+    public_token,
+)
 from src.webui.routes import spotify as spotify_routes
 from src.webui.routes import xp as xp_routes
 
@@ -40,18 +53,20 @@ UNKNOWN_MEMBER = "Membre inconnu"
 NOT_FOUND = "Dashboard public introuvable"
 
 
-def _server_config(server_id: str) -> dict[str, Any]:
-    servers = config_store.get().get("servers", {})
-    server = servers.get(server_id) if server_id.isdigit() else None
-    return server if isinstance(server, dict) else {}
+def _resolve(token: str) -> tuple[str, dict[str, Any]]:
+    """``(guild_id, server_config)`` for a URL token, or 404."""
+    found = find_guild_by_token(config_store.get().get("servers", {}), token)
+    if found is None:
+        raise HTTPException(status_code=404, detail=NOT_FOUND)
+    return found
 
 
-def _require_public(server_id: str, kind: str) -> dict[str, Any]:
-    """Return the guild's config, or 404 unless *kind* is published there."""
-    server = _server_config(server_id)
+def _require_public(token: str, kind: str) -> tuple[str, dict[str, Any]]:
+    """Resolve *token*, or 404 unless *kind* is published for that guild."""
+    server_id, server = _resolve(token)
     if not public_dashboard_enabled(server, kind):
         raise HTTPException(status_code=404, detail=NOT_FOUND)
-    return server
+    return server_id, server
 
 
 def _public_xp_payload(stats: dict[str, Any]) -> dict[str, Any]:
@@ -67,6 +82,21 @@ def _public_xp_payload(stats: dict[str, Any]) -> dict[str, Any]:
             public_row["display_name"] = UNKNOWN_MEMBER
         top.append(public_row)
     return {**stats, "top": top}
+
+
+def _public_spotify_payload(stats: dict[str, Any]) -> dict[str, Any]:
+    """Keep the open poll's identity and turnout; who voted what stays private until it closes."""
+    poll = stats.get("current_poll")
+    if not poll:
+        return stats
+    hidden = {
+        "name": poll.get("name"),
+        "date": poll.get("date"),
+        "added_by": poll.get("added_by"),
+        "voter_count": len(poll.get("voters") or []),
+        "results_hidden": True,
+    }
+    return {**stats, "current_poll": hidden}
 
 
 async def _spotify_label_resolver(
@@ -124,18 +154,54 @@ def create_router(ctx: WebUIContext) -> APIRouter:
     router = APIRouter()
     cache = _CoalescingCache(CACHE_TTL_SECONDS)
 
-    @router.get("/api/public/{server_id}")
-    async def api_public_guild(server_id: str):
+    # --- Admin: the guild's public link ----------------------------------
+
+    def _link_payload(server_id: str, token: str) -> JSONResponse:
+        server = config_store.get().get("servers", {}).get(server_id) or {}
+        return JSONResponse({"token": token, "dashboards": enabled_public_dashboards(server)})
+
+    @router.get("/api/servers/{server_id}/public-dashboard")
+    async def api_public_link(request: Request, server_id: str):
+        """The guild's public token, minted on first request."""
+        session = ctx.require_guild_admin(request, server_id)
+        had_token = bool(public_token(config_store.get().get("servers", {}).get(server_id) or {}))
+        token = ensure_public_token(server_id, mutate=ctx.mutate_config)
+        if not had_token:
+            logger.info(
+                "Public dashboard token created for guild %s (by %s/%s)",
+                server_id,
+                session.username,
+                session.user_id,
+            )
+        return _link_payload(server_id, token)
+
+    @router.post("/api/servers/{server_id}/public-dashboard/rotate")
+    async def api_rotate_public_link(request: Request, server_id: str):
+        """Replace the guild's public token: every previously shared link stops working."""
+        session = ctx.require_guild_admin(request, server_id)
+        token = ensure_public_token(server_id, rotate=True, mutate=ctx.mutate_config)
+        logger.info(
+            "Public dashboard token rotated for guild %s (by %s/%s)",
+            server_id,
+            session.username,
+            session.user_id,
+        )
+        return _link_payload(server_id, token)
+
+    # --- Public pages ------------------------------------------------------
+
+    @router.get("/api/public/{token}")
+    async def api_public_guild(token: str):
         """Header data for a guild's public pages, and which pages it publishes."""
-        server = _server_config(server_id)
+        server_id, server = _resolve(token)
         dashboards = enabled_public_dashboards(server)
         if not dashboards:
             raise HTTPException(status_code=404, detail=NOT_FOUND)
         return JSONResponse({**_guild_meta(ctx, server_id, server), "dashboards": dashboards})
 
-    @router.get("/api/public/{server_id}/xp/stats")
-    async def api_public_xp_stats(server_id: str, days: int = Query(default=30)):
-        _require_public(server_id, "xp")
+    @router.get("/api/public/{token}/xp/stats")
+    async def api_public_xp_stats(token: str, days: int = Query(default=30)):
+        server_id, _ = _require_public(token, "xp")
         xp_routes.validate_range(days)
 
         async def compute() -> dict[str, Any]:
@@ -150,14 +216,14 @@ def create_router(ctx: WebUIContext) -> APIRouter:
             ) from e
         return JSONResponse(stats)
 
-    @router.get("/api/public/{server_id}/spotify/stats")
-    async def api_public_spotify_stats(server_id: str):
-        server = _require_public(server_id, "spotify")
+    @router.get("/api/public/{token}/spotify/stats")
+    async def api_public_spotify_stats(token: str):
+        server_id, server = _require_public(token, "spotify")
 
         async def compute() -> dict[str, Any]:
             stats = await spotify_routes.collect_spotify_stats(server_id)
             label_of = await _spotify_label_resolver(server_id, server, stats.user_ids())
-            return stats.with_user_labels(label_of).to_dict()
+            return _public_spotify_payload(stats.with_user_labels(label_of).to_dict())
 
         try:
             stats = await cache.get_or_compute(f"spotify:{server_id}", compute)
