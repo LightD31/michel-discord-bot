@@ -216,6 +216,8 @@
             "moduleSpotify": {
                 "enabled": false,
                 "voteEnabled": false,
+                "voteReminderEveryDays": 0,
+                "voteReminderRoleId": "",
                 "spotifyChannelId": "",
                 "spotifyPlaylistId": "",
                 "spotifyNewPlaylistId": "",
