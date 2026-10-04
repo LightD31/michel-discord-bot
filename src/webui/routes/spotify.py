@@ -26,7 +26,7 @@ from urllib.parse import quote
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
-from features.spotify import SpotifyRepository, aggregate
+from features.spotify import PlaylistStats, SpotifyRepository, aggregate
 from src.core import logging as logutil
 from src.core.config import config_store
 from src.core.errors import DatabaseError
@@ -56,6 +56,19 @@ def _callback_url() -> str:
     return f"{base.rstrip('/')}{CALLBACK_PATH}"
 
 
+async def collect_spotify_stats(server_id: str) -> PlaylistStats:
+    """Playlist and vote statistics for *server_id*, straight from MongoDB.
+
+    Shared by the admin module page and the public dashboard
+    (``routes/public.py``). Raises ``DatabaseError`` when MongoDB fails.
+    """
+    repo = SpotifyRepository(server_id)
+    playlist = await repo.find_playlist_items({})
+    votes = await repo.find_vote_docs({})
+    vote_infos = await repo.get_vote_infos() or {}
+    return aggregate(playlist.values(), votes.values(), vote_infos.get("track_id"))
+
+
 def create_router(ctx: WebUIContext) -> APIRouter:
     router = APIRouter()
 
@@ -73,17 +86,13 @@ def create_router(ctx: WebUIContext) -> APIRouter:
     async def api_spotify_stats(request: Request, server_id: str):
         """Playlist and vote statistics for the guild's Spotify dashboard charts."""
         ctx.require_guild_admin(request, server_id)
-        repo = SpotifyRepository(server_id)
         try:
-            playlist = await repo.find_playlist_items({})
-            votes = await repo.find_vote_docs({})
-            vote_infos = await repo.get_vote_infos() or {}
+            stats = await collect_spotify_stats(server_id)
         except DatabaseError as e:
             logger.error("Spotify stats failed for %s: %s", server_id, e)
             raise HTTPException(
                 status_code=500, detail="Lecture des statistiques Spotify impossible."
             ) from e
-        stats = aggregate(playlist.values(), votes.values(), vote_infos.get("track_id"))
         return JSONResponse(stats.to_dict())
 
     @router.get("/spotify/auth/start")

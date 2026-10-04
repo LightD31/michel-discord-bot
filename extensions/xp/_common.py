@@ -41,6 +41,15 @@ class XpConfig(SchemaBase):
         description="Épingler automatiquement le message du leaderboard.",
     )
     xpMessageId: str | None = hidden_message_id("Message leaderboard", "xpChannelId")
+    publicDashboard: bool = ui(
+        "Dashboard public",
+        "boolean",
+        default=False,
+        description=(
+            "Publier les statistiques XP (classement, activité) sur une page "
+            "accessible sans connexion : /public/<ID du serveur>/xp."
+        ),
+    )
     voiceXpEnabled: bool = ui(
         "XP vocal",
         "boolean",

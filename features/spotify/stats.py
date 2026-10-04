@@ -17,8 +17,8 @@ serialises identically.
 """
 
 from collections import Counter
-from collections.abc import Iterable, Mapping
-from dataclasses import asdict, dataclass, field
+from collections.abc import Callable, Iterable, Mapping
+from dataclasses import asdict, dataclass, field, replace
 from datetime import UTC, datetime, tzinfo
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -123,6 +123,35 @@ class PlaylistStats:
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
+
+    def user_ids(self) -> set[str]:
+        """Every Discord user id the statistics mention."""
+        ids = {c.key for c in self.top_contributors} | {v.user_id for v in self.voters}
+        if self.current_poll:
+            ids.update(self.current_poll.voters)
+            if self.current_poll.added_by:
+                ids.add(self.current_poll.added_by)
+        return ids
+
+    def with_user_labels(self, label_of: Callable[[str], str]) -> "PlaylistStats":
+        """A copy with every Discord user id replaced by ``label_of(id)``.
+
+        The public dashboard serves names, never ids. Artist names in
+        ``top_artists`` share the ``NamedCount`` shape but are left untouched.
+        """
+        poll = self.current_poll
+        if poll:
+            poll = replace(
+                poll,
+                added_by=label_of(poll.added_by) if poll.added_by else None,
+                voters=[label_of(v) for v in poll.voters],
+            )
+        return replace(
+            self,
+            top_contributors=[replace(c, key=label_of(c.key)) for c in self.top_contributors],
+            voters=[replace(v, user_id=label_of(v.user_id)) for v in self.voters],
+            current_poll=poll,
+        )
 
 
 def parse_timestamp(value: Any) -> datetime | None:

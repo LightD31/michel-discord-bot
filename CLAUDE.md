@@ -91,6 +91,8 @@ When schema-driven forms aren't enough (e.g. CRUD over a list of objects, anythi
 
 Two tiers, enforced via helpers on `WebUIContext` (`src/webui/context.py`): any authenticated Discord user can manage the guilds where they hold `MANAGE_GUILD`/`ADMINISTRATOR` (or ownership); user IDs in `config.webui.developerUserIds` additionally get global config, extension reload, and the live log stream. Sessions are MongoDB-persisted with a TTL index (`src/webui/sessions.py`). Use `require_guild_admin()` for per-guild routes and `require_developer()` for global ones — never skip the check. The auth endpoints are rate-limited per client IP (`src/webui/ratelimit.py`).
 
+The one deliberate exception is `routes/public.py`: the per-guild public XP and Spotify dashboards (SPA pages at `/public/{guild_id}/{xp|spotify}`). They are opt-in per module through the `publicDashboard` flag (`src/webui/public_links.py`), answer an unpublished guild with the same 404 as an unknown one, strip Discord ids from their payloads (names only), and cache each aggregation for 5 minutes so anonymous traffic can't hammer MongoDB. Keep all four properties if you add another public page.
+
 ### Web UI config I/O rules
 
 - **Mutations**: use `ctx.mutate_config(mutator)` — an atomic read-modify-write under the config write lock — never `get_full_config()` + `save_config()` in sequence (that pattern silently drops concurrent edits). Include the acting user (`session.username`/`session.user_id` from the `require_*` helper) in the mutation log line.

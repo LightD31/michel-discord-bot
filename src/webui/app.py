@@ -38,6 +38,9 @@ from src.webui.routes import (
     moderation as moderation_routes,
 )
 from src.webui.routes import (
+    public as public_routes,
+)
+from src.webui.routes import (
     rolemenus as rolemenus_routes,
 )
 from src.webui.routes import (
@@ -142,6 +145,8 @@ def create_app(bot=None, bot_loop=None) -> FastAPI:
     app.include_router(extensions_routes.create_router(ctx))
     app.include_router(spotify_routes.create_router(ctx))
     app.include_router(shlink_routes.create_router(ctx))
+    # Unauthenticated: the per-guild public XP / Spotify dashboards.
+    app.include_router(public_routes.create_router(ctx))
     app.include_router(bot_routes.create_router(ctx))
     app.include_router(logs_sse.create_router(ctx))
     app.include_router(frontend_routes.create_router(ctx))
