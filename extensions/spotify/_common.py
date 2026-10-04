@@ -18,11 +18,17 @@ from interactions import Message
 
 from features.spotify import SpotifyRepository
 from src.core import logging as logutil
-from src.core.config import load_config, load_discord2name
+from src.core.config import config_store, load_config, load_discord2name
+from src.core.errors import ConfigError
 from src.core.http import http_client
 from src.discord_ext.embeds import Colors
 from src.integrations.spotify import sp
-from src.webui.public_links import PUBLIC_FLAG, public_dashboard_url
+from src.webui.public_links import (
+    PUBLIC_FLAG,
+    ensure_public_token,
+    public_dashboard_url,
+    public_token,
+)
 from src.webui.schemas import (
     SchemaBase,
     enabled_field,
@@ -95,7 +101,7 @@ class SpotifyConfig(SchemaBase):
         default=False,
         description=(
             "Publier les statistiques de la playlist et des votes sur une page "
-            "accessible sans connexion : /public/<ID du serveur>/spotify."
+            "accessible sans connexion, via un lien secret (bouton « Page publique »)."
         ),
     )
     spotifyDashboardUrl: str | None = ui(
@@ -258,12 +264,14 @@ class ServerData:
         if not self.spotify2discord:
             self.spotify2discord = server_config.get("spotifyIdToDiscordId", {})
 
-        public_dashboard = (
-            public_dashboard_url(config, guild_id, "spotify")
-            if server_config.get(PUBLIC_FLAG)
-            else ""
-        )
-        self.links = SpotifyLinks.from_config(server_config, public_dashboard)
+        self._server_config = server_config
+        self._public_dashboard = bool(server_config.get(PUBLIC_FLAG))
+        if self._public_dashboard and not server_config.get("spotifyDashboardUrl"):
+            # Mint the token now so the first embed can already link the page.
+            try:
+                ensure_public_token(guild_id)
+            except ConfigError as e:
+                logger.warning("Public dashboard token unavailable for %s: %s", guild_id, e)
         self.channel_id = server_config.get("spotifyChannelId")
         self.playlist_id = server_config.get("spotifyPlaylistId")
         self.new_playlist_id = server_config.get("spotifyNewPlaylistId")
@@ -284,6 +292,18 @@ class ServerData:
         self.reminders = {}
 
         self.vote_manager = VoteManager(self.repo, self.discord2name)
+
+    @property
+    def links(self) -> SpotifyLinks:
+        """Configured links; the public page fills in when no dashboard link is set.
+
+        Read at use time so a token rotated from the dashboard applies at once.
+        """
+        public_dashboard = ""
+        if self._public_dashboard:
+            server = config_store.get().get("servers", {}).get(self.guild_id) or {}
+            public_dashboard = public_dashboard_url(config, public_token(server), "spotify")
+        return SpotifyLinks.from_config(self._server_config, public_dashboard)
 
 
 # Per-server data, keyed by stringified guild id.

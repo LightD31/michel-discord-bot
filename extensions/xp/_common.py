@@ -47,7 +47,7 @@ class XpConfig(SchemaBase):
         default=False,
         description=(
             "Publier les statistiques XP (classement, activité) sur une page "
-            "accessible sans connexion : /public/<ID du serveur>/xp."
+            "accessible sans connexion, via un lien secret (bouton « Page publique »)."
         ),
     )
     voiceXpEnabled: bool = ui(
