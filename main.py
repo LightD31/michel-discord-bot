@@ -17,7 +17,10 @@ from interactions import IntervalTrigger, Task
 from src.core import logging as logutil
 from src.core.config import load_config
 from src.core.logging import DEBUG
+from src.core.migrations import run_migrations
 
+# Before anything reads config: rewrite old config shapes in place.
+run_migrations()
 config, _, _ = load_config()
 
 DEV_GUILD = config["discord"]["devGuildId"]
