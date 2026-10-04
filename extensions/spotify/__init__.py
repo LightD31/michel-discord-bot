@@ -14,6 +14,7 @@ from datetime import datetime
 
 from interactions import Client, Extension, listen
 
+from features.spotify import reattribution_map, unmapped_contributors
 from src.core import logging as logutil
 
 from ._common import SERVERS, ServerData
@@ -39,11 +40,44 @@ class SpotifyExtension(Extension, PlaylistMixin, VotesMixin):
             await self.load_voteinfos(server)
             await self.load_snapshot(server)
             await self.load_reminders(server)
+            await self.fix_spotify_attributions(server)
         self.check_playlist_changes.start()
         self.randomvote.start()
         self.reminder_check.start()
         self.check_for_end.start()
         self.new_titles_playlist.start()
+
+    async def fix_spotify_attributions(self, server: ServerData):
+        """Credit tracks stored under a now-mapped Spotify id to its Discord member.
+
+        Runs at startup and after every dashboard save of the module (which
+        reloads the extension), so adding someone to the Spotify → Discord
+        mapping also fixes the tracks they added before.
+        """
+        try:
+            changed = await server.repo.reattribute_added_by(
+                reattribution_map(server.spotify2discord)
+            )
+            if changed:
+                logger.info(
+                    "%s titre(s)/vote(s) réattribué(s) d'un ID Spotify à un membre Discord "
+                    "(serveur %s)",
+                    changed,
+                    server.guild_id,
+                )
+            unmapped = unmapped_contributors(await server.repo.added_by_counts())
+            for spotify_id, count in unmapped.items():
+                logger.warning(
+                    "%s titre(s) attribué(s) à l'ID Spotify %r, absent du mapping "
+                    "Spotify → Discord (serveur %s)",
+                    count,
+                    spotify_id,
+                    server.guild_id,
+                )
+        except Exception as e:
+            logger.error(
+                "Réattribution des titres impossible pour le serveur %s : %s", server.guild_id, e
+            )
 
     async def load_voteinfos(self, server: ServerData):
         doc = await server.repo.get_vote_infos()

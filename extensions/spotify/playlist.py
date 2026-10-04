@@ -23,6 +23,7 @@ from interactions.client.utils import timestamp_converter
 
 from features.links import shorten_keyed
 from features.messages import finishList, startList
+from features.spotify import plan_duplicate_removal
 from src.core import logging as logutil
 from src.core.text import milliseconds_to_string
 from src.discord_ext.embeds import Colors
@@ -177,6 +178,12 @@ class PlaylistMixin:
                 results = sp.next(results)
                 tracks.extend(results["items"])
 
+            # Spotify keeps a second copy of a track added both from the app and
+            # through /addsong; the mirror is keyed by id and would never see it.
+            # ``new_snap`` deliberately stays the pre-cleanup snapshot, so the
+            # next run re-fetches and catches anything added meanwhile.
+            tracks = self._remove_duplicate_tracks(server, tracks)
+
             length = len(tracks)
             duration = 0
             last_track_ids = await server.repo.playlist_track_ids()
@@ -292,6 +299,27 @@ class PlaylistMixin:
                     )
             except Exception as e:
                 logger.error("Error while trying to edit recap message: %s", e)
+
+    def _remove_duplicate_tracks(self, server: ServerData, tracks: list[dict]) -> list[dict]:
+        """Collapse duplicate tracks in the Spotify playlist to their first copy.
+
+        Returns *tracks* without the removed copies.
+        """
+        plan = plan_duplicate_removal([track["track"]["id"] for track in tracks])
+        if not plan:
+            return tracks
+        for track_id, position in plan:
+            sp.playlist_remove_all_occurrences_of_items(server.playlist_id, [track_id])
+            sp.playlist_add_items(server.playlist_id, [track_id], position=position)
+            logger.info("Doublon %s retiré de la playlist du serveur %s", track_id, server.guild_id)
+        seen: set[str | None] = set()
+        unique = []
+        for track in tracks:
+            track_id = track["track"]["id"]
+            if track_id is None or track_id not in seen:
+                seen.add(track_id)
+                unique.append(track)
+        return unique
 
     @slash_command(
         name="songinfo",
