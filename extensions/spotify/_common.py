@@ -138,7 +138,9 @@ class SpotifyConfig(SchemaBase):
         "spotifymap",
         description=(
             "Associe un ID Spotify à un membre Discord. "
-            "Le prénom affiché vient du mapping « Discord → Prénoms »."
+            "Le prénom affiché vient du mapping « Discord → Prénoms ». "
+            "Les titres déjà ajoutés depuis ce compte Spotify lui sont réattribués "
+            "à l'enregistrement."
         ),
     )
 

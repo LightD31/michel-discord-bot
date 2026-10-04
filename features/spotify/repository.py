@@ -104,6 +104,29 @@ class SpotifyRepository:
         """Return playlist documents matching ``query``, keyed by ``_id``."""
         return {item["_id"]: item async for item in self._col(PLAYLIST_COLLECTION).find(query)}
 
+    @translates_db_errors
+    async def added_by_counts(self) -> dict[str, int]:
+        """Return how many mirrored playlist tracks each ``added_by`` value holds."""
+        pipeline = [{"$group": {"_id": "$added_by", "count": {"$sum": 1}}}]
+        rows = await self._col(PLAYLIST_COLLECTION).aggregate(pipeline).to_list(length=None)
+        return {str(row["_id"]): row["count"] for row in rows if row["_id"]}
+
+    @translates_db_errors
+    async def reattribute_added_by(self, aliases: dict[str, str]) -> int:
+        """Rewrite ``added_by`` from each key of *aliases* to its value.
+
+        Applies to the playlist mirror and the vote archive alike. Returns the
+        number of documents changed.
+        """
+        changed = 0
+        for old, new in aliases.items():
+            for name in (PLAYLIST_COLLECTION, VOTES_COLLECTION):
+                result = await self._col(name).update_many(
+                    {"added_by": old}, {"$set": {"added_by": new}}
+                )
+                changed += result.modified_count
+        return changed
+
     # --- votes -------------------------------------------------------------
 
     @translates_db_errors
