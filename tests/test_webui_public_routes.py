@@ -341,11 +341,12 @@ def test_spotify_stats_replace_user_ids_with_names(http):
 
 def test_open_poll_results_stay_hidden(http):
     poll = http.get(f"/api/public/{TOKEN}/spotify/stats").json()["current_poll"]
-    # "huit" voted on the open poll: neither the tally nor the voter may leak.
+    # "huit" voted on the open poll: the turnout shows, the choice and the name don't.
     assert poll == {
         "name": "Artist - Song",
         "date": "2026-01-11",
         "added_by": "Septime",
+        "voter_count": 1,
         "results_hidden": True,
     }
 

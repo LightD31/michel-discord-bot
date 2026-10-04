@@ -7157,7 +7157,9 @@
             panels.push(vizPanel('Vote en cours', '',
                 `<div class="viz-poll-name">${escapeHtml(p.name)}</div>
                  ${meta ? `<div class="viz-sub">${escapeHtml(meta)}</div>` : ''}
-                 <div class="viz-sub" style="margin:0;">Résultats masqués jusqu'à la clôture du vote.</div>`, true));
+                 <div class="viz-sub" style="margin:0;">${escapeHtml(p.voter_count
+                     ? `${plural(p.voter_count, 'votant')} pour l'instant`
+                     : 'Pas encore de votes')} · résultats masqués jusqu'à la clôture du vote.</div>`, true));
         } else if (p) {
             const total = p.conserver + p.menfou + p.supprimer;
             const meta = [

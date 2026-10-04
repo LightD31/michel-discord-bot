@@ -11,8 +11,9 @@ The payloads reuse the admin module-page aggregations with these differences:
 
 - no Discord ids: XP rows keep only the display name, and Spotify user ids are
   replaced by the member's name server-side;
-- the open Spotify poll shows only its title, date and who added the track.
-  Counts and voters stay hidden until it closes, so the page can't sway it;
+- the open Spotify poll shows only its title, date, who added the track and
+  how many people voted. The tally and the voters' names stay hidden until it
+  closes, so the page can't sway it;
 - results are cached per guild (and window) for :data:`CACHE_TTL_SECONDS`, and
   concurrent misses share one computation, so anonymous traffic costs at most
   one MongoDB aggregation per guild per period.
@@ -84,7 +85,7 @@ def _public_xp_payload(stats: dict[str, Any]) -> dict[str, Any]:
 
 
 def _public_spotify_payload(stats: dict[str, Any]) -> dict[str, Any]:
-    """Keep only what identifies the open poll; its votes stay private until it closes."""
+    """Keep the open poll's identity and turnout; who voted what stays private until it closes."""
     poll = stats.get("current_poll")
     if not poll:
         return stats
@@ -92,6 +93,7 @@ def _public_spotify_payload(stats: dict[str, Any]) -> dict[str, Any]:
         "name": poll.get("name"),
         "date": poll.get("date"),
         "added_by": poll.get("added_by"),
+        "voter_count": len(poll.get("voters") or []),
         "results_hidden": True,
     }
     return {**stats, "current_poll": hidden}
