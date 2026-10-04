@@ -6184,8 +6184,14 @@
             return `<div class="loading"><div class="spinner"></div> Chargement...</div>`;
         }
         const serverConfig = server.config || {};
+        // Module configs are objects; guild-level scalars that sit next to them
+        // (e.g. publicDashboardToken) are not modules.
+        const configuredModules = Object.keys(serverConfig).filter(k => {
+            const v = serverConfig[k];
+            return v && typeof v === 'object' && !Array.isArray(v);
+        });
         const allModuleNames = new Set([
-            ...Object.keys(serverConfig),
+            ...configuredModules,
             ...Object.keys(state.moduleSchemas),
         ]);
         const moduleNames = [...allModuleNames].sort();
@@ -6215,7 +6221,7 @@
                     </div>
                     <div>
                         <h2>${server.name || sid}</h2>
-                        <p>ID: ${sid} — ${Object.keys(serverConfig).length} module(s) configuré(s)</p>
+                        <p>ID: ${sid} — ${configuredModules.length} module(s) configuré(s)</p>
                     </div>
                 </div>
             </div>
