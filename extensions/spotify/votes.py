@@ -26,7 +26,7 @@ from interactions import (
 from interactions.api.events import Component
 from interactions.client.utils import timestamp_converter
 
-from features.spotify import VoteCooldown
+from features.spotify import MIN_VOTES, VoteCooldown, should_send_low_vote_reminder
 from src.core import logging as logutil
 from src.discord_ext.messages import edit_message_if_changed, fetch_user_safe, send_error
 from src.integrations.spotify import spotifymongoformat
@@ -87,7 +87,7 @@ class VotesMixin:
         conserver, supprimer, menfou, users = count_votes(votes["votes"], server.discord2name)
 
         total_votes = conserver + supprimer + menfou
-        if total_votes < 3:
+        if total_votes < MIN_VOTES:
             new_time = str(self.randomvote.next_run)
             embed_original = message.embeds[0]
             embed_original.title = (
@@ -98,7 +98,8 @@ class VotesMixin:
             await edit_message_if_changed(
                 message,
                 content=(
-                    f"Pas assez de votes ({total_votes}/3), le vote est prolongé de 24h !\n"
+                    f"Pas assez de votes ({total_votes}/{MIN_VOTES}), "
+                    f"le vote est prolongé de 24h !\n"
                     f"Voulez-vous **conserver** cette chanson dans playlist ? "
                     f"(poke <@{song['added_by']}>)"
                 ),
@@ -106,6 +107,13 @@ class VotesMixin:
                 logger=logger,
             )
             logger.info(f"Vote prolongé de 24h car seulement {total_votes} votes")
+            extensions = int(server.vote_infos.get("extensions") or 0) + 1
+            server.vote_infos["extensions"] = extensions
+            await self.save_voteinfos(server)
+            if should_send_low_vote_reminder(extensions, server.vote_reminder_every_days):
+                await self._send_low_vote_reminder(
+                    server, channel, message, song, total_votes, extensions, new_time
+                )
             return
 
         logger.debug(
@@ -116,6 +124,7 @@ class VotesMixin:
         )
 
         await message.unpin()
+        await self._delete_low_vote_reminder(server, channel)
         if supprimer > conserver or (conserver == 0 and supprimer == 0 and menfou >= 3):
             embed, file = await embed_song(
                 song=song,
@@ -177,6 +186,61 @@ class VotesMixin:
             logger.info("La chanson a été conservée.")
         await self._start_new_vote(server)
 
+    async def _send_low_vote_reminder(
+        self,
+        server: ServerData,
+        channel,
+        message,
+        song: dict,
+        total_votes: int,
+        extensions: int,
+        deadline: str,
+    ):
+        """Post a fresh reminder under an under-voted poll, replacing the previous one.
+
+        Extending the poll only edits its message, which notifies nobody, hence
+        a new message. The previous reminder is deleted so the channel keeps a
+        single one per poll.
+        """
+        await self._delete_low_vote_reminder(server, channel)
+        role = f"<@&{server.vote_reminder_role_id}> " if server.vote_reminder_role_id else ""
+        days = f"{extensions} jour{'s' if extensions > 1 else ''}"
+        reminder = await channel.send(
+            content=(
+                f"{role}📢 Rappel : le vote sur la chanson du jour est prolongé depuis {days} "
+                f"faute de votes ({total_votes}/{MIN_VOTES}) ! "
+                f"Prochaine clôture "
+                f"{timestamp_converter(deadline).format(TimestampStyles.RelativeTime)}. "
+                f"(poke <@{song['added_by']}>)"
+            ),
+            reply_to=message,
+        )
+        server.vote_infos["reminder_message_id"] = str(reminder.id)
+        await self.save_voteinfos(server)
+        logger.info(
+            "Rappel de vote envoyé pour le serveur %s (%s jours de prolongation)",
+            server.guild_id,
+            extensions,
+        )
+
+    async def _delete_low_vote_reminder(self, server: ServerData, channel):
+        """Delete the last low-vote reminder, if any. Never fails the vote cycle."""
+        reminder_id = server.vote_infos.get("reminder_message_id")
+        if not reminder_id:
+            return
+        server.vote_infos["reminder_message_id"] = None
+        try:
+            reminder = await channel.fetch_message(reminder_id)
+            if reminder:
+                await reminder.delete()
+        except Exception as e:
+            logger.warning(
+                "Impossible de supprimer le rappel de vote %s (serveur %s) : %s",
+                reminder_id,
+                server.guild_id,
+                e,
+            )
+
     async def _start_new_vote(self, server: ServerData):
         """Pick a fresh track (not previously voted on) and open a new poll."""
         track_ids = set(await server.repo.playlist_track_ids())
@@ -235,7 +299,14 @@ class VotesMixin:
         )
         await message.pin()
         await channel.purge(deletion_limit=1, after=message)
-        server.vote_infos.update({"message_id": str(message.id), "track_id": track_id})
+        server.vote_infos.update(
+            {
+                "message_id": str(message.id),
+                "track_id": track_id,
+                "extensions": 0,
+                "reminder_message_id": None,
+            }
+        )
         await self.save_voteinfos(server)
         await server.repo.init_vote_doc(
             track_id,

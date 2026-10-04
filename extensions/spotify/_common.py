@@ -48,6 +48,21 @@ class SpotifyConfig(SchemaBase):
         default=False,
         description="Activer les votes sur les morceaux ajoutés.",
     )
+    voteReminderEveryDays: int = ui(
+        "Rappel si pas assez de votes (jours)",
+        "number",
+        default=0,
+        description=(
+            "Quand la chanson du jour n'a pas assez de votes et que le vote est "
+            "prolongé, publier un rappel dans le salon tous les X jours de "
+            "prolongation. 0 = désactivé."
+        ),
+    )
+    voteReminderRoleId: str | None = ui(
+        "Rôle à mentionner dans le rappel",
+        "role",
+        description="Rôle mentionné dans le rappel de vote. Vide = aucune mention de rôle.",
+    )
     spotifyChannelId: str = ui(
         "Salon notifications",
         "channel",
@@ -256,6 +271,11 @@ class ServerData:
         self.recap_message_id = server_config.get("spotifyRecapMessageId")
         self.recap_pin = bool(server_config.get("spotifyRecapPinMessage", False))
         self.recap_message: Message | None = None
+        try:
+            self.vote_reminder_every_days = int(server_config.get("voteReminderEveryDays") or 0)
+        except (TypeError, ValueError):
+            self.vote_reminder_every_days = 0
+        self.vote_reminder_role_id = str(server_config.get("voteReminderRoleId") or "")
 
         self.repo = SpotifyRepository(guild_id)
 
