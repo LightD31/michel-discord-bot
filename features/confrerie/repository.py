@@ -1,7 +1,5 @@
 """Confrérie drafts repository — all MongoDB I/O for pending submissions."""
 
-import os
-
 import pymongo.errors
 
 from src.core.db import mongo_manager, translates_db_errors
@@ -9,7 +7,7 @@ from src.core.logging import init_logger
 
 from .drafts import STATUS_PENDING, STATUS_PROCESSING, Draft
 
-logger = init_logger(os.path.basename(__file__))
+logger = init_logger(__name__)
 
 
 class DraftRepository:

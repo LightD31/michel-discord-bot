@@ -12,7 +12,7 @@ from src.core.config import load_config
 from src.discord_ext.rolemenus import BUTTON_PREFIX, MAX_ENTRIES, build_components, build_embed
 from src.webui.schemas import SchemaBase, enabled_field, register_module
 
-logger = logutil.init_logger(os.path.basename(__file__))
+logger = logutil.init_logger(__name__)
 
 
 @register_module("moduleReactionRoles")

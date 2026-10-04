@@ -39,7 +39,7 @@ from ._common import (
     STATS_EVENT_ID,
 )
 
-logger = logutil.init_logger(os.path.basename(__file__))
+logger = logutil.init_logger(__name__)
 
 # How many editions back to try before giving up: the older files are not
 # published (they answer 403), so one miss must not end the search.

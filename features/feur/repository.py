@@ -1,12 +1,10 @@
 """Feur repository — all MongoDB I/O for the feur feature."""
 
-import os
-
 from features.feur.models import FeurStats
 from src.core.db import mongo_manager, translates_db_errors
 from src.core.logging import init_logger
 
-logger = init_logger(os.path.basename(__file__))
+logger = init_logger(__name__)
 
 
 class FeurRepository:

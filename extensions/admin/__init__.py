@@ -66,7 +66,7 @@ class UtilsConfig(SchemaBase):
     )
 
 
-logger = logutil.init_logger(os.path.basename(__file__))
+logger = logutil.init_logger(__name__)
 _, _, enabled_servers = load_config("moduleUtils")
 enabled_servers_int = [int(s) for s in enabled_servers]  # type: ignore[misc]
 

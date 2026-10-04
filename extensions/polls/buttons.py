@@ -17,7 +17,7 @@ from src.core import logging as logutil
 from src.discord_ext.embeds import Colors
 from src.discord_ext.messages import edit_message_if_changed
 
-logger = logutil.init_logger(os.path.basename(__file__))
+logger = logutil.init_logger(__name__)
 
 VOTE_PREFIX = "poll_vote"
 RESET_PREFIX = "poll_reset"

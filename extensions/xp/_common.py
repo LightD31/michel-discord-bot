@@ -81,7 +81,7 @@ class XpConfig(SchemaBase):
     )
 
 
-logger = logutil.init_logger(os.path.basename(__file__))
+logger = logutil.init_logger(__name__)
 config, module_config, enabled_servers = load_config("moduleXp")
 
 EMBED_COLOR = Colors.SUCCESS

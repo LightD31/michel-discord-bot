@@ -4,14 +4,13 @@ Remplace l'approche SSH/SFTP par des commandes RCON plus rapides
 """
 
 import asyncio
-import os
 import re
 import socket
 import struct
 
 from src.core import logging as logutil
 
-logger = logutil.init_logger(os.path.basename(__file__))
+logger = logutil.init_logger(__name__)
 
 
 def ticks_to_hms(ticks):

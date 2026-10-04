@@ -28,7 +28,7 @@ from src.core import logging as logutil
 
 from ._common import guild_id, module_config
 
-logger = logutil.init_logger(os.path.basename(__file__))
+logger = logutil.init_logger(__name__)
 
 
 def _thread_url(guild: object, thread_id: object) -> str:

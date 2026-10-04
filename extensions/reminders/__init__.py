@@ -47,7 +47,7 @@ RECIPIENT_SEPARATORS = ",; "
 MAX_EXTRA_RECIPIENTS = 25
 _SNOOZE_RE = re.compile(rf"^{SNOOZE_PREFIX}:(\d+):([0-9a-fA-F]+)$")
 
-logger = logutil.init_logger(os.path.basename(__file__))
+logger = logutil.init_logger(__name__)
 _, _module_config, enabled_servers = load_config("moduleUtils")
 enabled_servers_int = [int(s) for s in enabled_servers]  # type: ignore[misc]
 

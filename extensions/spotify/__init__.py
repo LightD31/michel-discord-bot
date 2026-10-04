@@ -21,7 +21,7 @@ from ._common import SERVERS, ServerData
 from .playlist import PlaylistMixin
 from .votes import VotesMixin
 
-logger = logutil.init_logger(os.path.basename(__file__))
+logger = logutil.init_logger(__name__)
 
 
 class SpotifyExtension(Extension, PlaylistMixin, VotesMixin):

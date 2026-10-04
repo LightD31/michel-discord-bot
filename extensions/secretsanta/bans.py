@@ -19,7 +19,7 @@ from src.discord_ext.messages import fetch_user_safe, send_error
 
 from ._common import get_context_id
 
-logger = logutil.init_logger(os.path.basename(__file__))
+logger = logutil.init_logger(__name__)
 
 
 class BansMixin:

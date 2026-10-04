@@ -1,6 +1,5 @@
 """MongoDB I/O for the button-based polls feature."""
 
-import os
 from datetime import datetime
 
 import pymongo
@@ -11,7 +10,7 @@ from src.core.db import mongo_manager
 from src.core.errors import DatabaseError
 from src.core.logging import init_logger
 
-logger = init_logger(os.path.basename(__file__))
+logger = init_logger(__name__)
 
 COLLECTION = "polls"
 

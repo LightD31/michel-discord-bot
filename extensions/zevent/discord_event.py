@@ -40,7 +40,7 @@ from ._common import (
     WEBSITE_URL,
 )
 
-logger = logutil.init_logger(os.path.basename(__file__))
+logger = logutil.init_logger(__name__)
 
 # Discord refuses a start in the past, so an edition already under way gets an
 # event that starts a few seconds out and is switched to ACTIVE right after.

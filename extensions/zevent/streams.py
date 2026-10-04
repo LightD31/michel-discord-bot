@@ -8,7 +8,7 @@ from src.core import logging as logutil
 
 from ._common import UPDATE_INTERVAL, StreamerInfo
 
-logger = logutil.init_logger(os.path.basename(__file__))
+logger = logutil.init_logger(__name__)
 
 # One Twitch poll serves every consumer within a refresh cycle. Half the
 # refresh interval guarantees exactly one poll per cycle: long enough for the

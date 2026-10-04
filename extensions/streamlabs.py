@@ -71,7 +71,7 @@ class StreamlabsCharityConfig(SchemaBase):
     streamlabsMessageId: str | None = hidden_message_id("Message suivi", "streamlabsChannelId")
 
 
-logger = logutil.init_logger(os.path.basename(__file__))
+logger = logutil.init_logger(__name__)
 
 # Constants
 COLOR = 0x005EA5

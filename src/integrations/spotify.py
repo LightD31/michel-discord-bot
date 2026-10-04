@@ -5,7 +5,6 @@ extension, the token-status helper used by the Web UI auth panel, and the
 MongoDB document formatter.
 """
 
-import os
 import threading
 from datetime import UTC, datetime
 from typing import Any
@@ -15,7 +14,7 @@ import spotipy
 from src.core import logging as logutil
 from src.core.config import config_store
 
-logger = logutil.init_logger(os.path.basename(__file__))
+logger = logutil.init_logger(__name__)
 
 SPOTIFY_SCOPE = (
     "playlist-modify-private playlist-read-private "

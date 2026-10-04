@@ -25,7 +25,7 @@ from src.discord_ext.messages import edit_message_if_changed, fetch_user_safe, s
 
 from ._common import DATA_DIR, create_join_buttons, get_context_id
 
-logger = logutil.init_logger(os.path.basename(__file__))
+logger = logutil.init_logger(__name__)
 
 
 class DrawsMixin:

@@ -20,7 +20,6 @@ methods here raise and let the caller decide.
 
 from __future__ import annotations
 
-import os
 import time
 from typing import Any
 from urllib.parse import quote, urlsplit
@@ -32,7 +31,7 @@ from src.core.config import config_store
 from src.core.errors import IntegrationError
 from src.core.http import http_client
 
-logger = logutil.init_logger(os.path.basename(__file__))
+logger = logutil.init_logger(__name__)
 
 # Shlink's REST API is versioned in the path; v3 is what Shlink >= 3.0 serves.
 API_VERSION = "v3"

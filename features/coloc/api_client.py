@@ -1,7 +1,6 @@
 """API client for Zunivers API with retry logic."""
 
 import asyncio
-import os
 from typing import Any
 
 from aiohttp import ClientError, ClientSession
@@ -18,7 +17,7 @@ from .constants import (
     ReminderType,
 )
 
-logger = logutil.init_logger(os.path.basename(__file__))
+logger = logutil.init_logger(__name__)
 
 
 class ZuniversAPIError(Exception):

@@ -35,7 +35,7 @@ from src.core.config import load_config
 from src.core.db import mongo_manager
 from src.discord_ext.embeds import Colors
 
-logger = logutil.init_logger(os.path.basename(__file__))
+logger = logutil.init_logger(__name__)
 
 # ── Defaults (overridden by config) ──────────────────────────────────
 DEFAULT_BACKUP_DIR = "data/backups"

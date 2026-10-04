@@ -22,7 +22,7 @@ from src.core.tasks import spawn
 
 from ._common import ensure_utc
 
-logger = logutil.init_logger(os.path.basename(__file__))
+logger = logutil.init_logger(__name__)
 
 # EventSub topics subscribed for every tracked broadcaster, as
 # (EventSubWebsocket method, handler attribute) pairs.

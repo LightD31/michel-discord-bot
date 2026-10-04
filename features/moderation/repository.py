@@ -4,8 +4,6 @@ One ``infractions`` collection per guild plus an ``infractions_meta`` collection
 holding a single counter document used to mint per-guild case numbers.
 """
 
-import os
-
 import pymongo
 from pymongo import ReturnDocument
 
@@ -14,7 +12,7 @@ from src.core.db import mongo_manager
 from src.core.errors import DatabaseError
 from src.core.logging import init_logger
 
-logger = init_logger(os.path.basename(__file__))
+logger = init_logger(__name__)
 
 COLLECTION = "infractions"
 META_COLLECTION = "infractions_meta"

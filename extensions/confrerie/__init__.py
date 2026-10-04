@@ -22,7 +22,7 @@ from .review import ReviewMixin
 from .stats import StatsMixin
 from .updates import UpdatesMixin
 
-logger = logutil.init_logger(os.path.basename(__file__))
+logger = logutil.init_logger(__name__)
 
 
 class ConfrerieExtension(

@@ -11,7 +11,7 @@ from src.discord_ext.embeds import Colors
 
 from ._common import StreamerInfo
 
-logger = logutil.init_logger(os.path.basename(__file__))
+logger = logutil.init_logger(__name__)
 
 EMOTE_CACHE_DIR = "data/emote_cache"
 

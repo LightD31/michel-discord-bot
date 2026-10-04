@@ -10,7 +10,7 @@ from src.discord_ext.messages import edit_message_if_changed
 
 from ._common import API_URL
 
-logger = logutil.init_logger(os.path.basename(__file__))
+logger = logutil.init_logger(__name__)
 
 
 class CommandsMixin:

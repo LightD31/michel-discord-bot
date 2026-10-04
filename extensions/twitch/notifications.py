@@ -13,7 +13,7 @@ from twitchAPI.type import VideoType
 from src.core import logging as logutil
 from src.discord_ext.embeds import Colors
 
-logger = logutil.init_logger(os.path.basename(__file__))
+logger = logutil.init_logger(__name__)
 
 DEFAULT_EMBED_COLOR = Colors.TWITCH
 

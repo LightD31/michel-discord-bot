@@ -34,7 +34,7 @@ from ._common import autocomplete_options, enabled_servers, module_config
 from .stats import plural
 from .updates import build_work_embed, shorten_work_links
 
-logger = logutil.init_logger(os.path.basename(__file__))
+logger = logutil.init_logger(__name__)
 
 # Autocomplete must answer within 3 s: keep the Œuvres list around instead of
 # paging through Notion on every keystroke.

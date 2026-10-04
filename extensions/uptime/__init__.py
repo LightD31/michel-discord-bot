@@ -18,7 +18,7 @@ from .notifications import NotificationsMixin
 from .socketio_client import SocketIOMixin
 from .tasks import TasksMixin
 
-logger = logutil.init_logger(os.path.basename(__file__))
+logger = logutil.init_logger(__name__)
 
 
 class UptimeExtension(

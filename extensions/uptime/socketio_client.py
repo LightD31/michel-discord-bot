@@ -6,7 +6,7 @@ from src.core import logging as logutil
 
 from ._common import config
 
-logger = logutil.init_logger(os.path.basename(__file__))
+logger = logutil.init_logger(__name__)
 
 
 class SocketIOMixin:

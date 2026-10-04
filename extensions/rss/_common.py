@@ -6,7 +6,7 @@ from src.core import logging as logutil
 from src.core.config import load_config
 from src.webui.schemas import SchemaBase, enabled_field, register_module, ui
 
-logger = logutil.init_logger(os.path.basename(__file__))
+logger = logutil.init_logger(__name__)
 
 MODULE_KEY = "moduleRss"
 

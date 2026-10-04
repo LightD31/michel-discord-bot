@@ -12,7 +12,6 @@ be believed: only those whose peer really is one of our proxies.
 """
 
 import ipaddress
-import os
 import time
 from collections import deque
 from collections.abc import Sequence
@@ -21,7 +20,7 @@ from fastapi import Request
 
 from src.core import logging as _logging
 
-logger = _logging.init_logger(os.path.basename(__file__))
+logger = _logging.init_logger(__name__)
 
 # Reverse proxies in the supported deployments are local to the host
 # (docker-compose publishes the port on loopback) or sit on a private container

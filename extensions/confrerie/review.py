@@ -48,7 +48,7 @@ from src.discord_ext.messages import fetch_user_safe
 
 from ._common import config, guild_id, module_config
 
-logger = logutil.init_logger(os.path.basename(__file__))
+logger = logutil.init_logger(__name__)
 
 _SOURCE_LABELS = {
     SOURCE_TEXTES: "Forum « textes »",

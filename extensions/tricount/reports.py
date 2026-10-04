@@ -21,7 +21,7 @@ from src.discord_ext.messages import fetch_user_safe, require_guild
 
 from ._common import DEFAULT_CATEGORY, guild_currency
 
-logger = logutil.init_logger(os.path.basename(__file__))
+logger = logutil.init_logger(__name__)
 
 
 class ReportsMixin:
