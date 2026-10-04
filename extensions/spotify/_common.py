@@ -22,6 +22,7 @@ from src.core.config import load_config, load_discord2name
 from src.core.http import http_client
 from src.discord_ext.embeds import Colors
 from src.integrations.spotify import sp
+from src.webui.public_links import PUBLIC_FLAG, public_dashboard_url
 from src.webui.schemas import (
     SchemaBase,
     enabled_field,
@@ -73,11 +74,21 @@ class SpotifyConfig(SchemaBase):
     spotifyRecapMessageId: str | None = hidden_message_id(
         "ID message récap", "spotifyRecapChannelId"
     )
+    publicDashboard: bool = ui(
+        "Dashboard public",
+        "boolean",
+        default=False,
+        description=(
+            "Publier les statistiques de la playlist et des votes sur une page "
+            "accessible sans connexion : /public/<ID du serveur>/spotify."
+        ),
+    )
     spotifyDashboardUrl: str | None = ui(
         "Lien du dashboard des votes",
         "url",
         description=(
-            "Lien affiché sous les votes et dans le message de récap. Vide = aucun lien affiché."
+            "Lien affiché sous les votes et dans le message de récap. Vide = lien "
+            "vers le dashboard public s'il est activé, sinon aucun lien affiché."
         ),
     )
     spotifyPlaylistUrl: str | None = ui(
@@ -197,9 +208,10 @@ class SpotifyLinks:
     icon: str = ""
 
     @classmethod
-    def from_config(cls, server_config: dict) -> "SpotifyLinks":
+    def from_config(cls, server_config: dict, public_dashboard: str = "") -> "SpotifyLinks":
+        """``public_dashboard`` stands in when no dashboard link is configured."""
         return cls(
-            dashboard=str(server_config.get("spotifyDashboardUrl") or ""),
+            dashboard=str(server_config.get("spotifyDashboardUrl") or public_dashboard),
             playlist=str(server_config.get("spotifyPlaylistUrl") or ""),
             new_playlist=str(server_config.get("spotifyNewPlaylistUrl") or ""),
             icon=str(server_config.get("spotifyIconUrl") or ""),
@@ -231,7 +243,12 @@ class ServerData:
         if not self.spotify2discord:
             self.spotify2discord = server_config.get("spotifyIdToDiscordId", {})
 
-        self.links = SpotifyLinks.from_config(server_config)
+        public_dashboard = (
+            public_dashboard_url(config, guild_id, "spotify")
+            if server_config.get(PUBLIC_FLAG)
+            else ""
+        )
+        self.links = SpotifyLinks.from_config(server_config, public_dashboard)
         self.channel_id = server_config.get("spotifyChannelId")
         self.playlist_id = server_config.get("spotifyPlaylistId")
         self.new_playlist_id = server_config.get("spotifyNewPlaylistId")

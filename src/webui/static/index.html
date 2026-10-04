@@ -2812,6 +2812,22 @@
         @media (max-width: 480px) {
             .stats-grid.xp-stats-cards { grid-template-columns: repeat(2, 1fr); }
         }
+
+        /* ── Public dashboards (/public/{guild}/{xp|spotify}) ── */
+        .public-page { max-width: 1100px; margin: 0 auto; padding: 24px 16px 40px; }
+        .public-header { display: flex; align-items: center; gap: 14px; margin-bottom: 16px; min-width: 0; }
+        .public-header .server-icon { width: 56px; height: 56px; font-size: 22px; }
+        .public-header .server-icon img { width: 100%; height: 100%; object-fit: cover; }
+        .public-header h1 { font-size: 22px; font-weight: 700; overflow-wrap: anywhere; }
+        .public-header p { color: var(--text-secondary); font-size: 13px; margin-top: 2px; }
+        .public-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 16px; overflow-x: auto; }
+        .public-tab {
+            padding: 10px 14px; color: var(--text-secondary); text-decoration: none; font-weight: 600;
+            font-size: 14px; border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap;
+        }
+        .public-tab:hover { color: var(--text-primary); }
+        .public-tab.active { color: var(--text-primary); border-bottom-color: var(--accent); }
+        .public-footer { text-align: center; color: var(--text-muted); font-size: 12px; margin-top: 24px; }
     </style>
 </head>
 <body>
@@ -2860,6 +2876,9 @@
         logVerbose: false,
         // XP module stats: selected window (days)
         xpStatsDays: 30,
+        // Set on /public/{guild}/{kind}: { serverId, kind, meta, error }.
+        // The page then renders the read-only public dashboard, no login.
+        publicView: null,
         // Short-link manager (Shlink) state
         shlink: {
             status: null,
@@ -5153,6 +5172,13 @@
         // bound to the canvases about to be detached.
         destroyXpCharts();
         destroySpotifyCharts();
+        if (state.publicView) {
+            app.innerHTML = renderPublicPage();
+            const { meta, kind, serverId } = state.publicView;
+            if (meta && kind === 'xp') loadXpStats(serverId);
+            if (meta && kind === 'spotify') loadSpotifyStats(serverId);
+            return;
+        }
         if (!state.user) {
             app.innerHTML = renderLogin();
             return;
@@ -6408,6 +6434,7 @@
                         <div class="card-subtitle">Playlist et votes tels que le bot les a enregistrés.</div>
                     </div>
                     <div class="card-actions">
+                        ${publicPageButton(sid, 'spotify', modConfig)}
                         <button class="btn btn-ghost btn-sm" onclick="loadSpotifyStats('${sid}', true)">↻ Actualiser</button>
                     </div>
                 </div>
@@ -6425,6 +6452,7 @@
                         <div class="card-subtitle">Activité XP du serveur, heures de Paris. L'XP vocal n'est journalisé que depuis l'ajout de ce tableau de bord.</div>
                     </div>
                     <div class="card-actions">
+                        ${publicPageButton(sid, 'xp', modConfig)}
                         <select id="xp-stats-range" class="form-input" style="width:150px;" onchange="setXpStatsRange('${sid}', this.value)">
                             ${XP_STATS_RANGES.map(d => `<option value="${d}" ${state.xpStatsDays === d ? 'selected' : ''}>${d} jours</option>`).join('')}
                         </select>
@@ -7035,7 +7063,8 @@
         if (!container) return;
         const seq = ++_spotifyStatsSeq;
         const stale = () => seq !== _spotifyStatsSeq || !container.isConnected;
-        const cached = _spotifyStatsCache[serverId];
+        const cacheKey = state.publicView ? `public:${serverId}` : serverId;
+        const cached = _spotifyStatsCache[cacheKey];
         if (cached) {
             showSpotifyStats(container, cached);
             if (!force && Date.now() - cached.at < SPOTIFY_STATS_TTL_MS) return;
@@ -7043,10 +7072,13 @@
         }
         let data, nameOf;
         try {
-            [data, nameOf] = await Promise.all([
-                api(`/api/servers/${encodeURIComponent(serverId)}/spotify/stats`),
-                spotifyNameResolver(serverId),
-            ]);
+            // The public payload already carries names in place of user ids.
+            [data, nameOf] = state.publicView
+                ? [await publicApi(`/api/public/${encodeURIComponent(serverId)}/spotify/stats`), id => id]
+                : await Promise.all([
+                    api(`/api/servers/${encodeURIComponent(serverId)}/spotify/stats`),
+                    spotifyNameResolver(serverId),
+                ]);
         } catch (e) {
             if (stale()) return;
             container.classList.remove('viz-refreshing');
@@ -7061,7 +7093,7 @@
             return;
         }
         const entry = { data, nameOf, at: Date.now() };
-        _spotifyStatsCache[serverId] = entry;
+        _spotifyStatsCache[cacheKey] = entry;
         showSpotifyStats(container, entry);
     }
 
@@ -7423,7 +7455,10 @@
         container.innerHTML = `<div class="loading"><div class="spinner"></div></div>`;
         let data;
         try {
-            data = await api(`/api/servers/${encodeURIComponent(serverId)}/xp/stats?days=${state.xpStatsDays}`);
+            const sid = encodeURIComponent(serverId);
+            data = state.publicView
+                ? await publicApi(`/api/public/${sid}/xp/stats?days=${state.xpStatsDays}`)
+                : await api(`/api/servers/${sid}/xp/stats?days=${state.xpStatsDays}`);
         } catch (e) {
             if (!stale()) {
                 container.innerHTML = `<div class="empty-state"><h3>Erreur</h3><p>${escapeHtml(e.message || String(e))}</p></div>`;
@@ -7709,6 +7744,140 @@
         } catch (e) { /* handled by api() */ }
     }
 
+    // ── Public dashboards ─────────────────────────────
+    // /public/{guildId}/{xp|spotify}: read-only, no login. Same renderers as the
+    // module pages, fed by the unauthenticated /api/public/... endpoints
+    // (src/webui/routes/public.py). Opt-in per guild via `publicDashboard`.
+    const PUBLIC_DASHBOARDS = {
+        xp: { tab: '⭐ XP', title: 'Statistiques XP' },
+        spotify: { tab: '🎵 Playlist Spotify', title: 'Playlist Spotify' },
+    };
+
+    function parsePublicPath(pathname = location.pathname) {
+        const m = /^\/public\/(\d+)(?:\/(xp|spotify))?\/?$/.exec(pathname);
+        return m ? { serverId: m[1], kind: m[2] || null } : null;
+    }
+
+    // Like api(), minus the session handling and toasts: errors are rendered in place.
+    async function publicApi(url) {
+        const resp = await fetch(url);
+        if (!resp.ok) {
+            const err = await resp.json().catch(() => ({}));
+            throw new Error(err.detail || `HTTP ${resp.status}`);
+        }
+        return resp.json();
+    }
+
+    async function initPublic(route) {
+        state.publicView = { ...route, meta: null, error: null };
+        render();
+        try {
+            state.publicView.meta = await publicApi(`/api/public/${route.serverId}`);
+        } catch (e) {
+            state.publicView.error = e.message || String(e);
+        }
+        const meta = state.publicView.meta;
+        if (meta && !meta.dashboards.includes(state.publicView.kind)) {
+            // /public/{id} or an unpublished kind: land on the first published one.
+            state.publicView.kind = meta.dashboards[0];
+            history.replaceState(null, '', `/public/${meta.id}/${state.publicView.kind}`);
+        }
+        window.addEventListener('popstate', () => {
+            const next = parsePublicPath();
+            if (!next || !state.publicView?.meta?.dashboards.includes(next.kind)) {
+                location.reload();
+                return;
+            }
+            state.publicView.kind = next.kind;
+            render();
+        });
+        render();
+    }
+
+    function navigatePublic(event, kind) {
+        // Let modified clicks (new tab, ...) through to the plain link.
+        if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return true;
+        event.preventDefault();
+        if (state.publicView.kind !== kind) {
+            history.pushState(null, '', `/public/${state.publicView.serverId}/${kind}`);
+            state.publicView.kind = kind;
+            render();
+        }
+        return false;
+    }
+
+    function renderPublicPage() {
+        const { meta, kind, error } = state.publicView;
+        if (error) {
+            document.title = 'Michel Bot';
+            return `<div class="public-page"><div class="empty-state">
+                <div class="icon">🔒</div><h3>Page indisponible</h3>
+                <p>${escapeHtml(error)}</p></div></div>`;
+        }
+        if (!meta) {
+            return `<div class="public-page"><div class="loading"><div class="spinner"></div></div></div>`;
+        }
+        const dash = PUBLIC_DASHBOARDS[kind];
+        document.title = `${meta.name} — ${dash.title}`;
+        const iconUrl = meta.icon
+            ? `https://cdn.discordapp.com/icons/${meta.id}/${encodeURIComponent(meta.icon)}.png?size=128`
+            : null;
+        const tabs = meta.dashboards.map(k => `
+            <a class="public-tab ${k === kind ? 'active' : ''}" href="/public/${meta.id}/${k}"
+               onclick="return navigatePublic(event, '${k}')">${PUBLIC_DASHBOARDS[k].tab}</a>`).join('');
+        const body = kind === 'xp' ? `
+            <div class="card">
+                <div class="card-header">
+                    <div>
+                        <div class="card-title">📊 Activité XP</div>
+                        <div class="card-subtitle">Classement et activité du serveur, heures de Paris.</div>
+                    </div>
+                    <div class="card-actions">
+                        <select class="form-input" style="width:150px;" aria-label="Période" onchange="setXpStatsRange('${meta.id}', this.value)">
+                            ${XP_STATS_RANGES.map(d => `<option value="${d}" ${state.xpStatsDays === d ? 'selected' : ''}>${d} jours</option>`).join('')}
+                        </select>
+                    </div>
+                </div>
+                <div id="xp-stats" data-server-id="${meta.id}">
+                    <div class="loading"><div class="spinner"></div></div>
+                </div>
+            </div>` : `
+            <div class="card">
+                <div class="card-header">
+                    <div>
+                        <div class="card-title">📊 Playlist et votes</div>
+                        <div class="card-subtitle">Playlist et votes tels que le bot les a enregistrés.</div>
+                    </div>
+                </div>
+                <div id="spotify-stats" class="viz-root" data-server-id="${meta.id}">
+                    <div class="loading"><div class="spinner"></div></div>
+                </div>
+            </div>`;
+        return `
+            <div class="public-page">
+                <div class="public-header">
+                    <div class="server-icon">
+                        ${iconUrl ? `<img src="${iconUrl}" alt="">` : escapeHtml(meta.name.charAt(0) || '?')}
+                    </div>
+                    <div>
+                        <h1>${escapeHtml(meta.name)}</h1>
+                        <p>${escapeHtml(dash.title)}</p>
+                    </div>
+                </div>
+                ${meta.dashboards.length > 1 ? `<nav class="public-tabs">${tabs}</nav>` : ''}
+                ${body}
+                <div class="public-footer">Michel Bot · données actualisées toutes les 5 minutes</div>
+            </div>
+        `;
+    }
+
+    // Module page: open the guild's public page when it's published.
+    function publicPageButton(serverId, kind, modConfig) {
+        if (!modConfig?.enabled || !modConfig?.publicDashboard) return '';
+        return `<a class="btn btn-ghost btn-sm" href="/public/${encodeURIComponent(serverId)}/${kind}"
+                   target="_blank" rel="noopener" title="Page publique, accessible sans connexion">🌐 Page publique</a>`;
+    }
+
     // ── Utility ───────────────────────────────────────
     function escapeHtml(str) {
         const div = document.createElement('div');
@@ -7758,6 +7927,11 @@
 
     // ── Initialize ────────────────────────────────────
     async function init() {
+        const publicRoute = parsePublicPath();
+        if (publicRoute) {
+            await initPublic(publicRoute);
+            return;
+        }
         await loadUserInfo();
         if (state.user) {
             const promises = [loadBotInfo()];
