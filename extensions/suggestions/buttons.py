@@ -4,7 +4,7 @@ import re
 
 from interactions import ComponentContext, component_callback
 
-from src.discord_ext.messages import edit_message_if_changed, send_error
+from src.discord_ext.messages import copy_embed, edit_message_if_changed, send_error
 
 from ._common import VOTE_PREFIX, get_guild_settings, logger
 
@@ -55,7 +55,7 @@ class ButtonsMixin:
         # Update the original embed's Votes field in place.
         try:
             up, down = updated.tally()
-            embed = ctx.message.embeds[0]
+            embed = copy_embed(ctx.message.embeds[0])
             for field in embed.fields or []:
                 if field.name == "Votes":
                     field.value = f"👍 {up} · 👎 {down}"

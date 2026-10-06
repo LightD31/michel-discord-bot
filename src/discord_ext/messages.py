@@ -171,6 +171,17 @@ def _normalize_embeds(value: Any, *, ignore_timestamp: bool = False) -> list[dic
     return out
 
 
+def copy_embed(embed: Embed) -> Embed:
+    """Return an independent copy of ``embed`` that is safe to mutate.
+
+    Use it before editing an embed read from ``message.embeds``. Mutating that
+    object in place also mutates what the message currently shows, so
+    :func:`edit_message_if_changed` compares the new embed with itself, finds
+    nothing changed, and silently skips the edit.
+    """
+    return Embed.from_dict(embed.to_dict())
+
+
 def _payload_differs(
     message: Message, payload: dict[str, Any], *, ignore_timestamp: bool = False
 ) -> bool:
@@ -231,6 +242,10 @@ async def edit_message_if_changed(
     Use it on periodic refreshers that stamp ``datetime.now()`` on every render:
     there the timestamp is a "when we last polled" marker, not information, and
     leaving it in makes every cycle look like a change.
+
+    An embed taken from ``message.embeds`` must go through :func:`copy_embed`
+    before it is modified: an in-place edit changes the message's own copy too,
+    and the diff then sees no change.
 
     Returns ``True`` when an edit was sent, ``False`` when it was a no-op.
     """
@@ -329,6 +344,7 @@ async def fetch_or_create_persistent_message(
 
 
 __all__ = [
+    "copy_embed",
     "edit_message_if_changed",
     "fetch_or_create_persistent_message",
     "fetch_user_safe",
