@@ -15,7 +15,7 @@ from features.polls import (
 )
 from src.core import logging as logutil
 from src.discord_ext.embeds import Colors
-from src.discord_ext.messages import edit_message_if_changed
+from src.discord_ext.messages import copy_embed, edit_message_if_changed
 
 logger = logutil.init_logger(__name__)
 
@@ -160,7 +160,7 @@ class PollButtonsMixin:
         # are hidden, since reactions aren't used).
         poll.votes[user_id] = new_ranking
         try:
-            embed = ctx.message.embeds[0]
+            embed = copy_embed(ctx.message.embeds[0])
             update_poll_embed(embed, poll)
             await edit_message_if_changed(ctx.message, embed=embed, logger=logger)
         except Exception:
@@ -185,7 +185,7 @@ class PollButtonsMixin:
         await repo.clear_vote(poll.id, user_id)
         poll.votes.pop(user_id, None)
         try:
-            embed = ctx.message.embeds[0]
+            embed = copy_embed(ctx.message.embeds[0])
             update_poll_embed(embed, poll)
             await edit_message_if_changed(ctx.message, embed=embed, logger=logger)
         except Exception:

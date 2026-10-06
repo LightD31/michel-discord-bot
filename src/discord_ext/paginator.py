@@ -16,6 +16,7 @@ from interactions.api.events import MessageReactionAdd, MessageReactionRemove
 from interactions.ext import paginators
 
 from src.core.config import load_discord2name
+from src.discord_ext.messages import copy_embed
 
 # ---------------------------------------------------------------------------
 # Custom paginator
@@ -96,10 +97,10 @@ async def format_poll(event: MessageReactionAdd | MessageReactionRemove):
 
     The embed's description is expected to be the "\\n\\n"-separated option
     list initially produced by the poll command. Each call replaces the
-    description in place and returns the (mutated) embed.
+    description of a copy and returns it (the message is left untouched).
     """
     message = event.message
-    embed = message.embeds[0]
+    embed = copy_embed(message.embeds[0])
     options = (embed.description or "").split("\n\n")
     reactions = message.reactions
 

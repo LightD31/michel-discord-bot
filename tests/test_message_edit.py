@@ -231,3 +231,38 @@ async def test_failing_unarchive_does_not_block_the_edit(caplog):
 
     assert await edit_message_if_changed(message, content="nouveau") is True
     assert message.edit_calls == [{"content": "nouveau"}]
+
+
+# ── Editing an embed read back from the message ────────────────────────
+
+
+async def test_in_place_mutation_hides_the_change():
+    """Documents the trap ``copy_embed`` exists for: the diff sees no change."""
+    embed = _rendered(Embed(title="Vote").add_field("Votes", "Pas encore de votes"))
+    message = FakeMessage(embeds=[embed])
+
+    shown = message.embeds[0]
+    shown.fields[0].value = "1 vote (Alice)"
+
+    assert await edit_message_if_changed(message, embeds=[shown]) is False
+
+
+async def test_copied_embed_edit_is_sent():
+    message = FakeMessage(
+        embeds=[_rendered(Embed(title="Vote").add_field("Votes", "Pas encore de votes"))]
+    )
+
+    embed = msgmod.copy_embed(message.embeds[0])
+    embed.fields[0].value = "1 vote (Alice)"
+
+    assert await edit_message_if_changed(message, embeds=[embed]) is True
+    assert message.embeds[0].fields[0].value == "Pas encore de votes"
+    assert message.edit_calls == [{"embeds": [embed]}]
+
+
+async def test_unchanged_copy_is_still_a_noop():
+    message = FakeMessage(embeds=[_rendered(Embed(title="Vote", description="d"))])
+
+    embed = msgmod.copy_embed(message.embeds[0])
+
+    assert await edit_message_if_changed(message, embeds=[embed]) is False

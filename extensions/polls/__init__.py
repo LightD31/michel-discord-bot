@@ -45,7 +45,7 @@ from features.polls import (
 from src.core import logging as logutil
 from src.core.config import load_config
 from src.discord_ext.embeds import Colors, format_discord_timestamp
-from src.discord_ext.messages import edit_message_if_changed, send_error
+from src.discord_ext.messages import copy_embed, edit_message_if_changed, send_error
 from src.discord_ext.paginator import format_poll
 
 from .buttons import PollButtonsMixin, render_results_field, update_poll_embed, vote_components
@@ -194,7 +194,7 @@ class PollsExtension(Extension, PollButtonsMixin):
                 fresh = await message.channel.fetch_message(message.id)
                 if not fresh or not fresh.embeds:
                     return
-                embed = fresh.embeds[0]
+                embed = copy_embed(fresh.embeds[0])
                 # Re-render the description without the relative-timestamp note.
                 embed.description = "\n\n".join(
                     f"{emojis[i]} {option}" for i, option in enumerate(options)
@@ -363,7 +363,9 @@ class PollsExtension(Extension, PollButtonsMixin):
             return
 
         poll.closed = True
-        embed = message.embeds[0] if message.embeds else Embed(title=f"📊 {poll.question}")
+        embed = (
+            copy_embed(message.embeds[0]) if message.embeds else Embed(title=f"📊 {poll.question}")
+        )
         if not embed.title.startswith("🔒"):
             embed.title = f"🔒 {embed.title}"
         update_poll_embed(embed, poll)
@@ -474,7 +476,7 @@ class PollsExtension(Extension, PollButtonsMixin):
                 else "Impossible de vérifier l'auteur de ce sondage",
             )
             return
-        embed = message.embeds[0]
+        embed = copy_embed(message.embeds[0])
         if reset_reactions:
             await message.clear_all_reactions()
         if question is not None:

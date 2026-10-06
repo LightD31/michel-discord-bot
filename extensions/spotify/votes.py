@@ -28,7 +28,12 @@ from interactions.client.utils import timestamp_converter
 
 from features.spotify import MIN_VOTES, VoteCooldown, should_send_low_vote_reminder
 from src.core import logging as logutil
-from src.discord_ext.messages import edit_message_if_changed, fetch_user_safe, send_error
+from src.discord_ext.messages import (
+    copy_embed,
+    edit_message_if_changed,
+    fetch_user_safe,
+    send_error,
+)
 from src.integrations.spotify import spotifymongoformat
 
 from ._common import (
@@ -89,7 +94,7 @@ class VotesMixin:
         total_votes = conserver + supprimer + menfou
         if total_votes < MIN_VOTES:
             new_time = str(self.randomvote.next_run)
-            embed_original = message.embeds[0]
+            embed_original = copy_embed(message.embeds[0])
             embed_original.title = (
                 f"Vote prolongé jusqu'à "
                 f"{timestamp_converter(new_time).format(TimestampStyles.RelativeTime)}"
@@ -337,7 +342,7 @@ class VotesMixin:
         message_id = server.vote_infos.get("message_id")
         track_id = server.vote_infos.get("track_id")
         if ctx.message.id == int(message_id):
-            embed_original = ctx.message.embeds[0]
+            embed_original = copy_embed(ctx.message.embeds[0])
             user_id = str(ctx.user.id)
             if ctx.custom_id == "annuler":
                 votes = await server.repo.remove_vote(track_id, user_id)
@@ -633,7 +638,7 @@ class VotesMixin:
         data = await server.vote_manager.load_data()
         yes, no, users = server.vote_manager.count_votes(data, song_id)
         users = ", ".join(users)
-        embed_original = event.ctx.message.embeds[0]
+        embed_original = copy_embed(event.ctx.message.embeds[0])
         embed_original.fields[4].value = f"{yes + no} vote{'s' if yes + no > 1 else ''} ({users})"
         await edit_message_if_changed(event.ctx.message, embeds=[embed_original], logger=logger)
         if vote == "annuler":
