@@ -24,7 +24,6 @@ from features.coloc import LootStatus
 from features.coloc.constants import (
     ADVENT_CALENDAR_REMINDERS,
     BONUS_BEFORE_JOURNA_HINT,
-    BONUS_BEFORE_NEXT_JOURNA_HINT,
     BONUS_UNLOCKED_BY_JOURNA_HINT,
     PARIS_TZ,
     ReminderType,
@@ -265,19 +264,19 @@ class RemindersMixin:
         )
         link = module_config.get(link_key)
         bonus = format_bonus_link(link)
-        journa = format_journa_link(link)
 
         if status is None or not status.journa_done:
-            message = random.choice(get_reminder_message(reminder_type)).format(journa=journa)
+            message = random.choice(get_reminder_message(reminder_type)).format(
+                journa=format_journa_link(link)
+            )
             if status is not None and status.bonus_available:
-                message += " " + BONUS_BEFORE_JOURNA_HINT.format(bonus=bonus, journa=journa)
+                message += " " + BONUS_BEFORE_JOURNA_HINT.format(bonus=bonus)
             elif status is not None and status.bonus_unlocked_by_next_journa:
                 message += " " + BONUS_UNLOCKED_BY_JOURNA_HINT.format(bonus=bonus)
             return message
 
         if status.bonus_available:
-            message = random.choice(get_bonus_reminder_message(reminder_type)).format(bonus=bonus)
-            return message + " " + BONUS_BEFORE_NEXT_JOURNA_HINT.format(journa=journa)
+            return random.choice(get_bonus_reminder_message(reminder_type)).format(bonus=bonus)
 
         return None
 

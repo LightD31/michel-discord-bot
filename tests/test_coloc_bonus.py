@@ -8,11 +8,9 @@ the last one and doesn't stack.
 from features.coloc import LootStatus, is_journa_done, journas_since_last_bonus
 from features.coloc.constants import (
     BONUS_BEFORE_JOURNA_HINT,
-    BONUS_BEFORE_NEXT_JOURNA_HINT,
     BONUS_UNLOCKED_BY_JOURNA_HINT,
     ReminderType,
     format_bonus_link,
-    format_journa_link,
     get_bonus_reminder_message,
 )
 
@@ -91,13 +89,8 @@ def test_bonus_reminder_templates_render_with_the_link():
             assert "{bonus}" not in rendered
 
 
-def test_bonus_hints_render_with_both_links():
-    links = {"bonus": format_bonus_link(LINK), "journa": format_journa_link(LINK)}
-    for hint in (
-        BONUS_BEFORE_JOURNA_HINT,
-        BONUS_UNLOCKED_BY_JOURNA_HINT,
-        BONUS_BEFORE_NEXT_JOURNA_HINT,
-    ):
-        rendered = hint.format(**links)
+def test_bonus_hints_render_with_the_link():
+    for hint in (BONUS_BEFORE_JOURNA_HINT, BONUS_UNLOCKED_BY_JOURNA_HINT):
+        rendered = hint.format(bonus=format_bonus_link(LINK))
         assert LINK in rendered
         assert "{" not in rendered

@@ -78,34 +78,24 @@ HARDCORE_REMINDERS: Final[list[str]] = [
 ]
 
 NORMAL_BONUS_REMINDERS: Final[list[str]] = [
-    "Ton {bonus} est disponible, pense à le récupérer !",
-    "Hé ! Tu as un {bonus} qui t'attend !",
-    "Petit rappel : ton {bonus} est prêt !",
-    "7 /journa d'affilée, ça mérite bien un {bonus} !",
-    "Psst... ton {bonus} n'attend que toi !",
+    "Ton {bonus} est dispo !",
+    "{bonus} dispo !",
+    "Ton {bonus} t'attend !",
+    "N'oublie pas ton {bonus} !",
 ]
 
 HARDCORE_BONUS_REMINDERS: Final[list[str]] = [
-    "Ton {bonus} hardcore est disponible, pense à le récupérer !",
-    "Attention ! Ton {bonus} hardcore t'attend !",
-    "Rappel crucial : ton {bonus} hardcore est prêt !",
-    "Ne laisse pas traîner ton {bonus} hardcore !",
-    "Le mode hardcore récompense les braves : récupère ton {bonus} !",
+    "Ton {bonus} hardcore est dispo !",
+    "{bonus} hardcore dispo !",
+    "Ton {bonus} hardcore t'attend !",
+    "N'oublie pas ton {bonus} hardcore !",
 ]
 
-# A /journa done while /bonus is already unlocked doesn't count toward the
-# next one (claiming /bonus resets the count to 0), so /bonus goes first.
-# Appended to a /journa reminder when a /bonus is already waiting...
-BONUS_BEFORE_JOURNA_HINT: Final[str] = (
-    "Mais fais d'abord ton {bonus}, il est déjà disponible : "
-    "ton {journa} comptera alors pour le prochain !"
-)
+# Appended to a /journa reminder when a /bonus is already waiting: it goes first,
+# since a /journa done on top of an unlocked /bonus doesn't count toward the next.
+BONUS_BEFORE_JOURNA_HINT: Final[str] = "{bonus} d'abord, il est dispo !"
 # ...or when that /journa is the one that unlocks it
-BONUS_UNLOCKED_BY_JOURNA_HINT: Final[str] = "Et il débloquera ton {bonus} juste après !"
-# Appended to a /bonus reminder (today's /journa is already done)
-BONUS_BEFORE_NEXT_JOURNA_HINT: Final[str] = (
-    "Récupère-le avant ton prochain {journa}, sinon celui-ci ne comptera pas pour le suivant."
-)
+BONUS_UNLOCKED_BY_JOURNA_HINT: Final[str] = "Puis {bonus} !"
 
 ADVENT_CALENDAR_REMINDERS: Final[list[str]] = [
     "🎄 Tu n'as pas encore ouvert ta case du [calendrier festif]({url}) aujourd'hui !",
