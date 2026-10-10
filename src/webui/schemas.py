@@ -20,7 +20,7 @@ Recognised widget types (``type=`` on ``ui()``):
     string, number, boolean, channel, role, message, secret, url,
     list, list:number, dict, messagelist, embedlist, commandlist, keyvaluemap,
     spotifymap, streamermap, youtubechannelmap, rssfeedmap, teams,
-    discord2name, models.
+    discord2name, models, text (multi-line string), aimodel (configured AI model key).
 """
 
 from typing import Any, ClassVar
@@ -278,25 +278,76 @@ class NotionSection(SchemaBase):
     )
 
 
-@register_section("OpenRouter")
-class OpenRouterSection(SchemaBase):
-    __label__ = "OpenRouter"
-    __icon__ = "🤖"
+@register_section("AI")
+class AISection(SchemaBase):
+    __label__ = "Intelligence Artificielle"
+    __icon__ = "🧠"
 
-    openrouterApiKey: str = secret_field(
-        "Clé API", required=True, description="Clé API OpenRouter."
+    models: list[Any] = ui(
+        "Modèles IA",
+        "models",
+        description="Modèles utilisés par /ask et les réponses aux mentions. Chaque modèle a une "
+        "clé (identifiant stable des votes), l'API qui le sert (OpenRouter ou NanoGPT), son "
+        "identifiant chez ce fournisseur et un nom d'affichage. « Parcourir les modèles » liste "
+        "les catalogues des API configurées.",
     )
     modelsToCompare: int = ui(
         "Modèles à comparer",
         "number",
         default=3,
-        description="Nombre de modèles IA à comparer par question.",
+        description="Nombre de modèles tirés au sort par question en mode comparaison (2 à 5).",
     )
-    models: list[Any] = ui(
-        "Modèles IA",
-        "models",
-        description="Liste des modèles IA disponibles pour la comparaison. "
-        "Chaque modèle nécessite un identifiant provider, un model_id OpenRouter et un nom d'affichage.",
+    defaultModel: str | None = ui(
+        "Modèle par défaut",
+        "aimodel",
+        description="Modèle du mode rapide et des réponses aux mentions (clé d'un modèle "
+        "ci-dessus). Vide : le premier modèle utilisable.",
+    )
+    requestTimeoutSeconds: int = ui(
+        "Délai max par requête (s)",
+        "number",
+        default=30,
+        description="Au-delà, le modèle est abandonné et les autres réponses sont affichées.",
+    )
+    appTitle: str = ui(
+        "Nom de l'application",
+        "string",
+        default="Michel Discord Bot",
+        description="Envoyé à OpenRouter (en-tête X-Title) pour identifier le bot.",
+    )
+
+
+@register_section("OpenRouter")
+class OpenRouterSection(SchemaBase):
+    __label__ = "OpenRouter"
+    __icon__ = "🤖"
+
+    openrouterApiKey: str = secret_field("Clé API", description="Clé API OpenRouter.")
+    baseUrl: str | None = ui(
+        "URL de l'API",
+        "url",
+        description="Base de l'API compatible OpenAI (celle qui sert /chat/completions et "
+        "/models). Vide : OpenRouter désactivé.",
+    )
+    appUrl: str | None = ui(
+        "URL de l'application",
+        "url",
+        description="Optionnel : envoyée à OpenRouter (en-tête HTTP-Referer) pour attribuer "
+        "l'usage au bot.",
+    )
+
+
+@register_section("NanoGPT")
+class NanoGPTSection(SchemaBase):
+    __label__ = "NanoGPT"
+    __icon__ = "🔹"
+
+    apiKey: str = secret_field("Clé API", description="Clé API NanoGPT (sk-nano-…).")
+    baseUrl: str | None = ui(
+        "URL de l'API",
+        "url",
+        description="Base de l'API compatible OpenAI de NanoGPT (celle qui sert "
+        "/chat/completions et /models). Vide : NanoGPT désactivé.",
     )
 
 

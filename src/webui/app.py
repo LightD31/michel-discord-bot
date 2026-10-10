@@ -20,6 +20,9 @@ from src.webui.context import WebUIContext
 from src.webui.log_handler import WebUILogHandler, install_log_handler
 from src.webui.ratelimit import TrustedProxies
 from src.webui.routes import (
+    ai as ai_routes,
+)
+from src.webui.routes import (
     auth as auth_routes,
 )
 from src.webui.routes import (
@@ -145,6 +148,7 @@ def create_app(bot=None, bot_loop=None) -> FastAPI:
     app.include_router(extensions_routes.create_router(ctx))
     app.include_router(spotify_routes.create_router(ctx))
     app.include_router(shlink_routes.create_router(ctx))
+    app.include_router(ai_routes.create_router(ctx))
     # Unauthenticated: the per-guild public XP / Spotify dashboards.
     app.include_router(public_routes.create_router(ctx))
     app.include_router(bot_routes.create_router(ctx))
