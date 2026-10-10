@@ -17,7 +17,7 @@ from features.ai.models import (
     ModelConfig,
     parse_models,
 )
-from features.ai.prompt import DEFAULT_PERSONA
+from features.ai.prompt import DEFAULT_PERSONA, LEGACY_DEFAULT_PERSONAS, MAX_SERVER_CONTEXT_CHARS
 
 DEFAULT_MODELS_TO_COMPARE = 3
 DEFAULT_VOTE_MINUTES = 10
@@ -70,13 +70,17 @@ class GuildAiSettings:
     default_model: str = ""
     mention_replies: bool = False
     mention_cooldown: int = DEFAULT_MENTION_COOLDOWN
+    server_context: str = ""
 
     @classmethod
     def from_config(cls, raw: Mapping[str, Any] | None) -> GuildAiSettings:
         """Parse a guild's ``moduleIA`` dict; missing or malformed values use the defaults."""
         raw = raw or {}
+        persona = str(raw.get("persona") or "").strip()
+        if not persona or persona in LEGACY_DEFAULT_PERSONAS:
+            persona = DEFAULT_PERSONA
         return cls(
-            persona=str(raw.get("persona") or "").strip() or DEFAULT_PERSONA,
+            persona=persona,
             compare_by_default=bool(raw.get("compareByDefault", True)),
             vote_minutes=_int(raw.get("voteDurationMinutes"), DEFAULT_VOTE_MINUTES, 1, 24 * 60),
             history_limit=_int(raw.get("historyLimit"), DEFAULT_HISTORY_LIMIT, 0, 50),
@@ -86,6 +90,7 @@ class GuildAiSettings:
             mention_cooldown=_int(
                 raw.get("mentionCooldownSeconds"), DEFAULT_MENTION_COOLDOWN, 0, 3600
             ),
+            server_context=str(raw.get("serverContext") or "").strip()[:MAX_SERVER_CONTEXT_CHARS],
         )
 
 

@@ -191,6 +191,7 @@ class AskMixin:
             author=author,
             participants=participants_from(history, author),
             today=datetime.now(PROMPT_TIMEZONE).date(),
+            server_context=settings.server_context,
         )
         return [
             {"role": "system", "content": system},

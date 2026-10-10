@@ -819,6 +819,22 @@
             gap: 8px;
         }
 
+        .btn-reset-default {
+            margin-left: auto;
+            background: none;
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            color: var(--text-muted);
+            font-size: 11px;
+            padding: 2px 8px;
+            cursor: pointer;
+        }
+
+        .btn-reset-default:hover {
+            color: var(--text-primary);
+            border-color: var(--accent);
+        }
+
         .form-label {
             font-size: 13px;
             font-weight: 600;
@@ -3524,6 +3540,11 @@
             html += `<label class="form-label">${field.label || key}`;
             if (isRequired) html += ' <span class="required-badge">requis</span>';
             html += `</label>`;
+            if (RESETTABLE_TYPES.has(fieldType) && field.default !== undefined && field.default !== null) {
+                html += `<button type="button" class="btn-reset-default" onclick="resetFieldToDefault(this)"
+                    data-default="${escapeHtml(JSON.stringify(field.default))}"
+                    title="Rétablir la valeur par défaut (à sauvegarder ensuite)">↺ Par défaut</button>`;
+            }
             html += `</div>`;
             if (field.description) {
                 html += `<div class="form-description">${field.description}</div>`;
@@ -3897,6 +3918,36 @@
         }
         html += `</div>`;
         return html;
+    }
+
+    // Field types whose default can be restored with one click.
+    const RESETTABLE_TYPES = new Set(['text', 'string', 'number', 'boolean', 'url']);
+
+    function resetFieldToDefault(btn) {
+        const field = btn.closest('.form-field');
+        const input = field?.querySelector('[data-field]');
+        if (!input) return;
+        let value;
+        try { value = JSON.parse(btn.dataset.default); } catch { return; }
+        if (input.type === 'checkbox') {
+            input.checked = value === true;
+        } else {
+            const current = input.value;
+            const next = value == null ? '' : String(value);
+            if (current === next) {
+                toast('Déjà à la valeur par défaut', 'info');
+                return;
+            }
+            // Long texts (the AI persona) are easy to lose: confirm before overwriting.
+            if (input.tagName === 'TEXTAREA' && current.trim()
+                && !confirm('Remplacer le texte actuel par la valeur par défaut ?')) {
+                return;
+            }
+            input.value = next;
+        }
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+        toast('Valeur par défaut rétablie — pensez à sauvegarder', 'success');
     }
 
     function collectFormValues(formId) {

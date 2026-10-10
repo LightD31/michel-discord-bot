@@ -112,3 +112,18 @@ def test_stats_count_votes_appearances_and_ties():
     assert (by_key["c"].votes, by_key["c"].appearances, by_key["c"].wins) == (1, 2, 1)
     assert [s.key for s in stats] == ["a", "c", "b"]  # by win rate, then votes
     assert by_key["c"].win_rate == 0.5
+
+
+def test_stored_legacy_default_follows_the_new_default():
+    from features.ai.prompt import LEGACY_DEFAULT_PERSONAS
+
+    legacy = GuildAiSettings.from_config({"persona": LEGACY_DEFAULT_PERSONAS[0] + "\n"})
+    assert legacy.persona == DEFAULT_PERSONA
+    custom = GuildAiSettings.from_config({"persona": LEGACY_DEFAULT_PERSONAS[0] + " Et pirate."})
+    assert custom.persona.endswith("Et pirate.")
+
+
+def test_server_context_is_stripped_and_capped():
+    assert GuildAiSettings.from_config({}).server_context == ""
+    assert GuildAiSettings.from_config({"serverContext": "  lore  "}).server_context == "lore"
+    assert len(GuildAiSettings.from_config({"serverContext": "x" * 5000}).server_context) == 2000
