@@ -38,6 +38,13 @@
             "devGuildId": "",
             "devGuildChannelId": ""
         },
+        "metrics": {
+            "enabled": false,
+            "host": "0.0.0.0",
+            "port": 9108,
+            "refreshSeconds": 300,
+            "topMembers": 25
+        },
         "misc": {
             "dataFolder": "data"
         },

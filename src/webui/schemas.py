@@ -504,6 +504,43 @@ class BackupSection(SchemaBase):
     )
 
 
+@register_section("metrics")
+class MetricsSection(SchemaBase):
+    __label__ = "Métriques Prometheus"
+    __icon__ = "📈"
+
+    enabled: bool = ui(
+        "Activé",
+        "boolean",
+        default=False,
+        description="Exposer les métriques du bot (XP, Spotify, santé) au format Prometheus.",
+    )
+    host: str = ui(
+        "Hôte",
+        "string",
+        default="0.0.0.0",
+        description="Adresse de liaison de l'endpoint /metrics.",
+    )
+    port: int = ui(
+        "Port",
+        "number",
+        default=9108,
+        description="Port de l'endpoint /metrics (distinct de celui du dashboard).",
+    )
+    refreshSeconds: int = ui(
+        "Intervalle de rafraîchissement (s)",
+        "number",
+        default=300,
+        description="Fréquence de recalcul des statistiques XP et Spotify depuis MongoDB.",
+    )
+    topMembers: int = ui(
+        "Membres détaillés",
+        "number",
+        default=25,
+        description="Nombre de membres (classement XP, contributeurs, votants) exportés individuellement.",
+    )
+
+
 @register_section("webui")
 class WebuiSection(SchemaBase):
     __label__ = "Dashboard Web"

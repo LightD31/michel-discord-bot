@@ -6,6 +6,9 @@ services:
       # Web UI bound to loopback only — front it with a reverse proxy
       # (Caddy/Nginx/Traefik) for TLS. Use "8080:8080" to expose it directly.
       - "127.0.0.1:8080:8080"
+      # Prometheus /metrics (config.metrics). Not needed when Prometheus runs
+      # on the same Docker network and scrapes discord_bot:9108 directly.
+      # - "127.0.0.1:9108:9108"
     environment:
       # Toggle extra debug logging (file/line in log records). Default off.
       MICHEL_DEBUG: "${MICHEL_DEBUG:-false}"

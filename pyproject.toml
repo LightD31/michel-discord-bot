@@ -52,6 +52,9 @@ dependencies = [
     "prettytable",
     "pandas",
 
+    # Monitoring
+    "prometheus-client",
+
     # Optional Web UI
     "fastapi",
     "uvicorn[standard]",
@@ -82,7 +85,6 @@ line-length = 100
 target-version = "py312"
 extend-exclude = [
     "extensions/_*",  # archived/disabled extensions
-    "grafana",
     "data",
     "logs",
 ]
@@ -128,7 +130,6 @@ warn_unused_ignores = true
 warn_redundant_casts = true
 exclude = [
     "^extensions/_",
-    "^grafana/",
     "^data/",
     "^logs/",
 ]

@@ -30,6 +30,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 
+from features.userinfo.labels import member_label_resolver
 from features.userinfo.repository import UserInfoRepository
 from features.xp.cache import TTLCache
 from src.core import logging as logutil
@@ -103,21 +104,8 @@ async def _spotify_label_resolver(
     server_id: str, server: dict[str, Any], user_ids: set[str]
 ) -> Callable[[str], str]:
     """Same precedence as the admin page: configured first name, then Discord name."""
-    prenoms = server.get("discord2name") or {}
-    if not isinstance(prenoms, dict):
-        prenoms = {}
     names = await UserInfoRepository(server_id).get_names(sorted(user_ids))
-
-    def label_of(user_id: str) -> str:
-        info = names.get(user_id, {})
-        return str(
-            prenoms.get(user_id)
-            or info.get("display_name")
-            or info.get("username")
-            or UNKNOWN_MEMBER
-        )
-
-    return label_of
+    return member_label_resolver(server.get("discord2name"), names, UNKNOWN_MEMBER)
 
 
 class _CoalescingCache:
