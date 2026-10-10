@@ -16,6 +16,7 @@ from .constants import (
     ZUNIVERS_LOOT_URL_TEMPLATE,
     ReminderType,
 )
+from .models import LootStatus
 
 logger = logutil.init_logger(__name__)
 
@@ -109,20 +110,21 @@ class ZuniversAPIClient:
             logger.warning(f"Error downloading image from {image_url}: {e}")
         return None
 
-    async def check_user_journa_done(
+    async def get_user_loot_status(
         self,
         username: str,
         rule_set: ReminderType,
         date_str: str,
-    ) -> bool:
-        """Check if a user has completed their journa for a specific date."""
+    ) -> LootStatus | None:
+        """Get a user's ``/journa`` and ``/bonus`` status for a specific date.
+
+        Returns ``None`` when the API can't be reached.
+        """
         try:
             data = await self.get_user_loot(username, rule_set)
-            if date_str in data:
-                return len(data[date_str]) > 0
-            return False
         except ZuniversAPIError:
-            return False  # Assume not done if we can't check
+            return None
+        return LootStatus.from_loot(data, date_str)
 
     async def get_unopened_calendar_days(
         self,

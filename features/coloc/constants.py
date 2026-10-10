@@ -26,6 +26,14 @@ ZUNIVERS_LOOT_URL_TEMPLATE: Final[str] = f"{ZUNIVERS_API_BASE}/loot/{{username}}
 ZUNIVERS_CALENDAR_URL_TEMPLATE: Final[str] = f"{ZUNIVERS_API_BASE}/calendar/{{username}}"
 ZUNIVERS_CORPORATION_URL_TEMPLATE: Final[str] = f"{ZUNIVERS_API_BASE}/corporation/{{corp_id}}"
 
+# Loot types returned by the ``/loot/{username}`` endpoint
+LOOT_TYPE_JOURNA: Final[str] = "DAILY"
+LOOT_TYPE_BONUS: Final[str] = "WEEKLY"
+
+# ``/bonus`` unlocks once this many ``/journa`` have been done since the last one
+# (it doesn't stack: a second /bonus never becomes available before it is used).
+BONUS_JOURNA_INTERVAL: Final[int] = 7
+
 # Default corporation ID
 DEFAULT_CORPORATION_ID: Final[str] = "ce746744-e36d-4331-a0fb-399228e66ef8"
 
@@ -69,6 +77,26 @@ HARDCORE_REMINDERS: Final[list[str]] = [
     "Le mode hardcore ne pardonne pas : fais ton {journa} maintenant !",
 ]
 
+NORMAL_BONUS_REMINDERS: Final[list[str]] = [
+    "Ton {bonus} est dispo !",
+    "{bonus} dispo !",
+    "Ton {bonus} t'attend !",
+    "N'oublie pas ton {bonus} !",
+]
+
+HARDCORE_BONUS_REMINDERS: Final[list[str]] = [
+    "Ton {bonus} hardcore est dispo !",
+    "{bonus} hardcore dispo !",
+    "Ton {bonus} hardcore t'attend !",
+    "N'oublie pas ton {bonus} hardcore !",
+]
+
+# Appended to a /journa reminder when a /bonus is already waiting: it goes first,
+# since a /journa done on top of an unlocked /bonus doesn't count toward the next.
+BONUS_BEFORE_JOURNA_HINT: Final[str] = "{bonus} d'abord, il est dispo !"
+# ...or when that /journa is the one that unlocks it
+BONUS_UNLOCKED_BY_JOURNA_HINT: Final[str] = "Puis {bonus} !"
+
 ADVENT_CALENDAR_REMINDERS: Final[list[str]] = [
     "🎄 Tu n'as pas encore ouvert ta case du [calendrier festif]({url}) aujourd'hui !",
     "🎁 N'oublie pas d'ouvrir ta case du [calendrier festif]({url}) !",
@@ -108,13 +136,23 @@ def get_bonus_value_description(bonus_type: str, level: int) -> str:
     return descriptions.get(bonus_type, f"Niveau {level}")
 
 
-def format_journa_link(link: str | None) -> str:
-    """Render the ``/journa`` mention used inside the reminder templates.
+def format_command_link(command: str, link: str | None) -> str:
+    """Render a slash-command mention used inside the reminder templates.
 
     The channel link is configured per guild in the Web UI; without one the
     command is rendered as plain code instead of a dead link.
     """
-    return f"[/journa]({link})" if link else "`/journa`"
+    return f"[{command}]({link})" if link else f"`{command}`"
+
+
+def format_journa_link(link: str | None) -> str:
+    """Render the ``/journa`` mention used inside the reminder templates."""
+    return format_command_link("/journa", link)
+
+
+def format_bonus_link(link: str | None) -> str:
+    """Render the ``/bonus`` mention (same channel as ``/journa``)."""
+    return format_command_link("/bonus", link)
 
 
 def get_reminder_message(reminder_type: ReminderType) -> list[str]:
@@ -122,6 +160,13 @@ def get_reminder_message(reminder_type: ReminderType) -> list[str]:
     if reminder_type == ReminderType.HARDCORE:
         return HARDCORE_REMINDERS
     return NORMAL_REMINDERS
+
+
+def get_bonus_reminder_message(reminder_type: ReminderType) -> list[str]:
+    """Get the ``/bonus`` reminder templates for a specific type (format with ``bonus=``)."""
+    if reminder_type == ReminderType.HARDCORE:
+        return HARDCORE_BONUS_REMINDERS
+    return NORMAL_BONUS_REMINDERS
 
 
 def get_advent_calendar_url(username: str) -> str:
