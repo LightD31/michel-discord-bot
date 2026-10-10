@@ -18,6 +18,7 @@ A modular, multi-guild Discord bot built with **interactions.py**. Michel ships 
 - [Configuration](#configuration)
 - [Extensions](#extensions)
 - [Web UI](#web-ui)
+- [Prometheus metrics](#prometheus-metrics)
 - [Development](#development)
 - [Contributing](#contributing)
 - [License](#license)
@@ -26,7 +27,7 @@ A modular, multi-guild Discord bot built with **interactions.py**. Michel ships 
 
 ## Features
 
-35 extensions are auto-discovered from `extensions/` at startup. Each one can be toggled per server from the Web UI.
+36 extensions are auto-discovered from `extensions/` at startup. Each one can be toggled per server from the Web UI.
 
 ### Community & engagement
 
@@ -56,6 +57,7 @@ A modular, multi-guild Discord bot built with **interactions.py**. Michel ships 
 | **Admin** | Moderator utilities: `/ping`, `/delete`, `/send`, `/slowmode`, `/lock`, `/unlock`. |
 | **Embed Manager** | Custom embeds created and managed from the Web UI, auto-published to a channel. |
 | **Backup** | Daily (and on-demand `/backup`) JSON exports of all MongoDB databases with configurable retention. |
+| **Metrics** | Prometheus exporter: per-guild XP and Spotify statistics, bot health and command counters on a dedicated `/metrics` port. |
 
 ### Integrations & notifications
 
@@ -146,7 +148,6 @@ src/                    # Shared infrastructure
 
 tests/                  # pytest suite (core, webui auth/config, feature logic)
 scripts/                # generate_config_example.py — config skeleton from schemas
-grafana/                # standalone Grafana dashboard exports (spotify, xp)
 ```
 
 **Key design choices:**
@@ -269,6 +270,38 @@ An optional FastAPI-based dashboard, enabled when `webui.enabled` is `true` in c
 
 ---
 
+## Prometheus metrics
+
+The `metrics` extension serves `/metrics` in the Prometheus text format on its own port, independent of the Web UI. Enable it in the `metrics` global section (Web UI → global config, or `config.metrics` in `config.json`):
+
+| Key | Default | Meaning |
+|-----|---------|---------|
+| `enabled` | `false` | Start the exporter. |
+| `host` / `port` | `0.0.0.0` / `9108` | Where `/metrics` listens. |
+| `refreshSeconds` | `300` | How often XP and Spotify statistics are recomputed from MongoDB (minimum 60). |
+| `topMembers` | `25` | How many members get their own series (XP leaderboard, Spotify contributors and voters). |
+
+`refreshSeconds` and `topMembers` apply on the next refresh; after changing `enabled`, `host` or `port`, reload the `metrics` extension from the Extensions page (or restart the bot). Scrapes never query MongoDB: the statistics are recomputed on the bot loop every `refreshSeconds` and served from memory.
+
+| Group | Metrics |
+|-------|---------|
+| XP (per guild with `moduleXp`) | `michel_xp_members`, `michel_xp_points`, `michel_xp_messages`, `michel_xp_level_members{level}`, `michel_xp_active_members{window="1d"\|"7d"\|"30d"}`, `michel_xp_source_points{source}`, `michel_xp_source_events{source}`, and for the top members `michel_xp_member_points` / `_level` / `_messages` / `_rank{user_id,member}` |
+| Spotify (per guild with `moduleSpotify`) | `michel_spotify_tracks`, `michel_spotify_duration_seconds`, `michel_spotify_artists`, `michel_spotify_contributors`, `michel_spotify_polls_closed`, `michel_spotify_polls_outcome{outcome}`, `michel_spotify_poll_removal_ratio`, `michel_spotify_poll_participation_avg` / `_max`, `michel_spotify_poll_open`, `michel_spotify_poll_voters`, `michel_spotify_contributor_tracks{user_id,member}`, `michel_spotify_artist_tracks{artist}`, `michel_spotify_voter_votes{user_id,member,choice}` |
+| Bot | `michel_gateway_latency_seconds`, `michel_guilds`, `michel_extension_loaded{extension}`, `michel_commands_total{command,status}`, `michel_stats_refresh_timestamp_seconds`, `michel_stats_refresh_duration_seconds`, `michel_stats_refresh_failures_total{module}`, plus the standard `process_*` and `python_*` series |
+
+Every per-guild series carries `guild_id` and `guild` (the server name). The values are gauges of the current state; let Prometheus derive the history, e.g. `delta(michel_xp_points[1d])` for the XP earned per day. The open Spotify poll's tally is not exported, only whether a poll is open and how many members voted.
+
+Scrape config, with Prometheus on the same Docker network as the bot:
+
+```yaml
+scrape_configs:
+  - job_name: michel
+    static_configs:
+      - targets: ["discord_bot:9108"]
+```
+
+---
+
 ## Development
 
 ### Tech Stack
@@ -284,7 +317,7 @@ An optional FastAPI-based dashboard, enabled when `webui.enabled` is `true` in c
 | Notion | [notion-client](https://github.com/ramnes/notion-sdk-py) |
 | AI | [OpenRouter](https://openrouter.ai/) and [NanoGPT](https://nano-gpt.com/) via the OpenAI SDK |
 | Minecraft | mcstatus, asyncssh, native RCON |
-| Monitoring | Uptime Kuma (Socket.IO), Grafana dashboard exports in `grafana/` |
+| Monitoring | Uptime Kuma (Socket.IO), Prometheus exporter ([prometheus-client](https://github.com/prometheus/client_python)) |
 | Image gen | Pillow |
 
 ### Tooling

@@ -200,6 +200,24 @@ class XpRepository:
         return await self._events().aggregate(pipeline).to_list(length=None)
 
     @translates_db_errors
+    async def totals_by_source(self) -> list[dict[str, Any]]:
+        """All-time XP and event count per source.
+
+        Rows: ``{"source": "message"|"voice", "xp": int, "events": int}``.
+        """
+        pipeline: list[dict[str, Any]] = [
+            {
+                "$group": {
+                    "_id": _SOURCE_EXPR,
+                    "xp": {"$sum": "$xp_gained"},
+                    "events": {"$sum": 1},
+                }
+            },
+            {"$project": {"_id": 0, "source": "$_id", "xp": 1, "events": 1}},
+        ]
+        return await self._events().aggregate(pipeline).to_list(length=None)
+
+    @translates_db_errors
     async def daily_active_users(self, since: datetime, tz: str) -> list[dict[str, Any]]:
         """Distinct users who earned XP, per local day. Rows: ``{"day", "users"}``."""
         pipeline: list[dict[str, Any]] = [

@@ -136,6 +136,8 @@ pillow==12.3.0
     # via michel-discord-bot (pyproject.toml)
 prettytable==3.18.0
     # via michel-discord-bot (pyproject.toml)
+prometheus-client==0.26.0
+    # via michel-discord-bot (pyproject.toml)
 propcache==0.5.4
     # via
     #   aiohttp
