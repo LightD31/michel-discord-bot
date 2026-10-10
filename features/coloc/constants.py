@@ -93,10 +93,19 @@ HARDCORE_BONUS_REMINDERS: Final[list[str]] = [
     "Le mode hardcore récompense les braves : récupère ton {bonus} !",
 ]
 
+# A /journa done while /bonus is already unlocked doesn't count toward the
+# next one (claiming /bonus resets the count to 0), so /bonus goes first.
 # Appended to a /journa reminder when a /bonus is already waiting...
-BONUS_ALREADY_AVAILABLE_HINT: Final[str] = "Ton {bonus} est aussi disponible, ne l'oublie pas !"
+BONUS_BEFORE_JOURNA_HINT: Final[str] = (
+    "Mais fais d'abord ton {bonus}, il est déjà disponible : "
+    "ton {journa} comptera alors pour le prochain !"
+)
 # ...or when that /journa is the one that unlocks it
 BONUS_UNLOCKED_BY_JOURNA_HINT: Final[str] = "Et il débloquera ton {bonus} juste après !"
+# Appended to a /bonus reminder (today's /journa is already done)
+BONUS_BEFORE_NEXT_JOURNA_HINT: Final[str] = (
+    "Récupère-le avant ton prochain {journa}, sinon celui-ci ne comptera pas pour le suivant."
+)
 
 ADVENT_CALENDAR_REMINDERS: Final[list[str]] = [
     "🎄 Tu n'as pas encore ouvert ta case du [calendrier festif]({url}) aujourd'hui !",

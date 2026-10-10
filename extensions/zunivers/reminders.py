@@ -23,7 +23,8 @@ from interactions.api.events import Component
 from features.coloc import LootStatus
 from features.coloc.constants import (
     ADVENT_CALENDAR_REMINDERS,
-    BONUS_ALREADY_AVAILABLE_HINT,
+    BONUS_BEFORE_JOURNA_HINT,
+    BONUS_BEFORE_NEXT_JOURNA_HINT,
     BONUS_UNLOCKED_BY_JOURNA_HINT,
     PARIS_TZ,
     ReminderType,
@@ -254,27 +255,29 @@ class RemindersMixin:
     ) -> str | None:
         """Pick the DM for a user's /journa + /bonus status, or ``None`` if all is done.
 
-        An unreachable API (``status is None``) still sends the /journa reminder,
-        but never claims a /bonus is waiting.
+        An unlocked /bonus should be claimed before the next /journa: a /journa done
+        on top of it doesn't count toward the following /bonus. An unreachable API
+        (``status is None``) still sends the /journa reminder, but never claims a
+        /bonus is waiting.
         """
         link_key = (
             "journaHardcoreLink" if reminder_type == ReminderType.HARDCORE else "journaNormalLink"
         )
         link = module_config.get(link_key)
         bonus = format_bonus_link(link)
+        journa = format_journa_link(link)
 
         if status is None or not status.journa_done:
-            message = random.choice(get_reminder_message(reminder_type)).format(
-                journa=format_journa_link(link)
-            )
+            message = random.choice(get_reminder_message(reminder_type)).format(journa=journa)
             if status is not None and status.bonus_available:
-                message += " " + BONUS_ALREADY_AVAILABLE_HINT.format(bonus=bonus)
+                message += " " + BONUS_BEFORE_JOURNA_HINT.format(bonus=bonus, journa=journa)
             elif status is not None and status.bonus_unlocked_by_next_journa:
                 message += " " + BONUS_UNLOCKED_BY_JOURNA_HINT.format(bonus=bonus)
             return message
 
         if status.bonus_available:
-            return random.choice(get_bonus_reminder_message(reminder_type)).format(bonus=bonus)
+            message = random.choice(get_bonus_reminder_message(reminder_type)).format(bonus=bonus)
+            return message + " " + BONUS_BEFORE_NEXT_JOURNA_HINT.format(journa=journa)
 
         return None
 
