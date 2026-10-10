@@ -4,7 +4,8 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional
 
-from .constants import ReminderType
+from .constants import BONUS_JOURNA_INTERVAL, ReminderType
+from .utils import is_journa_done, journas_since_last_bonus
 
 
 @dataclass
@@ -232,4 +233,30 @@ class CorporationLog:
             date=datetime.strptime(data["date"], "%Y-%m-%dT%H:%M:%S.%f"),
             action=action_type_names.get(action_key) or action_key,
             amount=data.get("amount", 0),
+        )
+
+
+@dataclass
+class LootStatus:
+    """Where a user stands on ``/journa`` and ``/bonus`` for one rule set."""
+
+    journa_done: bool
+    journas_since_bonus: int
+
+    @property
+    def bonus_available(self) -> bool:
+        """``/bonus`` is unlocked and waiting to be claimed."""
+        return self.journas_since_bonus >= BONUS_JOURNA_INTERVAL
+
+    @property
+    def bonus_unlocked_by_next_journa(self) -> bool:
+        """Today's pending ``/journa`` will unlock ``/bonus``."""
+        return not self.journa_done and self.journas_since_bonus + 1 >= BONUS_JOURNA_INTERVAL
+
+    @classmethod
+    def from_loot(cls, loot: dict[str, list[dict]], date_str: str) -> "LootStatus":
+        """Build the status from a ``/loot/{username}`` payload for ``date_str`` (``YYYY-MM-DD``)."""
+        return cls(
+            journa_done=is_journa_done(loot, date_str),
+            journas_since_bonus=journas_since_last_bonus(loot),
         )

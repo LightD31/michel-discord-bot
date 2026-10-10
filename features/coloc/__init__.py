@@ -23,6 +23,7 @@ from .constants import (
 from .models import (
     EventState,
     HardcoreSeason,
+    LootStatus,
     Reminder,
     ReminderCollection,
     ZuniversEvent,
@@ -31,6 +32,8 @@ from .storage import StorageManager
 from .utils import (
     format_event_items,
     image_url_needs_download,
+    is_journa_done,
+    journas_since_last_bonus,
     parse_zunivers_date,
 )
 
@@ -47,6 +50,7 @@ __all__ = [
     "EventState",
     "ZuniversEvent",
     "HardcoreSeason",
+    "LootStatus",
     # API
     "ZuniversAPIClient",
     "ZuniversAPIError",
@@ -56,4 +60,6 @@ __all__ = [
     "parse_zunivers_date",
     "format_event_items",
     "image_url_needs_download",
+    "is_journa_done",
+    "journas_since_last_bonus",
 ]

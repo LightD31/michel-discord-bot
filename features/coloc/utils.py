@@ -5,7 +5,12 @@ Embed builders live in :mod:`extensions.zunivers.embeds`.
 
 from datetime import datetime
 
-from .constants import PARIS_TZ, RARITY_EMOJIS
+from .constants import (
+    LOOT_TYPE_BONUS,
+    LOOT_TYPE_JOURNA,
+    PARIS_TZ,
+    RARITY_EMOJIS,
+)
 
 
 def parse_zunivers_date(date_str: str) -> datetime:
@@ -52,3 +57,28 @@ def image_url_needs_download(image_url: str) -> bool:
         return False
     extensions = [".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp"]
     return not any(image_url.lower().endswith(ext) for ext in extensions)
+
+
+def is_journa_done(loot: dict[str, list[dict]], date_str: str) -> bool:
+    """Whether the ``/loot`` history holds a ``/journa`` on ``date_str`` (``YYYY-MM-DD``)."""
+    return any(entry.get("type") == LOOT_TYPE_JOURNA for entry in loot.get(date_str, []))
+
+
+def journas_since_last_bonus(loot: dict[str, list[dict]]) -> int:
+    """Count the ``/journa`` done since the most recent ``/bonus``.
+
+    ``loot`` is the ``/loot/{username}`` payload: ``{"YYYY-MM-DD": [{"type", "date", ...}]}``
+    covering the last 365 days. Entries are ordered by their full timestamp since
+    a ``/bonus`` is usually claimed the same day as the ``/journa`` that unlocked it.
+    """
+    entries = sorted(
+        (entry for day in loot.values() for entry in day),
+        key=lambda entry: entry.get("date", ""),
+    )
+    count = 0
+    for entry in entries:
+        if entry.get("type") == LOOT_TYPE_BONUS:
+            count = 0
+        elif entry.get("type") == LOOT_TYPE_JOURNA:
+            count += 1
+    return count
