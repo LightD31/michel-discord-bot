@@ -36,7 +36,14 @@ class IAConfig(SchemaBase):
         "text",
         default=DEFAULT_PERSONA,
         description="Identité et ton de Michel. Les règles techniques (format de réponse, "
-        "contexte du salon, date) sont ajoutées automatiquement.",
+        "contexte du salon, date) sont ajoutées automatiquement. Vide : personnalité par défaut.",
+    )
+    serverContext: str | None = ui(
+        "Contexte du serveur",
+        "text",
+        description="Ce que Michel doit savoir du serveur pour être dans le ton : qui est qui, "
+        "surnoms, blagues récurrentes, vocabulaire maison. Restez bref (2000 caractères max) : "
+        "ce texte est envoyé avec chaque question.",
     )
     compareByDefault: bool = ui(
         "Comparer par défaut",

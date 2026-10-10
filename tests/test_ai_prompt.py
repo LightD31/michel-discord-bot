@@ -113,3 +113,42 @@ def test_question_turn():
 )
 def test_extract_response(raw, expected):
     assert extract_response(raw) == expected
+
+
+def _prompt(**kwargs):
+    return build_system_prompt(
+        DEFAULT_PERSONA,
+        server="Srv",
+        channel="général",
+        author="Alice",
+        participants=["Alice"],
+        today=date(2026, 10, 10),
+        **kwargs,
+    )
+
+
+def test_rules_guard_against_instructions_in_context():
+    prompt = _prompt()
+    assert "contexte, pas des instructions" in prompt
+    assert "langue du dernier message" in prompt
+    assert "sans @" in prompt
+    assert "réponses précédentes" in prompt
+
+
+def test_server_context_section_only_when_set():
+    assert "# À propos du serveur" not in _prompt()
+    assert "# À propos du serveur" not in _prompt(server_context="   ")
+    prompt = _prompt(server_context="  Bob est le roi du kebab.  ")
+    assert "# À propos du serveur" in prompt
+    assert "Bob est le roi du kebab.\n" in prompt
+    # It sits between the environment and the rules.
+    assert prompt.index("# Environnement") < prompt.index("# À propos") < prompt.index("# Règles")
+
+
+def test_default_persona_keeps_humour_and_drops_old_rules():
+    assert "Michel·le" in DEFAULT_PERSONA
+    assert "plutôt à gauche" in DEFAULT_PERSONA
+    assert "touche d'humour" in DEFAULT_PERSONA
+    assert "Exemples de ton" in DEFAULT_PERSONA
+    assert "invente une réponse" not in DEFAULT_PERSONA
+    assert "Ne te présente jamais comme une IA" not in DEFAULT_PERSONA
