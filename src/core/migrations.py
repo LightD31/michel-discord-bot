@@ -44,21 +44,80 @@ def migrate_guildeux(data: dict[str, Any]) -> list[str]:
     return migrated
 
 
+# The AI model list (October 2026) moved out of the OpenRouter section into a
+# provider-neutral ``AI`` section once NanoGPT became a second API; each model
+# now names the API that serves it, and the pre-existing ones were OpenRouter's.
+_AI_SECTION = "AI"
+_OPENROUTER_SECTION = "OpenRouter"
+_AI_MOVED_KEYS = ("models", "modelsToCompare")
+
+
+def _needs_ai_section(data: dict[str, Any]) -> bool:
+    openrouter = (data.get("config") or {}).get(_OPENROUTER_SECTION)
+    return isinstance(openrouter, dict) and any(k in openrouter for k in _AI_MOVED_KEYS)
+
+
+def migrate_ai_section(data: dict[str, Any]) -> list[str]:
+    """Move ``OpenRouter.models`` / ``modelsToCompare`` into ``AI``, in place.
+
+    Values already present in ``AI`` win (the old keys are dropped either
+    way), and moved models without an ``api`` are tagged ``openrouter``.
+    Returns the moved keys.
+    """
+    config = data.get("config")
+    if not isinstance(config, dict):
+        return []
+    openrouter = config.get(_OPENROUTER_SECTION)
+    if not isinstance(openrouter, dict):
+        return []
+    ai = config.get(_AI_SECTION)
+    if not isinstance(ai, dict):
+        ai = {}
+    moved: list[str] = []
+    for key in _AI_MOVED_KEYS:
+        if key not in openrouter:
+            continue
+        value = openrouter.pop(key)
+        moved.append(key)
+        if key in ai:
+            continue
+        if key == "models" and isinstance(value, list):
+            value = [
+                {**entry, "api": entry.get("api") or "openrouter"}
+                if isinstance(entry, dict)
+                else entry
+                for entry in value
+            ]
+        ai[key] = value
+    if moved:
+        config[_AI_SECTION] = ai
+    return moved
+
+
+def _needs_guildeux(data: dict[str, Any]) -> bool:
+    servers = data.get("servers") or {}
+    return any(isinstance(s, dict) and _GUILDEUX_KEY in s for s in servers.values())
+
+
 def run_migrations() -> None:
     """Apply every pending migration; write the config only if one applied."""
     data = config_store.get()
-    servers = data.get("servers") or {}
-    if not any(isinstance(s, dict) and _GUILDEUX_KEY in s for s in servers.values()):
+    if not (_needs_guildeux(data) or _needs_ai_section(data)):
         return
 
-    migrated: list[str] = []
+    guilds: list[str] = []
+    ai_keys: list[str] = []
 
     def mutator(fresh: dict[str, Any]) -> None:
-        migrated.extend(migrate_guildeux(fresh))
+        guilds.extend(migrate_guildeux(fresh))
+        ai_keys.extend(migrate_ai_section(fresh))
 
     try:
         config_store.mutate(mutator)
     except ConfigError as e:
         logger.error("Config migration skipped: %s", e)
         return
-    logger.info("Migrated %s to %s for guilds %s", _GUILDEUX_KEY, _EMBED_MANAGER_KEY, migrated)
+    if guilds:
+        logger.info("Migrated %s to %s for guilds %s", _GUILDEUX_KEY, _EMBED_MANAGER_KEY, guilds)
+    if ai_keys:
+        logger.info("Moved %s from %s to %s", ai_keys, _OPENROUTER_SECTION, _AI_SECTION)

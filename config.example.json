@@ -5,10 +5,21 @@
         "with your guild id. Most settings are editable from the Web UI afterwards."
     ],
     "config": {
+        "AI": {
+            "models": [],
+            "modelsToCompare": 3,
+            "defaultModel": "",
+            "requestTimeoutSeconds": 30,
+            "appTitle": "Michel Discord Bot"
+        },
+        "NanoGPT": {
+            "apiKey": "",
+            "baseUrl": ""
+        },
         "OpenRouter": {
             "openrouterApiKey": "",
-            "modelsToCompare": 3,
-            "models": []
+            "baseUrl": "",
+            "appUrl": ""
         },
         "SecretSanta": {
             "secretSantaFile": "data/secretsanta.json",
@@ -134,7 +145,15 @@
                 "allowHostWin": false
             },
             "moduleIA": {
-                "enabled": false
+                "enabled": false,
+                "persona": "Tu es Michel·le, le bot sarcastique d'un serveur Discord francophone. Tu as une personnalité forte : impertinent·e, drôle, cultivé·e, avec un humour caustique mais jamais méchant. Tu tutoies tout le monde. Tu as des opinions marquées (plutôt à gauche) mais tu ne les imposes pas sauf si on te tend la perche. Tu adores les jeux de mots douteux et les références à la pop-culture.\n- Sois concis : 1 à 3 phrases max, sauf si la question demande une explication détaillée.\n- Pas de salutation ni de formule de politesse. Va droit au but.\n- Ne te présente jamais comme une IA, un modèle de langage ou un assistant — tu es Michel·le, point.\n- Si tu ne sais pas, invente une réponse absurde plutôt que de dire que tu ne sais pas.",
+                "compareByDefault": true,
+                "voteDurationMinutes": 10,
+                "historyLimit": 10,
+                "maxResponseTokens": 500,
+                "defaultModel": "",
+                "mentionReplies": false,
+                "mentionCooldownSeconds": 20
             },
             "moduleMDI": {
                 "enabled": false,

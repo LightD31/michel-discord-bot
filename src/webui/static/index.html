@@ -1358,7 +1358,7 @@
 
         .model-entry {
             display: grid;
-            grid-template-columns: 1fr 1.5fr 1.5fr auto;
+            grid-template-columns: 0.9fr 0.9fr 1.6fr 1.4fr auto;
             gap: 8px;
             align-items: center;
             padding: 10px 12px;
@@ -1367,7 +1367,7 @@
             border-radius: var(--radius);
         }
 
-        .model-entry input {
+        .model-entry input, .model-entry select {
             width: 100%;
             padding: 6px 8px;
             background: var(--bg-secondary);
@@ -1379,8 +1379,127 @@
             outline: none;
         }
 
-        .model-entry input:focus {
+        .model-entry input:focus, .model-entry select:focus {
             border-color: var(--accent);
+        }
+
+        .model-entry.model-missing {
+            border-color: var(--warning, #f0b232);
+        }
+
+        .model-entry.model-missing [data-model-field="model_id"] {
+            border-color: var(--warning, #f0b232);
+        }
+
+        .models-actions {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        /* ── AI model catalog picker ─────────────────── */
+        .ai-catalog-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.6);
+            z-index: 600;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 16px;
+        }
+
+        .ai-catalog {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            width: min(860px, 100%);
+            max-height: 85vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .ai-catalog-head {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            padding: 14px 16px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .ai-catalog-title {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-weight: 600;
+        }
+
+        .ai-catalog-apis {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+
+        .ai-catalog-apis .btn.active {
+            background: var(--accent);
+            color: #fff;
+        }
+
+        .ai-catalog-list {
+            overflow-y: auto;
+            padding: 8px;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .ai-catalog-row {
+            display: grid;
+            grid-template-columns: 1fr auto;
+            gap: 8px;
+            align-items: center;
+            padding: 8px 10px;
+            border-radius: var(--radius);
+            border: 1px solid transparent;
+            cursor: pointer;
+            text-align: left;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            font: inherit;
+        }
+
+        .ai-catalog-row:hover {
+            border-color: var(--accent);
+        }
+
+        .ai-catalog-row.added {
+            opacity: 0.55;
+            cursor: default;
+        }
+
+        .ai-catalog-row .ai-catalog-id {
+            font-family: 'Consolas', monospace;
+            font-size: 12px;
+            color: var(--text-muted);
+            word-break: break-all;
+        }
+
+        .ai-catalog-row .ai-catalog-meta {
+            font-size: 12px;
+            color: var(--text-muted);
+            text-align: right;
+            white-space: nowrap;
+        }
+
+        .ai-catalog-badge {
+            display: inline-block;
+            padding: 1px 6px;
+            border-radius: 8px;
+            font-size: 11px;
+            background: rgba(35, 165, 89, 0.2);
+            color: #23a559;
+            margin-left: 6px;
         }
 
         .model-entry .btn-remove-model {
@@ -1400,7 +1519,7 @@
 
         .models-header {
             display: grid;
-            grid-template-columns: 1fr 1.5fr 1.5fr auto;
+            grid-template-columns: 0.9fr 0.9fr 1.6fr 1.4fr auto;
             gap: 8px;
             padding: 0 12px;
             font-size: 11px;
@@ -3483,19 +3602,29 @@
                 case 'models':
                     const models = Array.isArray(value) ? value : [];
                     html += `<div class="models-list" data-field="${key}" data-type="models">`;
-                    html += `<div class="models-header"><span>Provider</span><span>Model ID</span><span>Nom d'affichage</span><span></span></div>`;
+                    html += `<div class="models-header"><span>Clé</span><span>API</span><span>Model ID</span><span>Nom d'affichage</span><span></span></div>`;
                     models.forEach((m, idx) => {
-                        html += `
-                            <div class="model-entry" data-model-idx="${idx}">
-                                <input type="text" data-model-field="provider" value="${escapeHtml(m.provider || '')}" placeholder="ex: openai">
-                                <input type="text" data-model-field="model_id" value="${escapeHtml(m.model_id || '')}" placeholder="ex: openai/gpt-4.1">
-                                <input type="text" data-model-field="display_name" value="${escapeHtml(m.display_name || '')}" placeholder="ex: OpenAI GPT-4.1">
-                                <button class="btn-remove-model" onclick="this.closest('.model-entry').remove()" title="Supprimer">✕</button>
-                            </div>`;
+                        html += modelEntryHtml(m, idx);
                     });
                     html += `</div>`;
-                    html += `<button type="button" class="btn-add-model" onclick="addModelEntry(this)">+ Ajouter un modèle</button>`;
+                    html += `<div class="models-actions">
+                        <button type="button" class="btn-add-model" onclick="addModelEntry(this)">+ Ajouter un modèle</button>
+                        <button type="button" class="btn-add-model" onclick="openModelCatalog(this)">📚 Parcourir les modèles</button>
+                    </div>`;
                     break;
+
+                case 'text':
+                    html += `<textarea class="form-textarea" data-field="${key}" data-type="text"
+                        rows="8">${escapeHtml(hasValue ? String(value) : (field.default ?? ''))}</textarea>`;
+                    break;
+
+                case 'aimodel': {
+                    const current = hasValue ? String(value) : '';
+                    html += `<select class="form-input" data-field="${key}" data-type="aimodel" data-current="${escapeHtml(current)}">
+                        ${current ? `<option value="${escapeHtml(current)}" selected>${escapeHtml(current)}</option>` : '<option value="">— Chargement… —</option>'}
+                    </select>`;
+                    break;
+                }
 
                 case 'teams': {
                     const teams = Array.isArray(value) ? value : [];
@@ -3812,6 +3941,10 @@
                 case 'models':
                     // Handled separately below
                     continue;
+                case 'aimodel':
+                    // Empty is meaningful (fall back to the default), so keep it.
+                    val = input.value;
+                    break;
                 case 'teams':
                     // Handled separately below
                     continue;
@@ -3860,10 +3993,11 @@
             const models = [];
             for (const entry of entries) {
                 const provider = entry.querySelector('[data-model-field="provider"]')?.value?.trim();
+                const apiName = entry.querySelector('[data-model-field="api"]')?.value || 'openrouter';
                 const model_id = entry.querySelector('[data-model-field="model_id"]')?.value?.trim();
                 const display_name = entry.querySelector('[data-model-field="display_name"]')?.value?.trim();
                 if (provider && model_id) {
-                    models.push({ provider, model_id, display_name: display_name || provider });
+                    models.push({ provider, api: apiName, model_id, display_name: display_name || provider });
                 }
             }
             if (models.length > 0) {
@@ -4150,19 +4284,229 @@
         return result;
     }
 
-    function addModelEntry(btn) {
-        const list = btn.previousElementSibling;
+    const AI_APIS = [
+        { id: 'openrouter', label: 'OpenRouter' },
+        { id: 'nanogpt', label: 'NanoGPT' },
+    ];
+
+    function modelEntryHtml(m, idx) {
+        const apiName = m.api || 'openrouter';
+        const apiOptions = AI_APIS.map(a =>
+            `<option value="${a.id}" ${a.id === apiName ? 'selected' : ''}>${a.label}</option>`).join('');
+        return `
+            <div class="model-entry" data-model-idx="${idx}">
+                <input type="text" data-model-field="provider" value="${escapeHtml(m.provider || '')}" placeholder="ex: gpt-4.1" oninput="refreshAiModelSelects(this.closest('.schema-form'))">
+                <select data-model-field="api">${apiOptions}</select>
+                <input type="text" data-model-field="model_id" value="${escapeHtml(m.model_id || '')}" placeholder="ex: openai/gpt-4.1">
+                <input type="text" data-model-field="display_name" value="${escapeHtml(m.display_name || '')}" placeholder="ex: OpenAI GPT-4.1" oninput="refreshAiModelSelects(this.closest('.schema-form'))">
+                <button class="btn-remove-model" onclick="const f = this.closest('.schema-form'); this.closest('.model-entry').remove(); refreshAiModelSelects(f);" title="Supprimer">✕</button>
+            </div>`;
+    }
+
+    function modelsListFor(btn) {
+        return btn.closest('.form-field').querySelector('.models-list');
+    }
+
+    function addModelEntry(btn, model = {}) {
+        const list = btn.classList && btn.classList.contains('models-list') ? btn : modelsListFor(btn);
         const idx = list.querySelectorAll('.model-entry').length;
-        const entry = document.createElement('div');
-        entry.className = 'model-entry';
-        entry.dataset.modelIdx = idx;
-        entry.innerHTML = `
-            <input type="text" data-model-field="provider" value="" placeholder="ex: openai">
-            <input type="text" data-model-field="model_id" value="" placeholder="ex: openai/gpt-4.1">
-            <input type="text" data-model-field="display_name" value="" placeholder="ex: OpenAI GPT-4.1">
-            <button class="btn-remove-model" onclick="this.closest('.model-entry').remove()" title="Supprimer">✕</button>
-        `;
+        const wrapper = document.createElement('div');
+        wrapper.innerHTML = modelEntryHtml(model, idx).trim();
+        const entry = wrapper.firstElementChild;
         list.appendChild(entry);
+        refreshAiModelSelects(list.closest('.schema-form'));
+        return entry;
+    }
+
+    // ── AI model picker ──────────────────────────────
+    const _aiCatalogCache = {};
+    const _aiGuildModelsCache = {};
+
+    function aiModelKeyFrom(id, taken) {
+        const base = String(id).toLowerCase().split('/').pop()
+            .replace(/[^a-z0-9_.-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 50) || 'modele';
+        let key = base;
+        let n = 2;
+        while (taken.has(key)) key = `${base}-${n++}`;
+        return key;
+    }
+
+    function formatPerMillion(value) {
+        if (value === null || value === undefined) return '?';
+        if (value === 0) return '0';
+        return value < 0.01 ? value.toFixed(4) : value < 1 ? value.toFixed(2) : value.toFixed(value < 10 ? 2 : 1);
+    }
+
+    function formatContext(tokens) {
+        if (!tokens) return '';
+        return tokens >= 1000000 ? `${(tokens / 1000000).toFixed(tokens % 1000000 ? 1 : 0)}M ctx`
+            : `${Math.round(tokens / 1000)}k ctx`;
+    }
+
+    function readModelEntries(list) {
+        return [...list.querySelectorAll('.model-entry')].map(e => ({
+            el: e,
+            key: e.querySelector('[data-model-field="provider"]')?.value?.trim() || '',
+            api: e.querySelector('[data-model-field="api"]')?.value || 'openrouter',
+            model_id: e.querySelector('[data-model-field="model_id"]')?.value?.trim() || '',
+            display_name: e.querySelector('[data-model-field="display_name"]')?.value?.trim() || '',
+        }));
+    }
+
+    function flagMissingModels(list, apiName, catalog) {
+        const ids = new Set(catalog.map(m => m.id));
+        for (const entry of readModelEntries(list)) {
+            if (entry.api !== apiName || !entry.model_id) continue;
+            const missing = !ids.has(entry.model_id) && !ids.has(entry.model_id.split(':')[0]);
+            entry.el.classList.toggle('model-missing', missing);
+            entry.el.title = missing ? `⚠️ Modèle introuvable dans le catalogue ${apiName}` : '';
+        }
+    }
+
+    async function openModelCatalog(btn) {
+        const list = modelsListFor(btn);
+        document.getElementById('ai-catalog-overlay')?.remove();
+        const overlay = document.createElement('div');
+        overlay.id = 'ai-catalog-overlay';
+        overlay.className = 'ai-catalog-overlay';
+        overlay.innerHTML = `
+            <div class="ai-catalog" role="dialog" aria-label="Catalogue des modèles">
+                <div class="ai-catalog-head">
+                    <div class="ai-catalog-title">
+                        <span>📚 Catalogue des modèles</span>
+                        <button class="btn btn-ghost btn-sm" type="button" data-ai-close>✕</button>
+                    </div>
+                    <div class="ai-catalog-apis" data-ai-apis></div>
+                    <input type="search" class="form-input" data-ai-search placeholder="Rechercher par nom ou identifiant…">
+                </div>
+                <div class="ai-catalog-list" data-ai-list><div class="loading"><div class="spinner"></div></div></div>
+            </div>`;
+        document.body.appendChild(overlay);
+        overlay.addEventListener('click', e => {
+            if (e.target === overlay || e.target.closest('[data-ai-close]')) overlay.remove();
+        });
+
+        const picker = { list, apiName: null, catalog: [], overlay };
+        overlay.querySelector('[data-ai-search]').addEventListener('input', () => renderModelCatalog(picker));
+
+        let apis = AI_APIS.map(a => ({ ...a, configured: true }));
+        try {
+            const res = await api('/api/ai/apis');
+            if (res?.apis) apis = res.apis;
+        } catch { /* toast already shown */ }
+        const apisEl = overlay.querySelector('[data-ai-apis]');
+        apisEl.innerHTML = apis.map(a => `
+            <button type="button" class="btn btn-ghost btn-sm" data-ai-api="${a.id}" ${a.configured ? '' : 'disabled title="Clé API et URL à renseigner dans la section correspondante"'}>
+                ${escapeHtml(a.label)}${a.configured ? '' : ' (non configurée)'}
+            </button>`).join('');
+        apisEl.addEventListener('click', e => {
+            const b = e.target.closest('[data-ai-api]');
+            if (b && !b.disabled) loadModelCatalog(picker, b.dataset.aiApi);
+        });
+        const first = apis.find(a => a.configured);
+        if (first) {
+            loadModelCatalog(picker, first.id);
+        } else {
+            overlay.querySelector('[data-ai-list]').innerHTML =
+                '<p style="color:var(--text-muted);padding:12px">Aucune API configurée : renseignez la clé et l\'URL d\'OpenRouter ou de NanoGPT.</p>';
+        }
+    }
+
+    async function loadModelCatalog(picker, apiName) {
+        picker.apiName = apiName;
+        picker.overlay.querySelectorAll('[data-ai-api]').forEach(b =>
+            b.classList.toggle('active', b.dataset.aiApi === apiName));
+        const listEl = picker.overlay.querySelector('[data-ai-list]');
+        if (!_aiCatalogCache[apiName]) {
+            listEl.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+            try {
+                const res = await api(`/api/ai/catalog?api=${encodeURIComponent(apiName)}`);
+                _aiCatalogCache[apiName] = res?.models || [];
+            } catch {
+                listEl.innerHTML = '<p style="color:var(--text-muted);padding:12px">Catalogue indisponible.</p>';
+                return;
+            }
+        }
+        if (picker.apiName !== apiName) return;
+        picker.catalog = _aiCatalogCache[apiName];
+        flagMissingModels(picker.list, apiName, picker.catalog);
+        renderModelCatalog(picker);
+    }
+
+    function renderModelCatalog(picker) {
+        const listEl = picker.overlay.querySelector('[data-ai-list]');
+        const query = picker.overlay.querySelector('[data-ai-search]').value.trim().toLowerCase();
+        const added = new Set(readModelEntries(picker.list).map(e => `${e.api}|${e.model_id}`));
+        const matches = picker.catalog.filter(m =>
+            !query || m.name.toLowerCase().includes(query) || m.id.toLowerCase().includes(query));
+        const shown = matches.slice(0, 200);
+        if (!shown.length) {
+            listEl.innerHTML = '<p style="color:var(--text-muted);padding:12px">Aucun modèle ne correspond.</p>';
+            return;
+        }
+        listEl.innerHTML = shown.map(m => {
+            const isAdded = added.has(`${picker.apiName}|${m.id}`);
+            const price = m.free ? '<span class="ai-catalog-badge">gratuit</span>'
+                : `$${formatPerMillion(m.prompt_per_m)} / $${formatPerMillion(m.completion_per_m)} par M`;
+            return `
+                <button type="button" class="ai-catalog-row ${isAdded ? 'added' : ''}" data-ai-model="${escapeHtml(m.id)}" ${isAdded ? 'disabled' : ''}>
+                    <div>
+                        <div>${escapeHtml(m.name)}${isAdded ? ' <span class="ai-catalog-badge">ajouté</span>' : ''}</div>
+                        <div class="ai-catalog-id">${escapeHtml(m.id)}</div>
+                    </div>
+                    <div class="ai-catalog-meta">${price}<br>${formatContext(m.context_length)}</div>
+                </button>`;
+        }).join('') + (matches.length > shown.length
+            ? `<p style="color:var(--text-muted);padding:8px 12px;font-size:12px">${matches.length - shown.length} autres résultats — affinez la recherche.</p>`
+            : '');
+        listEl.querySelectorAll('[data-ai-model]').forEach(row => row.addEventListener('click', () => {
+            const model = picker.catalog.find(m => m.id === row.dataset.aiModel);
+            if (!model) return;
+            const taken = new Set(readModelEntries(picker.list).map(e => e.key));
+            addModelEntry(picker.list, {
+                provider: aiModelKeyFrom(model.id, taken),
+                api: picker.apiName,
+                model_id: model.id,
+                display_name: model.name,
+            });
+            toast(`${model.name} ajouté — pensez à sauvegarder`, 'success');
+            renderModelCatalog(picker);
+        }));
+    }
+
+    async function refreshAiModelSelects(root) {
+        const scope = root || document;
+        const selects = scope.querySelectorAll('select[data-type="aimodel"]');
+        for (const select of selects) {
+            const form = select.closest('.schema-form');
+            const localList = form?.querySelector('.models-list');
+            let models;
+            let emptyLabel;
+            if (localList) {
+                models = readModelEntries(localList).filter(e => e.key)
+                    .map(e => ({ key: e.key, display_name: e.display_name || e.key }));
+                emptyLabel = '— Premier modèle utilisable —';
+            } else if (state.currentServerId) {
+                const sid = state.currentServerId;
+                if (!_aiGuildModelsCache[sid]) {
+                    try {
+                        _aiGuildModelsCache[sid] = await api(`/api/servers/${sid}/ai/models`) || { models: [] };
+                    } catch {
+                        _aiGuildModelsCache[sid] = { models: [] };
+                    }
+                }
+                models = _aiGuildModelsCache[sid].models || [];
+                emptyLabel = '— Défaut global —';
+            } else {
+                continue;
+            }
+            const current = select.value || select.dataset.current || '';
+            const known = models.some(m => m.key === current);
+            select.innerHTML = `<option value="">${emptyLabel}</option>`
+                + models.map(m => `<option value="${escapeHtml(m.key)}">${escapeHtml(m.display_name)} (${escapeHtml(m.key)})</option>`).join('')
+                + (current && !known ? `<option value="${escapeHtml(current)}">⚠️ ${escapeHtml(current)} (introuvable)</option>` : '');
+            select.value = current;
+        }
     }
 
     function addNameMapEntry(btn) {
@@ -5213,6 +5557,7 @@
         if (state.currentServerId) {
             populateChannelPickers(document);
             populateMemberPickers(document);
+            refreshAiModelSelects(document);
         }
         // Reaction-roles builder: load existing menus when on its module page.
         if (state.currentPage === 'module' && state.currentModule === 'moduleReactionRoles' && state.currentServerId) {
@@ -6141,6 +6486,7 @@
             const formHtml = renderSchemaForm(formId, schema, sectionData);
             document.getElementById('modal-title').textContent = `${schema.label || section}`;
             document.getElementById('modal-overlay').querySelector('.modal-body').innerHTML = formHtml;
+            refreshAiModelSelects(document.getElementById('modal-overlay'));
             const errEl = document.getElementById('json-error');
             if (errEl) errEl.textContent = '';
             modalSaveCallback = async () => {
@@ -6150,6 +6496,8 @@
                     method: 'PUT',
                     body: JSON.stringify({ section, config: merged }),
                 });
+                // The per-guild default-model dropdowns list the global models.
+                for (const sid in _aiGuildModelsCache) delete _aiGuildModelsCache[sid];
                 await loadConfig();
                 render();
             };

@@ -65,7 +65,7 @@ A modular, multi-guild Discord bot built with **interactions.py**. Michel ships 
 | **YouTube** | Polls YouTube channels every 5 min and posts new video links in a configured channel. |
 | **Spotify** | Collaborative playlist management with song proposals, community voting, and playlist change tracking. OAuth re-authentication happens through the Web UI, whose Spotify module page also charts the playlist (additions per month, top contributors and artists, track lengths) and the vote history (open poll, outcomes, per-person split, turnout). |
 | **RSS** | Generic feed poller (RSS / Atom / Steam / Epic / subreddit) with per-feed channel and message-template overrides. |
-| **AI Compare** | Ask a question and compare answers from multiple LLMs via OpenRouter, then vote for the best. |
+| **AI Compare** | `/ask`: compare anonymous answers from several LLMs (OpenRouter and/or NanoGPT) and let everyone vote, or get a quick single-model answer; `/ask-stats` ranks the models. Optional per-server replies when Michel is @mentioned. |
 | **Confrérie** | Literary guild features backed by the Notion API — hourly recap stats, forum posts and `/demande` turned into drafts the owner approves, `/texte` / `/auteur` / `/outil` lookups, publisher management. |
 | **Zunivers** | Daily reminders, event tracking, Hardcore season monitoring, corporation recaps, and Advent calendar for the Zunivers collectible game. |
 | **VLR.gg Tracker** | Valorant esports match tracking — schedules, live score updates, and post-match results from VLR.gg. |
@@ -226,7 +226,7 @@ CI fails if the lockfile drifts from `pyproject.toml`.
 
 All configuration lives in `config/config.json`, with two top-level keys:
 
-- **`config`** — global sections: `discord` (token, IDs), `mongodb`, `webui`, `backup`, plus API credentials for integrations (Spotify, Twitch, YouTube, Notion, OpenRouter, Uptime Kuma, Random.org, Shlink…) and an optional `extensions` map of `"extensions.<name>": bool` to explicitly enable or disable discovered extensions.
+- **`config`** — global sections: `discord` (token, IDs), `mongodb`, `webui`, `backup`, plus API credentials for integrations (Spotify, Twitch, YouTube, Notion, AI (OpenRouter, NanoGPT), Uptime Kuma, Random.org, Shlink…) and an optional `extensions` map of `"extensions.<name>": bool` to explicitly enable or disable discovered extensions.
 - **`servers`** — per-guild module configs keyed by guild ID (`moduleXp`, `moduleBirthday`, …, each with an `enabled` flag), plus a `discord2name` display-name mapping.
 
 Config is loaded through `src.core.config`. Extensions call `load_config("moduleName")`, which returns the global config, the per-guild config for that module, and the list of guilds where the module is enabled. The store is reactive (atomic writes + subscriber notifications), so the Web UI and running extensions stay in sync without restarts.
@@ -282,7 +282,7 @@ An optional FastAPI-based dashboard, enabled when `webui.enabled` is `true` in c
 | Spotify | [Spotipy](https://spotipy.readthedocs.io/) |
 | Twitch | [twitchAPI](https://pytwitchapi.dev/) (EventSub) |
 | Notion | [notion-client](https://github.com/ramnes/notion-sdk-py) |
-| AI | [OpenRouter](https://openrouter.ai/) via the OpenAI SDK |
+| AI | [OpenRouter](https://openrouter.ai/) and [NanoGPT](https://nano-gpt.com/) via the OpenAI SDK |
 | Minecraft | mcstatus, asyncssh, native RCON |
 | Monitoring | Uptime Kuma (Socket.IO), Grafana dashboard exports in `grafana/` |
 | Image gen | Pillow |
