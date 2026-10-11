@@ -4,8 +4,18 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional
 
-from .constants import BONUS_JOURNA_INTERVAL, ReminderType
-from .utils import is_journa_done, journas_since_last_bonus
+from .constants import (
+    BONUS_JOURNA_INTERVAL,
+    PREMIUM_INVOKE_COOLDOWN,
+    PREMIUM_INVOKE_LIMIT,
+    ReminderType,
+)
+from .utils import (
+    is_journa_done,
+    journas_since_last_bonus,
+    parse_zunivers_date,
+    premium_invocation_dates,
+)
 
 
 @dataclass
@@ -290,4 +300,51 @@ class LootStatus:
         return cls(
             journa_done=is_journa_done(loot, date_str),
             journas_since_bonus=journas_since_last_bonus(loot),
+        )
+
+
+@dataclass
+class PremiumStatus:
+    """Where a subscribed user stands on the free ``/im premium`` of their subscription."""
+
+    subscription_begin: datetime
+    subscription_end: datetime
+    # ``/im premium`` done since the subscription began, oldest first
+    invocations: list[datetime] = field(default_factory=list)
+
+    @property
+    def remaining(self) -> int:
+        """Free ``/im premium`` left in this subscription."""
+        return max(0, PREMIUM_INVOKE_LIMIT - len(self.invocations))
+
+    @property
+    def next_available(self) -> datetime | None:
+        """When the next free ``/im premium`` unlocks, or ``None`` if none is left."""
+        if not self.remaining:
+            return None
+        if not self.invocations:
+            return self.subscription_begin
+        return self.invocations[-1] + PREMIUM_INVOKE_COOLDOWN
+
+    def is_available(self, now: datetime) -> bool:
+        """A free ``/im premium`` can be done at ``now`` (timezone-aware)."""
+        next_available = self.next_available
+        return next_available is not None and next_available <= now < self.subscription_end
+
+    @classmethod
+    def from_api(cls, user: dict, logs: dict[str, list[dict]]) -> Optional["PremiumStatus"]:
+        """Build the status from a ``/user/{username}`` payload and its ``/im premium`` logs.
+
+        Returns ``None`` when the user isn't subscribed. ``/im premium`` done before
+        the subscription began (a previous one, or bought) don't count toward it.
+        """
+        subscription = user.get("subscription")
+        if not subscription:
+            return None
+        begin = parse_zunivers_date(subscription["beginDate"])
+        end = parse_zunivers_date(subscription["endDate"])
+        return cls(
+            subscription_begin=begin,
+            subscription_end=end,
+            invocations=[date for date in premium_invocation_dates(logs) if date >= begin],
         )

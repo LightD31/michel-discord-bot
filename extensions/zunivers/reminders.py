@@ -1,4 +1,4 @@
-"""RemindersMixin — daily /journa + /bonus reminders, user-configurable reminder scheduling."""
+"""RemindersMixin — daily /journa + /bonus + /im premium reminders, user-configurable scheduling."""
 
 import random
 from datetime import datetime, timedelta
@@ -21,16 +21,21 @@ from interactions import (
 )
 from interactions.api.events import Component
 
-from features.coloc import LootStatus
+from features.coloc import LootStatus, PremiumStatus
 from features.coloc.constants import (
     ADVENT_CALENDAR_REMINDERS,
     BONUS_BEFORE_JOURNA_HINT,
     BONUS_UNLOCKED_BY_JOURNA_HINT,
     NINJA_PLAN_HINT,
     PARIS_TZ,
+    PREMIUM_HINT,
+    PREMIUM_INVOKE_LIMIT,
+    PREMIUM_REMAINING_HINT,
+    PREMIUM_REMINDERS,
     ReminderType,
     format_bonus_link,
     format_journa_link,
+    format_premium_link,
     get_advent_calendar_url,
     get_bonus_reminder_message,
     get_reminder_message,
@@ -43,7 +48,7 @@ from .ninja import DEFAULT_STRATEGY_CHOICE, ninja_strategies, strategy_choices
 
 
 class RemindersMixin:
-    """Daily /journa + /bonus reminders (set/remove/dispatch) + advent calendar nudges."""
+    """Daily /journa + /bonus + /im premium reminders (set/remove/dispatch) + advent nudges."""
 
     # ==================== Daily Journa Check ====================
 
@@ -75,7 +80,7 @@ class RemindersMixin:
     @slash_command(
         name="journa",
         sub_cmd_name="set",
-        sub_cmd_description="Ajoute un rappel pour /journa (et /bonus quand il est dispo)",
+        sub_cmd_description="Ajoute un rappel pour /journa (et /bonus, /im premium quand dispo)",
         description="Gère les rappels pour /journa et /bonus",
         scopes=enabled_servers,
     )
@@ -298,7 +303,13 @@ class RemindersMixin:
             today = current_time.strftime("%Y-%m-%d")
 
             status = await self.api_client.get_user_loot_status(user.username, reminder_type, today)
-            message = self._build_reminder_message(reminder_type, status)
+            # The Premium subscription only exists in the normal rule set.
+            premium = None
+            if reminder_type == ReminderType.NORMAL:
+                premium = await self.api_client.get_available_premium(
+                    user.username, datetime.now(PARIS_TZ)
+                )
+            message = self._build_reminder_message(reminder_type, status, premium)
             if message:
                 ninja_url = ninja_config.get("webUrl")
                 if ninja_url and self.reminders.wants_ninja_link(user_id):
@@ -325,14 +336,18 @@ class RemindersMixin:
 
     @staticmethod
     def _build_reminder_message(
-        reminder_type: ReminderType, status: LootStatus | None
+        reminder_type: ReminderType,
+        status: LootStatus | None,
+        premium: PremiumStatus | None = None,
     ) -> str | None:
         """Pick the DM for a user's /journa + /bonus status, or ``None`` if all is done.
 
         An unlocked /bonus should be claimed before the next /journa: a /journa done
         on top of it doesn't count toward the following /bonus. An unreachable API
         (``status is None``) still sends the /journa reminder, but never claims a
-        /bonus is waiting.
+        /bonus is waiting. ``premium`` is passed only when a free /im premium of the
+        user's subscription is available now: it is added to the DM, or makes one
+        when /journa and /bonus are both done.
         """
         link_key = (
             "journaHardcoreLink" if reminder_type == ReminderType.HARDCORE else "journaNormalLink"
@@ -340,6 +355,7 @@ class RemindersMixin:
         link = module_config.get(link_key)
         bonus = format_bonus_link(link)
 
+        message: str | None = None
         if status is None or not status.journa_done:
             message = random.choice(get_reminder_message(reminder_type)).format(
                 journa=format_journa_link(link)
@@ -348,12 +364,20 @@ class RemindersMixin:
                 message += " " + BONUS_BEFORE_JOURNA_HINT.format(bonus=bonus)
             elif status is not None and status.bonus_unlocked_by_next_journa:
                 message += " " + BONUS_UNLOCKED_BY_JOURNA_HINT.format(bonus=bonus)
-            return message
+        elif status.bonus_available:
+            message = random.choice(get_bonus_reminder_message(reminder_type)).format(bonus=bonus)
 
-        if status.bonus_available:
-            return random.choice(get_bonus_reminder_message(reminder_type)).format(bonus=bonus)
+        if premium is not None:
+            im = format_premium_link(link)
+            remaining = PREMIUM_REMAINING_HINT.format(
+                remaining=premium.remaining, limit=PREMIUM_INVOKE_LIMIT
+            )
+            if message:
+                message += "\n" + PREMIUM_HINT.format(im=im) + " " + remaining
+            else:
+                message = random.choice(PREMIUM_REMINDERS).format(im=im) + " " + remaining
 
-        return None
+        return message
 
     async def _check_advent_calendar(self, user: User, day: int) -> None:
         """Check and send advent calendar reminder if needed."""

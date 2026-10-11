@@ -1,5 +1,6 @@
 """Constants for the Coloc module."""
 
+from datetime import timedelta
 from enum import StrEnum
 from typing import Final
 
@@ -25,6 +26,10 @@ ZUNIVERS_HARDCORE_SEASON_URL: Final[str] = f"{ZUNIVERS_API_BASE}/hardcore/season
 ZUNIVERS_LOOT_URL_TEMPLATE: Final[str] = f"{ZUNIVERS_API_BASE}/loot/{{username}}"
 ZUNIVERS_CALENDAR_URL_TEMPLATE: Final[str] = f"{ZUNIVERS_API_BASE}/calendar/{{username}}"
 ZUNIVERS_CORPORATION_URL_TEMPLATE: Final[str] = f"{ZUNIVERS_API_BASE}/corporation/{{corp_id}}"
+ZUNIVERS_USER_URL_TEMPLATE: Final[str] = f"{ZUNIVERS_API_BASE}/user/{{username}}"
+ZUNIVERS_INVENTORY_LOGS_URL_TEMPLATE: Final[str] = (
+    f"{ZUNIVERS_API_BASE}/inventory/{{username}}/logs"
+)
 
 # Loot types returned by the ``/loot/{username}`` endpoint
 LOOT_TYPE_JOURNA: Final[str] = "DAILY"
@@ -33,6 +38,15 @@ LOOT_TYPE_BONUS: Final[str] = "WEEKLY"
 # ``/bonus`` unlocks once this many ``/journa`` have been done since the last one
 # (it doesn't stack: a second /bonus never becomes available before it is used).
 BONUS_JOURNA_INTERVAL: Final[int] = 7
+
+# A Premium subscription (30 days) grants this many free ``/im premium``, with a
+# cooldown between two of them. They show in the inventory logs as ``INVOKE``
+# entries of the ``premium`` event (one entry per card, 10 cards per invocation).
+PREMIUM_EVENT_NAME: Final[str] = "premium"
+PREMIUM_INVOKE_LIMIT: Final[int] = 3
+PREMIUM_INVOKE_COOLDOWN: Final[timedelta] = timedelta(days=10)
+PREMIUM_CARDS_PER_INVOKE: Final[int] = 10
+LOG_SOURCE_INVOKE: Final[str] = "INVOKE"
 
 # Default corporation ID
 DEFAULT_CORPORATION_ID: Final[str] = "ce746744-e36d-4331-a0fb-399228e66ef8"
@@ -96,6 +110,17 @@ HARDCORE_BONUS_REMINDERS: Final[list[str]] = [
 BONUS_BEFORE_JOURNA_HINT: Final[str] = "{bonus} d'abord, il est dispo !"
 # ...or when that /journa is the one that unlocks it
 BONUS_UNLOCKED_BY_JOURNA_HINT: Final[str] = "Puis {bonus} !"
+PREMIUM_REMINDERS: Final[list[str]] = [
+    "Ton {im} est dispo !",
+    "{im} dispo !",
+    "Ton {im} t'attend !",
+    "N'oublie pas ton {im} !",
+]
+# Appended to a /journa or /bonus reminder when a free /im premium is waiting
+PREMIUM_HINT: Final[str] = "Et ton {im} est dispo !"
+# Added to either one: how many free /im premium are left in this subscription
+PREMIUM_REMAINING_HINT: Final[str] = "({remaining}/{limit} restants sur ton abonnement)"
+
 # Appended to a reminder when a public ZUnivers Ninja URL is configured. The <> around
 # the URL stops Discord from unfurling the page under the DM.
 NINJA_PLAN_HINT: Final[str] = "🥷 Ton plan du jour : [ZUnivers Ninja](<{url}>)"
@@ -156,6 +181,11 @@ def format_journa_link(link: str | None) -> str:
 def format_bonus_link(link: str | None) -> str:
     """Render the ``/bonus`` mention (same channel as ``/journa``)."""
     return format_command_link("/bonus", link)
+
+
+def format_premium_link(link: str | None) -> str:
+    """Render the ``/im premium`` mention (same channel as ``/journa``)."""
+    return format_command_link("/im premium", link)
 
 
 def get_reminder_message(reminder_type: ReminderType) -> list[str]:

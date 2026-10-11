@@ -6,9 +6,11 @@ Embed builders live in :mod:`extensions.zunivers.embeds`.
 from datetime import datetime
 
 from .constants import (
+    LOG_SOURCE_INVOKE,
     LOOT_TYPE_BONUS,
     LOOT_TYPE_JOURNA,
     PARIS_TZ,
+    PREMIUM_EVENT_NAME,
     RARITY_EMOJIS,
 )
 
@@ -82,3 +84,20 @@ def journas_since_last_bonus(loot: dict[str, list[dict]]) -> int:
         elif entry.get("type") == LOOT_TYPE_JOURNA:
             count += 1
     return count
+
+
+def premium_invocation_dates(logs: dict[str, list[dict]]) -> list[datetime]:
+    """List the ``/im premium`` done in an ``/inventory/{username}/logs`` page, oldest first.
+
+    The payload groups entries by timestamp, one entry per card drawn; every card of
+    an invocation shares that timestamp, so each distinct date is one invocation.
+    """
+    dates = {
+        entry["date"]
+        for entries in logs.values()
+        for entry in entries
+        if entry.get("source") == LOG_SOURCE_INVOKE
+        and entry.get("eventName") == PREMIUM_EVENT_NAME
+        and entry.get("date")
+    }
+    return sorted(parse_zunivers_date(date) for date in dates)
