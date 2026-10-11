@@ -19,3 +19,19 @@ services:
       - "/etc/localtime:/etc/localtime:ro"
     restart:
       unless-stopped
+
+  # Optional: ZUnivers Ninja (https://github.com/LightD31/ZUnivers-Ninja), queried by the
+  # zunivers extension for /ninja. Running it in this compose project puts it on the bot's
+  # network: set moduleZunivers.ninjaUrl to http://zunivers-ninja:8080, and ninjaWebUrl to
+  # its public address to link each player's plan from the /journa reminders.
+  # zunivers-ninja:
+  #   container_name: zunivers-ninja
+  #   image: ghcr.io/lightd31/zunivers-ninja:latest
+  #   environment:
+  #     TZ: Europe/Paris
+  #   # Web UI on the host (the bot already uses 8080). Drop it to keep Ninja internal.
+  #   ports:
+  #     - "127.0.0.1:8081:8080"
+  #   volumes:
+  #     - ./data/zunivers-ninja:/data
+  #   restart: unless-stopped
