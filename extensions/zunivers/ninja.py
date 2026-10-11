@@ -11,14 +11,15 @@ import io
 
 from interactions import (
     AllowedMentions,
-    AutocompleteContext,
     Embed,
     File,
     GuildText,
     IntervalTrigger,
+    Member,
     OptionType,
     SlashContext,
     Task,
+    User,
     slash_command,
     slash_option,
 )
@@ -120,18 +121,20 @@ class NinjaMixin:
         scopes=enabled_servers,
     )
     @slash_option(
-        name="pseudo",
-        description="Pseudo ZUnivers du joueur",
-        opt_type=OptionType.STRING,
-        required=True,
-        autocomplete=True,
+        name="membre",
+        description="Membre dont afficher le plan (par défaut : toi)",
+        opt_type=OptionType.USER,
+        required=False,
     )
-    async def ninja_command(self, ctx: SlashContext, pseudo: str):
+    async def ninja_command(self, ctx: SlashContext, membre: User | Member | None = None):
         client = self._ninja_client()
         if client is None:
             await ctx.send("ZUnivers Ninja n'est pas configuré sur ce serveur.", ephemeral=True)
             return
 
+        # The ZUnivers pseudo is the player's Discord username.
+        user = membre or ctx.author
+        pseudo = user.username
         await ctx.defer()
         try:
             plan = await client.get_plan(pseudo, ruleset=_ninja_ruleset())
@@ -142,13 +145,7 @@ class NinjaMixin:
             await ctx.send(f"⚠️ {e}")
             return
         if plan is None or plan.empty:
-            name = plan.player_display_name if plan else pseudo
+            name = plan.player_display_name if plan else user.display_name
             await ctx.send(f"✅ Rien de plus à faire aujourd'hui pour **{name}**.")
             return
         await ctx.send(**await self._plan_message(plan, mention=False))
-
-    @ninja_command.autocomplete("pseudo")
-    async def ninja_pseudo_autocomplete(self, ctx: AutocompleteContext) -> None:
-        typed = ctx.input_text.lower()
-        matches = [u for u in _ninja_users() if typed in u.lower()][:25]
-        await ctx.send(choices=[{"name": u, "value": u} for u in matches])

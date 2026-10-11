@@ -54,11 +54,11 @@ class ZuniversConfig(SchemaBase):
         ),
     )
     ninjaUsers: list[str] = ui(
-        "Pseudos conseillés par Ninja",
+        "Joueurs conseillés par Ninja",
         "list",
         description=(
-            "Pseudos ZUnivers dont le plan est posté automatiquement dès qu'il change. "
-            "Vide = seulement la commande /ninja."
+            "Noms d'utilisateur Discord (= pseudos ZUnivers) dont le plan est posté "
+            "automatiquement dès qu'il change. Vide = seulement la commande /ninja."
         ),
     )
     ninjaChannelId: str | None = ui(
