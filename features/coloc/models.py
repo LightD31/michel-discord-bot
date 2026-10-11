@@ -41,6 +41,8 @@ class ReminderCollection:
     reminders: dict[datetime, dict[str, list[str]]] = field(default_factory=dict)
     # Users who want a link to their ZUnivers Ninja plan in their reminders.
     ninja_users: set[str] = field(default_factory=set)
+    # Strategy the Ninja link opens with, per user (absent = Ninja's default).
+    ninja_strategies: dict[str, str] = field(default_factory=dict)
 
     def set_ninja_link(self, user_id: str, enabled: bool) -> None:
         """Opt *user_id* in or out of the ZUnivers Ninja link."""
@@ -51,6 +53,16 @@ class ReminderCollection:
 
     def wants_ninja_link(self, user_id: str) -> bool:
         return user_id in self.ninja_users
+
+    def set_ninja_strategy(self, user_id: str, strategy: str | None) -> None:
+        """Pick the Ninja strategy the link opens with; ``None`` = Ninja's default."""
+        if strategy:
+            self.ninja_strategies[user_id] = strategy
+        else:
+            self.ninja_strategies.pop(user_id, None)
+
+    def ninja_strategy(self, user_id: str) -> str | None:
+        return self.ninja_strategies.get(user_id)
 
     def add_reminder(
         self, remind_time: datetime, user_id: str, reminder_type: ReminderType
@@ -97,16 +109,23 @@ class ReminderCollection:
         ]
 
     def to_dict(self) -> dict:
-        """Convert the schedule to a dictionary (``ninja_users`` is stored alongside)."""
+        """Convert the schedule to a dictionary (the Ninja preferences are stored alongside)."""
         return {
             remind_time.strftime("%Y-%m-%d %H:%M:%S"): reminder_types
             for remind_time, reminder_types in self.reminders.items()
         }
 
     @classmethod
-    def from_dict(cls, data: dict, ninja_users: list[str] | None = None) -> "ReminderCollection":
-        """Create a ReminderCollection from :meth:`to_dict` output and the Ninja opt-ins."""
-        collection = cls(ninja_users=set(ninja_users or []))
+    def from_dict(
+        cls,
+        data: dict,
+        ninja_users: list[str] | None = None,
+        ninja_strategies: dict[str, str] | None = None,
+    ) -> "ReminderCollection":
+        """Create a ReminderCollection from :meth:`to_dict` output and the Ninja preferences."""
+        collection = cls(
+            ninja_users=set(ninja_users or []), ninja_strategies=dict(ninja_strategies or {})
+        )
         for remind_time_str, reminder_types in data.items():
             remind_time = datetime.strptime(remind_time_str, "%Y-%m-%d %H:%M:%S")
             collection.reminders[remind_time] = {

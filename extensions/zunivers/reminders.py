@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 
 from interactions import (
     ActionRow,
+    AutocompleteContext,
     Button,
     ButtonStyle,
     IntervalTrigger,
@@ -38,6 +39,7 @@ from features.zunivers_ninja import build_web_url
 from src.discord_ext.messages import edit_message_if_changed, fetch_user_safe
 
 from ._common import enabled_servers, logger, module_config
+from .ninja import DEFAULT_STRATEGY_CHOICE, ninja_strategies, strategy_choices
 
 
 class RemindersMixin:
@@ -110,14 +112,46 @@ class RemindersMixin:
         opt_type=OptionType.BOOLEAN,
         required=False,
     )
+    @slash_option(
+        name="strategie",
+        description="Stratégie ZUnivers Ninja du lien de tes rappels",
+        opt_type=OptionType.STRING,
+        required=False,
+        autocomplete=True,
+    )
     async def set_reminder(
-        self, ctx: SlashContext, heure: int, minute: int, type: str, ninja: bool | None = None
+        self,
+        ctx: SlashContext,
+        heure: int,
+        minute: int,
+        type: str,
+        ninja: bool | None = None,
+        strategie: str | None = None,
     ):
         """Set a daily reminder for /journa (also nudges for /bonus once it's unlocked).
 
         ``ninja`` opts the user in or out of the ZUnivers Ninja link for all their
-        reminders; left out, the previous choice is kept.
+        reminders, and ``strategie`` picks the Ninja strategy that link opens with
+        (choosing one also turns the link on unless ``ninja`` is false). Left out,
+        the previous choices are kept.
         """
+        strategy_label = strategie
+        if strategie == DEFAULT_STRATEGY_CHOICE:
+            strategie = ""  # clear the stored strategy
+        elif strategie:
+            known = await ninja_strategies()
+            labels_by_id = {st.id: st.label for st in known}
+            strategy_label = labels_by_id.get(strategie, strategie)
+            if known and strategie not in labels_by_id:
+                labels = ", ".join(st.label for st in known)
+                await ctx.send(
+                    f"Stratégie « {strategie} » inconnue. Choix possibles : {labels}.",
+                    ephemeral=True,
+                )
+                return
+            if ninja is None:
+                ninja = True
+
         remind_time = datetime.now().replace(hour=heure, minute=minute, second=0, microsecond=0)
         if remind_time <= datetime.now():
             remind_time += timedelta(days=1)
@@ -131,6 +165,8 @@ class RemindersMixin:
             self.reminders.add_reminder(remind_time, user_id, ReminderType(type))
         if ninja is not None:
             self.reminders.set_ninja_link(user_id, ninja)
+        if strategie is not None:
+            self.reminders.set_ninja_strategy(user_id, strategie or None)
 
         await self.storage.save_reminders(self.reminders)
 
@@ -140,6 +176,10 @@ class RemindersMixin:
         elif ninja is not None:
             reply += " avec" if ninja else " sans"
             reply += " le lien vers ton plan ZUnivers Ninja"
+        if strategie:
+            reply += f" (stratégie : {strategy_label})"
+        elif strategie == "":
+            reply += " (stratégie par défaut)"
         await ctx.send(reply, ephemeral=True)
         logger.info(
             "Reminder %s at %s added for %s",
@@ -147,6 +187,10 @@ class RemindersMixin:
             remind_time.strftime("%H:%M"),
             ctx.author.display_name,
         )
+
+    @set_reminder.autocomplete("strategie")
+    async def set_reminder_strategy_autocomplete(self, ctx: AutocompleteContext) -> None:
+        await ctx.send(choices=await strategy_choices(ctx.input_text, with_default=True))
 
     @set_reminder.subcommand(
         sub_cmd_name="remove",
@@ -262,6 +306,7 @@ class RemindersMixin:
                         ninja_url,
                         user.username,
                         hardcore=reminder_type == ReminderType.HARDCORE,
+                        strategy=self.reminders.ninja_strategy(user_id),
                     )
                     message += "\n" + NINJA_PLAN_HINT.format(url=plan_url)
                 await user.send(message)

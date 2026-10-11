@@ -30,7 +30,11 @@ class StorageManager:
         try:
             doc = await self._reminders_col.find_one({"_id": "current"})
             if doc:
-                return ReminderCollection.from_dict(doc.get("data", {}), doc.get("ninja_users", []))
+                return ReminderCollection.from_dict(
+                    doc.get("data", {}),
+                    doc.get("ninja_users", []),
+                    doc.get("ninja_strategies", {}),
+                )
             logger.info("No reminders document found, starting with empty collection")
             return ReminderCollection()
         except Exception as e:
@@ -46,6 +50,7 @@ class StorageManager:
                     "$set": {
                         "data": reminders.to_dict(),
                         "ninja_users": sorted(reminders.ninja_users),
+                        "ninja_strategies": reminders.ninja_strategies,
                     }
                 },
                 upsert=True,

@@ -27,6 +27,7 @@ from features.zunivers_ninja import (
     NinjaClient,
     NinjaError,
     NinjaNotFoundError,
+    NinjaStrategy,
     build_web_url,
 )
 
@@ -121,19 +122,41 @@ class NinjaMixin:
 
     @ninja_command.autocomplete("strategie")
     async def ninja_strategy_autocomplete(self, ctx: AutocompleteContext) -> None:
-        """Offer the strategies the Ninja server lists (``GET /api/strategies``)."""
-        url = module_config.get("ninjaUrl")
-        try:
-            strategies = await NinjaClient(url).get_strategies() if url else []
-        except NinjaError:
-            strategies = []
-        typed = ctx.input_text.lower()
-        choices = [
-            {"name": _choice_name(st.label, st.description), "value": st.id}
-            for st in strategies
-            if typed in st.id.lower() or typed in st.label.lower()
-        ]
-        await ctx.send(choices=choices[:25])
+        await ctx.send(choices=await strategy_choices(ctx.input_text))
+
+
+# /journa set value that clears a stored strategy (Ninja's own default applies again).
+DEFAULT_STRATEGY_CHOICE = "defaut"
+
+
+async def ninja_strategies() -> list[NinjaStrategy]:
+    """Strategies listed by the configured Ninja server (``GET /api/strategies``).
+
+    Empty when Ninja isn't configured, is too old to list them, or can't be reached.
+    """
+    url = module_config.get("ninjaUrl")
+    if not url:
+        return []
+    try:
+        return await NinjaClient(url).get_strategies()
+    except NinjaError:
+        return []
+
+
+async def strategy_choices(typed: str, *, with_default: bool = False) -> list[dict[str, str]]:
+    """Autocomplete choices for a strategy option, filtered by what the user typed."""
+    typed = typed.lower()
+    choices = [
+        {"name": _choice_name(st.label, st.description), "value": st.id}
+        for st in await ninja_strategies()
+        if typed in st.id.lower() or typed in st.label.lower()
+    ]
+    if with_default and (typed in "par défaut" or typed in DEFAULT_STRATEGY_CHOICE):
+        choices.insert(
+            0,
+            {"name": "Par défaut (celle de ZUnivers Ninja)", "value": DEFAULT_STRATEGY_CHOICE},
+        )
+    return choices[:25]
 
 
 def _web_link(username: str, hardcore: bool, strategy: str | None) -> list[ActionRow] | None:
