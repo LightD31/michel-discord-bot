@@ -11,7 +11,7 @@ from src.webui.schemas import SchemaBase, enabled_field, register_module, ui
 @register_module("moduleZunivers")
 class ZuniversConfig(SchemaBase):
     __label__ = "Zunivers"
-    __description__ = "Rappels /journa, événements et récap corporation Zunivers."
+    __description__ = "Rappels /journa, événements, récap corporation et conseils ZUnivers Ninja."
     __icon__ = "🎲"
     __category__ = "Communauté"
 
@@ -44,6 +44,23 @@ class ZuniversConfig(SchemaBase):
         "Image saison hardcore",
         "url",
         description="Image affichée dans l'embed de saison hardcore. Vide = aucune image.",
+    )
+    ninjaUrl: str | None = ui(
+        "URL de l'API ZUnivers Ninja",
+        "url",
+        description=(
+            "Adresse du serveur ZUnivers Ninja que le bot interroge pour /ninja (ex. le nom "
+            "du conteneur sur le réseau Docker partagé). Vide = /ninja désactivé."
+        ),
+    )
+    ninjaWebUrl: str | None = ui(
+        "URL publique de ZUnivers Ninja",
+        "url",
+        description=(
+            "Interface web de ZUnivers Ninja, accessible aux joueurs. Les membres qui "
+            "l'activent via /journa set ninja:True reçoivent dans leurs rappels un lien "
+            "vers leur plan. Vide = aucun lien."
+        ),
     )
 
 

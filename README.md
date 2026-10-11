@@ -69,7 +69,7 @@ A modular, multi-guild Discord bot built with **interactions.py**. Michel ships 
 | **RSS** | Generic feed poller (RSS / Atom / Steam / Epic / subreddit) with per-feed channel and message-template overrides. |
 | **AI Compare** | `/ask`: compare anonymous answers from several LLMs (OpenRouter and/or NanoGPT) and let everyone vote, or get a quick single-model answer; `/ask-stats` ranks the models. Optional per-server replies when Michel is @mentioned. |
 | **Confrérie** | Literary guild features backed by the Notion API — hourly recap stats, forum posts and `/demande` turned into drafts the owner approves, `/texte` / `/auteur` / `/outil` lookups, publisher management. |
-| **Zunivers** | Daily reminders, event tracking, Hardcore season monitoring, corporation recaps, and Advent calendar for the Zunivers collectible game. |
+| **Zunivers** | Daily reminders, event tracking, Hardcore season monitoring, corporation recaps, and Advent calendar for the Zunivers collectible game. Optional [ZUnivers Ninja](https://github.com/LightD31/ZUnivers-Ninja) plans: `/ninja [membre] [hardcore]` on demand (the ZUnivers pseudo is the Discord username), and a link to the player's plan in the `/journa` reminders. |
 | **VLR.gg Tracker** | Valorant esports match tracking — schedules, live score updates, and post-match results from VLR.gg. |
 | **MDI Tracker** | Mythic Dungeon International (World of Warcraft) tracking via the Raider.IO API. |
 | **Shlink** | Shortens the external links the bot posts (RSS entries, YouTube uploads, Embed manager links, MDI, Streamlabs, recap messages) through a self-hosted [Shlink](https://shlink.io) instance, and manages the short links from the dashboard. |

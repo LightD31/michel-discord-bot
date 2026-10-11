@@ -25,6 +25,7 @@ from features.coloc.constants import (
     ADVENT_CALENDAR_REMINDERS,
     BONUS_BEFORE_JOURNA_HINT,
     BONUS_UNLOCKED_BY_JOURNA_HINT,
+    NINJA_PLAN_HINT,
     PARIS_TZ,
     ReminderType,
     format_bonus_link,
@@ -33,6 +34,8 @@ from features.coloc.constants import (
     get_bonus_reminder_message,
     get_reminder_message,
 )
+from features.links import shorten_url
+from features.zunivers_ninja import build_web_url
 from src.discord_ext.messages import edit_message_if_changed, fetch_user_safe
 
 from ._common import enabled_servers, logger, module_config
@@ -102,8 +105,20 @@ class RemindersMixin:
             SlashCommandChoice(name="Les deux", value="BOTH"),
         ],
     )
-    async def set_reminder(self, ctx: SlashContext, heure: int, minute: int, type: str):
-        """Set a daily reminder for /journa (also nudges for /bonus once it's unlocked)."""
+    @slash_option(
+        name="ninja",
+        description="Ajoute à tes rappels un lien vers ton plan ZUnivers Ninja",
+        opt_type=OptionType.BOOLEAN,
+        required=False,
+    )
+    async def set_reminder(
+        self, ctx: SlashContext, heure: int, minute: int, type: str, ninja: bool | None = None
+    ):
+        """Set a daily reminder for /journa (also nudges for /bonus once it's unlocked).
+
+        ``ninja`` opts the user in or out of the ZUnivers Ninja link for all their
+        reminders; left out, the previous choice is kept.
+        """
         remind_time = datetime.now().replace(hour=heure, minute=minute, second=0, microsecond=0)
         if remind_time <= datetime.now():
             remind_time += timedelta(days=1)
@@ -115,10 +130,18 @@ class RemindersMixin:
             self.reminders.add_reminder(remind_time, user_id, ReminderType.HARDCORE)
         else:
             self.reminders.add_reminder(remind_time, user_id, ReminderType(type))
+        if ninja is not None:
+            self.reminders.set_ninja_link(user_id, ninja)
 
         await self.storage.save_reminders(self.reminders)
 
-        await ctx.send(f"Rappel ajouté à {remind_time.strftime('%H:%M')}", ephemeral=True)
+        reply = f"Rappel ajouté à {remind_time.strftime('%H:%M')}"
+        if ninja and not module_config.get("ninjaWebUrl"):
+            reply += " (le lien ZUnivers Ninja n'est pas configuré sur ce serveur)"
+        elif ninja is not None:
+            reply += " avec" if ninja else " sans"
+            reply += " le lien vers ton plan ZUnivers Ninja"
+        await ctx.send(reply, ephemeral=True)
         logger.info(
             "Reminder %s at %s added for %s",
             type,
@@ -234,6 +257,14 @@ class RemindersMixin:
             status = await self.api_client.get_user_loot_status(user.username, reminder_type, today)
             message = self._build_reminder_message(reminder_type, status)
             if message:
+                ninja_url = module_config.get("ninjaWebUrl")
+                if ninja_url and self.reminders.wants_ninja_link(user_id):
+                    plan_url = build_web_url(
+                        ninja_url,
+                        user.username,
+                        hardcore=reminder_type == ReminderType.HARDCORE,
+                    )
+                    message += "\n" + NINJA_PLAN_HINT.format(url=await shorten_url(plan_url))
                 await user.send(message)
                 logger.info(f"Sent {reminder_type.value} reminder to {user.display_name}")
 

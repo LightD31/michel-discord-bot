@@ -96,6 +96,9 @@ HARDCORE_BONUS_REMINDERS: Final[list[str]] = [
 BONUS_BEFORE_JOURNA_HINT: Final[str] = "{bonus} d'abord, il est dispo !"
 # ...or when that /journa is the one that unlocks it
 BONUS_UNLOCKED_BY_JOURNA_HINT: Final[str] = "Puis {bonus} !"
+# Appended to a reminder when a public ZUnivers Ninja URL is configured. The <> around
+# the URL stops Discord from unfurling the page under the DM.
+NINJA_PLAN_HINT: Final[str] = "🥷 Ton plan du jour : [ZUnivers Ninja](<{url}>)"
 
 ADVENT_CALENDAR_REMINDERS: Final[list[str]] = [
     "🎄 Tu n'as pas encore ouvert ta case du [calendrier festif]({url}) aujourd'hui !",

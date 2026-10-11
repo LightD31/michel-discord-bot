@@ -1,4 +1,4 @@
-"""Zunivers Discord extension — /journa reminders, events, corporation recap.
+"""Zunivers Discord extension — /journa reminders, events, corporation recap, Ninja plans.
 
 Assembled as a mixin composition mirroring the vlrgg/minecraft packages:
 - :mod:`._common` — Pydantic config schema (``moduleZunivers``), logger
@@ -6,6 +6,7 @@ Assembled as a mixin composition mirroring the vlrgg/minecraft packages:
 - :mod:`.reminders` — RemindersMixin: /journa reminders, advent calendar
 - :mod:`.events` — EventsMixin: Zunivers events + hardcore season tracking
 - :mod:`.corporation` — CorporationMixin: daily recap + /corpo
+- :mod:`.ninja` — NinjaMixin: /ninja, a player's ZUnivers Ninja plan
 
 Migrated from the legacy ``extensions/coloc`` package. The fun commands that
 used to live there are now per-server entries of
@@ -24,11 +25,12 @@ from features.coloc import (
 from ._common import ZuniversConfig, config, enabled_servers, logger, module_config
 from .corporation import CorporationMixin
 from .events import EventsMixin
+from .ninja import NinjaMixin
 from .reminders import RemindersMixin
 
 
-class ZuniversExtension(Extension, RemindersMixin, EventsMixin, CorporationMixin):
-    """Extension for Zunivers features: reminders, events, corporation recap."""
+class ZuniversExtension(Extension, RemindersMixin, EventsMixin, CorporationMixin, NinjaMixin):
+    """Extension for Zunivers features: reminders, events, corporation recap, Ninja plans."""
 
     def __init__(self, bot: Client):
         self.bot = bot
