@@ -94,6 +94,53 @@ def migrate_ai_section(data: dict[str, Any]) -> list[str]:
     return moved
 
 
+# The ZUnivers Ninja URLs (October 2026) started as per-guild ``moduleZunivers``
+# fields; Ninja is one server for the whole bot, so they moved to a global section.
+_ZUNIVERS_KEY = "moduleZunivers"
+_NINJA_SECTION = "zuniversNinja"
+_NINJA_FIELDS = {"ninjaUrl": "apiUrl", "ninjaWebUrl": "webUrl"}
+
+
+def _needs_ninja_section(data: dict[str, Any]) -> bool:
+    servers = data.get("servers") or {}
+    return any(
+        isinstance(s, dict)
+        and isinstance(s.get(_ZUNIVERS_KEY), dict)
+        and any(k in s[_ZUNIVERS_KEY] for k in _NINJA_FIELDS)
+        for s in servers.values()
+    )
+
+
+def migrate_ninja_section(data: dict[str, Any]) -> list[str]:
+    """Move ``moduleZunivers.ninjaUrl`` / ``ninjaWebUrl`` into ``zuniversNinja``, in place.
+
+    The first non-empty value found wins, and a value already set in the section
+    is kept; the per-guild keys are dropped either way. Returns the guild ids that
+    carried them.
+    """
+    migrated: list[str] = []
+    found: dict[str, Any] = {}
+    for guild_id, server in (data.get("servers") or {}).items():
+        module = server.get(_ZUNIVERS_KEY) if isinstance(server, dict) else None
+        if not isinstance(module, dict) or not any(k in module for k in _NINJA_FIELDS):
+            continue
+        for old_field, new_field in _NINJA_FIELDS.items():
+            value = module.pop(old_field, None)
+            if value and new_field not in found:
+                found[new_field] = value
+        migrated.append(str(guild_id))
+    if found:
+        config = data.setdefault("config", {})
+        section = config.get(_NINJA_SECTION)
+        if not isinstance(section, dict):
+            section = {}
+        for key, value in found.items():
+            if not section.get(key):
+                section[key] = value
+        config[_NINJA_SECTION] = section
+    return migrated
+
+
 def _needs_guildeux(data: dict[str, Any]) -> bool:
     servers = data.get("servers") or {}
     return any(isinstance(s, dict) and _GUILDEUX_KEY in s for s in servers.values())
@@ -102,15 +149,17 @@ def _needs_guildeux(data: dict[str, Any]) -> bool:
 def run_migrations() -> None:
     """Apply every pending migration; write the config only if one applied."""
     data = config_store.get()
-    if not (_needs_guildeux(data) or _needs_ai_section(data)):
+    if not (_needs_guildeux(data) or _needs_ai_section(data) or _needs_ninja_section(data)):
         return
 
     guilds: list[str] = []
     ai_keys: list[str] = []
+    ninja_guilds: list[str] = []
 
     def mutator(fresh: dict[str, Any]) -> None:
         guilds.extend(migrate_guildeux(fresh))
         ai_keys.extend(migrate_ai_section(fresh))
+        ninja_guilds.extend(migrate_ninja_section(fresh))
 
     try:
         config_store.mutate(mutator)
@@ -121,3 +170,9 @@ def run_migrations() -> None:
         logger.info("Migrated %s to %s for guilds %s", _GUILDEUX_KEY, _EMBED_MANAGER_KEY, guilds)
     if ai_keys:
         logger.info("Moved %s from %s to %s", ai_keys, _OPENROUTER_SECTION, _AI_SECTION)
+    if ninja_guilds:
+        logger.info(
+            "Moved the ZUnivers Ninja URLs of guilds %s to the %s section",
+            ninja_guilds,
+            _NINJA_SECTION,
+        )

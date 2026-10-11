@@ -1,7 +1,12 @@
 """Tests for the startup config migrations (``src.core.migrations``)."""
 
 import src.core.migrations as migrations
-from src.core.migrations import migrate_ai_section, migrate_guildeux, run_migrations
+from src.core.migrations import (
+    migrate_ai_section,
+    migrate_guildeux,
+    migrate_ninja_section,
+    run_migrations,
+)
 
 
 def test_guildeux_becomes_embed_manager():
@@ -120,5 +125,57 @@ def test_run_migrations_applies_the_ai_move(monkeypatch):
     run_migrations()
     assert stale.writes == 1
     assert stale.data["config"]["AI"] == {"modelsToCompare": 4}
+    run_migrations()
+    assert stale.writes == 1
+
+
+def test_ninja_urls_move_to_the_global_section():
+    data = {
+        "servers": {
+            "1": {"moduleZunivers": {"enabled": True, "ninjaUrl": "", "ninjaWebUrl": ""}},
+            "2": {
+                "moduleZunivers": {
+                    "enabled": True,
+                    "ninjaUrl": "http://zunivers-ninja:8080",
+                    "ninjaWebUrl": "https://ninja.example",
+                }
+            },
+            "3": {"moduleXp": {}},
+        }
+    }
+    assert migrate_ninja_section(data) == ["1", "2"]
+    assert data["config"]["zuniversNinja"] == {
+        "apiUrl": "http://zunivers-ninja:8080",
+        "webUrl": "https://ninja.example",
+    }
+    assert data["servers"]["1"]["moduleZunivers"] == {"enabled": True}
+    assert data["servers"]["2"]["moduleZunivers"] == {"enabled": True}
+    assert migrate_ninja_section(data) == []  # idempotent
+
+
+def test_ninja_section_values_already_set_win():
+    data = {
+        "config": {"zuniversNinja": {"apiUrl": "http://kept:8080"}},
+        "servers": {
+            "1": {"moduleZunivers": {"ninjaUrl": "http://old", "ninjaWebUrl": "https://w"}}
+        },
+    }
+    assert migrate_ninja_section(data) == ["1"]
+    assert data["config"]["zuniversNinja"] == {"apiUrl": "http://kept:8080", "webUrl": "https://w"}
+
+
+def test_empty_ninja_fields_are_dropped_without_creating_the_section():
+    data = {"servers": {"1": {"moduleZunivers": {"ninjaUrl": ""}}}}
+    assert migrate_ninja_section(data) == ["1"]
+    assert "config" not in data
+    assert data["servers"]["1"]["moduleZunivers"] == {}
+
+
+def test_run_migrations_applies_the_ninja_move(monkeypatch):
+    stale = _Store({"servers": {"1": {"moduleZunivers": {"ninjaUrl": "http://n"}}}})
+    monkeypatch.setattr(migrations, "config_store", stale)
+    run_migrations()
+    assert stale.writes == 1
+    assert stale.data["config"]["zuniversNinja"] == {"apiUrl": "http://n"}
     run_migrations()
     assert stale.writes == 1

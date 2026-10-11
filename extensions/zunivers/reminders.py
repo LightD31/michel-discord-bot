@@ -38,7 +38,7 @@ from features.coloc.constants import (
 from features.zunivers_ninja import build_web_url
 from src.discord_ext.messages import edit_message_if_changed, fetch_user_safe
 
-from ._common import enabled_servers, logger, module_config
+from ._common import enabled_servers, logger, module_config, ninja_config
 from .ninja import DEFAULT_STRATEGY_CHOICE, ninja_strategies, strategy_choices
 
 
@@ -171,7 +171,7 @@ class RemindersMixin:
         await self.storage.save_reminders(self.reminders)
 
         reply = f"Rappel ajouté à {remind_time.strftime('%H:%M')}"
-        if ninja and not module_config.get("ninjaWebUrl"):
+        if ninja and not ninja_config.get("webUrl"):
             reply += " (le lien ZUnivers Ninja n'est pas configuré sur ce serveur)"
         elif ninja is not None:
             reply += " avec" if ninja else " sans"
@@ -300,7 +300,7 @@ class RemindersMixin:
             status = await self.api_client.get_user_loot_status(user.username, reminder_type, today)
             message = self._build_reminder_message(reminder_type, status)
             if message:
-                ninja_url = module_config.get("ninjaWebUrl")
+                ninja_url = ninja_config.get("webUrl")
                 if ninja_url and self.reminders.wants_ninja_link(user_id):
                     plan_url = build_web_url(
                         ninja_url,

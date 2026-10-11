@@ -99,6 +99,10 @@
         },
         "youtube": {
             "youtubeApiKey": ""
+        },
+        "zuniversNinja": {
+            "apiUrl": "",
+            "webUrl": ""
         }
     },
     "servers": {
@@ -383,9 +387,7 @@
                 "journaReminderRoleId": "",
                 "journaNormalLink": "",
                 "journaHardcoreLink": "",
-                "zuniversHardcoreImageUrl": "",
-                "ninjaUrl": "",
-                "ninjaWebUrl": ""
+                "zuniversHardcoreImageUrl": ""
             }
         }
     }

@@ -45,23 +45,6 @@ class ZuniversConfig(SchemaBase):
         "url",
         description="Image affichée dans l'embed de saison hardcore. Vide = aucune image.",
     )
-    ninjaUrl: str | None = ui(
-        "URL de l'API ZUnivers Ninja",
-        "url",
-        description=(
-            "Adresse du serveur ZUnivers Ninja que le bot interroge pour /ninja (ex. le nom "
-            "du conteneur sur le réseau Docker partagé). Vide = /ninja désactivé."
-        ),
-    )
-    ninjaWebUrl: str | None = ui(
-        "URL publique de ZUnivers Ninja",
-        "url",
-        description=(
-            "Interface web de ZUnivers Ninja, accessible aux joueurs. /ninja affiche un "
-            "bouton vers la page du joueur, et les membres qui l'activent via /journa set "
-            "ninja:True reçoivent ce lien dans leurs rappels. Vide = aucun lien."
-        ),
-    )
 
 
 logger = logutil.init_logger("extensions.zunivers")
@@ -69,10 +52,14 @@ logger = logutil.init_logger("extensions.zunivers")
 config, module_config, enabled_servers = load_config("moduleZunivers")
 module_config = module_config[enabled_servers[0]] if enabled_servers else {}
 
+# ZUnivers Ninja is one server for the whole bot: global ``zuniversNinja`` section.
+ninja_config: dict = config.get("zuniversNinja") or {}
+
 __all__ = [
     "ZuniversConfig",
     "config",
     "enabled_servers",
     "logger",
     "module_config",
+    "ninja_config",
 ]
