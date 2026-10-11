@@ -11,6 +11,7 @@ import pytest
 from aiohttp import ClientConnectionError
 
 from features.zunivers_ninja import (
+    STRATEGIES,
     NinjaClient,
     NinjaError,
     NinjaNotFoundError,
@@ -84,6 +85,23 @@ def test_build_plan_request_quotes_pseudo_and_sets_params() -> None:
     assert params == {"ruleset": "HARDCORE"}
 
 
+def test_build_plan_request_passes_strategy() -> None:
+    _, params = build_plan_request("http://ninja:8080", "alex", strategy="prudent")
+    assert params == {"strategy": "prudent"}
+
+
+def test_strategies_match_ninja_ids() -> None:
+    # Ninja answers 400 to an unknown ?strategy=, so the slash choices must stay in sync.
+    assert list(STRATEGIES) == [
+        "equilibre",
+        "prudent",
+        "epargne",
+        "vortex",
+        "collectionneur",
+        "echangeur",
+    ]
+
+
 def test_build_plan_request_omits_defaults() -> None:
     _, params = build_plan_request("http://ninja:8080", "alex")
     assert params == {}
@@ -128,11 +146,11 @@ def test_from_payload_rejects_missing_hash() -> None:
 
 async def test_get_plan_requests_the_discord_route() -> None:
     session = _FakeSession(_FakeResponse(200, _payload()))
-    plan = await _client(session).get_plan("alex", ruleset="NORMAL")
+    plan = await _client(session).get_plan("alex", ruleset="NORMAL", strategy="vortex")
     assert plan.hash == "abc123"
     call = session.calls[0]
     assert call["url"] == "http://zunivers-ninja:8080/api/plan/alex/discord"
-    assert call["params"] == {"ruleset": "NORMAL"}
+    assert call["params"] == {"ruleset": "NORMAL", "strategy": "vortex"}
 
 
 async def test_get_plan_raises_not_found_with_ninja_message() -> None:

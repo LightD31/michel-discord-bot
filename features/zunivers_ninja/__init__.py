@@ -10,6 +10,7 @@ Free of ``interactions`` imports: the extension builds the Discord objects.
 """
 
 from .client import (
+    STRATEGIES,
     NinjaAttachment,
     NinjaClient,
     NinjaError,
@@ -20,6 +21,7 @@ from .client import (
 )
 
 __all__ = [
+    "STRATEGIES",
     "NinjaAttachment",
     "NinjaClient",
     "NinjaError",

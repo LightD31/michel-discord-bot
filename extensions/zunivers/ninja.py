@@ -16,13 +16,20 @@ from interactions import (
     File,
     Member,
     OptionType,
+    SlashCommandChoice,
     SlashContext,
     User,
     slash_command,
     slash_option,
 )
 
-from features.zunivers_ninja import NinjaClient, NinjaError, NinjaNotFoundError, build_web_url
+from features.zunivers_ninja import (
+    STRATEGIES,
+    NinjaClient,
+    NinjaError,
+    NinjaNotFoundError,
+    build_web_url,
+)
 
 from ._common import enabled_servers, module_config
 
@@ -48,6 +55,13 @@ class NinjaMixin:
         required=False,
     )
     @slash_option(
+        name="strategie",
+        description="Stratégie du planificateur (par défaut : Équilibré)",
+        opt_type=OptionType.STRING,
+        required=False,
+        choices=[SlashCommandChoice(name=label, value=sid) for sid, label in STRATEGIES.items()],
+    )
+    @slash_option(
         name="public",
         description="Affiche le plan à tout le salon (par défaut : visible par toi seul)",
         opt_type=OptionType.BOOLEAN,
@@ -58,6 +72,7 @@ class NinjaMixin:
         ctx: SlashContext,
         membre: User | Member | None = None,
         hardcore: bool = False,
+        strategie: str | None = None,
         public: bool = False,
     ):
         url = module_config.get("ninjaUrl")
@@ -70,7 +85,9 @@ class NinjaMixin:
         await ctx.defer(ephemeral=ephemeral)
         try:
             plan = await NinjaClient(url).get_plan(
-                user.username, ruleset="HARDCORE" if hardcore else "NORMAL"
+                user.username,
+                ruleset="HARDCORE" if hardcore else "NORMAL",
+                strategy=strategie,
             )
         except NinjaNotFoundError as e:
             await ctx.send(f"❌ {e}", ephemeral=ephemeral)

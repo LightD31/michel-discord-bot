@@ -21,6 +21,17 @@ _PLAN_TIMEOUT = ClientTimeout(total=90)
 
 RULESETS = ("NORMAL", "HARDCORE")
 
+# Planner presets accepted by Ninja's ``?strategy=`` (Ninja >= 2.2), id -> French label.
+# Ninja falls back to its own default (``equilibre``) when the parameter is left out.
+STRATEGIES: dict[str, str] = {
+    "equilibre": "Équilibré",
+    "prudent": "Prudent",
+    "epargne": "Épargne",
+    "vortex": "Vortex",
+    "collectionneur": "Collectionneur",
+    "echangeur": "Échangeur",
+}
+
 
 class NinjaError(IntegrationError):
     """ZUnivers Ninja could not produce a plan. The message is user-facing (French)."""
@@ -94,12 +105,15 @@ def build_plan_request(
     pseudo: str,
     *,
     ruleset: str | None = None,
+    strategy: str | None = None,
 ) -> tuple[str, dict[str, str]]:
     """Return the URL and query parameters for a pseudo's Discord plan."""
     url = f"{base_url.rstrip('/')}/api/plan/{quote(pseudo.strip(), safe='')}/discord"
     params: dict[str, str] = {}
     if ruleset:
         params["ruleset"] = ruleset.upper()
+    if strategy:
+        params["strategy"] = strategy
     return url, params
 
 
@@ -138,13 +152,14 @@ class NinjaClient:
         pseudo: str,
         *,
         ruleset: str | None = None,
+        strategy: str | None = None,
     ) -> NinjaPlan:
         """Fetch *pseudo*'s plan.
 
         Raises :class:`NinjaNotFoundError` for an unknown pseudo and
         :class:`NinjaError` for anything else that kept Ninja from answering.
         """
-        url, params = build_plan_request(self.base_url, pseudo, ruleset=ruleset)
+        url, params = build_plan_request(self.base_url, pseudo, ruleset=ruleset, strategy=strategy)
         session = await self._session_factory()
         try:
             async with session.get(url, params=params, timeout=_PLAN_TIMEOUT) as response:
