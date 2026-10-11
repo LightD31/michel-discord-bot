@@ -1,4 +1,4 @@
-"""Tests for the per-user ZUnivers Ninja link opt-in stored with the /journa reminders."""
+"""Tests for the per-user ZUnivers Ninja preferences stored with the /journa reminders."""
 
 from datetime import datetime
 
@@ -23,12 +23,31 @@ def test_ninja_opt_ins_round_trip_next_to_the_schedule() -> None:
     reminders.add_reminder(datetime(2026, 10, 11, 8, 0), "1", ReminderType.NORMAL)
     reminders.set_ninja_link("1", True)
 
-    restored = ReminderCollection.from_dict(reminders.to_dict(), sorted(reminders.ninja_users))
+    reminders.set_ninja_strategy("1", "prudent")
+
+    restored = ReminderCollection.from_dict(
+        reminders.to_dict(), sorted(reminders.ninja_users), reminders.ninja_strategies
+    )
     assert restored.reminders == reminders.reminders
     assert restored.wants_ninja_link("1")
+    assert restored.ninja_strategy("1") == "prudent"
+
+
+def test_ninja_strategy_set_and_cleared() -> None:
+    reminders = ReminderCollection()
+    assert reminders.ninja_strategy("1") is None
+
+    reminders.set_ninja_strategy("1", "vortex")
+    assert reminders.ninja_strategy("1") == "vortex"
+
+    reminders.set_ninja_strategy("1", None)
+    reminders.set_ninja_strategy("2", None)  # clearing twice is harmless
+    assert reminders.ninja_strategy("1") is None
+    assert reminders.ninja_strategies == {}
 
 
 def test_legacy_documents_load_without_opt_ins() -> None:
     restored = ReminderCollection.from_dict({"2026-10-11 08:00:00": {"NORMAL": ["1"]}})
     assert restored.get_user_reminders("1") == [(datetime(2026, 10, 11, 8, 0), ReminderType.NORMAL)]
     assert not restored.wants_ninja_link("1")
+    assert restored.ninja_strategy("1") is None
