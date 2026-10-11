@@ -1,6 +1,7 @@
 """API client for Zunivers API with retry logic."""
 
 import asyncio
+from datetime import datetime
 from typing import Any
 
 from aiohttp import ClientError, ClientSession
@@ -9,14 +10,20 @@ from src.core import logging as logutil
 from src.core.http import http_client
 
 from .constants import (
+    LOG_SOURCE_INVOKE,
+    PREMIUM_CARDS_PER_INVOKE,
+    PREMIUM_EVENT_NAME,
+    PREMIUM_INVOKE_LIMIT,
     ZUNIVERS_CALENDAR_URL_TEMPLATE,
     ZUNIVERS_CORPORATION_URL_TEMPLATE,
     ZUNIVERS_EVENTS_URL,
     ZUNIVERS_HARDCORE_SEASON_URL,
+    ZUNIVERS_INVENTORY_LOGS_URL_TEMPLATE,
     ZUNIVERS_LOOT_URL_TEMPLATE,
+    ZUNIVERS_USER_URL_TEMPLATE,
     ReminderType,
 )
-from .models import LootStatus
+from .models import LootStatus, PremiumStatus
 
 logger = logutil.init_logger(__name__)
 
@@ -46,6 +53,7 @@ class ZuniversAPIClient:
         url: str,
         rule_set: ReminderType | None = None,
         retries: int = MAX_RETRIES,
+        params: dict[str, str | int] | None = None,
     ) -> Any:
         """Make a request with retry logic."""
         headers = {}
@@ -57,7 +65,7 @@ class ZuniversAPIClient:
 
         for attempt in range(retries):
             try:
-                async with session.get(url, headers=headers) as response:
+                async with session.get(url, headers=headers, params=params) as response:
                     if response.status == 404 or response.status == 204:
                         return None
                     if response.status >= 400:
@@ -87,6 +95,27 @@ class ZuniversAPIClient:
         url = ZUNIVERS_LOOT_URL_TEMPLATE.format(username=username)
         result = await self._request(url, rule_set)
         return result if result else {}
+
+    async def get_user(self, username: str) -> dict:
+        """Get a user's profile (balance, subscription, ...)."""
+        url = ZUNIVERS_USER_URL_TEMPLATE.format(username=username)
+        result = await self._request(url, ReminderType.NORMAL)
+        return result if isinstance(result, dict) else {}
+
+    async def get_premium_invoke_logs(self, username: str) -> dict[str, list[dict]]:
+        """Get the inventory logs of a user's latest ``/im premium``, newest first.
+
+        One page holds as many cards as a whole subscription's free invocations.
+        """
+        url = ZUNIVERS_INVENTORY_LOGS_URL_TEMPLATE.format(username=username)
+        params: dict[str, str | int] = {
+            "pageIndex": 0,
+            "pageSize": PREMIUM_INVOKE_LIMIT * PREMIUM_CARDS_PER_INVOKE,
+            "source": LOG_SOURCE_INVOKE,
+            "eventName": PREMIUM_EVENT_NAME,
+        }
+        result = await self._request(url, ReminderType.NORMAL, params=params)
+        return result if isinstance(result, dict) else {}
 
     async def get_user_calendar(self, username: str) -> dict:
         """Get a user's advent calendar data."""
@@ -125,6 +154,24 @@ class ZuniversAPIClient:
         except ZuniversAPIError:
             return None
         return LootStatus.from_loot(data, date_str)
+
+    async def get_available_premium(self, username: str, now: datetime) -> PremiumStatus | None:
+        """Get a user's ``/im premium`` status if one is free to do at ``now``.
+
+        Returns ``None`` when the user isn't subscribed, has none available yet or
+        left, or when the API can't be reached.
+        """
+        try:
+            user = await self.get_user(username)
+            if not user.get("subscription"):
+                return None
+            logs = await self.get_premium_invoke_logs(username)
+        except ZuniversAPIError:
+            return None
+        status = PremiumStatus.from_api(user, logs)
+        if status is None or not status.is_available(now):
+            return None
+        return status
 
     async def get_unopened_calendar_days(
         self,
