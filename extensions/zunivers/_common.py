@@ -11,7 +11,7 @@ from src.webui.schemas import SchemaBase, enabled_field, register_module, ui
 @register_module("moduleZunivers")
 class ZuniversConfig(SchemaBase):
     __label__ = "Zunivers"
-    __description__ = "Rappels /journa, événements et récap corporation Zunivers."
+    __description__ = "Rappels /journa, événements, récap corporation et conseils ZUnivers Ninja."
     __icon__ = "🎲"
     __category__ = "Communauté"
 
@@ -44,6 +44,39 @@ class ZuniversConfig(SchemaBase):
         "Image saison hardcore",
         "url",
         description="Image affichée dans l'embed de saison hardcore. Vide = aucune image.",
+    )
+    ninjaUrl: str | None = ui(
+        "URL de ZUnivers Ninja",
+        "url",
+        description=(
+            "Adresse du serveur ZUnivers Ninja que le bot interroge (ex. le nom du "
+            "conteneur sur le réseau Docker partagé). Vide = conseils Ninja désactivés."
+        ),
+    )
+    ninjaUsers: list[str] = ui(
+        "Pseudos conseillés par Ninja",
+        "list",
+        description=(
+            "Pseudos ZUnivers dont le plan est posté automatiquement dès qu'il change. "
+            "Vide = seulement la commande /ninja."
+        ),
+    )
+    ninjaChannelId: str | None = ui(
+        "Salon des conseils Ninja",
+        "channel",
+        description="Salon où poster les plans. Vide = le salon Zunivers.",
+    )
+    ninjaHardcore: bool = ui(
+        "Mode hardcore (Ninja)",
+        "boolean",
+        default=False,
+        description="Calcule les plans en mode HARDCORE plutôt qu'en mode NORMAL.",
+    )
+    ninjaMention: bool = ui(
+        "Mentionner le joueur (Ninja)",
+        "boolean",
+        default=False,
+        description="Mentionne le joueur dans le message quand son plan change.",
     )
 
 

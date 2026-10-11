@@ -383,7 +383,12 @@
                 "journaReminderRoleId": "",
                 "journaNormalLink": "",
                 "journaHardcoreLink": "",
-                "zuniversHardcoreImageUrl": ""
+                "zuniversHardcoreImageUrl": "",
+                "ninjaUrl": "",
+                "ninjaUsers": [],
+                "ninjaChannelId": "",
+                "ninjaHardcore": false,
+                "ninjaMention": false
             }
         }
     }
