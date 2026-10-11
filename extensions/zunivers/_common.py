@@ -46,37 +46,20 @@ class ZuniversConfig(SchemaBase):
         description="Image affichée dans l'embed de saison hardcore. Vide = aucune image.",
     )
     ninjaUrl: str | None = ui(
-        "URL de ZUnivers Ninja",
+        "URL de l'API ZUnivers Ninja",
         "url",
         description=(
-            "Adresse du serveur ZUnivers Ninja que le bot interroge (ex. le nom du "
-            "conteneur sur le réseau Docker partagé). Vide = conseils Ninja désactivés."
+            "Adresse du serveur ZUnivers Ninja que le bot interroge pour /ninja (ex. le nom "
+            "du conteneur sur le réseau Docker partagé). Vide = /ninja désactivé."
         ),
     )
-    ninjaUsers: list[str] = ui(
-        "Joueurs conseillés par Ninja",
-        "list",
+    ninjaWebUrl: str | None = ui(
+        "URL publique de ZUnivers Ninja",
+        "url",
         description=(
-            "Noms d'utilisateur Discord (= pseudos ZUnivers) dont le plan est posté "
-            "automatiquement dès qu'il change. Vide = seulement la commande /ninja."
+            "Interface web de ZUnivers Ninja, accessible aux joueurs. Ajoute aux rappels "
+            "/journa un lien vers le plan du joueur. Vide = aucun lien."
         ),
-    )
-    ninjaChannelId: str | None = ui(
-        "Salon des conseils Ninja",
-        "channel",
-        description="Salon où poster les plans. Vide = le salon Zunivers.",
-    )
-    ninjaHardcore: bool = ui(
-        "Mode hardcore (Ninja)",
-        "boolean",
-        default=False,
-        description="Calcule les plans en mode HARDCORE plutôt qu'en mode NORMAL.",
-    )
-    ninjaMention: bool = ui(
-        "Mentionner le joueur (Ninja)",
-        "boolean",
-        default=False,
-        description="Mentionne le joueur dans le message quand son plan change.",
     )
 
 

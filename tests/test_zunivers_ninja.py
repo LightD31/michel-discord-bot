@@ -16,6 +16,7 @@ from features.zunivers_ninja import (
     NinjaNotFoundError,
     NinjaPlan,
     build_plan_request,
+    build_web_url,
 )
 
 
@@ -42,10 +43,9 @@ def _payload(**overrides: Any) -> dict[str, Any]:
 
 
 class _FakeResponse:
-    def __init__(self, status: int, body: Any = None, headers: dict[str, str] | None = None):
+    def __init__(self, status: int, body: Any = None):
         self.status = status
         self._body = body
-        self.headers = headers or {}
 
     async def json(self, content_type: str | None = "application/json") -> Any:
         if isinstance(self._body, str):
@@ -79,11 +79,9 @@ def _client(session: _FakeSession) -> NinjaClient:
 
 
 def test_build_plan_request_quotes_pseudo_and_sets_params() -> None:
-    url, params = build_plan_request(
-        "http://ninja:8080/", " a/b c ", ruleset="hardcore", mention=True
-    )
+    url, params = build_plan_request("http://ninja:8080/", " a/b c ", ruleset="hardcore")
     assert url == "http://ninja:8080/api/plan/a%2Fb%20c/discord"
-    assert params == {"ruleset": "HARDCORE", "mention": "1"}
+    assert params == {"ruleset": "HARDCORE"}
 
 
 def test_build_plan_request_omits_defaults() -> None:
@@ -91,10 +89,18 @@ def test_build_plan_request_omits_defaults() -> None:
     assert params == {}
 
 
+def test_build_web_url_links_the_players_plan() -> None:
+    assert build_web_url("https://ninja.example/", "alex.presso") == (
+        "https://ninja.example/?u=alex.presso"
+    )
+    assert build_web_url("https://ninja.example", "a b", hardcore=True) == (
+        "https://ninja.example/?u=a+b&mode=hardcore"
+    )
+
+
 def test_from_payload_parses_fields() -> None:
-    plan = NinjaPlan.from_payload(_payload(), etag='W/"abc123"')
+    plan = NinjaPlan.from_payload(_payload())
     assert plan.hash == "abc123"
-    assert plan.etag == 'W/"abc123"'
     assert not plan.empty
     assert plan.command_count == 2
     assert plan.commands == ["/journa", "/bonus"]
@@ -104,11 +110,10 @@ def test_from_payload_parses_fields() -> None:
     assert len(plan.embeds) == 1
 
 
-def test_from_payload_defaults_etag_to_weak_hash_and_reads_attachment() -> None:
+def test_from_payload_reads_attachment() -> None:
     plan = NinjaPlan.from_payload(
         _payload(attachment={"name": "conseils.txt", "content": "/journa\n"}, player={})
     )
-    assert plan.etag == 'W/"abc123"'
     assert plan.attachment is not None
     assert plan.attachment.content == "/journa\n"
     assert plan.discord_id is None
@@ -121,21 +126,13 @@ def test_from_payload_rejects_missing_hash() -> None:
         NinjaPlan.from_payload(data)
 
 
-async def test_get_plan_sends_etag_and_returns_none_on_304() -> None:
-    session = _FakeSession(_FakeResponse(304))
-    assert await _client(session).get_plan("alex", etag='W/"abc"', ruleset="NORMAL") is None
+async def test_get_plan_requests_the_discord_route() -> None:
+    session = _FakeSession(_FakeResponse(200, _payload()))
+    plan = await _client(session).get_plan("alex", ruleset="NORMAL")
+    assert plan.hash == "abc123"
     call = session.calls[0]
     assert call["url"] == "http://zunivers-ninja:8080/api/plan/alex/discord"
-    assert call["headers"] == {"If-None-Match": 'W/"abc"'}
     assert call["params"] == {"ruleset": "NORMAL"}
-
-
-async def test_get_plan_returns_plan_with_response_etag() -> None:
-    session = _FakeSession(_FakeResponse(200, _payload(), {"ETag": 'W/"abc123"'}))
-    plan = await _client(session).get_plan("alex")
-    assert plan is not None
-    assert plan.etag == 'W/"abc123"'
-    assert session.calls[0]["headers"] == {}
 
 
 async def test_get_plan_raises_not_found_with_ninja_message() -> None:

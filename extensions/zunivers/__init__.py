@@ -6,7 +6,7 @@ Assembled as a mixin composition mirroring the vlrgg/minecraft packages:
 - :mod:`.reminders` — RemindersMixin: /journa reminders, advent calendar
 - :mod:`.events` — EventsMixin: Zunivers events + hardcore season tracking
 - :mod:`.corporation` — CorporationMixin: daily recap + /corpo
-- :mod:`.ninja` — NinjaMixin: ZUnivers Ninja plans (auto-post on change + /ninja)
+- :mod:`.ninja` — NinjaMixin: /ninja, a player's ZUnivers Ninja plan
 
 Migrated from the legacy ``extensions/coloc`` package. The fun commands that
 used to live there are now per-server entries of
@@ -55,8 +55,6 @@ class ZuniversExtension(Extension, RemindersMixin, EventsMixin, CorporationMixin
         self.reminder_checker.start()
         self.corporation_recap.start()
         self.events_checker.start()
-        if not self.ninja_checker.running:
-            self.ninja_checker.start()
 
         logger.info("Zunivers extension started successfully")
 

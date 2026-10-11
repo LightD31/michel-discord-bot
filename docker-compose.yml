@@ -21,9 +21,9 @@ services:
       unless-stopped
 
   # Optional: ZUnivers Ninja (https://github.com/LightD31/ZUnivers-Ninja), queried by the
-  # zunivers extension for /ninja and the automatic plan posts. Running it in this compose
-  # project puts it on the bot's network: set moduleZunivers.ninjaUrl to
-  # http://zunivers-ninja:8080. Leave ZU_USERS / WEBHOOK_URL unset here — the bot posts.
+  # zunivers extension for /ninja. Running it in this compose project puts it on the bot's
+  # network: set moduleZunivers.ninjaUrl to http://zunivers-ninja:8080, and ninjaWebUrl to
+  # its public address to link each player's plan from the /journa reminders.
   # zunivers-ninja:
   #   container_name: zunivers-ninja
   #   image: ghcr.io/lightd31/zunivers-ninja:latest

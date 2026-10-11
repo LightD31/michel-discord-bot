@@ -25,6 +25,7 @@ from features.coloc.constants import (
     ADVENT_CALENDAR_REMINDERS,
     BONUS_BEFORE_JOURNA_HINT,
     BONUS_UNLOCKED_BY_JOURNA_HINT,
+    NINJA_PLAN_HINT,
     PARIS_TZ,
     ReminderType,
     format_bonus_link,
@@ -33,6 +34,8 @@ from features.coloc.constants import (
     get_bonus_reminder_message,
     get_reminder_message,
 )
+from features.links import shorten_url
+from features.zunivers_ninja import build_web_url
 from src.discord_ext.messages import edit_message_if_changed, fetch_user_safe
 
 from ._common import enabled_servers, logger, module_config
@@ -234,6 +237,14 @@ class RemindersMixin:
             status = await self.api_client.get_user_loot_status(user.username, reminder_type, today)
             message = self._build_reminder_message(reminder_type, status)
             if message:
+                ninja_url = module_config.get("ninjaWebUrl")
+                if ninja_url:
+                    plan_url = build_web_url(
+                        ninja_url,
+                        user.username,
+                        hardcore=reminder_type == ReminderType.HARDCORE,
+                    )
+                    message += "\n" + NINJA_PLAN_HINT.format(url=await shorten_url(plan_url))
                 await user.send(message)
                 logger.info(f"Sent {reminder_type.value} reminder to {user.display_name}")
 

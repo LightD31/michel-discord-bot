@@ -1,11 +1,11 @@
-"""HTTP client for the ZUnivers Ninja ``/api/plan/{pseudo}/discord`` route."""
+"""HTTP client for the ZUnivers Ninja ``/api/plan/{pseudo}/discord`` route, and web-UI links."""
 
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any
-from urllib.parse import quote
+from urllib.parse import quote, urlencode
 
 from aiohttp import ClientError, ClientSession, ClientTimeout
 
@@ -47,7 +47,6 @@ class NinjaPlan:
     """A plan as returned by ``/api/plan/{pseudo}/discord``."""
 
     hash: str
-    etag: str
     empty: bool
     command_count: int
     commands: list[str]
@@ -59,10 +58,9 @@ class NinjaPlan:
     discord_id: str | None
 
     @classmethod
-    def from_payload(cls, data: dict[str, Any], etag: str | None = None) -> NinjaPlan:
-        """Parse the route's JSON body. *etag* defaults to the weak tag Ninja derives from the hash."""
+    def from_payload(cls, data: dict[str, Any]) -> NinjaPlan:
+        """Parse the route's JSON body."""
         try:
-            plan_hash = str(data["hash"])
             player = data.get("player") or {}
             raw_attachment = data.get("attachment")
             attachment = (
@@ -76,8 +74,7 @@ class NinjaPlan:
             commands = [str(c) for c in data.get("commands") or []]
             discord_id = player.get("discordId")
             return cls(
-                hash=plan_hash,
-                etag=etag or f'W/"{plan_hash}"',
+                hash=str(data["hash"]),
                 empty=bool(data.get("empty", not commands)),
                 command_count=int(data.get("commandCount", len(commands))),
                 commands=commands,
@@ -97,16 +94,21 @@ def build_plan_request(
     pseudo: str,
     *,
     ruleset: str | None = None,
-    mention: bool = False,
 ) -> tuple[str, dict[str, str]]:
     """Return the URL and query parameters for a pseudo's Discord plan."""
     url = f"{base_url.rstrip('/')}/api/plan/{quote(pseudo.strip(), safe='')}/discord"
     params: dict[str, str] = {}
     if ruleset:
         params["ruleset"] = ruleset.upper()
-    if mention:
-        params["mention"] = "1"
     return url, params
+
+
+def build_web_url(web_url: str, pseudo: str, *, hardcore: bool = False) -> str:
+    """Link to *pseudo*'s plan in the Ninja web UI (``?u=<pseudo>[&mode=hardcore]``)."""
+    params = {"u": pseudo.strip()}
+    if hardcore:
+        params["mode"] = "hardcore"
+    return f"{web_url.rstrip('/')}/?{urlencode(params)}"
 
 
 async def _error_message(response: Any, fallback: str) -> str:
@@ -135,24 +137,17 @@ class NinjaClient:
         self,
         pseudo: str,
         *,
-        etag: str | None = None,
         ruleset: str | None = None,
-        mention: bool = False,
-    ) -> NinjaPlan | None:
-        """Fetch *pseudo*'s plan, or ``None`` when it still matches *etag* (HTTP 304).
+    ) -> NinjaPlan:
+        """Fetch *pseudo*'s plan.
 
         Raises :class:`NinjaNotFoundError` for an unknown pseudo and
         :class:`NinjaError` for anything else that kept Ninja from answering.
         """
-        url, params = build_plan_request(self.base_url, pseudo, ruleset=ruleset, mention=mention)
-        headers = {"If-None-Match": etag} if etag else {}
+        url, params = build_plan_request(self.base_url, pseudo, ruleset=ruleset)
         session = await self._session_factory()
         try:
-            async with session.get(
-                url, params=params, headers=headers, timeout=_PLAN_TIMEOUT
-            ) as response:
-                if response.status == 304:
-                    return None
+            async with session.get(url, params=params, timeout=_PLAN_TIMEOUT) as response:
                 if response.status == 404:
                     raise NinjaNotFoundError(
                         await _error_message(response, f"Joueur « {pseudo} » introuvable."),
@@ -168,7 +163,7 @@ class NinjaClient:
                 data = await response.json(content_type=None)
                 if not isinstance(data, dict):
                     raise NinjaError("Réponse inattendue de ZUnivers Ninja.")
-                return NinjaPlan.from_payload(data, response.headers.get("ETag"))
+                return NinjaPlan.from_payload(data)
         except (TimeoutError, ClientError) as e:
             logger.warning("ZUnivers Ninja unreachable for %s: %s", pseudo, e)
             raise NinjaError("ZUnivers Ninja ne répond pas pour le moment.") from e

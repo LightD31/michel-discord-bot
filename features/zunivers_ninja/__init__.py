@@ -2,9 +2,9 @@
 
 ZUnivers Ninja (https://github.com/LightD31/ZUnivers-Ninja) runs as its own
 container and exposes ``GET /api/plan/{pseudo}/discord``, a ready-to-post
-message with an ``ETag`` that only changes when the advised commands do. This
-package wraps that route (:mod:`.client`) and persists the last ETag posted per
-pseudo (:mod:`.repository`) so the bot only posts a plan when it changed.
+message for a player's best plan of the day. This package wraps that route and
+builds links to a player's plan in the Ninja web UI. The ZUnivers pseudo is the
+player's Discord username.
 
 Free of ``interactions`` imports: the extension builds the Discord objects.
 """
@@ -16,8 +16,8 @@ from .client import (
     NinjaNotFoundError,
     NinjaPlan,
     build_plan_request,
+    build_web_url,
 )
-from .repository import NinjaRepository
 
 __all__ = [
     "NinjaAttachment",
@@ -25,6 +25,6 @@ __all__ = [
     "NinjaError",
     "NinjaNotFoundError",
     "NinjaPlan",
-    "NinjaRepository",
     "build_plan_request",
+    "build_web_url",
 ]

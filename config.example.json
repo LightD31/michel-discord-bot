@@ -385,10 +385,7 @@
                 "journaHardcoreLink": "",
                 "zuniversHardcoreImageUrl": "",
                 "ninjaUrl": "",
-                "ninjaUsers": [],
-                "ninjaChannelId": "",
-                "ninjaHardcore": false,
-                "ninjaMention": false
+                "ninjaWebUrl": ""
             }
         }
     }
