@@ -57,9 +57,9 @@ class ZuniversConfig(SchemaBase):
         "URL publique de ZUnivers Ninja",
         "url",
         description=(
-            "Interface web de ZUnivers Ninja, accessible aux joueurs. Les membres qui "
-            "l'activent via /journa set ninja:True reçoivent dans leurs rappels un lien "
-            "vers leur plan. Vide = aucun lien."
+            "Interface web de ZUnivers Ninja, accessible aux joueurs. /ninja affiche un "
+            "bouton vers la page du joueur, et les membres qui l'activent via /journa set "
+            "ninja:True reçoivent ce lien dans leurs rappels. Vide = aucun lien."
         ),
     )
 
