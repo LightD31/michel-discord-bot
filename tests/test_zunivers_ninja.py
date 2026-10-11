@@ -11,14 +11,15 @@ import pytest
 from aiohttp import ClientConnectionError
 
 from features.zunivers_ninja import (
-    STRATEGIES,
     NinjaClient,
     NinjaError,
     NinjaNotFoundError,
     NinjaPlan,
     build_plan_request,
     build_web_url,
+    parse_strategies,
 )
+from features.zunivers_ninja import client as ninja_client
 
 
 def _payload(**overrides: Any) -> dict[str, Any]:
@@ -79,6 +80,21 @@ def _client(session: _FakeSession) -> NinjaClient:
     return NinjaClient("http://zunivers-ninja:8080/", session_factory=factory)
 
 
+@pytest.fixture(autouse=True)
+def _clear_strategies_cache() -> None:
+    ninja_client._strategies_cache.clear()
+
+
+_STRATEGIES = {
+    "strategy": "equilibre",
+    "strategies": [
+        {"id": "equilibre", "label": "Équilibré", "description": "Le plus de points."},
+        {"id": "prudent", "label": "Prudent", "description": "Points garantis."},
+        {"label": "sans id"},
+    ],
+}
+
+
 def test_build_plan_request_quotes_pseudo_and_sets_params() -> None:
     url, params = build_plan_request("http://ninja:8080/", " a/b c ", ruleset="hardcore")
     assert url == "http://ninja:8080/api/plan/a%2Fb%20c/discord"
@@ -88,18 +104,6 @@ def test_build_plan_request_quotes_pseudo_and_sets_params() -> None:
 def test_build_plan_request_passes_strategy() -> None:
     _, params = build_plan_request("http://ninja:8080", "alex", strategy="prudent")
     assert params == {"strategy": "prudent"}
-
-
-def test_strategies_match_ninja_ids() -> None:
-    # Ninja answers 400 to an unknown ?strategy=, so the slash choices must stay in sync.
-    assert list(STRATEGIES) == [
-        "equilibre",
-        "prudent",
-        "epargne",
-        "vortex",
-        "collectionneur",
-        "echangeur",
-    ]
 
 
 def test_build_plan_request_omits_defaults() -> None:
@@ -113,6 +117,9 @@ def test_build_web_url_links_the_players_plan() -> None:
     )
     assert build_web_url("https://ninja.example", "a b", hardcore=True) == (
         "https://ninja.example/?u=a+b&mode=hardcore"
+    )
+    assert build_web_url("https://ninja.example", "alex", strategy="prudent") == (
+        "https://ninja.example/?u=alex&strategy=prudent"
     )
 
 
@@ -177,3 +184,46 @@ async def test_get_plan_wraps_invalid_json() -> None:
     session = _FakeSession(_FakeResponse(200, "not json"))
     with pytest.raises(NinjaError, match="inattendue"):
         await _client(session).get_plan("alex")
+
+
+def test_parse_strategies_skips_entries_without_id() -> None:
+    strategies = parse_strategies(_STRATEGIES)
+    assert [st.id for st in strategies] == ["equilibre", "prudent"]
+    assert strategies[1].label == "Prudent"
+    assert strategies[1].description == "Points garantis."
+
+
+def test_parse_strategies_rejects_unexpected_shape() -> None:
+    with pytest.raises(NinjaError):
+        parse_strategies({"strategy": "equilibre"})
+
+
+async def test_get_strategies_is_cached() -> None:
+    session = _FakeSession(_FakeResponse(200, _STRATEGIES))
+    client = _client(session)
+    first = await client.get_strategies()
+    second = await client.get_strategies()
+    assert [st.id for st in second] == [st.id for st in first] == ["equilibre", "prudent"]
+    assert len(session.calls) == 1
+    assert session.calls[0]["url"] == "http://zunivers-ninja:8080/api/strategies"
+
+
+async def test_get_strategies_on_older_ninja_is_empty() -> None:
+    session = _FakeSession(_FakeResponse(404, {"error": "Route inconnue."}))
+    assert await _client(session).get_strategies() == []
+
+
+async def test_get_strategies_falls_back_to_stale_list(monkeypatch: pytest.MonkeyPatch) -> None:
+    session = _FakeSession(_FakeResponse(200, _STRATEGIES))
+    client = _client(session)
+    await client.get_strategies()
+
+    monkeypatch.setattr(ninja_client, "_STRATEGIES_TTL", -1.0)  # expire the cache
+    session.response = ClientConnectionError("refused")
+    assert [st.id for st in await client.get_strategies()] == ["equilibre", "prudent"]
+
+
+async def test_get_strategies_raises_without_cache() -> None:
+    session = _FakeSession(ClientConnectionError("refused"))
+    with pytest.raises(NinjaError):
+        await _client(session).get_strategies()

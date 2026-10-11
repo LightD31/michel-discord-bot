@@ -10,23 +10,25 @@ Free of ``interactions`` imports: the extension builds the Discord objects.
 """
 
 from .client import (
-    STRATEGIES,
     NinjaAttachment,
     NinjaClient,
     NinjaError,
     NinjaNotFoundError,
     NinjaPlan,
+    NinjaStrategy,
     build_plan_request,
     build_web_url,
+    parse_strategies,
 )
 
 __all__ = [
-    "STRATEGIES",
     "NinjaAttachment",
     "NinjaClient",
     "NinjaError",
     "NinjaNotFoundError",
     "NinjaPlan",
+    "NinjaStrategy",
     "build_plan_request",
     "build_web_url",
+    "parse_strategies",
 ]
