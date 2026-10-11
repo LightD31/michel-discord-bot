@@ -22,9 +22,7 @@ from interactions import (
     slash_option,
 )
 
-from features.links import shorten_url
 from features.zunivers_ninja import NinjaClient, NinjaError, NinjaNotFoundError, build_web_url
-from src.discord_ext.links import shorten_embeds
 
 from ._common import enabled_servers, module_config
 
@@ -81,7 +79,7 @@ class NinjaMixin:
             await ctx.send(f"⚠️ {e}", ephemeral=ephemeral)
             return
 
-        components = await _web_link(user.username, hardcore)
+        components = _web_link(user.username, hardcore)
         if plan.empty:
             await ctx.send(
                 f"✅ Rien de plus à faire aujourd'hui pour **{plan.player_display_name}**.",
@@ -90,7 +88,7 @@ class NinjaMixin:
             )
             return
 
-        embeds = await shorten_embeds(Embed.from_dict(e) for e in plan.embeds)
+        embeds = [Embed.from_dict(e) for e in plan.embeds]
         files = (
             [File(io.BytesIO(plan.attachment.content.encode()), file_name=plan.attachment.name)]
             if plan.attachment
@@ -106,10 +104,13 @@ class NinjaMixin:
         )
 
 
-async def _web_link(username: str, hardcore: bool) -> list[ActionRow] | None:
-    """Link button to the player's plan on the Ninja web UI, when ``ninjaWebUrl`` is set."""
+def _web_link(username: str, hardcore: bool) -> list[ActionRow] | None:
+    """Link button to the player's plan on the Ninja web UI, when ``ninjaWebUrl`` is set.
+
+    Not shortened: the player's page is a stable URL, as are the Ninja links in the embed.
+    """
     web_url = module_config.get("ninjaWebUrl")
     if not web_url:
         return None
-    link = await shorten_url(build_web_url(web_url, username, hardcore=hardcore))
+    link = build_web_url(web_url, username, hardcore=hardcore)
     return [ActionRow(Button(style=ButtonStyle.LINK, label="Voir sur ZUnivers Ninja", url=link))]

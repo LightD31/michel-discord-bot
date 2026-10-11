@@ -34,7 +34,6 @@ from features.coloc.constants import (
     get_bonus_reminder_message,
     get_reminder_message,
 )
-from features.links import shorten_url
 from features.zunivers_ninja import build_web_url
 from src.discord_ext.messages import edit_message_if_changed, fetch_user_safe
 
@@ -264,7 +263,7 @@ class RemindersMixin:
                         user.username,
                         hardcore=reminder_type == ReminderType.HARDCORE,
                     )
-                    message += "\n" + NINJA_PLAN_HINT.format(url=await shorten_url(plan_url))
+                    message += "\n" + NINJA_PLAN_HINT.format(url=plan_url)
                 await user.send(message)
                 logger.info(f"Sent {reminder_type.value} reminder to {user.display_name}")
 
