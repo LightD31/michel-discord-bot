@@ -15,8 +15,10 @@ from .client import (
     NinjaError,
     NinjaNotFoundError,
     NinjaPlan,
+    NinjaStrategy,
     build_plan_request,
     build_web_url,
+    parse_strategies,
 )
 
 __all__ = [
@@ -25,6 +27,8 @@ __all__ = [
     "NinjaError",
     "NinjaNotFoundError",
     "NinjaPlan",
+    "NinjaStrategy",
     "build_plan_request",
     "build_web_url",
+    "parse_strategies",
 ]
