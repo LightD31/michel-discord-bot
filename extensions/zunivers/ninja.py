@@ -31,7 +31,7 @@ from features.zunivers_ninja import (
     build_web_url,
 )
 
-from ._common import enabled_servers, module_config
+from ._common import enabled_servers, ninja_config
 
 
 class NinjaMixin:
@@ -75,7 +75,7 @@ class NinjaMixin:
         strategie: str | None = None,
         public: bool = False,
     ):
-        url = module_config.get("ninjaUrl")
+        url = ninja_config.get("apiUrl")
         if not url:
             await ctx.send("ZUnivers Ninja n'est pas configuré sur ce serveur.", ephemeral=True)
             return
@@ -134,7 +134,7 @@ async def ninja_strategies() -> list[NinjaStrategy]:
 
     Empty when Ninja isn't configured, is too old to list them, or can't be reached.
     """
-    url = module_config.get("ninjaUrl")
+    url = ninja_config.get("apiUrl")
     if not url:
         return []
     try:
@@ -160,11 +160,11 @@ async def strategy_choices(typed: str, *, with_default: bool = False) -> list[di
 
 
 def _web_link(username: str, hardcore: bool, strategy: str | None) -> list[ActionRow] | None:
-    """Link button to the player's plan on the Ninja web UI, when ``ninjaWebUrl`` is set.
+    """Link button to the player's plan on the Ninja web UI, when ``zuniversNinja.webUrl`` is set.
 
     Not shortened: the player's page is a stable URL, as are the Ninja links in the embed.
     """
-    web_url = module_config.get("ninjaWebUrl")
+    web_url = ninja_config.get("webUrl")
     if not web_url:
         return None
     link = build_web_url(web_url, username, hardcore=hardcore, strategy=strategy)
