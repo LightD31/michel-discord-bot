@@ -16,7 +16,6 @@ from interactions import (
     Task,
     TimeTrigger,
     User,
-    slash_command,
     slash_option,
 )
 from interactions.api.events import Component
@@ -43,7 +42,7 @@ from features.coloc.constants import (
 from features.zunivers_ninja import build_web_url
 from src.discord_ext.messages import edit_message_if_changed, fetch_user_safe
 
-from ._common import enabled_servers, logger, module_config, ninja_config
+from ._common import logger, module_config, ninja_config, zunivers_cmd
 from .ninja import DEFAULT_STRATEGY_CHOICE, ninja_strategies, strategy_choices
 
 
@@ -77,12 +76,11 @@ class RemindersMixin:
 
     # ==================== Reminder Management ====================
 
-    @slash_command(
-        name="journa",
+    @zunivers_cmd.subcommand(
+        group_name="journa",
+        group_description="Rappels quotidiens /journa (et /bonus, /im premium)",
         sub_cmd_name="set",
         sub_cmd_description="Ajoute un rappel pour /journa (et /bonus, /im premium quand dispo)",
-        description="Gère les rappels pour /journa et /bonus",
-        scopes=enabled_servers,
     )
     @slash_option(
         name="heure",
@@ -197,7 +195,9 @@ class RemindersMixin:
     async def set_reminder_strategy_autocomplete(self, ctx: AutocompleteContext) -> None:
         await ctx.send(choices=await strategy_choices(ctx.input_text, with_default=True))
 
-    @set_reminder.subcommand(
+    @zunivers_cmd.subcommand(
+        group_name="journa",
+        group_description="Rappels quotidiens /journa (et /bonus, /im premium)",
         sub_cmd_name="remove",
         sub_cmd_description="Supprime un rappel pour /journa",
     )

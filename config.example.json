@@ -387,7 +387,9 @@
                 "journaReminderRoleId": "",
                 "journaNormalLink": "",
                 "journaHardcoreLink": "",
-                "zuniversHardcoreImageUrl": ""
+                "zuniversHardcoreImageUrl": "",
+                "zerator247Url": "",
+                "zerator247TwitchLogin": "zerator_247"
             }
         }
     }

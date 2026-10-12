@@ -1,4 +1,4 @@
-"""NinjaMixin — /ninja: a player's best ZUnivers plan of the day, from ZUnivers Ninja.
+"""NinjaMixin — /zunivers ninja: a player's best ZUnivers plan of the day, from ZUnivers Ninja.
 
 ZUnivers Ninja runs as its own service; the bot queries its
 ``/api/plan/{pseudo}/discord`` route and posts the ready-made message. The
@@ -19,7 +19,6 @@ from interactions import (
     OptionType,
     SlashContext,
     User,
-    slash_command,
     slash_option,
 )
 
@@ -31,16 +30,15 @@ from features.zunivers_ninja import (
     build_web_url,
 )
 
-from ._common import enabled_servers, ninja_config
+from ._common import ninja_config, zunivers_cmd
 
 
 class NinjaMixin:
-    """On-demand /ninja command."""
+    """On-demand /zunivers ninja command."""
 
-    @slash_command(
-        name="ninja",
-        description="Affiche le meilleur plan ZUnivers du jour calculé par ZUnivers Ninja",
-        scopes=enabled_servers,
+    @zunivers_cmd.subcommand(
+        sub_cmd_name="ninja",
+        sub_cmd_description="Affiche le meilleur plan ZUnivers du jour calculé par ZUnivers Ninja",
     )
     @slash_option(
         name="membre",
@@ -125,7 +123,7 @@ class NinjaMixin:
         await ctx.send(choices=await strategy_choices(ctx.input_text))
 
 
-# /journa set value that clears a stored strategy (Ninja's own default applies again).
+# /zunivers journa set value that clears a stored strategy (Ninja's own default applies again).
 DEFAULT_STRATEGY_CHOICE = "defaut"
 
 
