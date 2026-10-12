@@ -1,4 +1,4 @@
-"""CorporationMixin — daily corporation recap and /corpo command."""
+"""CorporationMixin — daily corporation recap and /zunivers corpo command."""
 
 from datetime import date as date_type
 from datetime import datetime
@@ -8,7 +8,6 @@ from interactions import (
     SlashContext,
     Task,
     TimeTrigger,
-    slash_command,
     slash_option,
 )
 
@@ -19,12 +18,12 @@ from features.coloc.constants import (
     DEFAULT_CORPORATION_ID,
 )
 
-from ._common import enabled_servers, logger
+from ._common import logger, zunivers_cmd
 from .embeds import create_corporation_embed, create_corporation_logs_embed
 
 
 class CorporationMixin:
-    """Daily corporation recap + manual /corpo trigger."""
+    """Daily corporation recap + manual /zunivers corpo trigger."""
 
     @Task.create(TimeTrigger(23, 59, 45, utc=False))
     async def corporation_recap(self, date: str | None = None):
@@ -58,10 +57,9 @@ class CorporationMixin:
 
         await channel.send(embeds=[corp_embed, logs_embed])
 
-    @slash_command(
-        name="corpo",
-        description="Affiche les informations de la corporation",
-        scopes=enabled_servers,
+    @zunivers_cmd.subcommand(
+        sub_cmd_name="corpo",
+        sub_cmd_description="Affiche les informations de la corporation",
     )
     @slash_option(
         name="date",

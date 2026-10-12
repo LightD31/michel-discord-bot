@@ -513,17 +513,17 @@ class ZuniversNinjaSection(SchemaBase):
         "URL de l'API",
         "url",
         description=(
-            "Adresse du serveur ZUnivers Ninja que le bot interroge pour /ninja (ex. le nom "
-            "du conteneur sur le réseau Docker partagé). Vide = /ninja désactivé."
+            "Adresse du serveur ZUnivers Ninja que le bot interroge pour /zunivers ninja (ex. "
+            "le nom du conteneur sur le réseau Docker partagé). Vide = /zunivers ninja désactivé."
         ),
     )
     webUrl: str | None = ui(
         "URL publique",
         "url",
         description=(
-            "Interface web de ZUnivers Ninja, accessible aux joueurs. /ninja affiche un "
-            "bouton vers la page du joueur, et les membres qui l'activent via /journa set "
-            "ninja:True reçoivent ce lien dans leurs rappels. Vide = aucun lien."
+            "Interface web de ZUnivers Ninja, accessible aux joueurs. /zunivers ninja affiche "
+            "un bouton vers la page du joueur, et les membres qui l'activent via /zunivers "
+            "journa set ninja:True reçoivent ce lien dans leurs rappels. Vide = aucun lien."
         ),
     )
 

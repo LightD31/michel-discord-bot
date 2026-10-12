@@ -9,7 +9,6 @@ from interactions import (
     SlashContext,
     Task,
     TimeTrigger,
-    slash_command,
 )
 
 from features.coloc.constants import ReminderType
@@ -17,7 +16,7 @@ from features.coloc.models import HardcoreSeason, ZuniversEvent
 from features.coloc.utils import image_url_needs_download
 from src.discord_ext.messages import send_error
 
-from ._common import enabled_servers, logger
+from ._common import logger, zunivers_cmd
 from .embeds import create_event_embed, create_season_embed, set_event_embed_image
 
 
@@ -29,12 +28,9 @@ class EventsMixin:
         """Check for Zunivers event changes every hour."""
         await self._check_zunivers_events()
 
-    @slash_command(
-        name="zunivers",
+    @zunivers_cmd.subcommand(
         sub_cmd_name="check",
         sub_cmd_description="Vérifie manuellement les événements Zunivers",
-        description="Gère les événements Zunivers",
-        scopes=enabled_servers,
     )
     async def zunivers_check(self, ctx: SlashContext):
         """Manually trigger event check."""
