@@ -108,10 +108,6 @@ class CatalogVod:
             game=game if isinstance(game, str) and game else None,
         )
 
-    @property
-    def url(self) -> str:
-        return f"https://www.twitch.tv/videos/{self.twitch_video_id}"
-
 
 def parse_catalog(data: Any) -> tuple[list[CatalogVod], int]:
     """VODs of one ``/api/catalog`` page and the catalog's page count."""
@@ -172,11 +168,11 @@ def _ts(moment: datetime, style: str) -> str:
 
 
 def request_command(vod: CatalogVod | None) -> str:
-    """The !request line to paste in the chat, filled with *vod*'s link when there is one.
+    """The !request line to paste in the chat, filled with *vod*'s Twitch video id when there is one.
 
-    The link is the payload the 24/7 bot parses, so it is never shortened.
+    The 24/7 bot takes the bare id (the site's own "copy" button yields ``!request <id>``).
     """
-    return f"!request {vod.url}" if vod else "!request <lien>"
+    return f"!request {vod.twitch_video_id}" if vod else "!request <lien>"
 
 
 def describe_vod(vod: CatalogVod) -> str:

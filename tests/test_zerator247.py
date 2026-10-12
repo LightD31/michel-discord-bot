@@ -155,10 +155,10 @@ def test_reminder_names_the_command_the_deadline_and_the_links():
     assert "https://247.zerator.com/#votes" in message
 
 
-def test_reminder_filled_with_a_vod_link():
+def test_reminder_filled_with_a_vod_id():
     vod = CatalogVod("742177323", "Patch d'As Far As The Eye", "As Far As The Eye")
     message = build_request_reminder(_cycle(), twitch_url=None, votes_url=None, vod=vod)
-    assert "`!request https://www.twitch.tv/videos/742177323`" in message
+    assert "`!request 742177323`" in message
     assert "<lien>" not in message
     assert "*Patch d'As Far As The Eye* (As Far As The Eye)" in message
 
@@ -210,7 +210,6 @@ def test_parse_catalog_skips_malformed_entries():
 def test_catalog_vod_without_game_or_with_a_long_title():
     vod = CatalogVod.from_payload(_entry("5", title="x" * 200, game=None))
     assert vod is not None and vod.game is None
-    assert vod.url == "https://www.twitch.tv/videos/5"
     assert describe_vod(vod) == "*" + "x" * 79 + "…*"
 
 
