@@ -3,7 +3,8 @@
 A ZUnivers card asks players to ``!request`` a VOD on the ZeratoR 24/7 channel a
 number of times. Requests are only accepted in a short window before each vote
 (about ten minutes, near the end of the VOD airing), so members opt in with
-``/zunivers request set`` and get a DM each time that window opens.
+``/zunivers request set`` and get a DM each time that window opens, with the
+``!request`` line already filled with a random archive VOD so it can be pasted as is.
 """
 
 from datetime import datetime
@@ -13,6 +14,7 @@ from interactions import IntervalTrigger, OptionType, SlashContext, Task, slash_
 from features.coloc.constants import PARIS_TZ
 from features.links import shorten_url
 from features.zerator247 import (
+    CatalogVod,
     Cycle,
     RequestReminderRepository,
     RequestSubscription,
@@ -20,6 +22,8 @@ from features.zerator247 import (
     Zerator247Error,
     build_request_reminder,
     describe_cycle,
+    describe_vod,
+    request_command,
     should_notify,
 )
 from src.core.errors import DatabaseError
@@ -63,6 +67,17 @@ class Zerator247Mixin:
             return None
         return await Zerator247Client(site).get_cycle()
 
+    async def _random_vods(self) -> list[CatalogVod]:
+        """Random archive VODs to fill the !request line; empty when the catalog is unreachable."""
+        site = _site_url()
+        if not site:
+            return []
+        try:
+            return await Zerator247Client(site).get_random_vods()
+        except Zerator247Error as e:
+            logger.warning("ZeratoR 24/7 catalog unavailable, !request left unfilled: %s", e)
+            return []
+
     @Task.create(IntervalTrigger(minutes=1))
     async def zerator247_checker(self):
         """Announce the requests window to subscribers once per cycle."""
@@ -83,9 +98,17 @@ class Zerator247Mixin:
             return
         site = _site_url()
         votes_url = await shorten_url(f"{site.rstrip('/')}/#votes") if site else None
-        message = build_request_reminder(cycle, twitch_url=_twitch_url(), votes_url=votes_url)
+        # A different VOD per member where the page allows: one !request per person,
+        # and nobody gains from everyone proposing the same one.
+        vods = await self._random_vods()
         sent = 0
-        for user_id in recipients:
+        for i, user_id in enumerate(recipients):
+            message = build_request_reminder(
+                cycle,
+                twitch_url=_twitch_url(),
+                votes_url=votes_url,
+                vod=vods[i % len(vods)] if vods else None,
+            )
             _, user = await fetch_user_safe(self.bot, user_id)
             if not user:
                 logger.warning("Could not fetch user %s for the !request reminder", user_id)
@@ -191,4 +214,8 @@ class Zerator247Mixin:
             if subscription
             else "Tu n'es pas abonné : `/zunivers request set` pour recevoir un MP."
         )
-        await ctx.send(f"{describe_cycle(cycle)}\n{mine}", ephemeral=True)
+        vods = await self._random_vods()
+        suggestion = (
+            f"\nSuggestion : `{request_command(vods[0])}` — {describe_vod(vods[0])}" if vods else ""
+        )
+        await ctx.send(f"{describe_cycle(cycle)}\n{mine}{suggestion}", ephemeral=True)

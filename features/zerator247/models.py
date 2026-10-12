@@ -87,6 +87,49 @@ class Cycle:
 
 
 @dataclass(frozen=True)
+class CatalogVod:
+    """A VOD of the 24/7 archive (``GET /api/catalog`` entry), a valid !request target."""
+
+    twitch_video_id: str
+    title: str
+    game: str | None = None
+
+    @classmethod
+    def from_payload(cls, data: Any) -> CatalogVod | None:
+        if not isinstance(data, dict):
+            return None
+        video_id = data.get("twitchVideoId")
+        if not isinstance(video_id, str) or not video_id.isdigit():
+            return None
+        game = data.get("primaryGameName")
+        return cls(
+            twitch_video_id=video_id,
+            title=str(data.get("title") or ""),
+            game=game if isinstance(game, str) and game else None,
+        )
+
+    @property
+    def url(self) -> str:
+        return f"https://www.twitch.tv/videos/{self.twitch_video_id}"
+
+
+def parse_catalog(data: Any) -> tuple[list[CatalogVod], int]:
+    """VODs of one ``/api/catalog`` page and the catalog's page count."""
+    if not isinstance(data, dict):
+        return [], 0
+    entries = data.get("entries")
+    vods = [
+        vod
+        for vod in (
+            CatalogVod.from_payload(e) for e in (entries if isinstance(entries, list) else [])
+        )
+        if vod is not None
+    ]
+    page_count = data.get("pageCount")
+    return vods, page_count if isinstance(page_count, int) and page_count > 0 else 0
+
+
+@dataclass(frozen=True)
 class RequestSubscription:
     """A member's opt-in to !request reminders, optionally limited to some hours.
 
@@ -128,14 +171,41 @@ def _ts(moment: datetime, style: str) -> str:
     return f"<t:{int(moment.timestamp())}:{style}>"
 
 
-def build_request_reminder(cycle: Cycle, *, twitch_url: str | None, votes_url: str | None) -> str:
-    """DM sent to subscribers when the requests window opens."""
+def request_command(vod: CatalogVod | None) -> str:
+    """The !request line to paste in the chat, filled with *vod*'s link when there is one.
+
+    The link is the payload the 24/7 bot parses, so it is never shortened.
+    """
+    return f"!request {vod.url}" if vod else "!request <lien>"
+
+
+def describe_vod(vod: CatalogVod) -> str:
+    title = vod.title if len(vod.title) <= 80 else vod.title[:79] + "…"
+    return f"*{title}* ({vod.game})" if vod.game else f"*{title}*"
+
+
+def build_request_reminder(
+    cycle: Cycle,
+    *,
+    twitch_url: str | None,
+    votes_url: str | None,
+    vod: CatalogVod | None = None,
+) -> str:
+    """DM sent to subscribers when the requests window opens.
+
+    *vod* (a random archive VOD) fills the !request line so it can be pasted as
+    is; without one the line keeps the ``<lien>`` placeholder.
+    """
     where = f"dans le chat de {twitch_url}" if twitch_url else "dans le chat de ZeratoR 24/7"
-    message = f"📼 Les requêtes sont ouvertes sur ZeratoR 24/7 ! Tape `!request <lien>` {where}"
+    message = (
+        f"📼 Les requêtes sont ouvertes sur ZeratoR 24/7 ! Tape `{request_command(vod)}` {where}"
+    )
     closes = cycle.ballot_opens_at
     if closes is not None:
         message += f" avant {_ts(closes, 't')} ({_ts(closes, 'R')})"
     message += "."
+    if vod:
+        message += f"\nVOD tirée au hasard : {describe_vod(vod)}"
     if votes_url:
         message += f"\nVOD et vote en cours : {votes_url}"
     return message

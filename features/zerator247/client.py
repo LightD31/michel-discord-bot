@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import random
 from collections.abc import Awaitable, Callable
+from typing import Any
 
 from aiohttp import ClientError, ClientSession, ClientTimeout
 
@@ -10,7 +12,7 @@ from src.core import logging as logutil
 from src.core.errors import IntegrationError
 from src.core.http import http_client
 
-from .models import Cycle
+from .models import CatalogVod, Cycle, parse_catalog
 
 logger = logutil.init_logger(__name__)
 
@@ -33,18 +35,35 @@ class Zerator247Client:
         self.base_url = base_url
         self._session_factory = session_factory
 
-    async def get_cycle(self) -> Cycle | None:
-        """The current vote cycle, or ``None`` when nothing is airing."""
-        url = f"{self.base_url.rstrip('/')}/api/now"
+    async def _get_json(self, path: str, params: dict[str, str] | None = None) -> Any:
+        url = f"{self.base_url.rstrip('/')}/api/{path}"
         session = await self._session_factory()
         try:
-            async with session.get(url, timeout=_TIMEOUT) as response:
+            async with session.get(url, params=params or {}, timeout=_TIMEOUT) as response:
                 if response.status >= 400:
                     raise Zerator247Error(f"ZeratoR 24/7 a répondu HTTP {response.status}.")
-                data = await response.json(content_type=None)
+                return await response.json(content_type=None)
         except (TimeoutError, ClientError) as e:
             logger.warning("ZeratoR 24/7 unreachable (%s): %s", url, e)
             raise Zerator247Error("ZeratoR 24/7 ne répond pas pour le moment.") from e
         except ValueError as e:
             raise Zerator247Error("Réponse inattendue de ZeratoR 24/7.") from e
-        return Cycle.from_payload(data)
+
+    async def get_cycle(self) -> Cycle | None:
+        """The current vote cycle, or ``None`` when nothing is airing."""
+        return Cycle.from_payload(await self._get_json("now"))
+
+    async def get_random_vods(self, rng: random.Random | None = None) -> list[CatalogVod]:
+        """The VODs of a random catalog page (10 of them), shuffled.
+
+        The catalog only pages by 10, so this costs two requests: the first page
+        gives the page count, the second fetches a random page.
+        """
+        rng = rng or random.Random()
+        vods, page_count = parse_catalog(await self._get_json("catalog"))
+        if page_count > 1:
+            page = rng.randint(1, page_count)
+            if page > 1:
+                vods, _ = parse_catalog(await self._get_json("catalog", {"page": str(page)}))
+        rng.shuffle(vods)
+        return vods
