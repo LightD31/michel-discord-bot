@@ -11,6 +11,7 @@ Stays free of ``interactions`` imports; the Discord side lives in
 
 from .client import Zerator247Client, Zerator247Error
 from .models import (
+    CHOSEN_REQUEST_HINT,
     REQUEST_COMMAND,
     Cycle,
     RequestSubscription,
@@ -21,6 +22,7 @@ from .models import (
 from .repository import RequestReminderRepository
 
 __all__ = [
+    "CHOSEN_REQUEST_HINT",
     "REQUEST_COMMAND",
     "Cycle",
     "RequestReminderRepository",

@@ -4,7 +4,8 @@ A ZUnivers card asks players to ``!request`` a VOD on the ZeratoR 24/7 channel a
 number of times. Requests are only accepted in a short window before each vote
 (about ten minutes, near the end of the VOD airing), so members opt in with
 ``/zunivers 247 set`` and get a DM each time that window opens, reminding them
-to type ``!request random`` (the 24/7 bot picks an archive VOD itself).
+to type ``!request random`` (the 24/7 bot picks an archive VOD itself) or to
+propose the VOD of their choice.
 """
 
 from datetime import datetime
@@ -14,6 +15,7 @@ from interactions import IntervalTrigger, OptionType, SlashContext, Task, slash_
 from features.coloc.constants import PARIS_TZ
 from features.links import shorten_url
 from features.zerator247 import (
+    CHOSEN_REQUEST_HINT,
     REQUEST_COMMAND,
     Cycle,
     RequestReminderRepository,
@@ -194,6 +196,7 @@ class Zerator247Mixin:
             else "Tu n'es pas abonné : `/zunivers 247 set` pour recevoir un MP."
         )
         await ctx.send(
-            f"{describe_cycle(cycle)}\nCommande à taper : `{REQUEST_COMMAND}`\n{mine}",
+            f"{describe_cycle(cycle)}\n"
+            f"Commande à taper : `{REQUEST_COMMAND}` ({CHOSEN_REQUEST_HINT})\n{mine}",
             ephemeral=True,
         )

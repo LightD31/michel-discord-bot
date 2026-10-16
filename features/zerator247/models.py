@@ -14,6 +14,8 @@ PHASE_BALLOT = "ballot"
 
 # The 24/7 bot picks a random archive VOD itself for this one.
 REQUEST_COMMAND = "!request random"
+# Any archive VOD can be proposed instead, by its link or Twitch video id.
+CHOSEN_REQUEST_HINT = "ou `!request <lien>` pour proposer la VOD de ton choix"
 
 # Two polls of the same cycle can compute an end time a few seconds apart (the
 # playhead and the server clock drift); anything closer than this is one cycle.
@@ -143,7 +145,7 @@ def build_request_reminder(
     closes = cycle.ballot_opens_at
     if closes is not None:
         message += f" avant {_ts(closes, 't')} ({_ts(closes, 'R')})"
-    message += "."
+    message += f", {CHOSEN_REQUEST_HINT}."
     if votes_url:
         message += f"\nVOD et vote en cours : {votes_url}"
     return message

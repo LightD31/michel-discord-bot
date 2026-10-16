@@ -145,6 +145,7 @@ def test_reminder_names_the_command_the_deadline_and_the_links():
         votes_url="https://247.zerator.com/#votes",
     )
     assert "`!request random`" in message
+    assert "`!request <lien>` pour proposer la VOD de ton choix" in message
     assert "https://twitch.tv/zerator_247" in message
     assert f"<t:{deadline}:R>" in message
     assert "https://247.zerator.com/#votes" in message
