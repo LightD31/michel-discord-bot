@@ -78,11 +78,8 @@
         },
         "uptimeKuma": {
             "uptimeKumaUrl": "",
-            "uptimeKumaUsername": "",
-            "uptimeKumaPassword": "",
-            "uptimeKuma2FA": "",
-            "uptimeKumaToken": "",
-            "uptimeKumaApiKey": ""
+            "uptimeKumaApiKey": "",
+            "uptimeKumaToken": ""
         },
         "vlrgg": {
             "vlrggApiUrl": ""

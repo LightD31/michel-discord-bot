@@ -108,7 +108,7 @@ The dashboard serves requests from a daemon thread with its own uvicorn loop, so
 
 So:
 - Start background work from `@listen() async def on_startup` (idempotent: guard `Task.start()` with `if not task.running`), not from `__init__`.
-- Release anything that isn't a `Task` (a websocket, a socket.io client, a third-party API client) in `async_drop`. `twitch`, `uptime` and `streamlabs` are the examples.
+- Release anything that isn't a `Task` (a websocket, a socket.io client, a listening port, a third-party API client) in `async_drop`. `twitch`, `streamlabs` and `metrics` are the examples.
 - Never re-implement reload handling inside an extension.
 
 ### Per-guild data isolation

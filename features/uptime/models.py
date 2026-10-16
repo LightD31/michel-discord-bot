@@ -105,3 +105,37 @@ def transition(previous: MonitorStatus | None, current: MonitorStatus) -> Transi
     if previous is MonitorStatus.MAINTENANCE:
         return Transition(current, AlertEvent.MAINTENANCE_ENDED)
     return Transition(current)
+
+
+@dataclass(frozen=True)
+class StatusChange:
+    """An alert whose settled status just changed: persist it, and post ``event`` if set."""
+
+    guild_id: str
+    alert: MonitorAlert
+    previous: MonitorStatus | None
+    event: AlertEvent | None
+
+
+def apply_statuses(
+    alerts_by_guild: Mapping[str, Mapping[int, MonitorAlert]],
+    statuses: Mapping[int, MonitorStatus],
+) -> list[StatusChange]:
+    """Advance every alert whose monitor reported a status; ``last_status`` is updated in place.
+
+    Monitors missing from *statuses* (paused, deleted, or not checked since
+    Kuma started) keep their alerts untouched, so they post nothing until
+    they report again.
+    """
+    changes: list[StatusChange] = []
+    for guild_id, alerts in alerts_by_guild.items():
+        for alert in alerts.values():
+            current = statuses.get(alert.monitor_id)
+            if current is None:
+                continue
+            outcome = transition(alert.last_status, current)
+            if outcome.status is alert.last_status:
+                continue
+            previous, alert.last_status = alert.last_status, outcome.status
+            changes.append(StatusChange(guild_id, alert, previous, outcome.event))
+    return changes

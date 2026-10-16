@@ -141,6 +141,29 @@ def migrate_ninja_section(data: dict[str, Any]) -> list[str]:
     return migrated
 
 
+# The Uptime extension (October 2026) reads Kuma's /metrics with an API key
+# instead of logging into its Socket.IO API, so the account credentials it
+# used to keep are dropped rather than left lying in the config.
+_UPTIME_SECTION = "uptimeKuma"
+_UPTIME_OBSOLETE_KEYS = ("uptimeKumaUsername", "uptimeKumaPassword", "uptimeKuma2FA")
+
+
+def _needs_uptime_credentials(data: dict[str, Any]) -> bool:
+    section = (data.get("config") or {}).get(_UPTIME_SECTION)
+    return isinstance(section, dict) and any(k in section for k in _UPTIME_OBSOLETE_KEYS)
+
+
+def migrate_uptime_credentials(data: dict[str, Any]) -> list[str]:
+    """Remove the Uptime Kuma username, password and 2FA code, in place. Returns the keys removed."""
+    section = (data.get("config") or {}).get(_UPTIME_SECTION)
+    if not isinstance(section, dict):
+        return []
+    removed = [key for key in _UPTIME_OBSOLETE_KEYS if key in section]
+    for key in removed:
+        del section[key]
+    return removed
+
+
 def _needs_guildeux(data: dict[str, Any]) -> bool:
     servers = data.get("servers") or {}
     return any(isinstance(s, dict) and _GUILDEUX_KEY in s for s in servers.values())
@@ -149,17 +172,24 @@ def _needs_guildeux(data: dict[str, Any]) -> bool:
 def run_migrations() -> None:
     """Apply every pending migration; write the config only if one applied."""
     data = config_store.get()
-    if not (_needs_guildeux(data) or _needs_ai_section(data) or _needs_ninja_section(data)):
+    if not (
+        _needs_guildeux(data)
+        or _needs_ai_section(data)
+        or _needs_ninja_section(data)
+        or _needs_uptime_credentials(data)
+    ):
         return
 
     guilds: list[str] = []
     ai_keys: list[str] = []
     ninja_guilds: list[str] = []
+    uptime_keys: list[str] = []
 
     def mutator(fresh: dict[str, Any]) -> None:
         guilds.extend(migrate_guildeux(fresh))
         ai_keys.extend(migrate_ai_section(fresh))
         ninja_guilds.extend(migrate_ninja_section(fresh))
+        uptime_keys.extend(migrate_uptime_credentials(fresh))
 
     try:
         config_store.mutate(mutator)
@@ -175,4 +205,9 @@ def run_migrations() -> None:
             "Moved the ZUnivers Ninja URLs of guilds %s to the %s section",
             ninja_guilds,
             _NINJA_SECTION,
+        )
+    if uptime_keys:
+        logger.info(
+            "Removed the unused Uptime Kuma credentials %s (the bot reads /metrics with an API key)",
+            uptime_keys,
         )

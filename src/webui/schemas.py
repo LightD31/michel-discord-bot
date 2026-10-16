@@ -361,20 +361,22 @@ class UptimeKumaSection(SchemaBase):
         "url",
         required=True,
         description=(
-            "URL de l'instance Uptime Kuma. Un nom d'hôte seul est joint en HTTPS ; une "
-            "URL interne (ex. http://uptime-kuma:3001) évite un proxy qui exige une "
-            "authentification, comme Authelia."
+            "URL de l'instance Uptime Kuma (un nom d'hôte seul est joint en HTTPS). Le bot "
+            "n'utilise que /metrics et /api/push : un proxy d'authentification devant Kuma "
+            "doit les laisser passer."
         ),
     )
-    uptimeKumaUsername: str = ui("Nom d'utilisateur", "string", required=True)
-    uptimeKumaPassword: str = secret_field("Mot de passe", required=True)
-    uptimeKuma2FA: str | None = ui(
-        "Code 2FA", "string", description="Code 2FA si activé (optionnel)."
+    uptimeKumaApiKey: str = secret_field(
+        "Clé API",
+        required=True,
+        description=(
+            "Clé API Uptime Kuma (Paramètres → Clés API). Elle ne permet que de lire /metrics, "
+            "d'où le bot tire l'état des capteurs toutes les 30 secondes."
+        ),
     )
     uptimeKumaToken: str | None = secret_field(
         "Token push", description="Token push pour le statut du bot."
     )
-    uptimeKumaApiKey: str | None = secret_field("Clé API", description="Clé API Uptime Kuma.")
 
 
 @register_section("misc")
