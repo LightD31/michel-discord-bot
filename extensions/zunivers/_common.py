@@ -56,7 +56,7 @@ class ZuniversConfig(SchemaBase):
         "url",
         description=(
             "Adresse du site ZeratoR 24/7 (ex. https://247.zerator.com), dont l'API indique "
-            "quand les !request s'ouvrent. Vide = rappels /zunivers request désactivés."
+            "quand les !request s'ouvrent. Vide = rappels /zunivers 247 désactivés."
         ),
     )
     zerator247TwitchLogin: str | None = ui(

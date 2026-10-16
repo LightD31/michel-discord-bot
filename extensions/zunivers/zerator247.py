@@ -3,7 +3,7 @@
 A ZUnivers card asks players to ``!request`` a VOD on the ZeratoR 24/7 channel a
 number of times. Requests are only accepted in a short window before each vote
 (about ten minutes, near the end of the VOD airing), so members opt in with
-``/zunivers request set`` and get a DM each time that window opens, reminding them
+``/zunivers 247 set`` and get a DM each time that window opens, reminding them
 to type ``!request random`` (the 24/7 bot picks an archive VOD itself).
 """
 
@@ -29,7 +29,7 @@ from src.discord_ext.messages import fetch_user_safe
 
 from ._common import enabled_servers, logger, module_config, zunivers_cmd
 
-_REQUEST_GROUP = "request"
+_REQUEST_GROUP = "247"
 _REQUEST_GROUP_DESCRIPTION = "Rappels quand les !request s'ouvrent sur ZeratoR 24/7"
 
 
@@ -191,7 +191,7 @@ class Zerator247Mixin:
         mine = (
             f"Tu es abonné aux rappels, {subscription.describe_hours()}."
             if subscription
-            else "Tu n'es pas abonné : `/zunivers request set` pour recevoir un MP."
+            else "Tu n'es pas abonné : `/zunivers 247 set` pour recevoir un MP."
         )
         await ctx.send(
             f"{describe_cycle(cycle)}\nCommande à taper : `{REQUEST_COMMAND}`\n{mine}",
