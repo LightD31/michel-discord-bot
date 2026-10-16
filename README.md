@@ -73,7 +73,7 @@ A modular, multi-guild Discord bot built with **interactions.py**. Michel ships 
 | **VLR.gg Tracker** | Valorant esports match tracking — schedules, live score updates, and post-match results from VLR.gg. |
 | **MDI Tracker** | Mythic Dungeon International (World of Warcraft) tracking via the Raider.IO API. |
 | **Shlink** | Shortens the external links the bot posts (RSS entries, YouTube uploads, Embed manager links, MDI, Streamlabs, recap messages) through a self-hosted [Shlink](https://shlink.io) instance, and manages the short links from the dashboard. |
-| **Uptime** | Mirrors Uptime Kuma status changes (down, back up, maintenance) into channels via Socket.IO, and reports the bot's own liveness to a Kuma push monitor. |
+| **Uptime** | Mirrors Uptime Kuma status changes (down, back up, maintenance) into channels by polling Kuma's `/metrics` with a read-only API key, and reports the bot's own liveness to a Kuma push monitor. |
 | **Minecraft** | Server status monitoring and player stats via SFTP/RCON. *(disabled by default)* |
 | **Satisfactory** | Game server status via pyfactorybridge. |
 
@@ -317,7 +317,7 @@ scrape_configs:
 | Notion | [notion-client](https://github.com/ramnes/notion-sdk-py) |
 | AI | [OpenRouter](https://openrouter.ai/) and [NanoGPT](https://nano-gpt.com/) via the OpenAI SDK |
 | Minecraft | mcstatus, asyncssh, native RCON |
-| Monitoring | Uptime Kuma (Socket.IO), Prometheus exporter ([prometheus-client](https://github.com/prometheus/client_python)) |
+| Monitoring | Uptime Kuma (`/metrics` + push monitor), Prometheus exporter ([prometheus-client](https://github.com/prometheus/client_python)) |
 | Image gen | Pillow |
 
 ### Tooling

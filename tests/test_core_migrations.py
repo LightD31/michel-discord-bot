@@ -5,6 +5,7 @@ from src.core.migrations import (
     migrate_ai_section,
     migrate_guildeux,
     migrate_ninja_section,
+    migrate_uptime_credentials,
     run_migrations,
 )
 
@@ -177,5 +178,40 @@ def test_run_migrations_applies_the_ninja_move(monkeypatch):
     run_migrations()
     assert stale.writes == 1
     assert stale.data["config"]["zuniversNinja"] == {"apiUrl": "http://n"}
+    run_migrations()
+    assert stale.writes == 1
+
+
+def test_uptime_credentials_are_removed():
+    section = {
+        "uptimeKumaUrl": "status.example.com",
+        "uptimeKumaUsername": "admin",
+        "uptimeKumaPassword": "secret",  # pragma: allowlist secret
+        "uptimeKuma2FA": "",
+        "uptimeKumaToken": "push",
+        "uptimeKumaApiKey": "uk1_key",  # pragma: allowlist secret
+    }
+    data = {"config": {"uptimeKuma": section}}
+    assert migrate_uptime_credentials(data) == [
+        "uptimeKumaUsername",
+        "uptimeKumaPassword",
+        "uptimeKuma2FA",
+    ]
+    assert data["config"]["uptimeKuma"] == {
+        "uptimeKumaUrl": "status.example.com",
+        "uptimeKumaToken": "push",
+        "uptimeKumaApiKey": "uk1_key",  # pragma: allowlist secret
+    }
+    assert migrate_uptime_credentials(data) == []  # idempotent
+    assert migrate_uptime_credentials({"config": {"uptimeKuma": "junk"}}) == []
+    assert migrate_uptime_credentials({}) == []
+
+
+def test_run_migrations_removes_uptime_credentials(monkeypatch):
+    stale = _Store({"config": {"uptimeKuma": {"uptimeKumaUsername": "admin"}}, "servers": {}})
+    monkeypatch.setattr(migrations, "config_store", stale)
+    run_migrations()
+    assert stale.writes == 1
+    assert stale.data["config"]["uptimeKuma"] == {}
     run_migrations()
     assert stale.writes == 1

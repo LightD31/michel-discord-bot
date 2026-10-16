@@ -9,7 +9,7 @@ class UptimeConfig(SchemaBase):
     __label__ = "Uptime"
     __description__ = (
         "Suivi Uptime Kuma : statut des serveurs et notifications de maintenance. "
-        "Les capteurs se configurent via /uptime ; identifiants dans la section « Uptime Kuma »."
+        "Les capteurs se configurent via /uptime ; URL et clé API dans la section « Uptime Kuma »."
     )
     __icon__ = "📡"
     __category__ = "Outils"
@@ -19,12 +19,16 @@ class UptimeConfig(SchemaBase):
 
 _config, _module_config, enabled_servers = load_config("moduleUptime")
 
+# How often /metrics is read. Each read uses one of Kuma's 60 API requests a minute,
+# shared with anything else using an API key (a Prometheus scraper, for instance).
+POLL_SECONDS = 30
+
 # Discord caps autocomplete at 25 choices of up to 100 characters, and an embed at 25 fields.
 MAX_CHOICES = 25
 MAX_CHOICE_NAME = 100
 MAX_EMBED_FIELDS = 25
 
 KUMA_UNREACHABLE = (
-    "Uptime Kuma est injoignable pour le moment (identifiants manquants ou serveur hors "
+    "Uptime Kuma est injoignable pour le moment (URL ou clé API manquante, ou serveur hors "
     "ligne). Réessayez plus tard."
 )

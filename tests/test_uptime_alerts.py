@@ -11,8 +11,10 @@ from features.uptime import (
     AlertMode,
     AlertTone,
     MonitorAlert,
+    StatusChange,
     Transition,
     UptimeRepository,
+    apply_statuses,
     render_alert,
     transition,
 )
@@ -67,6 +69,31 @@ def test_retry_then_down_posts_once():
     assert events == [None, None, AlertEvent.DOWN, None, AlertEvent.RECOVERED]
 
 
+def test_apply_statuses_across_guilds():
+    shared_a = MonitorAlert(1, 100, last_status=UP)
+    shared_b = MonitorAlert(1, 200, last_status=DOWN)
+    fresh = MonitorAlert(2, 100)
+    paused = MonitorAlert(3, 100, last_status=UP)
+    alerts = {"a": {1: shared_a, 2: fresh, 3: paused}, "b": {1: shared_b}}
+
+    changes = apply_statuses(alerts, {1: DOWN, 2: PENDING, 4: UP})
+
+    # Guild b already knew monitor 1 was down; monitor 2 is still retrying;
+    # monitor 3 is absent from /metrics (paused) and keeps its status.
+    assert changes == [StatusChange("a", shared_a, UP, AlertEvent.DOWN)]
+    assert shared_a.last_status is DOWN
+    assert fresh.last_status is None
+    assert paused.last_status is UP
+
+    changes = apply_statuses(alerts, {1: UP, 2: UP})
+    assert [(c.guild_id, c.alert.monitor_id, c.previous, c.event) for c in changes] == [
+        ("a", 1, DOWN, AlertEvent.RECOVERED),
+        ("a", 2, None, None),  # baseline: persisted, not posted
+        ("b", 1, DOWN, AlertEvent.RECOVERED),
+    ]
+    assert apply_statuses(alerts, {1: UP, 2: UP}) == []
+
+
 # --- Stored alerts ----------------------------------------------------------
 
 
@@ -103,7 +130,6 @@ def test_simple_alert():
         monitor_name="VPS",
         previous=UP,
         current=DOWN,
-        message="timeout",
     )
     assert message.title == "❌ Hors ligne"
     assert message.description == "**VPS** est hors ligne"
@@ -121,8 +147,7 @@ def test_detailed_alert():
         monitor_name="Proxmox / Immich",
         previous=MAINT,
         current=UP,
-        url="https://photos.example",
-        message="x" * 2000,
+        url="https://photos.example/" + "x" * 2000,
         ping=12.0,
         at=at,
     )
@@ -133,8 +158,8 @@ def test_detailed_alert():
     assert fields["ID du capteur"] == "3"
     assert fields["État actuel"] == "En ligne"
     assert fields["État précédent"] == "Maintenance"
-    assert fields["URL"] == "https://photos.example"
-    assert len(fields["Message"]) == 1024
+    assert fields["URL"].startswith("https://photos.example/")
+    assert len(fields["URL"]) == 1024
     assert fields["Ping"] == "12 ms"
     assert message.timestamp == at
 

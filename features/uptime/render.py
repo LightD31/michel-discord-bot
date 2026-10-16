@@ -83,7 +83,6 @@ def render_alert(
     previous: MonitorStatus | None,
     current: MonitorStatus,
     url: str | None = None,
-    message: str = "",
     ping: float | None = None,
     at: datetime | None = None,
 ) -> AlertMessage:
@@ -105,8 +104,6 @@ def render_alert(
         fields.append(AlertField("État précédent", previous.label))
     if url:
         fields.append(AlertField("URL", _clip(url), inline=False))
-    if message:
-        fields.append(AlertField("Message", _clip(message), inline=False))
     if ping is not None:
         fields.append(AlertField("Ping", f"{ping:g} ms"))
     return AlertMessage(
