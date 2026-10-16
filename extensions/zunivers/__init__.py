@@ -8,7 +8,7 @@ Assembled as a mixin composition mirroring the vlrgg/minecraft packages:
 - :mod:`.events` — EventsMixin: Zunivers events + hardcore season tracking, /zunivers check
 - :mod:`.corporation` — CorporationMixin: daily recap + /zunivers corpo
 - :mod:`.ninja` — NinjaMixin: /zunivers ninja, a player's ZUnivers Ninja plan
-- :mod:`.zerator247` — Zerator247Mixin: /zunivers request, DMs when !request opens on 24/7
+- :mod:`.zerator247` — Zerator247Mixin: /zunivers 247, DMs when !request opens on 24/7
 
 Migrated from the legacy ``extensions/coloc`` package. The fun commands that
 used to live there are now per-server entries of

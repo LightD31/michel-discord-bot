@@ -12,6 +12,11 @@ from typing import Any
 PHASE_REQUESTS = "requests"
 PHASE_BALLOT = "ballot"
 
+# The 24/7 bot picks a random archive VOD itself for this one.
+REQUEST_COMMAND = "!request random"
+# Any archive VOD can be proposed instead, by its Twitch video id (not its link).
+CHOSEN_REQUEST_HINT = "ou `!request <ID>` avec l'ID de la VOD de ton choix"
+
 # Two polls of the same cycle can compute an end time a few seconds apart (the
 # playhead and the server clock drift); anything closer than this is one cycle.
 _SAME_CYCLE_TOLERANCE = timedelta(minutes=2)
@@ -87,45 +92,6 @@ class Cycle:
 
 
 @dataclass(frozen=True)
-class CatalogVod:
-    """A VOD of the 24/7 archive (``GET /api/catalog`` entry), a valid !request target."""
-
-    twitch_video_id: str
-    title: str
-    game: str | None = None
-
-    @classmethod
-    def from_payload(cls, data: Any) -> CatalogVod | None:
-        if not isinstance(data, dict):
-            return None
-        video_id = data.get("twitchVideoId")
-        if not isinstance(video_id, str) or not video_id.isdigit():
-            return None
-        game = data.get("primaryGameName")
-        return cls(
-            twitch_video_id=video_id,
-            title=str(data.get("title") or ""),
-            game=game if isinstance(game, str) and game else None,
-        )
-
-
-def parse_catalog(data: Any) -> tuple[list[CatalogVod], int]:
-    """VODs of one ``/api/catalog`` page and the catalog's page count."""
-    if not isinstance(data, dict):
-        return [], 0
-    entries = data.get("entries")
-    vods = [
-        vod
-        for vod in (
-            CatalogVod.from_payload(e) for e in (entries if isinstance(entries, list) else [])
-        )
-        if vod is not None
-    ]
-    page_count = data.get("pageCount")
-    return vods, page_count if isinstance(page_count, int) and page_count > 0 else 0
-
-
-@dataclass(frozen=True)
 class RequestSubscription:
     """A member's opt-in to !request reminders, optionally limited to some hours.
 
@@ -167,48 +133,26 @@ def _ts(moment: datetime, style: str) -> str:
     return f"<t:{int(moment.timestamp())}:{style}>"
 
 
-def request_command(vod: CatalogVod | None) -> str:
-    """The !request line to paste in the chat, filled with *vod*'s Twitch video id when there is one.
-
-    The 24/7 bot takes the bare id (the site's own "copy" button yields ``!request <id>``).
-    """
-    return f"!request {vod.twitch_video_id}" if vod else "!request <lien>"
-
-
-def describe_vod(vod: CatalogVod) -> str:
-    title = vod.title if len(vod.title) <= 80 else vod.title[:79] + "…"
-    return f"*{title}* ({vod.game})" if vod.game else f"*{title}*"
-
-
 def build_request_reminder(
     cycle: Cycle,
     *,
     twitch_url: str | None,
     votes_url: str | None,
-    vod: CatalogVod | None = None,
 ) -> str:
-    """DM sent to subscribers when the requests window opens.
-
-    *vod* (a random archive VOD) fills the !request line so it can be pasted as
-    is; without one the line keeps the ``<lien>`` placeholder.
-    """
+    """DM sent to subscribers when the requests window opens."""
     where = f"dans le chat de {twitch_url}" if twitch_url else "dans le chat de ZeratoR 24/7"
-    message = (
-        f"📼 Les requêtes sont ouvertes sur ZeratoR 24/7 ! Tape `{request_command(vod)}` {where}"
-    )
+    message = f"📼 Les requêtes sont ouvertes sur ZeratoR 24/7 ! Tape `{REQUEST_COMMAND}` {where}"
     closes = cycle.ballot_opens_at
     if closes is not None:
         message += f" avant {_ts(closes, 't')} ({_ts(closes, 'R')})"
-    message += "."
-    if vod:
-        message += f"\nVOD tirée au hasard : {describe_vod(vod)}"
+    message += f", {CHOSEN_REQUEST_HINT}."
     if votes_url:
         message += f"\nVOD et vote en cours : {votes_url}"
     return message
 
 
 def describe_cycle(cycle: Cycle | None) -> str:
-    """One-line status of the cycle, for ``/zunivers request status``."""
+    """One-line status of the cycle, for ``/zunivers 247 status``."""
     if cycle is None or cycle.ends_at is None:
         return "Aucune VOD en cours de diffusion sur ZeratoR 24/7."
     if cycle.phase == PHASE_REQUESTS and cycle.ballot_opens_at is not None:

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import random
 from collections.abc import Awaitable, Callable
 from typing import Any
 
@@ -12,7 +11,7 @@ from src.core import logging as logutil
 from src.core.errors import IntegrationError
 from src.core.http import http_client
 
-from .models import CatalogVod, Cycle, parse_catalog
+from .models import Cycle
 
 logger = logutil.init_logger(__name__)
 
@@ -35,11 +34,11 @@ class Zerator247Client:
         self.base_url = base_url
         self._session_factory = session_factory
 
-    async def _get_json(self, path: str, params: dict[str, str] | None = None) -> Any:
+    async def _get_json(self, path: str) -> Any:
         url = f"{self.base_url.rstrip('/')}/api/{path}"
         session = await self._session_factory()
         try:
-            async with session.get(url, params=params or {}, timeout=_TIMEOUT) as response:
+            async with session.get(url, timeout=_TIMEOUT) as response:
                 if response.status >= 400:
                     raise Zerator247Error(f"ZeratoR 24/7 a répondu HTTP {response.status}.")
                 return await response.json(content_type=None)
@@ -52,18 +51,3 @@ class Zerator247Client:
     async def get_cycle(self) -> Cycle | None:
         """The current vote cycle, or ``None`` when nothing is airing."""
         return Cycle.from_payload(await self._get_json("now"))
-
-    async def get_random_vods(self, rng: random.Random | None = None) -> list[CatalogVod]:
-        """The VODs of a random catalog page (10 of them), shuffled.
-
-        The catalog only pages by 10, so this costs two requests: the first page
-        gives the page count, the second fetches a random page.
-        """
-        rng = rng or random.Random()
-        vods, page_count = parse_catalog(await self._get_json("catalog"))
-        if page_count > 1:
-            page = rng.randint(1, page_count)
-            if page > 1:
-                vods, _ = parse_catalog(await self._get_json("catalog", {"page": str(page)}))
-        rng.shuffle(vods)
-        return vods
