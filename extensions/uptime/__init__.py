@@ -1,71 +1,77 @@
 """Uptime Kuma Discord extension.
 
-Composes the SocketIO client, monitor resolution, notification rendering,
-admin slash commands, and scheduled tasks into a single ``UptimeExtension``.
+Mirrors Uptime Kuma status changes into Discord channels and reports the bot's
+own liveness to a Kuma push monitor. The Socket.IO client lives in
+``src.integrations.uptime_kuma``; the transition rules, embed texts and
+persistence in ``features.uptime``. This package wires them to Discord:
+lifecycle here, ``/uptime`` in ``commands``, alert posting in
+``notifications`` and the periodic loops in ``tasks``.
 """
 
-import os
+import asyncio
 
 from interactions import Client, Extension, listen
 
-from features.uptime import UptimeRepository
+from features.uptime import MonitorAlert, UptimeRepository
 from src.core import logging as logutil
+from src.core.errors import DatabaseError
+from src.integrations.uptime_kuma import UptimeKumaClient
 
 from ._common import enabled_servers
 from .commands import CommandsMixin
-from .monitors import MonitorsMixin
 from .notifications import NotificationsMixin
-from .socketio_client import SocketIOMixin
 from .tasks import TasksMixin
 
 logger = logutil.init_logger(__name__)
 
 
-class UptimeExtension(
-    Extension,
-    SocketIOMixin,
-    MonitorsMixin,
-    NotificationsMixin,
-    CommandsMixin,
-    TasksMixin,
-):
-    """Discord extension that mirrors Uptime Kuma status updates into channels."""
+class UptimeExtension(Extension, CommandsMixin, NotificationsMixin, TasksMixin):
+    """Discord extension that mirrors Uptime Kuma status changes into channels."""
 
     def __init__(self, bot: Client):
         self.bot: Client = bot
-        self.sio = None
-        self.connected = False
-        # {guild_id: {sensor_id: {"channel_id": int, "last_status": str|None, "mode": str}}}
-        self.maintenance_monitors: dict[str, dict] = {}
-        self.sensor_states: dict = {}
-        self.monitors_cache: dict = {}
-        self._repository = UptimeRepository()
+        # {guild_id: {monitor_id: alert}}, guilds with the module enabled only.
+        self.alerts: dict[str, dict[int, MonitorAlert]] = {}
+        self._alerts_loaded = False
+        # Socket.IO handlers run concurrently; transitions must not interleave.
+        self._state_lock = asyncio.Lock()
+        self._push_failing = False
+        self.kuma = UptimeKumaClient(on_heartbeat=self.handle_heartbeat)
 
     @listen()
     async def on_startup(self):
-        """Load persisted configs, connect SocketIO, then start the task loops."""
-        await self.load_maintenance_monitors()
-        await self.connect_socketio()
-        self.send_status_update.start()
-        self.check_sensor_maintenance.start()
-        await self.send_status_update()
+        """Load the alerts, open the Kuma link, then start the loops."""
+        await self.load_alerts()
+        self.kuma.start()
+        if not self.push_status.running:
+            self.push_status.start()
+        if not self.kuma_watchdog.running:
+            self.kuma_watchdog.start()
+        await self.push_status()
 
     async def async_drop(self):
-        """Dashboard unload/reload: close the socket.io link before a new instance opens one."""
-        await self.disconnect_socketio()
+        """Dashboard unload/reload: close the Socket.IO link before a new instance opens one."""
+        await self.kuma.close()
 
-    async def load_maintenance_monitors(self):
-        try:
-            self.maintenance_monitors = await self._repository.load_all(list(enabled_servers))
-            logger.info(
-                f"Configurations de surveillance chargées: {len(self.maintenance_monitors)} serveurs"
-            )
-        except Exception as error:
-            logger.error(f"Erreur lors du chargement des configurations: {error}")
-            self.maintenance_monitors = {}
+    async def load_alerts(self) -> None:
+        """Read every enabled guild's alerts; a guild that fails is retried by the watchdog."""
+        alerts: dict[str, dict[int, MonitorAlert]] = {}
+        complete = True
+        for guild_id in enabled_servers:
+            try:
+                alerts[guild_id] = await UptimeRepository(guild_id).load()
+            except DatabaseError as e:
+                logger.error("Guild %s: could not load uptime alerts: %s", guild_id, e)
+                complete = False
+        async with self._state_lock:
+            self.alerts = alerts
+            self._alerts_loaded = complete
+        logger.info(
+            "Uptime alerts loaded: %d across %d guilds",
+            sum(len(guild_alerts) for guild_alerts in alerts.values()),
+            len(alerts),
+        )
 
-    async def save_maintenance_monitors(self):
-        try:
-            await self._repository.save_all(self.maintenance_monitors)
-        except Exception as error:
-            logger.error(f"Erreur lors de la sauvegarde des configurations: {error}")
+
+def setup(bot: Client) -> None:
+    UptimeExtension(bot)

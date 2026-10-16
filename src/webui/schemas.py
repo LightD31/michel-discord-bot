@@ -357,7 +357,14 @@ class UptimeKumaSection(SchemaBase):
     __icon__ = "📡"
 
     uptimeKumaUrl: str = ui(
-        "URL", "url", required=True, description="URL de l'instance Uptime Kuma."
+        "URL",
+        "url",
+        required=True,
+        description=(
+            "URL de l'instance Uptime Kuma. Un nom d'hôte seul est joint en HTTPS ; une "
+            "URL interne (ex. http://uptime-kuma:3001) évite un proxy qui exige une "
+            "authentification, comme Authelia."
+        ),
     )
     uptimeKumaUsername: str = ui("Nom d'utilisateur", "string", required=True)
     uptimeKumaPassword: str = secret_field("Mot de passe", required=True)

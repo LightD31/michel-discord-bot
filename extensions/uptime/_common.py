@@ -1,8 +1,5 @@
-"""Shared config, logger and constants for the Uptime extension."""
+"""Shared config schema and constants for the Uptime extension."""
 
-import os
-
-from src.core import logging as logutil
 from src.core.config import load_config
 from src.webui.schemas import SchemaBase, enabled_field, register_module
 
@@ -20,15 +17,14 @@ class UptimeConfig(SchemaBase):
     enabled: bool = enabled_field()
 
 
-logger = logutil.init_logger(__name__)
+_config, _module_config, enabled_servers = load_config("moduleUptime")
 
-config, _module_config, enabled_servers = load_config("moduleUptime")
+# Discord caps autocomplete at 25 choices of up to 100 characters, and an embed at 25 fields.
+MAX_CHOICES = 25
+MAX_CHOICE_NAME = 100
+MAX_EMBED_FIELDS = 25
 
-
-def has_kuma_credentials() -> bool:
-    kuma = config.get("uptimeKuma", {})
-    return bool(
-        kuma.get("uptimeKumaUrl")
-        and kuma.get("uptimeKumaUsername")
-        and kuma.get("uptimeKumaPassword")
-    )
+KUMA_UNREACHABLE = (
+    "Uptime Kuma est injoignable pour le moment (identifiants manquants ou serveur hors "
+    "ligne). Réessayez plus tard."
+)

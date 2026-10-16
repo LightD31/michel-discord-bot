@@ -1,10 +1,9 @@
-"""`/uptime setup|remove|list` admin commands for managing maintenance alerts."""
-
-import os
+"""`/uptime setup|remove|list` admin commands for managing monitor alerts."""
 
 from interactions import (
     AutocompleteContext,
     BaseChannel,
+    ChannelType,
     Embed,
     OptionType,
     Permissions,
@@ -14,18 +13,48 @@ from interactions import (
     slash_option,
 )
 
+from features.uptime import AlertMode, MonitorAlert, UptimeRepository
 from src.core import logging as logutil
+from src.core.errors import DatabaseError
 from src.discord_ext.autocomplete import is_guild_enabled
 from src.discord_ext.embeds import Colors
-from src.discord_ext.messages import send_error
+from src.discord_ext.messages import require_guild, send_error, send_success
 
-from ._common import config, enabled_servers
+from ._common import (
+    KUMA_UNREACHABLE,
+    MAX_CHOICE_NAME,
+    MAX_CHOICES,
+    MAX_EMBED_FIELDS,
+    enabled_servers,
+)
 
 logger = logutil.init_logger(__name__)
 
 
+def _choice_name(name: str) -> str:
+    return name if len(name) <= MAX_CHOICE_NAME else name[: MAX_CHOICE_NAME - 1] + "…"
+
+
 class CommandsMixin:
-    """Admin `/uptime` command group + per-sensor autocomplete."""
+    """Admin `/uptime` command group + monitor autocompletes."""
+
+    def _monitor_name(self, monitor_id: int) -> str:
+        monitor = self.kuma.monitors.get(monitor_id)
+        return monitor.display_name if monitor else f"ID {monitor_id}"
+
+    async def _check_guild(self, ctx: SlashContext) -> str | None:
+        """The guild id, or ``None`` after telling the user why the command can't run."""
+        if not await require_guild(ctx):
+            return None
+        if not is_guild_enabled(ctx.guild.id, enabled_servers):
+            await send_error(ctx, "Le module Uptime n'est pas activé sur ce serveur.")
+            return None
+        return str(ctx.guild.id)
+
+    @staticmethod
+    def _parse_monitor_id(value: str) -> int | None:
+        value = value.strip()
+        return int(value) if value.isdigit() else None
 
     @slash_command(name="uptime", description="Les commandes de surveillance Uptime Kuma")
     @slash_default_member_permission(Permissions.ADMINISTRATOR)
@@ -48,6 +77,7 @@ class CommandsMixin:
         description="Canal où envoyer les notifications",
         opt_type=OptionType.CHANNEL,
         required=True,
+        channel_types=[ChannelType.GUILD_TEXT, ChannelType.GUILD_NEWS],
     )
     @slash_option(
         name="mode",
@@ -55,66 +85,71 @@ class CommandsMixin:
         opt_type=OptionType.STRING,
         required=False,
         choices=[
-            {"name": "Simple (titre et statut seulement)", "value": "simple"},
-            {"name": "Détaillé (avec toutes les informations)", "value": "detailed"},
+            {"name": "Simple (titre et statut seulement)", "value": AlertMode.SIMPLE.value},
+            {"name": "Détaillé (avec toutes les informations)", "value": AlertMode.DETAILED.value},
         ],
     )
     async def setup_maintenance_alert(
-        self, ctx: SlashContext, sensor: str, channel: BaseChannel, mode: str = "detailed"
+        self,
+        ctx: SlashContext,
+        sensor: str,
+        channel: BaseChannel,
+        mode: str = AlertMode.DETAILED.value,
     ):
-        if not ctx.guild:
-            await send_error(ctx, "Cette commande ne peut être utilisée que dans un serveur.")
+        guild_id = await self._check_guild(ctx)
+        if guild_id is None:
+            return
+        if not self.kuma.ready:
+            await send_error(ctx, KUMA_UNREACHABLE)
+            return
+        monitor_id = self._parse_monitor_id(sensor)
+        monitor = self.kuma.monitors.get(monitor_id) if monitor_id is not None else None
+        if monitor is None:
+            await send_error(ctx, "Capteur introuvable. Choisissez-le dans la liste proposée.")
             return
 
-        if not is_guild_enabled(ctx.guild.id, enabled_servers):
-            await send_error(ctx, "Le module Uptime n'est pas activé sur ce serveur.")
-            return
-
-        guild_id = str(ctx.guild.id)
-
-        if (
-            not config.get("uptimeKuma", {}).get("uptimeKumaUrl")
-            or not config.get("uptimeKuma", {}).get("uptimeKumaUsername")
-            or not config.get("uptimeKuma", {}).get("uptimeKumaPassword")
-        ):
-            await send_error(
-                ctx,
-                "Configuration Uptime Kuma manquante. Vérifiez l'URL, le nom d'utilisateur et le mot de passe.",
-            )
-            return
-
-        try:
-            sensor_id = int(sensor)
-        except ValueError:
-            await send_error(ctx, "ID de capteur invalide.")
-            return
-
-        sensor_info = await self._get_sensor_info(sensor_id)
-        if not sensor_info:
-            await send_error(ctx, f"Capteur avec l'ID {sensor_id} introuvable.")
-            return
-
-        if guild_id not in self.maintenance_monitors:
-            self.maintenance_monitors[guild_id] = {}
-
-        self.maintenance_monitors[guild_id][str(sensor_id)] = {
-            "channel_id": channel.id,
-            "last_status": None,
-            "mode": mode,
-        }
-
-        await self.save_maintenance_monitors()
-
-        embed = Embed(
-            title="✅ Alerte de maintenance configurée",
-            description=f"Les notifications de maintenance pour le capteur **{sensor_info.get('name', f'ID {sensor_id}')}** seront envoyées dans {channel.mention} (Mode: {mode})",
-            color=Colors.SUCCESS,
+        alert = MonitorAlert(
+            monitor_id=monitor.id,
+            channel_id=int(channel.id),
+            mode=AlertMode.parse(mode),
+            # The status Kuma reports right now is the baseline, so the next
+            # change posts instead of silently setting it.
+            last_status=self.kuma.latest_status(monitor.id),
         )
-        await ctx.send(embed=embed)
+        try:
+            await UptimeRepository(guild_id).save(alert)
+        except DatabaseError as e:
+            logger.error("Guild %s: could not save uptime alert %s: %s", guild_id, monitor.id, e)
+            await send_error(ctx, "Impossible d'enregistrer l'alerte, réessayez plus tard.")
+            return
+        async with self._state_lock:
+            self.alerts.setdefault(guild_id, {})[monitor.id] = alert
+
+        logger.info(
+            "Guild %s: %s set an uptime alert for monitor %s in channel %s (%s)",
+            guild_id,
+            ctx.author.id,
+            monitor.id,
+            channel.id,
+            alert.mode.value,
+        )
+        await send_success(
+            ctx,
+            f"Les notifications du capteur **{monitor.display_name}** seront envoyées dans "
+            f"{channel.mention} (mode : {alert.mode.label.lower()}).",
+        )
 
     @setup_maintenance_alert.autocomplete("sensor")
     async def setup_sensor_autocomplete(self, ctx: AutocompleteContext):
-        await self.sensor_autocomplete(ctx)
+        """Every Kuma monitor whose name (with its group) matches the input."""
+        query = (ctx.input_text or "").lower()
+        monitors = sorted(self.kuma.monitors.values(), key=lambda m: m.display_name.lower())
+        choices = [
+            {"name": _choice_name(m.display_name), "value": str(m.id)}
+            for m in monitors
+            if query in m.display_name.lower()
+        ]
+        await ctx.send(choices=choices[:MAX_CHOICES])
 
     @uptime_command.subcommand(
         sub_cmd_name="remove",
@@ -128,110 +163,84 @@ class CommandsMixin:
         autocomplete=True,
     )
     async def remove_maintenance_alert(self, ctx: SlashContext, sensor: str):
-        if not ctx.guild:
-            await send_error(ctx, "Cette commande ne peut être utilisée que dans un serveur.")
+        guild_id = await self._check_guild(ctx)
+        if guild_id is None:
             return
-
-        if not is_guild_enabled(ctx.guild.id, enabled_servers):
-            await send_error(ctx, "Le module Uptime n'est pas activé sur ce serveur.")
+        monitor_id = self._parse_monitor_id(sensor)
+        if monitor_id is None or monitor_id not in self.alerts.get(guild_id, {}):
+            await send_error(ctx, "Aucune alerte configurée pour ce capteur.")
             return
-
-        guild_id = str(ctx.guild.id)
 
         try:
-            sensor_id = int(sensor)
-            sensor_id_str = str(sensor_id)
-        except ValueError:
-            await send_error(ctx, "ID de capteur invalide.")
+            await UptimeRepository(guild_id).remove(monitor_id)
+        except DatabaseError as e:
+            logger.error("Guild %s: could not remove uptime alert %s: %s", guild_id, monitor_id, e)
+            await send_error(ctx, "Impossible de supprimer l'alerte, réessayez plus tard.")
             return
+        async with self._state_lock:
+            self.alerts.get(guild_id, {}).pop(monitor_id, None)
 
-        if (
-            guild_id not in self.maintenance_monitors
-            or sensor_id_str not in self.maintenance_monitors[guild_id]
-        ):
-            await send_error(ctx, f"Aucune alerte configurée pour le capteur ID {sensor_id}.")
-            return
-
-        del self.maintenance_monitors[guild_id][sensor_id_str]
-
-        if not self.maintenance_monitors[guild_id]:
-            del self.maintenance_monitors[guild_id]
-
-        await self.save_maintenance_monitors()
-
-        await ctx.send(f"✅ Alerte de maintenance supprimée pour le capteur ID {sensor_id}.")
+        logger.info(
+            "Guild %s: %s removed the uptime alert for monitor %s",
+            guild_id,
+            ctx.author.id,
+            monitor_id,
+        )
+        await send_success(
+            ctx, f"Alerte supprimée pour le capteur **{self._monitor_name(monitor_id)}**."
+        )
 
     @remove_maintenance_alert.autocomplete("sensor")
     async def remove_sensor_autocomplete(self, ctx: AutocompleteContext):
-        """Only surfaces sensors currently tracked on this guild."""
-        try:
-            if not ctx.guild:
-                await ctx.send(choices=[])
-                return
-
-            guild_id = str(ctx.guild.id)
-
-            if guild_id not in self.maintenance_monitors:
-                await ctx.send(choices=[])
-                return
-
-            monitored_sensors = []
-            query = ctx.input_text.lower() if ctx.input_text else ""
-
-            for sensor_id_str in self.maintenance_monitors[guild_id]:
-                try:
-                    sensor_id = int(sensor_id_str)
-                    sensor_info = await self._get_sensor_info(sensor_id)
-
-                    if sensor_info and "name" in sensor_info:
-                        sensor_name = sensor_info["name"]
-                        if query in sensor_name.lower():
-                            display_name = (
-                                sensor_name[:97] + "..." if len(sensor_name) > 100 else sensor_name
-                            )
-                            monitored_sensors.append({"name": display_name, "value": sensor_id_str})
-                except (ValueError, TypeError):
-                    continue
-
-            await ctx.send(choices=monitored_sensors[:25])
-
-        except Exception as error:
-            logger.error(f"Erreur dans l'autocomplétion des capteurs surveillés: {error}")
+        """This guild's alerts, including monitors since deleted from Kuma."""
+        if not ctx.guild:
             await ctx.send(choices=[])
+            return
+        query = (ctx.input_text or "").lower()
+        names = {
+            monitor_id: self._monitor_name(monitor_id)
+            for monitor_id in self.alerts.get(str(ctx.guild.id), {})
+        }
+        choices = [
+            {"name": _choice_name(name), "value": str(monitor_id)}
+            for monitor_id, name in sorted(names.items(), key=lambda item: item[1].lower())
+            if query in name.lower()
+        ]
+        await ctx.send(choices=choices[:MAX_CHOICES])
 
     @uptime_command.subcommand(
         sub_cmd_name="list",
         sub_cmd_description="Liste toutes les alertes de maintenance configurées",
     )
     async def list_maintenance_alerts(self, ctx: SlashContext):
-        if not ctx.guild:
-            await send_error(ctx, "Cette commande ne peut être utilisée que dans un serveur.")
+        guild_id = await self._check_guild(ctx)
+        if guild_id is None:
             return
-
-        if not is_guild_enabled(ctx.guild.id, enabled_servers):
-            await send_error(ctx, "Le module Uptime n'est pas activé sur ce serveur.")
-            return
-
-        guild_id = str(ctx.guild.id)
-
-        if guild_id not in self.maintenance_monitors or not self.maintenance_monitors[guild_id]:
+        alerts = sorted(
+            self.alerts.get(guild_id, {}).values(),
+            key=lambda a: self._monitor_name(a.monitor_id).lower(),
+        )
+        if not alerts:
             await send_error(ctx, "Aucune alerte de maintenance configurée sur ce serveur.")
             return
 
         embed = Embed(title="📋 Alertes de maintenance configurées", color=Colors.INFO)
-
-        for sensor_id, config_data in self.maintenance_monitors[guild_id].items():
-            channel = self.bot.get_channel(config_data["channel_id"])
-            sensor_info = await self._get_sensor_info(int(sensor_id))
-            sensor_name = (
-                sensor_info.get("name", f"ID {sensor_id}") if sensor_info else f"ID {sensor_id}"
-            )
-            mode = config_data.get("mode", "detailed")
-
+        for alert in alerts[:MAX_EMBED_FIELDS]:
+            # Not ``or``: DOWN is 0.
+            status = self.kuma.latest_status(alert.monitor_id)
+            if status is None:
+                status = alert.last_status
             embed.add_field(
-                name=f"Capteur: {sensor_name}",
-                value=f"Canal: {channel.mention if channel else 'Canal introuvable'}\nMode: {mode}",
+                name=f"Capteur : {self._monitor_name(alert.monitor_id)}",
+                value=(
+                    f"Canal : <#{alert.channel_id}>\n"
+                    f"Mode : {alert.mode.label}\n"
+                    f"État : {status.label if status is not None else 'inconnu'}"
+                ),
                 inline=False,
             )
-
-        await ctx.send(embed=embed)
+        if len(alerts) > MAX_EMBED_FIELDS:
+            embed.set_footer(f"{len(alerts) - MAX_EMBED_FIELDS} alerte(s) non affichée(s)")
+        if not self.kuma.ready:
+            embed.description = "⚠️ Uptime Kuma est injoignable : les états peuvent être anciens."
+        await ctx.send(embed=embed, ephemeral=True)
