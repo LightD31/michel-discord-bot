@@ -14,8 +14,8 @@ PHASE_BALLOT = "ballot"
 
 # The 24/7 bot picks a random archive VOD itself for this one.
 REQUEST_COMMAND = "!request random"
-# Any archive VOD can be proposed instead, by its link or Twitch video id.
-CHOSEN_REQUEST_HINT = "ou `!request <lien>` pour proposer la VOD de ton choix"
+# Any archive VOD can be proposed instead, by its Twitch video id (not its link).
+CHOSEN_REQUEST_HINT = "ou `!request <ID>` avec l'ID de la VOD de ton choix"
 
 # Two polls of the same cycle can compute an end time a few seconds apart (the
 # playhead and the server clock drift); anything closer than this is one cycle.
