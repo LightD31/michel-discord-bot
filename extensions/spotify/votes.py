@@ -673,12 +673,20 @@ class VotesMixin:
                 ]
         await ctx.send(choices=choices)
 
-    async def endvote(self, song_id: str, server: ServerData):
-        """Close an add-with-vote poll once its deadline is reached."""
+    async def endvote(self, song_id: str, server: ServerData) -> bool:
+        """Close an add-with-vote poll once its deadline is reached.
+
+        Returns whether the poll is over and can be deleted. ``False`` keeps it
+        for the next hourly sweep (Spotify didn't answer).
+        """
         data = await server.vote_manager.load_data()
         yes_votes, no_votes, users = server.vote_manager.count_votes(data, song_id)
         channel = await self.bot.fetch_channel(data[song_id]["channel_id"])
         message = await channel.fetch_message(data[song_id]["message_id"])
+        if not message.components:
+            # Posting the result removes the buttons, so this poll was closed before.
+            logger.info("Vote pour %s déjà clos, suppression", song_id)
+            return True
         try:
             track = sp.track(song_id, market="FR")
             song = spotifymongoformat(
@@ -686,11 +694,20 @@ class VotesMixin:
             )
         except spotipy.exceptions.SpotifyException as e:
             logger.error("Spotify API Error while using /addwithvote: %s", e)
-            return
+            return False
         if yes_votes > no_votes:
             logger.debug("song : %s", song)
-            await server.repo.add_playlist_item(song)
-            sp.playlist_add_items(server.playlist_id, [song["_id"]])
+            if await server.repo.add_playlist_item(song):
+                try:
+                    sp.playlist_add_items(server.playlist_id, [song["_id"]])
+                except Exception:
+                    # Undo the mirror entry so the next sweep retries the whole add.
+                    await server.repo.delete_playlist_item(song["_id"])
+                    raise
+                content = "La chanson a été ajoutée à la playlist."
+            else:
+                # Added through /addsong or straight in Spotify while the vote was open.
+                content = "La chanson était déjà dans la playlist."
             embed, file = await embed_song(
                 song=song,
                 track=track,
@@ -701,7 +718,7 @@ class VotesMixin:
             )
             await edit_message_if_changed(
                 message,
-                content="La chanson a été ajoutée à la playlist.",
+                content=content,
                 embeds=[
                     embed,
                     await embed_message_vote_add(
@@ -711,7 +728,7 @@ class VotesMixin:
                 components=[],
                 logger=logger,
             )
-            logger.info("La chanson a été ajoutée à la playlist.")
+            logger.info(content)
         else:
             embed, file = await embed_song(
                 song=song,
@@ -734,8 +751,7 @@ class VotesMixin:
                 logger=logger,
             )
             logger.info("La chanson n'a pas été ajoutée à la playlist.")
-        data.pop(song_id)
-        await server.vote_manager.save_data(data)
+        return True
 
     @Task.create(OrTrigger(*[TimeTrigger(hour=hour) for hour in range(24)]))
     async def check_for_end(self):
@@ -743,16 +759,23 @@ class VotesMixin:
         for server in SERVERS.values():
             try:
                 data = await server.vote_manager.load_data()
-                songs_to_end = []
-                for song_id in data:
-                    if await server.vote_manager.check_deadline(song_id):
-                        await self.endvote(song_id, server)
-                        songs_to_end.append(song_id)
-                for song_id in songs_to_end:
-                    data.pop(song_id)
-                await server.vote_manager.save_data(data)
             except Exception as e:
                 logger.error("Error in check_for_end for server %s: %s", server.guild_id, e)
+                continue
+            # One try per poll, so a failing poll doesn't keep the others open.
+            for song_id in data:
+                try:
+                    if not await server.vote_manager.check_deadline(song_id):
+                        continue
+                    if await self.endvote(song_id, server):
+                        await server.vote_manager.delete(song_id)
+                except Exception as e:
+                    logger.error(
+                        "Error in check_for_end for server %s, song %s: %s",
+                        server.guild_id,
+                        song_id,
+                        e,
+                    )
 
     async def _nextvote(self, ctx: SlashContext):
         """Dev-only: force an immediate close+restart of the daily vote cycle."""
