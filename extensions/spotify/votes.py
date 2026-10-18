@@ -545,7 +545,8 @@ class VotesMixin:
                 )
             except spotipy.exceptions.SpotifyException:
                 await send_error(ctx, "Cette chanson n'existe pas.")
-                logger.info("Commande /addsong utilisée avec une chanson inexistante")
+                logger.info("Commande /addwithvote utilisée avec une chanson inexistante")
+                return
             data = await server.vote_manager.load_data()
             song_ids = list(data.keys())
             if song["_id"] not in last_track_ids and song["_id"] not in song_ids:
