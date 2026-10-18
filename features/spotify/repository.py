@@ -83,8 +83,18 @@ class SpotifyRepository:
         return await self._col(PLAYLIST_COLLECTION).distinct("_id")
 
     @translates_db_errors
-    async def add_playlist_item(self, song: dict[str, Any]) -> None:
-        await self._col(PLAYLIST_COLLECTION).insert_one(song)
+    async def add_playlist_item(self, song: dict[str, Any]) -> bool:
+        """Mirror *song* unless its ``_id`` is already there; return whether it was added.
+
+        A track can reach the mirror by several paths (``/addsong``, a won
+        add-with-vote poll, the playlist sync), so a second add is a no-op
+        rather than a duplicate-key error.
+        """
+        fields = {k: v for k, v in song.items() if k != "_id"}
+        result = await self._col(PLAYLIST_COLLECTION).update_one(
+            {"_id": song["_id"]}, {"$setOnInsert": fields}, upsert=True
+        )
+        return result.upserted_id is not None
 
     @translates_db_errors
     async def get_playlist_item(self, track_id: str) -> dict[str, Any] | None:
@@ -197,6 +207,11 @@ class SpotifyRepository:
     @translates_db_errors
     async def get_addwithvote_doc(self, song_id: str) -> dict[str, Any] | None:
         return await self._col(ADDWITHVOTES_COLLECTION).find_one({"_id": song_id})
+
+    @translates_db_errors
+    async def delete_addwithvote(self, song_id: str) -> None:
+        """Remove a closed add-with-vote poll."""
+        await self._col(ADDWITHVOTES_COLLECTION).delete_one({"_id": song_id})
 
     @translates_db_errors
     async def save_addwithvote_vote(self, author_id: str, vote: str, song_id: str) -> None:

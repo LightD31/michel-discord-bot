@@ -199,6 +199,9 @@ class VoteManager:
     async def save_data(self, data):
         await self.repo.save_addwithvote_data(data)
 
+    async def delete(self, song_id):
+        await self.repo.delete_addwithvote(song_id)
+
     def count_votes(self, data, song):
         song_data = data[song]
         yes_votes = sum(1 for v in song_data["votes"].values() if v == "yes")
