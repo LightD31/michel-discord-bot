@@ -456,6 +456,17 @@ class VlrggSection(SchemaBase):
             "tracker Valorant. Vide = aucune requête n'est envoyée."
         ),
     )
+    vlrggRateLimitPerMinute: int = ui(
+        "Requêtes par minute (/team, /match/details)",
+        "number",
+        default=18,
+        description=(
+            "Plafond que le bot s'impose sur les routes /team et /match/details, que "
+            "l'API limite par défaut à 20 requêtes par minute et par client. Au-delà, "
+            "les requêtes attendent leur tour. À relever si votre déploiement accorde "
+            "un quota plus large au bot ; 0 = pas de limite côté bot."
+        ),
+    )
 
 
 @register_section("random")

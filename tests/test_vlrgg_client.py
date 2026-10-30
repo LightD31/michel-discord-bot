@@ -178,8 +178,8 @@ async def test_only_the_shared_20_per_minute_routes_are_throttled(monkeypatch) -
     throttled: list[str] = []
 
     class RecordingLimiter:
-        async def acquire(self) -> None:
-            throttled.append("x")
+        async def acquire(self, limit: int | None = None) -> None:
+            throttled.append(limit)
 
     async def fake_fetch(url: str, **kwargs: Any) -> dict:
         return {"status": "success", "data": {"segments": []}}
@@ -187,6 +187,7 @@ async def test_only_the_shared_20_per_minute_routes_are_throttled(monkeypatch) -
     monkeypatch.setattr(client, "_rate_limited", RecordingLimiter())
     monkeypatch.setattr(client, "fetch", fake_fetch)
     monkeypatch.setattr(client, "get_api_url", lambda: "https://vlr.example")
+    monkeypatch.setattr(client, "get_rate_limit", lambda: 40)
 
     await client.vlrgg_request("v2/team", {"id": "1", "q": "matches"})
     await client.vlrgg_request("v2/match/details", {"match_id": "1"})
@@ -194,7 +195,7 @@ async def test_only_the_shared_20_per_minute_routes_are_throttled(monkeypatch) -
     await client.vlrgg_request("v2/search", {"q": "g2"})
     await client.vlrgg_request("v2/team", {"id": "1", "q": "matches"})  # cache hit
 
-    assert len(throttled) == 2
+    assert throttled == [40, 40]
 
 
 async def test_fetch_all_team_data_attributes_matches_by_id(monkeypatch) -> None:
@@ -298,7 +299,7 @@ async def test_a_429_holds_the_shared_budget(monkeypatch) -> None:
     holds: list[float] = []
 
     class RecordingLimiter:
-        async def acquire(self) -> None:
+        async def acquire(self, limit: int | None = None) -> None:
             pass
 
         def hold(self, seconds: float) -> None:
@@ -315,3 +316,67 @@ async def test_a_429_holds_the_shared_budget(monkeypatch) -> None:
     assert await client.vlrgg_request("v2/match", {"q": "live_score"}) == {}
 
     assert holds == [client._RATE_LIMIT_BACKOFF_SECONDS]
+
+
+class _FakeConfigStore:
+    def __init__(self, section: dict[str, Any]) -> None:
+        self._data = {"config": {"vlrgg": section}}
+
+    def get(self) -> dict[str, Any]:
+        return self._data
+
+
+@pytest.mark.parametrize(
+    ("section", "expected"),
+    [
+        ({}, client.DEFAULT_RATE_LIMIT_PER_MINUTE),
+        ({"vlrggRateLimitPerMinute": 60}, 60),
+        ({"vlrggRateLimitPerMinute": "45"}, 45),
+        ({"vlrggRateLimitPerMinute": 0}, 0),
+        ({"vlrggRateLimitPerMinute": -3}, 0),
+        ({"vlrggRateLimitPerMinute": "beaucoup"}, client.DEFAULT_RATE_LIMIT_PER_MINUTE),
+    ],
+)
+def test_rate_limit_is_read_from_the_global_section(
+    monkeypatch, section: dict[str, Any], expected: int
+) -> None:
+    monkeypatch.setattr(client, "config_store", _FakeConfigStore(section))
+
+    assert client.get_rate_limit() == expected
+
+
+async def test_a_zero_rate_limit_disables_the_throttle(monkeypatch) -> None:
+    throttled: list[int | None] = []
+
+    class RecordingLimiter:
+        async def acquire(self, limit: int | None = None) -> None:
+            throttled.append(limit)
+
+    async def fake_fetch(url: str, **kwargs: Any) -> dict:
+        return {"status": "success", "data": {"segments": []}}
+
+    monkeypatch.setattr(client, "_rate_limited", RecordingLimiter())
+    monkeypatch.setattr(client, "fetch", fake_fetch)
+    monkeypatch.setattr(client, "get_api_url", lambda: "https://vlr.example")
+    monkeypatch.setattr(client, "get_rate_limit", lambda: 0)
+
+    await client.vlrgg_request("v2/match/details", {"match_id": "1"})
+
+    assert throttled == []
+
+
+async def test_acquire_uses_the_limit_it_is_given() -> None:
+    now = [0.0]
+    sleeps: list[float] = []
+
+    async def fake_sleep(seconds: float) -> None:
+        sleeps.append(seconds)
+        now[0] += seconds
+
+    limiter = client.SlidingWindowLimiter(1, 60.0, clock=lambda: now[0], sleep=fake_sleep)
+
+    for _ in range(3):
+        await limiter.acquire(3)  # a raised limit lets all three through at once
+    await limiter.acquire(3)
+
+    assert sleeps == [60.0]

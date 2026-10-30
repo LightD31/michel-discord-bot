@@ -60,6 +60,26 @@ def get_api_url() -> str:
     return str(section.get("vlrggApiUrl") or "").strip().rstrip("/")
 
 
+# L'API accepte 20 requêtes/min par client sur /team et /match/details (budget
+# commun) : au démarrage, chaque équipe en demande ~9 (profil, historique,
+# calendrier, détails des derniers matchs). Par défaut on garde une marge.
+DEFAULT_RATE_LIMIT_PER_MINUTE = 18
+
+
+def get_rate_limit() -> int:
+    """Plafond de requêtes/min sur /team et /match/details, 0 = pas de limite.
+
+    Lu à chaque requête, comme l'URL, pour qu'un réglage du dashboard
+    s'applique sans redémarrage.
+    """
+    section = config_store.get().get("config", {}).get("vlrgg") or {}
+    raw = section.get("vlrggRateLimitPerMinute", DEFAULT_RATE_LIMIT_PER_MINUTE)
+    try:
+        return max(int(raw), 0)
+    except (TypeError, ValueError):
+        return DEFAULT_RATE_LIMIT_PER_MINUTE
+
+
 # Limite de requêtes concurrentes vers l'API (éviter les 502 sur le serveur self-hosted)
 _api_semaphore = asyncio.Semaphore(2)
 
@@ -93,7 +113,9 @@ class SlidingWindowLimiter:
         """Ne laisse plus rien passer pendant ``seconds`` (après un 429)."""
         self._resume_at = max(self._resume_at, self._clock() + seconds)
 
-    async def acquire(self) -> None:
+    async def acquire(self, limit: int | None = None) -> None:
+        """Attend un créneau ; ``limit`` remplace le plafond du constructeur."""
+        cap = self._limit if limit is None else limit
         async with self._lock:
             while True:
                 now = self._clock()
@@ -102,16 +124,14 @@ class SlidingWindowLimiter:
                     continue
                 while self._stamps and now - self._stamps[0] >= self._window:
                     self._stamps.popleft()
-                if len(self._stamps) < self._limit:
+                if len(self._stamps) < cap:
                     self._stamps.append(now)
                     return
                 await self._sleep(self._window - (now - self._stamps[0]))
 
 
-# L'API accepte 20 requêtes/min par client sur /team et /match/details (budget
-# commun) : au démarrage, chaque équipe en demande ~9 (profil, historique,
-# calendrier, détails des derniers matchs). On garde une marge sous ce plafond.
-_rate_limited = SlidingWindowLimiter(limit=18, window=60.0)
+# Plafond réglé dans la config globale (voir get_rate_limit), passé à chaque acquire
+_rate_limited = SlidingWindowLimiter(limit=DEFAULT_RATE_LIMIT_PER_MINUTE, window=60.0)
 # Pause imposée à ce budget quand l'API répond 429 malgré tout
 _RATE_LIMIT_BACKOFF_SECONDS = 20.0
 
@@ -212,8 +232,8 @@ async def vlrgg_request(endpoint: str, params: dict[str, str] | None = None) -> 
 
     url = f"{api_url}/{endpoint}"
     try:
-        if _is_rate_limited(endpoint):
-            await _rate_limited.acquire()
+        if _is_rate_limited(endpoint) and (limit := get_rate_limit()) > 0:
+            await _rate_limited.acquire(limit)
         async with _api_semaphore:
             data: dict[str, Any] = await fetch(url, params=params, return_type="json")
         _cache_store(key, data)

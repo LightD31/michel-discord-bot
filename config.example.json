@@ -82,7 +82,8 @@
             "uptimeKumaToken": ""
         },
         "vlrgg": {
-            "vlrggApiUrl": ""
+            "vlrggApiUrl": "",
+            "vlrggRateLimitPerMinute": 18
         },
         "webui": {
             "enabled": false,
