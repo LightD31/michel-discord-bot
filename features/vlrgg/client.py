@@ -5,9 +5,11 @@ L'URL de l'API (déploiement self-hosted) est configurée dans la section
 « VLR.gg » de la config globale — aucune URL n'est codée en dur ici.
 
 Endpoints V2 utilisés:
-- /v2/team/matches?id=X — historique des matchs d'une équipe (results + upcoming)
+- /v2/team?id=X&q=matches — historique des matchs terminés d'une équipe
+- /v2/match?q=upcoming — matchs à venir (filtrage par nom)
 - /v2/match?q=live_score — matchs en direct (filtrage par nom)
-- /v2/match/details?match_id=X — détails complets d'un match
+- /v2/match/details?match_id=X&light=true — détails d'un match (sans les
+  onglets performance/economy, inutilisés ici)
 - /v2/team?id=X — profil d'équipe
 
 Note: Un cache avec TTL court est utilisé (API self-hosted).
@@ -66,7 +68,7 @@ def _get_ttl(endpoint: str, params: dict[str, str] | None = None) -> int:
     """Détermine le TTL de cache approprié pour un endpoint."""
     if "match/details" in endpoint:
         return CACHE_TTL["details"]
-    if "team/matches" in endpoint or "team" in endpoint:
+    if "team" in endpoint:
         return CACHE_TTL["team"]
     q = (params or {}).get("q", "")
     if q == "live_score":
@@ -237,15 +239,15 @@ def expand_round_name(round_str: str) -> str:
     return round_str
 
 
-# L'API VLR.gg restitue les dates de /team/matches dans
+# L'API VLR.gg restitue les dates de /v2/team?q=matches dans
 # l'heure locale de son serveur (Europe/Paris) — ex: "8:00 pm" correspond
 # à 20h CEST/CET. ZoneInfo gère le passage à l'heure d'été automatiquement.
 _VLR_TIMEZONE = ZoneInfo("Europe/Paris")
 
 # Formats de date courants retournés par l'API VLR.gg
 _DATE_FORMATS = [
-    "%Y/%m/%d%I:%M %p",  # 2026/02/1111:00 am (pas d'espace)
-    "%Y/%m/%d %I:%M %p",  # 2026/02/11 11:00 am
+    "%Y/%m/%d%I:%M %p",  # 2026/02/1111:00 am (anciennes versions, pas d'espace)
+    "%Y/%m/%d %I:%M %p",  # 2026/02/11 11:00 am (date + time recombinés)
     "%Y-%m-%d %H:%M:%S",  # 2024-04-24 21:00:00
     "%Y-%m-%d %H:%M",  # 2024-04-24 21:00
     "%Y/%m/%d",  # 2026/02/11
@@ -256,7 +258,7 @@ _DATE_FORMATS = [
 def format_vlr_date(date_str: str) -> str:
     """Formate une date VLR.gg en timestamp Discord (affichage local pour chaque utilisateur).
 
-    Les dates de /team/matches sont rendues dans l'heure locale du serveur
+    Les dates de /v2/team?q=matches sont rendues dans l'heure locale du serveur
     de l'API (Europe/Paris) ; ZoneInfo gère CET/CEST automatiquement.
     Retourne un timestamp Discord <t:UNIX:f> si le parsing réussit,
     sinon retourne la chaîne telle quelle.
@@ -292,10 +294,10 @@ def format_vlr_date(date_str: str) -> str:
 
 
 def normalize_team_match(entry: dict[str, Any]) -> dict[str, Any]:
-    """Convertit une entrée /v2/team/matches en format normalisé.
+    """Convertit une entrée /v2/team?q=matches en format normalisé.
 
     Args:
-        entry: Entrée brute depuis /v2/team/matches.
+        entry: Entrée brute depuis /v2/team?q=matches.
 
     Returns:
         Dictionnaire normalisé avec clés standardisées.
@@ -313,8 +315,12 @@ def normalize_team_match(entry: dict[str, Any]) -> dict[str, Any]:
     # Déterminer le statut: si les scores sont "--" ou vides, c'est un upcoming
     is_upcoming = score_str in ("", "-", "–", "--") or score1 == "?" or score1 == "-"
 
-    # Le champ "event" de /team/matches est en fait l'abréviation du round ("GF", "LBF", ...)
+    # Le champ "event" de /team?q=matches est en fait l'abréviation du round ("GF", "LBF", ...)
     round_abbr = entry.get("event", "")
+
+    # L'API sépare désormais la date ("2026/10/27") de l'heure ("1:00 pm") ;
+    # les anciennes versions renvoyaient tout dans "date" et pas de "time".
+    date_str = " ".join(p for p in (entry.get("date", ""), entry.get("time", "")) if p)
 
     return {
         "team1": team1_name,
@@ -324,7 +330,7 @@ def normalize_team_match(entry: dict[str, Any]) -> dict[str, Any]:
         "match_page": entry.get("url", ""),
         "tournament_name": "",  # Sera rempli par enrich_match_from_details
         "round_info": expand_round_name(round_abbr),
-        "time_completed": format_vlr_date(entry.get("date", "")),
+        "time_completed": format_vlr_date(date_str),
         "match_event": "",  # Sera rempli par enrich_match_from_details
         "match_id": entry.get("match_id", ""),
         "result": entry.get("result", ""),  # "win" ou "loss" directement depuis l'API
@@ -381,14 +387,14 @@ def enrich_match_from_details(match: dict[str, Any], details: dict[str, Any]) ->
     if series:
         match["round_info"] = expand_round_name(series)
 
-    # Déterminer si l'ordre des équipes est inversé entre /team/matches et /match/details
+    # Déterminer si l'ordre des équipes est inversé entre /team?q=matches et /match/details
     teams = details.get("teams", [])
     swapped = False
     if len(teams) >= 2:
         detail_t1 = teams[0].get("name", "").strip().lower()
         detail_t2 = teams[1].get("name", "").strip().lower()
         match_t1 = match.get("team1", "").strip().lower()
-        # Si team1 de /team/matches correspond à teams[1] de /match/details, l'ordre est inversé
+        # Si team1 de /team?q=matches correspond à teams[1] de /match/details, l'ordre est inversé
         if (match_t1 and detail_t2 and match_t1 in detail_t2 or detail_t2 in match_t1) and not (
             match_t1 in detail_t1 or detail_t1 in match_t1
         ):
@@ -467,7 +473,9 @@ async def _enrich_matches(
 async def fetch_match_details(match_id: str) -> dict[str, Any]:
     """Récupère les détails complets d'un match par son ID.
 
-    Inclut: scores par map, stats joueurs, rounds, economy, head-to-head.
+    Inclut: scores par map, stats joueurs, rounds, head-to-head. ``light``
+    évite à l'API de scraper les onglets performance/economy de chaque map
+    (une requête vers vlr.gg au lieu de 1 + 2 par map) : le bot ne les lit pas.
 
     Args:
         match_id: ID VLR.gg du match.
@@ -475,7 +483,7 @@ async def fetch_match_details(match_id: str) -> dict[str, Any]:
     Returns:
         Données complètes du match, ou dict vide en cas d'erreur.
     """
-    data = await vlrgg_request("v2/match/details", {"match_id": match_id})
+    data = await vlrgg_request("v2/match/details", {"match_id": match_id, "light": "true"})
     inner = data.get("data", data)
     # L'API renvoie {status, segments: [match_data]} — extraire le premier segment
     if isinstance(inner, dict):
@@ -499,6 +507,7 @@ async def fetch_team_info(team_id: str) -> dict[str, Any]:
 async def fetch_team_matches_by_id(team_id: str, page: int = 1) -> list[dict[str, Any]]:
     """Récupère l'historique des matchs d'une équipe par son ID.
 
+    L'ancien endpoint /v2/team/matches a été fusionné dans /v2/team (q=matches).
     Chaque match inclut un match_id utilisable avec fetch_match_details().
 
     Args:
@@ -508,10 +517,10 @@ async def fetch_team_matches_by_id(team_id: str, page: int = 1) -> list[dict[str
     Returns:
         Liste des matchs de l'équipe.
     """
-    data = await vlrgg_request("v2/team/matches", {"id": team_id, "page": str(page)})
+    data = await vlrgg_request("v2/team", {"id": team_id, "q": "matches", "page": str(page)})
     inner = data.get("data", {})
     if isinstance(inner, dict):
-        matches = inner.get("matches", inner.get("segments", []))
+        matches = inner.get("segments", [])
         return matches if isinstance(matches, list) else []
     return inner if isinstance(inner, list) else []
 
@@ -536,8 +545,9 @@ async def fetch_live_matches(team: str) -> list[dict[str, Any]]:
 async def fetch_upcoming_matches(team: str) -> list[dict[str, Any]]:
     """Récupère les matchs à venir pour une équipe.
 
-    Utilise l'endpoint global /v2/match?q=upcoming car /v2/team/matches
-    ne retourne que les matchs terminés.
+    Utilise l'endpoint global /v2/match?q=upcoming car /v2/team?q=matches
+    ne retourne que les matchs terminés, et /v2/team?q=schedule mélange
+    les matchs à venir avec les derniers résultats de la page d'équipe.
 
     Args:
         team: Nom de l'équipe (filtrage par nom, insensible à la casse).
@@ -559,7 +569,7 @@ async def fetch_upcoming_matches(team: str) -> list[dict[str, Any]]:
 async def fetch_all_team_data(team_id: str, team: str) -> dict[str, Any]:
     """Récupère toutes les données de matchs pour une équipe.
 
-    - Results: via /v2/team/matches (par team_id, fiable)
+    - Results: via /v2/team?q=matches (par team_id, fiable)
     - Upcoming: via /v2/match?q=upcoming (global, filtré par nom)
     - Live: via /v2/match?q=live_score (global, filtré par nom)
 
@@ -572,11 +582,13 @@ async def fetch_all_team_data(team_id: str, team: str) -> dict[str, Any]:
     """
     result: dict[str, Any] = {"results": [], "upcoming": [], "live": []}
 
-    # Résultats via /team/matches (ne retourne que les matchs terminés)
+    # Résultats via /team?q=matches (ne retourne que les matchs terminés)
     try:
         team_matches = await fetch_team_matches_by_id(team_id)
         result["results"] = [normalize_team_match(m) for m in team_matches]
-        logger.debug(f"VLR.gg /team/matches: {len(result['results'])} résultats pour ID {team_id}")
+        logger.debug(
+            f"VLR.gg /team?q=matches: {len(result['results'])} résultats pour ID {team_id}"
+        )
 
         # Enrichir avec /match/details pour dates & rounds plus précis
         result["results"] = await _enrich_matches(result["results"], max_count=6)
