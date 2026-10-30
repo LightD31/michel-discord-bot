@@ -13,3 +13,6 @@ config
 .venv
 .venv-*
 tests
+
+# Tool caches (CI writes some under the workspace) never belong in the image.
+.cache
