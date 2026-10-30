@@ -18,8 +18,9 @@ from src.core import logging as logutil
 from src.discord_ext.autocomplete import guild_group_autocomplete
 from src.discord_ext.embeds import Colors
 from src.discord_ext.messages import fetch_user_safe, require_guild
+from src.discord_ext.scopes import guild_scopes
 
-from ._common import DEFAULT_CATEGORY, guild_currency
+from ._common import DEFAULT_CATEGORY, enabled_servers, guild_currency
 
 logger = logutil.init_logger(__name__)
 
@@ -30,6 +31,7 @@ class ReportsMixin:
     @slash_command(
         name="liste-depenses",
         description="Voir la liste des dépenses d'un groupe",
+        scopes=guild_scopes(enabled_servers),
     )
     @slash_option(
         name="groupe",
@@ -101,6 +103,7 @@ class ReportsMixin:
     @slash_command(
         name="bilan",
         description="Voir le bilan des dépenses d'un groupe",
+        scopes=guild_scopes(enabled_servers),
     )
     @slash_option(
         name="groupe",
@@ -179,6 +182,7 @@ class ReportsMixin:
     @slash_command(
         name="tricount-graphique",
         description="Exporter un graphique des dépenses par catégorie",
+        scopes=guild_scopes(enabled_servers),
     )
     @slash_option(
         name="groupe",
@@ -232,6 +236,7 @@ class ReportsMixin:
     @slash_command(
         name="mes-groupes",
         description="Voir tous vos groupes Tricount",
+        scopes=guild_scopes(enabled_servers),
     )
     async def mes_groupes(self, ctx: SlashContext):
         if not await require_guild(ctx):

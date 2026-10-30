@@ -32,6 +32,7 @@ from src.discord_ext.messages import (
     fetch_or_create_persistent_message,
     send_error,
 )
+from src.discord_ext.scopes import guild_scopes
 from src.integrations.spotify import spotifymongoformat
 
 from ._common import (
@@ -54,7 +55,7 @@ class PlaylistMixin:
     @slash_command(
         "addsong",
         description="Ajoute une chanson à la playlist.",
-        scopes=enabled_servers,
+        scopes=guild_scopes(enabled_servers),
     )
     @slash_option(
         name="song",
@@ -324,7 +325,7 @@ class PlaylistMixin:
     @slash_command(
         name="songinfo",
         description="Affiche les informations d'une chanson",
-        scopes=enabled_servers,
+        scopes=guild_scopes(enabled_servers),
     )
     @slash_option(
         name="song",

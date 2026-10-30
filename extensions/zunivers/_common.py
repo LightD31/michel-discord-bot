@@ -8,6 +8,7 @@ from interactions import SlashCommand
 
 from src.core import logging as logutil
 from src.core.config import load_config
+from src.discord_ext.scopes import guild_scopes
 from src.webui.schemas import SchemaBase, enabled_field, register_module, ui
 
 
@@ -78,7 +79,7 @@ ninja_config: dict = config.get("zuniversNinja") or {}
 zunivers_cmd = SlashCommand(
     name="zunivers",
     description="Commandes ZUnivers",
-    scopes=enabled_servers,
+    scopes=guild_scopes(enabled_servers),
 )
 
 __all__ = [

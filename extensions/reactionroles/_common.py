@@ -26,7 +26,6 @@ class ReactionRolesConfig(SchemaBase):
 
 
 _, _, enabled_servers = load_config("moduleReactionRoles")
-enabled_servers_int = [int(s) for s in enabled_servers]
 
 __all__ = [
     "BUTTON_PREFIX",
@@ -35,6 +34,5 @@ __all__ = [
     "build_components",
     "build_embed",
     "enabled_servers",
-    "enabled_servers_int",
     "logger",
 ]

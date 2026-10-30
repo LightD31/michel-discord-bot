@@ -29,6 +29,7 @@ from src.core import logging as logutil
 from src.core.text import take_within_budget
 from src.discord_ext.embeds import Colors
 from src.discord_ext.messages import send_error
+from src.discord_ext.scopes import guild_scopes
 
 from ._common import autocomplete_options, enabled_servers, module_config
 from .stats import plural
@@ -71,7 +72,7 @@ class BrowseMixin:
     @slash_command(
         name="texte",
         description="Afficher la fiche d'un texte de la confrérie (au hasard sans titre)",
-        scopes=[int(s) for s in enabled_servers],
+        scopes=guild_scopes(enabled_servers),
     )
     @slash_option(
         name="titre",
@@ -125,7 +126,7 @@ class BrowseMixin:
     @slash_command(
         name="auteur",
         description="Profil d'un·e auteur·ice de la confrérie",
-        scopes=[int(s) for s in enabled_servers],
+        scopes=guild_scopes(enabled_servers),
     )
     @slash_option(
         name="nom",
@@ -191,7 +192,7 @@ class BrowseMixin:
     @slash_command(
         name="outil",
         description="Chercher une ressource dans la boîte à outils de la confrérie",
-        scopes=[int(s) for s in enabled_servers],
+        scopes=guild_scopes(enabled_servers),
     )
     @slash_option(
         name="theme",

@@ -64,7 +64,6 @@ class RssConfig(SchemaBase):
 # scans source files with a regex matching ``load_config("…")``, so a constant
 # would make the module invisible to the dashboard's auto-reload.
 _, module_config, enabled_servers = load_config("moduleRss")
-enabled_servers_int = [int(s) for s in enabled_servers]
 
 
 __all__ = [
@@ -73,7 +72,6 @@ __all__ = [
     "MODULE_KEY",
     "RssConfig",
     "enabled_servers",
-    "enabled_servers_int",
     "logger",
     "module_config",
 ]

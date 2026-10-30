@@ -4,7 +4,6 @@ import os
 
 from interactions import (
     Embed,
-    IntegrationType,
     Member,
     OptionType,
     SlashContext,
@@ -16,8 +15,9 @@ from interactions import (
 from src.core import logging as logutil
 from src.discord_ext.embeds import Colors
 from src.discord_ext.messages import fetch_user_safe, send_error
+from src.discord_ext.scopes import guild_scopes
 
-from ._common import get_context_id
+from ._common import enabled_servers, get_context_id
 
 logger = logutil.init_logger(__name__)
 
@@ -28,8 +28,7 @@ class BansMixin:
     @slash_command(
         name="secretsanta",
         description="Commandes du Père Noël Secret",
-        dm_permission=True,
-        integration_types=[IntegrationType.GUILD_INSTALL, IntegrationType.USER_INSTALL],
+        scopes=guild_scopes(enabled_servers),
         sub_cmd_name="banpair",
         sub_cmd_description="Interdit deux utilisateurs de se tirer mutuellement",
     )
@@ -75,8 +74,7 @@ class BansMixin:
     @slash_command(
         name="secretsanta",
         description="Commandes du Père Noël Secret",
-        dm_permission=True,
-        integration_types=[IntegrationType.GUILD_INSTALL, IntegrationType.USER_INSTALL],
+        scopes=guild_scopes(enabled_servers),
         sub_cmd_name="unbanpair",
         sub_cmd_description="Autorise à nouveau deux utilisateurs à se tirer mutuellement",
     )
@@ -124,8 +122,7 @@ class BansMixin:
     @slash_command(
         name="secretsanta",
         description="Commandes du Père Noël Secret",
-        dm_permission=True,
-        integration_types=[IntegrationType.GUILD_INSTALL, IntegrationType.USER_INSTALL],
+        scopes=guild_scopes(enabled_servers),
         sub_cmd_name="listbans",
         sub_cmd_description="Liste les paires d'utilisateurs interdites",
     )

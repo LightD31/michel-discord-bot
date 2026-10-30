@@ -80,7 +80,6 @@ class ModerationConfig(SchemaBase):
 
 
 _, module_config, enabled_servers = load_config("moduleModeration")
-enabled_servers_int = [int(s) for s in enabled_servers]  # type: ignore[misc]
 
 # Sentinel moderator id used for automated (automod) actions.
 AUTOMOD_MODERATOR_ID = "automod"

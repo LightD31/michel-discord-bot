@@ -17,6 +17,7 @@ from src.core.config import load_config
 from src.core.text import sanitize_content
 from src.discord_ext.embeds import Colors
 from src.discord_ext.messages import require_guild
+from src.discord_ext.scopes import guild_scopes
 from src.webui.schemas import SchemaBase, enabled_field, register_module
 
 
@@ -99,7 +100,11 @@ class FeurExtension(Extension):
                 await self._add_reactions(event.message, FEUR_EMOJIS)
                 await repo.record_event(user_id, "feur")
 
-    @slash_command(name="feurstats", description="Affiche les statistiques de feur")
+    @slash_command(
+        name="feurstats",
+        description="Affiche les statistiques de feur",
+        scopes=guild_scopes(enabled_servers),
+    )
     async def feur_stats(self, ctx: SlashContext):
         if not await require_guild(ctx):
             return

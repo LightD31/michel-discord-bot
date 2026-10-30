@@ -173,9 +173,9 @@ branch = true
 [tool.coverage.report]
 show_missing = true
 skip_covered = true
-# Floor for `pytest --cov` (CI's test job): total coverage was 61% when this was
+# Floor for `pytest --cov` (CI's test job): total coverage was 62.5% when this was
 # set. Raise it as tests are added, so coverage can only ratchet up.
-fail_under = 60
+fail_under = 61
 
 # ─── detect-secrets ────────────────────────────────────────────────────
 # Baseline lives at .secrets.baseline; configured via .pre-commit-config.yaml.

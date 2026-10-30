@@ -3,7 +3,8 @@ Backup Extension
 
 Automatically backs up all MongoDB databases (global + per-guild) to local
 JSON files once a day.  Also exposes a ``/backup`` slash command so an
-admin can trigger a backup manually.
+admin can trigger a backup manually; it backs up every guild, so it is only
+registered on the dev server (``discord.devGuildId``).
 
 Backups are stored under ``data/backups/<timestamp>/`` and the most recent
 N are kept (older ones are pruned automatically).
@@ -34,6 +35,7 @@ from src.core import logging as logutil
 from src.core.config import load_config
 from src.core.db import mongo_manager
 from src.discord_ext.embeds import Colors
+from src.discord_ext.scopes import guild_scopes
 
 logger = logutil.init_logger(__name__)
 
@@ -41,6 +43,10 @@ logger = logutil.init_logger(__name__)
 DEFAULT_BACKUP_DIR = "data/backups"
 DEFAULT_MAX_BACKUPS = 7
 DEFAULT_BACKUP_HOUR = 4  # 04:00 local time
+
+# With no dev guild configured ``/backup`` is registered nowhere; the daily
+# backup still runs.
+_DEV_GUILD = load_config()[0].get("discord", {}).get("devGuildId")
 
 
 def _load_backup_config() -> dict:
@@ -105,6 +111,7 @@ class BackupExtension(Extension):
         name="backup",
         description="Créer une sauvegarde manuelle de la base de données",
         default_member_permissions=Permissions.ADMINISTRATOR,
+        scopes=guild_scopes([_DEV_GUILD]),
     )
     @slash_option(
         name="max_backups",

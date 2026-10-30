@@ -256,18 +256,19 @@ def discover_modules() -> list[str]:
     return sorted(modules)
 
 
-def build_module_to_extension_map() -> dict[str, str]:
-    """Map module config names to extension module paths.
+def build_module_to_extension_map() -> dict[str, list[str]]:
+    """Map module config names to the extension module paths that read them.
 
-    E.g. ``{"moduleTricount": "extensions.tricount"}``.
+    E.g. ``{"moduleTricount": ["extensions.tricount"]}``. A module can back
+    several extensions: ``moduleUtils`` is read by admin, polls and reminders.
     """
     import re
 
-    mapping: dict[str, str] = {}
+    mapping: dict[str, list[str]] = {}
     ext_dir = "extensions"
     if not os.path.isdir(ext_dir):
         return mapping
-    for fname in os.listdir(ext_dir):
+    for fname in sorted(os.listdir(ext_dir)):
         if fname.startswith("_") or fname.startswith("__"):
             continue
         full = os.path.join(ext_dir, fname)
@@ -282,7 +283,9 @@ def build_module_to_extension_map() -> dict[str, str]:
                 with open(fpath, encoding="utf-8") as f:
                     content = f.read()
                 for match in re.finditer(r'load_config\(["\']([\w]+)["\']\)', content):
-                    mapping[match.group(1)] = ext_module_path
+                    paths = mapping.setdefault(match.group(1), [])
+                    if ext_module_path not in paths:
+                        paths.append(ext_module_path)
             except Exception:
                 pass
     return mapping

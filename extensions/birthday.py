@@ -43,6 +43,7 @@ from src.core.text import pick_weighted_message
 from src.discord_ext.embeds import Colors
 from src.discord_ext.messages import edit_message_if_changed, fetch_user_safe, require_guild
 from src.discord_ext.paginator import CustomPaginator
+from src.discord_ext.scopes import guild_scopes
 from src.webui.schemas import SchemaBase, enabled_field, register_module, ui
 
 
@@ -156,7 +157,7 @@ class BirthdayExtension(Extension):
     @slash_command(
         name="anniversaire",
         description="Anniversaire",
-        scopes=enabled_servers,
+        scopes=guild_scopes(enabled_servers),
         sub_cmd_name="ajouter",
         sub_cmd_description="Ajoute ou modifie ton anniversaire",
     )

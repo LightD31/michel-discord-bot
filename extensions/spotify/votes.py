@@ -34,6 +34,7 @@ from src.discord_ext.messages import (
     fetch_user_safe,
     send_error,
 )
+from src.discord_ext.scopes import guild_scopes
 from src.integrations.spotify import spotifymongoformat
 
 from ._common import (
@@ -375,7 +376,7 @@ class VotesMixin:
         sub_cmd_name="set",
         description="Gère les rappels pour voter",
         sub_cmd_description="Ajoute un rappel pour voter pour la chanson du jour",
-        scopes=enabled_servers,
+        scopes=guild_scopes(enabled_servers),
     )
     @slash_option(
         name="heure",
@@ -519,7 +520,7 @@ class VotesMixin:
     @slash_command(
         name="addwithvote",
         description="Si vous êtes pas sûr d'ajoouter une chanson, vous pouvez la mettre au vote",
-        scopes=enabled_servers,
+        scopes=guild_scopes(enabled_servers),
     )
     @slash_option(
         name="song",

@@ -30,6 +30,7 @@ from src.discord_ext.messages import (
     fetch_or_create_persistent_message,
     send_error,
 )
+from src.discord_ext.scopes import guild_scopes
 from src.webui.schemas import (
     SchemaBase,
     enabled_field,
@@ -305,7 +306,8 @@ class StreamlabsCharityExtension(Extension):
         for members_str in members_str_list[1:]:
             embed.add_field(name="\u200b", value=members_str, inline=False)
 
-    @slash_command("endcharitycount")
+    # Single-guild module: only the first enabled server is tracked.
+    @slash_command("endcharitycount", scopes=guild_scopes(_enabled_servers[:1]))
     async def endcharitycount(self, ctx):
         await ctx.send("Fin de la collecte de fond", ephemeral=True)
         if not STREAMLABS_URL:

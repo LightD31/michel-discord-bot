@@ -22,6 +22,7 @@ from src.core import logging as logutil
 from src.discord_ext.autocomplete import guild_group_autocomplete
 from src.discord_ext.embeds import Colors
 from src.discord_ext.messages import require_guild
+from src.discord_ext.scopes import guild_scopes
 
 from ._common import (
     DEFAULT_CATEGORIES,
@@ -62,6 +63,7 @@ class RecurringMixin:
         description="Programmer une dépense récurrente",
         sub_cmd_name="ajouter",
         sub_cmd_description="Créer une dépense récurrente",
+        scopes=guild_scopes(enabled_servers),
     )
     @slash_option(
         name="groupe",

@@ -43,12 +43,12 @@ from features.rss.network import fetch_feed
 from src.core.errors import IntegrationError
 from src.discord_ext.embeds import Colors, format_discord_timestamp
 from src.discord_ext.messages import require_guild, send_error, send_success
+from src.discord_ext.scopes import guild_scopes
 
 from ._common import (
     DEFAULT_TEMPLATE,
     MAX_NEW_PER_POLL,
     enabled_servers,
-    enabled_servers_int,
     logger,
     module_config,
 )
@@ -370,7 +370,7 @@ class RssExtension(Extension):
         description="Outils RSS",
         sub_cmd_name="test",
         sub_cmd_description="Aperçu des dernières entrées d'un flux sans le configurer",
-        scopes=enabled_servers_int,  # type: ignore[arg-type]
+        scopes=guild_scopes(enabled_servers),
     )
     @slash_option(
         "url",

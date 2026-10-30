@@ -7,8 +7,9 @@ from interactions import SlashContext, slash_command
 from src.core import logging as logutil
 from src.core.http import fetch
 from src.discord_ext.messages import edit_message_if_changed
+from src.discord_ext.scopes import guild_scopes
 
-from ._common import API_URL
+from ._common import API_URL, GUILD_ID
 
 logger = logutil.init_logger(__name__)
 
@@ -16,7 +17,12 @@ logger = logutil.init_logger(__name__)
 class CommandsMixin:
     """Admin command to freeze the pinned message with the final recap."""
 
-    @slash_command(name="zevent_finish", description="Créée l'embed final après l'évènement")
+    @slash_command(
+        name="zevent_finish",
+        description="Créée l'embed final après l'évènement",
+        # Single-guild module: the recap lives on the first enabled server.
+        scopes=guild_scopes([GUILD_ID]),
+    )
     async def end(self, ctx: SlashContext):
         try:
             data = await fetch(API_URL, return_type="json")

@@ -33,6 +33,7 @@ from src.core import logging as logutil
 from src.core.config import CONFIG_PATH, load_config
 from src.core.tasks import spawn
 from src.discord_ext.messages import send_error, send_success
+from src.discord_ext.scopes import guild_scopes
 
 from ._common import StreamerInfo, ensure_utc
 from .emotes import EMOTE_CACHE_DIR, EmotesMixin
@@ -41,6 +42,10 @@ from .notifications import NotificationsMixin
 from .schedule import ScheduleMixin
 
 logger = logutil.init_logger(__name__)
+
+# Read at import (a reload re-imports the package) so the command decorators
+# below can scope to the enabled guilds.
+_config, _module_config, enabled_servers = load_config("moduleTwitch")
 
 
 def _save_streamer_channel_message(
@@ -78,7 +83,9 @@ class TwitchExtension(
 
     def __init__(self, bot: Client):
         self.bot: Client = bot
-        self.config, self.module_config, self.enabled_servers = load_config("moduleTwitch")
+        self.config = _config
+        self.module_config = _module_config
+        self.enabled_servers = enabled_servers
         self.client_id = self.config["twitch"]["twitchClientId"]
         self.client_secret = self.config["twitch"]["twitchClientSecret"]
 
@@ -363,6 +370,7 @@ class TwitchExtension(
     @slash_command(
         name="twitch-planning-setup",
         description="Créer/attacher le message de planning Twitch d'un streamer",
+        scopes=guild_scopes(enabled_servers),
     )
     @slash_option(
         name="streamer",
