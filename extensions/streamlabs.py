@@ -11,6 +11,7 @@ from interactions import (
     Extension,
     IntervalTrigger,
     Message,
+    Permissions,
     Task,
     listen,
     slash_command,
@@ -307,7 +308,11 @@ class StreamlabsCharityExtension(Extension):
             embed.add_field(name="\u200b", value=members_str, inline=False)
 
     # Single-guild module: only the first enabled server is tracked.
-    @slash_command("endcharitycount", scopes=guild_scopes(_enabled_servers[:1]))
+    @slash_command(
+        "endcharitycount",
+        default_member_permissions=Permissions.ADMINISTRATOR,
+        scopes=guild_scopes(_enabled_servers[:1]),
+    )
     async def endcharitycount(self, ctx):
         await ctx.send("Fin de la collecte de fond", ephemeral=True)
         if not STREAMLABS_URL:
