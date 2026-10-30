@@ -10,11 +10,9 @@ requires-python = ">=3.12"
 license = { file = "LICENSE" }
 readme = "README.md"
 
-# Runtime dependencies, declared as ranges. Exact versions are locked in
-# requirements.txt (generated with
-# `uv pip compile pyproject.toml -o requirements.txt --universal`), which is
-# what the Docker image and CI install from. Regenerate the lock whenever this
-# list changes — CI fails if the two drift apart.
+# Runtime dependencies, declared as ranges. Exact versions live in uv.lock,
+# which the Docker image and CI install from (`uv sync --locked`). Run `uv lock`
+# whenever this list changes — CI fails if the two drift apart.
 dependencies = [
     # Bot framework & core
     "discord-py-interactions",
@@ -67,7 +65,10 @@ dependencies = [
 [tool.setuptools]
 py-modules = []
 
-[project.optional-dependencies]
+# Development tooling. Locked in uv.lock like the runtime deps, so CI lints and
+# type-checks with the same tool versions as every contributor; `uv sync`
+# installs this group by default and the Docker image leaves it out (--no-dev).
+[dependency-groups]
 dev = [
     "ruff>=0.6",
     "mypy>=1.10",
@@ -76,7 +77,13 @@ dev = [
     "pytest-cov>=5",
     "detect-secrets>=1.5",
     "pre-commit>=3.7",
+    "pip-audit>=2.7",
 ]
+
+# An application, not a library: uv installs the dependencies only and never
+# builds or installs the project itself.
+[tool.uv]
+package = false
 
 # ─── ruff ──────────────────────────────────────────────────────────────
 [tool.ruff]
