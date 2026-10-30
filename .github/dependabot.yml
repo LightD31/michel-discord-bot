@@ -27,6 +27,8 @@ updates:
     cooldown:
       default-days: 3
 
+  # Workflows pin actions to commit SHAs with the release in a trailing
+  # comment; Dependabot updates both together.
   - package-ecosystem: github-actions
     directory: "/"
     schedule:

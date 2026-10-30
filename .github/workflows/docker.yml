@@ -26,15 +26,15 @@ jobs:
       attestations: write
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
-      - uses: docker/setup-buildx-action@v4
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       - name: Log in to GHCR
         if: github.event_name != 'pull_request'
-        uses: docker/login-action@v4
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -42,7 +42,7 @@ jobs:
 
       - name: Compute image metadata
         id: meta
-        uses: docker/metadata-action@v6
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
         with:
           images: ghcr.io/${{ github.repository }}
           tags: |
@@ -53,8 +53,62 @@ jobs:
             type=sha,format=short
             type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
 
+      # Build once into the local Docker daemon so the image can be scanned
+      # before anything is pushed; the build-and-push step below reuses the
+      # layers from the same builder's cache.
+      - name: Build image for scanning
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          load: true
+          tags: michel-discord-bot:scan
+          cache-from: type=gha
+          # The local Docker image store can't hold attestations; the published
+          # build below still carries provenance and the SBOM.
+          provenance: false
+          sbom: false
+
+      # pip-audit covers the Python pins; this also covers the Debian packages
+      # of the base image. Only issues with a released fix are listed: those
+      # are the ones a base-image digest bump (or a dependency bump) resolves.
+      - name: Scan image (fixable HIGH and CRITICAL, report only)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: michel-discord-bot:scan
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          format: table
+          # Outside the workspace: the build context is the workspace, and the
+          # report or the vulnerability database must never end up in the image.
+          output: ${{ runner.temp }}/trivy-report.txt
+          cache-dir: ${{ runner.temp }}/trivy-cache
+          exit-code: "0"
+
+      - name: Image scan summary
+        if: always()
+        run: |
+          {
+            echo "## Image scan (fixable HIGH/CRITICAL)"
+            echo '```'
+            cat "$RUNNER_TEMP/trivy-report.txt" 2>/dev/null || echo "No report produced."
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # The gate: a fixable CRITICAL fails the build (and blocks publishing).
+      # Resolve it by bumping the base image digest or the affected dependency;
+      # for an accepted risk, list the CVE in a .trivyignore with a reason.
+      - name: Fail on fixable CRITICAL vulnerabilities
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: michel-discord-bot:scan
+          severity: CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+          cache-dir: ${{ runner.temp }}/trivy-cache
+          skip-setup-trivy: true
+
       - name: Build and push
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           push: ${{ github.event_name != 'pull_request' }}
