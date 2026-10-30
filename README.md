@@ -169,6 +169,7 @@ scripts/                # generate_config_example.py — config skeleton from sc
 ### Prerequisites
 
 - Python 3.12+ (CI and the Docker image run 3.14)
+- [uv](https://docs.astral.sh/uv/) for local development (it can install Python too)
 - A running MongoDB instance
 - A Discord bot token
 
@@ -199,26 +200,21 @@ The Web UI is bound to `127.0.0.1:8080` — put a TLS-terminating reverse proxy 
 ```bash
 git clone https://github.com/LightD31/michel-discord-bot.git
 cd michel-discord-bot
-python -m venv .venv
-# Windows
-.venv\Scripts\Activate.ps1
-# Linux / macOS
-source .venv/bin/activate
 
-# Install pinned runtime deps + dev tooling (ruff, mypy, pytest, pre-commit, detect-secrets)
-pip install -r requirements.txt -e ".[dev]"
-pre-commit install
+# Create .venv with the locked runtime deps + dev tooling
+# (ruff, mypy, pytest, pre-commit, detect-secrets, pip-audit)
+uv sync
+uv run pre-commit install
 
-python main.py
+uv run python main.py
 ```
 
-Runtime dependencies are declared (as ranges) in `pyproject.toml` and locked
-to exact versions in `requirements.txt`, which is what the Docker image and CI
-install from. After changing dependencies in `pyproject.toml`, regenerate the
-lock with:
+Dependencies are declared (as ranges) in `pyproject.toml` and locked to exact
+versions in `uv.lock`, which is what the Docker image and CI install from.
+After changing dependencies in `pyproject.toml`, update the lock with:
 
 ```bash
-uv pip compile pyproject.toml -o requirements.txt --universal
+uv lock
 ```
 
 CI fails if the lockfile drifts from `pyproject.toml`.
@@ -328,9 +324,9 @@ scrape_configs:
 - **Type checking** — [mypy](https://mypy-lang.org/) (`mypy src`). `src.core.*` is strict; the rest is lenient during incremental typing adoption. Runs in CI on every PR, and locally as an opt-in hook: `pre-commit run mypy --hook-stage manual`.
 - **Tests** — [pytest](https://docs.pytest.org/) with `pytest-asyncio` (auto mode) and coverage over `src` + `features`. The suite covers core infrastructure (db, http, config saving), Web UI auth (OAuth, sessions, CSRF), and feature logic (giveaway draw, moderation, MDI client, RSS parser, weighted messages).
 - **Pre-commit** — ruff (lint + format), [detect-secrets](https://github.com/Yelp/detect-secrets) (against `.secrets.baseline`), and hygiene hooks (whitespace, JSON/YAML validity, large files, merge conflicts).
-- **CI** (`.github/workflows/ci.yml`) — six jobs: ruff lint/format, mypy, pytest with coverage (per-file table in the run summary, XML artifact kept 14 days), lockfile drift check, `pip-audit` CVE scan, and a detect-secrets sweep. Also runs on a weekly schedule so CVE scanning doesn't stall between pushes.
+- **CI** (`.github/workflows/ci.yml`) — seven jobs, all installing from `uv.lock` (dev tools included, so every run uses the same ruff/mypy/pytest): ruff lint/format (findings annotated inline on the PR), mypy, pytest with coverage (per-file table in the run summary, XML artifact kept 14 days), lockfile drift check (`uv lock --check`), `config.example.json` drift check, `pip-audit` CVE scan of the runtime pins, and a detect-secrets sweep. A weekly scheduled run re-audits the lock so CVE scanning doesn't stall between pushes.
 - **Docker** (`.github/workflows/docker.yml`) — multi-stage build published to GHCR with provenance and SBOM attestations.
-- **Dependabot** — weekly grouped updates for pip, Docker base image, and GitHub Actions.
+- **Dependabot** — weekly grouped updates for the uv lock (re-resolved as a whole), the Docker base images, and GitHub Actions, each held back a few days after release (`cooldown`).
 
 ### Project Conventions
 

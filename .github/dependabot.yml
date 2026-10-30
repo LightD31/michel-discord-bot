@@ -1,23 +1,38 @@
 version: 2
 updates:
-  - package-ecosystem: pip
+  # uv re-resolves uv.lock for every update, so a bump never leaves the lock
+  # half-updated (the old `pip` ecosystem bumped requirements.txt pins one line
+  # at a time, which broke the lockfile check). Runtime and dev tools are
+  # grouped into one weekly PR; security updates still come separately and
+  # skip the cooldown.
+  - package-ecosystem: uv
     directory: "/"
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    # Wait a few days before proposing a fresh release: most broken or
+    # malicious uploads are yanked within that window.
+    cooldown:
+      default-days: 3
+      semver-major-days: 7
     groups:
       python-deps:
         patterns: ["*"]
 
+  # Python and uv base images in the Dockerfile (tag and digest together).
   - package-ecosystem: docker
     directory: "/"
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 3
 
   - package-ecosystem: github-actions
     directory: "/"
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 3
     groups:
       actions:
         patterns: ["*"]

@@ -6,6 +6,7 @@ on:
     branches: [master, main]
   # Weekly run so pip-audit keeps catching new CVEs against the lockfile even
   # when nothing is pushed (scheduled runs execute on the default branch).
+  # Only the audit job runs on it: everything else is pinned and can't change.
   schedule:
     - cron: "0 4 * * 1"
 
@@ -18,8 +19,19 @@ concurrency:
 permissions:
   contents: read
 
+env:
+  # The interpreter the bot ships on — keep in sync with the Dockerfile base
+  # image. uv installs it when the runner doesn't have it.
+  UV_PYTHON: "3.14"
+  # Every uv command asserts uv.lock matches pyproject.toml instead of quietly
+  # re-locking, so a stale lock fails whichever job runs first.
+  UV_LOCKED: "1"
+  # Keep in step with the uv stage in the Dockerfile.
+  UV_TOOL_VERSION: "0.13.6"
+
 jobs:
   lint:
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -27,25 +39,23 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: actions/setup-python@v7
+      - uses: astral-sh/setup-uv@v6
         with:
-          # Keep in sync with the Dockerfile base image — CI must test the
-          # interpreter the bot ships on.
-          python-version: "3.14"
-          cache: pip
+          version: ${{ env.UV_TOOL_VERSION }}
+          enable-cache: true
 
-      - name: Install locked runtime deps + dev extras
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt -e ".[dev]"
+      - name: Install locked runtime deps + dev tools
+        run: uv sync
 
       - name: Ruff lint
-        run: ruff check .
+        # GitHub output format turns findings into inline PR annotations.
+        run: uv run ruff check --output-format=github .
 
       - name: Ruff format (check only)
-        run: ruff format --check .
+        run: uv run ruff format --check .
 
   typecheck:
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -53,24 +63,21 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: actions/setup-python@v7
+      - uses: astral-sh/setup-uv@v6
         with:
-          # Keep in sync with the Dockerfile base image — CI must test the
-          # interpreter the bot ships on.
-          python-version: "3.14"
-          cache: pip
+          version: ${{ env.UV_TOOL_VERSION }}
+          enable-cache: true
 
-      - name: Install locked runtime deps + dev extras
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt -e ".[dev]"
+      - name: Install locked runtime deps + dev tools
+        run: uv sync
 
       - name: Mypy (src/core strict; rest lenient)
         # features/ is the framework-free layer the architecture sets aside for
         # testable domain logic — exactly where annotations pay off most.
-        run: mypy src features
+        run: uv run mypy src features
 
   test:
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -78,20 +85,16 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: actions/setup-python@v7
+      - uses: astral-sh/setup-uv@v6
         with:
-          # Keep in sync with the Dockerfile base image — CI must test the
-          # interpreter the bot ships on.
-          python-version: "3.14"
-          cache: pip
+          version: ${{ env.UV_TOOL_VERSION }}
+          enable-cache: true
 
-      - name: Install locked runtime deps + dev extras
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt -e ".[dev]"
+      - name: Install locked runtime deps + dev tools
+        run: uv sync
 
       - name: Pytest with coverage
-        run: pytest --cov=src --cov=features --cov-report=term --cov-report=xml
+        run: uv run pytest --cov=src --cov=features --cov-report=term --cov-report=xml
 
       - name: Coverage summary
         # Render the per-file table into the run's summary page so coverage is
@@ -102,7 +105,7 @@ jobs:
           {
             echo "## Coverage"
             echo ""
-            coverage report --format=markdown
+            uv run coverage report --format=markdown
           } >> "$GITHUB_STEP_SUMMARY" || true
 
       - name: Upload coverage artifact
@@ -115,6 +118,7 @@ jobs:
           retention-days: 14
 
   lockfile:
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -122,28 +126,21 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: actions/setup-python@v7
+      - uses: astral-sh/setup-uv@v6
         with:
-          # Keep in sync with the Dockerfile base image — CI must test the
-          # interpreter the bot ships on.
-          python-version: "3.14"
+          version: ${{ env.UV_TOOL_VERSION }}
 
-      - name: Check requirements.txt is in sync with pyproject.toml
-        # Recompile on top of a copy of the committed lock — uv keeps pins
-        # that still satisfy pyproject.toml, so new upstream releases don't
-        # fail the check; only actual drift (dep added/removed/re-ranged
-        # without regenerating the lock) does. Comments are stripped from the
-        # diff so header/annotation cosmetics across uv versions don't count.
+      - name: Check uv.lock is in sync with pyproject.toml
+        # The other jobs fail on a stale lock too (UV_LOCKED); this one says so
+        # by name. New upstream releases never fail it, only real drift does.
         run: |
-          pip install uv
-          cp requirements.txt /tmp/requirements.txt
-          uv pip compile pyproject.toml -o /tmp/requirements.txt --universal --quiet
-          if ! diff <(grep -v '^ *#' requirements.txt) <(grep -v '^ *#' /tmp/requirements.txt); then
-            echo "::error::requirements.txt is out of sync with pyproject.toml — regenerate with: uv pip compile pyproject.toml -o requirements.txt --universal"
+          if ! uv lock --check; then
+            echo "::error::uv.lock is out of sync with pyproject.toml — regenerate with: uv lock"
             exit 1
           fi
 
   config-example:
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -151,17 +148,13 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: actions/setup-python@v7
+      - uses: astral-sh/setup-uv@v6
         with:
-          # Keep in sync with the Dockerfile base image — CI must test the
-          # interpreter the bot ships on.
-          python-version: "3.14"
-          cache: pip
+          version: ${{ env.UV_TOOL_VERSION }}
+          enable-cache: true
 
       - name: Install locked runtime deps
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt -e ".[dev]"
+        run: uv sync --no-dev
 
       - name: Check config.example.json matches the Web UI schemas
         # Mirrors the lockfile job: the generated example is committed, so a
@@ -175,7 +168,7 @@ jobs:
           # committed example is a valid seed: the output is built from the
           # schema registry, not from this file.
           mkdir -p config && cp config.example.json config/config.json
-          python scripts/generate_config_example.py
+          uv run --no-dev python scripts/generate_config_example.py
           if ! git diff --exit-code -- config.example.json; then
             echo "::error::config.example.json is out of date — regenerate with: python scripts/generate_config_example.py"
             exit 1
@@ -189,36 +182,35 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: actions/setup-python@v7
+      - uses: astral-sh/setup-uv@v6
         with:
-          # Keep in sync with the Dockerfile base image — CI must test the
-          # interpreter the bot ships on.
-          python-version: "3.14"
+          version: ${{ env.UV_TOOL_VERSION }}
+          enable-cache: true
 
-      - name: Audit locked dependencies for known CVEs
-        # --no-deps audits exactly the pins in the lockfile without resolving;
-        # the lock is fully pinned so nothing is missed.
+      - name: Audit locked runtime dependencies for known CVEs
+        # pip-audit can't read uv.lock, so audit its export: every runtime pin
+        # (the image's contents), checked as-is with --no-deps. pip-audit
+        # itself comes from the locked dev group.
         run: |
-          pip install pip-audit
-          pip-audit -r requirements.txt --no-deps
+          uv export --no-dev --no-hashes --no-emit-project -o "$RUNNER_TEMP/requirements.txt"
+          uv run --only-dev pip-audit -r "$RUNNER_TEMP/requirements.txt" --no-deps --disable-pip
 
   secrets:
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
         with:
-          fetch-depth: 0
           persist-credentials: false
 
-      - uses: actions/setup-python@v7
+      - uses: astral-sh/setup-uv@v6
         with:
-          # Keep in sync with the Dockerfile base image — CI must test the
-          # interpreter the bot ships on.
-          python-version: "3.14"
+          version: ${{ env.UV_TOOL_VERSION }}
+          enable-cache: true
 
-      - name: Install detect-secrets
-        run: pip install "detect-secrets>=1.5"
+      - name: Install detect-secrets (locked dev tools only)
+        run: uv sync --only-dev
 
       - name: Scan tracked files against baseline
         # `detect-secrets-hook` is the CI-friendly entry point: it compares
@@ -228,4 +220,4 @@ jobs:
         # contain non-secret UUIDs that trigger false positives).
         run: |
           git ls-files -z ':!data/**' ':!logs/**' ':!.secrets.baseline' \
-            | xargs -0 detect-secrets-hook --baseline .secrets.baseline
+            | xargs -0 uv run --only-dev detect-secrets-hook --baseline .secrets.baseline
