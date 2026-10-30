@@ -6680,10 +6680,10 @@
                 method: 'POST',
                 body: JSON.stringify({ module: moduleName, enabled }),
             });
-            const reloadSuffix = result?.reload?.reloaded
-                ? ' — extension rechargée'
-                : result?.reload?.error
-                    ? ` — rechargement échoué : ${result.reload.error}`
+            const reloadSuffix = result?.reload?.error
+                ? ` — rechargement échoué : ${result.reload.error}`
+                : result?.reload?.reloaded
+                    ? ' — extension rechargée'
                     : '';
             const syncSuffix = commandSyncSuffix(result);
             const failed = !!result?.reload?.error || !!(result?.commandSync && !result.commandSync.synced);
@@ -7033,7 +7033,7 @@
             });
             const syncSuffix = commandSyncSuffix(result);
             const syncFailed = !!(result?.commandSync && !result.commandSync.synced);
-            if (result?.reload?.reloaded) {
+            if (result?.reload?.reloaded && !result.reload.error) {
                 toast(`Configuration sauvegardée et extension rechargée !${syncSuffix}`,
                     syncFailed ? 'warning' : 'success');
             } else if (result?.reload?.skipped || !result?.reload) {
@@ -8117,7 +8117,7 @@
             });
             const syncSuffix = commandSyncSuffix(result);
             const syncFailed = !!(result?.commandSync && !result.commandSync.synced);
-            if (result?.reload?.reloaded) {
+            if (result?.reload?.reloaded && !result.reload.error) {
                 toast(`Configuration sauvegardée et extension rechargée !${syncSuffix}`,
                     syncFailed ? 'warning' : 'success');
             } else if (result?.reload?.skipped || !result?.reload) {

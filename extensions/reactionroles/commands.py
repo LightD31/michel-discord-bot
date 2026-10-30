@@ -22,8 +22,9 @@ from src.discord_ext.messages import (
     send_error,
     send_success,
 )
+from src.discord_ext.scopes import guild_scopes
 
-from ._common import MAX_ENTRIES, build_components, build_embed, enabled_servers_int, logger
+from ._common import MAX_ENTRIES, build_components, build_embed, enabled_servers, logger
 
 
 def _parse_entries(raw: str) -> list[RoleMenuEntry] | str:
@@ -60,7 +61,7 @@ class CommandsMixin:
         description="Gérer les menus de rôles",
         sub_cmd_name="create",
         sub_cmd_description="Créer un menu de rôles dans un salon",
-        scopes=enabled_servers_int,  # type: ignore
+        scopes=guild_scopes(enabled_servers),
     )
     @slash_option(
         "channel",

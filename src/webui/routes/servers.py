@@ -26,49 +26,84 @@ class ConfigUpdate(BaseModel):
 
 
 async def _try_reload_extension_for_module(ctx: WebUIContext, module_name: str) -> dict:
-    """Auto-reload the extension that owns ``module_name`` after a config save.
+    """Auto-reload the extensions that read ``module_name`` after a config save.
 
     The reload runs on the bot loop (see ``src.webui.botops``) — doing it inline
     on the Web UI loop mutates the client from the wrong thread and leaves the
     library's command sync stranded on a loop that owns none of the bot's
     connections.
 
-    No command sync here: a config save touches nothing Discord knows about,
-    except for custom commands, which the caller syncs for its own guild.
+    Every extension reading the module is reloaded (``moduleUtils`` backs
+    admin, polls and reminders) except those disabled in the extension list:
+    the library *loads* an extension it is asked to reload, so a module save
+    would otherwise switch a disabled extension back on.
 
-    Returns ``{"reloaded": str|None, "error": str|None, "skipped": bool}``.
+    No command sync here; the callers sync their guild when the module's
+    command scopes may have changed (see :func:`_sync_guild_commands`).
+
+    Returns ``{"reloaded": str|None, "error": str|None, "skipped": bool}``;
+    ``reloaded`` names the reloaded extensions, comma-separated.
     """
     SKIP_MODULES = {"discord2name", "moduleEmbedManager"}
     if module_name in SKIP_MODULES:
         return {"reloaded": None, "error": None, "skipped": True}
     if not ctx.bot or not ctx.bot_loop_alive():
         return {"reloaded": None, "error": "Bot non disponible", "skipped": False}
-    mapping = build_module_to_extension_map()
-    ext_path = mapping.get(module_name)
-    if not ext_path:
+    ext_paths = build_module_to_extension_map().get(module_name)
+    if not ext_paths:
         return {
             "reloaded": None,
             "error": f"Aucune extension trouvée pour {module_name}",
             "skipped": False,
         }
-    try:
-        await run_extension_op(ctx, "reload", ext_path)
-        logger.info(f"Auto-reloaded {ext_path} after config change for {module_name}")
-        return {"reloaded": ext_path, "error": None, "skipped": False}
-    except Exception as e:
-        logger.error(f"Auto-reload failed for {ext_path}: {e}")
-        return {
-            "reloaded": None,
-            "error": f"Échec du rechargement ({type(e).__name__}). Voir les logs.",
-            "skipped": False,
-        }
+    # Same default as main.py: an extension missing from the list is enabled
+    # (the map never holds the underscore-prefixed ones that default off).
+    ext_enabled = ctx.get_full_config().get("config", {}).get("extensions", {})
+    ext_paths = [path for path in ext_paths if ext_enabled.get(path, True)]
+    if not ext_paths:
+        return {"reloaded": None, "error": None, "skipped": True}
+
+    reloaded: list[str] = []
+    failures: list[str] = []
+    for ext_path in ext_paths:
+        try:
+            await run_extension_op(ctx, "reload", ext_path)
+        except Exception as e:
+            logger.error(f"Auto-reload failed for {ext_path}: {e}")
+            failures.append(f"{ext_path} ({type(e).__name__})")
+        else:
+            logger.info(f"Auto-reloaded {ext_path} after config change for {module_name}")
+            reloaded.append(ext_path)
+    return {
+        "reloaded": ", ".join(reloaded) or None,
+        "error": (
+            f"Échec du rechargement : {', '.join(failures)}. Voir les logs." if failures else None
+        ),
+        "skipped": False,
+    }
+
+
+def _reload_succeeded(reload_result: dict) -> bool:
+    """Every extension reading the module came back, so syncing loses nothing.
+
+    After a failed reload the client may be missing that extension's commands,
+    and syncing would delete them from Discord.
+    """
+    return bool(reload_result["reloaded"]) and not reload_result["error"]
+
+
+def _module_enabled(module_config: object) -> bool:
+    """The test ``load_config`` applies when listing a module's enabled guilds."""
+    return isinstance(module_config, dict) and bool(module_config.get("enabled", False))
 
 
 async def _sync_guild_commands(ctx: WebUIContext, server_id: str) -> dict:
-    """Push this guild's slash commands to Discord after a custom-command edit.
+    """Push this guild's slash commands to Discord after a module reload.
 
-    The extension reload above re-registers the commands on the client; Discord
-    only learns about them once the scope is synced.
+    Module commands are scoped to the guilds where the module is enabled, and
+    custom commands are built from the guild's config: the reload re-registers
+    them on the client, but Discord only learns about the new set — commands
+    added *or* removed — once the guild's scope is synced.
 
     Returns ``{"synced": bool, "error": str|None}``.
     """
@@ -346,10 +381,13 @@ def create_router(ctx: WebUIContext) -> APIRouter:
         from src.webui import schemas
 
         schema = schemas.MODULE_SCHEMAS.get(module_name)
+        enabled_change: dict[str, bool] = {}
 
         def mutator(data: dict) -> None:
             server = data.setdefault("servers", {}).setdefault(server_id, {})
+            enabled_change["before"] = _module_enabled(server.get(module_name))
             server[module_name] = restore_section(body.config, server.get(module_name), schema)
+            enabled_change["after"] = _module_enabled(server[module_name])
 
         ctx.mutate_config(mutator)
         logger.info(
@@ -361,7 +399,12 @@ def create_router(ctx: WebUIContext) -> APIRouter:
         )
         reload_result = await _try_reload_extension_for_module(ctx, module_name)
         response: dict = {"status": "ok", "reload": reload_result}
-        if module_name == CUSTOM_COMMANDS_MODULE:
+        # A save only changes the guild's commands when it flips the module's
+        # enabled state (the commands follow it) or edits custom commands.
+        scopes_changed = enabled_change["before"] != enabled_change["after"]
+        if (scopes_changed or module_name == CUSTOM_COMMANDS_MODULE) and _reload_succeeded(
+            reload_result
+        ):
             response["commandSync"] = await _sync_guild_commands(ctx, server_id)
         return JSONResponse(response)
 
@@ -391,7 +434,9 @@ def create_router(ctx: WebUIContext) -> APIRouter:
         )
         reload_result = await _try_reload_extension_for_module(ctx, module_name)
         response: dict = {"status": "ok", "enabled": body.enabled, "reload": reload_result}
-        if module_name == CUSTOM_COMMANDS_MODULE:
+        # The reload re-scoped the module's commands to its new set of guilds;
+        # syncing this guild makes them appear or disappear without a restart.
+        if _reload_succeeded(reload_result):
             response["commandSync"] = await _sync_guild_commands(ctx, server_id)
         return JSONResponse(response)
 

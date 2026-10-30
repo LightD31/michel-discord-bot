@@ -5,6 +5,8 @@ from typing import Any, Optional
 
 from interactions import Embed, OptionType, SlashContext, Timestamp, slash_command, slash_option
 
+from src.discord_ext.scopes import guild_scopes
+
 from ._common import (
     COUNTRY_CODE,
     EMBED_COLOR_FRANCE,
@@ -316,7 +318,7 @@ class MedalsMixin:
         description="Commandes des JO d'hiver Milan-Cortina 2026",
         sub_cmd_name="medailles",
         sub_cmd_description="Affiche le tableau des médailles",
-        scopes=enabled_servers,
+        scopes=guild_scopes(enabled_servers),
     )
     @slash_option(
         name="top",
@@ -348,7 +350,7 @@ class MedalsMixin:
         description="Commandes des JO d'hiver Milan-Cortina 2026",
         sub_cmd_name="france",
         sub_cmd_description="Affiche les médailles de la France",
-        scopes=enabled_servers,
+        scopes=guild_scopes(enabled_servers),
     )
     async def cmd_france(self, ctx: SlashContext) -> None:
         """Affiche le détail des médailles françaises."""
@@ -369,7 +371,7 @@ class MedalsMixin:
         description="Commandes des JO d'hiver Milan-Cortina 2026",
         sub_cmd_name="pays",
         sub_cmd_description="Affiche les médailles d'un pays spécifique",
-        scopes=enabled_servers,
+        scopes=guild_scopes(enabled_servers),
     )
     @slash_option(
         name="code",
@@ -480,7 +482,7 @@ class MedalsMixin:
         description="Commandes des JO d'hiver Milan-Cortina 2026",
         sub_cmd_name="recap",
         sub_cmd_description="Envoie un récapitulatif complet (classement + France)",
-        scopes=enabled_servers,
+        scopes=guild_scopes(enabled_servers),
     )
     async def cmd_recap(self, ctx: SlashContext) -> None:
         """Envoie un récapitulatif complet : classement + médailles France."""

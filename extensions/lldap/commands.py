@@ -22,6 +22,7 @@ from src.core import logging as logutil
 from src.discord_ext.autocomplete import is_guild_enabled
 from src.discord_ext.embeds import Colors
 from src.discord_ext.messages import require_guild, send_error
+from src.discord_ext.scopes import guild_scopes
 from src.integrations.lldap import LldapError
 
 from ._common import (
@@ -47,9 +48,9 @@ logger = logutil.init_logger(__name__)
 class CommandsMixin:
     """Account creation for members and the manual sync for admins.
 
-    Both commands are global with a runtime enabled check: a dashboard save
-    reloads the extension without a command sync, so guild-scoped commands
-    would only reach a newly enabled guild after a restart.
+    Both commands exist only on the guilds where the module is enabled (the
+    dashboard syncs a guild's commands when the module is toggled there). The
+    runtime enabled check stays as a backstop for a sync that failed.
     """
 
     async def _check_guild(self, ctx: SlashContext) -> str | None:
@@ -61,7 +62,11 @@ class CommandsMixin:
             return None
         return str(ctx.guild.id)
 
-    @slash_command(name="register", description="Crée ton compte LLDAP grâce à tes rôles Discord")
+    @slash_command(
+        name="register",
+        description="Crée ton compte LLDAP grâce à tes rôles Discord",
+        scopes=guild_scopes(enabled_servers),
+    )
     @slash_option(
         name="email",
         description="Ton adresse e-mail",
@@ -179,7 +184,11 @@ class CommandsMixin:
         embed.add_field(name="Connexion", value=login_url(guild_id, settings), inline=False)
         await ctx.send(embeds=[embed], ephemeral=True)
 
-    @slash_command(name="lldap", description="Les commandes d'administration LLDAP")
+    @slash_command(
+        name="lldap",
+        description="Les commandes d'administration LLDAP",
+        scopes=guild_scopes(enabled_servers),
+    )
     @slash_default_member_permission(Permissions.ADMINISTRATOR)
     async def lldap_command(self, ctx: SlashContext) -> None:
         pass

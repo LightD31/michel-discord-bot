@@ -47,12 +47,12 @@ from src.core.config import load_config
 from src.discord_ext.embeds import Colors, format_discord_timestamp
 from src.discord_ext.messages import copy_embed, edit_message_if_changed, send_error
 from src.discord_ext.paginator import format_poll
+from src.discord_ext.scopes import guild_scopes
 
 from .buttons import PollButtonsMixin, render_results_field, update_poll_embed, vote_components
 
 logger = logutil.init_logger(__name__)
 _, _utils_module_config, enabled_servers = load_config("moduleUtils")
-enabled_servers_int = [int(s) for s in enabled_servers]  # type: ignore[misc]
 
 
 def _default_poll_seconds(guild_id: str | int | None) -> int | None:
@@ -109,7 +109,7 @@ class PollsExtension(Extension, PollButtonsMixin):
     @slash_command(
         name="poll",
         description="Créer un sondage",
-        scopes=enabled_servers_int,
+        scopes=guild_scopes(enabled_servers),
         integration_types=[IntegrationType.GUILD_INSTALL, IntegrationType.USER_INSTALL],
     )  # type: ignore
     @slash_option(
@@ -215,7 +215,7 @@ class PollsExtension(Extension, PollButtonsMixin):
     @slash_command(
         name="poll-anonyme",
         description="Créer un sondage à vote anonyme (boutons)",
-        scopes=enabled_servers_int,  # type: ignore
+        scopes=guild_scopes(enabled_servers),
     )
     @slash_option(
         "question",
@@ -248,7 +248,7 @@ class PollsExtension(Extension, PollButtonsMixin):
     @slash_command(
         name="poll-classement",
         description="Créer un sondage à vote alternatif (ranked-choice)",
-        scopes=enabled_servers_int,  # type: ignore
+        scopes=guild_scopes(enabled_servers),
     )
     @slash_option(
         "question",
@@ -414,7 +414,7 @@ class PollsExtension(Extension, PollButtonsMixin):
     @slash_command(
         name="editpoll",
         description="Modifier un sondage",
-        scopes=enabled_servers_int,  # type: ignore
+        scopes=guild_scopes(enabled_servers),
     )
     @slash_option(
         "message_id",

@@ -27,6 +27,7 @@ from features.confrerie.stats import COL_DEFI, COL_GENRE, COL_TYPE
 from src.core import logging as logutil
 from src.core.errors import ValidationError
 from src.discord_ext.messages import send_error
+from src.discord_ext.scopes import guild_scopes
 
 from ._common import autocomplete_options, enabled_servers, guild_id, module_config
 
@@ -52,7 +53,7 @@ class RequestsMixin:
     @slash_command(
         name="demande",
         description="Proposer un texte (ou une mise à jour) pour la base de la confrérie",
-        scopes=[int(s) for s in enabled_servers],
+        scopes=guild_scopes(enabled_servers),
     )
     @slash_option(
         name="type",

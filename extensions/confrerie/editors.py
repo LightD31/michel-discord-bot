@@ -28,6 +28,7 @@ from features.confrerie.editors import (
 from src.core import logging as logutil
 from src.core.errors import ValidationError
 from src.discord_ext.messages import send_error
+from src.discord_ext.scopes import guild_scopes
 from src.integrations.notion import NotionAPIError
 
 from ._common import autocomplete_options, enabled_servers, module_config
@@ -53,7 +54,7 @@ class EditorsMixin:
     @slash_command(
         name="editeur",
         description="Ajouter un éditeur à la liste",
-        scopes=[int(s) for s in enabled_servers],
+        scopes=guild_scopes(enabled_servers),
     )
     @slash_option(
         name="name",

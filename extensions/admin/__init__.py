@@ -34,6 +34,7 @@ from interactions import (
 from src.core import logging as logutil
 from src.core.config import load_config
 from src.discord_ext.messages import send_error, send_success
+from src.discord_ext.scopes import guild_scopes
 from src.webui.schemas import SchemaBase, enabled_field, register_module, ui
 
 
@@ -68,14 +69,13 @@ class UtilsConfig(SchemaBase):
 
 logger = logutil.init_logger(__name__)
 _, _, enabled_servers = load_config("moduleUtils")
-enabled_servers_int = [int(s) for s in enabled_servers]  # type: ignore[misc]
 
 
 class AdminExtension(Extension):
     @slash_command(
         name="ping",
         description="Vérifier la latence du bot",
-        scopes=enabled_servers_int,
+        scopes=guild_scopes(enabled_servers),
         integration_types=[IntegrationType.GUILD_INSTALL, IntegrationType.USER_INSTALL],  # type: ignore
     )
     async def ping(self, ctx: SlashContext):
@@ -84,7 +84,7 @@ class AdminExtension(Extension):
     @slash_command(
         name="delete",
         description="Supprimer des messages",
-        scopes=enabled_servers_int,  # type: ignore
+        scopes=guild_scopes(enabled_servers),
     )
     @slash_option(
         "nombre",
@@ -142,7 +142,7 @@ class AdminExtension(Extension):
     @slash_command(
         name="send",
         description="Envoyer un message dans un channel",
-        scopes=enabled_servers_int,  # type: ignore
+        scopes=guild_scopes(enabled_servers),
     )
     @slash_option(
         "message",
@@ -191,7 +191,7 @@ class AdminExtension(Extension):
     @slash_command(
         name="slowmode",
         description="Définir le mode lent d'un salon (0 = désactivé)",
-        scopes=enabled_servers_int,  # type: ignore
+        scopes=guild_scopes(enabled_servers),
     )
     @slash_option(
         "secondes",
@@ -246,7 +246,7 @@ class AdminExtension(Extension):
     @slash_command(
         name="lock",
         description="Verrouiller un salon (empêcher @everyone d'écrire)",
-        scopes=enabled_servers_int,  # type: ignore
+        scopes=guild_scopes(enabled_servers),
     )
     @slash_option(
         "channel",
@@ -299,7 +299,7 @@ class AdminExtension(Extension):
     @slash_command(
         name="unlock",
         description="Déverrouiller un salon précédemment verrouillé",
-        scopes=enabled_servers_int,  # type: ignore
+        scopes=guild_scopes(enabled_servers),
     )
     @slash_option(
         "channel",

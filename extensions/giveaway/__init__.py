@@ -47,10 +47,10 @@ from src.discord_ext.messages import (
     send_error,
     send_success,
 )
+from src.discord_ext.scopes import guild_scopes
 
 from ._common import (
     enabled_servers,
-    enabled_servers_int,
     guild_allow_host_win,
     guild_emoji,
     logger,
@@ -217,7 +217,7 @@ class GiveawayExtension(Extension):
         description="Gérer les giveaways",
         sub_cmd_name="start",
         sub_cmd_description="Lancer un giveaway avec entrée par réaction",
-        scopes=enabled_servers_int,  # type: ignore[arg-type]
+        scopes=guild_scopes(enabled_servers),
     )
     @slash_option(
         "prize",

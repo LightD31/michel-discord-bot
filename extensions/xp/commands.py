@@ -23,6 +23,7 @@ from features.xp import (
 from src.core.errors import DatabaseError
 from src.discord_ext.messages import send_error
 from src.discord_ext.paginator import CustomPaginator
+from src.discord_ext.scopes import guild_scopes
 
 from ._common import EMBED_COLOR, TIMEZONE, enabled_servers, logger
 
@@ -74,7 +75,7 @@ class CommandsMixin:
     @slash_command(
         name="rank",
         description="Affiche le niveau et l'XP d'un utilisateur",
-        scopes=enabled_servers,
+        scopes=guild_scopes(enabled_servers),
     )
     @slash_option(
         "utilisateur",
@@ -148,7 +149,7 @@ class CommandsMixin:
     @slash_command(
         name="leaderboard",
         description="Affiche le classement des utilisateurs",
-        scopes=enabled_servers,
+        scopes=guild_scopes(enabled_servers),
     )
     async def leaderboard(self, ctx: SlashContext):
         embeds = await self._build_leaderboard_embeds(ctx.guild)

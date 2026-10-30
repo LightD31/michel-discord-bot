@@ -18,9 +18,11 @@ from src.core import logging as logutil
 from src.discord_ext.autocomplete import guild_group_autocomplete
 from src.discord_ext.embeds import Colors
 from src.discord_ext.messages import fetch_user_safe, require_guild
+from src.discord_ext.scopes import guild_scopes
 
 from ._common import (
     DEFAULT_CATEGORY,
+    enabled_servers,
     guild_categories,
     guild_currency,
 )
@@ -34,6 +36,7 @@ class ExpensesMixin:
     @slash_command(
         name="depense",
         description="Ajouter une dépense",
+        scopes=guild_scopes(enabled_servers),
     )
     @slash_option(
         name="groupe",
@@ -174,6 +177,7 @@ class ExpensesMixin:
     @slash_command(
         name="modifier-depense",
         description="Modifier une dépense existante",
+        scopes=guild_scopes(enabled_servers),
     )
     @slash_option(
         name="groupe",

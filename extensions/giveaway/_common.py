@@ -42,7 +42,6 @@ class GiveawayConfig(SchemaBase):
 # scans source files with a regex matching ``load_config("…")``, so a constant
 # would make the module invisible to the dashboard's auto-reload.
 _, module_config, enabled_servers = load_config("moduleGiveaway")
-enabled_servers_int = [int(s) for s in enabled_servers]
 
 
 def guild_emoji(guild_id: str | int | None) -> str:
@@ -74,7 +73,6 @@ __all__ = [
     "MODULE_KEY",
     "guild_allow_host_win",
     "enabled_servers",
-    "enabled_servers_int",
     "guild_emoji",
     "logger",
     "module_config",

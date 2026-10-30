@@ -9,15 +9,17 @@ manager should be used inside a task" and, unawaited, only shows up as a stray
 
 import asyncio
 import threading
+from types import SimpleNamespace
 
 import pytest
 from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 
 from src.webui.botops import run_extension_op, sync_commands
-from src.webui.context import WebUIContext
+from src.webui.context import WebUIContext, build_module_to_extension_map
 from src.webui.routes.extensions import create_router
 from src.webui.routes.servers import _try_reload_extension_for_module
+from src.webui.routes.servers import create_router as create_servers_router
 
 
 class _FakeBot:
@@ -140,3 +142,132 @@ async def test_reload_route_dispatches_and_syncs_once(bot_loop):
     assert all(call[2] is bot_loop for call in bot.calls)
     # One sync for the reload, not the two unawaited ones the client would fire.
     assert bot.sync_calls == [(None, bot_loop)]
+
+
+# ── Per-guild module toggle / save ──────────────────────────────────────
+#
+# Module commands are scoped to the guilds where the module is enabled, so
+# flipping a module reloads the extensions that read it (re-scoping their
+# commands) and then syncs that guild — otherwise Discord keeps showing the
+# old set until a restart.
+
+
+class _GuildAdminCtx(WebUIContext):
+    """Grants guild admin and keeps the config in memory instead of on disk."""
+
+    def __init__(self, *args, config: dict, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.config = config
+
+    def require_guild_admin(self, request, guild_id):  # noqa: ARG002 — signature parity
+        return SimpleNamespace(username="admin", user_id="1")
+
+    def get_full_config(self) -> dict:
+        return self.config
+
+    def mutate_config(self, mutator) -> dict:
+        mutator(self.config)
+        return self.config
+
+
+@pytest.fixture
+def module_map(monkeypatch):
+    """Point ``moduleUtils`` at two fake extensions (no real package gets purged)."""
+    import src.webui.routes.servers as servers_routes
+
+    mapping = {
+        "moduleUtils": ["extensions.fake_admin", "extensions.fake_polls"],
+        "moduleXp": ["extensions.fake_xp"],
+    }
+    monkeypatch.setattr(servers_routes, "build_module_to_extension_map", lambda: mapping)
+
+
+def _servers_client(bot, loop, config: dict) -> TestClient:
+    app = FastAPI()
+    ctx = _GuildAdminCtx(bot=bot, bot_loop=loop, oauth=None, config=config)  # type: ignore[arg-type]
+    app.include_router(create_servers_router(ctx))
+    return TestClient(app)
+
+
+async def test_toggle_reloads_every_extension_of_the_module_then_syncs_the_guild(
+    bot_loop, module_map
+):
+    bot = _FakeBot()
+    config: dict = {"config": {}, "servers": {"42": {}}}
+
+    with _servers_client(bot, bot_loop, config) as client:
+        body = client.post(
+            "/api/servers/42/modules/moduleUtils/toggle",
+            json={"module": "moduleUtils", "enabled": True},
+        ).json()
+
+    assert config["servers"]["42"]["moduleUtils"] == {"enabled": True}
+    assert [(a, n) for a, n, _, _ in bot.calls] == [
+        ("reload", "extensions.fake_admin"),
+        ("reload", "extensions.fake_polls"),
+    ]
+    assert body["reload"]["reloaded"] == "extensions.fake_admin, extensions.fake_polls"
+    assert body["commandSync"] == {"synced": True, "error": None}
+    assert bot.sync_calls == [([42], bot_loop)]
+
+
+async def test_toggle_leaves_extensions_disabled_in_the_list_alone(bot_loop, module_map):
+    # reload_extension *loads* an extension that isn't loaded: reloading a
+    # disabled one would switch it back on behind the developer's back.
+    bot = _FakeBot()
+    config: dict = {"config": {"extensions": {"extensions.fake_polls": False}}, "servers": {}}
+
+    with _servers_client(bot, bot_loop, config) as client:
+        client.post(
+            "/api/servers/42/modules/moduleUtils/toggle",
+            json={"module": "moduleUtils", "enabled": False},
+        )
+
+    assert [(a, n) for a, n, _, _ in bot.calls] == [("reload", "extensions.fake_admin")]
+
+
+async def test_toggle_does_not_sync_after_a_failed_reload(bot_loop, module_map):
+    # The client may be missing the failed extension's commands: a sync would
+    # delete them from Discord.
+    bot = _FakeBot()
+    bot.fail = RuntimeError("bad extension")
+
+    with _servers_client(bot, bot_loop, {"config": {}, "servers": {}}) as client:
+        body = client.post(
+            "/api/servers/42/modules/moduleXp/toggle",
+            json={"module": "moduleXp", "enabled": True},
+        ).json()
+
+    assert body["reload"]["error"] == (
+        "Échec du rechargement : extensions.fake_xp (RuntimeError). Voir les logs."
+    )
+    assert "commandSync" not in body
+    assert bot.sync_calls == []
+
+
+async def test_module_save_syncs_only_when_it_flips_the_enabled_state(bot_loop, module_map):
+    bot = _FakeBot()
+    config: dict = {"config": {}, "servers": {"42": {"moduleXp": {"enabled": True}}}}
+
+    with _servers_client(bot, bot_loop, config) as client:
+        unchanged = client.put(
+            "/api/servers/42/modules/moduleXp", json={"config": {"enabled": True, "x": 1}}
+        ).json()
+        flipped = client.put(
+            "/api/servers/42/modules/moduleXp", json={"config": {"enabled": False, "x": 1}}
+        ).json()
+
+    assert "commandSync" not in unchanged
+    assert flipped["commandSync"] == {"synced": True, "error": None}
+    assert bot.sync_calls == [([42], bot_loop)]
+    assert len(bot.calls) == 2  # both saves still reload the extension
+
+
+def test_module_map_lists_every_extension_reading_a_shared_module():
+    mapping = build_module_to_extension_map()
+    assert mapping["moduleUtils"] == [
+        "extensions.admin",
+        "extensions.polls",
+        "extensions.reminders",
+    ]
+    assert mapping["moduleXp"] == ["extensions.xp"]

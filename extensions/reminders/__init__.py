@@ -40,6 +40,7 @@ from features.reminders import Reminder, ReminderRepository
 from src.core import logging as logutil
 from src.core.config import load_config
 from src.discord_ext.messages import fetch_user_safe, send_error
+from src.discord_ext.scopes import guild_scopes
 
 SNOOZE_PREFIX = "reminder_snooze"
 SNOOZE_MINUTES = 10
@@ -49,7 +50,6 @@ _SNOOZE_RE = re.compile(rf"^{SNOOZE_PREFIX}:(\d+):([0-9a-fA-F]+)$")
 
 logger = logutil.init_logger(__name__)
 _, _module_config, enabled_servers = load_config("moduleUtils")
-enabled_servers_int = [int(s) for s in enabled_servers]  # type: ignore[misc]
 
 
 def _snooze_minutes(guild_id: str | int | None) -> int:
@@ -116,7 +116,7 @@ class RemindersExtension(Extension):
         sub_cmd_name="set",
         description="Gère les rappels pour voter",
         sub_cmd_description="Ajoute un rappel",
-        scopes=enabled_servers_int,  # type: ignore
+        scopes=guild_scopes(enabled_servers),
     )
     @slash_option(
         name="tache",

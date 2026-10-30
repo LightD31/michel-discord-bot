@@ -38,7 +38,6 @@ class SuggestionsConfig(SchemaBase):
 
 
 _, module_config, enabled_servers = load_config("moduleSuggestions")
-enabled_servers_int = [int(s) for s in enabled_servers]  # type: ignore[misc]
 
 # Persistent button namespace: suggvote:{sugg_id}:{up|down}
 VOTE_PREFIX = "suggvote"

@@ -19,6 +19,7 @@ from src.core.errors import DatabaseError
 from src.discord_ext.autocomplete import is_guild_enabled
 from src.discord_ext.embeds import Colors
 from src.discord_ext.messages import require_guild, send_error, send_success
+from src.discord_ext.scopes import guild_scopes
 from src.integrations.uptime_kuma import MonitorStatus
 
 from ._common import (
@@ -53,7 +54,11 @@ class CommandsMixin:
         value = value.strip()
         return int(value) if value.isdigit() else None
 
-    @slash_command(name="uptime", description="Les commandes de surveillance Uptime Kuma")
+    @slash_command(
+        name="uptime",
+        description="Les commandes de surveillance Uptime Kuma",
+        scopes=guild_scopes(enabled_servers),
+    )
     @slash_default_member_permission(Permissions.ADMINISTRATOR)
     async def uptime_command(self, ctx: SlashContext) -> None:
         pass

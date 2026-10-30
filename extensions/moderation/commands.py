@@ -28,12 +28,13 @@ from features.moderation import (
 )
 from src.discord_ext.embeds import Colors, format_discord_timestamp
 from src.discord_ext.messages import require_guild, send_error, send_success
+from src.discord_ext.scopes import guild_scopes
 
 from ._common import (
     AUTOMOD_MODERATOR_ID,
     TYPE_LABELS,
     can_moderate,
-    enabled_servers_int,
+    enabled_servers,
     get_guild_settings,
     logger,
 )
@@ -89,7 +90,7 @@ class CommandsMixin:
     @slash_command(
         name="warn",
         description="Avertir un membre",
-        scopes=enabled_servers_int,  # type: ignore
+        scopes=guild_scopes(enabled_servers),
     )
     @slash_option(
         "membre",
@@ -137,7 +138,7 @@ class CommandsMixin:
     @slash_command(
         name="timeout",
         description="Exclure temporairement un membre (timeout)",
-        scopes=enabled_servers_int,  # type: ignore
+        scopes=guild_scopes(enabled_servers),
     )
     @slash_option(
         "membre",
@@ -210,7 +211,7 @@ class CommandsMixin:
     @slash_command(
         name="untimeout",
         description="Lever l'exclusion temporaire d'un membre",
-        scopes=enabled_servers_int,  # type: ignore
+        scopes=guild_scopes(enabled_servers),
     )
     @slash_option(
         "membre", "Membre concerné", opt_type=OptionType.USER, required=True, argument_name="member"
@@ -243,7 +244,7 @@ class CommandsMixin:
     @slash_command(
         name="kick",
         description="Expulser un membre",
-        scopes=enabled_servers_int,  # type: ignore
+        scopes=guild_scopes(enabled_servers),
     )
     @slash_option(
         "membre",
@@ -286,7 +287,7 @@ class CommandsMixin:
     @slash_command(
         name="ban",
         description="Bannir un membre",
-        scopes=enabled_servers_int,  # type: ignore
+        scopes=guild_scopes(enabled_servers),
     )
     @slash_option(
         "membre", "Membre à bannir", opt_type=OptionType.USER, required=True, argument_name="member"
@@ -344,7 +345,7 @@ class CommandsMixin:
     @slash_command(
         name="unban",
         description="Révoquer le bannissement d'un utilisateur",
-        scopes=enabled_servers_int,  # type: ignore
+        scopes=guild_scopes(enabled_servers),
     )
     @slash_option(
         "utilisateur_id",
@@ -408,7 +409,7 @@ class CommandsMixin:
         description="Consulter et gérer l'historique de modération",
         sub_cmd_name="list",
         sub_cmd_description="Lister les sanctions d'un membre",
-        scopes=enabled_servers_int,  # type: ignore
+        scopes=guild_scopes(enabled_servers),
     )
     @slash_option(
         "membre", "Membre concerné", opt_type=OptionType.USER, required=True, argument_name="member"

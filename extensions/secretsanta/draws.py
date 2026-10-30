@@ -5,7 +5,6 @@ from datetime import datetime
 
 from interactions import (
     Embed,
-    IntegrationType,
     OptionType,
     Permissions,
     SlashContext,
@@ -22,8 +21,9 @@ from src.core import logging as logutil
 from src.core.config import load_discord2name
 from src.discord_ext.embeds import Colors
 from src.discord_ext.messages import edit_message_if_changed, fetch_user_safe, send_error
+from src.discord_ext.scopes import guild_scopes
 
-from ._common import DATA_DIR, create_join_buttons, get_context_id
+from ._common import DATA_DIR, create_join_buttons, enabled_servers, get_context_id
 
 logger = logutil.init_logger(__name__)
 
@@ -90,8 +90,7 @@ class DrawsMixin:
     @slash_command(
         name="secretsanta",
         description="Commandes du Père Noël Secret",
-        dm_permission=True,
-        integration_types=[IntegrationType.GUILD_INSTALL, IntegrationType.USER_INSTALL],
+        scopes=guild_scopes(enabled_servers),
         sub_cmd_name="draw",
         sub_cmd_description="Effectue le tirage au sort",
     )
@@ -242,8 +241,7 @@ class DrawsMixin:
     @slash_command(
         name="secretsanta",
         description="Commandes du Père Noël Secret",
-        dm_permission=True,
-        integration_types=[IntegrationType.GUILD_INSTALL, IntegrationType.USER_INSTALL],
+        scopes=guild_scopes(enabled_servers),
         sub_cmd_name="reveal",
         sub_cmd_description="Révèle les attributions (admin uniquement)",
     )
@@ -281,8 +279,7 @@ class DrawsMixin:
     @slash_command(
         name="secretsanta",
         description="Commandes du Père Noël Secret",
-        dm_permission=True,
-        integration_types=[IntegrationType.GUILD_INSTALL, IntegrationType.USER_INSTALL],
+        scopes=guild_scopes(enabled_servers),
         sub_cmd_name="remind",
         sub_cmd_description="Renvoie votre attribution par DM",
     )
