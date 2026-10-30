@@ -82,7 +82,8 @@
             "uptimeKumaToken": ""
         },
         "vlrgg": {
-            "vlrggApiUrl": ""
+            "vlrggApiUrl": "",
+            "vlrggRateLimitPerMinute": 18
         },
         "webui": {
             "enabled": false,
@@ -321,7 +322,8 @@
             "moduleVlrgg": {
                 "enabled": false,
                 "notificationChannelId": "",
-                "teams": []
+                "teams": [],
+                "reminderMinutes": 15
             },
             "moduleWelcome": {
                 "enabled": false,

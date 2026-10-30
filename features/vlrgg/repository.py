@@ -1,5 +1,6 @@
-"""VLR.gg repository — live-match message state persisted between restarts."""
+"""VLR.gg repositories — live-match messages and sent reminders, persisted between restarts."""
 
+from datetime import UTC, datetime
 from typing import Any
 
 from src.core.db import mongo_manager, translates_db_errors
@@ -23,3 +24,25 @@ class VlrggLiveRepository:
     @translates_db_errors
     async def delete(self, match_id: str) -> None:
         await self._col().delete_one({"_id": match_id})
+
+
+class VlrggReminderRepository:
+    """Matchs pour lesquels le rappel d'avant-match a déjà été envoyé (un par serveur)."""
+
+    def __init__(self, guild_id) -> None:
+        self._guild_id = str(guild_id)
+
+    def _col(self):
+        return mongo_manager.get_guild_collection(self._guild_id, "vlrgg_reminders")
+
+    @translates_db_errors
+    async def was_sent(self, match_id: str) -> bool:
+        return await self._col().find_one({"_id": match_id}) is not None
+
+    @translates_db_errors
+    async def mark_sent(self, match_id: str, team_name: str) -> None:
+        await self._col().replace_one(
+            {"_id": match_id},
+            {"_id": match_id, "team_name": team_name, "sent_at": datetime.now(UTC)},
+            upsert=True,
+        )
