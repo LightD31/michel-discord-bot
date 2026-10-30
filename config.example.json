@@ -321,7 +321,8 @@
             "moduleVlrgg": {
                 "enabled": false,
                 "notificationChannelId": "",
-                "teams": []
+                "teams": [],
+                "reminderMinutes": 15
             },
             "moduleWelcome": {
                 "enabled": false,
