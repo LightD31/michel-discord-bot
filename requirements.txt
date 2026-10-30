@@ -105,6 +105,8 @@ isodate==0.7.2
     # via michel-discord-bot (pyproject.toml)
 jiter==0.17.0
     # via openai
+ldap3==2.9.1
+    # via michel-discord-bot (pyproject.toml)
 mcstatus==14.2.0
     # via michel-discord-bot (pyproject.toml)
 motor==3.7.1
@@ -137,6 +139,8 @@ propcache==0.5.4
     # via
     #   aiohttp
     #   yarl
+pyasn1==0.6.5
+    # via ldap3
 pycparser==3.0 ; implementation_name != 'PyPy'
     # via cffi
 pydantic==2.13.5

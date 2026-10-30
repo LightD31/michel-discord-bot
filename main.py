@@ -50,7 +50,7 @@ if not TOKEN:
 # matching intent here when a new extension listens to a new gateway event.
 INTENTS = (
     interactions.Intents.GUILDS  # guild/channel cache — required baseline
-    | interactions.Intents.GUILD_MEMBERS  # welcome + userinfo member join/leave/update
+    | interactions.Intents.GUILD_MEMBERS  # welcome + userinfo member events, lldap role sync
     | interactions.Intents.GUILD_MESSAGES  # feur, xp leveling, automod, AI mention replies
     | interactions.Intents.MESSAGE_CONTENT  # feur keyword match, automod filters, AI context
     | interactions.Intents.GUILD_MESSAGE_REACTIONS  # giveaway, polls, starboard

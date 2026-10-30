@@ -164,6 +164,18 @@
                 "mentionReplies": false,
                 "mentionCooldownSeconds": 20
             },
+            "moduleLldap": {
+                "enabled": false,
+                "lldapUrl": "",
+                "lldapLdapUrl": "",
+                "lldapBaseDn": "",
+                "lldapAdminUsername": "",
+                "lldapAdminPassword": "",
+                "lldapDiscordAttribute": "discordid",
+                "lldapRoleGroups": {},
+                "lldapServiceName": "",
+                "lldapPublicUrl": ""
+            },
             "moduleMDI": {
                 "enabled": false,
                 "notificationChannelId": "",
