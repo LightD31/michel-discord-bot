@@ -74,6 +74,7 @@ A modular, multi-guild Discord bot built with **interactions.py**. Michel ships 
 | **MDI Tracker** | Mythic Dungeon International (World of Warcraft) tracking via the Raider.IO API. |
 | **Shlink** | Shortens the external links the bot posts (RSS entries, YouTube uploads, Embed manager links, MDI, Streamlabs, recap messages) through a self-hosted [Shlink](https://shlink.io) instance, and manages the short links from the dashboard. |
 | **Uptime** | Mirrors Uptime Kuma status changes (down, back up, maintenance) into channels by polling Kuma's `/metrics` with a read-only API key, and reports the bot's own liveness to a Kuma push monitor. |
+| **LLDAP** | Self-service [LLDAP](https://github.com/lldap/lldap) accounts for members holding a mapped role: `/register <email> [username]` creates the account with a temporary password, and group membership follows the Discord roles (synced every 10 min, or `/lldap sync` for admins). Each server configures its own LLDAP instance; needs a custom string user attribute (`discordid` by default) and an `lldap_admin` account. Ported from [LLDAP-Discord](https://github.com/JaidenW/LLDAP-Discord). |
 | **Minecraft** | Server status monitoring and player stats via SFTP/RCON. *(disabled by default)* |
 | **Satisfactory** | Game server status via pyfactorybridge. |
 
@@ -105,7 +106,7 @@ extensions/             # Discord-facing layer — one file or package per featu
 │   ├── voice.py
 │   ├── commands.py
 │   └── leaderboard.py
-└── …                   #   35 extensions total (see Features above)
+└── …                   #   37 extensions total (see Features above)
 
 features/               # Domain logic — pure Python, no Discord imports
 ├── xp/                 #   level curve, TTL cache, rank card, repository
@@ -132,6 +133,7 @@ src/                    # Shared infrastructure
 │   ├── spotify.py      #   Spotipy auth with lazy client, vote counting
 │   ├── notion.py       #   Notion API client
 │   ├── shlink.py       #   Shlink URL shortener (CRUD + shortening cache)
+│   ├── lldap.py        #   LLDAP GraphQL client + LDAP password reset
 │   └── minecraft_rcon.py
 ├── webui/              # FastAPI dashboard
 │   ├── app.py          #   router assembly + session restore on startup

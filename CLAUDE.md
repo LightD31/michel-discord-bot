@@ -53,12 +53,12 @@ docker compose up -d
 
 Three-layer split (~38k lines, excluding tests). Respect the boundaries:
 
-- **`extensions/`** — Discord-facing layer (36 entries). Each is either `extensions/<name>.py` or a package `extensions/<name>/__init__.py` containing an `interactions.Extension` subclass plus a module-level `setup(bot)` factory. Auto-discovered by `main.py` at startup.
+- **`extensions/`** — Discord-facing layer (37 entries). Each is either `extensions/<name>.py` or a package `extensions/<name>/__init__.py` containing an `interactions.Extension` subclass plus a module-level `setup(bot)` factory. Auto-discovered by `main.py` at startup.
 - **`features/`** — Pure domain logic and persistence. **Must not import `interactions`** — this is what makes features unit-testable. Domain code returns plain data (bytes, dicts, models) and lets the extension build Discord objects. Each feature owns a `repository.py` that reads/writes MongoDB and translates driver exceptions into `src.core.errors.DatabaseError` so extensions never import `pymongo` — decorate methods with `@translates_db_errors` from `src.core.db` (see `features/xp/repository.py`), or raise `DatabaseError` explicitly with a contextual message (see `features/moderation/repository.py`). `bson` counts as the driver too: a repository method taking an id a user typed accepts a `str` and parses the `ObjectId` itself, so a malformed id is an ordinary "not found" rather than an `InvalidId` escaping into a command handler.
 - **`src/`** — Shared infrastructure.
   - `src/core/` is framework-free (config, db, http, logging, errors, images, text). Strictly typed under mypy.
   - `src/discord_ext/` holds interactions.py-dependent UI helpers (embeds, paginator, autocomplete, persistent messages). Renderers shared between an extension and a WebUI route also live here (e.g. `rolemenus.py`).
-  - `src/integrations/` holds external-API clients with **no Discord imports** (Spotify, Notion, Minecraft RCON).
+  - `src/integrations/` holds external-API clients with **no Discord imports** (Spotify, Notion, Minecraft RCON, LLDAP).
   - `src/webui/` is the optional FastAPI dashboard (run in a daemon thread alongside the bot).
 
 ### Extension loading

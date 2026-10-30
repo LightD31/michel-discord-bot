@@ -37,6 +37,7 @@ dependencies = [
     "nbtlib==2.0.4",
     "pyfactorybridge",
     "rdoclient",
+    "ldap3>=2.9.1",
 
     # Utilities
     "pytz",
