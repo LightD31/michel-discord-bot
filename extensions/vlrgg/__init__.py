@@ -5,19 +5,21 @@ via l'API VLR.gg (source unique).
 
 Configuration par serveur via le dashboard web (moduleVlrgg):
 - notificationChannelId: salon pour les notifications live
+- reminderMinutes: rappel avant match, en minutes (0 = désactivé)
 - teams: liste d'équipes, chacune avec:
     - name: nom de l'équipe
     - vlrTeamId: ID VLR.gg (requis)
     - channelMessageId: "channelId:messageId" pour le planning (optionnel)
 
 The class is assembled as a mixin composition so that each concern lives in its
-own module (``api``, ``embeds``, ``notifications``). Shared data classes,
-constants, and helpers are in :mod:`._common`.
+own module (``api``, ``embeds``, ``notifications``, ``reminders``, ``commands``).
+Shared data classes, constants, and helpers are in :mod:`._common`.
 """
 
 from interactions import Client, Extension, listen
 
 from ._common import (
+    DEFAULT_REMINDER_MINUTES,
     ServerState,
     TeamConfig,
     TeamState,
@@ -27,12 +29,23 @@ from ._common import (
     module_config,
 )
 from .api import ApiMixin
+from .commands import CommandsMixin
 from .embeds import EmbedsMixin
 from .notifications import NotificationsMixin
+from .reminders import RemindersMixin
 
 
-class VlrggExtension(ApiMixin, EmbedsMixin, NotificationsMixin, Extension):
-    """Discord extension combining VLR.gg API, embeds, and notification behaviours."""
+def _reminder_minutes(srv_config: dict) -> int:
+    try:
+        return max(int(srv_config.get("reminderMinutes", DEFAULT_REMINDER_MINUTES)), 0)
+    except (TypeError, ValueError):
+        return DEFAULT_REMINDER_MINUTES
+
+
+class VlrggExtension(
+    ApiMixin, EmbedsMixin, NotificationsMixin, RemindersMixin, CommandsMixin, Extension
+):
+    """Discord extension combining VLR.gg API, embeds, notifications, reminders and commands."""
 
     def __init__(self, bot: Client):
         self.bot: Client = bot
@@ -43,8 +56,10 @@ class VlrggExtension(ApiMixin, EmbedsMixin, NotificationsMixin, Extension):
         """Initialise les états par serveur et démarre les tâches planifiées."""
         try:
             await self._initialize_all_servers()
-            self.schedule.start()
-            self.live_update.start()
+            if not self.schedule.running:
+                self.schedule.start()
+            if not self.live_update.running:
+                self.live_update.start()
         except Exception as e:
             logger.error(f"Erreur lors de l'initialisation: {e}")
 
@@ -81,6 +96,7 @@ class VlrggExtension(ApiMixin, EmbedsMixin, NotificationsMixin, Extension):
                     team_config=team_cfg,
                     server_id=server_id,
                     notification_channel=server_state.notification_channel,
+                    reminder_minutes=_reminder_minutes(srv_config),
                 )
 
                 # Charger le message de planning; créer si manquant et channel connu

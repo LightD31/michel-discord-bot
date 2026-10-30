@@ -34,6 +34,15 @@ class VlrggConfig(SchemaBase):
             "Liste des équipes Valorant à suivre. Chaque équipe nécessite un nom et un ID VLR.gg."
         ),
     )
+    reminderMinutes: int = ui(
+        "Rappel avant match (minutes)",
+        "number",
+        default=15,
+        description=(
+            "Délai avant le début d'un match pour poster un rappel dans le salon de "
+            "notifications (face-à-face récents, maps des deux équipes). 0 = désactivé."
+        ),
+    )
 
 
 logger = logutil.init_logger(__name__)
@@ -47,6 +56,12 @@ MAX_PAST_MATCHES = 6
 MAX_UPCOMING_MATCHES = 6
 SCHEDULE_INTERVAL_MINUTES = 2
 LIVE_UPDATE_INTERVAL_MINUTES = 0.5
+DEFAULT_REMINDER_MINUTES = 15
+# Fenêtre des bilans par map (rappels, /vlr equipe)
+MAP_POOL_DAYS = 180
+# Un match qui vient de finir peut encore s'afficher « LIVE » quelques secondes
+# côté API : on retente le résumé final au cycle live suivant (30 s), au plus N fois.
+FINALIZE_MAX_ATTEMPTS = 10
 
 # ── Dataclasses ───────────────────────────────────────────────────────────────
 
@@ -84,6 +99,15 @@ class TeamConfig:
 
 
 @dataclass
+class PendingFinal:
+    """Match terminé dont le message live attend le résumé définitif."""
+
+    message: Any
+    match_data: dict[str, Any]
+    attempts: int = 0
+
+
+@dataclass
 class TeamState:
     """État de suivi d'une équipe."""
 
@@ -91,8 +115,10 @@ class TeamState:
     server_id: str = ""
     schedule_message: Any = None
     notification_channel: Any = None
+    reminder_minutes: int = DEFAULT_REMINDER_MINUTES
     ongoing_matches: dict[str, Any] = field(default_factory=dict)
     live_messages: dict[str, Any] = field(default_factory=dict)
+    ending_matches: dict[str, PendingFinal] = field(default_factory=dict)
 
 
 @dataclass
@@ -149,6 +175,10 @@ __all__ = [
     "MAX_UPCOMING_MATCHES",
     "SCHEDULE_INTERVAL_MINUTES",
     "LIVE_UPDATE_INTERVAL_MINUTES",
+    "DEFAULT_REMINDER_MINUTES",
+    "MAP_POOL_DAYS",
+    "FINALIZE_MAX_ATTEMPTS",
+    "PendingFinal",
     "TeamConfig",
     "TeamState",
     "ServerState",

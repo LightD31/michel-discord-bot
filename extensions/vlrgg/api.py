@@ -4,11 +4,7 @@ from typing import Any
 
 from interactions import Embed
 
-from features.vlrgg import (
-    VlrggLiveRepository,
-    extract_match_id_from_url,
-    fetch_match_details,
-)
+from features.vlrgg import VlrggLiveRepository, match_id_of
 from features.vlrgg import (
     fetch_all_team_data as vlrgg_fetch_all,
 )
@@ -21,16 +17,18 @@ class ApiMixin:
 
     # ── Fetch helpers ─────────────────────────────────────────────────────────
 
-    async def _fetch_team_schedule(self, tc: TeamConfig) -> tuple[list[Embed], dict[str, Any]]:
-        """Récupère le planning avec suivi des matchs en cours via VLR.gg."""
+    async def _fetch_team_schedule(
+        self, tc: TeamConfig
+    ) -> tuple[list[Embed], dict[str, Any], dict[str, Any]]:
+        """Récupère le planning, les matchs en cours et les données brutes via VLR.gg."""
         vlr_data = await self._fetch_vlrgg_data(tc)
         if not vlr_data:
             logger.warning(f"{tc.name}: aucune donnée VLR.gg disponible")
-            return [], {}
+            return [], {}, {}
 
         embeds = self._build_vlrgg_embeds(vlr_data, tc.name)
         ongoing = self._extract_vlrgg_ongoing(vlr_data)
-        return embeds, ongoing
+        return embeds, ongoing, vlr_data
 
     async def _fetch_vlrgg_data(self, tc: TeamConfig) -> dict[str, Any] | None:
         """Récupère les données VLR.gg pour une équipe."""
@@ -64,108 +62,11 @@ class ApiMixin:
 
     @staticmethod
     def _make_vlr_match_id(match: dict[str, Any]) -> str:
-        """Génère un ID unique pour un match VLR.gg."""
-        match_url = match.get("match_page", "")
-        url_id = extract_match_id_from_url(match_url)
+        """Génère un ID unique pour un match VLR.gg (format persisté en base)."""
+        url_id = match_id_of(match)
         if url_id:
             return f"vlrgg_{url_id}"
         return f"vlrgg_{match.get('team1', '')}_{match.get('team2', '')}"
-
-    # ── Match details formatting ──────────────────────────────────────────────
-
-    def _format_match_details_maps(self, details: dict[str, Any]) -> str | None:
-        """Formate les scores par map depuis les détails d'un match."""
-        maps_data = details.get("maps", [])
-        if not maps_data:
-            return None
-
-        lines = []
-        for map_info in maps_data:
-            map_name = map_info.get("map_name", map_info.get("map", "???"))
-            if map_name.lower() in ("tbd", "n/a", ""):
-                continue
-
-            score_data = map_info.get("score", {})
-            if isinstance(score_data, dict):
-                t1_score = score_data.get("team1", "?")
-                t2_score = score_data.get("team2", "?")
-            else:
-                t1_score = map_info.get("team1_score", "?")
-                t2_score = map_info.get("team2_score", "?")
-
-            try:
-                s1, s2 = int(t1_score), int(t2_score)
-                if s1 > s2:
-                    score_str = f"**{s1}**-{s2}"
-                elif s2 > s1:
-                    score_str = f"{s1}-**{s2}**"
-                else:
-                    score_str = f"{s1}-{s2}"
-            except (ValueError, TypeError):
-                score_str = f"{t1_score}-{t2_score}"
-
-            duration = map_info.get("duration", "")
-            dur_str = f" ({duration})" if duration else ""
-            lines.append(f"**{map_name}**: {score_str}{dur_str}")
-
-        return "\n".join(lines) if lines else None
-
-    def _format_match_details_top_players(self, details: dict[str, Any]) -> str | None:
-        """Formate les meilleurs joueurs depuis les détails d'un match."""
-        all_players: dict[str, dict[str, Any]] = {}
-        maps_data = details.get("maps", [])
-
-        for map_info in maps_data:
-            players_data = map_info.get("players", {})
-            if isinstance(players_data, dict):
-                player_lists = list(players_data.values())
-            else:
-                player_lists = []
-
-            for players in player_lists:
-                if not isinstance(players, list):
-                    continue
-                for p in players:
-                    name = p.get("name", p.get("player", ""))
-                    if not name:
-                        continue
-                    rating_str = p.get("rating", p.get("average_combat_score", "0"))
-                    try:
-                        rating_val = float(str(rating_str).replace(",", "."))
-                    except (ValueError, TypeError):
-                        rating_val = 0.0
-
-                    if name not in all_players:
-                        all_players[name] = {
-                            "ratings": [],
-                            "kills": 0,
-                            "deaths": 0,
-                            "assists": 0,
-                        }
-                    all_players[name]["ratings"].append(rating_val)
-                    try:
-                        all_players[name]["kills"] += int(p.get("kills", 0))
-                        all_players[name]["deaths"] += int(p.get("deaths", 0))
-                        all_players[name]["assists"] += int(p.get("assists", 0))
-                    except (ValueError, TypeError):
-                        pass
-
-        if not all_players:
-            return None
-
-        sorted_players = sorted(
-            all_players.items(),
-            key=lambda x: sum(x[1]["ratings"]) / len(x[1]["ratings"]) if x[1]["ratings"] else 0,
-            reverse=True,
-        )
-
-        lines = []
-        for name, stats in sorted_players[:3]:
-            avg_rating = sum(stats["ratings"]) / len(stats["ratings"]) if stats["ratings"] else 0
-            k, d, a = stats["kills"], stats["deaths"], stats["assists"]
-            lines.append(f"**{name}** — {avg_rating:.1f} rating | {k}/{d}/{a} K/D/A")
-
-        return "\n".join(lines) if lines else None
 
     # ── Mongo persistence ─────────────────────────────────────────────────────
 
@@ -235,16 +136,3 @@ class ApiMixin:
                     f"Serveur {server_id}: impossible de restaurer le message {message_id}: {e}"
                 )
                 await self._delete_live_match(server_id, match_id)
-
-    # ── Fetch match details (for ended matches) ───────────────────────────────
-
-    async def _fetch_match_details_safe(self, match_url: str) -> dict[str, Any] | None:
-        """Tente de récupérer les détails d'un match depuis son URL, renvoie None si échec."""
-        vlr_match_id = extract_match_id_from_url(match_url)
-        if not vlr_match_id:
-            return None
-        try:
-            return await fetch_match_details(vlr_match_id)
-        except Exception as e:
-            logger.warning(f"Impossible de récupérer les détails du match {vlr_match_id}: {e}")
-            return None
