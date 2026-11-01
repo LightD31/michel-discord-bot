@@ -5,7 +5,7 @@
 # with UV_TOOL_VERSION in .github/workflows/ci.yml.
 FROM ghcr.io/astral-sh/uv:0.13.6@sha256:af22a52f5eafef3d78e551599d405c02df61919d18028f0cea8eda93bc9986d0 AS uv
 
-FROM python:3.14-slim@sha256:cd89c30eda26ee911a4611b18680086e0ea42e6f5f8cbe653d07fa7958c9cec8 AS builder
+FROM python:3.15-slim@sha256:94d3426f1def7db4a106a232ac121bfd975393e5dfd40a619b955fae45fe7913 AS builder
 
 # Bytecode is compiled at install time (as pip did) for a faster first start;
 # copy mode because the uv cache mount sits on another filesystem; the image's
@@ -30,7 +30,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --locked --no-dev
 
 # ─── runtime ───────────────────────────────────────────────────────────
-FROM python:3.14-slim@sha256:cd89c30eda26ee911a4611b18680086e0ea42e6f5f8cbe653d07fa7958c9cec8 AS runtime
+FROM python:3.15-slim@sha256:94d3426f1def7db4a106a232ac121bfd975393e5dfd40a619b955fae45fe7913 AS runtime
 
 LABEL org.opencontainers.image.source="https://github.com/LightD31/michel-discord-bot" \
       org.opencontainers.image.description="Michel — modular multi-guild Discord bot (interactions.py + MongoDB + optional FastAPI dashboard)." \
