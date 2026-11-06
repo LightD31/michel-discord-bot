@@ -88,10 +88,20 @@ To the extent permitted by applicable law, the Operator is not liable for any in
 
 How the Bot handles personal data is described in the [Privacy Policy](Privacy.md), which is part of these terms.
 
-## 13. Changes to these terms
+## 13. Governing law and disputes
+
+These terms are governed by **French law**.
+
+If you use the Bot as a consumer, you also keep the protection of the mandatory provisions of the law of the country where you live, wherever that protection is greater.
+
+In case of a disagreement, please first contact the Operator at the address in section 15, so that an amicable solution can be sought.
+
+Failing that, any dispute relating to these terms or to the use of the Bot falls under the jurisdiction of the competent French courts. This does not affect any mandatory rule that lets a consumer go to the courts of the place where they live.
+
+## 14. Changes to these terms
 
 These terms may change as the Bot evolves. The current version is always the one published in the Bot's repository, with its effective date at the top. Continuing to use the Bot after a change means you accept the new terms.
 
-## 14. Contact
+## 15. Contact
 
 For any question about these terms, write to **michel.f40ls@wholeakedmyemail.fr**.
