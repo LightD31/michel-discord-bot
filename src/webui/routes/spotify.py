@@ -34,6 +34,7 @@ from src.integrations.spotify import (
     build_oauth,
     fetch_account_summary,
     get_token_status,
+    run_spotify,
     sp,
 )
 from src.webui.context import WebUIContext
@@ -79,7 +80,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
         status = get_token_status()
         status["callback_url"] = _callback_url()
         if status.get("authorized"):
-            status["account"] = fetch_account_summary()
+            status["account"] = await fetch_account_summary()
         return JSONResponse(status)
 
     @router.get("/api/servers/{server_id}/spotify/stats")
@@ -153,7 +154,8 @@ def create_router(ctx: WebUIContext) -> APIRouter:
 
         try:
             oauth = build_oauth(redirect_uri=_callback_url())
-            oauth.get_access_token(code=code, as_dict=False, check_cache=False)
+            # Blocking HTTP + token cache write: on the Spotify worker, never the loop.
+            await run_spotify(oauth.get_access_token, code=code, as_dict=False, check_cache=False)
         except Exception as e:
             logger.error("Spotify token exchange failed: %s", e)
             return _result_page(
@@ -162,7 +164,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
             )
 
         sp.reset()
-        account = fetch_account_summary()
+        account = await fetch_account_summary()
         logger.info(
             "Spotify re-authorized via WebUI (account=%s)",
             account.get("id") if account else "?",

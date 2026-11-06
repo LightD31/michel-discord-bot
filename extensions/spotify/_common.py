@@ -5,6 +5,7 @@ Kept separate from ``__init__.py`` so submodules (``auth``, ``playlist``,
 package root.
 """
 
+import asyncio
 import io
 import os
 import re
@@ -17,12 +18,13 @@ import interactions
 from interactions import Message
 
 from features.spotify import SpotifyRepository
+from features.spotify import search as track_search
 from src.core import logging as logutil
 from src.core.config import config_store, load_config, load_discord2name
 from src.core.errors import ConfigError
 from src.core.http import http_client
 from src.discord_ext.embeds import Colors
-from src.integrations.spotify import sp
+from src.integrations.spotify import SPOTIFY_ERRORS, spotify_api
 from src.webui.public_links import (
     PUBLIC_FLAG,
     ensure_public_token,
@@ -157,9 +159,30 @@ DEV_GUILD = str(config.get("discord", {}).get("devGuildId") or "").strip() or No
 DATA_FOLDER = config["misc"]["dataFolder"]
 COOLDOWN_TIME = 1
 
-# ``sp`` is a lazy proxy from ``src.integrations.spotify`` — the real spotipy
-# client is built on first use so the bot still starts when the token cache is
-# missing. Re-authorize via the Web UI (``/api/spotify/auth/start``).
+# ``spotify_api`` (``src.integrations.spotify``) runs every spotipy call on a
+# worker thread — always ``await spotify_api.<method>(...)``, never the
+# synchronous client, which would block the event loop. The client is built on
+# first use so the bot still starts when the token cache is missing.
+# Re-authorize via the Web UI (``/api/spotify/auth/start``).
+
+
+# Discord drops an autocomplete answer after 3 s: give Spotify a little less.
+AUTOCOMPLETE_TIMEOUT_SECONDS = 2.5
+
+
+async def autocomplete_track_choices(query: str | None) -> list[dict[str, str]]:
+    """Choices for a song picker; a slow or failing Spotify yields a message, not an error."""
+    if not query:
+        return track_search.placeholder(track_search.PROMPT)
+    try:
+        result = await asyncio.wait_for(
+            spotify_api.search(query, limit=10, type="track", market="FR"),
+            timeout=AUTOCOMPLETE_TIMEOUT_SECONDS,
+        )
+    except (TimeoutError, *SPOTIFY_ERRORS) as e:
+        logger.warning("Spotify search failed for autocomplete: %s", e)
+        return track_search.placeholder(track_search.UNAVAILABLE)
+    return track_search.track_choices(result["tracks"]["items"])
 
 
 class EmbedType(Enum):

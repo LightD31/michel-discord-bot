@@ -4,6 +4,7 @@ from features.spotify.attribution import reattribution_map, unmapped_contributor
 from features.spotify.cooldown import VoteCooldown
 from features.spotify.duplicates import plan_duplicate_removal
 from features.spotify.repository import SpotifyRepository
+from features.spotify.search import track_choices
 from features.spotify.stats import PlaylistStats, aggregate
 from features.spotify.vote_reminder import MIN_VOTES, should_send_low_vote_reminder
 
@@ -16,5 +17,6 @@ __all__ = [
     "plan_duplicate_removal",
     "reattribution_map",
     "should_send_low_vote_reminder",
+    "track_choices",
     "unmapped_contributors",
 ]
