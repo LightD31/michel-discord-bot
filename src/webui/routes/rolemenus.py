@@ -6,7 +6,6 @@ Discord message via the bot client, so the menu stays in sync with what
 ``/rolemenu`` would produce.
 """
 
-import asyncio
 from datetime import datetime
 
 from fastapi import APIRouter, HTTPException, Request
@@ -139,12 +138,6 @@ async def _check_entries(ctx: WebUIContext, guild, session: Session, entries) ->
         raise HTTPException(status_code=400, detail=refusal)
 
 
-def _run_on_bot_loop(ctx: WebUIContext, coro):
-    bot_loop = ctx.require_bot_loop()
-    future = asyncio.run_coroutine_threadsafe(coro, bot_loop)
-    return asyncio.wrap_future(future)
-
-
 # ── Router factory ──────────────────────────────────────────────────
 
 
@@ -191,13 +184,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
             roles.sort(key=lambda x: -x["position"])  # higher position first
             return {"roles": roles}
 
-        try:
-            data = await _run_on_bot_loop(ctx, _fetch())
-        except HTTPException:
-            raise
-        except Exception as e:
-            logger.error("List roles failed for %s: %s", server_id, e)
-            raise HTTPException(status_code=500, detail=str(e)) from e
+        data = await ctx.call_bot(_fetch, what=f"list roles of guild {server_id}")
         return JSONResponse(data)
 
     @router.get("/api/servers/{server_id}/rolemenus")
@@ -207,8 +194,10 @@ def create_router(ctx: WebUIContext) -> APIRouter:
         try:
             menus = await repo.list()
         except Exception as e:
-            logger.error("List rolemenus failed for %s: %s", server_id, e)
-            raise HTTPException(status_code=500, detail=str(e)) from e
+            logger.exception("List rolemenus failed for %s: %s", server_id, e)
+            raise HTTPException(
+                status_code=500, detail="Erreur interne — détails dans les logs du bot."
+            ) from e
         return JSONResponse({"menus": [_menu_to_dict(m) for m in menus]})
 
     @router.post("/api/servers/{server_id}/rolemenus")
@@ -249,13 +238,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
             menu.message_id = str(sent.id)
             return menu
 
-        try:
-            menu = await _run_on_bot_loop(ctx, _create())
-        except HTTPException:
-            raise
-        except Exception as e:
-            logger.error("Create rolemenu failed for %s: %s", server_id, e)
-            raise HTTPException(status_code=500, detail=str(e)) from e
+        menu = await ctx.call_bot(_create, what=f"create a role menu in guild {server_id}")
         logger.info("Rolemenu created via WebUI for guild %s", server_id)
         return JSONResponse({"status": "ok", "menu": _menu_to_dict(menu)})
 
@@ -316,13 +299,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
             updated = await repo.get(menu_id)
             return updated
 
-        try:
-            menu = await _run_on_bot_loop(ctx, _update())
-        except HTTPException:
-            raise
-        except Exception as e:
-            logger.error("Update rolemenu failed for %s/%s: %s", server_id, menu_id, e)
-            raise HTTPException(status_code=500, detail=str(e)) from e
+        menu = await ctx.call_bot(_update, what=f"update role menu {menu_id} in guild {server_id}")
         logger.info("Rolemenu %s updated via WebUI for guild %s", menu_id, server_id)
         return JSONResponse({"status": "ok", "menu": _menu_to_dict(menu) if menu else None})
 
@@ -347,13 +324,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
                 except Exception as e:
                     logger.warning("Could not delete role menu message %s: %s", menu_id, e)
 
-        try:
-            await _run_on_bot_loop(ctx, _delete())
-        except HTTPException:
-            raise
-        except Exception as e:
-            logger.error("Delete rolemenu failed for %s/%s: %s", server_id, menu_id, e)
-            raise HTTPException(status_code=500, detail=str(e)) from e
+        await ctx.call_bot(_delete, what=f"delete role menu {menu_id} in guild {server_id}")
         logger.info("Rolemenu %s deleted via WebUI for guild %s", menu_id, server_id)
         return JSONResponse({"status": "ok"})
 

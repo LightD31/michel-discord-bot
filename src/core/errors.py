@@ -19,6 +19,8 @@ Tree
     - :class:`ValidationError`            — user-supplied input is invalid
 """
 
+from src.core.urls import redact_url, redact_urls_in
+
 
 class BotError(Exception):
     """Root of the bot's exception hierarchy."""
@@ -49,12 +51,15 @@ class HttpError(IntegrationError):
     """Raised by :func:`src.core.http.fetch` when an HTTP request ultimately fails.
 
     The final status code (if any) and URL are preserved so callers can log
-    without losing context.
+    without losing context. Both the URL and every URL inside the message are
+    redacted on construction (:mod:`src.core.urls`): the error ends up in log
+    lines and stored error fields, and must never carry a credential that was
+    passed as a query parameter or userinfo.
     """
 
     def __init__(self, message: str, *, url: str, status: int | None = None) -> None:
-        super().__init__(message)
-        self.url = url
+        super().__init__(redact_urls_in(message))
+        self.url = redact_url(url)
         self.status = status
 
     def __str__(self) -> str:

@@ -49,6 +49,16 @@ DEFAULT_BACKUP_HOUR = 4  # 04:00 local time
 _DEV_GUILD = load_config()[0].get("discord", {}).get("devGuildId")
 
 
+def effective_retention(requested: int | None, configured: int) -> int:
+    """How many backups a manual run keeps: the configured count, or more if asked.
+
+    ``/backup`` may raise retention for one run but never lower it: the run
+    prunes the oldest folders, so a ``max_backups:1`` would otherwise wipe the
+    whole history in one command.
+    """
+    return configured if requested is None else max(requested, configured)
+
+
 def _load_backup_config() -> dict:
     """Load the backup section from the global config."""
     try:
@@ -115,7 +125,7 @@ class BackupExtension(Extension):
     )
     @slash_option(
         name="max_backups",
-        description="Nombre de sauvegardes à conserver (par défaut : config)",
+        description="Nombre de sauvegardes à conserver (jamais moins que la config)",
         opt_type=OptionType.INTEGER,
         required=False,
         min_value=1,
@@ -124,7 +134,7 @@ class BackupExtension(Extension):
     async def backup_command(self, ctx: SlashContext, max_backups: int | None = None) -> None:
         """Slash command to trigger a backup manually (admin only)."""
         self._refresh_config()
-        effective_max = max_backups if max_backups is not None else self.max_backups
+        effective_max = effective_retention(max_backups, self.max_backups)
 
         await ctx.defer()
         try:
