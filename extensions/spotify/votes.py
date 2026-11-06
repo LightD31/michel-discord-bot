@@ -43,12 +43,13 @@ from ._common import (
     SERVERS,
     EmbedType,
     ServerData,
+    autocomplete_track_choices,
     count_votes,
     embed_message_vote,
     embed_message_vote_add,
     embed_song,
     enabled_servers,
-    sp,
+    spotify_api,
 )
 
 logger = logutil.init_logger(__name__)
@@ -89,7 +90,7 @@ class VotesMixin:
         votes = await server.repo.get_votes_doc(track_id)
         song = await server.repo.get_playlist_item(track_id)
         logger.debug("song : %s\ntrack_id : %s", song, track_id)
-        track = sp.track(track_id, market="FR")
+        track = await spotify_api.track(track_id, market="FR")
         conserver, supprimer, menfou, users = count_votes(votes["votes"], server.discord2name)
 
         total_votes = conserver + supprimer + menfou
@@ -156,7 +157,9 @@ class VotesMixin:
                 components=[],
                 logger=logger,
             )
-            sp.playlist_remove_all_occurrences_of_items(server.playlist_id, [track_id])
+            await spotify_api.playlist_remove_all_occurrences_of_items(
+                server.playlist_id, [track_id]
+            )
             await server.repo.delete_playlist_item(track_id)
             await server.repo.set_vote_state(track_id, "supprimée")
             logger.info("La chanson a été supprimée.")
@@ -258,7 +261,7 @@ class VotesMixin:
             track_id = random.choice(list(track_ids))
         logger.info("Chanson tirée au sort : %s", track_id)
         song = await server.repo.get_playlist_item(track_id)
-        track = sp.track(song["_id"], market="FR")
+        track = await spotify_api.track(song["_id"], market="FR")
         channel = await self.bot.fetch_channel(server.channel_id)
         embed, file = await embed_song(
             song=song,
@@ -540,7 +543,7 @@ class VotesMixin:
                 ctx.author_id,
             )
             try:
-                track = sp.track(song, market="FR")
+                track = await spotify_api.track(song, market="FR")
                 song = spotifymongoformat(
                     track, ctx.author_id, spotify2discord=server.spotify2discord
                 )
@@ -654,26 +657,7 @@ class VotesMixin:
 
     @addwithvote.autocomplete("song")
     async def autocomplete_from_spotify_addwithvote(self, ctx: AutocompleteContext):
-        if not ctx.input_text:
-            choices = [{"name": "Veuillez entrer un nom de chanson", "value": "error"}]
-        else:
-            items = sp.search(ctx.input_text, limit=10, type="track", market="FR")["tracks"][
-                "items"
-            ]
-            if not items:
-                choices = [{"name": "Aucun résultat", "value": "error"}]
-            else:
-                choices = [
-                    {
-                        "name": (
-                            f"{item['artists'][0]['name']} - {item['name']} "
-                            f"(Album: {item['album']['name']})"
-                        )[:100],
-                        "value": item["uri"],
-                    }
-                    for item in items
-                ]
-        await ctx.send(choices=choices)
+        await ctx.send(choices=await autocomplete_track_choices(ctx.input_text))
 
     async def endvote(self, song_id: str, server: ServerData) -> bool:
         """Close an add-with-vote poll once its deadline is reached.
@@ -690,7 +674,7 @@ class VotesMixin:
             logger.info("Vote pour %s déjà clos, suppression", song_id)
             return True
         try:
-            track = sp.track(song_id, market="FR")
+            track = await spotify_api.track(song_id, market="FR")
             song = spotifymongoformat(
                 track, data[song_id]["author_id"], spotify2discord=server.spotify2discord
             )
@@ -701,7 +685,7 @@ class VotesMixin:
             logger.debug("song : %s", song)
             if await server.repo.add_playlist_item(song):
                 try:
-                    sp.playlist_add_items(server.playlist_id, [song["_id"]])
+                    await spotify_api.playlist_add_items(server.playlist_id, [song["_id"]])
                 except Exception:
                     # Undo the mirror entry so the next sweep retries the whole add.
                     await server.repo.delete_playlist_item(song["_id"])

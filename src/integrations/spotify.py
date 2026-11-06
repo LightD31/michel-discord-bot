@@ -1,14 +1,25 @@
 """Pure Spotify API helpers (no Discord imports).
 
-Owns the OAuth bootstrap, the lazy :data:`sp` client used by the Spotify
-extension, the token-status helper used by the Web UI auth panel, and the
-MongoDB document formatter.
+Owns the OAuth bootstrap, the Spotify client, the token-status helper used by
+the Web UI auth panel, and the MongoDB document formatter.
+
+spotipy is synchronous: every call is a blocking ``requests`` round trip, with
+retries and — on a 429 — a ``time.sleep`` for as long as Spotify asks. Called
+from a coroutine, that freezes the whole bot: no gateway heartbeat, no
+interaction, no task, until the watchdog restarts the process. So coroutines
+use :data:`spotify_api` (``await spotify_api.track(...)``), which runs each
+call on a dedicated worker thread. :data:`sp`, the underlying synchronous
+client, is for code that already runs on that thread.
 """
 
+import asyncio
 import threading
+from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from typing import Any
 
+import requests
 import spotipy
 
 from src.core import logging as logutil
@@ -77,6 +88,44 @@ class _LazySpotifyClient:
 
 sp: _LazySpotifyClient = _LazySpotifyClient()
 
+# One worker: Spotify calls stay in order and never race each other on the
+# token refresh or its cache file (spotipy isn't thread-safe there), and none
+# of them runs on an event loop. Loop-agnostic, so the bot loop and the Web
+# UI's uvicorn loop share it.
+_SPOTIFY_EXECUTOR = ThreadPoolExecutor(max_workers=1, thread_name_prefix="spotify")
+
+
+async def run_spotify[T](func: Callable[..., T], *args: Any, **kwargs: Any) -> T:
+    """Run a blocking spotipy-related call on the Spotify worker thread."""
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(_SPOTIFY_EXECUTOR, lambda: func(*args, **kwargs))
+
+
+class _AsyncSpotifyClient:
+    """``await spotify_api.<method>(...)`` for every :class:`spotipy.Spotify` method.
+
+    The attribute is looked up on :data:`sp` inside the worker too: the first
+    access builds the client, which reads the token cache from disk.
+    """
+
+    def __getattr__(self, name: str) -> Callable[..., Any]:
+        async def call(*args: Any, **kwargs: Any) -> Any:
+            return await run_spotify(lambda: getattr(sp, name)(*args, **kwargs))
+
+        call.__name__ = name
+        return call
+
+
+spotify_api = _AsyncSpotifyClient()
+
+# What a failed Spotify call raises: spotipy wraps HTTP errors, but connection
+# errors and timeouts come straight from its transport (requests) — they are
+# not the builtin ConnectionError.
+SPOTIFY_ERRORS: tuple[type[Exception], ...] = (
+    spotipy.SpotifyException,
+    requests.exceptions.RequestException,
+)
+
 
 def spotify_auth() -> spotipy.Spotify:
     """Legacy wrapper — returns a fresh :class:`spotipy.Spotify` client.
@@ -104,10 +153,10 @@ def get_token_status() -> dict[str, Any]:
     }
 
 
-def fetch_account_summary() -> dict[str, Any] | None:
+async def fetch_account_summary() -> dict[str, Any] | None:
     """Return ``{id, display_name}`` for the authorized user, or ``None``."""
     try:
-        me = sp.current_user()
+        me = await spotify_api.current_user()
     except Exception as e:
         logger.warning("Failed to fetch Spotify account: %s", e)
         return None
