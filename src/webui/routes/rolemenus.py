@@ -14,13 +14,24 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from features.reactionroles import (
+    MenuAuthor,
     ReactionRolesRepository,
     RoleMenu,
     RoleMenuEntry,
+    role_menu_refusal,
 )
 from src.core import logging as logutil
 from src.discord_ext.messages import edit_message_if_changed
-from src.discord_ext.rolemenus import MAX_ENTRIES, build_components, build_embed
+from src.discord_ext.rolemenus import (
+    MAX_ENTRIES,
+    bot_top_position,
+    build_components,
+    build_embed,
+    entries_refusal,
+    menu_author,
+    role_info,
+)
+from src.webui.auth import Session
 from src.webui.context import WebUIContext
 
 logger = logutil.init_logger("webui.routes.rolemenus")
@@ -104,6 +115,30 @@ async def _resolve_guild_and_channel(bot, guild_id: str, channel_id: str):
     return guild, channel
 
 
+async def _resolve_author(ctx: WebUIContext, guild, session: Session) -> MenuAuthor:
+    """Who is editing the menu, read live from the guild (bot loop only).
+
+    Feeds the role-menu rules (``features/reactionroles/permissions.py``): the
+    dashboard lets ``MANAGE_GUILD`` in, but handing out a role takes
+    ``MANAGE_ROLES`` and a higher role, exactly as in Discord.
+    """
+    is_developer = ctx.oauth.is_developer(session)
+    member = await guild.fetch_member(int(session.user_id))
+    if member is None and not is_developer:
+        raise HTTPException(status_code=403, detail="Vous n'êtes pas membre de ce serveur")
+    return menu_author(guild, member, bypass_hierarchy=is_developer)
+
+
+async def _check_entries(ctx: WebUIContext, guild, session: Session, entries) -> None:
+    """Refuse (400) any entry the editing member could not hand out themselves."""
+    author = await _resolve_author(ctx, guild, session)
+    refusal = entries_refusal(
+        guild, entries, author=author, bot_position=await bot_top_position(ctx.bot, guild)
+    )
+    if refusal:
+        raise HTTPException(status_code=400, detail=refusal)
+
+
 def _run_on_bot_loop(ctx: WebUIContext, coro):
     bot_loop = ctx.require_bot_loop()
     future = asyncio.run_coroutine_threadsafe(coro, bot_loop)
@@ -118,8 +153,8 @@ def create_router(ctx: WebUIContext) -> APIRouter:
 
     @router.get("/api/servers/{server_id}/roles")
     async def api_list_roles(request: Request, server_id: str):
-        """List assignable roles in a guild (for the role-picker)."""
-        ctx.require_guild_admin(request, server_id)
+        """List the roles the requester may put in a menu (for the role-picker)."""
+        session = await ctx.require_guild_admin(request, server_id)
 
         async def _fetch():
             try:
@@ -128,12 +163,15 @@ def create_router(ctx: WebUIContext) -> APIRouter:
                 raise HTTPException(status_code=404, detail=f"Serveur introuvable: {e}") from e
             if guild is None:
                 raise HTTPException(status_code=404, detail="Serveur introuvable")
+            author = await _resolve_author(ctx, guild, session)
+            bot_position = await bot_top_position(ctx.bot, guild)
             roles = []
             for r in getattr(guild, "roles", []) or []:
-                # Skip @everyone (id == guild.id) and managed/integration roles.
-                if str(r.id) == str(guild.id):
-                    continue
-                if getattr(r, "managed", False):
+                # Same rules as a save: skips @everyone, integration roles,
+                # staff roles and anything above the requester or the bot.
+                if role_menu_refusal(
+                    role_info(r, guild.id), author=author, bot_top_position=bot_position
+                ):
                     continue
                 color = getattr(r, "color", None)
                 color_hex = None
@@ -164,7 +202,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
 
     @router.get("/api/servers/{server_id}/rolemenus")
     async def api_list_rolemenus(request: Request, server_id: str):
-        ctx.require_guild_admin(request, server_id)
+        await ctx.require_guild_admin(request, server_id)
         repo = ReactionRolesRepository(server_id)
         try:
             menus = await repo.list()
@@ -175,7 +213,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
 
     @router.post("/api/servers/{server_id}/rolemenus")
     async def api_create_rolemenu(request: Request, server_id: str, body: RoleMenuCreate):
-        session = ctx.require_guild_admin(request, server_id)
+        session = await ctx.require_guild_admin(request, server_id)
 
         async def _create():
             guild, channel = await _resolve_guild_and_channel(ctx.bot, server_id, body.channel_id)
@@ -183,6 +221,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
             parsed = _validate_entries(body.entries, guild_role_ids)
             if isinstance(parsed, str):
                 raise HTTPException(status_code=400, detail=parsed)
+            await _check_entries(ctx, guild, session, parsed)
 
             repo = ReactionRolesRepository(server_id)
             menu = RoleMenu(
@@ -224,7 +263,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
     async def api_update_rolemenu(
         request: Request, server_id: str, menu_id: str, body: RoleMenuUpdate
     ):
-        ctx.require_guild_admin(request, server_id)
+        session = await ctx.require_guild_admin(request, server_id)
 
         async def _update():
             repo = ReactionRolesRepository(server_id)
@@ -236,6 +275,8 @@ def create_router(ctx: WebUIContext) -> APIRouter:
                 guild = await ctx.bot.fetch_guild(int(server_id))
             except Exception as e:
                 raise HTTPException(status_code=404, detail=f"Serveur introuvable: {e}") from e
+            if guild is None:
+                raise HTTPException(status_code=404, detail="Serveur introuvable")
             guild_role_ids = {str(r.id) for r in getattr(guild, "roles", []) or []}
 
             new_title = body.title if body.title is not None else existing.title
@@ -246,6 +287,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
                 parsed = _validate_entries(body.entries, guild_role_ids)
                 if isinstance(parsed, str):
                     raise HTTPException(status_code=400, detail=parsed)
+                await _check_entries(ctx, guild, session, parsed)
                 new_entries = parsed
             else:
                 new_entries = existing.entries
@@ -286,7 +328,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
 
     @router.delete("/api/servers/{server_id}/rolemenus/{menu_id}")
     async def api_delete_rolemenu(request: Request, server_id: str, menu_id: str):
-        ctx.require_guild_admin(request, server_id)
+        await ctx.require_guild_admin(request, server_id)
 
         async def _delete():
             repo = ReactionRolesRepository(server_id)

@@ -26,6 +26,7 @@ Usage::
 """
 
 import asyncio
+import contextlib
 import functools
 import json
 import shutil
@@ -41,6 +42,7 @@ from motor.motor_asyncio import (
     AsyncIOMotorDatabase,
 )
 
+from src.core import config as _config
 from src.core import logging as _logging
 from src.core.config import load_config
 from src.core.errors import DatabaseError
@@ -50,6 +52,14 @@ logger = _logging.init_logger(__name__)
 # Database naming conventions
 GLOBAL_DB_NAME = "global"
 GUILD_DB_PREFIX = "guild_"
+
+# (database, collection) pairs never written to a backup. Dashboard sessions are
+# bearer credentials: restoring one is useless, leaking one is not.
+BACKUP_EXCLUDED_COLLECTIONS: frozenset[tuple[str, str]] = frozenset(
+    {(GLOBAL_DB_NAME, "webui_sessions")}
+)
+# Name of the copy of ``config/config.json`` stored next to each backup.
+BACKUP_CONFIG_FILENAME = "config.json"
 
 
 def translates_db_errors[**P, R](func: Callable[P, Awaitable[R]]) -> Callable[P, Awaitable[R]]:
@@ -206,6 +216,10 @@ class MongoManager:
     ) -> str:
         """Export every relevant database (global + guild_*) to JSON files.
 
+        Collections in :data:`BACKUP_EXCLUDED_COLLECTIONS` are skipped. A copy of
+        ``config/config.json`` — every guild's configuration, which lives
+        outside MongoDB — is saved alongside, readable by its owner only.
+
         Args:
             backup_dir: Root directory where backups are stored.
             max_backups: Number of timestamped backup folders to keep.
@@ -230,6 +244,8 @@ class MongoManager:
             db_dir.mkdir(parents=True, exist_ok=True)
 
             for col_name in col_names:
+                if (db_name, col_name) in BACKUP_EXCLUDED_COLLECTIONS:
+                    continue
                 docs = []
                 async for doc in db[col_name].find():
                     # Convert ObjectId and other BSON types to strings
@@ -245,6 +261,8 @@ class MongoManager:
 
             logger.debug("Backed up database '%s' (%d collections)", db_name, len(col_names))
 
+        self._copy_config(dest)
+
         logger.info(
             "Backup complete: %d databases, %d total documents → %s",
             len(relevant),
@@ -256,6 +274,22 @@ class MongoManager:
         self._prune_backups(backup_dir, max_backups)
 
         return str(dest)
+
+    @staticmethod
+    def _copy_config(dest: Path) -> None:
+        """Copy ``config/config.json`` into the backup folder (owner-only permissions)."""
+        source = Path(_config.CONFIG_PATH)
+        if not source.is_file():
+            logger.warning("No %s to back up", source)
+            return
+        target = dest / BACKUP_CONFIG_FILENAME
+        try:
+            shutil.copyfile(source, target)
+        except OSError as e:
+            logger.error("Could not back up %s: %s", source, e)
+            return
+        with contextlib.suppress(OSError):
+            target.chmod(0o600)
 
     @staticmethod
     def _prune_backups(backup_dir: str, max_backups: int) -> None:

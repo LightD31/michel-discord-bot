@@ -56,7 +56,7 @@ A modular, multi-guild Discord bot built with **interactions.py**. Michel ships 
 | **Moderation** | `/warn`, `/timeout`, `/kick`, `/ban`, `/unban`, numbered infraction history, a modlog channel, and automod (anti-invite / anti-spam / banned-words). Infractions are browsable and revocable from the Web UI. |
 | **Admin** | Moderator utilities: `/ping`, `/delete`, `/send`, `/slowmode`, `/lock`, `/unlock`. |
 | **Embed Manager** | Custom embeds created and managed from the Web UI, auto-published to a channel. |
-| **Backup** | Daily (and on-demand `/backup`) JSON exports of all MongoDB databases with configurable retention. |
+| **Backup** | Daily (and on-demand `/backup`) JSON exports of all MongoDB databases with configurable retention, plus a copy of `config/config.json` (owner-only permissions). Dashboard sessions are never exported. |
 | **Metrics** | Prometheus exporter: per-guild XP and Spotify statistics, bot health and command counters on a dedicated `/metrics` port. |
 
 ### Integrations & notifications
@@ -256,8 +256,10 @@ A few extensions intentionally share config rather than registering their own mo
 
 An optional FastAPI-based dashboard, enabled when `webui.enabled` is `true` in config. It runs in a daemon thread alongside the bot.
 
-- **Authentication** — Discord OAuth2 with CSRF-protected state and MongoDB-persisted sessions (TTL-indexed, httponly cookies).
-- **Authorization tiers** — Any authenticated user sees the guilds they manage (`MANAGE_GUILD`/`ADMINISTRATOR` or guild owner); user IDs listed in `webui.developerUserIds` additionally get global config, extension reload, and live logs.
+- **Authentication** — Discord OAuth2 with CSRF-protected state and 24-hour sessions (httponly cookies, persisted in MongoDB under a hash of the cookie, TTL-indexed; OAuth tokens are not kept).
+- **Authorization tiers** — Any authenticated user sees the guilds they manage (`MANAGE_GUILD`/`ADMINISTRATOR` or guild owner), checked live through the bot on every request (cached for a minute), so revoked permissions stop working right away; user IDs listed in `webui.developerUserIds` additionally get global config, extension reload, and live logs.
+- **Role menus follow Discord's rules** — Building a menu requires `MANAGE_ROLES` and a role higher than every listed role, and roles carrying moderation or administration permissions are never self-assignable.
+- **Security headers** — No framing, `nosniff`, same-origin referrers, HSTS over HTTPS.
 - **Schema-driven forms** — Module and global config forms are generated from the Pydantic schemas registered via `@register_module` / `@register_section` in `src/webui/schemas.py`.
 - **Custom views** — Reaction-role menu builder (`routes/rolemenus.py`), moderation infraction browser (`routes/moderation.py`), Spotify OAuth management and playlist/vote statistics (`routes/spotify.py`), and the short-link manager (`routes/shlink.py`) go beyond plain forms and call back into Discord or an external API.
 - **Stable short links** — Config-driven links (Spotify dashboard, Embed-manager entries…) each own a slug: changing the target in the dashboard retargets the same short URL instead of creating a new one.

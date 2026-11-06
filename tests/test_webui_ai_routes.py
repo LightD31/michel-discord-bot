@@ -28,7 +28,7 @@ class _Ctx:
             raise HTTPException(status_code=403, detail="Accès réservé au développeur")
         return _Session()
 
-    def require_guild_admin(self, request, guild_id):  # noqa: ARG002
+    async def require_guild_admin(self, request, guild_id):  # noqa: ARG002
         if not self.guild_admin:
             raise HTTPException(status_code=403, detail="Accès refusé")
         return _Session()

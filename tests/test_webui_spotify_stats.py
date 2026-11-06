@@ -28,7 +28,7 @@ class _Ctx:
         self.checked: list[str] = []
         self.allowed = True
 
-    def require_guild_admin(self, request, guild_id):  # noqa: ARG002 — signature parity
+    async def require_guild_admin(self, request, guild_id):  # noqa: ARG002 — signature parity
         self.checked.append(str(guild_id))
         if not self.allowed:
             raise HTTPException(status_code=403, detail="nope")

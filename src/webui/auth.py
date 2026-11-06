@@ -1,7 +1,14 @@
 """
 Discord OAuth2 authentication for the Web UI.
+
+The OAuth token pair is used once, at login, to read the user's identity and
+guild list, then dropped: nothing past the login needs it. A session lives
+:data:`SESSION_TTL_SECONDS` server-side, the same as its cookie, and is keyed
+everywhere — memory and MongoDB — by the SHA-256 of its cookie value, so a
+leaked database or backup holds nothing that can be replayed as a cookie.
 """
 
+import hashlib
 import secrets
 import time
 from dataclasses import asdict, dataclass, field
@@ -20,6 +27,23 @@ DISCORD_API_BASE = "https://discord.com/api/v10"
 DISCORD_OAUTH2_URL = "https://discord.com/api/oauth2/authorize"
 DISCORD_TOKEN_URL = "https://discord.com/api/oauth2/token"
 
+# Server-side session lifetime; the session cookie's max-age matches it.
+SESSION_TTL_SECONDS = 86400
+
+# Version of the persisted session document. Documents without it predate
+# token hashing — they hold the raw cookie value and OAuth tokens — and are
+# deleted rather than restored (their users log in again, once).
+SESSION_DOC_VERSION = 2
+
+
+def hash_token(session_token: str) -> str:
+    """The key a session is stored under: SHA-256 of its cookie value.
+
+    The token is 256 random bits, so an unsalted fast hash is enough: there is
+    nothing to brute-force.
+    """
+    return hashlib.sha256(session_token.encode()).hexdigest()
+
 
 @dataclass
 class Session:
@@ -29,17 +53,24 @@ class Session:
     username: str
     avatar: str | None
     guilds: list
-    access_token: str
-    refresh_token: str
     expires_at: float
-    session_token: str = field(default_factory=lambda: secrets.token_urlsafe(32))
+    # The cookie value. Known only to the process that minted the session and
+    # never persisted: a session restored from MongoDB carries "" here.
+    session_token: str = field(default_factory=lambda: secrets.token_urlsafe(32), compare=False)
+    token_hash: str = ""
+
+    def __post_init__(self) -> None:
+        if not self.token_hash:
+            self.token_hash = hash_token(self.session_token)
 
 
 def _session_to_doc(session: Session) -> dict[str, Any]:
-    """Serialize a session for MongoDB (``_id`` = token, TTL helper field)."""
+    """Serialize a session for MongoDB (``_id`` = token hash, TTL helper field)."""
     doc = asdict(session)
-    doc["_id"] = doc.pop("session_token")
+    del doc["session_token"]
+    doc["_id"] = doc.pop("token_hash")
     doc["expires_dt"] = expires_dt_from_ts(session.expires_at)
+    doc["v"] = SESSION_DOC_VERSION
     return doc
 
 
@@ -49,10 +80,9 @@ def _doc_to_session(doc: dict[str, Any]) -> Session:
         username=doc["username"],
         avatar=doc.get("avatar"),
         guilds=doc.get("guilds", []),
-        access_token=doc["access_token"],
-        refresh_token=doc.get("refresh_token", ""),
         expires_at=float(doc["expires_at"]),
-        session_token=doc["_id"],
+        session_token="",
+        token_hash=doc["_id"],
     )
 
 
@@ -129,7 +159,7 @@ class DiscordOAuth:
         if session is None:
             return None
 
-        self.sessions[session.session_token] = session
+        self.sessions[session.token_hash] = session
         await self._persist(session)
         logger.info(f"User logged in: {session.username} ({session.user_id})")
         return session
@@ -140,26 +170,22 @@ class DiscordOAuth:
         user_data: dict[str, Any],
         guilds: list,
     ) -> Session | None:
-        """Build a Session from Discord's responses; None if a field is missing."""
+        """Build a Session from Discord's responses; None if a field is missing.
+
+        The OAuth tokens are deliberately not kept: the session outlives them
+        by design (see the module docstring) and never calls Discord again.
+        """
         access_token = token_data.get("access_token")
         user_id = user_data.get("id")
         if not access_token or not user_id:
             logger.error("Discord OAuth payload incomplete (token or user id missing)")
             return None
-        try:
-            expires_in = float(token_data.get("expires_in") or 0)
-        except (TypeError, ValueError):
-            expires_in = 0.0
-        if expires_in <= 0:
-            expires_in = 3600.0  # conservative fallback, Discord normally sends 7 days
         return Session(
             user_id=str(user_id),
             username=user_data.get("global_name") or user_data.get("username") or str(user_id),
             avatar=user_data.get("avatar"),
             guilds=guilds if isinstance(guilds, list) else [],
-            access_token=access_token,
-            refresh_token=token_data.get("refresh_token", ""),
-            expires_at=time.time() + expires_in,
+            expires_at=time.time() + SESSION_TTL_SECONDS,
         )
 
     def is_developer(self, session: Session) -> bool:
@@ -167,19 +193,21 @@ class DiscordOAuth:
         return session.user_id in self.developer_user_ids
 
     def get_session(self, session_token: str) -> Session | None:
-        """Retrieve a session by its token."""
-        session = self.sessions.get(session_token)
+        """Retrieve a session by its cookie value."""
+        key = hash_token(session_token)
+        session = self.sessions.get(key)
         if session and session.expires_at > time.time():
             return session
         if session:
-            del self.sessions[session_token]
+            del self.sessions[key]
         return None
 
     async def invalidate_session(self, session_token: str) -> None:
-        """Remove a session from memory and MongoDB."""
-        self.sessions.pop(session_token, None)
+        """Remove a session (given its cookie value) from memory and MongoDB."""
+        key = hash_token(session_token)
+        self.sessions.pop(key, None)
         try:
-            await SessionRepository().delete(session_token)
+            await SessionRepository().delete(key)
         except Exception as e:
             logger.warning("Could not delete persisted session: %s", e)
 
@@ -193,22 +221,32 @@ class DiscordOAuth:
             logger.warning("Could not persist session to MongoDB: %s", e)
 
     async def restore_sessions(self) -> int:
-        """Load persisted, unexpired sessions into memory (dashboard startup)."""
+        """Load persisted, unexpired sessions into memory (dashboard startup).
+
+        Pre-hashing documents (no ``v``) are deleted, not restored: they hold a
+        replayable cookie value and the user's OAuth tokens.
+        """
+        repo = SessionRepository()
         try:
-            docs = await SessionRepository().load_all_docs()
+            purged = await repo.delete_older_versions(SESSION_DOC_VERSION)
+            if purged:
+                logger.info("Deleted %d legacy Web UI session(s) stored in clear.", purged)
+            docs = await repo.load_all_docs()
         except Exception as e:
             logger.warning("Could not restore Web UI sessions: %s", e)
             return 0
         now = time.time()
         restored = 0
         for doc in docs:
+            if doc.get("v") != SESSION_DOC_VERSION:
+                continue
             try:
                 session = _doc_to_session(doc)
             except (KeyError, TypeError, ValueError) as e:
                 logger.warning("Skipping malformed persisted session: %s", e)
                 continue
             if session.expires_at > now:
-                self.sessions[session.session_token] = session
+                self.sessions[session.token_hash] = session
                 restored += 1
         if restored:
             logger.info("Restored %d Web UI session(s) from MongoDB.", restored)

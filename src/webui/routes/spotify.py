@@ -85,7 +85,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
     @router.get("/api/servers/{server_id}/spotify/stats")
     async def api_spotify_stats(request: Request, server_id: str):
         """Playlist and vote statistics for the guild's Spotify dashboard charts."""
-        ctx.require_guild_admin(request, server_id)
+        await ctx.require_guild_admin(request, server_id)
         try:
             stats = await collect_spotify_stats(server_id)
         except DatabaseError as e:

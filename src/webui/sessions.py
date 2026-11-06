@@ -7,7 +7,8 @@ through, and the whole collection is loaded back into memory when the
 dashboard starts. A TTL index on ``expires_dt`` lets MongoDB drop expired
 documents on its own even if the periodic purge never runs.
 
-Documents are raw dicts (``_id`` = session token) — (de)serialization to the
+Documents are raw dicts (``_id`` = SHA-256 of the session cookie, never the
+cookie itself; see :mod:`src.webui.auth`) — (de)serialization to the
 :class:`~src.webui.auth.Session` dataclass lives in ``src.webui.auth`` to keep
 this module free of webui imports.
 """
@@ -15,9 +16,11 @@ this module free of webui imports.
 from datetime import UTC, datetime
 from typing import Any
 
-from src.core.db import mongo_manager
+from src.core.db import GLOBAL_DB_NAME, mongo_manager
 
 COLLECTION = "webui_sessions"
+# Holds bearer credentials: src.core.db keeps it out of backups.
+BACKUP_KEY = (GLOBAL_DB_NAME, COLLECTION)
 
 
 class SessionRepository:
@@ -32,8 +35,13 @@ class SessionRepository:
     async def upsert_doc(self, doc: dict[str, Any]) -> None:
         await self._col().replace_one({"_id": doc["_id"]}, doc, upsert=True)
 
-    async def delete(self, session_token: str) -> None:
-        await self._col().delete_one({"_id": session_token})
+    async def delete(self, token_hash: str) -> None:
+        await self._col().delete_one({"_id": token_hash})
+
+    async def delete_older_versions(self, version: int) -> int:
+        """Drop documents written before schema *version* (or with no version)."""
+        result = await self._col().delete_many({"v": {"$ne": version}})
+        return int(result.deleted_count)
 
     async def delete_expired(self, now_ts: float) -> int:
         result = await self._col().delete_many({"expires_at": {"$lte": now_ts}})

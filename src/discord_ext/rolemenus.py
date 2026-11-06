@@ -8,10 +8,11 @@ objects — ``features/reactionroles`` stays free of Discord imports.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from interactions import ActionRow, Button, ButtonStyle, Embed
 
+from features.reactionroles.permissions import MenuAuthor, RoleInfo, role_menu_refusal
 from src.discord_ext.embeds import Colors
 
 if TYPE_CHECKING:
@@ -48,3 +49,55 @@ def build_components(menu_id: str, entries: list[RoleMenuEntry]) -> list[ActionR
             )
         rows.append(ActionRow(*buttons))
     return rows
+
+
+# ── Permission checks (see features/reactionroles/permissions.py) ─────
+
+
+def role_info(role: Any, guild_id: Any) -> RoleInfo:
+    """Translate an ``interactions`` role into the plain record the rules read."""
+    return RoleInfo(
+        id=str(role.id),
+        position=int(getattr(role, "position", 0) or 0),
+        permissions=int(getattr(role, "permissions", 0) or 0),
+        managed=bool(getattr(role, "managed", False)),
+        is_default=str(role.id) == str(guild_id),
+    )
+
+
+def menu_author(guild: Any, member: Any, *, bypass_hierarchy: bool = False) -> MenuAuthor:
+    """Describe whoever builds the menu; *member* is ``None`` if not in the guild."""
+    if member is None:
+        return MenuAuthor(permissions=0, top_position=0, bypass_hierarchy=bypass_hierarchy)
+    return MenuAuthor(
+        permissions=int(member.guild_permissions),
+        top_position=int(member.top_role.position),
+        is_owner=bool(guild.is_owner(member.id)),
+        bypass_hierarchy=bypass_hierarchy,
+    )
+
+
+async def bot_top_position(bot: Any, guild: Any) -> int:
+    """Position of the bot's highest role in *guild* (0 if it can't be resolved)."""
+    me = guild.me or await guild.fetch_member(bot.user.id)
+    return int(me.top_role.position) if me is not None else 0
+
+
+def entries_refusal(
+    guild: Any, entries: list[RoleMenuEntry], *, author: MenuAuthor, bot_position: int
+) -> str | None:
+    """First reason one of *entries* can't go in the menu, or ``None`` if all can.
+
+    An entry whose role is missing from *guild* is refused as well.
+    """
+    roles = {str(r.id): r for r in getattr(guild, "roles", []) or []}
+    for idx, entry in enumerate(entries, 1):
+        role = roles.get(str(entry.role_id))
+        if role is None:
+            return f"Entrée {idx} : rôle <@&{entry.role_id}> introuvable."
+        refusal = role_menu_refusal(
+            role_info(role, guild.id), author=author, bot_top_position=bot_position
+        )
+        if refusal:
+            return f"Entrée {idx} : {refusal}"
+    return None

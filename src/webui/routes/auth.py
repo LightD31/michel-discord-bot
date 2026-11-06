@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
 from src.core import logging as logutil
+from src.webui.auth import SESSION_TTL_SECONDS
 from src.webui.context import COOKIE_NAME, WebUIContext
 from src.webui.ratelimit import RateLimiter, client_ip, request_is_https
 
@@ -81,7 +82,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
             COOKIE_NAME,
             session.session_token,
             httponly=True,
-            max_age=86400,
+            max_age=SESSION_TTL_SECONDS,
             samesite="lax",
             secure=request_is_https(request, ctx.trusted_proxies),
         )

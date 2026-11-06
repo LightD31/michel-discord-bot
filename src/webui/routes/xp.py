@@ -87,7 +87,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
 
     @router.get("/api/servers/{server_id}/xp/stats")
     async def api_xp_stats(request: Request, server_id: str, days: int = Query(default=30)):
-        ctx.require_guild_admin(request, server_id)
+        await ctx.require_guild_admin(request, server_id)
         validate_range(days)
         try:
             stats = await collect_xp_stats(server_id, days)

@@ -1,6 +1,7 @@
 """Per-server configuration, channels/members listing, and EmbedManager publish."""
 
 import asyncio
+import json
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
@@ -10,7 +11,7 @@ from features.customcommands import MODULE_KEY as CUSTOM_COMMANDS_MODULE
 from src.core import logging as logutil
 from src.core.config import load_config as bot_load_config
 from src.webui.botops import run_extension_op, sync_commands
-from src.webui.context import WebUIContext, build_module_to_extension_map
+from src.webui.context import WebUIContext, build_module_to_extension_map, discover_modules
 from src.webui.secrets import mask_server_config, restore_section
 
 logger = logutil.init_logger("webui.routes.servers")
@@ -23,6 +24,35 @@ class ModuleToggle(BaseModel):
 
 class ConfigUpdate(BaseModel):
     config: dict
+
+
+# Ceiling on one module's saved config (serialized). Every guild shares
+# config/config.json, so one guild must not be able to bloat it unboundedly.
+MAX_MODULE_CONFIG_BYTES = 256 * 1024
+
+
+def _require_known_module(module_name: str) -> None:
+    """404 unless *module_name* is a real per-guild module.
+
+    Without this, ``servers.<id>.<anything>`` is writable — including keys that
+    are not module configs at all, such as the guild's public dashboard token.
+    """
+    from src.webui import schemas
+
+    if module_name not in schemas.MODULE_SCHEMAS and module_name not in discover_modules():
+        raise HTTPException(status_code=404, detail=f"Module inconnu : {module_name}")
+
+
+def _require_reasonable_size(config: dict) -> None:
+    size = len(json.dumps(config, ensure_ascii=False).encode("utf-8"))
+    if size > MAX_MODULE_CONFIG_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=(
+                f"Configuration trop volumineuse ({size // 1024} Ko, "
+                f"maximum {MAX_MODULE_CONFIG_BYTES // 1024} Ko)."
+            ),
+        )
 
 
 async def _try_reload_extension_for_module(ctx: WebUIContext, module_name: str) -> dict:
@@ -142,10 +172,26 @@ def create_router(ctx: WebUIContext) -> APIRouter:
         bot_guild_ids = set(bot_guilds)
 
         is_developer = ctx.oauth.is_developer(session)
-        managed_guilds = {g["id"]: g for g in ctx.oauth.get_user_managed_guilds(session)}
+        # Login-time OAuth snapshot: names/icons, and the guilds worth checking.
+        oauth_guilds = {str(g.get("id")): g for g in session.guilds if isinstance(g, dict)}
+        if ctx.bot and not is_developer:
+            # Who manages what is read live (one cached check per shared guild),
+            # so a member demoted since login stops seeing that guild's config.
+            candidates = sorted(gid for gid in oauth_guilds if gid in bot_guild_ids)
+            allowed = await asyncio.gather(
+                *(ctx.user_manages_guild(session, gid) for gid in candidates),
+                return_exceptions=True,
+            )
+            managed_guilds = {
+                gid: oauth_guilds[gid]
+                for gid, ok in zip(candidates, allowed, strict=True)
+                if ok is True
+            }
+        else:
+            managed_guilds = {g["id"]: g for g in ctx.oauth.get_user_managed_guilds(session)}
 
         def server_entry(server_id: str, server_config: dict) -> dict:
-            guild_info = managed_guilds.get(server_id, {})
+            guild_info = managed_guilds.get(server_id) or oauth_guilds.get(server_id, {})
             bot_guild = bot_guilds.get(server_id)
             name = (
                 guild_info.get("name")
@@ -181,7 +227,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
     @router.get("/api/servers/{server_id}/channels")
     async def api_get_server_channels(request: Request, server_id: str):
         """List text/news channels for the given server (for channel-picker dropdowns)."""
-        ctx.require_guild_admin(request, server_id)
+        await ctx.require_guild_admin(request, server_id)
         bot_loop = ctx.require_bot_loop()
 
         async def _fetch():
@@ -286,7 +332,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
         Pulls from the ``users`` MongoDB collection maintained by userinfoext;
         falls back to the live guild member cache if the collection is empty.
         """
-        ctx.require_guild_admin(request, server_id)
+        await ctx.require_guild_admin(request, server_id)
         bot_loop = ctx.require_bot_loop()
 
         async def _fetch():
@@ -361,7 +407,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
     @router.get("/api/servers/{server_id}")
     async def api_get_server(request: Request, server_id: str):
         """Get configuration for a specific server (secrets masked)."""
-        ctx.require_guild_admin(request, server_id)
+        await ctx.require_guild_admin(request, server_id)
         data = ctx.get_full_config()
         server_config = data.get("servers", {}).get(server_id)
         if server_config is None:
@@ -377,7 +423,9 @@ def create_router(ctx: WebUIContext) -> APIRouter:
         Secret fields submitted as the untouched mask placeholder keep their
         current on-disk value.
         """
-        session = ctx.require_guild_admin(request, server_id)
+        session = await ctx.require_guild_admin(request, server_id)
+        _require_known_module(module_name)
+        _require_reasonable_size(body.config)
         from src.webui import schemas
 
         schema = schemas.MODULE_SCHEMAS.get(module_name)
@@ -413,7 +461,8 @@ def create_router(ctx: WebUIContext) -> APIRouter:
         request: Request, server_id: str, module_name: str, body: ModuleToggle
     ):
         """Enable or disable a module for a server."""
-        session = ctx.require_guild_admin(request, server_id)
+        session = await ctx.require_guild_admin(request, server_id)
+        _require_known_module(module_name)
 
         def mutator(data: dict) -> None:
             server = data.setdefault("servers", {}).setdefault(server_id, {})
@@ -443,7 +492,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
     @router.post("/api/servers/{server_id}/modules/moduleEmbedManager/publish")
     async def api_embedmanager_publish(request: Request, server_id: str):
         """Publish configured embeds to the target Discord message."""
-        ctx.require_guild_admin(request, server_id)
+        await ctx.require_guild_admin(request, server_id)
         bot_loop = ctx.require_bot_loop()
 
         _, module_config, enabled_servers = bot_load_config("moduleEmbedManager")

@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import inspect
 import os
+import time
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -21,11 +22,18 @@ from fastapi import HTTPException, Request
 
 from src.core import logging as logutil
 from src.webui.auth import DiscordOAuth, Session
+from src.webui.guild_access import GuildAccess, read_guild_access
 from src.webui.ratelimit import TrustedProxies
 
 logger = logutil.init_logger("webui.context")
 
 COOKIE_NAME = "michel_session"
+
+# How long a live permission check is reused. Bounds how long a demoted (or
+# banned) member keeps managing a guild from the dashboard.
+GUILD_ACCESS_TTL_SECONDS = 60.0
+# Budget for reading one member from the bot (cache, else one API call).
+GUILD_ACCESS_TIMEOUT_SECONDS = 10.0
 
 
 @dataclass
@@ -37,6 +45,10 @@ class WebUIContext:
     oauth: DiscordOAuth
     # Which peers' X-Forwarded-* headers may be believed; see ratelimit.py.
     trusted_proxies: TrustedProxies = field(default_factory=TrustedProxies)
+    # (guild_id, user_id) → (checked_at monotonic, access); see guild_access().
+    _access_cache: dict[tuple[str, str], tuple[float, GuildAccess]] = field(
+        default_factory=dict, repr=False
+    )
 
     # --- Bot loop dispatch -------------------------------------------
 
@@ -159,7 +171,12 @@ class WebUIContext:
         return session
 
     def is_admin_user(self, session: Session) -> bool:
-        """Admin if user has MANAGE_GUILD/ADMINISTRATOR on any bot guild."""
+        """Admin if user has MANAGE_GUILD/ADMINISTRATOR on any bot guild.
+
+        A coarse gate from the login-time OAuth snapshot, for endpoints that
+        expose nothing guild-specific (module list, schemas). Anything tied to
+        one guild goes through :meth:`require_guild_admin`, which checks live.
+        """
         if self.oauth.is_developer(session):
             return True
         if self.bot and self.bot.guilds:
@@ -174,17 +191,63 @@ class WebUIContext:
             raise HTTPException(status_code=403, detail="Accès réservé aux administrateurs")
         return session
 
-    def user_manages_guild(self, session: Session, guild_id: str | int) -> bool:
-        """True if the user owns/administers/manages *this* guild (or is developer)."""
+    async def guild_access(self, session: Session, guild_id: str | int) -> GuildAccess:
+        """The user's live standing in *guild_id*, cached for a minute.
+
+        Read from the bot on its own loop (see :mod:`src.webui.guild_access`),
+        never from the login-time OAuth snapshot. Raises ``HTTPException(503)``
+        when the bot can't answer: authorization fails closed.
+        """
+        key = (str(guild_id), str(session.user_id))
+        now = time.monotonic()
+        cached = self._access_cache.get(key)
+        if cached is not None and now - cached[0] < GUILD_ACCESS_TTL_SECONDS:
+            return cached[1]
+        try:
+            access = await self.run_on_bot_loop(
+                read_guild_access,
+                self.bot,
+                guild_id,
+                session.user_id,
+                timeout=GUILD_ACCESS_TIMEOUT_SECONDS,
+            )
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.warning(
+                "Live permission check failed for user %s on guild %s: %s",
+                session.user_id,
+                guild_id,
+                e,
+            )
+            raise HTTPException(
+                status_code=503,
+                detail="Impossible de vérifier vos permissions sur ce serveur — réessayez.",
+            ) from e
+        for stale in [
+            k for k, (at, _) in self._access_cache.items() if now - at >= GUILD_ACCESS_TTL_SECONDS
+        ]:
+            del self._access_cache[stale]
+        self._access_cache[key] = (now, access)
+        return access
+
+    async def user_manages_guild(self, session: Session, guild_id: str | int) -> bool:
+        """True if the user owns/administers/manages *this* guild right now (or is developer).
+
+        Without a bot client (standalone dashboard) the login-time OAuth
+        snapshot is the only source; with one, the live member is authoritative.
+        """
         if self.oauth.is_developer(session):
             return True
-        managed = {g["id"] for g in self.oauth.get_user_managed_guilds(session)}
-        return str(guild_id) in managed
+        if not self.bot:
+            managed = {g["id"] for g in self.oauth.get_user_managed_guilds(session)}
+            return str(guild_id) in managed
+        return (await self.guild_access(session, guild_id)).manages_guild
 
-    def require_guild_admin(self, request: Request, guild_id: str | int) -> Session:
+    async def require_guild_admin(self, request: Request, guild_id: str | int) -> Session:
         """Per-guild authorization — managing one guild grants nothing on the others."""
         session = self.require_session(request)
-        if not self.user_manages_guild(session, guild_id):
+        if not await self.user_manages_guild(session, guild_id):
             raise HTTPException(
                 status_code=403, detail="Accès réservé aux administrateurs de ce serveur"
             )
