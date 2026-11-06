@@ -15,7 +15,7 @@ persistence) lives in ``features.ai``. The class is a mixin composition:
 
 from interactions import Client, Extension, listen
 
-from features.ai import AiClient, Cooldown, RecentAnswers
+from features.ai import AiClient, AiUsageRepository, Cooldown, RecentAnswers
 from src.core.errors import DatabaseError
 from src.integrations import llm
 
@@ -59,6 +59,10 @@ class CompareAIExtension(AskMixin, MentionsMixin, VotingMixin, Extension):
                 await repo_for(SCOPE_GUILD if gid else SCOPE_GLOBAL, gid).ensure_indexes()
             except DatabaseError as e:
                 logger.error("Could not create AI indexes for %s: %s", gid or "global", e)
+        try:
+            await AiUsageRepository().ensure_indexes()
+        except DatabaseError as e:
+            logger.error("Could not create the AI usage TTL index: %s", e)
 
         if not self.close_due_comparisons.running:
             self.close_due_comparisons.start()

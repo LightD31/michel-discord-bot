@@ -10,7 +10,12 @@
             "modelsToCompare": 3,
             "defaultModel": "",
             "requestTimeoutSeconds": 30,
-            "appTitle": "Michel Discord Bot"
+            "appTitle": "Michel Discord Bot",
+            "paused": false,
+            "dailyCallLimit": 1000,
+            "userDailyCallLimit": 60,
+            "externalUse": true,
+            "externalUserIds": []
         },
         "NanoGPT": {
             "apiKey": "",

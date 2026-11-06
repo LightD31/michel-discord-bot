@@ -18,6 +18,7 @@ from features.ai.models import (
     parse_models,
 )
 from features.ai.prompt import DEFAULT_PERSONA, LEGACY_DEFAULT_PERSONAS, MAX_SERVER_CONTEXT_CHARS
+from features.ai.quota import AiLimits
 
 DEFAULT_MODELS_TO_COMPARE = 3
 DEFAULT_VOTE_MINUTES = 10
@@ -40,6 +41,7 @@ class AiGlobalSettings:
     models_to_compare: int = DEFAULT_MODELS_TO_COMPARE
     default_model: str = ""
     problems: list[str] = field(default_factory=list)
+    limits: AiLimits = field(default_factory=AiLimits)
 
     @classmethod
     def from_config(cls, config: Mapping[str, Any]) -> AiGlobalSettings:
@@ -57,6 +59,7 @@ class AiGlobalSettings:
             ),
             default_model=str(section.get("defaultModel") or "").strip(),
             problems=problems,
+            limits=AiLimits.from_section(section),
         )
 
 
