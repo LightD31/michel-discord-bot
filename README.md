@@ -168,7 +168,7 @@ scripts/                # generate_config_example.py — config skeleton from sc
 
 ### Prerequisites
 
-- Python 3.12+ (CI and the Docker image run 3.14)
+- Python 3.12+ (CI and the Docker image run 3.15)
 - [uv](https://docs.astral.sh/uv/) for local development (it can install Python too)
 - A running MongoDB instance
 - A Discord bot token
@@ -324,14 +324,14 @@ scrape_configs:
 - **Type checking** — [mypy](https://mypy-lang.org/) (`mypy src`). `src.core.*` is strict; the rest is lenient during incremental typing adoption. Runs in CI on every PR, and locally as an opt-in hook: `pre-commit run mypy --hook-stage manual`.
 - **Tests** — [pytest](https://docs.pytest.org/) with `pytest-asyncio` (auto mode) and coverage over `src` + `features`. The suite covers core infrastructure (db, http, config saving), Web UI auth (OAuth, sessions, CSRF), and feature logic (giveaway draw, moderation, MDI client, RSS parser, weighted messages).
 - **Pre-commit** — ruff (lint + format), [detect-secrets](https://github.com/Yelp/detect-secrets) (against `.secrets.baseline`), and hygiene hooks (whitespace, JSON/YAML validity, large files, merge conflicts).
-- **CI** (`.github/workflows/ci.yml`) — nine jobs, all installing from `uv.lock` (dev tools included, so every run uses the same ruff/mypy/pytest): ruff lint/format (findings annotated inline on the PR), mypy, pytest with coverage on Python 3.14 (per-file table in the run summary, XML artifact kept 14 days, fails below the `fail_under` floor in `pyproject.toml`), the test suite again on Python 3.12 (the oldest version `requires-python` allows), lockfile drift check (`uv lock --check`), `config.example.json` drift check, `pip-audit` CVE scan of the runtime pins, a detect-secrets sweep, and the pre-commit hygiene hooks (whitespace, final newlines, JSON/YAML, large files, merge-conflict markers). A weekly scheduled run re-audits the lock so CVE scanning doesn't stall between pushes.
+- **CI** (`.github/workflows/ci.yml`) — nine jobs, all installing from `uv.lock` (dev tools included, so every run uses the same ruff/mypy/pytest): ruff lint/format (findings annotated inline on the PR), mypy, pytest with coverage on Python 3.15 (per-file table in the run summary, XML artifact kept 14 days, fails below the `fail_under` floor in `pyproject.toml`), the test suite again on Python 3.12 (the oldest version `requires-python` allows), lockfile drift check (`uv lock --check`), `config.example.json` drift check, `pip-audit` CVE scan of the runtime pins, a detect-secrets sweep, and the pre-commit hygiene hooks (whitespace, final newlines, JSON/YAML, large files, merge-conflict markers). A weekly scheduled run re-audits the lock so CVE scanning doesn't stall between pushes.
 - **Docker** (`.github/workflows/docker.yml`) — multi-stage build published to GHCR with provenance and SBOM attestations. Each build is scanned with [Trivy](https://trivy.dev/) first: fixable HIGH/CRITICAL findings are listed in the run summary, and a fixable CRITICAL fails the build.
 - **Actions** are pinned to full commit SHAs (with the release in a comment), so a moved or hijacked tag can't change what runs; Dependabot updates the SHA and the comment together.
 - **Dependabot** — weekly grouped updates for the uv lock (re-resolved as a whole), the Docker base images, and GitHub Actions, each held back a few days after release (`cooldown`).
 
 ### Project Conventions
 
-- Python 3.12+ (`requires-python >= 3.12`; CI/Docker run 3.14), async/await throughout.
+- Python 3.12+ (`requires-python >= 3.12`; CI/Docker run 3.15), async/await throughout.
 - **Layering** — Discord code in `extensions/`, domain logic in `features/`, shared infrastructure in `src/`. `features/` must not import `interactions`.
 - **Persistence** — One MongoDB database per guild (`guild_{id}`), shared data in `global`. Each feature owns a repository module under `features/<name>/repository.py`.
 - **Logging** — `src.core.logging.init_logger(name)` (colored ANSI output; `MICHEL_DEBUG=1` for debug level).
