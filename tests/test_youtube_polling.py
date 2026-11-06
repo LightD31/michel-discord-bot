@@ -22,7 +22,8 @@ def youtube(monkeypatch):
     import src.core.config as core_config
 
     def fake_load_config(module_name=None):
-        return {"youtube": {"youtubeApiKey": "SECRET-KEY"}}, GUILD_CONFIG, list(GUILD_CONFIG)
+        fake_key = "SECRET-KEY"  # pragma: allowlist secret
+        return {"youtube": {"youtubeApiKey": fake_key}}, GUILD_CONFIG, list(GUILD_CONFIG)
 
     monkeypatch.setattr(core_config, "load_config", fake_load_config)
     sys.modules.pop("extensions.youtube", None)

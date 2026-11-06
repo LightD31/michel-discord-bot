@@ -180,7 +180,8 @@ def test_http_error_redacts_url_and_message():
 
 
 def test_redact_helpers():
-    assert redact_url("https://user:pw@host/p?token=t&x=1") == "https://***@host/p?token=***&x=1"
+    with_userinfo = "https://user:pw@host/p?token=t&x=1"  # pragma: allowlist secret
+    assert redact_url(with_userinfo) == "https://***@host/p?token=***&x=1"
     assert (
         redact_urls_in("see http://h/?api_key=k and more") == "see http://h/?api_key=*** and more"
     )
