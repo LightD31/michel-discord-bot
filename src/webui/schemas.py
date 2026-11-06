@@ -315,6 +315,39 @@ class AISection(SchemaBase):
         default="Michel Discord Bot",
         description="Envoyé à OpenRouter (en-tête X-Title) pour identifier le bot.",
     )
+    paused: bool = ui(
+        "Suspendre l'IA",
+        "boolean",
+        default=False,
+        description="Coupe-circuit : tant que c'est activé, /ask et les réponses aux mentions "
+        "refusent toute question.",
+    )
+    dailyCallLimit: int = ui(
+        "Plafond quotidien global (appels)",
+        "number",
+        default=1000,
+        description="Appels aux modèles par jour (UTC), tous utilisateurs et serveurs confondus. "
+        "Une comparaison de 3 modèles compte pour 3. 0 : illimité.",
+    )
+    userDailyCallLimit: int = ui(
+        "Plafond quotidien par utilisateur (appels)",
+        "number",
+        default=60,
+        description="Appels aux modèles par jour (UTC) pour une même personne. 0 : illimité.",
+    )
+    externalUse: bool = ui(
+        "Autoriser /ask hors des serveurs configurés",
+        "boolean",
+        default=True,
+        description="Messages privés et serveurs où l'application est installée par un "
+        "utilisateur sans que le module IA y soit activé. Désactivé : /ask n'y répond plus.",
+    )
+    externalUserIds: list[str] = ui(
+        "Utilisateurs autorisés hors serveurs",
+        "list",
+        description="Identifiants Discord. Si la liste est renseignée, seules ces personnes "
+        "peuvent utiliser /ask hors des serveurs où le module IA est activé.",
+    )
 
 
 @register_section("OpenRouter")

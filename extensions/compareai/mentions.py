@@ -25,13 +25,15 @@ from features.ai import (
     render_single,
 )
 
-from ._common import SCOPE_GUILD, guild_settings, logger, repo_for
+from ._common import SCOPE_GUILD, global_settings, guild_settings, logger, repo_for
 from .ask import NO_PINGS
 
 # How far up a reply chain Michel reads to follow a conversation.
 MAX_REPLY_CHAIN = 5
 COOLDOWN_EMOJI = "⏳"
 FAILURE_EMOJI = "⚠️"
+# AI paused, or a daily call limit reached (features/ai/quota.py).
+QUOTA_EMOJI = "🚫"
 
 
 class MentionsMixin:
@@ -45,6 +47,7 @@ class MentionsMixin:
     _gather_history: Any
     _build_messages: Any
     _answer_once: Any
+    _reserve_calls: Any
     _resolve_mentions: Any
 
     def _bot_role_ids(self, message: Message) -> frozenset[str]:
@@ -122,6 +125,13 @@ class MentionsMixin:
             await self._react(message, FAILURE_EMOJI)
             return
 
+        # Same cost guards as /ask: the kill switch, then one call counted.
+        user_id = str(message.author.id)
+        limits = global_settings().limits
+        if limits.paused or await self._reserve_calls(user_id, 1, limits):
+            await self._react(message, QUOTA_EMOJI)
+            return
+
         channel = message.channel
         with contextlib.suppress(Exception):
             await channel.trigger_typing()
@@ -142,7 +152,9 @@ class MentionsMixin:
             history=history,
             question=self._resolve_mentions(guild_id, question),
         )
-        answer = await self._answer_once(candidates, settings, messages)
+        answer = await self._answer_once(
+            candidates, settings, messages, user_id=user_id, limits=limits
+        )
         if answer is None:
             await self._react(message, FAILURE_EMOJI)
             return

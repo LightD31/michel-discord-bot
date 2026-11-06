@@ -28,6 +28,7 @@ from features.ai.prompt import (
     replace_user_mentions,
     strip_user_mention,
 )
+from features.ai.quota import AiLimits, access_refusal, limit_message
 from features.ai.render import (
     attach_footer,
     question_header,
@@ -47,6 +48,7 @@ from features.ai.settings import (
     usable_models,
 )
 from features.ai.stats import ModelStats, compute_model_stats
+from features.ai.usage import AiUsageRepository
 
 __all__ = [
     "DEFAULT_MODELS",
@@ -55,6 +57,8 @@ __all__ = [
     "AiClient",
     "AiComparisonRepository",
     "AiGlobalSettings",
+    "AiLimits",
+    "AiUsageRepository",
     "Comparison",
     "ComparisonAnswer",
     "Cooldown",
@@ -65,11 +69,13 @@ __all__ = [
     "ModelConfig",
     "ModelStats",
     "RecentAnswers",
+    "access_refusal",
     "attach_footer",
     "build_history",
     "build_system_prompt",
     "compute_model_stats",
     "extract_response",
+    "limit_message",
     "mention_question",
     "parse_models",
     "participants_from",

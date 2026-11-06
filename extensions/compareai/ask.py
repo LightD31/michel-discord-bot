@@ -28,6 +28,8 @@ from interactions import (
 from features.ai import (
     AiClient,
     AiComparisonRepository,
+    AiLimits,
+    AiUsageRepository,
     Comparison,
     ComparisonAnswer,
     GuildAiSettings,
@@ -50,11 +52,19 @@ from features.ai import (
     tally,
     usable_models,
 )
+from features.ai.quota import QUOTA_UNAVAILABLE, access_refusal, limit_message
 from src.core.errors import DatabaseError
 from src.discord_ext.messages import send_error
 from src.integrations import llm
 
-from ._common import global_settings, guild_settings, logger, repo_for, scope_for
+from ._common import (
+    global_settings,
+    guild_settings,
+    logger,
+    module_enabled,
+    repo_for,
+    scope_for,
+)
 
 PROMPT_TIMEZONE = pytz.timezone("Europe/Paris")
 MODE_COMPARE = "comparer"
@@ -209,13 +219,34 @@ class AskMixin:
             logger.warning("AI config: %s", problem)
         return usable_models(settings.models, llm.configured_apis())
 
+    async def _reserve_calls(self, user_id: str, calls: int, limits: AiLimits) -> str | None:
+        """Count *calls* model calls for *user_id* today; the refusal message if over a limit.
+
+        Fails closed: without the counters (MongoDB down) nothing is spent.
+        """
+        try:
+            hit = await AiUsageRepository().reserve(user_id, calls, limits, datetime.now(UTC))
+        except DatabaseError as e:
+            logger.error("AI quota check failed, refusing the question: %s", e)
+            return QUOTA_UNAVAILABLE
+        if hit:
+            logger.warning("AI %s daily call limit reached (user %s)", hit, user_id)
+            return limit_message(hit)
+        return None
+
     async def _answer_once(
         self,
         candidates: list[ModelConfig],
         settings: GuildAiSettings,
         messages: list[dict[str, str]],
+        *,
+        user_id: str,
+        limits: AiLimits,
     ) -> ModelAnswer | None:
-        """One answer from the default model, retrying once on another model if it fails."""
+        """One answer from the default model, retrying once on another model if it fails.
+
+        The first call must already be reserved; the retry reserves its own.
+        """
         first = resolve_default_model(
             candidates, settings.default_model, global_settings().default_model
         )
@@ -226,7 +257,7 @@ class AskMixin:
             return answer
         logger.warning("Default model %s failed (%s), trying another", first.key, answer.error)
         others = [m for m in candidates if m.key != first.key]
-        if not others:
+        if not others or await self._reserve_calls(user_id, 1, limits):
             return None
         answer = await self.ai_client.complete(random.choice(others), messages, settings.max_tokens)
         return answer if answer.ok else None
@@ -285,10 +316,24 @@ class AskMixin:
             return
 
         guild_id = ctx.guild_id
+        user_id = str(ctx.author.id)
+        global_cfg = global_settings()
+        limits = global_cfg.limits
+        refusal = access_refusal(limits, user_id=user_id, in_enabled_guild=module_enabled(guild_id))
+        if refusal:
+            await send_error(ctx, refusal)
+            return
+
         settings = guild_settings(guild_id)
         scope = scope_for(guild_id)
         repo = repo_for(scope, guild_id)
         compare = mode == MODE_COMPARE if mode else settings.compare_by_default
+        compare = compare and len(candidates) >= 2
+        calls = min(global_cfg.models_to_compare, len(candidates)) if compare else 1
+        refusal = await self._reserve_calls(user_id, calls, limits)
+        if refusal:
+            await send_error(ctx, refusal)
+            return
 
         author = ctx.author.display_name
         question = self._resolve_mentions(guild_id, question)
@@ -302,10 +347,12 @@ class AskMixin:
             question=question,
         )
 
-        if compare and len(candidates) >= 2:
-            await self._ask_compare(ctx, question, candidates, settings, messages, scope, repo)
+        if compare:
+            await self._ask_compare(
+                ctx, question, candidates, settings, messages, scope, repo, count=calls
+            )
         else:
-            await self._ask_quick(ctx, question, candidates, settings, messages)
+            await self._ask_quick(ctx, question, candidates, settings, messages, limits=limits)
 
     async def _ask_quick(
         self,
@@ -315,8 +362,12 @@ class AskMixin:
         settings: GuildAiSettings,
         messages: list[dict[str, str]],
         note: str | None = None,
+        *,
+        limits: AiLimits,
     ) -> None:
-        answer = await self._answer_once(candidates, settings, messages)
+        answer = await self._answer_once(
+            candidates, settings, messages, user_id=str(ctx.author.id), limits=limits
+        )
         if answer is None:
             await send_error(ctx, "Aucun modèle n'a pu répondre, réessaie dans un instant")
             return
@@ -341,8 +392,11 @@ class AskMixin:
         messages: list[dict[str, str]],
         scope: str,
         repo: AiComparisonRepository,
+        *,
+        count: int,
     ) -> None:
-        selected = pick_compare_models(candidates, global_settings().models_to_compare)
+        # *count* calls were reserved by the caller: exactly that many models.
+        selected = pick_compare_models(candidates, count)
         answers = [
             a
             for a in await self.ai_client.complete_many(selected, messages, settings.max_tokens)
