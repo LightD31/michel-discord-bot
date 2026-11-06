@@ -1,29 +1,97 @@
-**Terms & Conditions**
+# Terms of Service
 
-These terms and conditions applies to the Michel app (hereby referred to as "Application") for mobile devices that was created by LightD31 (hereby referred to as "Service Provider") as an Open Source service.
+**Effective date: 2026-11-06**
 
-Upon downloading or utilizing the Application, you are automatically agreeing to the following terms. It is strongly advised that you thoroughly read and understand these terms prior to using the Application. Unauthorized copying, modification of the Application, any part of the Application, or our trademarks is strictly prohibited. Any attempts to extract the source code of the Application, translate the Application into other languages, or create derivative versions are not permitted. All trademarks, copyrights, database rights, and other intellectual property rights related to the Application remain the property of the Service Provider.
+These terms apply to the use of **Michel** (the "Bot"), a Discord bot, and of its web dashboard. They cover the instance run by **LightD31** (the "Operator"). Contact: **michel.f40ls@wholeakedmyemail.fr**.
 
-The Service Provider is dedicated to ensuring that the Application is as beneficial and efficient as possible. As such, they reserve the right to modify the Application or charge for their services at any time and for any reason. The Service Provider assures you that any charges for the Application or its services will be clearly communicated to you.
+By adding the Bot to a server, using its commands, or signing in to its dashboard, you accept these terms. If you do not accept them, do not use the Bot.
 
-The Application stores and processes personal data that you have provided to the Service Provider in order to provide the Service. It is your responsibility to maintain the security of your phone and access to the Application. The Service Provider strongly advise against jailbreaking or rooting your phone, which involves removing software restrictions and limitations imposed by the official operating system of your device. Such actions could expose your phone to malware, viruses, malicious programs, compromise your phone's security features, and may result in the Application not functioning correctly or at all.
+## 1. The service
 
-Please be aware that the Service Provider does not assume responsibility for certain aspects. Some functions of the Application require an active internet connection, which can be Wi-Fi or provided by your mobile network provider. The Service Provider cannot be held responsible if the Application does not function at full capacity due to lack of access to Wi-Fi or if you have exhausted your data allowance.
+Michel is a modular Discord bot. It offers, among other things:
 
-If you are using the application outside of a Wi-Fi area, please be aware that your mobile network provider's agreement terms still apply. Consequently, you may incur charges from your mobile provider for data usage during the connection to the application, or other third-party charges. By using the application, you accept responsibility for any such charges, including roaming data charges if you use the application outside of your home territory (i.e., region or country) without disabling data roaming. If you are not the bill payer for the device on which you are using the application, they assume that you have obtained permission from the bill payer.
+- levels and leaderboards;
+- reminders, birthdays, polls, giveaways and suggestions;
+- moderation tools;
+- role menus;
+- a shared Spotify playlist and shared expenses;
+- notifications (RSS, YouTube, Twitch, events…);
+- AI-generated answers.
 
-Similarly, the Service Provider cannot always assume responsibility for your usage of the application. For instance, it is your responsibility to ensure that your device remains charged. If your device runs out of battery and you are unable to access the Service, the Service Provider cannot be held responsible.
+Each server's administrators choose which modules are enabled and how they are configured. Some commands (such as `/ask`) can also be used outside servers, through Discord's user install.
 
-In terms of the Service Provider's responsibility for your use of the application, it is important to note that while they strive to ensure that it is updated and accurate at all times, they do rely on third parties to provide information to them so that they can make it available to you. The Service Provider accepts no liability for any loss, direct or indirect, that you experience as a result of relying entirely on this functionality of the application.
+The Bot is provided **free of charge**, as a hobby project. There is no subscription, no payment and no service-level commitment.
 
-The Service Provider may wish to update the application at some point. The application is currently available as per the requirements for the operating system (and for any additional systems they decide to extend the availability of the application to) may change, and you will need to download the updates if you want to continue using the application. The Service Provider does not guarantee that it will always update the application so that it is relevant to you and/or compatible with the particular operating system version installed on your device. However, you agree to always accept updates to the application when offered to you. The Service Provider may also wish to cease providing the application and may terminate its use at any time without providing termination notice to you. Unless they inform you otherwise, upon any termination, (a) the rights and licenses granted to you in these terms will end; (b) you must cease using the application, and (if necessary) delete it from your device.
+## 2. Open-source software
 
-**Changes to These Terms and Conditions**
+Michel's source code is published under the **GNU General Public License v3.0**. These terms govern your use of the instance run by the Operator. They do not restrict the rights the license gives you to use, study, modify and redistribute the software. If you run your own copy, you are its operator and responsible for it, and these terms do not apply to your copy.
 
-The Service Provider may periodically update their Terms and Conditions. Therefore, you are advised to review this page regularly for any changes. The Service Provider will notify you of any changes by posting the new Terms and Conditions on this page.
+## 3. Who can use the Bot
 
-These terms and conditions are effective as of 2024-06-28
+You must be allowed to use Discord, which means meeting Discord's minimum age and following [Discord's Terms of Service](https://discord.com/terms) and [Community Guidelines](https://discord.com/guidelines). Those rules apply to everything you do through the Bot.
 
-**Contact Us**
+## 4. Acceptable use
 
-If you have any questions or suggestions about the Terms and Conditions, please do not hesitate to contact the Service Provider at michel.f40ls@wholeakedmyemail.fr.
+You agree not to use the Bot to:
+
+- break the law or Discord's rules, or harass, threaten, impersonate or discriminate against anyone;
+- send spam, or post or generate illegal, hateful or sexual content involving minors, or content that infringes others' rights;
+- collect other people's personal data without their knowledge;
+- abuse or overload the Bot or the services behind it: flooding commands, scripting requests, or getting around cooldowns, daily usage limits or access restrictions;
+- attack the Bot or its dashboard: probing for vulnerabilities, accessing data or servers you are not allowed to manage, or using the Bot to reach other systems.
+
+If you find a security issue, please report it privately to the contact address instead of exploiting it.
+
+## 5. Server administrators
+
+If you add the Bot to a server or manage it there, you are responsible for how it is used in that server. In particular, you are responsible for:
+
+- the modules you enable and the settings you choose. That includes what is published automatically: feeds, notifications, embeds, custom commands, role menus, public statistics pages;
+- informing your members when features you enable process their data. For example, AI answers send recent channel messages to third-party providers (see the [Privacy Policy](Privacy.md));
+- the moderation actions taken in your server, whether by moderators or by the automatic filters you configure;
+- any data you enter in the configuration, such as members' first names, and any external account or service you connect to the Bot (an account directory, a Notion workspace, a game server…).
+
+## 6. Your content
+
+You keep the rights to what you submit through the Bot: questions, suggestions, reminders, drafts, expenses and so on. You allow the Operator to store, process and display it as needed to provide the features you use, and to share it with the services those features rely on, as described in the [Privacy Policy](Privacy.md). You are responsible for what you submit and must have the right to share it.
+
+## 7. AI-generated answers
+
+`/ask` and the replies to mentions are produced by third-party language models (via OpenRouter and/or NanoGPT).
+
+- **Reliability:** answers can be wrong, incomplete, outdated or inappropriate. They are not professional advice (medical, legal, financial or other), and you use them at your own risk.
+- **Third-party terms:** using these features also means accepting the usage policies of the AI providers involved.
+- **Limits:** usage is limited, with daily quotas per person and overall. The Operator can lower these limits or pause the AI features at any time.
+- **Content:** do not use the AI features to generate content forbidden by section 4.
+
+## 8. Other services
+
+Some features rely on third-party services: Discord, Spotify, Notion, a link shortener, ZUnivers, game and event APIs. The Operator does not control these services and is not responsible for their availability, content or terms, which apply to you when the Bot uses them on your behalf.
+
+Information the Bot relays from such services, such as scores, schedules, statistics and links, may be inaccurate or out of date. Amounts shown by the shared-expense feature are an aid for keeping accounts between friends, not financial or accounting records. The Operator does not provide or guarantee giveaway prizes; they are the responsibility of whoever organizes the giveaway.
+
+## 9. Availability and changes
+
+The Bot is provided **"as is" and "as available"**. It may be interrupted, slowed down, lose data or behave unexpectedly. Reminders and notifications, for example, can be late or missed. The Operator may change, add or remove features, change limits, or stop the Bot entirely, at any time and without notice. Do not rely on the Bot for anything critical.
+
+## 10. Suspension and removal
+
+The Operator may, without notice, restrict or stop access to the Bot for a user or a server that breaks these terms, harms other users or puts the service at risk. This can mean blocking commands, removing the Bot from a server, or deleting the related data.
+
+You can stop using the Bot at any time. Server administrators can remove it from their server, and you can ask for your data to be deleted as described in the [Privacy Policy](Privacy.md).
+
+## 11. Liability
+
+To the extent permitted by applicable law, the Operator is not liable for any indirect or consequential damage arising from the use of, or the inability to use, the Bot. That includes loss of data, messages, roles or server configuration, and the content of AI answers or third-party services. Nothing in these terms limits any liability, or any of your rights, that cannot be limited or waived under the law that applies to you.
+
+## 12. Privacy
+
+How the Bot handles personal data is described in the [Privacy Policy](Privacy.md), which is part of these terms.
+
+## 13. Changes to these terms
+
+These terms may change as the Bot evolves. The current version is always the one published in the Bot's repository, with its effective date at the top. Continuing to use the Bot after a change means you accept the new terms.
+
+## 14. Contact
+
+For any question about these terms, write to **michel.f40ls@wholeakedmyemail.fr**.
