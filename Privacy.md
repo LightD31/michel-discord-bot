@@ -25,13 +25,33 @@ For a better experience, while using the Application, the Service Provider may r
 
 **Third Party Access**
 
-Only aggregated, anonymized data is periodically transmitted to external services to aid the Service Provider in improving the Application and their service. The Service Provider may share your information with third parties in the ways that are described in this privacy statement.
+Except for the AI features described in the next section, only aggregated, anonymized data is periodically transmitted to external services to aid the Service Provider in improving the Application and their service. The Service Provider may share your information with third parties in the ways that are described in this privacy statement.
 
 The Service Provider may disclose User Provided and Automatically Collected Information:
 
 *   as required by law, such as to comply with a subpoena, or similar legal process;
 *   when they believe in good faith that disclosure is necessary to protect their rights, protect your safety or the safety of others, investigate fraud, or respond to a government request;
 *   with their trusted services providers who work on their behalf, do not have an independent use of the information we disclose to them, and have agreed to adhere to the rules set forth in this privacy statement.
+
+**AI Features and Third-Party AI Providers**
+
+The Application can answer questions using large language models (the `/ask` command and, where a server enables it, replies when the Application is mentioned). These answers are produced by third-party AI providers, not by the Service Provider: the AI services configured by the operator of the Application, currently OpenRouter and/or NanoGPT. These services forward each request to the developer of the selected model (for example OpenAI, Anthropic, Google or Mistral).
+
+When an AI answer is requested, the following is sent to these providers:
+
+*   the question, and the display name of the person asking it;
+*   the name of the Discord server and channel, and the current date;
+*   the text of recent messages in that channel (10 by default; server administrators can set any number from 0 to 50) with their authors' display names, and, for a mention, the earlier messages of the reply chain (up to 5). Attachments are not sent. This means that messages you wrote can be sent when someone else asks a question in the same channel;
+*   the instructions and server description written by the server's administrators.
+
+The AI providers process this data under their own terms and privacy policies, which the Service Provider does not control. Do not share sensitive or personal information in messages that may be sent to them.
+
+The AI features are off by default: server administrators must enable them for their server, and replies to mentions are a separate option, also off by default. The `/ask` command can also be used in direct messages and in servers where the Application was installed by a user, if the operator allows it.
+
+The Application stores, in its own database:
+
+*   for each comparison of answers: the question, the answers, the Discord IDs of the person who asked and of each voter with their vote, and the server, channel and message identifiers;
+*   daily counters of AI requests per Discord user ID, used to enforce usage limits and deleted automatically after about two days.
 
 **Opt-Out Rights**
 
@@ -55,7 +75,7 @@ The Service Provider is concerned about safeguarding the confidentiality of your
 
 This Privacy Policy may be updated from time to time for any reason. The Service Provider will notify you of any changes to the Privacy Policy by updating this page with the new Privacy Policy. You are advised to consult this Privacy Policy regularly for any changes, as continued use is deemed approval of all changes.
 
-This privacy policy is effective as of 2024-06-28
+This privacy policy is effective as of 2024-06-28 and was last updated on 2026-11-06 (AI features and third-party AI providers).
 
 **Your Consent**
 
