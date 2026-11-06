@@ -151,7 +151,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
     @router.get("/api/servers/{server_id}/public-dashboard")
     async def api_public_link(request: Request, server_id: str):
         """The guild's public token, minted on first request."""
-        session = ctx.require_guild_admin(request, server_id)
+        session = await ctx.require_guild_admin(request, server_id)
         had_token = bool(public_token(config_store.get().get("servers", {}).get(server_id) or {}))
         token = ensure_public_token(server_id, mutate=ctx.mutate_config)
         if not had_token:
@@ -166,7 +166,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
     @router.post("/api/servers/{server_id}/public-dashboard/rotate")
     async def api_rotate_public_link(request: Request, server_id: str):
         """Replace the guild's public token: every previously shared link stops working."""
-        session = ctx.require_guild_admin(request, server_id)
+        session = await ctx.require_guild_admin(request, server_id)
         token = ensure_public_token(server_id, rotate=True, mutate=ctx.mutate_config)
         logger.info(
             "Public dashboard token rotated for guild %s (by %s/%s)",

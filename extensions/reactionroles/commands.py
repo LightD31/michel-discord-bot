@@ -22,6 +22,7 @@ from src.discord_ext.messages import (
     send_error,
     send_success,
 )
+from src.discord_ext.rolemenus import bot_top_position, entries_refusal, menu_author
 from src.discord_ext.scopes import guild_scopes
 
 from ._common import MAX_ENTRIES, build_components, build_embed, enabled_servers, logger
@@ -105,12 +106,17 @@ class CommandsMixin:
             await send_error(ctx, parsed)
             return
 
-        # Validate role IDs against the guild before posting.
-        guild_role_ids = {str(r.id) for r in ctx.guild.roles}
-        for entry in parsed:
-            if entry.role_id not in guild_role_ids:
-                await send_error(ctx, f"Rôle introuvable : <@&{entry.role_id}> ({entry.role_id}).")
-                return
+        # Every role must exist, carry no staff permission and sit below both
+        # the author's highest role and the bot's (features/reactionroles).
+        refusal = entries_refusal(
+            ctx.guild,
+            parsed,
+            author=menu_author(ctx.guild, ctx.author),
+            bot_position=await bot_top_position(self.bot, ctx.guild),
+        )
+        if refusal:
+            await send_error(ctx, refusal)
+            return
 
         if not hasattr(channel, "send"):
             await send_error(ctx, "Ce salon ne permet pas l'envoi de messages.")

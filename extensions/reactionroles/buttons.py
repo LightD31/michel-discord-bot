@@ -4,7 +4,9 @@ import re
 
 from interactions import ComponentContext, component_callback
 
+from features.reactionroles import self_assign_refusal
 from src.discord_ext.messages import send_error
+from src.discord_ext.rolemenus import role_info
 
 from ._common import BUTTON_PREFIX, logger
 
@@ -40,6 +42,22 @@ class ButtonsMixin:
             has_role = any(int(getattr(r, "id", r)) == role_id for r in member.roles)
         except Exception:
             has_role = False
+
+        if not has_role:
+            # Re-checked on every click: a role can gain moderation permissions
+            # after the menu was posted. Removing one is always allowed.
+            role = ctx.guild.get_role(role_id)
+            refusal = self_assign_refusal(role_info(role, ctx.guild_id)) if role else None
+            if refusal:
+                logger.warning(
+                    "Refused self-assigning privileged role %s to %s in guild %s (menu %s)",
+                    role_id,
+                    ctx.author.id,
+                    ctx.guild_id,
+                    menu_id,
+                )
+                await send_error(ctx, refusal)
+                return
 
         try:
             if has_role:

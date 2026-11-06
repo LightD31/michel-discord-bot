@@ -159,7 +159,7 @@ class _GuildAdminCtx(WebUIContext):
         super().__init__(*args, **kwargs)
         self.config = config
 
-    def require_guild_admin(self, request, guild_id):  # noqa: ARG002 — signature parity
+    async def require_guild_admin(self, request, guild_id):  # noqa: ARG002 — signature parity
         return SimpleNamespace(username="admin", user_id="1")
 
     def get_full_config(self) -> dict:

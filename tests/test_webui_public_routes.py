@@ -163,7 +163,7 @@ class _Ctx:
         self.allowed = True
         self.mutate_config = store.mutate
 
-    def require_guild_admin(self, request, guild_id):  # noqa: ARG002 — signature parity
+    async def require_guild_admin(self, request, guild_id):  # noqa: ARG002 — signature parity
         if not self.allowed:
             raise HTTPException(status_code=403, detail="nope")
         return SimpleNamespace(username="admin", user_id="42")

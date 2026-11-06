@@ -59,7 +59,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
 
     @router.get("/api/servers/{server_id}/ai/models")
     async def api_ai_guild_models(request: Request, server_id: str):
-        ctx.require_guild_admin(request, server_id)
+        await ctx.require_guild_admin(request, server_id)
         settings = AiGlobalSettings.from_config(config_store.get().get("config", {}))
         return {
             "models": [

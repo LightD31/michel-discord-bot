@@ -58,6 +58,7 @@ from src.webui.routes import (
 from src.webui.routes import (
     xp as xp_routes,
 )
+from src.webui.security_headers import SecurityHeadersMiddleware
 from src.webui.sse import logs as logs_sse
 
 logger = logutil.init_logger("webui.app")
@@ -137,6 +138,7 @@ def create_app(bot=None, bot_loop=None) -> FastAPI:
         oauth=oauth,
         trusted_proxies=TrustedProxies(webui_config.get("trustedProxies") or None),
     )
+    app.add_middleware(SecurityHeadersMiddleware, trusted_proxies=ctx.trusted_proxies)
 
     # Order: API routers first, frontend catch-all last.
     app.include_router(auth_routes.create_router(ctx))
