@@ -78,37 +78,51 @@ class YoutubeExtension(Extension):
 
     @Task.create(IntervalTrigger(minutes=5))
     async def check_youtube(self):
+        # One read of every guild's last-seen videos per tick, not one per guild.
+        youtube_data = await self.get_youtube_data()
         for server in enabled_servers:
-            srv_config = module_config[str(server)]
-            if srv_config.get("ChannelId"):
-                channel: BaseChannel = await self.bot.fetch_channel(srv_config.get("ChannelId"))
-            else:
-                continue
-            youtube_data = await self.get_youtube_data()
-            is_initial_sync = str(server) not in youtube_data
-            if is_initial_sync:
-                logger.warning(
-                    "Initial YouTube sync for server %s – skipping notifications",
-                    server,
-                )
-            template = srv_config.get(
-                "youtubeNotificationTemplate", "https://www.youtube.com/watch?v={video_id}"
-            )
             try:
-                short_max = int(srv_config.get("youtubeShortMaxSeconds", 90))
-            except (TypeError, ValueError):
-                short_max = 90
-            short_max = max(1, short_max)
+                await self._check_server(str(server), youtube_data)
+            except Exception as e:  # noqa: BLE001 — one guild's failure must not stop the others
+                logger.error("YouTube check failed for server %s: %s", server, e)
 
-            for raw_handle, channel_cfg in self._iter_channels(srv_config):
-                if not raw_handle:
+    async def _check_server(self, server: str, youtube_data: dict) -> None:
+        """Notify one guild of its channels' new videos and save what it has seen.
+
+        Each channel is handled on its own: a deleted handle or a failed API
+        call is logged and retried next tick, while the others still post and
+        their progress is saved.
+        """
+        srv_config = module_config[server]
+        channel_id = srv_config.get("ChannelId")
+        if not channel_id:
+            return
+        channel: BaseChannel = await self.bot.fetch_channel(channel_id)
+        is_initial_sync = server not in youtube_data
+        if is_initial_sync:
+            logger.warning(
+                "Initial YouTube sync for server %s – skipping notifications",
+                server,
+            )
+        template = srv_config.get(
+            "youtubeNotificationTemplate", "https://www.youtube.com/watch?v={video_id}"
+        )
+        try:
+            short_max = int(srv_config.get("youtubeShortMaxSeconds", 90))
+        except (TypeError, ValueError):
+            short_max = 90
+        short_max = max(1, short_max)
+
+        seen: dict[str, str] = dict(youtube_data.get(server) or {})
+        changed = False
+        for raw_handle, channel_cfg in self._iter_channels(srv_config):
+            if not raw_handle:
+                continue
+            handle = raw_handle.lstrip("@")
+            try:
+                video_id = await self.get_video_id(await self.get_uploads(handle))
+                if seen.get(raw_handle) == video_id:
                     continue
-                handle = raw_handle.lstrip("@")
-                uploads = await self.get_uploads(handle)
-                video_id = await self.get_video_id(uploads)
-                if self.is_video_already_checked(server, raw_handle, video_id, youtube_data):
-                    continue
-                youtube_data = self.update_youtube_data(server, raw_handle, video_id, youtube_data)
                 filters = {
                     "shorts": bool(channel_cfg.get("shorts", False)),
                     "live": bool(channel_cfg.get("live", False)),
@@ -119,13 +133,23 @@ class YoutubeExtension(Extension):
                     label = channel_cfg.get("label") or handle
                     try:
                         rendered = template.format(video_id=video_id, handle=handle, label=label)
-                    except (KeyError, IndexError):
+                    except (KeyError, IndexError, ValueError, AttributeError):
                         rendered = f"https://www.youtube.com/watch?v={video_id}"
                     # Shortens every link the template rendered — the video URL
                     # and any extra link the guild added to its template.
                     rendered = await shorten_text(rendered, tags=["youtube", handle])
                     await channel.send(rendered)
-            await self.save_youtube_data(youtube_data)
+            except Exception as e:  # noqa: BLE001 — retried next tick, others carry on
+                logger.warning("YouTube check failed for %s on server %s: %s", handle, server, e)
+                continue
+            # Recorded only once handled (posted or filtered out), so a failure
+            # above is retried instead of silently swallowing the video.
+            seen[raw_handle] = video_id
+            changed = True
+
+        if changed or is_initial_sync:
+            youtube_data[server] = seen
+            await YoutubeRepository(server).save_last_video_ids(seen)
 
     @staticmethod
     def _iter_channels(srv_config: dict):
@@ -143,11 +167,25 @@ class YoutubeExtension(Extension):
             for handle in raw:
                 yield handle, {"shorts": False, "live": False, "vod": True}
 
+    @staticmethod
+    async def _api(endpoint: str, **params: str | int) -> dict:
+        """GET a YouTube Data API endpoint.
+
+        The key travels in the ``X-Goog-Api-Key`` header, never in the URL, so
+        it can't end up in a logged URL or an error message.
+        """
+        data = await fetch(
+            f"{YOUTUBE_API_URL}/{endpoint}",
+            return_type="json",
+            params=params,
+            headers={"X-Goog-Api-Key": YOUTUBE_API_KEY},
+        )
+        logger.debug(data)
+        return data
+
     async def get_uploads(self, user):
         if user not in self.playlist_cache:
-            url = f"{YOUTUBE_API_URL}/channels?part=contentDetails&forHandle={user}&key={YOUTUBE_API_KEY}"
-            data = await fetch(url, return_type="json")
-            logger.debug(data)
+            data = await self._api("channels", part="contentDetails", forHandle=user)
             uploads = data["items"][0]["contentDetails"]["relatedPlaylists"]["uploads"]
             self.playlist_cache[user] = uploads
         else:
@@ -155,9 +193,7 @@ class YoutubeExtension(Extension):
         return uploads
 
     async def get_video_id(self, uploads):
-        url = f"{YOUTUBE_API_URL}/playlistItems?part=snippet&maxResults=1&playlistId={uploads}&key={YOUTUBE_API_KEY}"
-        data = await fetch(url, return_type="json")
-        logger.debug(data)
+        data = await self._api("playlistItems", part="snippet", maxResults=1, playlistId=uploads)
         return data["items"][0]["snippet"]["resourceId"]["videoId"]
 
     async def get_youtube_data(self):
@@ -168,18 +204,6 @@ class YoutubeExtension(Extension):
                 data[str(server_id)] = ids
         return data
 
-    def is_video_already_checked(self, server, user, video_id, youtube_data):
-        return (
-            str(server) in youtube_data
-            and user in youtube_data[str(server)]
-            and youtube_data[str(server)][user] == video_id
-        )
-
-    def update_youtube_data(self, server, user, video_id, youtube_data):
-        youtube_data[str(server)] = youtube_data.get(str(server), {})
-        youtube_data[str(server)][user] = video_id
-        return youtube_data
-
     async def is_video_valid(self, video_id, filters: dict[str, object] | None = None):
         """Decide whether to surface ``video_id`` based on per-guild filters.
 
@@ -188,9 +212,7 @@ class YoutubeExtension(Extension):
         """
         if filters is None:
             filters = {"shorts": False, "live": False, "vod": True, "short_max_seconds": 90}
-        url = f"{YOUTUBE_API_URL}/videos?part=snippet,contentDetails&id={video_id}&key={YOUTUBE_API_KEY}"
-        data = await fetch(url, return_type="json")
-        logger.debug(data)
+        data = await self._api("videos", part="snippet,contentDetails", id=video_id)
         item = data["items"][0]
         live_state = item["snippet"]["liveBroadcastContent"]
         if live_state != "none":
@@ -211,7 +233,3 @@ class YoutubeExtension(Extension):
             return True
         logger.info("New video is a VOD — skipped (vod filter off)")
         return False
-
-    async def save_youtube_data(self, youtube_data):
-        for server_id, users in youtube_data.items():
-            await YoutubeRepository(server_id).save_last_video_ids(users)

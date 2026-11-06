@@ -41,6 +41,8 @@ from features.links import shorten_url
 from features.rss import RssEntry, RssRepository
 from features.rss.network import fetch_feed
 from src.core.errors import IntegrationError
+from src.core.http import BlockedUrlError
+from src.core.urls import redact_url
 from src.discord_ext.embeds import Colors, format_discord_timestamp
 from src.discord_ext.messages import require_guild, send_error, send_success
 from src.discord_ext.scopes import guild_scopes
@@ -294,7 +296,7 @@ class RssExtension(Extension):
         try:
             entries = await fetch_feed(url)
         except IntegrationError as e:
-            logger.warning("RSS fetch failed for %s (%s): %s", feed_id, url, e)
+            logger.warning("RSS fetch failed for %s (%s): %s", feed_id, redact_url(url), e)
             await self._repo(guild_id).record_error(feed_id, str(e)[:300])
             return
 
@@ -385,6 +387,12 @@ class RssExtension(Extension):
         await ctx.defer(ephemeral=True)
         try:
             entries = await fetch_feed(url)
+        except BlockedUrlError:
+            await send_error(
+                ctx,
+                "Cette URL n'est pas autorisée : seules les adresses http(s) publiques le sont.",
+            )
+            return
         except IntegrationError as e:
             await send_error(ctx, f"Impossible de lire ce flux : {e}")
             return

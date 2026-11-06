@@ -34,6 +34,8 @@ COOKIE_NAME = "michel_session"
 GUILD_ACCESS_TTL_SECONDS = 60.0
 # Budget for reading one member from the bot (cache, else one API call).
 GUILD_ACCESS_TIMEOUT_SECONDS = 10.0
+# Budget for a route's Discord work on the bot loop (list channels, post a menu…).
+BOT_CALL_TIMEOUT_SECONDS = 30.0
 
 
 @dataclass
@@ -86,6 +88,29 @@ class WebUIContext:
 
         future = asyncio.run_coroutine_threadsafe(_runner(), loop)
         return await asyncio.wait_for(asyncio.wrap_future(future), timeout=timeout)
+
+    async def call_bot(
+        self, func, *args, what: str, timeout: float = BOT_CALL_TIMEOUT_SECONDS, **kwargs
+    ) -> Any:
+        """:meth:`run_on_bot_loop` for route handlers, with HTTP-shaped failures.
+
+        An ``HTTPException`` raised by *func* passes through; a bot that doesn't
+        answer within *timeout* is a 504; anything else is logged with *what*
+        and becomes a 500 whose message stays generic — exception text can
+        carry internals (hosts, ids, driver errors) and belongs in the logs.
+        """
+        try:
+            return await self.run_on_bot_loop(func, *args, timeout=timeout, **kwargs)
+        except HTTPException:
+            raise
+        except TimeoutError as e:
+            logger.error("Bot call timed out after %.0fs: %s", timeout, what)
+            raise HTTPException(status_code=504, detail="Le bot ne répond pas — réessayez.") from e
+        except Exception as e:
+            logger.exception("Bot call failed: %s", what)
+            raise HTTPException(
+                status_code=500, detail="Erreur interne — détails dans les logs du bot."
+            ) from e
 
     # --- Config I/O ---------------------------------------------------
 

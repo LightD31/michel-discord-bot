@@ -228,7 +228,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
     async def api_get_server_channels(request: Request, server_id: str):
         """List text/news channels for the given server (for channel-picker dropdowns)."""
         await ctx.require_guild_admin(request, server_id)
-        bot_loop = ctx.require_bot_loop()
+        ctx.require_bot_loop()
 
         async def _fetch():
             from interactions import ChannelType
@@ -315,14 +315,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
             categories.sort(key=lambda x: x["position"])
             return {"channels": result, "categories": categories}
 
-        try:
-            future = asyncio.run_coroutine_threadsafe(_fetch(), bot_loop)
-            data = await asyncio.wrap_future(future)
-        except HTTPException:
-            raise
-        except Exception as e:
-            logger.error(f"Failed to list channels for {server_id}: {e}")
-            raise HTTPException(status_code=500, detail=str(e)) from e
+        data = await ctx.call_bot(_fetch, what=f"list channels of guild {server_id}")
         return JSONResponse(data)
 
     @router.get("/api/servers/{server_id}/members")
@@ -333,7 +326,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
         falls back to the live guild member cache if the collection is empty.
         """
         await ctx.require_guild_admin(request, server_id)
-        bot_loop = ctx.require_bot_loop()
+        ctx.require_bot_loop()
 
         async def _fetch():
             from src.core.db import mongo_manager
@@ -394,14 +387,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
             members.sort(key=lambda x: (x.get("display_name") or x.get("username") or "").lower())
             return {"members": members}
 
-        try:
-            future = asyncio.run_coroutine_threadsafe(_fetch(), bot_loop)
-            data = await asyncio.wrap_future(future)
-        except HTTPException:
-            raise
-        except Exception as e:
-            logger.error(f"Failed to list members for {server_id}: {e}")
-            raise HTTPException(status_code=500, detail=str(e)) from e
+        data = await ctx.call_bot(_fetch, what=f"list members of guild {server_id}")
         return JSONResponse(data)
 
     @router.get("/api/servers/{server_id}")
@@ -493,7 +479,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
     async def api_embedmanager_publish(request: Request, server_id: str):
         """Publish configured embeds to the target Discord message."""
         await ctx.require_guild_admin(request, server_id)
-        bot_loop = ctx.require_bot_loop()
+        ctx.require_bot_loop()
 
         _, module_config, enabled_servers = bot_load_config("moduleEmbedManager")
         if server_id not in enabled_servers:
@@ -517,39 +503,37 @@ def create_router(ctx: WebUIContext) -> APIRouter:
             raise HTTPException(status_code=500, detail="Erreur lors de la génération des embeds")
         embed_count = len(discord_embeds)
 
-        try:
+        async def _publish():
+            from extensions.embedmanager import build_embeds_with_short_links
+            from src.discord_ext.messages import (
+                edit_message_if_changed,
+                fetch_or_create_persistent_message,
+            )
 
-            async def _publish():
-                from extensions.embedmanager import build_embeds_with_short_links
-                from src.discord_ext.messages import (
-                    edit_message_if_changed,
-                    fetch_or_create_persistent_message,
+            # Rebuilt on the bot loop: shortening does HTTP, and the shared
+            # aiohttp session is per-loop.
+            embeds = await build_embeds_with_short_links(embeds_config, server_id)
+
+            message = await fetch_or_create_persistent_message(
+                ctx.bot,
+                channel_id=channel_id,
+                message_id=message_id,
+                module_name="moduleEmbedManager",
+                message_id_key="messageId",
+                guild_id=server_id,
+                initial_content="Initialisation…",
+                pin=pin_message,
+                logger=logger,
+            )
+            if message is None:
+                raise HTTPException(
+                    status_code=502, detail="Impossible de créer ou récupérer le message cible"
                 )
+            await edit_message_if_changed(message, content="", embeds=embeds, logger=logger)
 
-                # Rebuilt on the bot loop: shortening does HTTP, and the shared
-                # aiohttp session is per-loop.
-                embeds = await build_embeds_with_short_links(embeds_config, server_id)
-
-                message = await fetch_or_create_persistent_message(
-                    ctx.bot,
-                    channel_id=channel_id,
-                    message_id=message_id,
-                    module_name="moduleEmbedManager",
-                    message_id_key="messageId",
-                    guild_id=server_id,
-                    initial_content="Initialisation…",
-                    pin=pin_message,
-                    logger=logger,
-                )
-                if message is None:
-                    raise RuntimeError("Impossible de créer ou récupérer le message cible")
-                await edit_message_if_changed(message, content="", embeds=embeds, logger=logger)
-
-            future = asyncio.run_coroutine_threadsafe(_publish(), bot_loop)
-            await asyncio.wrap_future(future)
-        except Exception as e:
-            logger.error(f"EmbedManager publish failed for server {server_id}: {e}")
-            raise HTTPException(status_code=500, detail=str(e)) from e
+        await ctx.call_bot(
+            _publish, what=f"publish EmbedManager embeds for guild {server_id}", timeout=60.0
+        )
 
         return JSONResponse({"status": "ok", "count": embed_count})
 

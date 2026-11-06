@@ -197,3 +197,73 @@ def test_backup_skips_sessions_and_copies_config(tmp_path, monkeypatch):
     copied = folder / BACKUP_CONFIG_FILENAME
     assert copied.read_text(encoding="utf-8") == config_file.read_text(encoding="utf-8")
     assert copied.stat().st_mode & 0o077 == 0  # owner-only
+
+
+def test_manual_backup_never_lowers_retention():
+    from extensions.backup import effective_retention
+
+    assert effective_retention(None, 7) == 7
+    assert effective_retention(1, 7) == 7  # would otherwise prune the whole history
+    assert effective_retention(20, 7) == 20
+
+
+# ── Route → bot-loop calls ──────────────────────────────────────────────
+
+
+def bot_ctx():
+    from src.webui.auth import DiscordOAuth
+    from src.webui.context import WebUIContext
+
+    oauth = DiscordOAuth(client_id="", client_secret="", redirect_uri="")
+    return WebUIContext(bot=SimpleNamespace(), bot_loop=None, oauth=oauth)
+
+
+def run_on_own_loop(ctx, coro_factory):
+    async def main():
+        ctx.bot_loop = asyncio.get_running_loop()
+        return await coro_factory()
+
+    return asyncio.run(main())
+
+
+def test_call_bot_returns_the_result():
+    ctx = bot_ctx()
+
+    async def work():
+        return 42
+
+    assert run_on_own_loop(ctx, lambda: ctx.call_bot(work, what="answer")) == 42
+
+
+def test_call_bot_passes_http_errors_through():
+    ctx = bot_ctx()
+
+    async def missing():
+        raise HTTPException(status_code=404, detail="Serveur introuvable")
+
+    with pytest.raises(HTTPException) as exc:
+        run_on_own_loop(ctx, lambda: ctx.call_bot(missing, what="lookup"))
+    assert exc.value.status_code == 404
+
+
+def test_call_bot_hides_internal_errors():
+    ctx = bot_ctx()
+
+    async def boom():
+        raise RuntimeError("mongodb://admin:hunter2@db:27017 refused")  # pragma: allowlist secret
+
+    with pytest.raises(HTTPException) as exc:
+        run_on_own_loop(ctx, lambda: ctx.call_bot(boom, what="list members"))
+    assert exc.value.status_code == 500
+    assert "hunter2" not in exc.value.detail and "mongodb" not in exc.value.detail
+
+
+def test_call_bot_times_out():
+    ctx = bot_ctx()
+
+    async def stuck():
+        await asyncio.sleep(5)
+
+    with pytest.raises(HTTPException) as exc:
+        run_on_own_loop(ctx, lambda: ctx.call_bot(stuck, what="stuck", timeout=0.05))
+    assert exc.value.status_code == 504

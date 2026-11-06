@@ -5,7 +5,6 @@ MongoDB and posts a best-effort note to the guild's modlog channel via the bot
 loop (mirroring how ``routes/rolemenus.py`` calls back into Discord).
 """
 
-import asyncio
 from typing import cast
 
 from fastapi import APIRouter, HTTPException, Query, Request
@@ -34,12 +33,6 @@ def _infraction_to_dict(inf: Infraction) -> dict:
     }
 
 
-def _run_on_bot_loop(ctx: WebUIContext, coro):
-    bot_loop = ctx.require_bot_loop()
-    future = asyncio.run_coroutine_threadsafe(coro, bot_loop)
-    return asyncio.wrap_future(future)
-
-
 def create_router(ctx: WebUIContext) -> APIRouter:
     router = APIRouter()
 
@@ -66,8 +59,10 @@ def create_router(ctx: WebUIContext) -> APIRouter:
                 limit=500,
             )
         except Exception as e:
-            logger.error("List infractions failed for %s: %s", server_id, e)
-            raise HTTPException(status_code=500, detail=str(e)) from e
+            logger.exception("List infractions failed for %s: %s", server_id, e)
+            raise HTTPException(
+                status_code=500, detail="Erreur interne — détails dans les logs du bot."
+            ) from e
         return JSONResponse({"infractions": [_infraction_to_dict(i) for i in items]})
 
     @router.delete("/api/servers/{server_id}/infractions/{case_id}")
@@ -84,8 +79,10 @@ def create_router(ctx: WebUIContext) -> APIRouter:
         except HTTPException:
             raise
         except Exception as e:
-            logger.error("Revoke infraction failed for %s/%s: %s", server_id, case_id, e)
-            raise HTTPException(status_code=500, detail=str(e)) from e
+            logger.exception("Revoke infraction failed for %s/%s: %s", server_id, case_id, e)
+            raise HTTPException(
+                status_code=500, detail="Erreur interne — détails dans les logs du bot."
+            ) from e
 
         async def _post_note():
             cfg = ctx.get_full_config()
@@ -109,9 +106,10 @@ def create_router(ctx: WebUIContext) -> APIRouter:
                 logger.warning("Could not post revocation note: %s", e)
 
         try:
-            await _run_on_bot_loop(ctx, _post_note())
-        except Exception as e:
-            logger.warning("Revocation note dispatch failed: %s", e)
+            await ctx.call_bot(_post_note, what=f"post revocation note for guild {server_id}")
+        except HTTPException as e:
+            # Best effort: the revocation itself is already saved.
+            logger.warning("Revocation note dispatch failed: %s", e.detail)
 
         logger.info("Infraction #%s revoked via WebUI for guild %s", case_id, server_id)
         return JSONResponse({"status": "ok"})

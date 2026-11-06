@@ -22,7 +22,7 @@ from twitchAPI.type import AuthScope
 
 from src.core import logging as logutil
 from src.core.config import load_config
-from src.core.http import fetch
+from src.core.http import fetch, fetch_untrusted
 from src.core.tasks import spawn
 from src.core.text import escape_md
 from src.discord_ext.links import shorten_embeds
@@ -161,7 +161,9 @@ class StreamlabsCharityExtension(Extension):
             logger.error(f"An unexpected error occurred: {e}")
 
     async def fetch_campaign_data(self):
-        return await fetch(STREAMLABS_URL.replace("teams", "api/v1/teams"), "json")
+        # The team URL is set per guild from the dashboard: never fetch it as
+        # one of the bot's own trusted endpoints.
+        return await fetch_untrusted(STREAMLABS_URL.replace("teams", "api/v1/teams"), "json")
 
     async def fetch_members_data(self, campaign_id):
         members_data = await fetch(
@@ -169,7 +171,8 @@ class StreamlabsCharityExtension(Extension):
         )
         members = members_data["data"]
         while members_data.get("next_page_url"):
-            members_data = await fetch(members_data["next_page_url"], "json")
+            # Pagination links come from the API response: treated as untrusted too.
+            members_data = await fetch_untrusted(members_data["next_page_url"], "json")
             members.extend(members_data["data"])
         return {
             member["user"]["display_name"].lower(): self.create_member_data(member)
