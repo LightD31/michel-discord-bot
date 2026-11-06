@@ -22,7 +22,7 @@ permissions:
 env:
   # The interpreter the bot ships on — keep in sync with the Dockerfile base
   # image. uv installs it when the runner doesn't have it.
-  UV_PYTHON: "3.14"
+  UV_PYTHON: "3.15"
   # Every uv command asserts uv.lock matches pyproject.toml instead of quietly
   # re-locking, so a stale lock fails whichever job runs first.
   UV_LOCKED: "1"
@@ -119,7 +119,7 @@ jobs:
 
   test-py312:
     # pyproject.toml declares requires-python >= 3.12 while everything else runs
-    # on 3.14: run the suite on the oldest supported version so that promise
+    # on 3.15: run the suite on the oldest supported version so that promise
     # stays true (coverage is measured once, in the job above).
     if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
