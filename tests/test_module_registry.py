@@ -272,3 +272,29 @@ def test_import_time_reads_are_found(tmp_path):
     )
     found = _import_time_reads(source.resolve())
     assert [line.rsplit(": ", 1)[1] for line in found] == ["XP.get('1')", "XP.items()"]
+
+
+# CodeQL's clear-text logging query treats a value as sensitive when the name
+# it came through looks sensitive (a subset of its heuristics). Every guild id
+# read through BIRTHDAY.guild_ids() then counted as personal data, and each
+# log line printing one became a high-severity alert.
+SENSITIVE_LOOKING = re.compile(
+    r"(?i)secret|pass(wd|word|code|phrase)|token|auth|birth.?da(te|y)|da(te|y).?(of.?)?birth"
+    r"|private|acc(ou)?nt|cert|ssn|salary|medical|credit|session|api.?key"
+)
+
+
+def test_module_accessor_names_do_not_look_sensitive():
+    offenders = []
+    for path in sorted(EXTENSIONS_DIR.rglob("*.py")):
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if (
+                isinstance(node, ast.Assign)
+                and isinstance(node.value, ast.Call)
+                and isinstance(node.value.func, ast.Name)
+                and node.value.func.id == "ModuleConfig"
+            ):
+                for target in node.targets:
+                    if isinstance(target, ast.Name) and SENSITIVE_LOOKING.search(target.id):
+                        offenders.append(f"{path.relative_to(ROOT)}:{node.lineno}: {target.id}")
+    assert not offenders, "\n".join(offenders)

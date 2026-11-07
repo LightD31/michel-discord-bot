@@ -31,7 +31,7 @@ class SecretSantaConfig(SchemaBase):
 
 
 logger = logutil.init_logger(__name__)
-SECRET_SANTA = ModuleConfig("moduleSecretSanta")
+SANTA = ModuleConfig("moduleSecretSanta")
 
 DATA_DIR = Path("data/secret_santa")
 DATA_DIR.mkdir(parents=True, exist_ok=True)
