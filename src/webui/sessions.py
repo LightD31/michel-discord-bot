@@ -38,11 +38,6 @@ class SessionRepository:
     async def delete(self, token_hash: str) -> None:
         await self._col().delete_one({"_id": token_hash})
 
-    async def delete_older_versions(self, version: int) -> int:
-        """Drop documents written before schema *version* (or with no version)."""
-        result = await self._col().delete_many({"v": {"$ne": version}})
-        return int(result.deleted_count)
-
     async def delete_expired(self, now_ts: float) -> int:
         result = await self._col().delete_many({"expires_at": {"$lte": now_ts}})
         return int(result.deleted_count)

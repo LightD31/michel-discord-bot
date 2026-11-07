@@ -128,7 +128,7 @@ Each Discord server gets its own MongoDB database named `guild_{guild_id}`; cros
 
 ### Config
 
-All config lives in `config/config.json`: a `config` key for global sections and a `servers` key for per-guild module configs. Loaded through `src.core.config.load_config(module_name)`, which returns `(global_config, per_guild_module_config, enabled_guild_ids)`. The store is reactive (atomic tempfile-and-replace writes, subscriber callbacks) so the Web UI and running extensions stay in sync. When renaming config paths, ship a one-time startup migration (idempotent, runs before `load_config`) and delete it once deployed configs are converted.
+All config lives in `config/config.json`: a `config` key for global sections and a `servers` key for per-guild module configs. Loaded through `src.core.config.load_config(module_name)`, which returns `(global_config, per_guild_module_config, enabled_guild_ids)`. The store is reactive (atomic tempfile-and-replace writes, subscriber callbacks) so the Web UI and running extensions stay in sync. There is a single deployment, run by the maintainer, so there is no backward compatibility to keep: rename or restructure config paths and stored documents directly, with no startup migration, fallback or transition option, and list in the PR description what to change in `config.json` or the database.
 
 ### Async everywhere
 

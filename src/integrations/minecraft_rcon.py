@@ -385,23 +385,3 @@ async def get_server_info_rcon(rcon_host, rcon_port, rcon_password):
         return {}
     finally:
         await rcon_client.disconnect()
-
-
-# Fonction de compatibilité pour remplacer l'ancienne approche
-async def get_users(sftp_unused, file_unused):
-    """Fonction de compatibilité - non utilisée avec RCON"""
-    logger.warning("get_users appelée mais RCON ne nécessite pas cette fonction")
-    return []
-
-
-async def get_player_stats(sftp_unused, file_unused, nbtfile_unused):
-    """Fonction de compatibilité - non utilisée avec RCON"""
-    logger.warning("get_player_stats appelée mais RCON ne nécessite pas cette fonction")
-    return {
-        "Joueur": "unknown",
-        "Niveau": 0,
-        "Morts": 0,
-        "Morts/h": 0,
-        "Marche (km)": 0,
-        "Temps de jeu": 0,
-    }

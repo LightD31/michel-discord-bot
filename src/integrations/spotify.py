@@ -127,14 +127,6 @@ SPOTIFY_ERRORS: tuple[type[Exception], ...] = (
 )
 
 
-def spotify_auth() -> spotipy.Spotify:
-    """Legacy wrapper — returns a fresh :class:`spotipy.Spotify` client.
-
-    New code should import :data:`sp` instead.
-    """
-    return spotipy.Spotify(auth_manager=build_oauth(), language="fr")
-
-
 def get_token_status() -> dict[str, Any]:
     """Inspect the cached Spotify token without making any API calls."""
     cfg = _spotify_config()

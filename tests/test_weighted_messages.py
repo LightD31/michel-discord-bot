@@ -1,7 +1,6 @@
 """Tests for the merged ``[{"text", "weight"}]`` message-list data model.
 
-Covers the runtime picker (object entries, legacy-string tolerance, degenerate
-weights) and the schemas no longer referencing sibling weight keys.
+Covers the runtime picker (object entries, degenerate weights) and the schemas no longer referencing sibling weight keys.
 """
 
 from src.core.text import pick_weighted_message
@@ -21,10 +20,10 @@ def test_picker_falls_back_to_default():
     assert pick_weighted_message({"msgs": [{"weight": 2}, 42]}, "msgs", "défaut") == "défaut"
 
 
-def test_picker_tolerates_legacy_strings_and_bad_weights():
-    config = {"msgs": ["legacy", {"text": "objet", "weight": "pas-un-nombre"}]}
+def test_picker_skips_bare_strings_and_tolerates_bad_weights():
+    config = {"msgs": ["chaîne nue", {"text": "objet", "weight": "pas-un-nombre"}]}
     for _ in range(20):
-        assert pick_weighted_message(config, "msgs", "défaut") in ("legacy", "objet")
+        assert pick_weighted_message(config, "msgs", "défaut") == "objet"
 
 
 def test_picker_respects_zero_weight():

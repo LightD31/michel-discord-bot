@@ -30,11 +30,6 @@ DISCORD_TOKEN_URL = "https://discord.com/api/oauth2/token"
 # Server-side session lifetime; the session cookie's max-age matches it.
 SESSION_TTL_SECONDS = 86400
 
-# Version of the persisted session document. Documents without it predate
-# token hashing — they hold the raw cookie value and OAuth tokens — and are
-# deleted rather than restored (their users log in again, once).
-SESSION_DOC_VERSION = 2
-
 
 def hash_token(session_token: str) -> str:
     """The key a session is stored under: SHA-256 of its cookie value.
@@ -70,7 +65,6 @@ def _session_to_doc(session: Session) -> dict[str, Any]:
     del doc["session_token"]
     doc["_id"] = doc.pop("token_hash")
     doc["expires_dt"] = expires_dt_from_ts(session.expires_at)
-    doc["v"] = SESSION_DOC_VERSION
     return doc
 
 
@@ -221,25 +215,15 @@ class DiscordOAuth:
             logger.warning("Could not persist session to MongoDB: %s", e)
 
     async def restore_sessions(self) -> int:
-        """Load persisted, unexpired sessions into memory (dashboard startup).
-
-        Pre-hashing documents (no ``v``) are deleted, not restored: they hold a
-        replayable cookie value and the user's OAuth tokens.
-        """
-        repo = SessionRepository()
+        """Load persisted, unexpired sessions into memory (dashboard startup)."""
         try:
-            purged = await repo.delete_older_versions(SESSION_DOC_VERSION)
-            if purged:
-                logger.info("Deleted %d legacy Web UI session(s) stored in clear.", purged)
-            docs = await repo.load_all_docs()
+            docs = await SessionRepository().load_all_docs()
         except Exception as e:
             logger.warning("Could not restore Web UI sessions: %s", e)
             return 0
         now = time.time()
         restored = 0
         for doc in docs:
-            if doc.get("v") != SESSION_DOC_VERSION:
-                continue
             try:
                 session = _doc_to_session(doc)
             except (KeyError, TypeError, ValueError) as e:
