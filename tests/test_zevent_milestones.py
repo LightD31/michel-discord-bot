@@ -14,6 +14,7 @@ from types import SimpleNamespace
 import pytest
 
 from extensions.zevent import tasks as module
+from extensions.zevent._common import ZeventGuild
 from extensions.zevent.tasks import TasksMixin
 from src.core.errors import DatabaseError
 
@@ -34,8 +35,10 @@ class Tracker(TasksMixin):
 
     def __init__(self, stats_event: dict | None = None) -> None:
         self.channel = FakeChannel()
-        self.last_milestone: int | None = None
-        self._milestone_lock = asyncio.Lock()
+        # One guild's tracker state, its message posted in ``channel``.
+        self.guild = ZeventGuild(
+            "809125340280520724", message=SimpleNamespace(channel=self.channel)
+        )
         self._stats_event = stats_event or {"id": "edition-2026"}
 
     async def _milestone_comparison(self, milestone):
@@ -68,7 +71,6 @@ class FakeStore:
 @pytest.fixture(autouse=True)
 def _interval(monkeypatch):
     monkeypatch.setattr(module, "MILESTONE_INTERVAL", INTERVAL)
-    monkeypatch.setattr(module, "GUILD_ID", 809125340280520724)
 
 
 @pytest.fixture(autouse=True)
@@ -87,8 +89,8 @@ def test_the_first_milestone_of_an_edition_is_announced() -> None:
     """The reported bug: 93 384 € then 100 501 € sent nothing at all."""
     tracker = Tracker()
 
-    run(tracker.check_and_send_milestone(93_384.62))
-    run(tracker.check_and_send_milestone(100_501.17))
+    run(tracker.check_and_send_milestone(tracker.guild, 93_384.62))
+    run(tracker.check_and_send_milestone(tracker.guild, 100_501.17))
 
     assert tracker.channel.sent == ["🎉 Nouveau palier atteint : 100 000 € récoltés ! 🎉"]
 
@@ -97,17 +99,17 @@ def test_the_first_reading_only_sets_the_baseline() -> None:
     """A restart mid-edition must not replay the milestones already passed."""
     tracker = Tracker()
 
-    run(tracker.check_and_send_milestone(5_243_000))
+    run(tracker.check_and_send_milestone(tracker.guild, 5_243_000))
 
     assert tracker.channel.sent == []
-    assert tracker.last_milestone == 5_200_000
+    assert tracker.guild.last_milestone == 5_200_000
 
 
 def test_a_restart_still_announces_the_next_milestone() -> None:
     tracker = Tracker()
 
-    run(tracker.check_and_send_milestone(5_243_000))
-    run(tracker.check_and_send_milestone(5_301_000))
+    run(tracker.check_and_send_milestone(tracker.guild, 5_243_000))
+    run(tracker.check_and_send_milestone(tracker.guild, 5_301_000))
 
     assert tracker.channel.sent == ["🎉 Nouveau palier atteint : 5 300 000 € récoltés ! 🎉"]
 
@@ -115,9 +117,9 @@ def test_a_restart_still_announces_the_next_milestone() -> None:
 def test_a_milestone_is_announced_once() -> None:
     tracker = Tracker()
 
-    run(tracker.check_and_send_milestone(93_000))
+    run(tracker.check_and_send_milestone(tracker.guild, 93_000))
     for total in (100_501, 120_000, 199_999):
-        run(tracker.check_and_send_milestone(total))
+        run(tracker.check_and_send_milestone(tracker.guild, total))
 
     assert len(tracker.channel.sent) == 1
 
@@ -126,8 +128,8 @@ def test_several_milestones_at_once_announce_the_highest() -> None:
     """A gap in the samples reports where the total is now, not every step."""
     tracker = Tracker()
 
-    run(tracker.check_and_send_milestone(10_000))
-    run(tracker.check_and_send_milestone(430_000))
+    run(tracker.check_and_send_milestone(tracker.guild, 10_000))
+    run(tracker.check_and_send_milestone(tracker.guild, 430_000))
 
     assert tracker.channel.sent == ["🎉 Nouveau palier atteint : 400 000 € récoltés ! 🎉"]
 
@@ -136,10 +138,10 @@ def test_a_total_that_dips_does_not_re_announce() -> None:
     """Zevent and Streamlabs disagree slightly; the higher one wins per cycle."""
     tracker = Tracker()
 
-    run(tracker.check_and_send_milestone(93_000))
-    run(tracker.check_and_send_milestone(100_501))
-    run(tracker.check_and_send_milestone(99_800))
-    run(tracker.check_and_send_milestone(100_600))
+    run(tracker.check_and_send_milestone(tracker.guild, 93_000))
+    run(tracker.check_and_send_milestone(tracker.guild, 100_501))
+    run(tracker.check_and_send_milestone(tracker.guild, 99_800))
+    run(tracker.check_and_send_milestone(tracker.guild, 100_600))
 
     assert len(tracker.channel.sent) == 1
 
@@ -152,8 +154,8 @@ def test_the_comparison_line_is_appended_when_available() -> None:
 
     tracker._milestone_comparison = comparison
 
-    run(tracker.check_and_send_milestone(93_000))
-    run(tracker.check_and_send_milestone(100_501))
+    run(tracker.check_and_send_milestone(tracker.guild, 93_000))
+    run(tracker.check_and_send_milestone(tracker.guild, 100_501))
 
     assert tracker.channel.sent[0].endswith("\n4 h d'avance sur 2025")
 
@@ -164,8 +166,8 @@ def test_the_comparison_line_is_appended_when_available() -> None:
 def test_the_marker_is_persisted_as_it_advances(store) -> None:
     tracker = Tracker()
 
-    run(tracker.check_and_send_milestone(93_000))
-    run(tracker.check_and_send_milestone(100_501))
+    run(tracker.check_and_send_milestone(tracker.guild, 93_000))
+    run(tracker.check_and_send_milestone(tracker.guild, 100_501))
 
     assert store.saved == {"edition-2026": 100_000}
 
@@ -175,9 +177,9 @@ def test_a_reboot_resumes_from_the_stored_marker(store) -> None:
     store.saved["edition-2026"] = 100_000
     tracker = Tracker()
 
-    run(tracker.load_milestone_marker())
+    run(tracker.load_milestone_marker(tracker.guild))
     # Back up with the total already past the next palier.
-    run(tracker.check_and_send_milestone(205_000))
+    run(tracker.check_and_send_milestone(tracker.guild, 205_000))
 
     assert tracker.channel.sent == ["🎉 Nouveau palier atteint : 200 000 € récoltés ! 🎉"]
 
@@ -186,8 +188,8 @@ def test_a_reboot_does_not_re_announce_the_stored_marker(store) -> None:
     store.saved["edition-2026"] = 200_000
     tracker = Tracker()
 
-    run(tracker.load_milestone_marker())
-    run(tracker.check_and_send_milestone(205_000))
+    run(tracker.load_milestone_marker(tracker.guild))
+    run(tracker.check_and_send_milestone(tracker.guild, 205_000))
 
     assert tracker.channel.sent == []
 
@@ -197,9 +199,9 @@ def test_a_new_edition_ignores_last_year_s_marker(store) -> None:
     store.saved["edition-2025"] = 16_100_000
     tracker = Tracker(stats_event={"id": "edition-2026"})
 
-    run(tracker.load_milestone_marker())
-    run(tracker.check_and_send_milestone(40_000))
-    run(tracker.check_and_send_milestone(101_000))
+    run(tracker.load_milestone_marker(tracker.guild))
+    run(tracker.check_and_send_milestone(tracker.guild, 40_000))
+    run(tracker.check_and_send_milestone(tracker.guild, 101_000))
 
     assert tracker.channel.sent == ["🎉 Nouveau palier atteint : 100 000 € récoltés ! 🎉"]
 
@@ -209,9 +211,9 @@ def test_an_unreachable_database_still_announces(store) -> None:
     store.failing = True
     tracker = Tracker()
 
-    run(tracker.load_milestone_marker())
-    run(tracker.check_and_send_milestone(93_000))
-    run(tracker.check_and_send_milestone(100_501))
+    run(tracker.load_milestone_marker(tracker.guild))
+    run(tracker.check_and_send_milestone(tracker.guild, 93_000))
+    run(tracker.check_and_send_milestone(tracker.guild, 100_501))
 
     assert tracker.channel.sent == ["🎉 Nouveau palier atteint : 100 000 € récoltés ! 🎉"]
 
@@ -223,8 +225,8 @@ def test_an_unconfigured_database_still_announces(store) -> None:
     store.failing = True
     tracker = Tracker()
 
-    run(tracker.load_milestone_marker())
-    run(tracker.check_and_send_milestone(93_000))
-    run(tracker.check_and_send_milestone(100_501))
+    run(tracker.load_milestone_marker(tracker.guild))
+    run(tracker.check_and_send_milestone(tracker.guild, 93_000))
+    run(tracker.check_and_send_milestone(tracker.guild, 100_501))
 
     assert tracker.channel.sent == ["🎉 Nouveau palier atteint : 100 000 € récoltés ! 🎉"]

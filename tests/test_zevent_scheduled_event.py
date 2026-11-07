@@ -14,6 +14,7 @@ import pytest
 from interactions import ScheduledEventStatus, ScheduledEventType
 
 from extensions.zevent import discord_event as module
+from extensions.zevent._common import ZeventGuild
 from extensions.zevent.api import ApiMixin
 from extensions.zevent.discord_event import DiscordEventMixin
 
@@ -97,25 +98,31 @@ class Tracker(ApiMixin, DiscordEventMixin):
     def __init__(self, guild: FakeGuild, event_end: datetime | None = EVENT_END):
         self.guild = guild
         self.client = FakeClient(guild)
-        self.message = None
+        # The guild's tracker state and its module settings, as ``Zevent._guilds``
+        # hands them to the sync.
+        self.state = ZeventGuild(str(GUILD_ID))
+        self.settings: dict = {"zeventManageDiscordEvent": True}
         self._event_title = "ZEvent 2026"
         self._event_start = EVENT_START
         self._main_event_start = MAIN_START
         self._event_end = event_end
-        self._scheduled_event = None
-        self._applied_plan = None
-        self._applied_cover_url = None
         self._last_event_total = None
-        self._event_finished = False
+        self._covers = {}
+
+    def sync(self, data, streamlabs_data, concert_active, finished=False):
+        return self.sync_scheduled_event(
+            self.state, self.settings, data, streamlabs_data, concert_active, finished
+        )
+
+    def recover(self):
+        return self.recover_scheduled_event(self.state, self.settings)
 
 
 @pytest.fixture(autouse=True)
 def _enable_module(monkeypatch):
-    """Turn the feature on: its config is empty outside a configured guild."""
-    monkeypatch.setattr(module, "MANAGE_DISCORD_EVENT", True)
+    """Configure both locations: the edition's URLs are empty outside a configured bot."""
     monkeypatch.setattr(module, "TWITCH_URL", TWITCH_URL)
     monkeypatch.setattr(module, "WEBSITE_URL", WEBSITE_URL)
-    monkeypatch.setattr(module, "GUILD_ID", GUILD_ID)
 
 
 @pytest.fixture
@@ -143,7 +150,7 @@ def test_creates_an_active_event_mid_marathon(now) -> None:
     guild = FakeGuild()
     tracker = Tracker(guild)
 
-    run(tracker.sync_scheduled_event(payload(1_250_000), None, concert_active=False))
+    run(tracker.sync(payload(1_250_000), None, concert_active=False))
 
     assert len(guild.created) == 1
     created = guild.created[0]
@@ -153,7 +160,7 @@ def test_creates_an_active_event_mid_marathon(now) -> None:
     # Discord refuses a start in the past, so a running edition starts now.
     assert created["start_time"] == now["now"] + module.START_LEAD
     assert "1 250 000 € récoltés." in created["description"]
-    assert tracker._scheduled_event.edits == [{"status": ScheduledEventStatus.ACTIVE}]
+    assert tracker.state.scheduled_event.edits == [{"status": ScheduledEventStatus.ACTIVE}]
 
 
 def test_an_unchanged_cycle_makes_no_discord_call(now) -> None:
@@ -163,12 +170,12 @@ def test_an_unchanged_cycle_makes_no_discord_call(now) -> None:
     object would re-send the same payload on every tick.
     """
     tracker = Tracker(FakeGuild())
-    run(tracker.sync_scheduled_event(payload(1_250_000), None, concert_active=False))
-    event = tracker._scheduled_event
+    run(tracker.sync(payload(1_250_000), None, concert_active=False))
+    event = tracker.state.scheduled_event
     event.edits.clear()
 
     for _ in range(3):
-        run(tracker.sync_scheduled_event(payload(1_250_000), None, concert_active=False))
+        run(tracker.sync(payload(1_250_000), None, concert_active=False))
 
     assert event.edits == []
 
@@ -176,12 +183,12 @@ def test_an_unchanged_cycle_makes_no_discord_call(now) -> None:
 def test_a_moving_total_is_pushed_once_per_change(now) -> None:
     """Name and description move together, in a single edit."""
     tracker = Tracker(FakeGuild())
-    run(tracker.sync_scheduled_event(payload(1_250_000), None, concert_active=False))
-    event = tracker._scheduled_event
+    run(tracker.sync(payload(1_250_000), None, concert_active=False))
+    event = tracker.state.scheduled_event
     event.edits.clear()
 
-    run(tracker.sync_scheduled_event(payload(1_300_500), None, concert_active=False))
-    run(tracker.sync_scheduled_event(payload(1_300_500), None, concert_active=False))
+    run(tracker.sync(payload(1_300_500), None, concert_active=False))
+    run(tracker.sync(payload(1_300_500), None, concert_active=False))
 
     assert len(event.edits) == 1
     assert event.edits[0]["name"] == "ZEvent 2026 - 1 300 500 €"
@@ -191,13 +198,13 @@ def test_a_moving_total_is_pushed_once_per_change(now) -> None:
 def test_announced_event_is_started_when_the_edition_opens(now) -> None:
     now["now"] = EVENT_START - timedelta(days=2)
     tracker = Tracker(FakeGuild())
-    run(tracker.sync_scheduled_event(payload(0), None, concert_active=False))
-    event = tracker._scheduled_event
+    run(tracker.sync(payload(0), None, concert_active=False))
+    event = tracker.state.scheduled_event
     assert event.start_time == EVENT_START
     assert event.edits == []
 
     now["now"] = EVENT_START + timedelta(minutes=1)
-    run(tracker.sync_scheduled_event(payload(0), None, concert_active=True))
+    run(tracker.sync(payload(0), None, concert_active=True))
 
     assert {"status": ScheduledEventStatus.ACTIVE} in event.edits
 
@@ -205,11 +212,11 @@ def test_announced_event_is_started_when_the_edition_opens(now) -> None:
 def test_an_api_outage_leaves_the_announced_total_alone(now) -> None:
     """A failed fetch is not news: the total only grows, so keep the last one."""
     tracker = Tracker(FakeGuild())
-    run(tracker.sync_scheduled_event(payload(1_250_000), None, concert_active=False))
-    event = tracker._scheduled_event
+    run(tracker.sync(payload(1_250_000), None, concert_active=False))
+    event = tracker.state.scheduled_event
     event.edits.clear()
 
-    run(tracker.sync_scheduled_event(None, None, concert_active=False))
+    run(tracker.sync(None, None, concert_active=False))
 
     assert event.edits == []
 
@@ -220,43 +227,43 @@ def test_an_api_outage_leaves_the_announced_total_alone(now) -> None:
 def test_running_event_is_completed_past_the_end(now) -> None:
     """Completed, not deleted — even though the model still reads SCHEDULED."""
     tracker = Tracker(FakeGuild())
-    run(tracker.sync_scheduled_event(payload(1_250_000), None, concert_active=False))
-    event = tracker._scheduled_event
+    run(tracker.sync(payload(1_250_000), None, concert_active=False))
+    event = tracker.state.scheduled_event
     assert event.status == ScheduledEventStatus.SCHEDULED  # edit() never refreshes it
     event.edits.clear()
 
     now["now"] = EVENT_END + timedelta(minutes=1)
-    run(tracker.sync_scheduled_event(payload(1_250_000), None, concert_active=False))
+    run(tracker.sync(payload(1_250_000), None, concert_active=False))
 
     assert event.edits == [{"status": ScheduledEventStatus.COMPLETED}]
     assert event.deleted is False
-    assert tracker._scheduled_event is None
+    assert tracker.state.scheduled_event is None
 
 
 def test_announced_event_is_cancelled_when_the_tracker_is_finished(now) -> None:
     now["now"] = EVENT_START - timedelta(days=2)
     tracker = Tracker(FakeGuild())
-    run(tracker.sync_scheduled_event(payload(0), None, concert_active=False))
-    event = tracker._scheduled_event
+    run(tracker.sync(payload(0), None, concert_active=False))
+    event = tracker.state.scheduled_event
 
-    run(tracker.sync_scheduled_event(payload(0), None, concert_active=False, finished=True))
+    run(tracker.sync(payload(0), None, concert_active=False, finished=True))
 
     assert event.deleted is True
-    assert tracker._scheduled_event is None
+    assert tracker.state.scheduled_event is None
 
 
 def test_finishing_sticks_across_later_refresh_cycles(now) -> None:
     """The refresh loop keeps running after ``/zevent_finish`` — it must not
     resurrect the event that command just closed."""
     tracker = Tracker(FakeGuild())
-    run(tracker.sync_scheduled_event(payload(1_250_000), None, concert_active=False))
+    run(tracker.sync(payload(1_250_000), None, concert_active=False))
     tracker.guild.created.clear()
 
-    run(tracker.sync_scheduled_event(payload(1_250_000), None, concert_active=False, finished=True))
-    run(tracker.sync_scheduled_event(payload(1_260_000), None, concert_active=False))
+    run(tracker.sync(payload(1_250_000), None, concert_active=False, finished=True))
+    run(tracker.sync(payload(1_260_000), None, concert_active=False))
 
     assert tracker.guild.created == []
-    assert tracker._scheduled_event is None
+    assert tracker.state.scheduled_event is None
 
 
 # ─── Recovery ─────────────────────────────────────────────────────────
@@ -272,11 +279,11 @@ def test_recovers_the_event_this_bot_created(now) -> None:
     )
     tracker = Tracker(FakeGuild([existing]))
 
-    run(tracker.recover_scheduled_event())
+    run(tracker.recover())
 
-    assert tracker._scheduled_event is existing
+    assert tracker.state.scheduled_event is existing
     # No duplicate: the next cycle edits the recovered event instead.
-    run(tracker.sync_scheduled_event(payload(1_250_000), None, concert_active=False))
+    run(tracker.sync(payload(1_250_000), None, concert_active=False))
     assert tracker.guild.created == []
 
 
@@ -298,9 +305,9 @@ def test_ignores_events_from_other_bots_and_other_channels(now) -> None:
     )
     tracker = Tracker(FakeGuild([someone_else, other_stream]))
 
-    run(tracker.recover_scheduled_event())
+    run(tracker.recover())
 
-    assert tracker._scheduled_event is None
+    assert tracker.state.scheduled_event is None
 
 
 def test_ignores_an_already_completed_event(now) -> None:
@@ -314,9 +321,9 @@ def test_ignores_an_already_completed_event(now) -> None:
     finished.status = ScheduledEventStatus.COMPLETED
     tracker = Tracker(FakeGuild([finished]))
 
-    run(tracker.recover_scheduled_event())
+    run(tracker.recover())
 
-    assert tracker._scheduled_event is None
+    assert tracker.state.scheduled_event is None
 
 
 # ─── Location ─────────────────────────────────────────────────────────
@@ -327,7 +334,7 @@ def test_the_concert_points_at_the_twitch_channel(now) -> None:
     now["now"] = EVENT_START + timedelta(hours=1)
     tracker = Tracker(FakeGuild())
 
-    run(tracker.sync_scheduled_event(payload(0), None, concert_active=True))
+    run(tracker.sync(payload(0), None, concert_active=True))
 
     assert tracker.guild.created[0]["external_location"] == TWITCH_URL
 
@@ -336,23 +343,23 @@ def test_the_location_moves_to_the_site_when_the_marathon_starts(now) -> None:
     """From then on every participant streams on their own channel."""
     now["now"] = EVENT_START + timedelta(hours=1)
     tracker = Tracker(FakeGuild())
-    run(tracker.sync_scheduled_event(payload(0), None, concert_active=True))
-    event = tracker._scheduled_event
+    run(tracker.sync(payload(0), None, concert_active=True))
+    event = tracker.state.scheduled_event
     event.edits.clear()
 
     now["now"] = MAIN_START + timedelta(minutes=1)
-    run(tracker.sync_scheduled_event(payload(120_000), None, concert_active=False))
+    run(tracker.sync(payload(120_000), None, concert_active=False))
 
     assert event.edits[0]["external_location"] == WEBSITE_URL
 
 
 def test_the_location_is_not_rewritten_every_cycle(now) -> None:
     tracker = Tracker(FakeGuild())
-    run(tracker.sync_scheduled_event(payload(1_250_000), None, concert_active=False))
-    event = tracker._scheduled_event
+    run(tracker.sync(payload(1_250_000), None, concert_active=False))
+    event = tracker.state.scheduled_event
     event.edits.clear()
 
-    run(tracker.sync_scheduled_event(payload(1_250_000), None, concert_active=False))
+    run(tracker.sync(payload(1_250_000), None, concert_active=False))
 
     assert event.edits == []
 
@@ -368,10 +375,10 @@ def test_an_event_created_during_the_concert_is_still_recovered(now) -> None:
     )
     tracker = Tracker(FakeGuild([existing]))
 
-    run(tracker.recover_scheduled_event())
+    run(tracker.recover())
 
-    assert tracker._scheduled_event is existing
-    run(tracker.sync_scheduled_event(payload(1_250_000), None, concert_active=False))
+    assert tracker.state.scheduled_event is existing
+    run(tracker.sync(payload(1_250_000), None, concert_active=False))
     assert tracker.guild.created == []
     assert existing.edits[0]["external_location"] == WEBSITE_URL
 
@@ -380,7 +387,7 @@ def test_only_a_twitch_channel_configured_keeps_using_it(now, monkeypatch) -> No
     monkeypatch.setattr(module, "WEBSITE_URL", "")
     tracker = Tracker(FakeGuild())
 
-    run(tracker.sync_scheduled_event(payload(1_250_000), None, concert_active=False))
+    run(tracker.sync(payload(1_250_000), None, concert_active=False))
 
     assert tracker.guild.created[0]["external_location"] == TWITCH_URL
 
@@ -390,7 +397,7 @@ def test_only_a_site_configured_uses_it_throughout(now, monkeypatch) -> None:
     now["now"] = EVENT_START + timedelta(hours=1)
     tracker = Tracker(FakeGuild())
 
-    run(tracker.sync_scheduled_event(payload(0), None, concert_active=True))
+    run(tracker.sync(payload(0), None, concert_active=True))
 
     assert tracker.guild.created[0]["external_location"] == WEBSITE_URL
 
@@ -400,7 +407,7 @@ def test_neither_url_configured_disables_the_event(now, monkeypatch) -> None:
     monkeypatch.setattr(module, "WEBSITE_URL", "")
     tracker = Tracker(FakeGuild())
 
-    run(tracker.sync_scheduled_event(payload(1_250_000), None, concert_active=False))
+    run(tracker.sync(payload(1_250_000), None, concert_active=False))
 
     assert tracker.guild.created == []
 
@@ -442,7 +449,7 @@ def cover(monkeypatch):
 def test_the_cover_is_uploaded_with_the_new_event(now, cover) -> None:
     tracker = Tracker(FakeGuild())
 
-    run(tracker.sync_scheduled_event(payload(1_250_000), None, concert_active=False))
+    run(tracker.sync(payload(1_250_000), None, concert_active=False))
 
     assert tracker.guild.created[0]["cover_image"] == b"PNG-bytes"
     assert cover["downloads"] == 1
@@ -451,10 +458,10 @@ def test_the_cover_is_uploaded_with_the_new_event(now, cover) -> None:
 def test_the_cover_is_not_re_uploaded_on_later_cycles(now, cover) -> None:
     """It is decoration, not state: fetching it once per process is enough."""
     tracker = Tracker(FakeGuild())
-    run(tracker.sync_scheduled_event(payload(1_250_000), None, concert_active=False))
-    event = tracker._scheduled_event
+    run(tracker.sync(payload(1_250_000), None, concert_active=False))
+    event = tracker.state.scheduled_event
 
-    run(tracker.sync_scheduled_event(payload(1_300_000), None, concert_active=False))
+    run(tracker.sync(payload(1_300_000), None, concert_active=False))
 
     assert cover["downloads"] == 1
     assert "cover_image" not in event.edits[0]
@@ -469,9 +476,9 @@ def test_a_recovered_event_gets_the_cover_on_the_next_cycle(now, cover) -> None:
         location=TWITCH_URL,
     )
     tracker = Tracker(FakeGuild([existing]))
-    run(tracker.recover_scheduled_event())
+    run(tracker.recover())
 
-    run(tracker.sync_scheduled_event(payload(1_250_000), None, concert_active=False))
+    run(tracker.sync(payload(1_250_000), None, concert_active=False))
 
     assert existing.edits[0]["cover_image"] == b"PNG-bytes"
 
@@ -481,8 +488,8 @@ def test_an_unreachable_cover_is_attempted_once_and_dropped(now, cover) -> None:
     cover["status"] = 404
     tracker = Tracker(FakeGuild())
 
-    run(tracker.sync_scheduled_event(payload(1_250_000), None, concert_active=False))
-    run(tracker.sync_scheduled_event(payload(1_300_000), None, concert_active=False))
+    run(tracker.sync(payload(1_250_000), None, concert_active=False))
+    run(tracker.sync(payload(1_300_000), None, concert_active=False))
 
     assert tracker.guild.created[0]["cover_image"] is None
     assert cover["downloads"] == 1
@@ -492,7 +499,7 @@ def test_an_oversized_cover_is_refused(now, cover) -> None:
     cover["body"] = b"x" * (module.MAX_COVER_BYTES + 1)
     tracker = Tracker(FakeGuild())
 
-    run(tracker.sync_scheduled_event(payload(1_250_000), None, concert_active=False))
+    run(tracker.sync(payload(1_250_000), None, concert_active=False))
 
     assert tracker.guild.created[0]["cover_image"] is None
 
@@ -500,7 +507,7 @@ def test_an_oversized_cover_is_refused(now, cover) -> None:
 def test_no_cover_configured_means_no_upload(now) -> None:
     tracker = Tracker(FakeGuild())
 
-    run(tracker.sync_scheduled_event(payload(1_250_000), None, concert_active=False))
+    run(tracker.sync(payload(1_250_000), None, concert_active=False))
 
     assert tracker.guild.created[0]["cover_image"] is None
 
@@ -508,10 +515,47 @@ def test_no_cover_configured_means_no_upload(now) -> None:
 # ─── Opt-out ──────────────────────────────────────────────────────────
 
 
-def test_does_nothing_when_the_module_is_off(now, monkeypatch) -> None:
-    monkeypatch.setattr(module, "MANAGE_DISCORD_EVENT", False)
+def test_does_nothing_when_the_guild_did_not_ask_for_it(now) -> None:
     tracker = Tracker(FakeGuild())
+    tracker.settings = {}
 
-    run(tracker.sync_scheduled_event(payload(1_250_000), None, concert_active=False))
+    run(tracker.sync(payload(1_250_000), None, concert_active=False))
 
     assert tracker.guild.created == []
+
+
+# ─── Several guilds ───────────────────────────────────────────────────
+
+
+def test_each_guild_that_asks_gets_its_own_event_and_one_cover_download(now, cover) -> None:
+    tracker = Tracker(FakeGuild())
+    other = ZeventGuild("2")
+    no_event = ZeventGuild("3")
+
+    run(tracker.sync(payload(1_250_000), None, concert_active=False))
+    run(
+        tracker.sync_scheduled_event(
+            other, {"zeventManageDiscordEvent": True}, payload(1_250_000), None, False
+        )
+    )
+    run(tracker.sync_scheduled_event(no_event, {}, payload(1_250_000), None, False))
+
+    assert len(tracker.guild.created) == 2
+    assert tracker.state.scheduled_event is not other.scheduled_event
+    assert no_event.scheduled_event is None
+    assert [c["cover_image"] for c in tracker.guild.created] == [b"PNG-bytes"] * 2
+    assert cover["downloads"] == 1
+
+
+def test_finishing_in_one_guild_leaves_the_others_running(now) -> None:
+    tracker = Tracker(FakeGuild())
+    other = ZeventGuild("2")
+    settings = {"zeventManageDiscordEvent": True}
+    run(tracker.sync(payload(1_250_000), None, concert_active=False))
+    run(tracker.sync_scheduled_event(other, settings, payload(1_250_000), None, False))
+
+    run(tracker.sync(payload(1_250_000), None, concert_active=False, finished=True))
+    run(tracker.sync_scheduled_event(other, settings, payload(1_260_000), None, False))
+
+    assert tracker.state.scheduled_event is None
+    assert other.scheduled_event is not None

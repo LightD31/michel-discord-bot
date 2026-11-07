@@ -9,21 +9,26 @@ from src.core.http import fetch
 from src.discord_ext.messages import edit_message_if_changed
 from src.discord_ext.scopes import guild_scopes
 
-from ._common import API_URL, GUILD_ID
+from ._common import API_URL, ZEVENT, ZeventGuild
 
 logger = logutil.init_logger(__name__)
 
 
 class CommandsMixin:
-    """Admin command to freeze the pinned message with the final recap."""
+    """Admin command to freeze the guild's tracker message with the final recap."""
 
     @slash_command(
         name="zevent_finish",
         description="Créée l'embed final après l'évènement",
-        # Single-guild module: the recap lives on the first enabled server.
-        scopes=guild_scopes([GUILD_ID]),
+        scopes=guild_scopes(ZEVENT.guild_ids()),
     )
     async def end(self, ctx: SlashContext):
+        settings = ZEVENT.get(ctx.guild_id)
+        if not settings:
+            await ctx.send("Le module Zevent n'est pas activé sur ce serveur.", ephemeral=True)
+            return
+        guild_id = str(ctx.guild_id)
+        guild = self.guilds.setdefault(guild_id, ZeventGuild(guild_id))
         try:
             data = await fetch(API_URL, return_type="json")
             if not data or not self._validate_api_data(data, "zevent"):
@@ -59,12 +64,13 @@ class CommandsMixin:
 
             # The recap freezes the tracker, so the guild's scheduled event has
             # nothing left to announce either.
-            await self.sync_scheduled_event(data, None, concert_active=False, finished=True)
+            await self.sync_scheduled_event(
+                guild, settings, data, None, concert_active=False, finished=True
+            )
 
-            if self.message:
-                await edit_message_if_changed(
-                    self.message, embeds=embeds, content="", logger=logger
-                )
+            message = await self.messages.get(guild_id, settings)
+            if message:
+                await edit_message_if_changed(message, embeds=embeds, content="", logger=logger)
                 await ctx.send("Embed final créé avec succès", ephemeral=True)
             else:
                 await ctx.send("Erreur: Message non trouvé", ephemeral=True)

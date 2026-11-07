@@ -27,7 +27,7 @@ from ._common import (
 
 # Sources credited in the embed footers. Only what actually fed an embed is
 # named: crediting a source the tracker never reached would be a lie, and the
-# Streamlabs team URL and the stats API are both optional per guild.
+# Streamlabs team URL and the stats API are both optional.
 SOURCE_ZEVENT = "zevent.fr"
 SOURCE_STATS = "zevent.gdoc.fr"
 SOURCE_TWITCH = "Twitch"
@@ -405,7 +405,7 @@ class EmbedsMixin:
     def create_top_donations_embed(self, streams: list[dict]) -> Embed | None:
         """Leaderboard embed for the top collecting streamers (gold theme).
 
-        How many entries it lists is the guild's call; ``0`` drops the embed
+        How many entries it lists is configured; ``0`` drops the embed
         entirely rather than rendering an empty one.
         """
         try:

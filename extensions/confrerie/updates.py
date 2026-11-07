@@ -10,7 +10,7 @@ from features.links import shorten_url
 from src.core import logging as logutil
 from src.discord_ext.embeds import Colors, format_discord_timestamp
 
-from ._common import ConfrerieError, module_config
+from ._common import CONFRERIE, ConfrerieError
 
 logger = logutil.init_logger(__name__)
 
@@ -72,16 +72,16 @@ def build_work_embed(
 class UpdatesMixin:
     """Post page-update announcements and keep the "Update" flag clean on Notion."""
 
-    async def update(self, page_id: str):
-        """Fetch ``page_id`` from Notion and send its embed to the right channel."""
+    async def update(self, page_id: str, guild_id: str, settings: dict):
+        """Fetch ``page_id`` from Notion and send its embed to the guild's right channel."""
         page = await self.notion_client.retrieve_page(page_id)
         work = parse_work(page)
 
         if work.defi:
-            channel_id = module_config.get("confrerieDefiChannelId")
+            channel_id = settings.get("confrerieDefiChannelId")
             title = f"Nouvelle participation au {work.defi}"
         else:
-            channel_id = module_config.get("confrerieNewTextChannelId")
+            channel_id = settings.get("confrerieNewTextChannelId")
             title = "Texte mis à jour"
         if not channel_id:
             raise ConfrerieError("Salon d'annonce non configuré pour cette page")
@@ -96,7 +96,7 @@ class UpdatesMixin:
             title,
             notion_url=notion_url,
             links=links,
-            footer=await self._create_embed_footer(),
+            footer=await self._create_embed_footer(guild_id),
         )
         await channel.send(work.update_note[:MESSAGE_LIMIT] or None, embed=embed)
         logger.info(f"Message de mise à jour envoyé pour la page {page_id}")
@@ -113,12 +113,17 @@ class UpdatesMixin:
         )
     )
     async def autoupdate(self):
-        """Scheduled sweep of pages marked with ``Update=True`` in Notion."""
+        """Scheduled sweep of pages marked with ``Update=True``, in each enabled guild's base."""
         logger.debug("Début de la tâche de mise à jour automatique")
+        for guild_id, settings in CONFRERIE.items():
+            db_id = settings.get("confrerieNotionDbOeuvresId")
+            if db_id:
+                await self._autoupdate_guild(guild_id, settings, db_id)
 
+    async def _autoupdate_guild(self, guild_id: str, settings: dict, db_id: str) -> None:
         try:
             updated_pages = await self.notion_client.query_data_source(
-                database_id=module_config["confrerieNotionDbOeuvresId"],
+                database_id=db_id,
                 filter_params={"property": "Update", "checkbox": {"equals": True}},
             )
 
@@ -130,7 +135,7 @@ class UpdatesMixin:
 
             for page in updated_pages:
                 try:
-                    await self.update(page["id"])
+                    await self.update(page["id"], guild_id, settings)
                     await self.notion_client.update_page_properties(
                         page_id=page["id"], properties={"Update": {"checkbox": False}}
                     )

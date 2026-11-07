@@ -4,7 +4,6 @@ import pytest
 from confrerie_fixtures import OEUVRES_SCHEMA
 from test_confrerie_review import FakeRepo
 
-from extensions.confrerie import forums
 from extensions.confrerie.forums import ForumsMixin
 
 FORUM_ID = 500
@@ -31,6 +30,7 @@ class Message:
         self.content = content
         self.attachments = list(attachments)
         self.channel = Thread()
+        self._guild_id = 9
         self.jump_url = f"https://discord.com/channels/9/{THREAD_ID}/{msg_id}"
 
 
@@ -44,10 +44,11 @@ class Harness(ForumsMixin):
         self.repo = FakeRepo()
         self.submitted = []
 
-    def _drafts(self):
+    def _drafts(self, guild_id):
+        assert guild_id == "9"
         return self.repo
 
-    async def _oeuvres_schema(self):
+    async def _oeuvres_schema(self, settings):
         return OEUVRES_SCHEMA
 
     async def submit_draft(self, draft):
@@ -56,13 +57,13 @@ class Harness(ForumsMixin):
 
 
 @pytest.fixture(autouse=True)
-def _config(monkeypatch):
-    monkeypatch.setattr(
-        forums,
-        "module_config",
-        {"confrerieDefisForumId": str(FORUM_ID), "confrerieAuthorMap": {"42": "Mahé"}},
-    )
-    monkeypatch.setattr(forums, "guild_id", "9")
+def _config(store_config):
+    settings = {
+        "enabled": True,
+        "confrerieDefisForumId": str(FORUM_ID),
+        "confrerieAuthorMap": {"42": "Mahé"},
+    }
+    store_config({"servers": {"9": {"moduleConfrerie": settings}}})
 
 
 async def _post(harness, message):

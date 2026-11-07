@@ -2,8 +2,9 @@
 
 Discord announces a guild scheduled event to members, lets them RSVP and shows
 its dates in their own timezone — everything the pinned tracker message cannot
-do. The event is created once, kept in step with the edition's phase, and ended
-when the edition is over.
+do. Each guild that asks for it (``zeventManageDiscordEvent``) gets its own: it
+is created once, kept in step with the edition's phase, and ended when the
+edition is over.
 """
 
 import contextlib
@@ -14,7 +15,6 @@ from typing import Any
 from interactions import (
     Client,
     Guild,
-    Message,
     ScheduledEvent,
     ScheduledEventStatus,
     ScheduledEventType,
@@ -33,11 +33,10 @@ from src.core.http import http_client
 
 from ._common import (
     EVENT_COVER_URL,
-    GUILD_ID,
-    MANAGE_DISCORD_EVENT,
     STATS_SITE_URL,
     TWITCH_URL,
     WEBSITE_URL,
+    ZeventGuild,
 )
 
 logger = logutil.init_logger(__name__)
@@ -59,13 +58,6 @@ MAX_COVER_BYTES = 8 * 1024 * 1024
 # one is history: adopting it would only produce failing edits.
 LIVE_STATUSES = frozenset({ScheduledEventStatus.SCHEDULED, ScheduledEventStatus.ACTIVE})
 
-# Both inputs are process-level config, so the mismatch is worth saying once at
-# startup rather than on every refresh cycle.
-if MANAGE_DISCORD_EVENT and not (TWITCH_URL or WEBSITE_URL):
-    logger.warning(
-        "Zevent: événement Discord demandé mais ni chaîne Twitch ni site configurés — ignoré."
-    )
-
 _STATUS_BY_DISCORD = {
     ScheduledEventStatus.SCHEDULED: SCHEDULED,
     ScheduledEventStatus.ACTIVE: ACTIVE,
@@ -81,21 +73,18 @@ def _same_instant(left: datetime | None, right: datetime | None) -> bool:
 
 
 class DiscordEventMixin:
-    """Create, refresh and end the guild scheduled event for the edition."""
+    """Create, refresh and end each guild's scheduled event for the edition."""
 
     # Declared here (rather than inferred from ``Zevent.__init__``) so mypy
     # sees the nullable cache slots for what they are.
-    _scheduled_event: ScheduledEvent | None
-    _applied_plan: ScheduledEventPlan | None
-    _applied_cover_url: str | None
     _last_event_total: float | None
-    _event_finished: bool
+    # Cover image per URL, downloaded once for every guild's event.
+    _covers: dict[str, bytes | None]
     _event_title: str
     _event_start: datetime
     _main_event_start: datetime
     _event_end: datetime | None
     client: Client
-    message: Message | None
 
     # ─── Location ─────────────────────────────────────────────────────
 
@@ -112,14 +101,15 @@ class DiscordEventMixin:
             return str(metadata.get("location") or "")
         return ""
 
-    def _event_enabled(self) -> bool:
-        """True when the dashboard asked for the event *and* it can be located.
+    @staticmethod
+    def _event_enabled(settings: dict) -> bool:
+        """True when the guild asked for the event *and* it can be located.
 
         An external Discord event must declare a location, and the only ones
         the tracker knows are the two configured URLs — no URL is hardcoded, so
         having neither simply turns the feature off.
         """
-        return bool(MANAGE_DISCORD_EVENT and (TWITCH_URL or WEBSITE_URL) and GUILD_ID is not None)
+        return bool(settings.get("zeventManageDiscordEvent") and (TWITCH_URL or WEBSITE_URL))
 
     @staticmethod
     def _known_locations() -> set[str]:
@@ -157,54 +147,65 @@ class DiscordEventMixin:
             return None
         return data
 
-    async def _pending_cover(self) -> bytes | None:
-        """The cover to upload now, or ``None`` when the event already has it.
+    async def _pending_cover(self, guild: ZeventGuild) -> bytes | None:
+        """The cover to upload to this guild's event now, or ``None`` when it has it.
 
         The configured URL is read at import, so this fires at most once per
-        process — on creation, or on the first refresh after a restart or a
-        dashboard reload picked up a new URL.
+        guild and process — on creation, or on the first refresh after a
+        restart or a reload picked up a new URL. The image itself is downloaded
+        once for every guild.
         """
-        if not EVENT_COVER_URL or self._applied_cover_url == EVENT_COVER_URL:
+        if not EVENT_COVER_URL or guild.applied_cover_url == EVENT_COVER_URL:
             return None
-        cover = await self._fetch_cover()
-        # Stamped even on failure, so a broken URL costs one attempt, not one
-        # per refresh cycle.
-        self._applied_cover_url = EVENT_COVER_URL
-        return cover
+        if EVENT_COVER_URL not in self._covers:
+            # Kept even on failure, so a broken URL costs one attempt, not one
+            # per guild or refresh cycle.
+            self._covers[EVENT_COVER_URL] = await self._fetch_cover()
+        guild.applied_cover_url = EVENT_COVER_URL
+        return self._covers[EVENT_COVER_URL]
 
-    async def _event_guild(self) -> Guild | None:
-        if GUILD_ID is None:
-            return None
+    async def _event_guild(self, guild: ZeventGuild) -> Guild | None:
         try:
-            return await self.client.fetch_guild(GUILD_ID)
+            return await self.client.fetch_guild(guild.guild_id)
         except Exception as e:
-            logger.error(f"Zevent: serveur {GUILD_ID} introuvable pour l'événement Discord : {e}")
+            logger.error(
+                "Zevent: serveur %s introuvable pour l'événement Discord : %s", guild.guild_id, e
+            )
             return None
 
     # ─── Lifecycle ────────────────────────────────────────────────────
 
-    async def recover_scheduled_event(self) -> None:
-        """Re-attach the event this bot already created, across restarts.
+    async def recover_scheduled_event(self, guild: ZeventGuild, settings: dict) -> None:
+        """Re-attach the event this bot already created in the guild, across restarts.
 
         Matched on the external location (the configured Twitch channel) the
         same way the Twitch extension disambiguates its own events — the bot
         creates exactly one Zevent event per guild.
         """
-        self._scheduled_event = None
-        self._applied_plan = None
-        self._applied_cover_url = None
-        if not self._event_enabled():
+        guild.scheduled_event = None
+        guild.applied_plan = None
+        guild.applied_cover_url = None
+        if not self._event_enabled(settings):
+            # The edition's URLs are read when the extension loads, so this is
+            # said once per guild rather than on every refresh cycle.
+            logger.warning(
+                "Zevent: événement Discord demandé sur %s mais ni chaîne Twitch ni site "
+                "configurés — ignoré.",
+                guild.guild_id,
+            )
             return
 
-        guild = await self._event_guild()
-        if guild is None:
+        discord_guild = await self._event_guild(guild)
+        if discord_guild is None:
             return
 
         expected = self._known_locations()
         try:
-            events = await guild.list_scheduled_events()
+            events = await discord_guild.list_scheduled_events()
         except Exception as e:
-            logger.error(f"Zevent: impossible de lister les événements du serveur : {e}")
+            logger.error(
+                "Zevent: impossible de lister les événements du serveur %s : %s", guild.guild_id, e
+            )
             return
 
         for event in events:
@@ -217,14 +218,23 @@ class DiscordEventMixin:
             except Exception:
                 continue
             if creator and self.client.user and creator.id == self.client.user.id:
-                self._scheduled_event = event
-                logger.info(f"Zevent: événement Discord existant récupéré ({event.name})")
+                guild.scheduled_event = event
+                logger.info(
+                    "Zevent: événement Discord existant récupéré sur %s (%s)",
+                    guild.guild_id,
+                    event.name,
+                )
                 return
 
     # ─── Refresh ──────────────────────────────────────────────────────
 
     def _build_plan(
-        self, data: Any, streamlabs_data: Any, concert_active: bool, finished: bool = False
+        self,
+        guild: ZeventGuild,
+        data: Any,
+        streamlabs_data: Any,
+        concert_active: bool,
+        finished: bool = False,
     ) -> ScheduledEventPlan:
         if isinstance(data, dict) and self._is_event_started():
             _, self._last_event_total = self.get_total_amount(
@@ -235,7 +245,7 @@ class DiscordEventMixin:
         total = self._last_event_total
         # ``/zevent_finish`` sticks: the refresh loop keeps running afterwards,
         # and it must not resurrect the event it just closed.
-        self._event_finished = self._event_finished or finished
+        guild.event_finished = guild.event_finished or finished
         return plan_scheduled_event(
             title=self._event_title,
             event_start=self._event_start,
@@ -244,15 +254,21 @@ class DiscordEventMixin:
             now=datetime.now(UTC),
             total=total,
             concert_active=concert_active,
-            finished=self._event_finished,
-            tracker_url=self.message.jump_url if self.message else None,
+            finished=guild.event_finished,
+            tracker_url=guild.message.jump_url if guild.message else None,
             stats_url=STATS_SITE_URL or None,
             twitch_url=TWITCH_URL,
             website_url=WEBSITE_URL,
         )
 
     async def sync_scheduled_event(
-        self, data: Any, streamlabs_data: Any, concert_active: bool, finished: bool = False
+        self,
+        guild: ZeventGuild,
+        settings: dict,
+        data: Any,
+        streamlabs_data: Any,
+        concert_active: bool,
+        finished: bool = False,
     ) -> None:
         """Bring the guild's scheduled event in line with the current phase.
 
@@ -260,22 +276,26 @@ class DiscordEventMixin:
         members actually read, and it must render even if Discord refuses an
         event edit.
         """
-        if not self._event_enabled():
+        if not self._event_enabled(settings):
             return
         try:
-            plan = self._build_plan(data, streamlabs_data, concert_active, finished)
+            plan = self._build_plan(guild, data, streamlabs_data, concert_active, finished)
             if plan.status == COMPLETED:
-                await self._end_scheduled_event()
-            elif self._scheduled_event is None:
-                await self._create_scheduled_event(plan)
+                await self._end_scheduled_event(guild)
+            elif guild.scheduled_event is None:
+                await self._create_scheduled_event(guild, plan)
             else:
-                await self._update_scheduled_event(plan)
+                await self._update_scheduled_event(guild, plan)
         except Exception as e:
-            logger.error(f"Zevent: mise à jour de l'événement Discord impossible : {e}")
+            logger.error(
+                "Zevent: mise à jour de l'événement Discord impossible sur %s : %s",
+                guild.guild_id,
+                e,
+            )
 
-    async def _create_scheduled_event(self, plan: ScheduledEventPlan) -> None:
-        guild = await self._event_guild()
-        if guild is None:
+    async def _create_scheduled_event(self, guild: ZeventGuild, plan: ScheduledEventPlan) -> None:
+        discord_guild = await self._event_guild(guild)
+        if discord_guild is None:
             return
 
         start = plan.start
@@ -283,8 +303,8 @@ class DiscordEventMixin:
             start = datetime.now(UTC) + START_LEAD
         end = max(plan.end, start + MIN_DURATION)
 
-        cover = await self._pending_cover()
-        event = await guild.create_scheduled_event(
+        cover = await self._pending_cover(guild)
+        event = await discord_guild.create_scheduled_event(
             name=plan.name,
             event_type=ScheduledEventType.EXTERNAL,
             external_location=plan.location,
@@ -296,12 +316,14 @@ class DiscordEventMixin:
         )
         if plan.status == ACTIVE:
             await event.edit(status=ScheduledEventStatus.ACTIVE)
-        self._scheduled_event = event
-        self._applied_plan = plan
-        logger.info(f"Zevent: événement Discord créé ({plan.name}, {plan.status})")
+        guild.scheduled_event = event
+        guild.applied_plan = plan
+        logger.info(
+            "Zevent: événement Discord créé sur %s (%s, %s)", guild.guild_id, plan.name, plan.status
+        )
 
     def _known_state(
-        self, event: ScheduledEvent
+        self, guild: ZeventGuild, event: ScheduledEvent
     ) -> tuple[str, str, str, datetime, datetime | None, str]:
         """What Discord is believed to hold for the event right now.
 
@@ -310,7 +332,7 @@ class DiscordEventMixin:
         that the last plan pushed is the accurate record. Diffing against the
         stale model instead would re-send the same edit every refresh cycle.
         """
-        applied = self._applied_plan
+        applied = guild.applied_plan
         if applied is not None:
             return (
                 applied.name,
@@ -329,13 +351,13 @@ class DiscordEventMixin:
             _STATUS_BY_DISCORD.get(event.status, SCHEDULED),
         )
 
-    async def _update_scheduled_event(self, plan: ScheduledEventPlan) -> None:
+    async def _update_scheduled_event(self, guild: ZeventGuild, plan: ScheduledEventPlan) -> None:
         """Edit only what actually changed, then start the event when due."""
-        event = self._scheduled_event
+        event = guild.scheduled_event
         if event is None:
             return
 
-        name, description, location, start, end, status = self._known_state(event)
+        name, description, location, start, end, status = self._known_state(guild, event)
 
         changes: dict[str, Any] = {}
         if name != plan.name:
@@ -351,7 +373,7 @@ class DiscordEventMixin:
             changes["start_time"] = plan.start
         if not _same_instant(end, plan.end):
             changes["end_time"] = plan.end
-        cover = await self._pending_cover()
+        cover = await self._pending_cover(guild)
         if cover is not None:
             changes["cover_image"] = cover
 
@@ -362,24 +384,26 @@ class DiscordEventMixin:
             if plan.status == ACTIVE and status == SCHEDULED:
                 await event.edit(status=ScheduledEventStatus.ACTIVE)
                 logger.info("Zevent: événement Discord démarré")
-            self._applied_plan = plan
+            guild.applied_plan = plan
         except NotFound:
             # Deleted from Discord's side; the next cycle recreates it.
-            logger.warning("Zevent: événement Discord supprimé, il sera recréé")
-            self._scheduled_event = None
-            self._applied_plan = None
+            logger.warning(
+                "Zevent: événement Discord supprimé sur %s, il sera recréé", guild.guild_id
+            )
+            guild.scheduled_event = None
+            guild.applied_plan = None
 
-    async def _end_scheduled_event(self) -> None:
+    async def _end_scheduled_event(self, guild: ZeventGuild) -> None:
         """Close the event: complete a running one, cancel an announced one."""
-        event = self._scheduled_event
+        event = guild.scheduled_event
         if event is None:
             return
         # The model does not reflect our own edits, so the status we pushed is
         # what says whether the event is running — and a running event is
         # completed rather than deleted, so it stays in the guild's history.
-        *_, status = self._known_state(event)
-        self._scheduled_event = None
-        self._applied_plan = None
+        *_, status = self._known_state(guild, event)
+        guild.scheduled_event = None
+        guild.applied_plan = None
         try:
             if status == ACTIVE:
                 await event.edit(status=ScheduledEventStatus.COMPLETED)

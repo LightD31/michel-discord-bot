@@ -1,8 +1,9 @@
 """Config, constants, and small shared helpers for the Zevent extension."""
 
-import os
-from dataclasses import dataclass
+import asyncio
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from typing import Any
 
 from features.zevent.stats import (
     DEFAULT_GOALS_COUNT,
@@ -19,6 +20,7 @@ from src.webui.schemas import (
     enabled_field,
     hidden_message_id,
     register_module,
+    register_section,
     ui,
 )
 
@@ -28,7 +30,10 @@ logger = logutil.init_logger(__name__)
 @register_module("moduleZevent")
 class ZeventConfig(SchemaBase):
     __label__ = "Zevent"
-    __description__ = "Suivi de l'événement Zevent en temps réel (dons, planning, streamers)."
+    __description__ = (
+        "Message de suivi du Zevent dans ce serveur, et son événement Discord. "
+        "L'édition suivie se règle dans la section globale « Zevent »."
+    )
     __icon__ = "🎉"
     __category__ = "Événements"
 
@@ -46,6 +51,29 @@ class ZeventConfig(SchemaBase):
         description="Épingler automatiquement le message de suivi.",
     )
     zeventMessageId: str | None = hidden_message_id("Message", "zeventChannelId")
+    zeventManageDiscordEvent: bool = ui(
+        "Créer un événement Discord",
+        "boolean",
+        default=False,
+        description=(
+            "Publier l'édition suivie comme événement programmé du serveur "
+            "(dates, phase en cours, total récolté). Nécessite la chaîne Twitch ou "
+            "le site de l'édition (section globale « Zevent »), qui sert de lieu."
+        ),
+    )
+
+
+@register_section("zevent")
+class ZeventSection(SchemaBase):
+    """The edition the bot tracks: one for every guild where the module is on."""
+
+    __label__ = "Zevent"
+    __description__ = (
+        "Édition suivie par le bot, commune à tous les serveurs où le module est activé. "
+        "Lue au chargement : recharger l'extension Zevent après une modification."
+    )
+    __icon__ = "🎉"
+
     zeventStreamlabsApiUrl: str = ui(
         "URL Streamlabs",
         "url",
@@ -78,16 +106,6 @@ class ZeventConfig(SchemaBase):
             "Site du projet communautaire de statistiques (planning, répartition "
             "LAN/à distance, donation goals), dont les données alimentent le "
             "suivi. Affiché comme lien dans l'événement Discord. Vide = aucun lien."
-        ),
-    )
-    zeventManageDiscordEvent: bool = ui(
-        "Créer un événement Discord",
-        "boolean",
-        default=False,
-        description=(
-            "Publier l'édition suivie comme événement programmé du serveur "
-            "(dates, phase en cours, total récolté). Nécessite la chaîne Twitch "
-            "de l'événement, qui sert de lieu."
         ),
     )
     zeventEventCoverUrl: str | None = ui(
@@ -252,11 +270,9 @@ class ZeventConfig(SchemaBase):
 
 
 ZEVENT = ModuleConfig("moduleZevent")
-# Taken at import, from the first enabled guild only (phase 4c makes this multi-guild):
-# the extension declares RELOAD_ON_SAVE, so a save of the module re-imports it.
-config = global_config()
-_enabled_servers = ZEVENT.guild_ids()
-_cfg = dict(ZEVENT.get(_enabled_servers[0])) if _enabled_servers else {}
+# The tracked edition is one for the whole bot (global section ``zevent``),
+# read when the extension loads: reload it after changing these settings.
+_cfg = global_config().get("zevent") or {}
 
 
 def _parse_event_dt(iso_str: str) -> datetime | None:
@@ -271,16 +287,11 @@ def _parse_event_dt(iso_str: str) -> datetime | None:
     return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
 
 
-CHANNEL_ID = int(_cfg.get("zeventChannelId") or 0) or None
-MESSAGE_ID = _cfg.get("zeventMessageId")
-PIN_MESSAGE = bool(_cfg.get("zeventPinMessage", False))
-GUILD_ID = _enabled_servers[0] if _enabled_servers else None
-
 API_URL = "https://zevent.fr/api/"
 # Planning and the LAN/remote split still come from the same community project
 # (zevent.gdoc.fr) the tracker has always used; only its API moved hosts, from
 # zevent-api.gdoc.fr (now 404) to an EvenMoreStats-hosted backend. That base URL
-# is configured per guild in the Web UI — the site itself is the data's source,
+# is set in the global « Zevent » section — the site itself is the data's source,
 # so that is what the embeds credit.
 STATS_API_URL = (_cfg.get("zeventStatsApiUrl") or "").rstrip("/")
 STATS_EVENT_ID = _cfg.get("zeventStatsEventId") or ""
@@ -289,7 +300,7 @@ STATS_EVENT_ID = _cfg.get("zeventStatsEventId") or ""
 METRICS_BASE_URL = (_cfg.get("zeventMetricsBaseUrl") or "").rstrip("/")
 COMPARE_EVENT_ID = _cfg.get("zeventCompareEventId") or ""
 EVENT_NAME = _cfg.get("zeventEventName") or ""
-# Configured per guild in the Web UI — no team URL is baked into the code.
+# Set in the global « Zevent » section — no team URL is baked into the code.
 STREAMLABS_API_URL = _cfg.get("zeventStreamlabsApiUrl", "")
 TWITCH_URL = _cfg.get("zeventTwitchUrl", "")
 # Lieu de l'événement Discord après le concert d'ouverture; voir
@@ -299,7 +310,6 @@ WEBSITE_URL = _cfg.get("zeventWebsiteUrl") or ""
 # suivi crédite, l'API n'étant que sa façade.
 STATS_SITE_URL = _cfg.get("zeventStatsSiteUrl") or ""
 
-MANAGE_DISCORD_EVENT = bool(_cfg.get("zeventManageDiscordEvent", False))
 # Uploaded once to the Discord event; unset simply means no cover image.
 EVENT_COVER_URL = _cfg.get("zeventEventCoverUrl") or ""
 
@@ -394,6 +404,41 @@ EVENT_END_OVERRIDE = _parse_event_dt(_cfg.get("zeventEventEndDate") or "")
 # cold start. Once the API answers, its schedule wins over these.
 FALLBACK_EVENT_START = datetime(2026, 9, 3, 18, 0, 0, tzinfo=UTC)
 FALLBACK_MAIN_EVENT_START = datetime(2026, 9, 4, 16, 0, 0, tzinfo=UTC)
+
+
+@dataclass
+class ZeventGuild:
+    """What the tracker keeps for one guild: its message, markers and Discord event.
+
+    Everything else (the edition, its data, the rendered embeds) is the same
+    for every guild and lives on the extension.
+    """
+
+    guild_id: str
+    message: Any = None  # the tracking message, from GuildMessages
+    # ``None`` until the first total is read: the first reading is the
+    # baseline, not an announcement.
+    last_milestone: int | None = None
+    # ``None`` until read, ``False`` once read while the reference edition's
+    # record still stood, ``True`` once it fell.
+    record_state: bool | None = None
+    markers_loaded: bool = False
+    milestone_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+    record_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+    # The guild's scheduled event, the plan last pushed to it (``edit()``
+    # leaves the model untouched, so the diff runs against this) and the
+    # cover already uploaded.
+    scheduled_event: Any = None
+    applied_plan: Any = None
+    applied_cover_url: str | None = None
+    event_recovered: bool = False
+    # ``/zevent_finish`` sticks: the refresh loop must not resurrect the
+    # event it closed.
+    event_finished: bool = False
+
+    @property
+    def channel(self) -> Any:
+        return self.message.channel if self.message is not None else None
 
 
 @dataclass

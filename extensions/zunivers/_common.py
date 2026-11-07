@@ -1,11 +1,16 @@
-"""Shared config schema, logger, and module-level state for the zunivers extension.
+"""Shared config schema, logger, per-guild state and base command for the zunivers extension.
 
 Config key ``moduleZunivers`` (formerly ``moduleColoc``). Also holds the
 ``/zunivers`` base command every mixin hangs its subcommands on.
 """
 
+from dataclasses import dataclass, field
+from datetime import datetime
+
 from interactions import SlashCommand
 
+from features.coloc import EventState, ReminderCollection, StorageManager
+from features.zerator247 import RequestSubscription
 from src.core import logging as logutil
 from src.core.config import ModuleConfig, global_config
 from src.discord_ext.scopes import guild_scopes
@@ -71,27 +76,38 @@ class ZuniversConfig(SchemaBase):
 logger = logutil.init_logger("extensions.zunivers")
 
 ZUNIVERS = ModuleConfig("moduleZunivers")
-# Taken at import, from the first enabled guild only (phase 4c makes this multi-guild):
-# the extension declares RELOAD_ON_SAVE, so a save of the module re-imports it.
-config = global_config()
-enabled_servers = ZUNIVERS.guild_ids()
-module_config = dict(ZUNIVERS.get(enabled_servers[0])) if enabled_servers else {}
 
-# ZUnivers Ninja is one server for the whole bot: global ``zuniversNinja`` section.
-ninja_config: dict = config.get("zuniversNinja") or {}
+
+def ninja_config() -> dict:
+    """The global ``zuniversNinja`` section (one server for the whole bot), read at use."""
+    section = global_config().get("zuniversNinja")
+    return section if isinstance(section, dict) else {}
+
+
+@dataclass
+class GuildState:
+    """What the extension keeps for one guild, loaded from its database on first use."""
+
+    guild_id: str
+    storage: StorageManager
+    reminders: ReminderCollection
+    event_state: EventState
+    request_subscriptions: dict[str, RequestSubscription] = field(default_factory=dict)
+    # End time of the last 24/7 cycle announced, so one requests window is announced once.
+    last_request_cycle_end: datetime | None = None
+
 
 zunivers_cmd = SlashCommand(
     name="zunivers",
     description="Commandes ZUnivers",
-    scopes=guild_scopes(enabled_servers),
+    scopes=guild_scopes(ZUNIVERS.guild_ids()),
 )
 
 __all__ = [
+    "ZUNIVERS",
+    "GuildState",
     "ZuniversConfig",
-    "config",
-    "enabled_servers",
     "logger",
-    "module_config",
     "ninja_config",
     "zunivers_cmd",
 ]

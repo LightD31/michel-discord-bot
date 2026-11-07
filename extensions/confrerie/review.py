@@ -42,11 +42,12 @@ from features.confrerie.drafts import (
 from features.confrerie.repository import DraftRepository
 from features.confrerie.stats import COL_AUTHOR, COL_DEFI, COL_GENRE, COL_TYPE
 from src.core import logging as logutil
+from src.core.config import global_config
 from src.core.errors import BotError
 from src.discord_ext.embeds import Colors
 from src.discord_ext.messages import fetch_user_safe
 
-from ._common import config, guild_id, module_config
+from ._common import CONFRERIE
 
 logger = logutil.init_logger(__name__)
 
@@ -145,18 +146,29 @@ def _prefilled(label: str, custom_id: str, value: str, *, required: bool = False
 class ReviewMixin:
     """Store drafts, send them for review, and act on the owner's decision."""
 
-    def _drafts(self) -> DraftRepository:
-        if not guild_id:
-            raise BotError("moduleConfrerie n'est activé sur aucun serveur")
-        return DraftRepository(guild_id)
+    def _drafts(self, guild_id) -> DraftRepository:
+        return DraftRepository(str(guild_id))
 
-    async def _oeuvres_schema(self, timeout: float | None = None) -> dict:
+    async def _draft_guild(self, ctx, draft_id: str) -> str | None:
+        """The guild a draft belongs to.
+
+        The one the button was clicked in; from a DM to the confrérie owner,
+        the enabled guild whose base holds the draft.
+        """
+        if ctx.guild_id and CONFRERIE.enabled(ctx.guild_id):
+            return str(ctx.guild_id)
+        for guild_id in CONFRERIE.guild_ids():
+            if await self._drafts(guild_id).get(draft_id) is not None:
+                return guild_id
+        return None
+
+    async def _oeuvres_schema(self, settings: dict, timeout: float | None = None) -> dict:
         """Live Œuvres schema, or {} when unavailable (option matching is then skipped).
 
         Pass ``timeout`` on paths that must answer an interaction within
         Discord's 3 s window.
         """
-        db_id = module_config.get("confrerieNotionDbOeuvresId")
+        db_id = settings.get("confrerieNotionDbOeuvresId")
         if not db_id:
             return {}
         try:
@@ -174,7 +186,7 @@ class ReviewMixin:
         thread / same member in a défi thread) or nobody could be notified —
         in which case the draft is discarded.
         """
-        repo = self._drafts()
+        repo = self._drafts(draft.guild_id)
         if not await repo.insert_if_new(draft):
             logger.debug("Brouillon %s déjà connu, ignoré", draft.id)
             return False
@@ -194,8 +206,9 @@ class ReviewMixin:
         """DM the confrérie owner; fall back to the staff channel, then the bot owner."""
         embed = review_embed(draft)
         components = review_buttons(draft)
+        settings = CONFRERIE.get(draft.guild_id)
 
-        owner_id = module_config.get("confrerieOwnerId")
+        owner_id = settings.get("confrerieOwnerId")
         if owner_id:
             _, user = await fetch_user_safe(self.bot, owner_id)
             if user:
@@ -204,7 +217,7 @@ class ReviewMixin:
                 except Exception as e:  # noqa: BLE001 — DMs closed: use the fallback
                     logger.warning("MP au propriétaire impossible: %s", e)
 
-        staff_id = module_config.get("confrerieStaffChannelId")
+        staff_id = settings.get("confrerieStaffChannelId")
         if staff_id:
             try:
                 channel = await self.bot.fetch_channel(staff_id)
@@ -213,7 +226,7 @@ class ReviewMixin:
             except Exception as e:  # noqa: BLE001
                 logger.warning("Salon de validation inaccessible: %s", e)
 
-        bot_owner_id = config.get("discord", {}).get("ownerId")
+        bot_owner_id = global_config().get("discord", {}).get("ownerId")
         if bot_owner_id and bot_owner_id != owner_id:
             _, user = await fetch_user_safe(self.bot, bot_owner_id)
             if user:
@@ -223,10 +236,10 @@ class ReviewMixin:
                     logger.warning("MP au propriétaire du bot impossible: %s", e)
         return None
 
-    def _can_review(self, ctx) -> bool:
+    def _can_review(self, ctx, settings: dict) -> bool:
         reviewers = {
-            str(module_config.get("confrerieOwnerId") or ""),
-            str(config.get("discord", {}).get("ownerId") or ""),
+            str(settings.get("confrerieOwnerId") or ""),
+            str(global_config().get("discord", {}).get("ownerId") or ""),
         } - {""}
         if str(ctx.author.id) in reviewers:
             return True
@@ -237,13 +250,18 @@ class ReviewMixin:
     @component_callback(re.compile(r"confrerie_draft:(approve|edit|done|reject):(.+)"))
     async def on_draft_button(self, ctx: ComponentContext):
         _, action, draft_id = ctx.custom_id.split(":", 2)
-        if not self._can_review(ctx):
+        guild_id = await self._draft_guild(ctx, draft_id)
+        if guild_id is None:
+            await ctx.send("Cette fiche a déjà été traitée.", ephemeral=True)
+            return
+        settings = CONFRERIE.get(guild_id)
+        if not self._can_review(ctx, settings):
             await ctx.send(
                 "Seul·e le/la propriétaire de la confrérie peut valider.", ephemeral=True
             )
             return
 
-        repo = self._drafts()
+        repo = self._drafts(guild_id)
         if action == "edit":
             draft = await repo.get(draft_id)
             if draft is None or draft.status != STATUS_PENDING:
@@ -295,18 +313,23 @@ class ReviewMixin:
     @modal_callback(re.compile(r"confrerie_draft_edit:(.+)"))
     async def on_draft_edit(self, ctx: ModalContext, **responses: str):
         draft_id = ctx.custom_id.split(":", 1)[1]
-        if not self._can_review(ctx):
+        guild_id = await self._draft_guild(ctx, draft_id)
+        if guild_id is None:
+            await ctx.send("Cette fiche a déjà été traitée.", ephemeral=True)
+            return
+        settings = CONFRERIE.get(guild_id)
+        if not self._can_review(ctx, settings):
             await ctx.send(
                 "Seul·e le/la propriétaire de la confrérie peut valider.", ephemeral=True
             )
             return
-        repo = self._drafts()
+        repo = self._drafts(guild_id)
         draft = await repo.claim(draft_id)
         if draft is None:
             await ctx.send("Cette fiche a déjà été traitée.", ephemeral=True)
             return
 
-        schema = await self._oeuvres_schema()
+        schema = await self._oeuvres_schema(settings)
         # The owner may introduce a new author or défi: canonicalise the case of
         # known options, keep the rest as typed.
         draft.title = (responses.get("titre") or draft.title).strip()[:100]
@@ -348,12 +371,13 @@ class ReviewMixin:
 
     async def _approve(self, draft: Draft, repo: DraftRepository) -> bool:
         """Create the Notion page for a claimed draft; release it on failure."""
-        db_id = module_config.get("confrerieNotionDbOeuvresId")
+        settings = CONFRERIE.get(draft.guild_id)
+        db_id = settings.get("confrerieNotionDbOeuvresId")
         try:
             if not db_id:
                 raise BotError("Base Notion des œuvres non configurée")
             properties, dropped = np.filter_to_schema(
-                build_work_properties(draft), await self._oeuvres_schema()
+                build_work_properties(draft), await self._oeuvres_schema(settings)
             )
             if dropped:
                 logger.warning("Colonnes absentes de la base Œuvres, ignorées : %s", dropped)

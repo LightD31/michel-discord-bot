@@ -42,7 +42,7 @@ from features.coloc.constants import (
 from features.zunivers_ninja import build_web_url
 from src.discord_ext.messages import edit_message_if_changed, fetch_user_safe
 
-from ._common import logger, module_config, ninja_config, zunivers_cmd
+from ._common import GuildState, logger, ninja_config, zunivers_cmd
 from .ninja import DEFAULT_STRATEGY_CHOICE, ninja_strategies, strategy_choices
 
 
@@ -53,8 +53,15 @@ class RemindersMixin:
 
     @Task.create(TimeTrigger(22, utc=False))
     async def daily_journa_check(self):
-        """Check if the daily journa message was posted and send a reminder if not."""
-        channel = await self._get_zunivers_channel()
+        """In each guild, remind the role if nobody posted in the channel today."""
+        for _state, settings in await self._guilds():
+            try:
+                await self._journa_check(settings)
+            except Exception as e:  # noqa: BLE001 — one guild's failure must not stop the others
+                logger.error("Daily journa check failed: %s", e)
+
+    async def _journa_check(self, settings: dict) -> None:
+        channel = await self._zunivers_channel(settings)
         if not channel:
             return
 
@@ -70,7 +77,7 @@ class RemindersMixin:
             logger.info("Daily journa already posted, skipping reminder")
             return
 
-        role_id = module_config.get("journaReminderRoleId")
+        role_id = settings.get("journaReminderRoleId")
         mention = f"<@&{role_id}>, " if role_id else ""
         await channel.send(f":robot: {mention}heureusement que les robots n'oublient pas ! :robot:")
 
@@ -160,21 +167,22 @@ class RemindersMixin:
             remind_time += timedelta(days=1)
 
         user_id = str(ctx.author.id)
+        state = await self._state(ctx.guild_id)
 
         if type == "BOTH":
-            self.reminders.add_reminder(remind_time, user_id, ReminderType.NORMAL)
-            self.reminders.add_reminder(remind_time, user_id, ReminderType.HARDCORE)
+            state.reminders.add_reminder(remind_time, user_id, ReminderType.NORMAL)
+            state.reminders.add_reminder(remind_time, user_id, ReminderType.HARDCORE)
         else:
-            self.reminders.add_reminder(remind_time, user_id, ReminderType(type))
+            state.reminders.add_reminder(remind_time, user_id, ReminderType(type))
         if ninja is not None:
-            self.reminders.set_ninja_link(user_id, ninja)
+            state.reminders.set_ninja_link(user_id, ninja)
         if strategie is not None:
-            self.reminders.set_ninja_strategy(user_id, strategie or None)
+            state.reminders.set_ninja_strategy(user_id, strategie or None)
 
-        await self.storage.save_reminders(self.reminders)
+        await state.storage.save_reminders(state.reminders)
 
         reply = f"Rappel ajouté à {remind_time.strftime('%H:%M')}"
-        if ninja and not ninja_config.get("webUrl"):
+        if ninja and not ninja_config().get("webUrl"):
             reply += " (le lien ZUnivers Ninja n'est pas configuré sur ce serveur)"
         elif ninja is not None:
             reply += " avec" if ninja else " sans"
@@ -204,7 +212,8 @@ class RemindersMixin:
     async def remove_reminder(self, ctx: SlashContext):
         """Remove a /journa reminder."""
         user_id = str(ctx.user.id)
-        user_reminders = self.reminders.get_user_reminders(user_id)
+        state = await self._state(ctx.guild_id)
+        user_reminders = state.reminders.get_user_reminders(user_id)
 
         if not user_reminders:
             await ctx.send("Tu n'as aucun rappel configuré.", ephemeral=True)
@@ -236,8 +245,8 @@ class RemindersMixin:
             remind_time = datetime.fromtimestamp(float(timestamp))
             reminder_type = ReminderType(reminder_type_str)
 
-            self.reminders.remove_reminder(remind_time, user_id, reminder_type)
-            await self.storage.save_reminders(self.reminders)
+            state.reminders.remove_reminder(remind_time, user_id, reminder_type)
+            await state.storage.save_reminders(state.reminders)
 
             await button_ctx.ctx.edit_origin(
                 content=f"Rappel {reminder_type.value} à {remind_time.strftime('%H:%M')} supprimé.",
@@ -256,9 +265,18 @@ class RemindersMixin:
 
     @Task.create(IntervalTrigger(minutes=1))
     async def reminder_checker(self):
-        """Check and send due reminders."""
+        """Send the reminders due in each guild."""
         current_time = datetime.now()
-        due_reminders = self.reminders.get_due_reminders(current_time)
+        for state, settings in await self._guilds():
+            try:
+                await self._send_due_reminders(state, settings, current_time)
+            except Exception as e:  # noqa: BLE001 — one guild's failure must not stop the others
+                logger.error("Reminders of guild %s failed: %s", state.guild_id, e)
+
+    async def _send_due_reminders(
+        self, state: GuildState, settings: dict, current_time: datetime
+    ) -> None:
+        due_reminders = state.reminders.get_due_reminders(current_time)
 
         if not due_reminders:
             return
@@ -269,30 +287,34 @@ class RemindersMixin:
             for type_name in ["NORMAL", "HARDCORE"]:
                 reminder_type = ReminderType(type_name)
                 for user_id in reminder_types[type_name].copy():
-                    await self._process_reminder(user_id, reminder_type, current_time)
+                    await self._process_reminder(
+                        state, settings, user_id, reminder_type, current_time
+                    )
 
                     next_remind = remind_time + timedelta(days=1)
                     if next_remind not in reminders_to_add:
                         reminders_to_add[next_remind] = {"NORMAL": [], "HARDCORE": []}
                     reminders_to_add[next_remind][type_name].append(user_id)
 
-            self.reminders.reminders.pop(remind_time, None)
+            state.reminders.reminders.pop(remind_time, None)
 
         for next_remind, reminder_data in reminders_to_add.items():
             for type_name in ["NORMAL", "HARDCORE"]:
                 for user_id in reminder_data[type_name]:
-                    self.reminders.add_reminder(next_remind, user_id, ReminderType(type_name))
+                    state.reminders.add_reminder(next_remind, user_id, ReminderType(type_name))
 
-        await self.storage.save_reminders(self.reminders)
+        await state.storage.save_reminders(state.reminders)
 
     async def _process_reminder(
         self,
+        state: GuildState,
+        settings: dict,
         user_id: str,
         reminder_type: ReminderType,
         current_time: datetime,
     ) -> None:
         """Process a single reminder for a user."""
-        if reminder_type == ReminderType.HARDCORE and self.event_state.hardcore_season is None:
+        if reminder_type == ReminderType.HARDCORE and state.event_state.hardcore_season is None:
             return
 
         try:
@@ -309,15 +331,15 @@ class RemindersMixin:
                 premium = await self.api_client.get_available_premium(
                     user.username, datetime.now(PARIS_TZ)
                 )
-            message = self._build_reminder_message(reminder_type, status, premium)
+            message = self._build_reminder_message(reminder_type, status, premium, settings)
             if message:
-                ninja_url = ninja_config.get("webUrl")
-                if ninja_url and self.reminders.wants_ninja_link(user_id):
+                ninja_url = ninja_config().get("webUrl")
+                if ninja_url and state.reminders.wants_ninja_link(user_id):
                     plan_url = build_web_url(
                         ninja_url,
                         user.username,
                         hardcore=reminder_type == ReminderType.HARDCORE,
-                        strategy=self.reminders.ninja_strategy(user_id),
+                        strategy=state.reminders.ninja_strategy(user_id),
                     )
                     message += "\n" + NINJA_PLAN_HINT.format(url=plan_url)
                 await user.send(message)
@@ -339,6 +361,7 @@ class RemindersMixin:
         reminder_type: ReminderType,
         status: LootStatus | None,
         premium: PremiumStatus | None = None,
+        settings: dict | None = None,
     ) -> str | None:
         """Pick the DM for a user's /journa + /bonus status, or ``None`` if all is done.
 
@@ -347,12 +370,13 @@ class RemindersMixin:
         (``status is None``) still sends the /journa reminder, but never claims a
         /bonus is waiting. ``premium`` is passed only when a free /im premium of the
         user's subscription is available now: it is added to the DM, or makes one
-        when /journa and /bonus are both done.
+        when /journa and /bonus are both done. The links come from the guild's
+        *settings*.
         """
         link_key = (
             "journaHardcoreLink" if reminder_type == ReminderType.HARDCORE else "journaNormalLink"
         )
-        link = module_config.get(link_key)
+        link = (settings or {}).get(link_key)
         bonus = format_bonus_link(link)
 
         message: str | None = None

@@ -62,11 +62,12 @@ class NotificationsMixin:
         user_id: str,
         offline: bool = False,
         data: ChannelUpdateEvent | None = None,
+        guild_id: int | None = None,
     ) -> Embed:
         user_id, title, description, user_login = await self.get_stream_info(
             stream, user_id, offline, data
         )
-        embed = await self.create_embed(title, description, user_login)
+        embed = await self.create_embed(title, description, user_login, guild_id)
         if stream:
             embed.set_image(
                 url=f"{stream.thumbnail_url.format(width=1280, height=720)}?{datetime.now().timestamp()}"
@@ -129,18 +130,19 @@ class NotificationsMixin:
         user_login: str,
         guild_id: int | None = None,
     ) -> Embed:
-        """Create a Twitch-branded embed linking to the streamer channel."""
+        """Create a Twitch-branded embed linking to the streamer channel.
+
+        The footer shows the bot as it appears in *guild_id* (its nickname
+        there); without a guild, there is no footer.
+        """
         if guild_id is None:
-            if self.enabled_servers:
-                guild_id = int(self.enabled_servers[0])
-            else:
-                return Embed(
-                    title=title,
-                    description=description,
-                    color=Colors.TWITCH,
-                    url=f"https://twitch.tv/{user_login}",
-                    timestamp=datetime.now(pytz.UTC),
-                )
+            return Embed(
+                title=title,
+                description=description,
+                color=Colors.TWITCH,
+                url=f"https://twitch.tv/{user_login}",
+                timestamp=datetime.now(pytz.UTC),
+            )
 
         try:
             bot = await self.bot.fetch_member(self.bot.user.id, guild_id)

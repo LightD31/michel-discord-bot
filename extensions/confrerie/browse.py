@@ -31,7 +31,7 @@ from src.discord_ext.embeds import Colors
 from src.discord_ext.messages import send_error
 from src.discord_ext.scopes import guild_scopes
 
-from ._common import autocomplete_options, enabled_servers, module_config
+from ._common import CONFRERIE, ConfrerieError, autocomplete_options
 from .stats import plural
 from .updates import build_work_embed, shorten_work_links
 
@@ -55,16 +55,18 @@ def _private_option():
 class BrowseMixin:
     """Look up works, authors and tools from Discord."""
 
-    _works_cache: tuple[float, list[dict]] | None
+    _works_cache: dict[str, tuple[float, list[dict]]]
 
-    async def _oeuvres_pages(self) -> list[dict]:
-        cached = self._works_cache
+    async def _oeuvres_pages(self, guild_id) -> list[dict]:
+        """The guild's Œuvres pages, cached a little per Notion database."""
+        db_id = CONFRERIE.get(guild_id).get("confrerieNotionDbOeuvresId")
+        if not db_id:
+            raise ConfrerieError("Base Notion des œuvres non configurée")
+        cached = self._works_cache.get(db_id)
         if cached and time.monotonic() - cached[0] < WORKS_CACHE_SECONDS:
             return cached[1]
-        pages = await self.notion_client.query_data_source(
-            database_id=module_config["confrerieNotionDbOeuvresId"]
-        )
-        self._works_cache = (time.monotonic(), pages)
+        pages = await self.notion_client.query_data_source(database_id=db_id)
+        self._works_cache[db_id] = (time.monotonic(), pages)
         return pages
 
     # ── /texte ───────────────────────────────────────────────────────────
@@ -72,7 +74,7 @@ class BrowseMixin:
     @slash_command(
         name="texte",
         description="Afficher la fiche d'un texte de la confrérie (au hasard sans titre)",
-        scopes=guild_scopes(enabled_servers),
+        scopes=guild_scopes(CONFRERIE.guild_ids()),
     )
     @slash_option(
         name="titre",
@@ -84,7 +86,7 @@ class BrowseMixin:
     @_private_option()
     async def texte(self, ctx: SlashContext, titre: str = "", prive: bool = False):
         await ctx.defer(ephemeral=prive)
-        works = top_level_works(await self._oeuvres_pages())
+        works = top_level_works(await self._oeuvres_pages(ctx.guild_id))
         if titre:
             work = find_work(works, titre)
         else:
@@ -101,14 +103,14 @@ class BrowseMixin:
             "📖 Fiche du texte" if titre else "📖 Un texte de la confrérie au hasard",
             notion_url=notion_url,
             links=links,
-            footer=await self._create_embed_footer(),
+            footer=await self._create_embed_footer(ctx.guild_id),
         )
         await ctx.send(embed=embed, ephemeral=prive)
 
     @texte.autocomplete("titre")
     async def texte_autocomplete(self, ctx: AutocompleteContext):
         try:
-            works = top_level_works(await self._oeuvres_pages())
+            works = top_level_works(await self._oeuvres_pages(ctx.guild_id))
         except Exception as e:  # noqa: BLE001 — an empty list beats a failed interaction
             logger.warning("Liste des œuvres indisponible: %s", e)
             works = []
@@ -126,7 +128,7 @@ class BrowseMixin:
     @slash_command(
         name="auteur",
         description="Profil d'un·e auteur·ice de la confrérie",
-        scopes=guild_scopes(enabled_servers),
+        scopes=guild_scopes(CONFRERIE.guild_ids()),
     )
     @slash_option(
         name="nom",
@@ -138,7 +140,7 @@ class BrowseMixin:
     @_private_option()
     async def auteur(self, ctx: SlashContext, nom: str, prive: bool = False):
         await ctx.defer(ephemeral=prive)
-        profile = author_profile(await self._oeuvres_pages(), nom)
+        profile = author_profile(await self._oeuvres_pages(ctx.guild_id), nom)
         if profile is None:
             await send_error(ctx, "Aucun·e auteur·ice de ce nom dans la base.")
             return
@@ -161,7 +163,7 @@ class BrowseMixin:
             kept, _ = take_within_budget(lines, 1024, separator="\n")
             embed.add_field(name="Dernières œuvres", value="\n".join(kept), inline=False)
 
-        membres_db = module_config.get("confrerieNotionDbMembresId")
+        membres_db = CONFRERIE.get(ctx.guild_id).get("confrerieNotionDbMembresId")
         if membres_db:
             try:
                 rows = await self.notion_client.query_data_source(database_id=membres_db)
@@ -177,14 +179,17 @@ class BrowseMixin:
                 kept, _ = take_within_budget(links, 1024, separator=" · ")
                 embed.add_field(name="Liens", value=" · ".join(kept), inline=False)
 
-        footer = await self._create_embed_footer()
+        footer = await self._create_embed_footer(ctx.guild_id)
         embed.set_footer(text=footer.text, icon_url=footer.icon_url)
         await ctx.send(embed=embed, ephemeral=prive)
 
     @auteur.autocomplete("nom")
     async def auteur_autocomplete(self, ctx: AutocompleteContext):
         await autocomplete_options(
-            ctx, self.notion_client, module_config.get("confrerieNotionDbOeuvresId"), COL_AUTHOR
+            ctx,
+            self.notion_client,
+            CONFRERIE.get(ctx.guild_id).get("confrerieNotionDbOeuvresId"),
+            COL_AUTHOR,
         )
 
     # ── /outil ───────────────────────────────────────────────────────────
@@ -192,7 +197,7 @@ class BrowseMixin:
     @slash_command(
         name="outil",
         description="Chercher une ressource dans la boîte à outils de la confrérie",
-        scopes=guild_scopes(enabled_servers),
+        scopes=guild_scopes(CONFRERIE.guild_ids()),
     )
     @slash_option(
         name="theme",
@@ -211,7 +216,7 @@ class BrowseMixin:
     async def outil(
         self, ctx: SlashContext, theme: str = "", recherche: str = "", prive: bool = False
     ):
-        db_id = module_config.get("confrerieNotionDbOutilsId")
+        db_id = CONFRERIE.get(ctx.guild_id).get("confrerieNotionDbOutilsId")
         if not db_id:
             await send_error(ctx, "La boîte à outils n'est pas configurée.")
             return
@@ -256,6 +261,6 @@ class BrowseMixin:
         await autocomplete_options(
             ctx,
             self.notion_client,
-            module_config.get("confrerieNotionDbOutilsId"),
+            CONFRERIE.get(ctx.guild_id).get("confrerieNotionDbOutilsId"),
             COL_TOOL_THEME,
         )

@@ -29,7 +29,7 @@ from src.core.errors import ValidationError
 from src.discord_ext.messages import send_error
 from src.discord_ext.scopes import guild_scopes
 
-from ._common import autocomplete_options, enabled_servers, guild_id, module_config
+from ._common import CONFRERIE, autocomplete_options
 
 logger = logutil.init_logger(__name__)
 
@@ -53,7 +53,7 @@ class RequestsMixin:
     @slash_command(
         name="demande",
         description="Proposer un texte (ou une mise à jour) pour la base de la confrérie",
-        scopes=guild_scopes(enabled_servers),
+        scopes=guild_scopes(CONFRERIE.guild_ids()),
     )
     @slash_option(
         name="type",
@@ -76,7 +76,7 @@ class RequestsMixin:
     )
     async def demande(self, ctx: SlashContext, type_: str = "", genre: str = "", defi: str = ""):
         # The modal is the interaction response: leave room in Discord's 3 s.
-        schema = await self._oeuvres_schema(timeout=2.0)
+        schema = await self._oeuvres_schema(CONFRERIE.get(ctx.guild_id), timeout=2.0)
         try:
             choices = {
                 "types": np.canonical_choices(
@@ -126,7 +126,10 @@ class RequestsMixin:
     async def demande_autocomplete(self, ctx: AutocompleteContext):
         column = _AUTOCOMPLETE_COLUMNS.get(str(ctx.focussed_option.name), COL_TYPE)
         await autocomplete_options(
-            ctx, self.notion_client, module_config.get("confrerieNotionDbOeuvresId"), column
+            ctx,
+            self.notion_client,
+            CONFRERIE.get(ctx.guild_id).get("confrerieNotionDbOeuvresId"),
+            column,
         )
 
     @modal_callback("demande")
@@ -147,13 +150,13 @@ class RequestsMixin:
         author, mapped = resolve_author(
             int(ctx.author.id),
             ctx.author.display_name,
-            module_config.get("confrerieAuthorMap") or {},
+            CONFRERIE.get(ctx.guild_id).get("confrerieAuthorMap") or {},
         )
         defi = choices.get("defi") or []
         draft = Draft(
             id=demande_draft_id(),
             source=SOURCE_DEMANDE,
-            guild_id=str(guild_id),
+            guild_id=str(ctx.guild_id),
             submitter_id=int(ctx.author.id),
             title=title[:100],
             authors=[author],
