@@ -26,10 +26,24 @@ class CorporationMixin:
     """Daily corporation recap + manual /zunivers corpo trigger."""
 
     @Task.create(TimeTrigger(23, 59, 45, utc=False))
-    async def corporation_recap(self, date: str | None = None):
-        """Send daily corporation recap."""
-        channel = await self._get_zunivers_channel()
-        if not channel:
+    async def corporation_recap(self):
+        """Send the daily corporation recap to every enabled guild."""
+        await self._send_corporation_recap(None)
+
+    async def _send_corporation_recap(self, date: str | None, only: str | None = None) -> None:
+        """Post the recap of *date* (today by default) in each guild's channel.
+
+        The corporation is fetched once for every guild; *only* limits the post
+        to one guild (the one running ``/zunivers corpo``).
+        """
+        channels = []
+        for state, settings in await self._guilds():
+            if only is not None and state.guild_id != only:
+                continue
+            channel = await self._zunivers_channel(settings)
+            if channel:
+                channels.append(channel)
+        if not channels:
             return
 
         try:
@@ -38,7 +52,8 @@ class CorporationMixin:
                 logger.warning("Could not fetch corporation data")
                 return
         except ZuniversAPIError as e:
-            await channel.send(f"Erreur lors de la récupération des données: {e}")
+            for channel in channels:
+                await channel.send(f"Erreur lors de la récupération des données: {e}")
             return
 
         target_date = self._parse_date(date)
@@ -55,7 +70,11 @@ class CorporationMixin:
         corp_embed = create_corporation_embed(data, CURRENCY_EMOJI)
         logs_embed = create_corporation_logs_embed(logs, all_members, target_date, CURRENCY_EMOJI)
 
-        await channel.send(embeds=[corp_embed, logs_embed])
+        for channel in channels:
+            try:
+                await channel.send(embeds=[corp_embed, logs_embed])
+            except Exception as e:  # noqa: BLE001 — one guild's failure must not stop the others
+                logger.error("Could not post the corporation recap in %s: %s", channel.id, e)
 
     @zunivers_cmd.subcommand(
         sub_cmd_name="corpo",
@@ -68,8 +87,8 @@ class CorporationMixin:
         required=False,
     )
     async def corpo_command(self, ctx: SlashContext, date: str | None = None):
-        """Manual corporation recap command."""
-        await self.corporation_recap(date=date)
+        """Manual corporation recap command, posted in this guild's channel."""
+        await self._send_corporation_recap(date, only=str(ctx.guild_id))
         await ctx.send("Corporation recap envoyé !", ephemeral=True)
 
     def _parse_date(self, date_str: str | None = None) -> date_type | None:

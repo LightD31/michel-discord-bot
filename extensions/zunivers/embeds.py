@@ -16,8 +16,6 @@ from features.coloc.constants import (
 from features.coloc.utils import format_event_items, parse_zunivers_date
 from src.discord_ext.embeds import SPACER_FIELD, Colors, format_discord_timestamp
 
-from ._common import module_config
-
 
 def create_event_embed(
     event: dict,
@@ -95,13 +93,14 @@ def set_event_embed_image(
         embed.set_image(url=image_url)
 
 
-def create_season_embed(season: dict, season_type: str) -> Embed:
+def create_season_embed(season: dict, season_type: str, settings: dict | None = None) -> Embed:
     """
     Create a Discord embed for a hardcore season start or end.
 
     Args:
         season: Season data from the API
         season_type: "start" or "end"
+        settings: The guild's ``moduleZunivers`` settings (season image, /journa link)
 
     Returns:
         Configured Embed object
@@ -137,12 +136,13 @@ def create_season_embed(season: dict, season_type: str) -> Embed:
             inline=False,
         )
 
-    image_url = module_config.get("zuniversHardcoreImageUrl") or ""
+    settings = settings or {}
+    image_url = settings.get("zuniversHardcoreImageUrl") or ""
     if image_url:
         embed.set_image(url=image_url)
 
     if is_start:
-        journa_link = module_config.get("journaHardcoreLink") or ""
+        journa_link = settings.get("journaHardcoreLink") or ""
         journa = f"[/journa]({journa_link})" if journa_link else "`/journa`"
         embed.add_field(
             name="⚠️ Mode Hardcore",

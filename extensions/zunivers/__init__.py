@@ -15,16 +15,13 @@ used to live there are now per-server entries of
 :mod:`extensions.customcommands`.
 """
 
+import asyncio
+
 from interactions import Client, Extension, GuildText, listen
 
-from features.coloc import (
-    EventState,
-    ReminderCollection,
-    StorageManager,
-    ZuniversAPIClient,
-)
+from features.coloc import StorageManager, ZuniversAPIClient
 
-from ._common import ZuniversConfig, enabled_servers, logger, module_config
+from ._common import ZUNIVERS, GuildState, ZuniversConfig, logger
 from .corporation import CorporationMixin
 from .events import EventsMixin
 from .ninja import NinjaMixin
@@ -39,46 +36,63 @@ class ZuniversExtension(
 
     MODULE_KEYS = ("moduleZunivers",)
 
-    # Single-guild settings taken at import (see ``_common``).
-
-    RELOAD_ON_SAVE = True
-
     def __init__(self, bot: Client):
         self.bot = bot
         self.api_client = ZuniversAPIClient()
-        self.storage = StorageManager(enabled_servers[0] if enabled_servers else None)
-        self.reminders = ReminderCollection()
-        self.event_state = EventState()
-        self.request_subscriptions = {}
-        self._last_request_cycle_end = None
+        # Reminders, event state and !request subscriptions, per guild.
+        self._states: dict[str, GuildState] = {}
+        self._states_lock = asyncio.Lock()
 
     @listen()
     async def on_startup(self):
-        """Initialize the extension on bot startup."""
-        if not enabled_servers:
-            logger.warning("moduleZunivers is not enabled for any server, skipping startup")
-            return
-
-        self.reminders = await self.storage.load_reminders()
-        self.event_state = await self.storage.load_event_state()
-        await self._load_request_subscriptions()
-
-        self.daily_journa_check.start()
-        self.reminder_checker.start()
-        self.corporation_recap.start()
-        self.events_checker.start()
-        self.zerator247_checker.start()
-
+        """Start the tasks; each reads the enabled guilds and their settings when it runs."""
+        for task in (
+            self.daily_journa_check,
+            self.reminder_checker,
+            self.corporation_recap,
+            self.events_checker,
+            self.zerator247_checker,
+        ):
+            if not task.running:
+                task.start()
         logger.info("Zunivers extension started successfully")
 
     async def async_stop(self):
         """Clean up resources when the extension stops."""
         await self.api_client.close()
 
-    async def _get_zunivers_channel(self) -> GuildText | None:
-        """Get the configured Zunivers channel."""
+    async def _state(self, guild_id) -> GuildState:
+        """The guild's state, loaded from its database the first time it is needed."""
+        gid = str(guild_id)
+        async with self._states_lock:
+            state = self._states.get(gid)
+            if state is None:
+                storage = StorageManager(gid)
+                state = GuildState(
+                    guild_id=gid,
+                    storage=storage,
+                    reminders=await storage.load_reminders(),
+                    event_state=await storage.load_event_state(),
+                    request_subscriptions=await self._load_request_subscriptions(gid),
+                )
+                self._states[gid] = state
+            return state
+
+    async def _guilds(self) -> list[tuple[GuildState, dict]]:
+        """``(state, settings)`` for each guild where the module is on, now."""
+        guilds = ZUNIVERS.items()
+        enabled = {guild_id for guild_id, _ in guilds}
+        for guild_id in [g for g in self._states if g not in enabled]:
+            del self._states[guild_id]
+        return [(await self._state(guild_id), settings) for guild_id, settings in guilds]
+
+    async def _zunivers_channel(self, settings: dict) -> GuildText | None:
+        """The guild's configured Zunivers channel."""
+        channel_id = settings.get("colocZuniversChannelId")
+        if not channel_id:
+            return None
         try:
-            channel = await self.bot.fetch_channel(module_config["colocZuniversChannelId"])
+            channel = await self.bot.fetch_channel(channel_id)
             if isinstance(channel, GuildText):
                 return channel
             return None
