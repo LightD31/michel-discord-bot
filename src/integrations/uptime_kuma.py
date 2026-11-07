@@ -51,8 +51,8 @@ class MonitorStatus(IntEnum):
 
     @classmethod
     def parse(cls, value: object) -> MonitorStatus | None:
-        """Accept Kuma's number, a digit string, or a member name (legacy stored values)."""
-        if isinstance(value, bool) or value is None:
+        """Kuma's numeric status (an int, or a whole float from /metrics); ``None`` otherwise."""
+        if isinstance(value, bool):
             return None
         if isinstance(value, float):
             if not value.is_integer():
@@ -60,11 +60,6 @@ class MonitorStatus(IntEnum):
             value = int(value)
         if isinstance(value, int):
             return cls(value) if value in cls._value2member_map_ else None
-        if isinstance(value, str):
-            text = value.strip()
-            if text.isdigit():
-                return cls.parse(int(text))
-            return cls.__members__.get(text.upper())
         return None
 
 

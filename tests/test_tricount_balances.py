@@ -92,9 +92,10 @@ def test_a_reimbursement_settles_and_hides_the_departed_member():
     assert visible_balances(balances, [A]) == {A: 0}  # settled former member drops out
 
 
-def test_legacy_expenses_without_participants_use_current_members():
-    balances = compute_balances([expense(30, A)], current_members=[A, B, C])
-    assert balances == {A: 2000, B: -1000, C: -1000}
+def test_an_expense_with_no_participants_stays_with_its_payer():
+    """A recurring expense recorded once everyone had left the group."""
+    balances = compute_balances([expense(30, A, [])], current_members=[B])
+    assert balances == {A: 0, B: 0}
 
 
 def test_spending_total_ignores_reimbursements():

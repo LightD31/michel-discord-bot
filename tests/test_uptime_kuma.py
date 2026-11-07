@@ -63,8 +63,8 @@ SETTINGS = UptimeKumaSettings.from_section(
     [
         (0, MonitorStatus.DOWN),
         (3.0, MonitorStatus.MAINTENANCE),
-        ("1", MonitorStatus.UP),
-        ("pending", MonitorStatus.PENDING),
+        ("1", None),
+        ("pending", None),
         (2.5, None),
         (7, None),
         (None, None),

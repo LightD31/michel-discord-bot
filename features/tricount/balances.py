@@ -4,9 +4,7 @@ Each expense is split equally among its ``participants``: the group's members
 when the expense was recorded, stored on the expense. A member who leaves the
 group therefore keeps the share of every expense they took part in, and keeps
 the credit for what they paid, until the balance is settled. A member who joins
-later shares only the expenses recorded after they joined. Expenses stored
-without participants (very old ones) fall back to the group's current members,
-as before.
+later shares only the expenses recorded after they joined.
 
 A reimbursement is stored as an expense of ``kind`` :data:`TRANSFER`: the payer
 gave the amount to a single participant, the recipient. The same arithmetic then
@@ -35,10 +33,13 @@ def is_transfer(expense: Mapping[str, Any]) -> bool:
     return expense.get("kind") == TRANSFER
 
 
-def _participants(expense: Mapping[str, Any], fallback: Sequence[int]) -> list[int]:
-    raw = expense.get("participants")
-    people = list(dict.fromkeys(raw)) if raw else list(dict.fromkeys(fallback))
-    return people or [expense["payer"]]
+def _participants(expense: Mapping[str, Any]) -> list[int]:
+    """Who shares *expense*: its stored participants, or the payer alone if none.
+
+    A recurring expense of a group nobody is left in is stored with no
+    participants; the payer then carries it alone instead of dividing by zero.
+    """
+    return list(dict.fromkeys(expense["participants"])) or [expense["payer"]]
 
 
 def split(amount_cents: int, participants: Sequence[int]) -> dict[int, int]:
@@ -64,7 +65,7 @@ def compute_balances(
         cents = to_cents(expense.get("amount", 0))
         payer = expense["payer"]
         balances[payer] = balances.get(payer, 0) + cents
-        for person, share in split(cents, _participants(expense, current_members)).items():
+        for person, share in split(cents, _participants(expense)).items():
             balances[person] = balances.get(person, 0) - share
     return balances
 
