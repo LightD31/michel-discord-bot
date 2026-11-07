@@ -5,7 +5,10 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-PollMode = Literal["public", "anonymous", "ranked"]
+# "reaction": a /poll counted with reactions. Only its options, emojis and
+# deadline are stored, so the auto-close survives a restart; votes stay on the
+# message as reactions.
+PollMode = Literal["public", "anonymous", "ranked", "reaction"]
 
 
 class Poll(BaseModel):
@@ -26,5 +29,7 @@ class Poll(BaseModel):
     closes_at: datetime | None = None
     closed: bool = False
     votes: dict[str, list[int]] = Field(default_factory=dict)
+    # Reaction polls: the emoji shown for each option.
+    emojis: list[str] = Field(default_factory=list)
 
     model_config = {"populate_by_name": True}

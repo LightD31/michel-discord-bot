@@ -9,7 +9,10 @@ Slash commands:
 Listens to :class:`MessageReactionAdd` / :class:`MessageReactionRemove` to keep
 reaction-based poll embeds' vote counts fresh. Button-based polls persist their
 state in MongoDB (``polls`` collection) and close automatically once their
-``closes_at`` deadline elapses. Enabled per-guild via ``moduleUtils``.
+``closes_at`` deadline elapses. Reaction polls with a deadline are stored there
+too (``mode="reaction"``), so their auto-close survives a restart. Only a poll
+posted outside the enabled servers (user install) still relies on an in-memory
+timer. Enabled per-guild via ``moduleUtils``.
 """
 
 import asyncio
@@ -38,6 +41,7 @@ from features.polls import (
     POLL_EMOJIS,
     Poll,
     PollRepository,
+    options_description,
     parse_duration,
     parse_poll_author_id,
     validate_poll_options,
@@ -68,9 +72,26 @@ def _default_poll_seconds(guild_id: str | int | None) -> int | None:
     return value * 60 if value > 0 else None
 
 
-# In-memory map of (guild_id, message_id) → asyncio.Task that auto-closes
-# reaction-based polls. Button polls use the periodic task below instead.
+# In-memory map of (guild_id, message_id) → asyncio.Task that auto-closes a
+# reaction poll posted outside the enabled servers (user install), where there
+# is no guild database to persist it in. Everything else is swept by
+# check_closing_polls.
 _reaction_close_tasks: dict[tuple[str, str], asyncio.Task] = {}
+
+
+async def _lock_reaction_poll(message, options: list[str], emojis: list[str]) -> None:
+    """Close a reaction poll: lock its title, drop the deadline note, clear reactions."""
+    if not message or not message.embeds:
+        return
+    embed = copy_embed(message.embeds[0])
+    # Re-render the description without the relative-timestamp note.
+    embed.description = options_description(options, emojis)
+    if not (embed.title or "").startswith("🔒"):
+        embed.title = f"🔒 {embed.title}"
+    embed.color = Colors.WARNING
+    await edit_message_if_changed(message, embed=embed, logger=logger)
+    with contextlib.suppress(Exception):
+        await message.clear_all_reactions()
 
 
 def _is_poll_embed(embed: Embed) -> bool:
@@ -171,7 +192,9 @@ class PollsExtension(Extension, PollButtonsMixin):
         message = await ctx.send(embed=embed)
         await _add_poll_reactions(message, options, use_default=(options == DEFAULT_POLL_OPTIONS))
         if close_seconds:
-            self._schedule_reaction_close(ctx.guild_id, message, close_seconds, options, emojis)
+            await self._schedule_reaction_close(
+                ctx, message, close_seconds, question, options, emojis
+            )
         logger.debug(
             "Création d'un sondage par %s (ID: %s)\nQuestion : %s\nOptions : %s",
             ctx.user.username,
@@ -180,30 +203,44 @@ class PollsExtension(Extension, PollButtonsMixin):
             options,
         )
 
-    def _schedule_reaction_close(
+    async def _schedule_reaction_close(
         self,
-        guild_id,
+        ctx: SlashContext,
         message,
         seconds: int,
+        question: str,
         options: list[str],
         emojis: list[str],
     ) -> None:
+        """Arrange for the poll to close in *seconds*: persisted where possible.
+
+        In an enabled server the poll is stored and check_closing_polls closes
+        it, even across restarts. Elsewhere (user install), or if the database
+        refuses the write, an in-memory timer is the fallback.
+        """
+        guild_id = str(ctx.guild_id) if ctx.guild_id else None
+        if guild_id in enabled_servers:
+            poll = Poll(
+                channel_id=str(message.channel.id),
+                message_id=str(message.id),
+                author_id=str(ctx.user.id),
+                question=question,
+                options=options,
+                emojis=emojis[: len(options)],
+                mode="reaction",
+                closes_at=datetime.now() + timedelta(seconds=seconds),
+            )
+            try:
+                await self._poll_repo(guild_id).add(poll)
+                return
+            except Exception as e:
+                logger.warning("Could not persist reaction poll, closing it in memory: %s", e)
+
         async def _close():
             try:
                 await asyncio.sleep(seconds)
                 fresh = await message.channel.fetch_message(message.id)
-                if not fresh or not fresh.embeds:
-                    return
-                embed = copy_embed(fresh.embeds[0])
-                # Re-render the description without the relative-timestamp note.
-                embed.description = "\n\n".join(
-                    f"{emojis[i]} {option}" for i, option in enumerate(options)
-                )
-                embed.title = f"🔒 {embed.title}"
-                embed.color = Colors.WARNING
-                await edit_message_if_changed(fresh, embed=embed, logger=logger)
-                with contextlib.suppress(Exception):
-                    await fresh.clear_all_reactions()
+                await _lock_reaction_poll(fresh, options, emojis)
             except Exception as e:
                 logger.warning("Reaction poll auto-close failed: %s", e)
             finally:
@@ -351,7 +388,27 @@ class PollsExtension(Extension, PollButtonsMixin):
             for poll in due:
                 if poll.id is None:
                     continue
-                await self._close_button_poll(gid, poll)
+                if poll.mode == "reaction":
+                    await self._close_reaction_poll(gid, poll)
+                else:
+                    await self._close_button_poll(gid, poll)
+
+    async def _close_reaction_poll(self, guild_id: str, poll: Poll) -> None:
+        try:
+            channel = await self.bot.fetch_channel(int(poll.channel_id))
+            message = await channel.fetch_message(int(poll.message_id))
+        except Exception as e:
+            logger.warning("Could not fetch poll %s in channel %s: %s", poll.id, poll.channel_id, e)
+            await self._poll_repo(guild_id).mark_closed(poll.id)
+            return
+        emojis = poll.emojis or (
+            DEFAULT_POLL_EMOJIS if poll.options == DEFAULT_POLL_OPTIONS else POLL_EMOJIS
+        )
+        try:
+            await _lock_reaction_poll(message, poll.options, emojis)
+        except Exception as e:
+            logger.warning("Could not close reaction poll %s: %s", poll.id, e)
+        await self._poll_repo(guild_id).mark_closed(poll.id)
 
     async def _close_button_poll(self, guild_id: str, poll: Poll) -> None:
         try:
@@ -492,6 +549,7 @@ class PollsExtension(Extension, PollButtonsMixin):
                 [f"{POLL_EMOJIS[i]} {option}" for i, option in enumerate(options)]
             )
             await _add_poll_reactions(message, options)
+            await self._update_stored_options(ctx.guild_id, message_id, options)
         elif reset_reactions:
             description = embed.description or ""
             option_count = len(description.split("\n\n")) if description else 2
@@ -501,6 +559,18 @@ class PollsExtension(Extension, PollButtonsMixin):
         await edit_message_if_changed(message, embed=embed, logger=logger)
         logger.info("Poll edited")
         await ctx.send("Sondage modifié", ephemeral=True)
+
+    async def _update_stored_options(self, guild_id, message_id, options: list[str]) -> None:
+        """Keep a stored reaction poll's options in step with /editpoll, for its close."""
+        if not guild_id or str(guild_id) not in enabled_servers:
+            return
+        repo = self._poll_repo(guild_id)
+        try:
+            stored = await repo.get_by_message(str(message_id))
+            if stored and stored.id and stored.mode == "reaction" and not stored.closed:
+                await repo.set_options(stored.id, options, POLL_EMOJIS[: len(options)])
+        except Exception as e:
+            logger.warning("Could not update stored poll %s: %s", message_id, e)
 
 
 def setup(bot: Client) -> None:

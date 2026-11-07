@@ -81,5 +81,15 @@ class PollRepository:
         docs = await cursor.to_list(length=None)
         return [self._doc_to_poll(d) for d in docs]
 
+    async def set_options(self, poll_id: str, options: list[str], emojis: list[str]) -> None:
+        """Replace a stored poll's options (``/editpoll``)."""
+        try:
+            await self._col().update_one(
+                {"_id": ObjectId(poll_id)}, {"$set": {"options": options, "emojis": emojis}}
+            )
+        except Exception as e:
+            logger.error("DB update_one failed: %s", e)
+            raise DatabaseError(f"Failed to update poll options: {e}") from e
+
     async def mark_closed(self, poll_id: str) -> None:
         await self._col().update_one({"_id": ObjectId(poll_id)}, {"$set": {"closed": True}})
