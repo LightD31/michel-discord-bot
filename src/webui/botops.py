@@ -41,15 +41,14 @@ The library's reload is also incomplete for this bot's extensions, so
 
 from __future__ import annotations
 
-import asyncio
-import inspect
 import sys
 from typing import TYPE_CHECKING, Any, Literal
 
-from interactions import Task, events
+from interactions import events
 
 from src.core import logging as logutil
 from src.core.tasks import spawn
+from src.discord_ext.lifecycle import release
 
 if TYPE_CHECKING:
     from src.webui.context import WebUIContext
@@ -65,8 +64,6 @@ EXTENSION_OP_TIMEOUT_SECONDS = 60.0
 GLOBAL_SYNC_TIMEOUT_SECONDS = 120.0
 # A guild-scoped sync is a couple of Discord API calls.
 GUILD_SYNC_TIMEOUT_SECONDS = 30.0
-# Budget for one extension's ``async_drop()`` (closing a websocket…).
-ASYNC_DROP_TIMEOUT_SECONDS = 15.0
 
 # Listeners that start an extension's background work, in the order the
 # gateway fires them at boot.
@@ -97,29 +94,12 @@ def purge_submodules(ext_path: str) -> list[str]:
     return stale
 
 
-def stop_tasks(ext: Any) -> list[str]:
-    """Stop every ``Task`` defined on ``ext`` (its class and mixins)."""
-    stopped = []
-    for name, task in inspect.getmembers(type(ext), lambda v: isinstance(v, Task)):
-        if task.running:
-            stopped.append(name)
-        task.stop()
-    return stopped
-
-
 async def teardown(bot: Any, ext_path: str) -> None:
     """Release what ``Extension.drop()`` leaves behind: task loops and live connections."""
     for ext in extensions_of(bot, ext_path):
-        stopped = stop_tasks(ext)
+        stopped = await release(ext)
         if stopped:
             logger.info("Stopped %s tasks before unloading: %s", ext_path, ", ".join(stopped))
-        async_drop = getattr(ext, "async_drop", None)
-        if async_drop is None:
-            continue
-        try:
-            await asyncio.wait_for(async_drop(), timeout=ASYNC_DROP_TIMEOUT_SECONDS)
-        except Exception as e:  # noqa: BLE001 — never block the unload on cleanup
-            logger.error("async_drop() failed for %s: %s", ext_path, e)
 
 
 async def _run_listener(listener: Any, event_cls: type[events.BaseEvent], bot: Any) -> None:

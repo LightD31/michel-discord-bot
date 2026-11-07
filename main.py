@@ -4,7 +4,9 @@ Main script to run
 This script initializes extensions and starts the bot
 """
 
+import asyncio
 import contextlib
+import logging
 import os
 import sys
 import threading
@@ -15,12 +17,27 @@ import interactions
 from interactions import IntervalTrigger, Task
 
 from src.core import logging as logutil
-from src.core.config import load_config
+from src.core.config import CONFIG_PATH, load_config
+from src.core.db import mongo_manager
+from src.core.http import http_client
 from src.core.logging import DEBUG
+from src.discord_ext.lifecycle import GracefulShutdown
+
+# Configure logging for this main.py handler
+logger = logutil.init_logger("main.py")
 
 config, _, _ = load_config()
+if not config.get("discord", {}).get("botToken"):
+    # load_config() has already logged why the file couldn't be read, if it couldn't.
+    logger.critical(
+        "No bot token in %s (discord.botToken). Copy config.example.json to %s, "
+        "fill in the token, and start again.",
+        CONFIG_PATH,
+        CONFIG_PATH,
+    )
+    sys.exit(1)
 
-DEV_GUILD = config["discord"]["devGuildId"]
+DEV_GUILD = config["discord"].get("devGuildId")
 TOKEN = config["discord"]["botToken"]
 
 # Web UI configuration
@@ -28,17 +45,11 @@ WEBUI_ENABLED = config.get("webui", {}).get("enabled", False)
 WEBUI_HOST = config.get("webui", {}).get("host", "0.0.0.0")
 WEBUI_PORT = config.get("webui", {}).get("port", 8080)
 
-# Configure logging for this main.py handler
-logger = logutil.init_logger("main.py")
 logger.debug(
     "Debug mode is %s; This is not a warning, \
 just an indicator. You may safely ignore",
     DEBUG,
 )
-
-if not TOKEN:
-    logger.critical("TOKEN variable not set. Cannot continue")
-    sys.exit(1)
 
 # Only the intents the extensions actually consume — slash commands and
 # components need none of these. Privileged intents (Developer Portal
@@ -63,6 +74,11 @@ client = interactions.Client(
     # auto_defer=interactions.AutoDefer(enabled=True, time_until_defer=0),
     send_command_tracebacks=False,
 )
+
+
+# SIGTERM (docker compose stop) and SIGINT stop the bot cleanly instead of
+# killing it mid-task; installed on the bot loop once it runs.
+shutdown = GracefulShutdown(client, closers=[http_client.close, mongo_manager.close])
 
 
 HEALTH_FILE = "/tmp/bot_heartbeat"
@@ -114,6 +130,7 @@ async def on_startup():
     """Called when the bot starts"""
     logger.info(f"Logged in as {client.user}")
     _heartbeat_task.start()
+    shutdown.install(asyncio.get_running_loop())
 
     # Start Web UI if enabled
     if WEBUI_ENABLED:
@@ -158,8 +175,12 @@ except Exception:
     logger.exception("client.start() exited with an exception — restarting via supervisor")
     os._exit(1)
 else:
-    # Reaching here means the gateway connection ended without raising. The
-    # event loop is closed; let the supervisor restart us instead of leaving
-    # a half-dead process with a live Web UI thread.
+    if shutdown.requested:
+        logger.info("Bot stopped cleanly")
+        logging.shutdown()
+        os._exit(0)
+    # Reaching here otherwise means the gateway connection ended without
+    # raising. The event loop is closed; let the supervisor restart us instead
+    # of leaving a half-dead process with a live Web UI thread.
     logger.warning("client.start() returned — exiting so the supervisor restarts the bot")
     os._exit(1)
