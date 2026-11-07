@@ -3,14 +3,11 @@
 All business logic lives in features/birthday/.
 """
 
-import os
 import random
-from datetime import datetime
-from typing import Optional
+from datetime import date, datetime
 
 import pytz
 from babel.dates import format_date, get_date_format
-from dateutil.relativedelta import relativedelta
 from interactions import (
     ActionRow,
     AutocompleteContext,
@@ -33,8 +30,11 @@ from interactions import (
 from features.birthday import (
     BirthdayEntry,
     BirthdayRepository,
-    _safe_replace_year,
-    _strip_year_from_format,
+    age_on,
+    calendar_order,
+    is_birthday,
+    parse_birth_date,
+    strip_year_from_format,
 )
 from src.core import logging as logutil
 from src.core.config import load_config
@@ -84,17 +84,11 @@ logger = logutil.init_logger(__name__)
 config, module_config, enabled_servers = load_config("moduleBirthday")
 
 
-def _compute_age(birth_date: datetime, reference: datetime | None = None) -> int:
-    if reference is None:
-        reference = datetime.now()
-    return relativedelta(reference, birth_date).years
-
-
 def _validate_and_parse_date(date_str: str) -> datetime:
     try:
-        return datetime.strptime(date_str, "%d/%m/%Y")
+        return parse_birth_date(date_str, today=date.today())
     except ValueError as e:
-        raise ValidationError("Date invalide. Format attendu : JJ/MM/AAAA") from e
+        raise ValidationError(str(e)) from e
 
 
 def _validate_timezone(timezone_str: str) -> pytz.BaseTzInfo:
@@ -310,9 +304,9 @@ class BirthdayExtension(Extension):
             srv_cfg = self._server_config(ctx.guild.id)
             locale = srv_cfg.get("birthdayGuildLocale", "en_US")
             raw_format = str(get_date_format("long", locale=locale))
-            date_format = _strip_year_from_format(raw_format)
+            date_format = strip_year_from_format(raw_format)
 
-            birthdays.sort(key=lambda b: _safe_replace_year(b.date, 2000))
+            birthdays.sort(key=calendar_order)
 
             embeds: list[Embed] = []
             lines: list[str] = []
@@ -327,7 +321,7 @@ class BirthdayExtension(Extension):
                     if entry.hideyear:
                         lines.append(f"**{user.mention}** : {formatted}")
                     else:
-                        age = _compute_age(entry.date)
+                        age = age_on(entry.date, date.today())
                         lines.append(f"**{user.mention}** : {formatted} ({age} ans)")
                     if len(lines) % 25 == 0:
                         embeds.append(
@@ -380,16 +374,8 @@ class BirthdayExtension(Extension):
             logger.error("Critical error in anniversaire_check task: %s", e)
 
     async def _process_birthday(self, entry: BirthdayEntry, guild_id: int) -> None:
-        timezone = pytz.timezone(entry.timezone)
-        now_tz = datetime.now(timezone)
-        birthday_today = _safe_replace_year(entry.date, now_tz.year)
-        logger.debug(
-            "Processing birthday – now: %s, birthday this year: %s",
-            now_tz.date(),
-            birthday_today.date(),
-        )
-
-        if now_tz.date() == birthday_today.date():
+        now_tz = datetime.now(pytz.timezone(entry.timezone))
+        if is_birthday(entry, now_tz.date()):
             await self._handle_birthday_celebration(entry, guild_id, now_tz)
         else:
             await self._handle_birthday_end(entry, guild_id)
@@ -418,7 +404,7 @@ class BirthdayExtension(Extension):
             if not channel:
                 logger.warning("No valid channel for birthday message in server %s", server.name)
                 return
-            age = _compute_age(entry.date, now_tz.replace(tzinfo=None))
+            age = age_on(entry.date, now_tz.date())
             await self._send_birthday_message(channel, member, age, guild_id)
             await self._toggle_birthday_role(server, member, guild_id, add=True)
             logger.info(

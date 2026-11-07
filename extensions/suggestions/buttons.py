@@ -40,17 +40,14 @@ class ButtonsMixin:
             return
 
         user_id = str(ctx.author.id)
-        previous = existing.votes.get(user_id)
-        if previous == direction:
-            updated = await repo.remove_vote(sugg_id, user_id)
+        updated = await repo.toggle_vote(sugg_id, user_id, direction)
+        if not updated:
+            await send_error(ctx, "Le vote est clos pour cette suggestion.")
+            return
+        if user_id not in updated.votes:
             action_text = "Vote retiré"
         else:
-            updated = await repo.set_vote(sugg_id, user_id, direction)
             action_text = "Vote 👍 enregistré" if direction == "up" else "Vote 👎 enregistré"
-
-        if not updated:
-            await send_error(ctx, "Impossible d'enregistrer le vote.")
-            return
 
         # Update the original embed's Votes field in place.
         try:

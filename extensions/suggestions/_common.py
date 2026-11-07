@@ -59,8 +59,4 @@ STATUS_LABELS: dict[str, str] = {
 
 def get_guild_settings(guild_id: int | str) -> dict | None:
     """Return the per-guild module config, or None if disabled/missing."""
-    sid = str(guild_id)
-    settings = module_config.get(sid)
-    if settings is None and sid.isdigit():
-        settings = module_config.get(int(sid))
-    return settings
+    return module_config.get(str(guild_id))

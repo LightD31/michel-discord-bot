@@ -1,7 +1,5 @@
 """Extension Welcome — messages de bienvenue et d'au revoir personnalisés par serveur."""
 
-import os
-
 from interactions import Client, Extension, File, listen
 from interactions.api.events import MemberAdd, MemberRemove
 
@@ -78,10 +76,17 @@ def _server_name_subtitle(guild_name: str, member_count: int | None) -> str:
     return guild_name
 
 
+def _target_channel(guild, serv_config: dict):
+    """The configured welcome channel, else the server's system channel; ``None`` if neither."""
+    channel_id = serv_config.get("welcomeChannelId")
+    if channel_id:
+        return guild.get_channel(channel_id)
+    return guild.system_channel
+
+
 class WelcomeExtension(Extension):
     def __init__(self, bot: Client):
         self.bot = bot
-        # Load config
 
     @listen()
     async def on_member_add(self, event: MemberAdd):
@@ -92,14 +97,15 @@ class WelcomeExtension(Extension):
             return
         serv_config = module_config.get(str(event.guild.id), {})
 
+        channel = _target_channel(event.guild, serv_config)
+        if channel is None:
+            logger.warning("No welcome channel available on %s", event.guild.name)
+            return
         filled_message = pick_weighted_message(
             serv_config,
             "welcomeMessageList",
             "Bienvenue {mention} !",
             mention=event.member.mention,
-        )
-        channel = event.guild.get_channel(
-            serv_config.get("welcomeChannelId") or event.guild.system_channel.id
         )
         files = await self._build_card_files(
             event.member,
@@ -122,14 +128,15 @@ class WelcomeExtension(Extension):
             serv_config.get("leaveMessageList"),
             serv_config.get("welcomeChannelId"),
         )
+        channel = _target_channel(event.guild, serv_config)
+        if channel is None:
+            logger.warning("No welcome channel available on %s", event.guild.name)
+            return
         filled_message = pick_weighted_message(
             serv_config,
             "leaveMessageList",
-            "Au revoir **{mention}** !",
-            mention=event.member.username,
-        )
-        channel = event.guild.get_channel(
-            serv_config.get("welcomeChannelId") or event.guild.system_channel.id
+            "{username} nous a quittés.",
+            username=event.member.username,
         )
         files = await self._build_card_files(
             event.member,

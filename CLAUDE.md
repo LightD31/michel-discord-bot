@@ -22,7 +22,8 @@ uv run ruff check .
 uv run ruff format --check .       # CI runs --check; drop --check to apply
 uv run ruff check --fix .
 
-# Type check (src.core.* is strict, rest is lenient; runs in CI on every PR)
+# Type check (src.core.* is strict, features.* checks unannotated bodies too,
+# rest is lenient; runs in CI on every PR)
 uv run mypy src features
 uv run pre-commit run mypy --hook-stage manual   # same check via the opt-in hook
 
@@ -30,6 +31,11 @@ uv run pre-commit run mypy --hook-stage manual   # same check via the opt-in hoo
 uv run pytest
 uv run pytest tests/test_rss_parser.py::test_parse_rss_extracts_two_entries   # single test
 uv run pytest --cov=src --cov=features --cov-report=term  # with coverage (CI)
+
+# Repository tests against a real MongoDB (tests/test_mongo_*.py): skipped unless
+# MONGO_TEST_URL is set. CI's test job runs them against a mongo service.
+docker run -d --rm -p 27017:27017 mongo:8
+MONGO_TEST_URL=mongodb://localhost:27017 uv run pytest -m mongo
 
 # Pre-commit (ruff lint+format, detect-secrets, hygiene hooks; mypy is manual-stage only)
 uv run pre-commit run --all-files
@@ -158,6 +164,8 @@ Anything that hands work between the bot loop and the Web UI's uvicorn loop has 
 - Logging: `from src.core import logging as logutil; logger = logutil.init_logger("name")`. `MICHEL_DEBUG=1` enables debug level.
 - Most user-facing strings are French — match existing language when editing command descriptions and embeds.
 - `interactions.py` here is the `discord-py-interactions` package — not `discord.py`. Use `interactions.Extension`, `@slash_command`, `@listen()`, `@interactions.Task.create(IntervalTrigger(...))`.
-- Real tests exist under `tests/` (core db/http/config, Web UI auth and config saving, giveaway draw, moderation, MDI client, RSS parser, weighted messages, Tricount balances, reaction-poll closing). Coverage is measured over `src` and `features` — when adding domain logic to `features/`, add a matching test. `pytest --cov` fails below `fail_under` in `[tool.coverage.report]`; raise that floor when coverage grows, never lower it to get a PR green.
+- Real tests exist under `tests/` (core db/http/config, Web UI auth and config saving, giveaway draw, moderation, MDI client, RSS parser, weighted messages, Tricount balances, reaction-poll closing, reminder scheduling, birthdays, starboard rules, YouTube filters, welcome). Coverage is measured over `src` and `features` — when adding domain logic to `features/`, add a matching test. `pytest --cov` fails below `fail_under` in `[tool.coverage.report]`; raise that floor when coverage grows, never lower it to get a PR green. Keep the floor below the figure *without* MongoDB, so a local run without one still passes.
+- **Repository tests run against a real MongoDB** (`tests/test_mongo_*.py`, `pytestmark = pytest.mark.mongo`). The `mongo` fixture (`tests/conftest.py`) points `mongo_manager` at `MONGO_TEST_URL`, on a guild database and a `global` database of its own (both dropped afterwards), and skips the test when the variable is unset. Use it for anything an in-memory fake would only pretend to check: aggregations, atomic updates (`$inc`, `find_one_and_update`, pipeline updates), unique and TTL indexes, dotted field paths. A new repository method gets a test there.
+- **Stored keys are values, not field names**, when users choose them: a YouTube handle can contain a dot, which an update would read as a nested path (`features/youtube/repository.py` stores a list of `{"handle", "video_id"}` pairs for that reason). Interpolate a key into a field path only when it can't contain `.` or start with `$` (a Discord id, checked with `isdigit()` as in `SuggestionsRepository.toggle_vote`).
 - Several extensions are tied to dated events (olympics → Milan-Cortina 2026, speedons → 2025 API slug). They ship config-disabled rather than deleted. `zevent` is no longer year-pinned: it resolves the edition from the stats API's `/events` listing (override with `zeventStatsEventId`), so only the two start dates need refreshing each year.
 - **Prometheus metrics** (`extensions/metrics.py`, global section `metrics`): `/metrics` on its own port via `prometheus_client`, independent of the Web UI. Keep everything in the extension's own `CollectorRegistry` (never the global `REGISTRY`, which a reload would hit with duplicated series) and free the port in `async_drop`. Scrapes run on `prometheus_client`'s HTTP thread, so they only read the last snapshot published to `features.metrics.SnapshotCollector` plus plain client attributes; MongoDB is read only by the refresh task on the bot loop. Sample builders live in `features/metrics/samples.py` (pure, tested) — add a `MetricSpec` there for every new snapshot metric.

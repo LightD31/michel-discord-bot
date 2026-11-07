@@ -12,9 +12,8 @@ class Reminder(BaseModel):
     """A single scheduled reminder.
 
     ``user_id`` is the author/creator. ``recipient_ids`` enables shared/group
-    reminders: every listed Discord user is DM'd when the reminder fires.
-    Empty/missing ``recipient_ids`` means "DM the author only" — the legacy
-    behaviour, preserved for documents written before this field existed.
+    reminders: every listed Discord user is DM'd when the reminder fires,
+    along with the author. Empty means the author alone.
     """
 
     id: str | None = Field(default=None, alias="_id")

@@ -66,8 +66,4 @@ enabled_servers_int = [int(s) for s in enabled_servers]  # type: ignore[misc]
 
 def get_guild_settings(guild_id: int | str) -> dict | None:
     """Return per-guild module config dict, or None if disabled/missing."""
-    sid = str(guild_id)
-    settings = module_config.get(sid)
-    if settings is None and sid.isdigit():
-        settings = module_config.get(int(sid))
-    return settings
+    return module_config.get(str(guild_id))

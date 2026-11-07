@@ -116,6 +116,13 @@ def extract_answer(text: str) -> str | None:
 # ---------------------------------------------------------------------------
 
 
+class _KeepUnknown(dict[str, Any]):
+    """Format mapping that leaves a placeholder it doesn't know as written."""
+
+    def __missing__(self, key: str) -> str:
+        return "{" + key + "}"
+
+
 def pick_weighted_message(
     config: dict[str, Any],
     list_key: str,
@@ -125,7 +132,9 @@ def pick_weighted_message(
     """Pick a random message from ``config[list_key]`` using weights, then format it.
 
     Entries are ``{"text": str, "weight": number}`` objects; anything else is
-    skipped.
+    skipped. The texts come from guild admins, so a mistake in one never stops
+    the message: an unknown ``{placeholder}`` stays as written, and a text that
+    isn't a valid format string is sent unformatted.
 
     Example::
 
@@ -157,7 +166,10 @@ def pick_weighted_message(
         # random.choices raises when every weight is 0 — treat as all-equal.
         weights = [1.0] * len(texts)
     chosen: str = random.choices(texts, weights=weights)[0]
-    return chosen.format(**format_kwargs)
+    try:
+        return chosen.format_map(_KeepUnknown(format_kwargs))
+    except (ValueError, IndexError, AttributeError, KeyError):
+        return chosen
 
 
 __all__ = [

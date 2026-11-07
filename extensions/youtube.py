@@ -1,14 +1,16 @@
 """Extension YouTube — notifications automatiques de nouvelles vidéos."""
 
-import datetime
-import os
-
-import aiohttp
-import isodate
 from interactions import BaseChannel, Client, Extension, IntervalTrigger, Task, listen
 
 from features.links import shorten_text
-from features.youtube import YoutubeRepository
+from features.youtube import (
+    DEFAULT_TEMPLATE,
+    YoutubeRepository,
+    classify,
+    render_notification,
+    short_max_seconds,
+    wanted,
+)
 from src.core import logging as logutil
 from src.core.config import load_config
 from src.core.http import fetch
@@ -104,37 +106,30 @@ class YoutubeExtension(Extension):
                 "Initial YouTube sync for server %s – skipping notifications",
                 server,
             )
-        template = srv_config.get(
-            "youtubeNotificationTemplate", "https://www.youtube.com/watch?v={video_id}"
-        )
-        try:
-            short_max = int(srv_config.get("youtubeShortMaxSeconds", 90))
-        except (TypeError, ValueError):
-            short_max = 90
-        short_max = max(1, short_max)
+        template = srv_config.get("youtubeNotificationTemplate") or DEFAULT_TEMPLATE
+        short_max = short_max_seconds(srv_config)
 
-        seen: dict[str, str] = dict(youtube_data.get(server) or {})
-        changed = False
-        for raw_handle, channel_cfg in self._iter_channels(srv_config):
-            if not raw_handle:
-                continue
+        channels = [(handle, cfg) for handle, cfg in self._iter_channels(srv_config) if handle]
+        followed = {handle for handle, _ in channels}
+        stored: dict[str, str] = youtube_data.get(server) or {}
+        # Forget channels the guild no longer follows.
+        seen = {handle: video for handle, video in stored.items() if handle in followed}
+        changed = seen != stored
+        for raw_handle, channel_cfg in channels:
             handle = raw_handle.lstrip("@")
             try:
                 video_id = await self.get_video_id(await self.get_uploads(handle))
                 if seen.get(raw_handle) == video_id:
                     continue
-                filters = {
-                    "shorts": bool(channel_cfg.get("shorts", False)),
-                    "live": bool(channel_cfg.get("live", False)),
-                    "vod": bool(channel_cfg.get("vod", True)),
-                    "short_max_seconds": short_max,
-                }
-                if not is_initial_sync and await self.is_video_valid(video_id, filters):
-                    label = channel_cfg.get("label") or handle
-                    try:
-                        rendered = template.format(video_id=video_id, handle=handle, label=label)
-                    except (KeyError, IndexError, ValueError, AttributeError):
-                        rendered = f"https://www.youtube.com/watch?v={video_id}"
+                if not is_initial_sync and await self.is_video_valid(
+                    video_id, channel_cfg, short_max
+                ):
+                    rendered = render_notification(
+                        template,
+                        video_id=video_id,
+                        handle=handle,
+                        label=channel_cfg.get("label") or handle,
+                    )
                     # Shortens every link the template rendered — the video URL
                     # and any extra link the guild added to its template.
                     rendered = await shorten_text(rendered, tags=["youtube", handle])
@@ -194,32 +189,11 @@ class YoutubeExtension(Extension):
                 data[str(server_id)] = ids
         return data
 
-    async def is_video_valid(self, video_id, filters: dict[str, object] | None = None):
-        """Decide whether to surface ``video_id`` based on per-guild filters.
-
-        ``filters`` keys: ``shorts``, ``live``, ``vod``, ``short_max_seconds``.
-        Default mirrors the legacy behaviour (VOD-only, 90 s short threshold).
-        """
-        if filters is None:
-            filters = {"shorts": False, "live": False, "vod": True, "short_max_seconds": 90}
+    async def is_video_valid(self, video_id: str, channel_cfg: dict, short_max: int) -> bool:
+        """Whether the channel's Shorts / Lives / VOD toggles ask for this video."""
         data = await self._api("videos", part="snippet,contentDetails", id=video_id)
-        item = data["items"][0]
-        live_state = item["snippet"]["liveBroadcastContent"]
-        if live_state != "none":
-            if filters["live"]:
-                return True
-            logger.info("New video is a live stream — skipped (live filter off)")
-            return False
-
-        duration = isodate.parse_duration(item["contentDetails"]["duration"])
-        threshold = datetime.timedelta(seconds=int(filters.get("short_max_seconds", 90)))
-        is_short = duration <= threshold
-        if is_short:
-            if filters["shorts"]:
-                return True
-            logger.info("New video is a Short — skipped (shorts filter off)")
-            return False
-        if filters["vod"]:
+        kind = classify(data["items"][0], short_max)
+        if wanted(kind, channel_cfg):
             return True
-        logger.info("New video is a VOD — skipped (vod filter off)")
+        logger.info("New video %s is a %s — skipped by the channel's filters", video_id, kind)
         return False

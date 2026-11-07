@@ -11,17 +11,21 @@ logger = logutil.init_logger(__name__)
 class StorageManager:
     """Manages persistence of reminders and event states via MongoDB."""
 
-    def __init__(self, data_folder: str, guild_id: str | None = None):
-        self.data_folder = data_folder  # kept for backward compat, no longer used
+    def __init__(self, guild_id: str | None):
         self._guild_id = guild_id
+
+    def _col(self, name: str):
+        if self._guild_id is None:
+            raise RuntimeError("moduleZunivers is not enabled on any server")
+        return mongo_manager.get_guild_collection(self._guild_id, name)
 
     @property
     def _reminders_col(self):
-        return mongo_manager.get_guild_collection(self._guild_id, "coloc_reminders")
+        return self._col("coloc_reminders")
 
     @property
     def _events_col(self):
-        return mongo_manager.get_guild_collection(self._guild_id, "coloc_events")
+        return self._col("coloc_events")
 
     # Reminders storage
 

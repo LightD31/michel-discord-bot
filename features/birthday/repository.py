@@ -3,8 +3,7 @@
 import pymongo
 
 from features.birthday.models import BirthdayEntry
-from src.core.db import mongo_manager
-from src.core.errors import DatabaseError
+from src.core.db import mongo_manager, translates_db_errors
 from src.core.logging import init_logger
 
 logger = init_logger(__name__)
@@ -23,55 +22,32 @@ class BirthdayRepository:
         except Exception as e:
             logger.error("Failed to create birthday index for guild %s: %s", self._guild_id, e)
 
+    @translates_db_errors
     async def find_one(self, user_id: int) -> BirthdayEntry | None:
-        try:
-            doc = await self._col().find_one({"user": user_id})
-            if doc is None:
-                return None
-            doc.pop("_id", None)
-            return BirthdayEntry(**doc)
-        except Exception as e:
-            logger.error("DB find_one failed: %s", e)
-            raise DatabaseError(f"Failed to query database: {e}") from e
+        doc = await self._col().find_one({"user": user_id}, {"_id": 0})
+        return BirthdayEntry(**doc) if doc else None
 
+    @translates_db_errors
     async def find_all(self) -> list[BirthdayEntry]:
-        try:
-            docs = await self._col().find({}).to_list(length=None)
-            entries = []
-            for doc in docs:
-                doc.pop("_id", None)
-                try:
-                    entries.append(BirthdayEntry(**doc))
-                except Exception as e:
-                    logger.warning("Skipping malformed birthday document: %s", e)
-            return entries
-        except Exception as e:
-            logger.error("DB find failed: %s", e)
-            raise DatabaseError(f"Failed to query database: {e}") from e
+        entries = []
+        for doc in await self._col().find({}, {"_id": 0}).to_list(length=None):
+            try:
+                entries.append(BirthdayEntry(**doc))
+            except Exception as e:
+                logger.warning("Skipping malformed birthday document: %s", e)
+        return entries
 
+    @translates_db_errors
     async def upsert(self, entry: BirthdayEntry) -> None:
-        try:
-            data = entry.model_dump()
-            await self._col().update_one(
-                {"user": entry.user},
-                {"$set": data},
-                upsert=True,
-            )
-        except Exception as e:
-            logger.error("DB upsert failed: %s", e)
-            raise DatabaseError(f"Failed to upsert birthday: {e}") from e
+        await self._col().update_one(
+            {"user": entry.user}, {"$set": entry.model_dump()}, upsert=True
+        )
 
+    @translates_db_errors
     async def update_fields(self, user_id: int, fields: dict) -> None:
-        try:
-            await self._col().update_one({"user": user_id}, {"$set": fields})
-        except Exception as e:
-            logger.error("DB update_one failed: %s", e)
-            raise DatabaseError(f"Failed to update birthday: {e}") from e
+        await self._col().update_one({"user": user_id}, {"$set": fields})
 
+    @translates_db_errors
     async def delete(self, user_id: int) -> int:
-        try:
-            result = await self._col().delete_one({"user": user_id})
-            return result.deleted_count
-        except Exception as e:
-            logger.error("DB delete_one failed: %s", e)
-            raise DatabaseError(f"Failed to delete birthday: {e}") from e
+        result = await self._col().delete_one({"user": user_id})
+        return result.deleted_count

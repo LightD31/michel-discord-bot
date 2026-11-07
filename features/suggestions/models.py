@@ -6,6 +6,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 SuggestionStatus = Literal["pending", "approved", "denied", "implemented"]
+VoteDirection = Literal["up", "down"]
 
 
 class Suggestion(BaseModel):
@@ -21,7 +22,7 @@ class Suggestion(BaseModel):
     status: SuggestionStatus = "pending"
     reason: str | None = None
     decided_by: str | None = None
-    votes: dict[str, str] = Field(default_factory=dict)  # user_id -> "up" | "down"
+    votes: dict[str, VoteDirection] = Field(default_factory=dict)  # Discord user id -> vote
     created_at: datetime
 
     model_config = {"populate_by_name": True}

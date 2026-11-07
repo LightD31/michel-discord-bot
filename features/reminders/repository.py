@@ -6,8 +6,7 @@ import pymongo
 from bson import ObjectId
 
 from features.reminders.models import Reminder
-from src.core.db import mongo_manager
-from src.core.errors import DatabaseError
+from src.core.db import mongo_manager, translates_db_errors
 from src.core.logging import init_logger
 
 logger = init_logger(__name__)
@@ -46,47 +45,28 @@ class ReminderRepository:
             doc["_id"] = str(doc["_id"])
         return Reminder(**doc)
 
+    @translates_db_errors
     async def add(self, reminder: Reminder) -> str:
-        try:
-            payload = reminder.model_dump(exclude={"id"})
-            result = await self._col().insert_one(payload)
-            return str(result.inserted_id)
-        except Exception as e:
-            logger.error("DB insert_one failed: %s", e)
-            raise DatabaseError(f"Failed to add reminder: {e}") from e
+        result = await self._col().insert_one(reminder.model_dump(exclude={"id"}))
+        return str(result.inserted_id)
 
+    @translates_db_errors
     async def delete(self, reminder_id: str) -> int:
-        try:
-            result = await self._col().delete_one({"_id": ObjectId(reminder_id)})
-            return result.deleted_count
-        except Exception as e:
-            logger.error("DB delete_one failed: %s", e)
-            raise DatabaseError(f"Failed to delete reminder: {e}") from e
+        result = await self._col().delete_one({"_id": ObjectId(reminder_id)})
+        return result.deleted_count
 
+    @translates_db_errors
     async def reschedule(self, reminder_id: str, new_time: datetime) -> None:
-        try:
-            await self._col().update_one(
-                {"_id": ObjectId(reminder_id)},
-                {"$set": {"remind_time": new_time}},
-            )
-        except Exception as e:
-            logger.error("DB update_one failed: %s", e)
-            raise DatabaseError(f"Failed to reschedule reminder: {e}") from e
+        await self._col().update_one(
+            {"_id": ObjectId(reminder_id)}, {"$set": {"remind_time": new_time}}
+        )
 
+    @translates_db_errors
     async def list_for_user(self, user_id: str) -> list[Reminder]:
-        try:
-            cursor = self._col().find({"user_id": user_id}).sort("remind_time", pymongo.ASCENDING)
-            docs = await cursor.to_list(length=None)
-            return [self._doc_to_reminder(d) for d in docs]
-        except Exception as e:
-            logger.error("DB find failed: %s", e)
-            raise DatabaseError(f"Failed to list reminders: {e}") from e
+        cursor = self._col().find({"user_id": user_id}).sort("remind_time", pymongo.ASCENDING)
+        return [self._doc_to_reminder(d) for d in await cursor.to_list(length=None)]
 
+    @translates_db_errors
     async def list_due(self, now: datetime) -> list[Reminder]:
-        try:
-            cursor = self._col().find({"remind_time": {"$lte": now}})
-            docs = await cursor.to_list(length=None)
-            return [self._doc_to_reminder(d) for d in docs]
-        except Exception as e:
-            logger.error("DB find failed: %s", e)
-            raise DatabaseError(f"Failed to list due reminders: {e}") from e
+        cursor = self._col().find({"remind_time": {"$lte": now}})
+        return [self._doc_to_reminder(d) for d in await cursor.to_list(length=None)]

@@ -6,8 +6,7 @@ import pymongo
 from bson import ObjectId
 
 from features.polls.models import Poll
-from src.core.db import mongo_manager
-from src.core.errors import DatabaseError
+from src.core.db import mongo_manager, translates_db_errors
 from src.core.logging import init_logger
 
 logger = init_logger(__name__)
@@ -43,53 +42,40 @@ class PollRepository:
             doc["_id"] = str(doc["_id"])
         return Poll(**doc)
 
+    @translates_db_errors
     async def add(self, poll: Poll) -> str:
-        try:
-            payload = poll.model_dump(exclude={"id"})
-            result = await self._col().insert_one(payload)
-            return str(result.inserted_id)
-        except Exception as e:
-            logger.error("DB insert_one failed: %s", e)
-            raise DatabaseError(f"Failed to add poll: {e}") from e
+        result = await self._col().insert_one(poll.model_dump(exclude={"id"}))
+        return str(result.inserted_id)
 
+    @translates_db_errors
     async def get_by_message(self, message_id: str) -> Poll | None:
         doc = await self._col().find_one({"message_id": str(message_id)})
         return self._doc_to_poll(doc) if doc else None
 
+    @translates_db_errors
     async def set_vote(self, poll_id: str, user_id: str, ranking: list[int]) -> None:
-        try:
-            await self._col().update_one(
-                {"_id": ObjectId(poll_id)},
-                {"$set": {f"votes.{user_id}": ranking}},
-            )
-        except Exception as e:
-            logger.error("DB update_one failed: %s", e)
-            raise DatabaseError(f"Failed to record vote: {e}") from e
+        await self._col().update_one(
+            {"_id": ObjectId(poll_id)}, {"$set": {f"votes.{user_id}": ranking}}
+        )
 
+    @translates_db_errors
     async def clear_vote(self, poll_id: str, user_id: str) -> None:
-        try:
-            await self._col().update_one(
-                {"_id": ObjectId(poll_id)},
-                {"$unset": {f"votes.{user_id}": ""}},
-            )
-        except Exception as e:
-            logger.error("DB update_one failed: %s", e)
-            raise DatabaseError(f"Failed to clear vote: {e}") from e
+        await self._col().update_one(
+            {"_id": ObjectId(poll_id)}, {"$unset": {f"votes.{user_id}": ""}}
+        )
 
+    @translates_db_errors
     async def list_due(self, now: datetime) -> list[Poll]:
         cursor = self._col().find({"closed": False, "closes_at": {"$ne": None, "$lte": now}})
-        docs = await cursor.to_list(length=None)
-        return [self._doc_to_poll(d) for d in docs]
+        return [self._doc_to_poll(d) for d in await cursor.to_list(length=None)]
 
+    @translates_db_errors
     async def set_options(self, poll_id: str, options: list[str], emojis: list[str]) -> None:
         """Replace a stored poll's options (``/editpoll``)."""
-        try:
-            await self._col().update_one(
-                {"_id": ObjectId(poll_id)}, {"$set": {"options": options, "emojis": emojis}}
-            )
-        except Exception as e:
-            logger.error("DB update_one failed: %s", e)
-            raise DatabaseError(f"Failed to update poll options: {e}") from e
+        await self._col().update_one(
+            {"_id": ObjectId(poll_id)}, {"$set": {"options": options, "emojis": emojis}}
+        )
 
+    @translates_db_errors
     async def mark_closed(self, poll_id: str) -> None:
         await self._col().update_one({"_id": ObjectId(poll_id)}, {"$set": {"closed": True}})
