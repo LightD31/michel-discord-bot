@@ -13,7 +13,17 @@ from interactions import (
     slash_option,
 )
 
-from features.tricount import TricountRepository, render_category_chart
+from features.tricount import (
+    TricountRepository,
+    compute_balances,
+    format_amount,
+    is_transfer,
+    render_category_chart,
+    settlement_plan,
+    spending_total,
+    to_cents,
+    visible_balances,
+)
 from src.core import logging as logutil
 from src.discord_ext.autocomplete import guild_group_autocomplete
 from src.discord_ext.embeds import Colors
@@ -23,6 +33,22 @@ from src.discord_ext.scopes import guild_scopes
 from ._common import DEFAULT_CATEGORY, enabled_servers, guild_currency
 
 logger = logutil.init_logger(__name__)
+
+# Discord caps an embed field's value at 1024 characters.
+_FIELD_LIMIT = 1024
+
+
+def _field_value(lines: list[str]) -> str:
+    """Join *lines*, dropping the ones that don't fit in a field (with a note)."""
+    kept: list[str] = []
+    size = 0
+    for i, line in enumerate(lines):
+        if size + len(line) + 1 > _FIELD_LIMIT - 20:
+            kept.append(f"… et {len(lines) - i} de plus")
+            break
+        kept.append(line)
+        size += len(line) + 1
+    return "\n".join(kept) or "Aucune donnée"
 
 
 class ReportsMixin:
@@ -80,18 +106,32 @@ class ReportsMixin:
             description=f"Dernières {len(expenses)} dépense(s):",
             color=Colors.INFO,
         )
+        currency = guild_currency(ctx.guild.id)
         for i, expense in enumerate(expenses, 1):
             payer_name, _ = await fetch_user_safe(self.bot, expense["payer"])
             added_by_name, _ = await fetch_user_safe(self.bot, expense["added_by"])
             date_str = expense["date"].strftime("%d/%m/%Y %H:%M")
-            field_value = (
-                f"**Montant:** {expense['amount']:.2f}€\n"
-                f"**Payeur:** {payer_name}\n"
-                f"**Ajouté par:** {added_by_name}\n"
-                f"**Date:** {date_str}\n"
-                f"**ID:** `{expense['_id']}`"
-            )
-            embed.add_field(name=f"{i}. {expense['description']}", value=field_value, inline=True)
+            amount = format_amount(to_cents(expense["amount"]), currency)
+            if is_transfer(expense):
+                recipient_name, _ = await fetch_user_safe(self.bot, expense["recipient"])
+                title = f"{i}. ↔️ Remboursement"
+                field_value = (
+                    f"**Montant:** {amount}\n"
+                    f"**De:** {payer_name} → **À:** {recipient_name}\n"
+                    f"**Ajouté par:** {added_by_name}\n"
+                    f"**Date:** {date_str}\n"
+                    f"**ID:** `{expense['_id']}`"
+                )
+            else:
+                title = f"{i}. {expense['description']}"
+                field_value = (
+                    f"**Montant:** {amount}\n"
+                    f"**Payeur:** {payer_name}\n"
+                    f"**Ajouté par:** {added_by_name}\n"
+                    f"**Date:** {date_str}\n"
+                    f"**ID:** `{expense['_id']}`"
+                )
+            embed.add_field(name=title, value=field_value, inline=True)
 
         embed.set_footer(text="💡 Utilisez l'ID pour modifier une dépense avec /modifier-depense")
         await ctx.send(embed=embed)
@@ -121,13 +161,16 @@ class ReportsMixin:
         if not group:
             await ctx.send(f"❌ Aucun groupe actif trouvé avec le nom '{groupe}'.", ephemeral=True)
             return
-        if ctx.author.id not in group["members"]:
+
+        expenses = await repo.list_group_expenses(group["_id"])
+        members = group["members"]
+        balances = compute_balances(expenses, members)
+        # Former members still on the books may check what they owe or are owed.
+        if ctx.author.id not in members and not balances.get(ctx.author.id):
             await ctx.send(
                 "❌ Vous devez être membre du groupe pour voir le bilan.", ephemeral=True
             )
             return
-
-        expenses = await repo.list_group_expenses(group["_id"])
 
         if not expenses:
             embed = Embed(
@@ -138,41 +181,48 @@ class ReportsMixin:
             await ctx.send(embed=embed)
             return
 
-        total_expenses = sum(expense["amount"] for expense in expenses)
-        num_members = len(group["members"])
-        cost_per_person = total_expenses / num_members
-
-        balances = {}
-        for member_id in group["members"]:
-            paid = sum(expense["amount"] for expense in expenses if expense["payer"] == member_id)
-            owes = cost_per_person
-            balance = paid - owes
-            balances[member_id] = {"paid": paid, "owes": owes, "balance": balance}
+        currency = guild_currency(ctx.guild.id)
+        paid: dict[int, int] = defaultdict(int)
+        for expense in expenses:
+            if not is_transfer(expense):
+                paid[expense["payer"]] += to_cents(expense.get("amount", 0))
 
         embed = Embed(
             title=f"📊 Bilan du groupe {groupe}",
-            description=f"**Total des dépenses:** {total_expenses:.2f}€\n**Coût par personne:** {cost_per_person:.2f}€",
+            description=(
+                f"**Total des dépenses :** {format_amount(spending_total(expenses), currency)}"
+            ),
             color=Colors.INFO,
         )
 
-        balance_text = ""
-        for member_id, data in balances.items():
-            _, user = await fetch_user_safe(self.bot, member_id)
-            if user:
-                if data["balance"] > 0.01:
-                    balance_text += (
-                        f"💰 {user.mention}: +{data['balance']:.2f}€ (a payé {data['paid']:.2f}€)\n"
-                    )
-                elif data["balance"] < -0.01:
-                    balance_text += (
-                        f"💸 {user.mention}: {data['balance']:.2f}€ (a payé {data['paid']:.2f}€)\n"
-                    )
-                else:
-                    balance_text += f"✅ {user.mention}: 0€ (a payé {data['paid']:.2f}€)\n"
-            else:
-                balance_text += f"❓ Utilisateur inconnu: {data['balance']:.2f}€\n"
+        lines = []
+        shown = visible_balances(balances, members)
+        for person, cents in sorted(shown.items(), key=lambda item: -item[1]):
+            icon = "💰" if cents > 0 else ("💸" if cents < 0 else "✅")
+            line = (
+                f"{icon} <@{person}> : {format_amount(cents, currency, signed=True)} "
+                f"(a payé {format_amount(paid[person], currency)})"
+            )
+            if person not in members:
+                line += " — *a quitté le groupe*"
+            lines.append(line)
+        embed.add_field(name="Balances", value=_field_value(lines), inline=False)
 
-        embed.add_field(name="Balances", value=balance_text or "Aucune donnée", inline=False)
+        plan = settlement_plan(balances)
+        transfers = [
+            f"<@{debtor}> → <@{creditor}> : {format_amount(cents, currency)}"
+            for debtor, creditor, cents in plan
+        ]
+        embed.add_field(
+            name="Pour solder",
+            value=_field_value(transfers) if transfers else "Tout le monde est à jour ✅",
+            inline=False,
+        )
+        if transfers:
+            embed.set_footer(
+                text="💡 Une fois payé, enregistrez-le avec /tricount rembourser. "
+                "Un membre qui quitte le groupe reste au bilan tant que son solde n'est pas réglé."
+            )
         await ctx.send(embed=embed)
 
     @bilan.autocomplete("groupe")
@@ -214,8 +264,10 @@ class ReportsMixin:
 
         totals: dict[str, float] = defaultdict(float)
         for expense in expenses:
+            if is_transfer(expense):
+                continue  # a reimbursement is not spending
             cat = expense.get("category") or DEFAULT_CATEGORY
-            totals[cat] += float(expense.get("amount", 0))
+            totals[cat] += to_cents(expense.get("amount", 0)) / 100
 
         try:
             buffer = render_category_chart(
@@ -259,15 +311,17 @@ class ReportsMixin:
             description=f"Vous êtes membre de {len(groups)} groupe(s):",
             color=Colors.INFO,
         )
+        currency = guild_currency(ctx.guild.id)
         for group in groups[:10]:
-            expense_count = await repo.count_group_expenses(group["_id"])
             expenses_for_group = await repo.list_group_expenses(group["_id"])
-            total_amount = sum(expense["amount"] for expense in expenses_for_group)
+            spending = [e for e in expenses_for_group if not is_transfer(e)]
+            mine = compute_balances(expenses_for_group, group["members"]).get(ctx.author.id, 0)
 
             field_value = (
                 f"**Membres:** {len(group['members'])}\n"
-                f"**Dépenses:** {expense_count}\n"
-                f"**Total:** {total_amount:.2f}€\n"
+                f"**Dépenses:** {len(spending)}\n"
+                f"**Total:** {format_amount(spending_total(spending), currency)}\n"
+                f"**Mon solde:** {format_amount(mine, currency, signed=True)}\n"
             )
             if group["description"]:
                 field_value += f"**Description:** {group['description']}"

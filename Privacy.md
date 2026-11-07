@@ -39,7 +39,7 @@ Data is stored in the Bot's own database, separately for each server. Data from 
 | Moderation | Infractions (warning, timeout, kick, ban): the member, the moderator, the reason, the date and the duration. Messages caught by automatic filters are deleted; the infraction is recorded. |
 | Starboard | Which messages were reposted to the starboard and their reaction counts. The repost itself is a message in the server, so a copy of the original text and images is kept by Discord. |
 | Reaction roles | The role menus (roles, labels and who created them). |
-| Tricount (shared expenses) | Groups and their members, and expenses (amount, description, category, payer). |
+| Tricount (shared expenses) | Groups and their members, expenses (amount, description, category, payer and who shares it) and reimbursements between members. A member who leaves a group still appears in its balance until they have settled up. |
 | Secret Santa | Participants, the draw results (who gives to whom) and the pairs that must not be drawn together. |
 | Spotify playlist | The tracks added through the Bot, with who added them; votes on tracks, by member. Server administrators may also link members to their Spotify account and to a first name shown instead of their Discord name. |
 | AI answers (`/ask`, mentions) | Comparisons of answers: the question, the answers, the asker's and each voter's IDs, and the votes. Daily usage counters per member, used to enforce limits. See section 5. |
