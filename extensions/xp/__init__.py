@@ -18,7 +18,7 @@ from features.xp import RANK_CACHE_TTL, USER_CACHE_TTL, TTLCache, XpRepository
 from src.core.db import mongo_manager
 from src.discord_ext.paginator import CustomPaginator
 
-from ._common import XpConfig, enabled_servers, logger, module_config
+from ._common import XP, XpConfig, logger
 from .commands import CommandsMixin
 from .leaderboard import LeaderboardMixin
 from .leveling import LevelingMixin
@@ -40,11 +40,11 @@ class XpExtension(Extension, LevelingMixin, VoiceMixin, CommandsMixin, Leaderboa
         self._leaderboard_paginators: dict[str, CustomPaginator] = {}
 
         self._validate_config()
-        logger.debug("enabled_servers for XP module: %s", enabled_servers)
+        logger.debug("XP module enabled in guilds %s", XP.guild_ids())
 
     def _validate_config(self) -> None:
-        for guild_id in enabled_servers:
-            guild_config = module_config.get(guild_id, {})
+        for guild_id in XP.guild_ids():
+            guild_config = XP.get(guild_id)
             if not guild_config:
                 logger.warning("No configuration found for guild %s", guild_id)
                 continue
@@ -64,7 +64,7 @@ class XpExtension(Extension, LevelingMixin, VoiceMixin, CommandsMixin, Leaderboa
             logger.error("MongoDB ping failed: %s", e)
             self._db_connected = False
 
-        for guild_id in enabled_servers:
+        for guild_id in XP.guild_ids():
             try:
                 await self._repo(guild_id).ensure_indexes()
                 logger.debug("Ensured indexes for guild %s", guild_id)

@@ -17,7 +17,7 @@ from src.core import logging as logutil
 from src.core.errors import DatabaseError
 from src.integrations.uptime_kuma import MonitorState
 
-from ._common import enabled_servers
+from ._common import UPTIME
 from .commands import CommandsMixin
 from .notifications import NotificationsMixin
 from .tasks import TasksMixin
@@ -59,7 +59,7 @@ class UptimeExtension(Extension, CommandsMixin, NotificationsMixin, TasksMixin):
         """Read every enabled guild's alerts; a guild that fails is retried by the next poll."""
         alerts: dict[str, dict[int, MonitorAlert]] = {}
         complete = True
-        for guild_id in enabled_servers:
+        for guild_id in UPTIME.guild_ids():
             try:
                 alerts[guild_id] = await UptimeRepository(guild_id).load()
             except DatabaseError as e:

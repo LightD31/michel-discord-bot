@@ -17,7 +17,7 @@ from src.discord_ext.embeds import Colors
 from src.discord_ext.messages import edit_message_if_changed, fetch_user_safe, send_error
 from src.discord_ext.scopes import guild_scopes
 
-from ._common import create_join_buttons, enabled_servers, get_context_id
+from ._common import SECRET_SANTA, create_join_buttons, get_context_id
 
 logger = logutil.init_logger(__name__)
 
@@ -28,7 +28,7 @@ class SessionsMixin:
     @slash_command(
         name="secretsanta",
         description="Commandes du Père Noël Secret",
-        scopes=guild_scopes(enabled_servers),
+        scopes=guild_scopes(SECRET_SANTA.guild_ids()),
         sub_cmd_name="create",
         sub_cmd_description="Crée une nouvelle session de Père Noël Secret",
     )
@@ -97,7 +97,7 @@ class SessionsMixin:
     @slash_command(
         name="secretsanta",
         description="Commandes du Père Noël Secret",
-        scopes=guild_scopes(enabled_servers),
+        scopes=guild_scopes(SECRET_SANTA.guild_ids()),
         sub_cmd_name="participants",
         sub_cmd_description="Affiche la liste des participants",
     )
@@ -136,7 +136,7 @@ class SessionsMixin:
     @slash_command(
         name="secretsanta",
         description="Commandes du Père Noël Secret",
-        scopes=guild_scopes(enabled_servers),
+        scopes=guild_scopes(SECRET_SANTA.guild_ids()),
         sub_cmd_name="cancel",
         sub_cmd_description="Annule la session en cours",
     )

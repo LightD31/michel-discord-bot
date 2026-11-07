@@ -18,7 +18,7 @@ from interactions import IntervalTrigger, Task
 
 from src.core import error_reporting
 from src.core import logging as logutil
-from src.core.config import CONFIG_PATH, load_config
+from src.core.config import CONFIG_PATH, global_config
 from src.core.db import mongo_manager
 from src.core.http import http_client
 from src.core.logging import DEBUG
@@ -33,9 +33,9 @@ logutil.adopt_library_logger("interactions")
 # Every Task run is timed, recorded for /metrics and tagged in the logs.
 task_health.install()
 
-config, _, _ = load_config()
+config = global_config()
 if not config.get("discord", {}).get("botToken"):
-    # load_config() has already logged why the file couldn't be read, if it couldn't.
+    # The store has already logged why the file couldn't be read, if it couldn't.
     logger.critical(
         "No bot token in %s (discord.botToken). Copy config.example.json to %s, "
         "fill in the token, and start again.",

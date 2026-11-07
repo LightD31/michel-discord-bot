@@ -1,15 +1,10 @@
-"""Autocomplete handlers and guild-state helpers."""
+"""Autocomplete handlers."""
 
 from __future__ import annotations
 
 from collections.abc import Callable
 
 from interactions import AutocompleteContext
-
-
-def is_guild_enabled(guild_id: int | str, enabled_servers: list[str]) -> bool:
-    """Return True if the guild is in the enabled-servers list."""
-    return str(guild_id) in enabled_servers
 
 
 async def guild_group_autocomplete(
@@ -41,4 +36,4 @@ async def guild_group_autocomplete(
     await ctx.send(choices=filtered[:25])
 
 
-__all__ = ["guild_group_autocomplete", "is_guild_enabled"]
+__all__ = ["guild_group_autocomplete"]

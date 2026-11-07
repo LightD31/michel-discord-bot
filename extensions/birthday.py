@@ -37,7 +37,7 @@ from features.birthday import (
     strip_year_from_format,
 )
 from src.core import logging as logutil
-from src.core.config import load_config
+from src.core.config import ModuleConfig
 from src.core.errors import DatabaseError, ValidationError
 from src.core.text import pick_weighted_message
 from src.discord_ext.embeds import Colors
@@ -81,7 +81,7 @@ class BirthdayConfig(SchemaBase):
 
 
 logger = logutil.init_logger(__name__)
-config, module_config, enabled_servers = load_config("moduleBirthday")
+BIRTHDAY = ModuleConfig("moduleBirthday")
 
 
 def _validate_and_parse_date(date_str: str) -> datetime:
@@ -108,7 +108,7 @@ class BirthdayExtension(Extension):
 
     @staticmethod
     def _server_config(server_id: int) -> dict:
-        return module_config.get(str(server_id), {})
+        return BIRTHDAY.get(server_id)
 
     async def _toggle_birthday_role(self, server, member, server_id: int, *, add: bool) -> None:
         role_id = self._server_config(server_id).get("birthdayRoleId")
@@ -143,7 +143,7 @@ class BirthdayExtension(Extension):
 
     @listen()
     async def on_startup(self) -> None:
-        for guild_id in enabled_servers:
+        for guild_id in BIRTHDAY.guild_ids():
             try:
                 await self._repo(guild_id).ensure_indexes()
             except Exception as e:
@@ -153,7 +153,7 @@ class BirthdayExtension(Extension):
     @slash_command(
         name="anniversaire",
         description="Anniversaire",
-        scopes=guild_scopes(enabled_servers),
+        scopes=guild_scopes(BIRTHDAY.guild_ids()),
         sub_cmd_name="ajouter",
         sub_cmd_description="Ajoute ou modifie ton anniversaire",
     )
@@ -274,7 +274,7 @@ class BirthdayExtension(Extension):
             )
             if button_ctx.custom_id == "birthday_purge_confirm":
                 total_deleted = sum(
-                    await self._repo(gid).delete(ctx.author.id) for gid in enabled_servers
+                    await self._repo(gid).delete(ctx.author.id) for gid in BIRTHDAY.guild_ids()
                 )
                 await button_ctx.edit_origin(
                     content=f"Anniversaire supprimé sur {total_deleted} serveur(s) ✅",
@@ -359,7 +359,7 @@ class BirthdayExtension(Extension):
     async def anniversaire_check(self) -> None:
         logger.debug("Starting birthday check task")
         try:
-            for guild_id in enabled_servers:
+            for guild_id in BIRTHDAY.guild_ids():
                 try:
                     birthdays = await self._repo(guild_id).find_all()
                     logger.debug(

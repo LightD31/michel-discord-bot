@@ -5,9 +5,8 @@ from interactions.api.events import MemberAdd, MemberRemove
 
 from features.welcome import render_welcome_card
 from src.core import logging as logutil
-from src.core.config import load_config
+from src.core.config import ModuleConfig
 from src.core.text import pick_weighted_message
-from src.discord_ext.autocomplete import is_guild_enabled
 from src.webui.schemas import SchemaBase, enabled_field, register_module, ui
 
 
@@ -49,7 +48,7 @@ class WelcomeConfig(SchemaBase):
 
 logger = logutil.init_logger(__name__)
 
-config, module_config, enabled_servers = load_config("moduleWelcome")
+WELCOME = ModuleConfig("moduleWelcome")
 
 
 async def _fetch_avatar_bytes(member) -> bytes | None:
@@ -94,10 +93,10 @@ class WelcomeExtension(Extension):
     async def on_member_add(self, event: MemberAdd):
         """A listener that sends a message when a member joins a guild."""
         logger.info("Member %s joined the server %s", event.member.username, event.guild.name)
-        if not is_guild_enabled(event.guild.id, enabled_servers):
+        if not WELCOME.enabled(event.guild.id):
             logger.info("Server not enabled")
             return
-        serv_config = module_config.get(str(event.guild.id), {})
+        serv_config = WELCOME.get(event.guild.id)
 
         channel = _target_channel(event.guild, serv_config)
         if channel is None:
@@ -121,10 +120,10 @@ class WelcomeExtension(Extension):
     async def on_member_remove(self, event: MemberRemove):
         """A listener that sends a message when a member leaves a guild."""
         logger.info("Member %s left the server %s", event.member.username, event.guild.name)
-        if not is_guild_enabled(event.guild.id, enabled_servers):
+        if not WELCOME.enabled(event.guild.id):
             logger.info("Server not enabled")
             return
-        serv_config: dict = module_config.get(str(event.guild.id), {})
+        serv_config: dict = WELCOME.get(event.guild.id)
         logger.debug(
             "Messages : %s\nChannel : %s",
             serv_config.get("leaveMessageList"),

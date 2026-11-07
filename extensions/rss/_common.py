@@ -3,7 +3,7 @@
 import os
 
 from src.core import logging as logutil
-from src.core.config import load_config
+from src.core.config import ModuleConfig
 from src.webui.schemas import SchemaBase, enabled_field, register_module, ui
 
 logger = logutil.init_logger(__name__)
@@ -60,15 +60,14 @@ class RssConfig(SchemaBase):
     )
 
 
-_, module_config, enabled_servers = load_config(MODULE_KEY)
+RSS = ModuleConfig(MODULE_KEY)
 
 
 __all__ = [
     "DEFAULT_TEMPLATE",
     "MAX_NEW_PER_POLL",
     "MODULE_KEY",
+    "RSS",
     "RssConfig",
-    "enabled_servers",
     "logger",
-    "module_config",
 ]

@@ -25,7 +25,7 @@ from src.discord_ext.messages import send_error
 from src.discord_ext.paginator import CustomPaginator
 from src.discord_ext.scopes import guild_scopes
 
-from ._common import EMBED_COLOR, TIMEZONE, enabled_servers, logger
+from ._common import EMBED_COLOR, TIMEZONE, XP, logger
 
 
 async def _fetch_avatar_bytes(target_user) -> bytes | None:
@@ -75,7 +75,7 @@ class CommandsMixin:
     @slash_command(
         name="rank",
         description="Affiche le niveau et l'XP d'un utilisateur",
-        scopes=guild_scopes(enabled_servers),
+        scopes=guild_scopes(XP.guild_ids()),
     )
     @slash_option(
         "utilisateur",
@@ -149,7 +149,7 @@ class CommandsMixin:
     @slash_command(
         name="leaderboard",
         description="Affiche le classement des utilisateurs",
-        scopes=guild_scopes(enabled_servers),
+        scopes=guild_scopes(XP.guild_ids()),
     )
     async def leaderboard(self, ctx: SlashContext):
         embeds = await self._build_leaderboard_embeds(ctx.guild)

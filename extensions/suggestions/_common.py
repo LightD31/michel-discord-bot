@@ -3,7 +3,7 @@
 import os
 
 from src.core import logging as logutil
-from src.core.config import load_config
+from src.core.config import ModuleConfig
 from src.discord_ext.embeds import Colors
 from src.webui.schemas import SchemaBase, enabled_field, register_module, ui
 
@@ -37,7 +37,7 @@ class SuggestionsConfig(SchemaBase):
     )
 
 
-_, module_config, enabled_servers = load_config("moduleSuggestions")
+SUGGESTIONS = ModuleConfig("moduleSuggestions")
 
 # Persistent button namespace: suggvote:{sugg_id}:{up|down}
 VOTE_PREFIX = "suggvote"
@@ -59,4 +59,4 @@ STATUS_LABELS: dict[str, str] = {
 
 def get_guild_settings(guild_id: int | str) -> dict | None:
     """Return the per-guild module config, or None if disabled/missing."""
-    return module_config.get(str(guild_id))
+    return SUGGESTIONS.get(guild_id) or None

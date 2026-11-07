@@ -5,7 +5,6 @@ config list turns into), and the extension that registers the survivors as
 real guild-scoped slash commands.
 """
 
-import json
 import random
 
 import pytest
@@ -20,7 +19,6 @@ from features.customcommands import (
     parse_commands,
     pick_response,
 )
-from src.core import config as core_config
 
 GUILD = "123456789012345678"
 
@@ -126,13 +124,11 @@ def test_pick_response_only_returns_configured_responses():
 
 
 @pytest.fixture
-def config_file(tmp_path, monkeypatch):
-    """Point ``load_config`` at a throwaway config file."""
+def config_file(store_config):
+    """Serve these servers' config from the config store."""
 
     def write(servers: dict) -> None:
-        path = tmp_path / "config.json"
-        path.write_text(json.dumps({"config": {}, "servers": servers}), encoding="utf-8")
-        monkeypatch.setattr(core_config, "CONFIG_PATH", str(path))
+        store_config({"config": {}, "servers": servers})
 
     return write
 

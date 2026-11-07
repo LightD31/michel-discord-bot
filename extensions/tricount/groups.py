@@ -27,7 +27,7 @@ from src.discord_ext.embeds import Colors
 from src.discord_ext.messages import require_guild
 from src.discord_ext.scopes import guild_scopes
 
-from ._common import enabled_servers, guild_currency
+from ._common import TRICOUNT, guild_currency
 
 logger = logutil.init_logger(__name__)
 
@@ -40,7 +40,7 @@ class GroupsMixin:
         description="Gestion des dépenses partagées",
         sub_cmd_name="groupe",
         sub_cmd_description="Créer un nouveau groupe de dépenses",
-        scopes=guild_scopes(enabled_servers),
+        scopes=guild_scopes(TRICOUNT.guild_ids()),
     )
     @slash_option(
         name="nom",

@@ -1,7 +1,7 @@
 """Shared config schema, constants and messages for the LLDAP extension."""
 
 from features.lldap import parse_role_groups
-from src.core.config import load_config
+from src.core.config import ModuleConfig
 from src.integrations.lldap import DEFAULT_DISCORD_ATTRIBUTE, LldapSettings
 from src.webui.schemas import SchemaBase, enabled_field, register_module, secret_field, ui
 
@@ -88,25 +88,23 @@ class LldapConfig(SchemaBase):
     )
 
 
-_config, module_config, enabled_servers = load_config("moduleLldap")
+LLDAP = ModuleConfig("moduleLldap")
 
 
 def guild_settings(guild_id: str) -> LldapSettings:
-    return LldapSettings.from_section(module_config.get(guild_id, {}))
+    return LldapSettings.from_section(LLDAP.get(guild_id))
 
 
 def guild_role_groups(guild_id: str) -> tuple[dict[int, int], list[str]]:
-    return parse_role_groups(module_config.get(guild_id, {}).get("lldapRoleGroups"))
+    return parse_role_groups(LLDAP.get(guild_id).get("lldapRoleGroups"))
 
 
 def service_name(guild_id: str) -> str:
-    return str(module_config.get(guild_id, {}).get("lldapServiceName") or "").strip() or "LLDAP"
+    return str(LLDAP.get(guild_id).get("lldapServiceName") or "").strip() or "LLDAP"
 
 
 def login_url(guild_id: str, settings: LldapSettings) -> str:
-    return str(module_config.get(guild_id, {}).get("lldapPublicUrl") or "").strip() or (
-        settings.base_url
-    )
+    return str(LLDAP.get(guild_id).get("lldapPublicUrl") or "").strip() or (settings.base_url)
 
 
 SYNC_MINUTES = 10

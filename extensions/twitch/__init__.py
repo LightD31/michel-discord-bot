@@ -8,7 +8,7 @@ change detection live in their own submodules (mixin classes combined below).
 
 import asyncio
 import contextlib
-import json
+import copy
 import os
 from collections import defaultdict
 
@@ -30,7 +30,8 @@ from interactions import (
 
 from features.twitch import TwitchStateRepository
 from src.core import logging as logutil
-from src.core.config import CONFIG_PATH, load_config
+from src.core.config import ModuleConfig, config_store, global_config
+from src.core.errors import ConfigError
 from src.core.tasks import spawn
 from src.discord_ext.messages import send_error, send_success
 from src.discord_ext.scopes import guild_scopes
@@ -43,9 +44,7 @@ from .schedule import ScheduleMixin
 
 logger = logutil.init_logger(__name__)
 
-# Read at import (a reload re-imports the package) so the command decorators
-# below can scope to the enabled guilds.
-_config, _module_config, enabled_servers = load_config("moduleTwitch")
+TWITCH = ModuleConfig("moduleTwitch")
 
 
 def _save_streamer_channel_message(
@@ -56,20 +55,19 @@ def _save_streamer_channel_message(
     pin: bool,
 ) -> None:
     """Persist planning channel/message for a specific streamer in config.json."""
+
+    def mutator(data: dict) -> None:
+        guild = data.setdefault("servers", {}).setdefault(str(guild_id), {})
+        streamer_list = guild.setdefault(TWITCH.key, {}).setdefault("twitchStreamerList", {})
+        streamer_cfg = streamer_list.setdefault(streamer_id, {})
+        streamer_cfg["twitchPlanningChannelId"] = str(channel_id)
+        streamer_cfg["twitchPlanningMessageId"] = str(message_id)
+        streamer_cfg["twitchPlanningPinMessage"] = pin
+
     try:
-        with open(CONFIG_PATH, encoding="utf-8") as file:
-            data = json.load(file)
-    except (FileNotFoundError, json.JSONDecodeError):
-        return
-    guild = data.setdefault("servers", {}).setdefault(str(guild_id), {})
-    mod = guild.setdefault("moduleTwitch", {})
-    streamer_list = mod.setdefault("twitchStreamerList", {})
-    streamer_cfg = streamer_list.setdefault(streamer_id, {})
-    streamer_cfg["twitchPlanningChannelId"] = str(channel_id)
-    streamer_cfg["twitchPlanningMessageId"] = str(message_id)
-    streamer_cfg["twitchPlanningPinMessage"] = pin
-    with open(CONFIG_PATH, "w", encoding="utf-8") as file:
-        json.dump(data, file, indent=4)
+        config_store.mutate(mutator)
+    except (ConfigError, OSError) as e:
+        logger.error("Could not save the planning message of streamer %s: %s", streamer_id, e)
 
 
 class TwitchExtension(
@@ -82,12 +80,16 @@ class TwitchExtension(
     """Aggregate the four feature mixins into a single Discord extension."""
 
     MODULE_KEYS = ("moduleTwitch",)
+    # The streamer registry and the EventSub subscriptions are built from the
+    # config when the extension loads.
+    RELOAD_ON_SAVE = True
 
     def __init__(self, bot: Client):
         self.bot: Client = bot
-        self.config = _config
-        self.module_config = _module_config
-        self.enabled_servers = enabled_servers
+        self.config = global_config()
+        # A copy: the streamer registry keeps (and edits) these dicts.
+        self.module_config = {gid: copy.deepcopy(cfg) for gid, cfg in TWITCH.items()}
+        self.enabled_servers = list(self.module_config)
         self.client_id = self.config["twitch"]["twitchClientId"]
         self.client_secret = self.config["twitch"]["twitchClientSecret"]
 
@@ -359,7 +361,7 @@ class TwitchExtension(
     @slash_command(
         name="twitch-planning-setup",
         description="Créer/attacher le message de planning Twitch d'un streamer",
-        scopes=guild_scopes(enabled_servers),
+        scopes=guild_scopes(TWITCH.guild_ids()),
     )
     @slash_option(
         name="streamer",

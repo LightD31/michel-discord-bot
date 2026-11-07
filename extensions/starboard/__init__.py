@@ -16,7 +16,7 @@ from interactions import Client, Extension, listen
 
 from features.starboard import StarboardRepository
 
-from ._common import enabled_servers, logger
+from ._common import STARBOARD, logger
 from .listeners import ListenersMixin
 
 
@@ -38,9 +38,9 @@ class StarboardExtension(Extension, ListenersMixin):
 
     @listen()
     async def on_startup(self):
-        for gid in enabled_servers:
+        for gid in STARBOARD.guild_ids():
             await self.repository(gid).ensure_indexes()
-        logger.info("Starboard ready (%d guild(s))", len(enabled_servers))
+        logger.info("Starboard ready (%d guild(s))", len(STARBOARD.guild_ids()))
 
 
 def setup(bot: Client) -> None:

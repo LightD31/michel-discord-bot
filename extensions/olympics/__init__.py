@@ -24,6 +24,10 @@ class OlympicsExtension(MedalsMixin, TasksMixin, Extension):
 
     MODULE_KEYS = ("moduleOlympics",)
 
+    # Single-guild settings taken at import (see ``_common``).
+
+    RELOAD_ON_SAVE = True
+
     def __init__(self, bot: Client) -> None:
         self.bot: Client = bot
         self.channel = None

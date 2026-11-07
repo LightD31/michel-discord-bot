@@ -64,7 +64,10 @@ for entry in sorted(os.listdir("extensions")):
             and cls.__module__ == name
         ):
             own = cls.__dict__.get("MODULE_KEYS")
-            classes[cls_name] = None if own is None else list(own)
+            classes[cls_name] = {
+                "keys": None if own is None else list(own),
+                "reload_on_save": cls.__dict__.get("RELOAD_ON_SAVE", False),
+            }
     out["extensions"][name] = classes
 out["schemas"] = sorted(schemas.MODULE_SCHEMAS)
 with open(sys.argv[1], "w", encoding="utf-8") as f:
@@ -92,13 +95,23 @@ def test_every_extension_imports(probe):
 def test_every_extension_declares_its_modules_explicitly(probe):
     for name, classes in probe["extensions"].items():
         assert len(classes) == 1, f"{name} should define one Extension class: {sorted(classes)}"
-        (keys,) = classes.values()
-        assert keys is not None, f"{name}: declare MODULE_KEYS on the class, even empty"
+        (declared,) = classes.values()
+        assert declared["keys"] is not None, f"{name}: declare MODULE_KEYS on the class, even empty"
+        assert isinstance(declared["reload_on_save"], bool), f"{name}: RELOAD_ON_SAVE is a bool"
 
 
 def _declared(probe) -> dict[str, list[str]]:
     return {
-        name: next(iter(classes.values())) or [] for name, classes in probe["extensions"].items()
+        name: next(iter(classes.values()))["keys"] or []
+        for name, classes in probe["extensions"].items()
+    }
+
+
+def _reloads_on_save(probe) -> set[str]:
+    return {
+        name
+        for name, classes in probe["extensions"].items()
+        if next(iter(classes.values()))["reload_on_save"]
     }
 
 
@@ -183,3 +196,79 @@ def test_extension_helpers_fall_back_to_the_class():
     plain = Plain()
     assert extension_path(plain) == __name__
     assert declared_modules(plain) == ()
+
+
+# ── Live reads ──────────────────────────────────────────────────────────
+
+# Reading these at import takes a copy that a save would leave stale.
+SNAPSHOT_READS = {"get", "items", "enabled"}
+
+
+def _import_time_reads(path: Path) -> list[str]:
+    """``<ModuleConfig>.get/items/enabled(...)`` calls run when *path* is imported.
+
+    Anything inside a function runs later and reads the live config;
+    ``guild_ids()`` is allowed at import (command scopes, per-guild state),
+    since a change of the enabled guilds reloads the extension anyway.
+    """
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    accessors = {
+        target.id
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Assign)
+        and isinstance(node.value, ast.Call)
+        and isinstance(node.value.func, ast.Name)
+        and node.value.func.id == "ModuleConfig"
+        for target in node.targets
+        if isinstance(target, ast.Name)
+    }
+    found: list[str] = []
+
+    def visit(node: ast.AST) -> None:
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda):
+            return  # runs later, against the live config
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr in SNAPSHOT_READS
+            and isinstance(node.func.value, ast.Name)
+            and (node.func.value.id in accessors or node.func.value.id.isupper())
+        ):
+            where = path.relative_to(ROOT) if path.is_relative_to(ROOT) else path.name
+            found.append(f"{where}:{node.lineno}: {ast.unparse(node)}")
+        for child in ast.iter_child_nodes(node):
+            visit(child)
+
+    visit(tree)
+    return found
+
+
+def test_extensions_read_their_settings_live_unless_they_reload_on_save(probe):
+    # An extension that copies its settings at import would ignore every
+    # dashboard save, now that a save no longer reloads it: either read them
+    # through ModuleConfig at use time, or declare RELOAD_ON_SAVE.
+    snapshotting = _reloads_on_save(probe)
+    offenders = [
+        line
+        for name in _declared(probe)
+        if name not in snapshotting
+        for path in _source_files(name)
+        for line in _import_time_reads(path)
+    ]
+    assert not offenders, "\n".join(offenders)
+
+
+def test_import_time_reads_are_found(tmp_path):
+    source = tmp_path / "ext.py"
+    source.write_text(
+        "XP = ModuleConfig('moduleXp')\n"
+        "SETTINGS = XP.get('1')\n"
+        "SCOPES = guild_scopes(XP.guild_ids())\n"
+        "class Ext:\n"
+        "    LIMIT = XP.items()\n"
+        "    def run(self):\n"
+        "        return XP.get('1')\n",
+        encoding="utf-8",
+    )
+    found = _import_time_reads(source.resolve())
+    assert [line.rsplit(": ", 1)[1] for line in found] == ["XP.get('1')", "XP.items()"]

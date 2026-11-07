@@ -112,14 +112,8 @@ def test_track_choices_formatting():
 
 
 @pytest.fixture
-def spotify_common(monkeypatch, tmp_path):
-    import src.core.config as core_config
-
-    monkeypatch.setattr(
-        core_config,
-        "load_config",
-        lambda module_name=None: ({"misc": {"dataFolder": str(tmp_path)}}, {}, []),
-    )
+def spotify_common(store_config, tmp_path):
+    store_config({"config": {"misc": {"dataFolder": str(tmp_path)}}, "servers": {}})
     sys.modules.pop("extensions.spotify._common", None)
     module = importlib.import_module("extensions.spotify._common")
     yield module

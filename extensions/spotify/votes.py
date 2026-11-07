@@ -41,6 +41,7 @@ from ._common import (
     COOLDOWN_TIME,
     DEV_GUILD,
     SERVERS,
+    SPOTIFY,
     EmbedType,
     ServerData,
     autocomplete_track_choices,
@@ -48,7 +49,6 @@ from ._common import (
     embed_message_vote,
     embed_message_vote_add,
     embed_song,
-    enabled_servers,
     spotify_api,
 )
 
@@ -379,7 +379,7 @@ class VotesMixin:
         sub_cmd_name="set",
         description="Gère les rappels pour voter",
         sub_cmd_description="Ajoute un rappel pour voter pour la chanson du jour",
-        scopes=guild_scopes(enabled_servers),
+        scopes=guild_scopes(SPOTIFY.guild_ids()),
     )
     @slash_option(
         name="heure",
@@ -523,7 +523,7 @@ class VotesMixin:
     @slash_command(
         name="addwithvote",
         description="Si vous êtes pas sûr d'ajoouter une chanson, vous pouvez la mettre au vote",
-        scopes=guild_scopes(enabled_servers),
+        scopes=guild_scopes(SPOTIFY.guild_ids()),
     )
     @slash_option(
         name="song",

@@ -20,13 +20,12 @@ from interactions import Client, Extension, listen
 
 from ._common import (
     DEFAULT_REMINDER_MINUTES,
+    VLRGG,
     ServerState,
     TeamConfig,
     TeamState,
     _save_team_channel_message,
-    enabled_servers,
     logger,
-    module_config,
 )
 from .api import ApiMixin
 from .commands import CommandsMixin
@@ -49,6 +48,10 @@ class VlrggExtension(
 
     MODULE_KEYS = ("moduleVlrgg",)
 
+    # Per-guild channels and team messages are fetched once, at startup.
+
+    RELOAD_ON_SAVE = True
+
     def __init__(self, bot: Client):
         self.bot: Client = bot
         self._servers: dict[str, ServerState] = {}
@@ -67,8 +70,8 @@ class VlrggExtension(
 
     async def _initialize_all_servers(self) -> None:
         """Initialise les messages et canaux pour tous les serveurs activés."""
-        for server_id in enabled_servers:
-            srv_config = module_config.get(server_id, {})
+        for server_id in VLRGG.guild_ids():
+            srv_config = VLRGG.get(server_id)
             teams_raw = srv_config.get("teams", [])
 
             if not teams_raw:

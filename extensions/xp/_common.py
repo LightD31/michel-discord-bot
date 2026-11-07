@@ -10,7 +10,7 @@ import os
 import pytz
 
 from src.core import logging as logutil
-from src.core.config import load_config
+from src.core.config import ModuleConfig
 from src.discord_ext.embeds import Colors
 from src.webui.schemas import (
     SchemaBase,
@@ -82,7 +82,7 @@ class XpConfig(SchemaBase):
 
 
 logger = logutil.init_logger(__name__)
-config, module_config, enabled_servers = load_config("moduleXp")
+XP = ModuleConfig("moduleXp")
 
 EMBED_COLOR = Colors.SUCCESS
 TIMEZONE = pytz.timezone("Europe/Paris")
@@ -90,9 +90,7 @@ TIMEZONE = pytz.timezone("Europe/Paris")
 __all__ = [
     "EMBED_COLOR",
     "TIMEZONE",
+    "XP",
     "XpConfig",
-    "config",
-    "enabled_servers",
     "logger",
-    "module_config",
 ]

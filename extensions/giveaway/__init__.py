@@ -50,7 +50,7 @@ from src.discord_ext.messages import (
 from src.discord_ext.scopes import guild_scopes
 
 from ._common import (
-    enabled_servers,
+    GIVEAWAY,
     guild_allow_host_win,
     guild_emoji,
     logger,
@@ -202,13 +202,13 @@ class GiveawayExtension(Extension):
 
     @listen()
     async def on_startup(self) -> None:
-        for gid in enabled_servers:
+        for gid in GIVEAWAY.guild_ids():
             try:
                 await self._repo(gid).ensure_indexes()
             except Exception as e:
                 logger.error("Could not init giveaway indexes for %s: %s", gid, e)
         self.check_giveaways.start()
-        logger.info("Giveaway extension ready (%d guild(s))", len(enabled_servers))
+        logger.info("Giveaway extension ready (%d guild(s))", len(GIVEAWAY.guild_ids()))
 
     # ------------------------------------------------------------------
     # Slash commands
@@ -219,7 +219,7 @@ class GiveawayExtension(Extension):
         description="Gérer les giveaways",
         sub_cmd_name="start",
         sub_cmd_description="Lancer un giveaway avec entrée par réaction",
-        scopes=guild_scopes(enabled_servers),
+        scopes=guild_scopes(GIVEAWAY.guild_ids()),
     )
     @slash_option(
         "prize",
@@ -568,7 +568,7 @@ class GiveawayExtension(Extension):
     @Task.create(IntervalTrigger(seconds=30))
     async def check_giveaways(self) -> None:
         now = datetime.now()
-        for gid in enabled_servers:
+        for gid in GIVEAWAY.guild_ids():
             try:
                 due = await self._repo(gid).list_due(now)
             except Exception as e:

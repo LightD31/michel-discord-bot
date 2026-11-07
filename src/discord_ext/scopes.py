@@ -30,8 +30,8 @@ class _GuildScopes(list[Snowflake_Type]):
 def guild_scopes(guild_ids: Iterable[int | str | None]) -> list[Snowflake_Type]:
     """Scopes for ``slash_command(scopes=...)``: these guilds and nothing else.
 
-    *guild_ids* is typically the ``enabled_servers`` list from
-    ``load_config(module)``; blank entries (an unset ``devGuildId``) are
+    *guild_ids* is typically ``ModuleConfig(module).guild_ids()``, read when
+    the extension is imported; blank entries (an unset ``devGuildId``) are
     skipped, and so is ``0``, which is the global scope itself. With no guild
     left, the command is registered nowhere instead of globally. Pass the
     result straight to the decorator: it is always truthy, so don't test it for

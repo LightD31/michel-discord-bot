@@ -18,11 +18,10 @@ from __future__ import annotations
 from interactions import Client, Extension, listen
 
 from ._common import (
+    MDI,
     GuildConfig,
     GuildState,
-    enabled_servers,
     logger,
-    module_config,
 )
 from .api import ApiMixin
 from .embeds import EmbedsMixin
@@ -33,6 +32,10 @@ class MdiExtension(ApiMixin, EmbedsMixin, NotificationsMixin, Extension):
     """Discord extension combining Raider.IO fetch, embeds, and notifications."""
 
     MODULE_KEYS = ("moduleMDI",)
+
+    # Per-guild channels and messages are fetched once, at startup.
+
+    RELOAD_ON_SAVE = True
 
     def __init__(self, bot: Client):
         self.bot: Client = bot
@@ -54,8 +57,8 @@ class MdiExtension(ApiMixin, EmbedsMixin, NotificationsMixin, Extension):
             logger.error("MDI: failed to start tasks: %s", e)
 
     async def _initialize_all_servers(self) -> None:
-        for server_id in enabled_servers:
-            srv_cfg_raw = module_config.get(server_id, {}) or {}
+        for server_id in MDI.guild_ids():
+            srv_cfg_raw = MDI.get(server_id) or {}
             gc = GuildConfig.from_dict(srv_cfg_raw)
             if not gc.notification_channel_id:
                 logger.warning("MDI: guild %s has no notificationChannelId, skipping", server_id)

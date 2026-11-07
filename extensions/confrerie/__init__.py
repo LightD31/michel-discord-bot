@@ -39,6 +39,10 @@ class ConfrerieExtension(
 
     MODULE_KEYS = ("moduleConfrerie",)
 
+    # Single-guild settings taken at import (see ``_common``).
+
+    RELOAD_ON_SAVE = True
+
     def __init__(self, bot: Client):
         self.bot: Client = bot
         self.notion_client = NotionClient(

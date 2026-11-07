@@ -5,7 +5,7 @@ import os
 from interactions import BrandColors, Embed, Timestamp, TimestampStyles
 
 from src.core import logging as logutil
-from src.core.config import load_config
+from src.core.config import ModuleConfig, global_config
 from src.webui.schemas import (
     SchemaBase,
     enabled_field,
@@ -108,8 +108,12 @@ class MinecraftConfig(SchemaBase):
 
 logger = logutil.init_logger("extensions.minecraft")
 
-config, module_config, enabled_servers = load_config("moduleMinecraft")
-module_config = module_config[enabled_servers[0]] if enabled_servers else {}
+MINECRAFT = ModuleConfig("moduleMinecraft")
+# Taken at import, from the first enabled guild only (phase 4c makes this multi-guild):
+# the extension declares RELOAD_ON_SAVE, so a save of the module re-imports it.
+config = global_config()
+enabled_servers = MINECRAFT.guild_ids()
+module_config = dict(MINECRAFT.get(enabled_servers[0])) if enabled_servers else {}
 
 MINECRAFT_ADDRESS = module_config.get("minecraftUrl", "")
 MINECRAFT_IP = module_config.get("minecraftIp", "")

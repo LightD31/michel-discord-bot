@@ -21,7 +21,7 @@ from twitchAPI.twitch import Twitch
 from twitchAPI.type import AuthScope
 
 from src.core import logging as logutil
-from src.core.config import load_config
+from src.core.config import ModuleConfig, global_config
 from src.core.http import fetch, fetch_untrusted
 from src.core.tasks import spawn
 from src.core.text import escape_md
@@ -78,14 +78,20 @@ logger = logutil.init_logger(__name__)
 # Constants
 COLOR = 0x005EA5
 
-_config, _module_config, _enabled_servers = load_config("moduleStreamlabsCharity")
-_guild_cfg = _module_config.get(_enabled_servers[0], {}) if _enabled_servers else {}
+STREAMLABS = ModuleConfig("moduleStreamlabsCharity")
+# Taken at import, from the first enabled guild only (phase 4c makes this multi-guild):
+# the extension declares RELOAD_ON_SAVE, so a save of the module re-imports it.
+_config = global_config()
+_enabled_servers = STREAMLABS.guild_ids()
+_guild_cfg = dict(STREAMLABS.get(_enabled_servers[0])) if _enabled_servers else {}
 # Configured per guild in the Web UI; empty means the tracker stays idle.
 STREAMLABS_URL = _guild_cfg.get("streamlabsTeamUrl") or ""
 
 
 class StreamlabsCharityExtension(Extension):
     MODULE_KEYS = ("moduleStreamlabsCharity",)
+    # Single-guild settings taken at import; the socket connects with them.
+    RELOAD_ON_SAVE = True
 
     def __init__(self, bot: Client):
         self.bot: Client = bot

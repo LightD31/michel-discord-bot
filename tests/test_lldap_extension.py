@@ -5,7 +5,7 @@ from typing import Any
 
 import pytest
 
-from extensions.lldap import _common, commands, sync
+from extensions.lldap import _common
 from extensions.lldap.commands import CommandsMixin
 from extensions.lldap.sync import SyncMixin
 from src.integrations.lldap import LldapError, LldapUser
@@ -119,14 +119,11 @@ class _Harness(CommandsMixin, SyncMixin):
 
 
 @pytest.fixture
-def guilds(monkeypatch):
+def guilds(store_config):
     """Install per-guild module configs: ``guilds({GUILD_A: _module()})``."""
 
     def install(configs: dict[str, dict[str, Any]]) -> None:
-        monkeypatch.setattr(_common, "module_config", configs)
-        enabled = [g for g, c in configs.items() if c.get("enabled")]
-        monkeypatch.setattr(sync, "enabled_servers", enabled)
-        monkeypatch.setattr(commands, "enabled_servers", enabled)
+        store_config({"servers": {g: {"moduleLldap": c} for g, c in configs.items()}})
 
     return install
 

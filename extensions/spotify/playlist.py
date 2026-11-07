@@ -37,6 +37,7 @@ from src.integrations.spotify import spotifymongoformat
 
 from ._common import (
     SERVERS,
+    SPOTIFY,
     SPOTIFY_ERRORS,
     EmbedType,
     ServerData,
@@ -44,7 +45,6 @@ from ._common import (
     count_votes,
     embed_message_vote,
     embed_song,
-    enabled_servers,
     spotify_api,
 )
 
@@ -57,7 +57,7 @@ class PlaylistMixin:
     @slash_command(
         "addsong",
         description="Ajoute une chanson à la playlist.",
-        scopes=guild_scopes(enabled_servers),
+        scopes=guild_scopes(SPOTIFY.guild_ids()),
     )
     @slash_option(
         name="song",
@@ -266,6 +266,11 @@ class PlaylistMixin:
                 )
                 recap_content += f"\nDashboard : {dashboard}"
             try:
+                cached_channel = getattr(getattr(server.recap_message, "channel", None), "id", None)
+                if cached_channel is not None and str(cached_channel) != str(
+                    server.recap_channel_id
+                ):
+                    server.recap_message = None  # the recap channel changed in the dashboard
                 if server.recap_message is None:
                     server.recap_message = await fetch_or_create_persistent_message(
                         self.bot,
@@ -311,7 +316,7 @@ class PlaylistMixin:
     @slash_command(
         name="songinfo",
         description="Affiche les informations d'une chanson",
-        scopes=guild_scopes(enabled_servers),
+        scopes=guild_scopes(SPOTIFY.guild_ids()),
     )
     @slash_option(
         name="song",

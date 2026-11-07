@@ -1,13 +1,13 @@
 """Shared constants, config, logger, dataclasses, and helpers for the vlrgg extension package."""
 
-import json
 import os
 from dataclasses import dataclass, field
 from typing import Any
 
 from features.vlrgg import _clean_vlr_text, expand_round_name
 from src.core import logging as logutil
-from src.core.config import CONFIG_PATH, load_config
+from src.core.config import ModuleConfig, config_store
+from src.core.errors import ConfigError
 from src.discord_ext.embeds import Colors
 from src.webui.schemas import SchemaBase, enabled_field, register_module, ui
 
@@ -46,7 +46,7 @@ class VlrggConfig(SchemaBase):
 
 
 logger = logutil.init_logger(__name__)
-config, module_config, enabled_servers = load_config("moduleVlrgg")
+VLRGG = ModuleConfig("moduleVlrgg")
 
 # ── Constants ────────────────────────────────────────────────────────────────
 
@@ -138,27 +138,23 @@ def _save_team_channel_message(
     guild_id: str, team_name: str, channel_id: str, message_id: str
 ) -> None:
     """Update the channelMessageId for a specific team in config.json."""
-    try:
-        with open(CONFIG_PATH, encoding="utf-8") as file:
-            data = json.load(file)
-    except (FileNotFoundError, json.JSONDecodeError) as e:
-        logger.error("Could not read config for vlrgg team save: %s", e)
-        return
-
-    servers = data.setdefault("servers", {})
-    guild = servers.setdefault(str(guild_id), {})
-    mod = guild.setdefault("moduleVlrgg", {})
-    teams = mod.setdefault("teams", [])
     combined = f"{channel_id}:{message_id}"
-    for team in teams:
-        if team.get("name") == team_name:
-            team["channelMessageId"] = combined
-            break
-    else:
-        teams.append({"name": team_name, "channelMessageId": combined})
 
-    with open(CONFIG_PATH, "w", encoding="utf-8") as file:
-        json.dump(data, file, indent=4)
+    def mutator(data: dict) -> None:
+        guild = data.setdefault("servers", {}).setdefault(str(guild_id), {})
+        teams = guild.setdefault(VLRGG.key, {}).setdefault("teams", [])
+        for team in teams:
+            if team.get("name") == team_name:
+                team["channelMessageId"] = combined
+                break
+        else:
+            teams.append({"name": team_name, "channelMessageId": combined})
+
+    try:
+        config_store.mutate(mutator)
+    except (ConfigError, OSError) as e:
+        logger.error("Could not save channelMessageId for team %s: %s", team_name, e)
+        return
     logger.info("Saved channelMessageId for team %s on guild %s", team_name, guild_id)
 
 
@@ -166,9 +162,7 @@ def _save_team_channel_message(
 __all__ = [
     "VlrggConfig",
     "logger",
-    "config",
-    "module_config",
-    "enabled_servers",
+    "VLRGG",
     "DEFAULT_EMBED_COLOR",
     "LIVE_EMBED_COLOR",
     "MAX_PAST_MATCHES",

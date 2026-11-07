@@ -228,7 +228,7 @@ All configuration lives in `config/config.json`, with two top-level keys:
 - **`config`** — global sections: `discord` (token, IDs), `mongodb`, `webui`, `backup`, plus API credentials for integrations (Spotify, Twitch, YouTube, Notion, AI (OpenRouter, NanoGPT), Uptime Kuma, Random.org, Shlink…) and an optional `extensions` map of `"extensions.<name>": bool` to explicitly enable or disable discovered extensions.
 - **`servers`** — per-guild module configs keyed by guild ID (`moduleXp`, `moduleBirthday`, …, each with an `enabled` flag), plus a `discord2name` display-name mapping.
 
-Config is loaded through `src.core.config`. Extensions call `load_config("moduleName")`, which returns the global config, the per-guild config for that module, and the list of guilds where the module is enabled. The store is reactive (atomic writes + subscriber notifications), so the Web UI and running extensions stay in sync without restarts.
+Config is read through `src.core.config`. An extension declares `MODULE = ModuleConfig("moduleName")` and reads `MODULE.get(guild_id)` (that guild's settings), `MODULE.enabled(guild_id)` or `MODULE.items()` when it needs them; `global_config()` returns the global sections. Every call reads the in-memory store the dashboard writes to, so a saved setting applies on the next read, without reloading the extension. Only command scopes are taken at import, which is why switching a module on or off in a guild reloads its extensions.
 
 `config.example.json` is generated from the registered Pydantic schemas by `scripts/generate_config_example.py` — regenerate it after adding or changing schemas.
 
@@ -239,7 +239,7 @@ Config is loaded through `src.core.config`. Extensions call `load_config("module
 An extension is either a single Python file (`extensions/myext.py`) or a package (`extensions/myext/__init__.py`) containing an `interactions.py` `Extension` subclass. To create a new one:
 
 1. Create `extensions/myext.py` (or `extensions/myext/__init__.py` for a multi-file package).
-2. Define an `Extension` subclass, and list the per-guild config modules it reads in a `MODULE_KEYS` class attribute (`MODULE_KEYS = ("moduleMyext",)`, or `()` for none). The dashboard reloads the loaded extensions that declare a module when that module is saved or toggled.
+2. Define an `Extension` subclass, and list the per-guild config modules it reads in a `MODULE_KEYS` class attribute (`MODULE_KEYS = ("moduleMyext",)`, or `()` for none). The dashboard reloads the loaded extensions that declare a module when that module is switched on or off in a guild (their commands follow the enabled guilds). If the extension takes its settings when it loads instead of reading them at use time, also declare `RELOAD_ON_SAVE = True`, and every save of the module reloads it.
 3. Expose a module-level `setup(bot)` function that instantiates it.
 4. Declare a Pydantic config schema with `@register_module("moduleMyext")` so it shows up in the Web UI.
 5. Restart the bot — the extension will be auto-loaded.

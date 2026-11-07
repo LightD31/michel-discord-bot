@@ -3,7 +3,7 @@
 import os
 
 from src.core import logging as logutil
-from src.core.config import load_config
+from src.core.config import ModuleConfig
 from src.webui.schemas import SchemaBase, enabled_field, register_module, ui
 
 logger = logutil.init_logger(__name__)
@@ -38,14 +38,14 @@ class GiveawayConfig(SchemaBase):
     )
 
 
-_, module_config, enabled_servers = load_config(MODULE_KEY)
+GIVEAWAY = ModuleConfig(MODULE_KEY)
 
 
 def guild_emoji(guild_id: str | int | None) -> str:
     """Resolve the per-guild entry emoji, falling back to the default."""
     if guild_id is None:
         return DEFAULT_EMOJI
-    cfg = module_config.get(str(guild_id), {})
+    cfg = GIVEAWAY.get(guild_id)
     raw = cfg.get("giveawayEmoji")
     if isinstance(raw, str) and raw.strip():
         return raw.strip()
@@ -56,7 +56,7 @@ def guild_allow_host_win(guild_id: str | int | None) -> bool:
     """Return whether the giveaway host can be part of the draw pool."""
     if guild_id is None:
         return DEFAULT_ALLOW_HOST_WIN
-    cfg = module_config.get(str(guild_id), {})
+    cfg = GIVEAWAY.get(guild_id)
     raw = cfg.get("allowHostWin")
     if isinstance(raw, bool):
         return raw
@@ -69,8 +69,7 @@ __all__ = [
     "DEFAULT_ALLOW_HOST_WIN",
     "MODULE_KEY",
     "guild_allow_host_win",
-    "enabled_servers",
+    "GIVEAWAY",
     "guild_emoji",
     "logger",
-    "module_config",
 ]

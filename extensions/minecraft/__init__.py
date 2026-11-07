@@ -31,6 +31,10 @@ class Minecraft(Extension, StatusMixin, StatsMixin):
 
     MODULE_KEYS = ("moduleMinecraft",)
 
+    # Server address, SFTP account and status message taken at import (see ``_common``).
+
+    RELOAD_ON_SAVE = True
+
     def __init__(self, client):
         self.client = client
         self.image_cache = {}

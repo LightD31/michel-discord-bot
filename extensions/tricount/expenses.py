@@ -22,7 +22,7 @@ from src.discord_ext.scopes import guild_scopes
 
 from ._common import (
     DEFAULT_CATEGORY,
-    enabled_servers,
+    TRICOUNT,
     guild_categories,
     guild_currency,
 )
@@ -36,7 +36,7 @@ class ExpensesMixin:
     @slash_command(
         name="depense",
         description="Ajouter une dépense",
-        scopes=guild_scopes(enabled_servers),
+        scopes=guild_scopes(TRICOUNT.guild_ids()),
     )
     @slash_option(
         name="groupe",
@@ -177,7 +177,7 @@ class ExpensesMixin:
     @slash_command(
         name="modifier-depense",
         description="Modifier une dépense existante",
-        scopes=guild_scopes(enabled_servers),
+        scopes=guild_scopes(TRICOUNT.guild_ids()),
     )
     @slash_option(
         name="groupe",

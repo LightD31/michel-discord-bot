@@ -6,7 +6,7 @@ from typing import Any
 from interactions import Permissions
 
 from src.core import logging as logutil
-from src.core.config import load_config
+from src.core.config import ModuleConfig
 from src.discord_ext.embeds import Colors
 from src.webui.schemas import SchemaBase, enabled_field, register_module, ui
 
@@ -79,7 +79,7 @@ class ModerationConfig(SchemaBase):
     )
 
 
-_, module_config, enabled_servers = load_config("moduleModeration")
+MODERATION = ModuleConfig("moduleModeration")
 
 # Sentinel moderator id used for automated (automod) actions.
 AUTOMOD_MODERATOR_ID = "automod"
@@ -109,11 +109,7 @@ TYPE_COLORS: dict[str, int] = {
 
 def get_guild_settings(guild_id: int | str) -> dict | None:
     """Return the per-guild module config, or None if disabled/missing."""
-    sid = str(guild_id)
-    settings = module_config.get(sid)
-    if settings is None and sid.isdigit():
-        settings = module_config.get(int(sid))
-    return settings
+    return MODERATION.get(guild_id) or None
 
 
 def _top_role_position(member: Any) -> int:

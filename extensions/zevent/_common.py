@@ -13,7 +13,7 @@ from features.zevent.stats import (
     DEFAULT_VELOCITY_WEIGHT,
 )
 from src.core import logging as logutil
-from src.core.config import load_config
+from src.core.config import ModuleConfig, global_config
 from src.webui.schemas import (
     SchemaBase,
     enabled_field,
@@ -251,8 +251,12 @@ class ZeventConfig(SchemaBase):
     )
 
 
-config, _module_config, _enabled_servers = load_config("moduleZevent")
-_cfg = _module_config.get(_enabled_servers[0], {}) if _enabled_servers else {}
+ZEVENT = ModuleConfig("moduleZevent")
+# Taken at import, from the first enabled guild only (phase 4c makes this multi-guild):
+# the extension declares RELOAD_ON_SAVE, so a save of the module re-imports it.
+config = global_config()
+_enabled_servers = ZEVENT.guild_ids()
+_cfg = dict(ZEVENT.get(_enabled_servers[0])) if _enabled_servers else {}
 
 
 def _parse_event_dt(iso_str: str) -> datetime | None:

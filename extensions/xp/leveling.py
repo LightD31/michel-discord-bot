@@ -16,9 +16,8 @@ from features.xp import (
 )
 from src.core.errors import DatabaseError
 from src.core.text import pick_weighted_message
-from src.discord_ext.autocomplete import is_guild_enabled
 
-from ._common import enabled_servers, logger, module_config
+from ._common import XP, logger
 
 
 class LevelingMixin:
@@ -75,7 +74,7 @@ class LevelingMixin:
         if message.author.bot:
             logger.debug("Message was from a bot.")
             return False
-        if not is_guild_enabled(message.guild.id, enabled_servers):
+        if not XP.enabled(message.guild.id):
             logger.debug("Message was not from a guild with XP enabled.")
             return False
         return True
@@ -144,7 +143,7 @@ class LevelingMixin:
         await self._repo(guild_id).set_level(user_id, new_level)
         logger.debug("%s is now level %d.", user_id, new_level)
 
-        guild_config = module_config.get(guild_id, {})
+        guild_config = XP.get(guild_id)
         formatted_message = pick_weighted_message(
             guild_config,
             "levelUpMessageList",
@@ -165,7 +164,7 @@ class LevelingMixin:
 
         Silent no-op when no reward matches or the bot lacks Manage Roles.
         """
-        guild_config = module_config.get(guild_id, {})
+        guild_config = XP.get(guild_id)
         rewards: dict = guild_config.get("levelRewards") or {}
         if not rewards:
             return

@@ -280,7 +280,30 @@ async def test_module_save_syncs_only_when_it_flips_the_enabled_state(bot_loop, 
     assert "commandSync" not in unchanged
     assert flipped["commandSync"] == {"synced": True, "error": None}
     assert bot.sync_calls == [([42], bot_loop)]
-    assert len(bot.calls) == 2  # both saves still reload the extension
+    # The extension reads its settings live: only the flip (its command
+    # scopes) needs a reload.
+    assert unchanged["reload"] == {"reloaded": None, "error": None, "skipped": True}
+    assert [(a, n) for a, n, _, _ in bot.calls] == [("reload", "extensions.fake_xp")]
+
+
+async def test_a_plain_save_reloads_only_extensions_taking_their_config_at_load(
+    bot_loop, module_map, monkeypatch
+):
+    snapshot = SimpleNamespace(
+        extension_name="extensions.fake_snapshot", MODULE_KEYS=("moduleUtils",), RELOAD_ON_SAVE=True
+    )
+    monkeypatch.setattr(_FakeBot, "loaded", [*_FakeBot.loaded, snapshot])
+    bot = _FakeBot()
+    config: dict = {"config": {}, "servers": {"42": {"moduleUtils": {"enabled": True}}}}
+
+    with _servers_client(bot, bot_loop, config) as client:
+        body = client.put(
+            "/api/servers/42/modules/moduleUtils", json={"config": {"enabled": True}}
+        ).json()
+
+    assert body["reload"]["reloaded"] == "extensions.fake_snapshot"
+    assert [(a, n) for a, n, _, _ in bot.calls] == [("reload", "extensions.fake_snapshot")]
+    assert "commandSync" not in body  # same guilds, same commands
 
 
 async def test_a_module_no_loaded_extension_reads_has_nothing_to_reload(bot_loop, module_map):

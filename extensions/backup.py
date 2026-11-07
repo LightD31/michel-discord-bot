@@ -32,7 +32,7 @@ from interactions import (
 )
 
 from src.core import logging as logutil
-from src.core.config import load_config
+from src.core.config import global_config
 from src.core.db import mongo_manager
 from src.discord_ext.embeds import Colors
 from src.discord_ext.scopes import guild_scopes
@@ -46,7 +46,7 @@ DEFAULT_BACKUP_HOUR = 4  # 04:00 local time
 
 # With no dev guild configured ``/backup`` is registered nowhere; the daily
 # backup still runs.
-_DEV_GUILD = load_config()[0].get("discord", {}).get("devGuildId")
+_DEV_GUILD = global_config().get("discord", {}).get("devGuildId")
 
 
 def effective_retention(requested: int | None, configured: int) -> int:
@@ -61,11 +61,8 @@ def effective_retention(requested: int | None, configured: int) -> int:
 
 def _load_backup_config() -> dict:
     """Load the backup section from the global config."""
-    try:
-        config, _, _ = load_config()
-        return config.get("backup", {})
-    except Exception:
-        return {}
+    section = global_config().get("backup")
+    return section if isinstance(section, dict) else {}
 
 
 class BackupExtension(Extension):
