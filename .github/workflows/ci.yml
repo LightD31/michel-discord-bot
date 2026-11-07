@@ -85,6 +85,12 @@ jobs:
     services:
       mongo:
         image: mongo:8
+        env:
+          # The image disables glibc's rseq so TCMalloc can register its own, and
+          # MongoDB 8 refuses to start that way on Linux 6.19+ (SERVER-121912),
+          # which the runners now use. Letting glibc keep rseq costs TCMalloc its
+          # per-CPU caches: irrelevant for tests.
+          GLIBC_TUNABLES: glibc.pthread.rseq=1
         ports:
           - 27017:27017
         options: >-
