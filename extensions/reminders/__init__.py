@@ -46,7 +46,7 @@ from features.reminders import (
     snooze_minutes,
 )
 from src.core import logging as logutil
-from src.core.config import load_config
+from src.core.config import ModuleConfig
 from src.discord_ext.messages import fetch_user_safe, send_error
 from src.discord_ext.scopes import guild_scopes
 
@@ -55,11 +55,11 @@ MAX_EXTRA_RECIPIENTS = 25
 _SNOOZE_RE = re.compile(rf"^{SNOOZE_PREFIX}:(\d+):([0-9a-fA-F]+)$")
 
 logger = logutil.init_logger(__name__)
-_, _module_config, enabled_servers = load_config("moduleUtils")
+UTILS = ModuleConfig("moduleUtils")
 
 
 def _snooze_minutes(guild_id: str | int) -> int:
-    return snooze_minutes(_module_config.get(str(guild_id), {}))
+    return snooze_minutes(UTILS.get(guild_id))
 
 
 class RemindersExtension(Extension):
@@ -71,7 +71,7 @@ class RemindersExtension(Extension):
 
     @listen()
     async def on_startup(self):
-        for guild_id in enabled_servers:
+        for guild_id in UTILS.guild_ids():
             await self._reminder_repo(guild_id).ensure_indexes()
         self.check_reminders.start()
 
@@ -88,7 +88,7 @@ class RemindersExtension(Extension):
         sub_cmd_name="set",
         description="Gère les rappels pour voter",
         sub_cmd_description="Ajoute un rappel",
-        scopes=guild_scopes(enabled_servers),
+        scopes=guild_scopes(UTILS.guild_ids()),
     )
     @slash_option(
         name="tache",
@@ -314,7 +314,7 @@ class RemindersExtension(Extension):
     @Task.create(IntervalTrigger(minutes=1))
     async def check_reminders(self):
         now = datetime.now()
-        for gid in enabled_servers:
+        for gid in UTILS.guild_ids():
             repo = self._reminder_repo(gid)
             try:
                 due = await repo.list_due(now)

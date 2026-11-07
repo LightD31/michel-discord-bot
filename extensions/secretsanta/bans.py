@@ -17,7 +17,7 @@ from src.discord_ext.embeds import Colors
 from src.discord_ext.messages import fetch_user_safe, send_error
 from src.discord_ext.scopes import guild_scopes
 
-from ._common import enabled_servers, get_context_id
+from ._common import SANTA, get_context_id
 
 logger = logutil.init_logger(__name__)
 
@@ -28,7 +28,7 @@ class BansMixin:
     @slash_command(
         name="secretsanta",
         description="Commandes du Père Noël Secret",
-        scopes=guild_scopes(enabled_servers),
+        scopes=guild_scopes(SANTA.guild_ids()),
         sub_cmd_name="banpair",
         sub_cmd_description="Interdit deux utilisateurs de se tirer mutuellement",
     )
@@ -74,7 +74,7 @@ class BansMixin:
     @slash_command(
         name="secretsanta",
         description="Commandes du Père Noël Secret",
-        scopes=guild_scopes(enabled_servers),
+        scopes=guild_scopes(SANTA.guild_ids()),
         sub_cmd_name="unbanpair",
         sub_cmd_description="Autorise à nouveau deux utilisateurs à se tirer mutuellement",
     )
@@ -122,7 +122,7 @@ class BansMixin:
     @slash_command(
         name="secretsanta",
         description="Commandes du Père Noël Secret",
-        scopes=guild_scopes(enabled_servers),
+        scopes=guild_scopes(SANTA.guild_ids()),
         sub_cmd_name="listbans",
         sub_cmd_description="Liste les paires d'utilisateurs interdites",
     )

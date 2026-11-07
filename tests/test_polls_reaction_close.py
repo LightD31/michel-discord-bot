@@ -70,8 +70,8 @@ def ctx(guild_id):
 
 
 @pytest.fixture
-def enabled(monkeypatch):
-    monkeypatch.setattr(polls_module, "enabled_servers", ["1"])
+def enabled(monkeypatch, store_config):
+    store_config({"servers": {"1": {"moduleUtils": {"enabled": True}}}})
     edits: list = []
 
     async def fake_edit(message, **kwargs):

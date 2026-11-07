@@ -56,6 +56,10 @@ class Zevent(
 
     MODULE_KEYS = ("moduleZevent",)
 
+    # Single-guild settings taken at import (see ``_common``).
+
+    RELOAD_ON_SAVE = True
+
     def __init__(self, client: Client):
         self.client: Client = client
         self.channel: BaseChannel | None = None

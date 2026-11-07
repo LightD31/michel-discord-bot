@@ -295,15 +295,21 @@ class WebUIContext:
         """Return module paths (e.g. ``extensions.tricount``) for loaded extensions."""
         return [extension_path(ext) for ext in self._loaded_extensions()]
 
-    def module_extension_map(self) -> dict[str, list[str]]:
+    def module_extension_map(self, *, on_save: bool = False) -> dict[str, list[str]]:
         """Map each module key to the loaded extensions that declare it in ``MODULE_KEYS``.
 
         E.g. ``{"moduleTricount": ["extensions.tricount"]}``. A module can back
         several extensions: ``moduleUtils`` is read by admin, polls and reminders.
         An extension that isn't loaded reads nothing, so it isn't listed.
+
+        With *on_save*, only the extensions a plain save must reload: those
+        declaring ``RELOAD_ON_SAVE`` because they take their config when they
+        load. The others read it live (``src.core.config.ModuleConfig``).
         """
         mapping: dict[str, list[str]] = {}
         for ext in self._loaded_extensions():
+            if on_save and not reloads_on_save(ext):
+                continue
             path = extension_path(ext)
             for key in declared_modules(ext):
                 paths = mapping.setdefault(key, [])
@@ -322,3 +328,8 @@ def extension_path(ext: Any) -> str:
 def declared_modules(ext: Any) -> tuple[str, ...]:
     """The per-guild config modules an extension reads (its ``MODULE_KEYS``)."""
     return tuple(getattr(ext, "MODULE_KEYS", ()))
+
+
+def reloads_on_save(ext: Any) -> bool:
+    """Whether an extension takes its config at load, so a save must reload it."""
+    return getattr(ext, "RELOAD_ON_SAVE", False) is True

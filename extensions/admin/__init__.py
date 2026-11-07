@@ -32,7 +32,7 @@ from interactions import (
 )
 
 from src.core import logging as logutil
-from src.core.config import load_config
+from src.core.config import ModuleConfig
 from src.discord_ext.messages import send_error, send_success
 from src.discord_ext.scopes import guild_scopes
 from src.webui.schemas import SchemaBase, enabled_field, register_module, ui
@@ -68,7 +68,7 @@ class UtilsConfig(SchemaBase):
 
 
 logger = logutil.init_logger(__name__)
-_, _, enabled_servers = load_config("moduleUtils")
+UTILS = ModuleConfig("moduleUtils")
 
 
 class AdminExtension(Extension):
@@ -77,7 +77,7 @@ class AdminExtension(Extension):
     @slash_command(
         name="ping",
         description="Vérifier la latence du bot",
-        scopes=guild_scopes(enabled_servers),
+        scopes=guild_scopes(UTILS.guild_ids()),
         integration_types=[IntegrationType.GUILD_INSTALL, IntegrationType.USER_INSTALL],  # type: ignore
     )
     async def ping(self, ctx: SlashContext):
@@ -86,7 +86,7 @@ class AdminExtension(Extension):
     @slash_command(
         name="delete",
         description="Supprimer des messages",
-        scopes=guild_scopes(enabled_servers),
+        scopes=guild_scopes(UTILS.guild_ids()),
     )
     @slash_option(
         "nombre",
@@ -144,7 +144,7 @@ class AdminExtension(Extension):
     @slash_command(
         name="send",
         description="Envoyer un message dans un channel",
-        scopes=guild_scopes(enabled_servers),
+        scopes=guild_scopes(UTILS.guild_ids()),
     )
     @slash_option(
         "message",
@@ -193,7 +193,7 @@ class AdminExtension(Extension):
     @slash_command(
         name="slowmode",
         description="Définir le mode lent d'un salon (0 = désactivé)",
-        scopes=guild_scopes(enabled_servers),
+        scopes=guild_scopes(UTILS.guild_ids()),
     )
     @slash_option(
         "secondes",
@@ -248,7 +248,7 @@ class AdminExtension(Extension):
     @slash_command(
         name="lock",
         description="Verrouiller un salon (empêcher @everyone d'écrire)",
-        scopes=guild_scopes(enabled_servers),
+        scopes=guild_scopes(UTILS.guild_ids()),
     )
     @slash_option(
         "channel",
@@ -301,7 +301,7 @@ class AdminExtension(Extension):
     @slash_command(
         name="unlock",
         description="Déverrouiller un salon précédemment verrouillé",
-        scopes=guild_scopes(enabled_servers),
+        scopes=guild_scopes(UTILS.guild_ids()),
     )
     @slash_option(
         "channel",

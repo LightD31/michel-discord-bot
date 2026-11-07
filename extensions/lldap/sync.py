@@ -11,8 +11,8 @@ from src.integrations.lldap import LldapError, LldapSettings
 
 from ._common import (
     CHUNK_TIMEOUT_SECONDS,
+    LLDAP,
     SYNC_MINUTES,
-    enabled_servers,
     guild_role_groups,
     guild_settings,
 )
@@ -40,7 +40,7 @@ class SyncMixin:
         """
         async with self._sync_lock:
             configured: dict[str, LldapSettings] = {}
-            for guild_id in enabled_servers:
+            for guild_id in LLDAP.guild_ids():
                 settings = guild_settings(guild_id)
                 if settings.configured:
                     configured[guild_id] = settings

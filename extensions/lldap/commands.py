@@ -19,7 +19,6 @@ from features.lldap import (
     username_from_discord,
 )
 from src.core import logging as logutil
-from src.discord_ext.autocomplete import is_guild_enabled
 from src.discord_ext.embeds import Colors
 from src.discord_ext.messages import require_guild, send_error
 from src.discord_ext.scopes import guild_scopes
@@ -31,11 +30,11 @@ from ._common import (
     BAD_EMAIL,
     BAD_USERNAME,
     EMAIL_TAKEN,
+    LLDAP,
     NO_MAPPING,
     NOT_CONFIGURED,
     NOT_ENABLED,
     USERNAME_TAKEN,
-    enabled_servers,
     guild_role_groups,
     guild_settings,
     login_url,
@@ -57,7 +56,7 @@ class CommandsMixin:
         """The guild id, or ``None`` after telling the user why the command can't run."""
         if not await require_guild(ctx):
             return None
-        if not is_guild_enabled(ctx.guild.id, enabled_servers):
+        if not LLDAP.enabled(ctx.guild.id):
             await send_error(ctx, NOT_ENABLED)
             return None
         return str(ctx.guild.id)
@@ -65,7 +64,7 @@ class CommandsMixin:
     @slash_command(
         name="register",
         description="Crée ton compte LLDAP grâce à tes rôles Discord",
-        scopes=guild_scopes(enabled_servers),
+        scopes=guild_scopes(LLDAP.guild_ids()),
     )
     @slash_option(
         name="email",
@@ -187,7 +186,7 @@ class CommandsMixin:
     @slash_command(
         name="lldap",
         description="Les commandes d'administration LLDAP",
-        scopes=guild_scopes(enabled_servers),
+        scopes=guild_scopes(LLDAP.guild_ids()),
     )
     @slash_default_member_permission(Permissions.ADMINISTRATOR)
     async def lldap_command(self, ctx: SlashContext) -> None:

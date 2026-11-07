@@ -14,7 +14,7 @@ from interactions import (
 from pyfactorybridge import API
 
 from src.core import logging as logutil
-from src.core.config import load_config
+from src.core.config import ModuleConfig, global_config
 from src.discord_ext.messages import edit_message_if_changed, fetch_or_create_persistent_message
 from src.webui.schemas import (
     SchemaBase,
@@ -63,11 +63,18 @@ class SatisfactoryConfig(SchemaBase):
 
 logger = logutil.init_logger(__name__)
 
-config, module_config, enabled_servers = load_config("moduleSatisfactory")
+SATISFACTORY = ModuleConfig("moduleSatisfactory")
+# Taken at import, from the first enabled guild only (phase 4c makes this multi-guild):
+# the extension declares RELOAD_ON_SAVE, so a save of the module re-imports it.
+config = global_config()
+enabled_servers = SATISFACTORY.guild_ids()
+module_config = {gid: dict(cfg) for gid, cfg in SATISFACTORY.items()}
 
 
 class Satisfactory(Extension):
     MODULE_KEYS = ("moduleSatisfactory",)
+    # Server settings taken when the extension loads.
+    RELOAD_ON_SAVE = True
 
     def __init__(self, client):
         self.channel: BaseChannel | None = None

@@ -3,7 +3,7 @@
 import os
 
 from src.core import logging as logutil
-from src.core.config import load_config
+from src.core.config import ModuleConfig
 from src.webui.schemas import SchemaBase, enabled_field, register_module, ui
 
 # Default expense categories surfaced in /depense autocomplete. Free-form input
@@ -48,16 +48,16 @@ class TricountConfig(SchemaBase):
 
 
 logger = logutil.init_logger(__name__)
-config, module_config, enabled_servers = load_config("moduleTricount")
+TRICOUNT = ModuleConfig("moduleTricount")
 
 
 def guild_categories(guild_id: str | int) -> list[str]:
     """Per-guild category list, falling back to defaults when the override is empty."""
-    cfg = module_config.get(str(guild_id), {})
+    cfg = TRICOUNT.get(guild_id)
     custom = cfg.get("tricountCategories") or []
     return list(custom) if custom else list(DEFAULT_CATEGORIES)
 
 
 def guild_currency(guild_id: str | int) -> str:
-    cfg = module_config.get(str(guild_id), {})
+    cfg = TRICOUNT.get(guild_id)
     return cfg.get("tricountCurrency") or DEFAULT_CURRENCY

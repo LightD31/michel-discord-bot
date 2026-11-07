@@ -8,7 +8,7 @@ boundary (and ``features/`` stays free of ``interactions`` imports).
 import os
 
 from src.core import logging as logutil
-from src.core.config import load_config
+from src.core.config import ModuleConfig
 from src.discord_ext.rolemenus import BUTTON_PREFIX, MAX_ENTRIES, build_components, build_embed
 from src.webui.schemas import SchemaBase, enabled_field, register_module
 
@@ -25,7 +25,7 @@ class ReactionRolesConfig(SchemaBase):
     enabled: bool = enabled_field()
 
 
-_, _, enabled_servers = load_config("moduleReactionRoles")
+REACTION_ROLES = ModuleConfig("moduleReactionRoles")
 
 __all__ = [
     "BUTTON_PREFIX",
@@ -33,6 +33,6 @@ __all__ = [
     "ReactionRolesConfig",
     "build_components",
     "build_embed",
-    "enabled_servers",
+    "REACTION_ROLES",
     "logger",
 ]

@@ -9,7 +9,7 @@ from pydantic import BaseModel
 
 from features.customcommands import MODULE_KEY as CUSTOM_COMMANDS_MODULE
 from src.core import logging as logutil
-from src.core.config import load_config as bot_load_config
+from src.core.config import ModuleConfig
 from src.discord_ext.embedmanager import MODULE_KEY as EMBED_MANAGER_MODULE
 from src.discord_ext.embedmanager import build_embeds, publish_embeds
 from src.webui.botops import run_extension_op, sync_commands
@@ -68,20 +68,28 @@ def _require_reasonable_size(config: dict) -> None:
         )
 
 
-async def _try_reload_extension_for_module(ctx: WebUIContext, module_name: str) -> dict:
-    """Auto-reload the extensions that read ``module_name`` after a config save.
+async def _try_reload_extension_for_module(
+    ctx: WebUIContext, module_name: str, *, enabled_changed: bool = True
+) -> dict:
+    """Auto-reload the extensions that read ``module_name`` after a config change.
 
     The reload runs on the bot loop (see ``src.webui.botops``) — doing it inline
     on the Web UI loop mutates the client from the wrong thread and leaves the
     library's command sync stranded on a loop that owns none of the bot's
     connections.
 
-    Every loaded extension declaring the module in its ``MODULE_KEYS`` is
-    reloaded (``moduleUtils`` backs admin, polls and reminders), except those
-    disabled in the extension list: the library *loads* an extension it is
-    asked to reload, so a module save racing an unload would otherwise switch
-    a disabled extension back on. A module no loaded extension reads (such as
-    ``discord2name``, read on demand) has nothing to reload.
+    When the module was switched on or off in a guild (*enabled_changed*),
+    every loaded extension declaring it in its ``MODULE_KEYS`` is reloaded
+    (``moduleUtils`` backs admin, polls and reminders): their commands are
+    scoped to the guilds enabled at import. A save that leaves ``enabled`` as
+    it was only reloads the extensions declaring ``RELOAD_ON_SAVE``, which
+    take their config when they load; the others read it live.
+
+    Never reloaded: the extensions disabled in the extension list. The
+    library *loads* an extension it is asked to reload, so a module save
+    racing an unload would otherwise switch a disabled extension back on.
+    A module no loaded extension reads (such as ``discord2name``, read on
+    demand) has nothing to reload.
 
     No command sync here; the callers sync their guild when the module's
     command scopes may have changed (see :func:`_sync_guild_commands`).
@@ -91,7 +99,7 @@ async def _try_reload_extension_for_module(ctx: WebUIContext, module_name: str) 
     """
     if not ctx.bot or not ctx.bot_loop_alive():
         return {"reloaded": None, "error": "Bot non disponible", "skipped": False}
-    ext_paths = ctx.module_extension_map().get(module_name)
+    ext_paths = ctx.module_extension_map(on_save=not enabled_changed).get(module_name)
     if not ext_paths:
         return {"reloaded": None, "error": None, "skipped": True}
     # Same default as main.py: an extension missing from the list is enabled.
@@ -130,7 +138,7 @@ def _reload_succeeded(reload_result: dict) -> bool:
 
 
 def _module_enabled(module_config: object) -> bool:
-    """The test ``load_config`` applies when listing a module's enabled guilds."""
+    """The test ``ModuleConfig`` applies when listing a module's enabled guilds."""
     return isinstance(module_config, dict) and bool(module_config.get("enabled", False))
 
 
@@ -443,11 +451,13 @@ def create_router(ctx: WebUIContext) -> APIRouter:
             session.username,
             session.user_id,
         )
-        reload_result = await _try_reload_extension_for_module(ctx, module_name)
-        response: dict = {"status": "ok", "reload": reload_result}
         # A save only changes the guild's commands when it flips the module's
         # enabled state (the commands follow it) or edits custom commands.
         scopes_changed = enabled_change["before"] != enabled_change["after"]
+        reload_result = await _try_reload_extension_for_module(
+            ctx, module_name, enabled_changed=scopes_changed
+        )
+        response: dict = {"status": "ok", "reload": reload_result}
         if (scopes_changed or module_name == CUSTOM_COMMANDS_MODULE) and _reload_succeeded(
             reload_result
         ):
@@ -493,11 +503,10 @@ def create_router(ctx: WebUIContext) -> APIRouter:
         await ctx.require_guild_admin(request, server_id)
         ctx.require_bot_loop()
 
-        _, module_config, enabled_servers = bot_load_config(EMBED_MANAGER_MODULE)
-        if server_id not in enabled_servers:
+        guild_config = ModuleConfig(EMBED_MANAGER_MODULE).get(server_id)
+        if not guild_config:
             raise HTTPException(status_code=400, detail="Module non activé sur ce serveur")
 
-        guild_config = module_config.get(server_id, {})
         if not guild_config.get("channelId"):
             raise HTTPException(status_code=400, detail="Salon de publication non configuré")
         embeds_config = guild_config.get("embeds") or []

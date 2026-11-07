@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
-import json
 import os
 from dataclasses import dataclass, field
 from typing import Any
 
 from features.mdi import TeamRef
 from src.core import logging as logutil
-from src.core.config import CONFIG_PATH, load_config
+from src.core.config import ModuleConfig, save_module_field
 from src.discord_ext.embeds import Colors
 from src.webui.schemas import SchemaBase, enabled_field, register_module, ui
 
@@ -78,7 +77,7 @@ class MDIConfig(SchemaBase):
 
 
 logger = logutil.init_logger(__name__)
-config, module_config, enabled_servers = load_config("moduleMDI")
+MDI = ModuleConfig(MODULE_KEY)
 
 
 # ── Constants ────────────────────────────────────────────────────────────────
@@ -161,41 +160,14 @@ class GuildState:
 def save_schedule_channel_message_id(
     guild_id: str, channel_id: str | None, message_id: str | None
 ) -> None:
-    """Persist ``scheduleChannelMessageId`` on disk so it survives restarts.
-
-    Mirrors the pattern used by the vlrgg extension. Writing through the raw
-    ``CONFIG_PATH`` is acceptable here because ``ConfigStore`` re-reads the file
-    on next access; the field is editable from the dashboard, so the next read
-    picks up the bot's update.
-    """
-    try:
-        with open(CONFIG_PATH, encoding="utf-8") as file:
-            data = json.load(file)
-    except (FileNotFoundError, json.JSONDecodeError) as e:
-        logger.error("Could not read config to persist MDI schedule message: %s", e)
-        return
-
-    servers = data.setdefault("servers", {})
-    guild = servers.setdefault(str(guild_id), {})
-    mod = guild.setdefault(MODULE_KEY, {})
+    """Persist ``scheduleChannelMessageId`` in the config so it survives restarts."""
     if channel_id and message_id:
-        mod["scheduleChannelMessageId"] = f"{channel_id}:{message_id}"
+        value = f"{channel_id}:{message_id}"
     elif channel_id:
-        mod["scheduleChannelMessageId"] = channel_id
+        value = channel_id
     else:
-        mod["scheduleChannelMessageId"] = ""
-
-    try:
-        with open(CONFIG_PATH, "w", encoding="utf-8") as file:
-            json.dump(data, file, indent=4, ensure_ascii=False)
-    except OSError as e:
-        logger.error("Could not write MDI schedule message id to config: %s", e)
-        return
-    logger.info(
-        "Saved MDI schedule message id for guild %s: %s",
-        guild_id,
-        mod["scheduleChannelMessageId"],
-    )
+        value = ""
+    save_module_field(MODULE_KEY, guild_id, "scheduleChannelMessageId", value)
 
 
 __all__ = [
@@ -217,9 +189,7 @@ __all__ = [
     "STATUS_EMOJI_TERMINAL_LOSS",
     "STATUS_EMOJI_TERMINAL_NEUTRAL",
     "STATUS_EMOJI_TERMINAL_WIN",
-    "config",
-    "enabled_servers",
+    "MDI",
     "logger",
-    "module_config",
     "save_schedule_channel_message_id",
 ]

@@ -17,7 +17,7 @@ from interactions import (
 )
 
 from src.core import logging as logutil
-from src.core.config import load_config
+from src.core.config import ModuleConfig
 from src.core.http import fetch
 from src.discord_ext.messages import edit_message_if_changed, fetch_or_create_persistent_message
 from src.discord_ext.paginator import CustomPaginator
@@ -71,8 +71,11 @@ class SpeedonsConfig(SchemaBase):
 
 logger = logutil.init_logger(__name__)
 
-_, _module_config, _enabled_servers = load_config("moduleSpeedons")
-_cfg = _module_config.get(_enabled_servers[0], {}) if _enabled_servers else {}
+SPEEDONS = ModuleConfig("moduleSpeedons")
+# Taken at import, from the first enabled guild only (phase 4c makes this multi-guild):
+# the extension declares RELOAD_ON_SAVE, so a save of the module re-imports it.
+_enabled_servers = SPEEDONS.guild_ids()
+_cfg = dict(SPEEDONS.get(_enabled_servers[0])) if _enabled_servers else {}
 
 # Both come from the guild config — the code carries no Speedons URL.
 BASE_URL = _cfg.get("speedonsApiUrl", "")
@@ -95,6 +98,8 @@ async def get_data(url):
 
 class SpeedonsExtension(Extension):
     MODULE_KEYS = ("moduleSpeedons",)
+    # Single-guild settings taken at import.
+    RELOAD_ON_SAVE = True
 
     def __init__(self, bot: Client):
         self.bot = bot

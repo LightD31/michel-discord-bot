@@ -12,7 +12,7 @@ from interactions import Client, Extension, listen
 
 from features.suggestions import SuggestionsRepository
 
-from ._common import enabled_servers, logger
+from ._common import SUGGESTIONS, logger
 from .buttons import ButtonsMixin
 from .commands import CommandsMixin
 
@@ -34,9 +34,9 @@ class SuggestionsExtension(Extension, CommandsMixin, ButtonsMixin):
 
     @listen()
     async def on_startup(self):
-        for gid in enabled_servers:
+        for gid in SUGGESTIONS.guild_ids():
             await self.repository(gid).ensure_indexes()
-        logger.info("Suggestions ready (%d guild(s))", len(enabled_servers))
+        logger.info("Suggestions ready (%d guild(s))", len(SUGGESTIONS.guild_ids()))
 
 
 def setup(bot: Client) -> None:

@@ -27,7 +27,7 @@ from src.discord_ext.scopes import guild_scopes
 from ._common import (
     DEFAULT_CATEGORIES,
     DEFAULT_CATEGORY,
-    enabled_servers,
+    TRICOUNT,
 )
 
 logger = logutil.init_logger(__name__)
@@ -51,7 +51,7 @@ class RecurringMixin:
     @listen()
     async def on_startup(self):
         # Indexes are best-effort; failure here shouldn't break extension load.
-        for guild_id in enabled_servers:
+        for guild_id in TRICOUNT.guild_ids():
             try:
                 await TricountRepository(guild_id).ensure_recurring_indexes()
             except Exception as e:
@@ -63,7 +63,7 @@ class RecurringMixin:
         description="Programmer une dépense récurrente",
         sub_cmd_name="ajouter",
         sub_cmd_description="Créer une dépense récurrente",
-        scopes=guild_scopes(enabled_servers),
+        scopes=guild_scopes(TRICOUNT.guild_ids()),
     )
     @slash_option(
         name="groupe",
@@ -228,7 +228,7 @@ class RecurringMixin:
     @Task.create(IntervalTrigger(minutes=5))
     async def recurring_tick(self):
         now = datetime.now()
-        for guild_id in enabled_servers:
+        for guild_id in TRICOUNT.guild_ids():
             try:
                 due = await TricountRepository(guild_id).list_due_recurring(now)
             except Exception as e:

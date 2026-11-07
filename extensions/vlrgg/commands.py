@@ -37,7 +37,7 @@ from src.discord_ext.links import shorten_embed
 from src.discord_ext.messages import send_error
 from src.discord_ext.scopes import guild_scopes
 
-from ._common import DEFAULT_EMBED_COLOR, LIVE_EMBED_COLOR, MAP_POOL_DAYS, enabled_servers, logger
+from ._common import DEFAULT_EMBED_COLOR, LIVE_EMBED_COLOR, MAP_POOL_DAYS, VLRGG, logger
 
 # Codes acceptés par /v2/rankings
 REGIONS: dict[str, str] = {
@@ -82,7 +82,7 @@ class CommandsMixin:
     @slash_command(
         name="vlr",
         description="Esport Valorant (VLR.gg)",
-        scopes=guild_scopes(enabled_servers),
+        scopes=guild_scopes(VLRGG.guild_ids()),
         sub_cmd_name="equipe",
         sub_cmd_description="Profil d'une équipe : roster, résultats, prochain match, maps",
     )

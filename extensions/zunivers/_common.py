@@ -7,7 +7,7 @@ Config key ``moduleZunivers`` (formerly ``moduleColoc``). Also holds the
 from interactions import SlashCommand
 
 from src.core import logging as logutil
-from src.core.config import load_config
+from src.core.config import ModuleConfig, global_config
 from src.discord_ext.scopes import guild_scopes
 from src.webui.schemas import SchemaBase, enabled_field, register_module, ui
 
@@ -70,8 +70,12 @@ class ZuniversConfig(SchemaBase):
 
 logger = logutil.init_logger("extensions.zunivers")
 
-config, module_config, enabled_servers = load_config("moduleZunivers")
-module_config = module_config[enabled_servers[0]] if enabled_servers else {}
+ZUNIVERS = ModuleConfig("moduleZunivers")
+# Taken at import, from the first enabled guild only (phase 4c makes this multi-guild):
+# the extension declares RELOAD_ON_SAVE, so a save of the module re-imports it.
+config = global_config()
+enabled_servers = ZUNIVERS.guild_ids()
+module_config = dict(ZUNIVERS.get(enabled_servers[0])) if enabled_servers else {}
 
 # ZUnivers Ninja is one server for the whole bot: global ``zuniversNinja`` section.
 ninja_config: dict = config.get("zuniversNinja") or {}

@@ -3,7 +3,7 @@
 import os
 
 from src.core import logging as logutil
-from src.core.config import load_config
+from src.core.config import ModuleConfig, global_config
 from src.webui.schemas import SchemaBase, enabled_field, register_module, ui
 
 
@@ -32,8 +32,12 @@ class OlympicsConfig(SchemaBase):
 
 
 logger = logutil.init_logger(__name__)
-config, module_config, enabled_servers = load_config("moduleOlympics")
-module_config = module_config[enabled_servers[0]] if enabled_servers else {}
+OLYMPICS = ModuleConfig("moduleOlympics")
+# Taken at import, from the first enabled guild only (phase 4c makes this multi-guild):
+# the extension declares RELOAD_ON_SAVE, so a save of the module re-imports it.
+config = global_config()
+enabled_servers = OLYMPICS.guild_ids()
+module_config = dict(OLYMPICS.get(enabled_servers[0])) if enabled_servers else {}
 
 # ─── Constantes ───────────────────────────────────────────────────────────────
 BASE_URL = "https://www.olympics.com/wmr-owg2026/competition/api/FRA"

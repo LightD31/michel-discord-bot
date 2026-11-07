@@ -22,7 +22,7 @@ from src.discord_ext.messages import (
 )
 from src.discord_ext.paginator import CustomPaginator
 
-from ._common import EMBED_COLOR, TIMEZONE, enabled_servers, logger, module_config
+from ._common import EMBED_COLOR, TIMEZONE, XP, logger
 
 
 def create_leaderboard_embed(guild_name: str, is_continuation: bool = False) -> Embed:
@@ -142,11 +142,11 @@ class LeaderboardMixin:
 
     @Task.create(TimeTrigger(utc=False))
     async def leaderboardpermanent(self):
-        for guild_id in enabled_servers:
+        for guild_id in XP.guild_ids():
             await self._update_permanent_leaderboard(guild_id)
 
     async def _update_permanent_leaderboard(self, guild_id: str) -> None:
-        guild_config = module_config.get(guild_id, {})
+        guild_config = XP.get(guild_id)
         channel_id = guild_config.get("xpChannelId")
         if not channel_id:
             logger.debug("No leaderboard channel configured for %s", guild_id)
@@ -172,7 +172,6 @@ class LeaderboardMixin:
             if message is None:
                 logger.warning("Could not get or create leaderboard message for %s", guild_id)
                 return
-            guild_config["xpMessageId"] = str(message.id)
 
             embeds = await self._build_leaderboard_embeds(guild)
             paginator = self._leaderboard_paginators.get(guild_id)

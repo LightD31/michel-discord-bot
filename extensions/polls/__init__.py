@@ -47,7 +47,7 @@ from features.polls import (
     validate_poll_options,
 )
 from src.core import logging as logutil
-from src.core.config import load_config
+from src.core.config import ModuleConfig
 from src.discord_ext.embeds import Colors, format_discord_timestamp
 from src.discord_ext.messages import copy_embed, edit_message_if_changed, send_error
 from src.discord_ext.paginator import format_poll
@@ -56,14 +56,14 @@ from src.discord_ext.scopes import guild_scopes
 from .buttons import PollButtonsMixin, render_results_field, update_poll_embed, vote_components
 
 logger = logutil.init_logger(__name__)
-_, _utils_module_config, enabled_servers = load_config("moduleUtils")
+UTILS = ModuleConfig("moduleUtils")
 
 
 def _default_poll_seconds(guild_id: str | int | None) -> int | None:
     """Per-guild default auto-close (seconds) when ``duree`` is omitted; None disables it."""
     if guild_id is None:
         return None
-    cfg = _utils_module_config.get(str(guild_id), {})
+    cfg = UTILS.get(guild_id)
     minutes = cfg.get("pollDefaultDurationMinutes")
     try:
         value = int(minutes) if minutes is not None else 0
@@ -122,7 +122,7 @@ class PollsExtension(Extension, PollButtonsMixin):
 
     @listen()
     async def on_startup(self) -> None:
-        for guild_id in enabled_servers:
+        for guild_id in UTILS.guild_ids():
             try:
                 await self._poll_repo(guild_id).ensure_indexes()
             except Exception as e:
@@ -132,7 +132,7 @@ class PollsExtension(Extension, PollButtonsMixin):
     @slash_command(
         name="poll",
         description="Créer un sondage",
-        scopes=guild_scopes(enabled_servers),
+        scopes=guild_scopes(UTILS.guild_ids()),
         integration_types=[IntegrationType.GUILD_INSTALL, IntegrationType.USER_INSTALL],
     )  # type: ignore
     @slash_option(
@@ -221,7 +221,7 @@ class PollsExtension(Extension, PollButtonsMixin):
         refuses the write, an in-memory timer is the fallback.
         """
         guild_id = str(ctx.guild_id) if ctx.guild_id else None
-        if guild_id in enabled_servers:
+        if UTILS.enabled(guild_id):
             poll = Poll(
                 channel_id=str(message.channel.id),
                 message_id=str(message.id),
@@ -254,7 +254,7 @@ class PollsExtension(Extension, PollButtonsMixin):
     @slash_command(
         name="poll-anonyme",
         description="Créer un sondage à vote anonyme (boutons)",
-        scopes=guild_scopes(enabled_servers),
+        scopes=guild_scopes(UTILS.guild_ids()),
     )
     @slash_option(
         "question",
@@ -287,7 +287,7 @@ class PollsExtension(Extension, PollButtonsMixin):
     @slash_command(
         name="poll-classement",
         description="Créer un sondage à vote alternatif (ranked-choice)",
-        scopes=guild_scopes(enabled_servers),
+        scopes=guild_scopes(UTILS.guild_ids()),
     )
     @slash_option(
         "question",
@@ -381,7 +381,7 @@ class PollsExtension(Extension, PollButtonsMixin):
     @Task.create(IntervalTrigger(seconds=30))
     async def check_closing_polls(self) -> None:
         now = datetime.now()
-        for gid in enabled_servers:
+        for gid in UTILS.guild_ids():
             try:
                 due = await self._poll_repo(gid).list_due(now)
             except Exception as e:
@@ -473,7 +473,7 @@ class PollsExtension(Extension, PollButtonsMixin):
     @slash_command(
         name="editpoll",
         description="Modifier un sondage",
-        scopes=guild_scopes(enabled_servers),
+        scopes=guild_scopes(UTILS.guild_ids()),
     )
     @slash_option(
         "message_id",
@@ -564,7 +564,7 @@ class PollsExtension(Extension, PollButtonsMixin):
 
     async def _update_stored_options(self, guild_id, message_id, options: list[str]) -> None:
         """Keep a stored reaction poll's options in step with /editpoll, for its close."""
-        if not guild_id or str(guild_id) not in enabled_servers:
+        if not UTILS.enabled(guild_id):
             return
         repo = self._poll_repo(guild_id)
         try:

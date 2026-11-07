@@ -42,7 +42,7 @@ class AutomodMixin:
             return
 
         settings = get_guild_settings(guild.id)
-        if not settings:  # module_config only holds enabled guilds
+        if not settings:  # the module is off in this guild
             return
         if is_staff(author, settings):
             return

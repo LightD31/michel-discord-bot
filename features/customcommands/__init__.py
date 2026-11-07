@@ -18,7 +18,7 @@ from features.customcommands.parser import (
 )
 
 # The per-guild config key this feature reads (``extensions/customcommands``
-# is what actually calls ``load_config`` with it).
+# reads the config through a ``ModuleConfig`` on it).
 MODULE_KEY = "moduleCustomCommands"
 
 __all__ = [

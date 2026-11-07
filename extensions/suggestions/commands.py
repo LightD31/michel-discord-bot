@@ -27,8 +27,8 @@ from src.discord_ext.scopes import guild_scopes
 from ._common import (
     STATUS_COLORS,
     STATUS_LABELS,
+    SUGGESTIONS,
     VOTE_PREFIX,
-    enabled_servers,
     get_guild_settings,
     logger,
 )
@@ -110,7 +110,7 @@ class CommandsMixin:
     @slash_command(
         name="suggest",
         description="Proposer une suggestion à la communauté",
-        scopes=guild_scopes(enabled_servers),
+        scopes=guild_scopes(SUGGESTIONS.guild_ids()),
     )
     @slash_option(
         "texte",
@@ -180,7 +180,7 @@ class CommandsMixin:
         description="Gérer les suggestions (staff)",
         sub_cmd_name="approve",
         sub_cmd_description="Approuver une suggestion",
-        scopes=guild_scopes(enabled_servers),
+        scopes=guild_scopes(SUGGESTIONS.guild_ids()),
     )
     @slash_option(
         "id",

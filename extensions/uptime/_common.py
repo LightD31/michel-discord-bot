@@ -1,6 +1,6 @@
 """Shared config schema and constants for the Uptime extension."""
 
-from src.core.config import load_config
+from src.core.config import ModuleConfig
 from src.webui.schemas import SchemaBase, enabled_field, register_module
 
 
@@ -17,7 +17,7 @@ class UptimeConfig(SchemaBase):
     enabled: bool = enabled_field()
 
 
-_config, _module_config, enabled_servers = load_config("moduleUptime")
+UPTIME = ModuleConfig("moduleUptime")
 
 # How often /metrics is read. Each read uses one of Kuma's 60 API requests a minute,
 # shared with anything else using an API key (a Prometheus scraper, for instance).

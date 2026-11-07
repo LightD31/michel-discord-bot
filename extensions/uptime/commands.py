@@ -16,7 +16,6 @@ from interactions import (
 from features.uptime import AlertMode, MonitorAlert, UptimeRepository
 from src.core import logging as logutil
 from src.core.errors import DatabaseError
-from src.discord_ext.autocomplete import is_guild_enabled
 from src.discord_ext.embeds import Colors
 from src.discord_ext.messages import require_guild, send_error, send_success
 from src.discord_ext.scopes import guild_scopes
@@ -27,7 +26,7 @@ from ._common import (
     MAX_CHOICE_NAME,
     MAX_CHOICES,
     MAX_EMBED_FIELDS,
-    enabled_servers,
+    UPTIME,
 )
 
 logger = logutil.init_logger(__name__)
@@ -44,7 +43,7 @@ class CommandsMixin:
         """The guild id, or ``None`` after telling the user why the command can't run."""
         if not await require_guild(ctx):
             return None
-        if not is_guild_enabled(ctx.guild.id, enabled_servers):
+        if not UPTIME.enabled(ctx.guild.id):
             await send_error(ctx, "Le module Uptime n'est pas activé sur ce serveur.")
             return None
         return str(ctx.guild.id)
@@ -57,7 +56,7 @@ class CommandsMixin:
     @slash_command(
         name="uptime",
         description="Les commandes de surveillance Uptime Kuma",
-        scopes=guild_scopes(enabled_servers),
+        scopes=guild_scopes(UPTIME.guild_ids()),
     )
     @slash_default_member_permission(Permissions.ADMINISTRATOR)
     async def uptime_command(self, ctx: SlashContext) -> None:

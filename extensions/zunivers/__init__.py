@@ -39,6 +39,10 @@ class ZuniversExtension(
 
     MODULE_KEYS = ("moduleZunivers",)
 
+    # Single-guild settings taken at import (see ``_common``).
+
+    RELOAD_ON_SAVE = True
+
     def __init__(self, bot: Client):
         self.bot = bot
         self.api_client = ZuniversAPIClient()

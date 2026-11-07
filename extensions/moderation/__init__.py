@@ -12,7 +12,7 @@ from interactions import Client, Extension, listen
 
 from features.moderation import ModerationRepository
 
-from ._common import enabled_servers, logger
+from ._common import MODERATION, logger
 from .automod import AutomodMixin
 from .commands import CommandsMixin
 from .logging_ import ModLogMixin
@@ -36,9 +36,9 @@ class ModerationExtension(Extension, CommandsMixin, AutomodMixin, ModLogMixin):
 
     @listen()
     async def on_startup(self):
-        for gid in enabled_servers:
+        for gid in MODERATION.guild_ids():
             await self.repository(gid).ensure_indexes()
-        logger.info("Moderation ready (%d guild(s))", len(enabled_servers))
+        logger.info("Moderation ready (%d guild(s))", len(MODERATION.guild_ids()))
 
 
 def setup(bot: Client) -> None:

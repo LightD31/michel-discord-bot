@@ -25,7 +25,7 @@ from src.discord_ext.messages import (
 from src.discord_ext.rolemenus import bot_top_position, entries_refusal, menu_author
 from src.discord_ext.scopes import guild_scopes
 
-from ._common import MAX_ENTRIES, build_components, build_embed, enabled_servers, logger
+from ._common import MAX_ENTRIES, REACTION_ROLES, build_components, build_embed, logger
 
 
 def _parse_entries(raw: str) -> list[RoleMenuEntry] | str:
@@ -62,7 +62,7 @@ class CommandsMixin:
         description="Gérer les menus de rôles",
         sub_cmd_name="create",
         sub_cmd_description="Créer un menu de rôles dans un salon",
-        scopes=guild_scopes(enabled_servers),
+        scopes=guild_scopes(REACTION_ROLES.guild_ids()),
     )
     @slash_option(
         "channel",

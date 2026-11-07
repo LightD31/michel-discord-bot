@@ -20,15 +20,21 @@ from interactions import (
 )
 
 from extensions.customcommands._common import CustomCommandsConfig, logger
-from features.customcommands import CustomCommand, parse_commands, pick_response
+from features.customcommands import MODULE_KEY, CustomCommand, parse_commands, pick_response
 from features.links import shorten_text
-from src.core.config import load_config
+from src.core.config import ModuleConfig
+
+CUSTOM_COMMANDS = ModuleConfig(MODULE_KEY)
 
 
 class CustomCommandsExtension(Extension):
     """Registers each guild's configured commands as real slash commands."""
 
     MODULE_KEYS = ("moduleCustomCommands",)
+
+    # The commands themselves are built from the config.
+
+    RELOAD_ON_SAVE = True
 
     def __init__(self, bot: Client) -> None:
         # At startup every extension is loaded before login, so registering
@@ -47,9 +53,7 @@ class CustomCommandsExtension(Extension):
     # ── Registration ────────────────────────────────────────────────
 
     def _register_all(self) -> None:
-        _, module_config, enabled_servers = load_config("moduleCustomCommands")
-        for guild_id in enabled_servers:
-            guild_config = module_config.get(guild_id) or {}
+        for guild_id, guild_config in CUSTOM_COMMANDS.items():
             parsed = parse_commands(
                 guild_config.get("commands"),
                 reserved_names=self._reserved_names(guild_id),

@@ -64,3 +64,24 @@ async def mongo(monkeypatch) -> AsyncIterator[MongoTestEnv]:
         await client.drop_database(db.GLOBAL_DB_NAME)
         for opened in db.MongoManager._clients.values():
             opened.close()
+
+
+@pytest.fixture
+def store_config():
+    """Make the config store serve a given dict for the test, then restore it.
+
+    ``ModuleConfig`` and ``global_config`` read the store, so this is how a
+    test hands an extension its configuration::
+
+        store_config({"servers": {"42": {"moduleXp": {"enabled": True}}}})
+    """
+    from src.core.config import config_store
+
+    saved = config_store._data
+
+    def serve(data: dict) -> dict:
+        config_store._data = data
+        return data
+
+    yield serve
+    config_store._data = saved

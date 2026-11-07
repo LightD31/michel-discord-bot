@@ -7,7 +7,7 @@ from interactions import AutocompleteContext
 
 from features.confrerie import notion_props as np
 from src.core import logging as logutil
-from src.core.config import load_config
+from src.core.config import ModuleConfig, global_config
 from src.core.errors import BotError
 from src.webui.schemas import (
     SchemaBase,
@@ -126,10 +126,13 @@ class ConfrerieConfig(SchemaBase):
     )
 
 
-# Read once per import; a dashboard reload re-imports this module (see
-# ``src.webui.botops``), so the snapshot follows config edits.
-config, module_config, enabled_servers = load_config("moduleConfrerie")
-module_config = module_config[enabled_servers[0]] if enabled_servers else {}
+CONFRERIE = ModuleConfig("moduleConfrerie")
+# Taken at import, from the first enabled guild only (phase 4c makes this multi-guild):
+# the extension declares RELOAD_ON_SAVE, so a save of the module re-imports it.
+config = global_config()
+enabled_servers = CONFRERIE.guild_ids()
+# A copy: the recap refresh records the message id it posted in it.
+module_config = dict(CONFRERIE.get(enabled_servers[0])) if enabled_servers else {}
 guild_id: str | None = enabled_servers[0] if enabled_servers else None
 
 

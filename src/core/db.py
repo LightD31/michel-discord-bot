@@ -44,7 +44,7 @@ from motor.motor_asyncio import (
 from src.core import backup_format
 from src.core import config as _config
 from src.core import logging as _logging
-from src.core.config import load_config
+from src.core.config import global_config
 from src.core.errors import DatabaseError
 from src.core.health import health
 
@@ -124,8 +124,7 @@ class MongoManager:
         if client is None:
             if self._url is None:
                 try:
-                    config, _, _ = load_config()
-                    self._url = config.get("mongodb", {}).get("url", "")
+                    self._url = global_config().get("mongodb", {}).get("url", "")
                 except Exception as e:
                     logger.error("Failed to load MongoDB URL from config: %s", e)
                     self._url = ""

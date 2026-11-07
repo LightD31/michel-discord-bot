@@ -20,7 +20,7 @@ from interactions import Message
 from features.spotify import SpotifyRepository
 from features.spotify import search as track_search
 from src.core import logging as logutil
-from src.core.config import config_store, load_config, load_discord2name
+from src.core.config import ModuleConfig, config_store, global_config, load_discord2name
 from src.core.errors import ConfigError
 from src.core.http import http_client
 from src.discord_ext.embeds import Colors
@@ -147,7 +147,7 @@ class SpotifyConfig(SchemaBase):
     )
 
 
-config, module_config, enabled_servers = load_config("moduleSpotify")
+SPOTIFY = ModuleConfig("moduleSpotify")
 
 # ``devGuildId`` is optional. Left unset it is an empty string, which
 # interactions.py rejects when it converts a command's scopes to snowflakes —
@@ -155,8 +155,8 @@ config, module_config, enabled_servers = load_config("moduleSpotify")
 # used to take the whole Spotify extension down at import with nothing but an
 # ExtensionLoadException in the log. ``None`` here means "no dev guild", and
 # the dev-only command is simply not registered.
-DEV_GUILD = str(config.get("discord", {}).get("devGuildId") or "").strip() or None
-DATA_FOLDER = config["misc"]["dataFolder"]
+DEV_GUILD = str(global_config().get("discord", {}).get("devGuildId") or "").strip() or None
+DATA_FOLDER = global_config()["misc"]["dataFolder"]
 COOLDOWN_TIME = 1
 
 # ``spotify_api`` (``src.integrations.spotify``) runs every spotipy call on a
@@ -212,9 +212,13 @@ def count_votes(votes, discord2name):
 class VoteManager:
     """Per-guild add-with-vote storage, persisted through :class:`SpotifyRepository`."""
 
-    def __init__(self, repo: SpotifyRepository, discord2name):
+    def __init__(self, repo: SpotifyRepository, guild_id: str):
         self.repo = repo
-        self.discord2name = discord2name
+        self.guild_id = guild_id
+
+    @property
+    def discord2name(self) -> dict[str, Any]:
+        return load_discord2name(self.guild_id)
 
     async def load_data(self):
         return await self.repo.load_addwithvote_data()
@@ -276,42 +280,15 @@ def guild_links(guild_id: str | int | None) -> SpotifyLinks:
 
 
 class ServerData:
-    """Holds per-server configuration, state, and the per-guild repository."""
+    """One guild's Spotify state: its repository and what the votes keep in memory.
 
-    def __init__(self, guild_id: str, server_config: dict):
+    The settings are read from the live config at each use (``SPOTIFY.get``),
+    so a dashboard save applies without reloading the extension.
+    """
+
+    def __init__(self, guild_id: str):
         self.guild_id = guild_id
-        self.discord2name = load_discord2name(guild_id)
-
-        spotify_users = server_config.get("spotifyUsers", [])
-        self.spotify2discord = {}
-        if isinstance(spotify_users, list):
-            for user in spotify_users:
-                if isinstance(user, dict) and user.get("spotifyId") and user.get("discordId"):
-                    self.spotify2discord[user["spotifyId"]] = user["discordId"]
-
-        if not self.spotify2discord:
-            self.spotify2discord = server_config.get("spotifyIdToDiscordId", {})
-
-        self._server_config = server_config
-        self._public_dashboard = bool(server_config.get(PUBLIC_FLAG))
-        if self._public_dashboard and not server_config.get("spotifyDashboardUrl"):
-            # Mint the token now so the first embed can already link the page.
-            try:
-                ensure_public_token(guild_id)
-            except ConfigError as e:
-                logger.warning("Public dashboard token unavailable for %s: %s", guild_id, e)
-        self.channel_id = server_config.get("spotifyChannelId")
-        self.playlist_id = server_config.get("spotifyPlaylistId")
-        self.new_playlist_id = server_config.get("spotifyNewPlaylistId")
-        self.recap_channel_id = server_config.get("spotifyRecapChannelId")
-        self.recap_message_id = server_config.get("spotifyRecapMessageId")
-        self.recap_pin = bool(server_config.get("spotifyRecapPinMessage", False))
         self.recap_message: Message | None = None
-        try:
-            self.vote_reminder_every_days = int(server_config.get("voteReminderEveryDays") or 0)
-        except (TypeError, ValueError):
-            self.vote_reminder_every_days = 0
-        self.vote_reminder_role_id = str(server_config.get("voteReminderRoleId") or "")
 
         self.repo = SpotifyRepository(guild_id)
 
@@ -319,25 +296,88 @@ class ServerData:
         self.snapshot = {}
         self.reminders = {}
 
-        self.vote_manager = VoteManager(self.repo, self.discord2name)
+        self.vote_manager = VoteManager(self.repo, guild_id)
+
+    @property
+    def _config(self) -> dict[str, Any]:
+        return SPOTIFY.get(self.guild_id)
+
+    @property
+    def discord2name(self) -> dict[str, Any]:
+        return load_discord2name(self.guild_id)
+
+    @property
+    def spotify2discord(self) -> dict[str, str]:
+        mapping: dict[str, str] = {}
+        users = self._config.get("spotifyUsers", [])
+        for user in users if isinstance(users, list) else []:
+            if isinstance(user, dict) and user.get("spotifyId") and user.get("discordId"):
+                mapping[user["spotifyId"]] = user["discordId"]
+        return mapping
+
+    @property
+    def channel_id(self) -> str | None:
+        return self._config.get("spotifyChannelId")
+
+    @property
+    def playlist_id(self) -> str | None:
+        return self._config.get("spotifyPlaylistId")
+
+    @property
+    def new_playlist_id(self) -> str | None:
+        return self._config.get("spotifyNewPlaylistId")
+
+    @property
+    def recap_channel_id(self) -> str | None:
+        return self._config.get("spotifyRecapChannelId")
+
+    @property
+    def recap_message_id(self) -> str | None:
+        return self._config.get("spotifyRecapMessageId")
+
+    @property
+    def recap_pin(self) -> bool:
+        return bool(self._config.get("spotifyRecapPinMessage", False))
+
+    @property
+    def vote_reminder_every_days(self) -> int:
+        try:
+            return int(self._config.get("voteReminderEveryDays") or 0)
+        except (TypeError, ValueError):
+            return 0
+
+    @property
+    def vote_reminder_role_id(self) -> str:
+        return str(self._config.get("voteReminderRoleId") or "")
 
     @property
     def links(self) -> SpotifyLinks:
         """Configured links; the public page fills in when no dashboard link is set.
 
-        Read at use time so a token rotated from the dashboard applies at once.
+        Read at use time so a token rotated from the dashboard applies at once,
+        and minted on first use when the public page is switched on without a
+        dashboard link, so the first embed can already link the page.
         """
         public_dashboard = ""
-        if self._public_dashboard:
+        if self._config.get(PUBLIC_FLAG):
             server = config_store.get().get("servers", {}).get(self.guild_id) or {}
-            public_dashboard = public_dashboard_url(config, public_token(server), "spotify")
-        return SpotifyLinks.from_config(self._server_config, public_dashboard)
+            token = public_token(server)
+            if not token and not self._config.get("spotifyDashboardUrl"):
+                try:
+                    token = ensure_public_token(self.guild_id)
+                except ConfigError as e:
+                    logger.warning(
+                        "Public dashboard token unavailable for %s: %s", self.guild_id, e
+                    )
+            public_dashboard = public_dashboard_url(global_config(), token, "spotify")
+        return SpotifyLinks.from_config(self._config, public_dashboard)
 
 
-# Per-server data, keyed by stringified guild id.
-SERVERS: dict[str, ServerData] = {}
-for _guild_id in enabled_servers:
-    SERVERS[str(_guild_id)] = ServerData(str(_guild_id), module_config[_guild_id])
+# Per-server state, keyed by stringified guild id: the guilds enabled at load
+# (enabling the module in another guild reloads the extension).
+SERVERS: dict[str, ServerData] = {
+    guild_id: ServerData(guild_id) for guild_id in SPOTIFY.guild_ids()
+}
 
 
 async def embed_song(

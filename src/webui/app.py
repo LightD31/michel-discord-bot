@@ -13,8 +13,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from src.core import logging as logutil
-from src.core.config import config_write_error
-from src.core.config import load_config as bot_load_config
+from src.core.config import config_write_error, global_config
 from src.webui.auth import DiscordOAuth
 from src.webui.context import WebUIContext
 from src.webui.log_handler import WebUILogHandler, install_log_handler
@@ -93,7 +92,7 @@ def create_app(bot=None, bot_loop=None) -> FastAPI:
             write_err,
         )
 
-    config, _, _ = bot_load_config()
+    config = global_config()
     webui_config = config.get("webui", {})
     discord_config = config.get("discord", {})
 

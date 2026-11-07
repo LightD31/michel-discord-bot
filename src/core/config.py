@@ -1,8 +1,8 @@
 """Configuration manager for ``config/config.json``.
 
-Moved from ``src/config_manager.py``. Adds a reactive :class:`ConfigStore` so
-code can observe config changes instead of each extension holding its own stale
-copy from import time.
+:class:`ConfigStore` holds the config in memory and every write goes through
+it, so readers never see a stale copy. Extensions read it live through
+:class:`ModuleConfig` (one per-guild module) and :func:`global_config`.
 
 Writes are atomic (tempfile + ``os.replace`` + ``fsync``) and serialized by a
 ``threading.Lock`` — the bot runs an asyncio loop and the optional WebUI runs
@@ -15,6 +15,7 @@ import os
 import tempfile
 import threading
 from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Optional, cast
 
@@ -88,7 +89,7 @@ def config_write_error() -> str | None:
 
 
 # ---------------------------------------------------------------------------
-# Reactive store — new in Phase 1
+# Reactive store
 # ---------------------------------------------------------------------------
 
 
@@ -97,10 +98,11 @@ class ConfigStore:
 
     Purpose
     -------
-    Extensions currently load the config dict at import time and never see
-    edits the WebUI makes to disk. The store holds the authoritative in-memory
-    copy and notifies subscribers on every successful save or reload so
-    extensions can refresh their state without a bot restart.
+    The store holds the authoritative in-memory copy, which the dashboard's
+    saves and the bot's own writes (``save_module_field``, ``mutate``) update,
+    and notifies subscribers on every successful save or reload. Reads through
+    :class:`ModuleConfig` and :func:`global_config` therefore follow every
+    edit without a reload.
 
     Usage::
 
@@ -222,7 +224,7 @@ config_store = ConfigStore()
 
 
 # ---------------------------------------------------------------------------
-# Legacy function API (kept working via re-export shim)
+# Read accessors
 # ---------------------------------------------------------------------------
 
 
@@ -231,50 +233,85 @@ def load_full_config() -> dict[str, Any]:
     return _load_config_file()
 
 
-def load_config(
-    module_name: str | None = None,
-) -> tuple[dict[str, Any], dict[str, Any], list[str]]:
-    """Load the configuration for a specific module.
+def global_config() -> dict[str, Any]:
+    """The global sections (the ``config`` key), as the store holds them now.
 
-    Returns:
-        A tuple of (global_config, per_server_module_config, enabled_server_ids).
+    Read-only: it is the store's own data.
     """
-    data = load_full_config()
-    if not data:
-        return {}, {}, []
+    data = config_store.get().get("config")
+    return data if isinstance(data, dict) else {}
 
-    config = data.get("config", {})
 
-    if module_name is None:
-        return config, {}, []
+def _guild_key(guild_id: object) -> str:
+    return "" if guild_id is None else str(guild_id).strip()
 
-    servers = data.get("servers", {})
-    enabled_servers = [
-        str(server_id)
-        for server_id, server_info in servers.items()
-        if server_info.get(module_name, {}).get("enabled", False)
-    ]
 
-    module_config = {
-        server_id: server_info.get(module_name, {})
-        for server_id, server_info in servers.items()
-        if str(server_id) in enabled_servers
-    }
+@dataclass(frozen=True)
+class ModuleConfig:
+    """Live, read-only view of one per-guild module (``servers.<id>.<key>``).
 
-    logger.info(
-        "Loaded config for module %s for servers %s",
-        module_name,
-        enabled_servers,
-    )
+    Every call reads the config store, which the dashboard's saves update, so
+    an extension holding one of these sees a change on its next read without
+    being reloaded. Declare one per module, next to the schema::
 
-    return config, module_config, enabled_servers
+        TRICOUNT = ModuleConfig("moduleTricount")
+
+        @slash_command(..., scopes=guild_scopes(TRICOUNT.guild_ids()))  # fixed at import
+        async def cmd(self, ctx):
+            currency = TRICOUNT.get(ctx.guild_id).get("currency", "€")      # live
+
+    Command scopes are the one thing taken at import: interactions.py
+    registers a command on its guilds when the class is defined, which is why
+    switching a module on or off in a guild reloads its extensions.
+
+    Never mutate what it returns: it is the store's own data, shared with
+    every other reader. Write through :func:`save_module_field` or the
+    dashboard.
+    """
+
+    key: str
+
+    def _module(self, server: object) -> dict[str, Any] | None:
+        module = server.get(self.key) if isinstance(server, dict) else None
+        return module if isinstance(module, dict) and bool(module.get("enabled")) else None
+
+    def items(self) -> list[tuple[str, dict[str, Any]]]:
+        """``(guild_id, settings)`` for each guild where the module is on, now."""
+        servers = config_store.get().get("servers")
+        if not isinstance(servers, dict):
+            return []
+        out: list[tuple[str, dict[str, Any]]] = []
+        for guild_id, server in servers.items():
+            module = self._module(server)
+            if module is not None:
+                out.append((str(guild_id), module))
+        return out
+
+    def guild_ids(self) -> list[str]:
+        """The guilds where the module is on, now."""
+        return [guild_id for guild_id, _ in self.items()]
+
+    def get(self, guild_id: object) -> dict[str, Any]:
+        """The module's settings in *guild_id*, or ``{}`` where it is off (or no guild)."""
+        servers = config_store.get().get("servers")
+        if not isinstance(servers, dict):
+            return {}
+        return self._module(servers.get(_guild_key(guild_id))) or {}
+
+    def enabled(self, guild_id: object) -> bool:
+        """Whether the module is on in *guild_id* (``None``, a DM: never)."""
+        servers = config_store.get().get("servers")
+        if not isinstance(servers, dict):
+            return False
+        return self._module(servers.get(_guild_key(guild_id))) is not None
 
 
 def load_discord2name(guild_id: str | int) -> dict[str, Any]:
-    """Load the discord2name mapping for a specific guild."""
-    data = load_full_config()
-    result: dict[str, Any] = data.get("servers", {}).get(str(guild_id), {}).get("discord2name", {})
-    return result
+    """The guild's Discord id → first name mapping, as the store holds it now."""
+    servers = config_store.get().get("servers")
+    server = servers.get(_guild_key(guild_id)) if isinstance(servers, dict) else None
+    mapping = server.get("discord2name") if isinstance(server, dict) else None
+    return mapping if isinstance(mapping, dict) else {}
 
 
 def save_module_field(module_name: str, guild_id: str | int, field: str, value: Any) -> None:

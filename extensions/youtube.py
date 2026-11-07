@@ -12,7 +12,7 @@ from features.youtube import (
     wanted,
 )
 from src.core import logging as logutil
-from src.core.config import load_config
+from src.core.config import ModuleConfig, global_config
 from src.core.http import fetch
 from src.webui.schemas import SchemaBase, enabled_field, register_module, ui
 
@@ -62,10 +62,13 @@ class YoutubeConfig(SchemaBase):
 
 
 logger = logutil.init_logger(__name__)
-config, module_config, enabled_servers = load_config("moduleYoutube")
-
-YOUTUBE_API_KEY = config["youtube"]["youtubeApiKey"]
+YOUTUBE = ModuleConfig("moduleYoutube")
 YOUTUBE_API_URL = "https://www.googleapis.com/youtube/v3"
+
+
+def _api_key() -> str:
+    """The YouTube Data API key (global section ``youtube``), read at each call."""
+    return str((global_config().get("youtube") or {}).get("youtubeApiKey") or "").strip()
 
 
 class YoutubeExtension(Extension):
@@ -82,9 +85,12 @@ class YoutubeExtension(Extension):
 
     @Task.create(IntervalTrigger(minutes=5))
     async def check_youtube(self):
+        if not _api_key():
+            logger.warning("No YouTube API key (youtube.youtubeApiKey): skipping the check")
+            return
         # One read of every guild's last-seen videos per tick, not one per guild.
         youtube_data = await self.get_youtube_data()
-        for server in enabled_servers:
+        for server in YOUTUBE.guild_ids():
             try:
                 await self._check_server(str(server), youtube_data)
             except Exception as e:  # noqa: BLE001 — one guild's failure must not stop the others
@@ -97,7 +103,7 @@ class YoutubeExtension(Extension):
         call is logged and retried next tick, while the others still post and
         their progress is saved.
         """
-        srv_config = module_config[server]
+        srv_config = YOUTUBE.get(server)
         channel_id = srv_config.get("ChannelId")
         if not channel_id:
             return
@@ -165,7 +171,7 @@ class YoutubeExtension(Extension):
             f"{YOUTUBE_API_URL}/{endpoint}",
             return_type="json",
             params=params,
-            headers={"X-Goog-Api-Key": YOUTUBE_API_KEY},
+            headers={"X-Goog-Api-Key": _api_key()},
         )
         logger.debug(data)
         return data
@@ -185,7 +191,7 @@ class YoutubeExtension(Extension):
 
     async def get_youtube_data(self):
         data = {}
-        for server_id in enabled_servers:
+        for server_id in YOUTUBE.guild_ids():
             ids = await YoutubeRepository(server_id).get_last_video_ids()
             if ids is not None:
                 data[str(server_id)] = ids

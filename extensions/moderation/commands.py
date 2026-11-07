@@ -32,9 +32,9 @@ from src.discord_ext.scopes import guild_scopes
 
 from ._common import (
     AUTOMOD_MODERATOR_ID,
+    MODERATION,
     TYPE_LABELS,
     can_moderate,
-    enabled_servers,
     get_guild_settings,
     logger,
 )
@@ -90,7 +90,7 @@ class CommandsMixin:
     @slash_command(
         name="warn",
         description="Avertir un membre",
-        scopes=guild_scopes(enabled_servers),
+        scopes=guild_scopes(MODERATION.guild_ids()),
     )
     @slash_option(
         "membre",
@@ -138,7 +138,7 @@ class CommandsMixin:
     @slash_command(
         name="timeout",
         description="Exclure temporairement un membre (timeout)",
-        scopes=guild_scopes(enabled_servers),
+        scopes=guild_scopes(MODERATION.guild_ids()),
     )
     @slash_option(
         "membre",
@@ -211,7 +211,7 @@ class CommandsMixin:
     @slash_command(
         name="untimeout",
         description="Lever l'exclusion temporaire d'un membre",
-        scopes=guild_scopes(enabled_servers),
+        scopes=guild_scopes(MODERATION.guild_ids()),
     )
     @slash_option(
         "membre", "Membre concerné", opt_type=OptionType.USER, required=True, argument_name="member"
@@ -244,7 +244,7 @@ class CommandsMixin:
     @slash_command(
         name="kick",
         description="Expulser un membre",
-        scopes=guild_scopes(enabled_servers),
+        scopes=guild_scopes(MODERATION.guild_ids()),
     )
     @slash_option(
         "membre",
@@ -287,7 +287,7 @@ class CommandsMixin:
     @slash_command(
         name="ban",
         description="Bannir un membre",
-        scopes=guild_scopes(enabled_servers),
+        scopes=guild_scopes(MODERATION.guild_ids()),
     )
     @slash_option(
         "membre", "Membre à bannir", opt_type=OptionType.USER, required=True, argument_name="member"
@@ -345,7 +345,7 @@ class CommandsMixin:
     @slash_command(
         name="unban",
         description="Révoquer le bannissement d'un utilisateur",
-        scopes=guild_scopes(enabled_servers),
+        scopes=guild_scopes(MODERATION.guild_ids()),
     )
     @slash_option(
         "utilisateur_id",
@@ -409,7 +409,7 @@ class CommandsMixin:
         description="Consulter et gérer l'historique de modération",
         sub_cmd_name="list",
         sub_cmd_description="Lister les sanctions d'un membre",
-        scopes=guild_scopes(enabled_servers),
+        scopes=guild_scopes(MODERATION.guild_ids()),
     )
     @slash_option(
         "membre", "Membre concerné", opt_type=OptionType.USER, required=True, argument_name="member"

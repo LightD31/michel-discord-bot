@@ -50,9 +50,8 @@ from src.discord_ext.scopes import guild_scopes
 from ._common import (
     DEFAULT_TEMPLATE,
     MAX_NEW_PER_POLL,
-    enabled_servers,
+    RSS,
     logger,
-    module_config,
 )
 
 
@@ -244,7 +243,7 @@ class RssExtension(Extension):
 
     @listen()
     async def on_startup(self):
-        logger.info("RSS extension ready (%d guild(s))", len(enabled_servers))
+        logger.info("RSS extension ready (%d guild(s))", len(RSS.guild_ids()))
         self.check_feeds.start()
 
     # ------------------------------------------------------------------
@@ -263,8 +262,7 @@ class RssExtension(Extension):
         from datetime import datetime, timedelta
 
         now = datetime.now()
-        for guild_id in enabled_servers:
-            srv_cfg = module_config.get(str(guild_id), {})
+        for guild_id, srv_cfg in RSS.items():
             default_channel_id = srv_cfg.get("ChannelId")
             if not default_channel_id:
                 continue
@@ -374,7 +372,7 @@ class RssExtension(Extension):
         description="Outils RSS",
         sub_cmd_name="test",
         sub_cmd_description="Aperçu des dernières entrées d'un flux sans le configurer",
-        scopes=guild_scopes(enabled_servers),
+        scopes=guild_scopes(RSS.guild_ids()),
     )
     @slash_option(
         "url",
@@ -433,7 +431,7 @@ class RssExtension(Extension):
     async def rss_list(self, ctx: SlashContext) -> None:
         if not await require_guild(ctx):
             return
-        srv_cfg = module_config.get(str(ctx.guild_id), {})
+        srv_cfg = RSS.get(ctx.guild_id)
         feeds = list(_iter_feeds(srv_cfg))
         if not feeds:
             await ctx.send("Aucun flux configuré.", ephemeral=True)

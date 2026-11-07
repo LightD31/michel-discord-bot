@@ -14,7 +14,7 @@ from interactions import Client, Extension, listen
 
 from features.reactionroles import ReactionRolesRepository
 
-from ._common import enabled_servers, logger
+from ._common import REACTION_ROLES, logger
 from .buttons import ButtonsMixin
 from .commands import CommandsMixin
 
@@ -36,9 +36,9 @@ class ReactionRolesExtension(Extension, CommandsMixin, ButtonsMixin):
 
     @listen()
     async def on_startup(self):
-        for gid in enabled_servers:
+        for gid in REACTION_ROLES.guild_ids():
             await self.repository(gid).ensure_indexes()
-        logger.info("Reaction Roles ready (%d guild(s))", len(enabled_servers))
+        logger.info("Reaction Roles ready (%d guild(s))", len(REACTION_ROLES.guild_ids()))
 
 
 def setup(bot: Client) -> None:

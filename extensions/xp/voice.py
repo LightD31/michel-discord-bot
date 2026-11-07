@@ -27,9 +27,8 @@ from features.xp import (
     calculate_level,
 )
 from src.core.errors import DatabaseError
-from src.discord_ext.autocomplete import is_guild_enabled
 
-from ._common import enabled_servers, logger, module_config
+from ._common import XP, logger
 
 
 class VoiceMixin:
@@ -56,10 +55,10 @@ class VoiceMixin:
         if member is None or member.bot:
             return
         guild = member.guild
-        if guild is None or not is_guild_enabled(guild.id, enabled_servers):
+        if guild is None or not XP.enabled(guild.id):
             return
         guild_id = str(guild.id)
-        if not module_config.get(guild_id, {}).get("voiceXpEnabled", False):
+        if not XP.get(guild_id).get("voiceXpEnabled", False):
             return
 
         key = (guild_id, str(member.id))

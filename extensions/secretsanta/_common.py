@@ -13,7 +13,7 @@ from interactions import (
 )
 
 from src.core import logging as logutil
-from src.core.config import load_config
+from src.core.config import ModuleConfig
 from src.webui.schemas import SchemaBase, enabled_field, register_module
 
 
@@ -31,7 +31,7 @@ class SecretSantaConfig(SchemaBase):
 
 
 logger = logutil.init_logger(__name__)
-config, module_config, enabled_servers = load_config("moduleSecretSanta")
+SANTA = ModuleConfig("moduleSecretSanta")
 
 DATA_DIR = Path("data/secret_santa")
 DATA_DIR.mkdir(parents=True, exist_ok=True)

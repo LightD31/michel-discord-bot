@@ -13,7 +13,7 @@ from interactions.api.events import MessageCreate
 
 from features.feur import FeurRepository
 from src.core import logging as logutil
-from src.core.config import load_config
+from src.core.config import ModuleConfig
 from src.core.text import sanitize_content
 from src.discord_ext.embeds import Colors
 from src.discord_ext.messages import require_guild
@@ -33,7 +33,7 @@ class FeurConfig(SchemaBase):
 
 logger = logutil.init_logger(__name__)
 
-config, module_config, enabled_servers = load_config("moduleFeur")
+FEUR = ModuleConfig("moduleFeur")
 
 FEUR_EMOJIS = ["🇫", "🇪", "🇺", "🇷"]
 POUR_FEUR_EMOJIS = ["🇵", "🇴", "🇺", "🇷", "🇫", "🇪", "⛎", "®️"]
@@ -83,7 +83,7 @@ class FeurExtension(Extension):
             return
         if event.message.guild is None:
             return
-        if str(event.message.guild.id) not in module_config:
+        if not FEUR.enabled(event.message.guild.id):
             return
 
         content = sanitize_content(event.message.content.lower()).strip()
@@ -105,7 +105,7 @@ class FeurExtension(Extension):
     @slash_command(
         name="feurstats",
         description="Affiche les statistiques de feur",
-        scopes=guild_scopes(enabled_servers),
+        scopes=guild_scopes(FEUR.guild_ids()),
     )
     async def feur_stats(self, ctx: SlashContext):
         if not await require_guild(ctx):

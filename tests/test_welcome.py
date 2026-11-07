@@ -16,13 +16,10 @@ GUILD = "42"
 
 
 @pytest.fixture
-def welcome(monkeypatch):
-    import src.core.config as core_config
-
-    configs = {GUILD: {"welcomeChannelId": "7", "welcomeImageEnabled": False}}
-    monkeypatch.setattr(
-        core_config, "load_config", lambda module_name=None: ({}, configs, list(configs))
-    )
+def welcome(store_config):
+    settings = {"enabled": True, "welcomeChannelId": "7", "welcomeImageEnabled": False}
+    store_config({"servers": {GUILD: {"moduleWelcome": settings}}})
+    configs = {GUILD: settings}  # the store's own dicts: a test edits them in place
     sys.modules.pop("extensions.welcome", None)
     module = importlib.import_module("extensions.welcome")
     yield module, configs

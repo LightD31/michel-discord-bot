@@ -3,7 +3,7 @@
 import os
 
 from src.core import logging as logutil
-from src.core.config import load_config
+from src.core.config import ModuleConfig
 from src.webui.schemas import SchemaBase, enabled_field, register_module, ui
 
 logger = logutil.init_logger(__name__)
@@ -60,10 +60,9 @@ class StarboardConfig(SchemaBase):
     )
 
 
-_, module_config, enabled_servers = load_config("moduleStarboard")
-enabled_servers_int = [int(s) for s in enabled_servers]  # type: ignore[misc]
+STARBOARD = ModuleConfig("moduleStarboard")
 
 
 def get_guild_settings(guild_id: int | str) -> dict | None:
     """Return per-guild module config dict, or None if disabled/missing."""
-    return module_config.get(str(guild_id))
+    return STARBOARD.get(guild_id) or None
