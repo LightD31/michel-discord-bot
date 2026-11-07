@@ -28,12 +28,11 @@ Usage::
 import asyncio
 import contextlib
 import functools
-import json
 import shutil
 from collections.abc import Awaitable, Callable
 from datetime import datetime
 from pathlib import Path
-from typing import ClassVar, Optional
+from typing import Any, ClassVar, Optional
 
 import pymongo.errors
 from motor.motor_asyncio import (
@@ -42,6 +41,7 @@ from motor.motor_asyncio import (
     AsyncIOMotorDatabase,
 )
 
+from src.core import backup_format
 from src.core import config as _config
 from src.core import logging as _logging
 from src.core.config import load_config
@@ -60,6 +60,8 @@ BACKUP_EXCLUDED_COLLECTIONS: frozenset[tuple[str, str]] = frozenset(
 )
 # Name of the copy of ``config/config.json`` stored next to each backup.
 BACKUP_CONFIG_FILENAME = "config.json"
+# Documents handed to the writer thread at a time: bounds memory per collection.
+BACKUP_BATCH_SIZE = 1000
 
 
 def translates_db_errors[**P, R](func: Callable[P, Awaitable[R]]) -> Callable[P, Awaitable[R]]:
@@ -214,11 +216,15 @@ class MongoManager:
         backup_dir: str = "data/backups",
         max_backups: int = 7,
     ) -> str:
-        """Export every relevant database (global + guild_*) to JSON files.
+        """Export every relevant database (global + guild_*) to a backup folder.
 
+        Each collection becomes a gzip-compressed Extended JSON Lines file (see
+        :mod:`src.core.backup_format`), written in batches on a worker thread so
+        neither the whole collection nor the file I/O sits on the event loop.
         Collections in :data:`BACKUP_EXCLUDED_COLLECTIONS` are skipped. A copy of
-        ``config/config.json`` — every guild's configuration, which lives
-        outside MongoDB — is saved alongside, readable by its owner only.
+        ``config/config.json`` (every guild's configuration, which lives outside
+        MongoDB) is saved alongside, readable by its owner only, and a manifest
+        records how many documents each collection holds.
 
         Args:
             backup_dir: Root directory where backups are stored.
@@ -236,37 +242,25 @@ class MongoManager:
         # Only back up our own databases
         relevant = [n for n in db_names if n.startswith(GUILD_DB_PREFIX) or n == GLOBAL_DB_NAME]
 
-        total_docs = 0
+        counts: dict[str, dict[str, int]] = {}
         for db_name in relevant:
             db = self.client[db_name]
-            col_names = await db.list_collection_names()
-            db_dir = dest / db_name
-            db_dir.mkdir(parents=True, exist_ok=True)
-
-            for col_name in col_names:
+            counts[db_name] = {}
+            for col_name in await db.list_collection_names():
                 if (db_name, col_name) in BACKUP_EXCLUDED_COLLECTIONS:
                     continue
-                docs = []
-                async for doc in db[col_name].find():
-                    # Convert ObjectId and other BSON types to strings
-                    doc["_id"] = str(doc["_id"])
-                    docs.append(doc)
-
-                out_file = db_dir / f"{col_name}.json"
-                out_file.write_text(
-                    json.dumps(docs, ensure_ascii=False, indent=2, default=str),
-                    encoding="utf-8",
+                counts[db_name][col_name] = await self._dump_collection(
+                    db[col_name], backup_format.collection_path(dest, db_name, col_name)
                 )
-                total_docs += len(docs)
+            logger.debug("Backed up database '%s' (%d collections)", db_name, len(counts[db_name]))
 
-            logger.debug("Backed up database '%s' (%d collections)", db_name, len(col_names))
-
+        await asyncio.to_thread(backup_format.write_manifest, dest, timestamp, counts)
         self._copy_config(dest)
 
         logger.info(
             "Backup complete: %d databases, %d total documents → %s",
             len(relevant),
-            total_docs,
+            sum(sum(c.values()) for c in counts.values()),
             dest,
         )
 
@@ -274,6 +268,23 @@ class MongoManager:
         self._prune_backups(backup_dir, max_backups)
 
         return str(dest)
+
+    @staticmethod
+    async def _dump_collection(collection: Any, path: Path) -> int:
+        """Stream *collection* into *path*, :data:`BACKUP_BATCH_SIZE` documents at a time."""
+        writer = await asyncio.to_thread(backup_format.CollectionWriter, path)
+        try:
+            batch: list[dict[str, Any]] = []
+            async for doc in collection.find():
+                batch.append(doc)
+                if len(batch) >= BACKUP_BATCH_SIZE:
+                    await asyncio.to_thread(writer.write, batch)
+                    batch = []
+            if batch:
+                await asyncio.to_thread(writer.write, batch)
+        finally:
+            await asyncio.to_thread(writer.close)
+        return writer.count
 
     @staticmethod
     def _copy_config(dest: Path) -> None:
