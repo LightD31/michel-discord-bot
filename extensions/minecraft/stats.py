@@ -13,19 +13,12 @@ from interactions import (
     TimeTrigger,
 )
 
+from features.minecraft import MinecraftSettings
 from features.minecraft import get_config as get_mc_config
 from src.core.images import create_dynamic_image
 from src.discord_ext.messages import edit_message_if_changed
 
-from ._common import (
-    SFTP_HOST,
-    SFTP_HOST_KEY,
-    SFTP_PORT,
-    SFTP_USERNAME,
-    SFTPS_PASSWORD,
-    build_stats_embed,
-    logger,
-)
+from ._common import MINECRAFT, build_stats_embed, logger
 
 
 class StatsMixin:
@@ -33,15 +26,24 @@ class StatsMixin:
 
     @Task.create(OrTrigger(*[TimeTrigger(hour=i, minute=10) for i in range(24)]))
     async def stats(self):
-        """Update Minecraft server statistics every hour at X:10."""
+        """Update each enabled guild's Minecraft player statistics every hour at X:10."""
         logger.debug("Updating Minecraft server stats")
-        message = await self._get_status_message()
+        guilds = MINECRAFT.items()
+        self._forget_disabled_guilds([guild_id for guild_id, _ in guilds])
+        for guild_id, config in guilds:
+            try:
+                await self._update_stats(guild_id, config, MinecraftSettings.from_config(config))
+            except Exception as e:  # noqa: BLE001 — one server down must not stop the others
+                logger.error("Guild %s: failed to update Minecraft stats: %s", guild_id, e)
+
+    async def _update_stats(self, guild_id: str, config: dict, settings: MinecraftSettings):
+        message = await self.status_messages.get(guild_id, config)
         if message is None:
-            logger.debug("No status message configured yet; skipping stats")
+            logger.debug("Guild %s: no status message configured yet; skipping stats", guild_id)
             return
         embed1 = message.embeds[0] if message.embeds else Embed(title="Minecraft")
 
-        player_stats = await self._get_player_stats()
+        player_stats = await self._get_player_stats(settings)
         table = self._create_stats_table(player_stats)
 
         # Only move the "last refreshed" stamp when the table actually moved.
@@ -49,8 +51,10 @@ class StatsMixin:
         # an hour with no activity costs no edit at all.
         table_string = table.get_string() if table else None
         previous = message.embeds[1].timestamp if len(message.embeds) > 1 else None
-        unchanged = table_string is not None and table_string == self._last_stats_table
-        self._last_stats_table = table_string
+        unchanged = table_string is not None and table_string == self._last_stats_tables.get(
+            guild_id
+        )
+        self._last_stats_tables[guild_id] = table_string
         # Whole seconds only: the rendered label has second granularity anyway, and a
         # sub-second tail would just be one more thing to differ on round-trip.
         embed2 = build_stats_embed(
@@ -59,25 +63,28 @@ class StatsMixin:
 
         await self._update_stats_message(message, embed1, embed2, table)
 
-    async def _get_player_stats(self):
-        """Retrieve player statistics from the Minecraft server."""
+    async def _get_player_stats(self, settings: MinecraftSettings):
+        """Retrieve player statistics from the guild's Minecraft server."""
         from features.minecraft import get_minecraft_stats_with_retry
 
-        if not SFTP_HOST_KEY:
+        if not settings.sftp_host_key:
             logger.error(
                 "Minecraft stats skipped: no SFTP host key configured (minecraftSftpHostKey)"
             )
             return []
         try:
             logger.debug(
-                f"SFTP connection params: host={SFTP_HOST}, port={SFTP_PORT}, username={SFTP_USERNAME}"
+                "SFTP connection params: host=%s, port=%s, username=%s",
+                settings.sftp_host,
+                settings.sftp_port,
+                settings.sftp_username,
             )
             player_stats = await get_minecraft_stats_with_retry(
-                host=SFTP_HOST,
-                port=SFTP_PORT,
-                username=SFTP_USERNAME,
-                password=SFTPS_PASSWORD,
-                host_key=SFTP_HOST_KEY,
+                host=settings.sftp_host,
+                port=settings.sftp_port,
+                username=settings.sftp_username,
+                password=settings.sftp_password,
+                host_key=settings.sftp_host_key,
             )
             logger.debug(
                 f"Retrieved stats for {len(player_stats)} players using optimized connection"
@@ -86,7 +93,11 @@ class StatsMixin:
 
         except Exception as e:
             logger.error(
-                f"Failed to get stats with optimized method (host={SFTP_HOST}, port={SFTP_PORT}, user={SFTP_USERNAME}): {e}"
+                "Failed to get stats with optimized method (host=%s, port=%s, user=%s): %s",
+                settings.sftp_host,
+                settings.sftp_port,
+                settings.sftp_username,
+                e,
             )
             return []
 

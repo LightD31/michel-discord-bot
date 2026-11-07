@@ -343,7 +343,83 @@ async def fetch_or_create_persistent_message(
     return msg
 
 
+class GuildMessages:
+    """One persistent message per guild for a module, kept between refreshes.
+
+    A periodic refresher calls ``await messages.get(guild_id, settings)`` with
+    the guild's live module settings. The message is fetched (or created, and
+    its id saved under *message_key*) on first use, then reused; it is fetched
+    again when the configured channel changes, so a dashboard edit applies at
+    the next refresh without reloading the extension. A guild without a
+    channel gets ``None``. ``keep_only()`` drops the guilds where the module
+    was switched off.
+    """
+
+    def __init__(
+        self,
+        bot: Client,
+        *,
+        module_name: str,
+        channel_key: str,
+        message_key: str,
+        initial_content: str = "Initialisation…",
+        pin_key: str | None = None,
+        logger: logging.Logger | None = None,
+    ) -> None:
+        self.bot = bot
+        self.module_name = module_name
+        self.channel_key = channel_key
+        self.message_key = message_key
+        self.initial_content = initial_content
+        self.pin_key = pin_key
+        self.logger = logger
+        self._messages: dict[str, tuple[str, Message]] = {}
+
+    async def get(self, guild_id: int | str, settings: dict[str, Any]) -> Message | None:
+        """The guild's message, fetched or created if not cached for its channel."""
+        gid = str(guild_id)
+        channel_id = str(settings.get(self.channel_key) or "").strip()
+        if not channel_id:
+            self._messages.pop(gid, None)
+            return None
+        cached = self._messages.get(gid)
+        if cached is not None and cached[0] == channel_id:
+            return cached[1]
+        message = await fetch_or_create_persistent_message(
+            self.bot,
+            channel_id=channel_id,
+            message_id=settings.get(self.message_key),
+            module_name=self.module_name,
+            message_id_key=self.message_key,
+            guild_id=gid,
+            initial_content=self.initial_content,
+            pin=bool(settings.get(self.pin_key)) if self.pin_key else False,
+            logger=self.logger,
+        )
+        if message is None:
+            self._messages.pop(gid, None)
+        else:
+            self._messages[gid] = (channel_id, message)
+        return message
+
+    def cached(self, guild_id: int | str) -> Message | None:
+        """The guild's message if one is already held, without any Discord call."""
+        entry = self._messages.get(str(guild_id))
+        return entry[1] if entry else None
+
+    def forget(self, guild_id: int | str) -> None:
+        """Fetch the guild's message again next time (it was deleted, say)."""
+        self._messages.pop(str(guild_id), None)
+
+    def keep_only(self, guild_ids: Sequence[int | str]) -> None:
+        """Drop the messages of every guild not in *guild_ids*."""
+        keep = {str(g) for g in guild_ids}
+        for gid in [g for g in self._messages if g not in keep]:
+            del self._messages[gid]
+
+
 __all__ = [
+    "GuildMessages",
     "copy_embed",
     "edit_message_if_changed",
     "fetch_or_create_persistent_message",

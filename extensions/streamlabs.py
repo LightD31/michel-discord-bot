@@ -10,7 +10,6 @@ from interactions import (
     Embed,
     Extension,
     IntervalTrigger,
-    Message,
     Permissions,
     Task,
     listen,
@@ -27,8 +26,8 @@ from src.core.tasks import spawn
 from src.core.text import escape_md
 from src.discord_ext.links import shorten_embeds
 from src.discord_ext.messages import (
+    GuildMessages,
     edit_message_if_changed,
-    fetch_or_create_persistent_message,
     send_error,
 )
 from src.discord_ext.scopes import guild_scopes
@@ -79,50 +78,39 @@ logger = logutil.init_logger(__name__)
 COLOR = 0x005EA5
 
 STREAMLABS = ModuleConfig("moduleStreamlabsCharity")
-# Taken at import, from the first enabled guild only (phase 4c makes this multi-guild):
-# the extension declares RELOAD_ON_SAVE, so a save of the module re-imports it.
-_config = global_config()
-_enabled_servers = STREAMLABS.guild_ids()
-_guild_cfg = dict(STREAMLABS.get(_enabled_servers[0])) if _enabled_servers else {}
-# Configured per guild in the Web UI; empty means the tracker stays idle.
-STREAMLABS_URL = _guild_cfg.get("streamlabsTeamUrl") or ""
+
+
+def _team_url(settings: dict) -> str:
+    """The guild's Streamlabs Charity team URL; empty means the tracker stays idle."""
+    return str(settings.get("streamlabsTeamUrl") or "").strip()
 
 
 class StreamlabsCharityExtension(Extension):
+    """Each enabled guild's Streamlabs Charity campaign, refreshed every minute.
+
+    The settings are read at each refresh, so a dashboard save (another team,
+    another channel) applies at the next one without a reload.
+    """
+
     MODULE_KEYS = ("moduleStreamlabsCharity",)
-    # Single-guild settings taken at import; the socket connects with them.
-    RELOAD_ON_SAVE = True
 
     def __init__(self, bot: Client):
         self.bot: Client = bot
         self.twitch = None
-        self.client_id = _config["twitch"]["twitchClientId"]
-        self.client_secret = _config["twitch"]["twitchClientSecret"]
-        self.channel_id: str | None = _guild_cfg.get("streamlabsChannelId")
-        self.message_id: str | None = _guild_cfg.get("streamlabsMessageId")
-        self.pin: bool = bool(_guild_cfg.get("streamlabsPinMessage", False))
-        self.guild_id: str | None = _enabled_servers[0] if _enabled_servers else None
-        self.message: Message | None = None
-
-    async def _get_message(self) -> Message | None:
-        if self.message is not None:
-            return self.message
-        self.message = await fetch_or_create_persistent_message(
-            self.bot,
-            channel_id=self.channel_id,
-            message_id=self.message_id,
-            module_name="moduleStreamlabsCharity",
-            message_id_key="streamlabsMessageId",
-            guild_id=self.guild_id,
+        self.messages = GuildMessages(
+            bot,
+            module_name=STREAMLABS.key,
+            channel_key="streamlabsChannelId",
+            message_key="streamlabsMessageId",
+            pin_key="streamlabsPinMessage",
             initial_content="Initialisation Streamlabs Charity…",
-            pin=self.pin,
             logger=logger,
         )
-        return self.message
 
     @listen()
     async def on_startup(self):
-        self.streamlabscharity.start()
+        if not self.streamlabscharity.running:
+            self.streamlabscharity.start()
         spawn(self.run(), name="streamlabs-twitch-auth", log=logger)
 
     async def async_drop(self):
@@ -135,8 +123,11 @@ class StreamlabsCharityExtension(Extension):
             self.twitch = None
 
     async def run(self):
+        twitch_settings = global_config().get("twitch") or {}
         try:
-            self.twitch = await Twitch(self.client_id, self.client_secret)
+            self.twitch = await Twitch(
+                twitch_settings["twitchClientId"], twitch_settings["twitchClientSecret"]
+            )
             helper = UserAuthenticationStorageHelper(
                 twitch=self.twitch,
                 scopes=[AuthScope.USER_READ_SUBSCRIPTIONS],
@@ -149,29 +140,42 @@ class StreamlabsCharityExtension(Extension):
 
     @Task.create(IntervalTrigger(minutes=1))
     async def streamlabscharity(self):
-        if not STREAMLABS_URL:
-            logger.debug("Streamlabs team URL not configured; skipping")
-            return
-        try:
-            message = await self._get_message()
-            if message is None:
-                logger.debug("Streamlabs message not configured yet; skipping")
-                return
-            campaign_data = await self.fetch_campaign_data()
-            members_dict = await self.fetch_members_data(campaign_data["id"])
-            await self.update_live_status(members_dict)
-            await self.update_message(message, campaign_data, members_dict)
-        except ClientError as e:
-            logger.error(f"Failed to fetch channel or message: {e}")
-        except KeyError as e:
-            logger.error(f"Key error while processing JSON data: {e}")
-        except Exception as e:
-            logger.error(f"An unexpected error occurred: {e}")
+        guilds = STREAMLABS.items()
+        self.messages.keep_only([guild_id for guild_id, _ in guilds])
+        # A team followed by several guilds is fetched once per refresh.
+        teams: dict[str, tuple[dict, dict]] = {}
+        for guild_id, settings in guilds:
+            url = _team_url(settings)
+            if not url:
+                logger.debug("Guild %s: Streamlabs team URL not configured; skipping", guild_id)
+                continue
+            try:
+                message = await self.messages.get(guild_id, settings)
+                if message is None:
+                    logger.debug("Guild %s: Streamlabs message not configured yet", guild_id)
+                    continue
+                if url not in teams:
+                    teams[url] = await self.fetch_team(url)
+                campaign_data, members_dict = teams[url]
+                await self.update_message(message, url, campaign_data, members_dict)
+            except ClientError as e:
+                logger.error("Guild %s: failed to fetch Streamlabs data: %s", guild_id, e)
+            except KeyError as e:
+                logger.error("Guild %s: unexpected Streamlabs data (%s)", guild_id, e)
+            except Exception as e:  # noqa: BLE001 — one guild's failure must not stop the others
+                logger.error("Guild %s: Streamlabs update failed: %s", guild_id, e)
 
-    async def fetch_campaign_data(self):
+    async def fetch_team(self, url: str) -> tuple[dict, dict]:
+        """The team's campaign and its members, with their live status."""
+        campaign_data = await self.fetch_campaign_data(url)
+        members_dict = await self.fetch_members_data(campaign_data["id"])
+        await self.update_live_status(members_dict)
+        return campaign_data, members_dict
+
+    async def fetch_campaign_data(self, url: str):
         # The team URL is set per guild from the dashboard: never fetch it as
         # one of the bot's own trusted endpoints.
-        return await fetch_untrusted(STREAMLABS_URL.replace("teams", "api/v1/teams"), "json")
+        return await fetch_untrusted(url.replace("teams", "api/v1/teams"), "json")
 
     async def fetch_members_data(self, campaign_id):
         members_data = await fetch(
@@ -206,14 +210,14 @@ class StreamlabsCharityExtension(Extension):
                     members_dict[stream.user_login]["is_live"] = True
                     members_dict[stream.user_login]["title"] = stream.title
 
-    async def update_message(self, message, campaign_data, members_dict):
+    async def update_message(self, message, url, campaign_data, members_dict):
         members_dict = dict(sorted(members_dict.items()))
         online_members, offline_members = self.categorize_members(members_dict)
         members_str_online = self.split_members(online_members)
         members_str_offline = self.split_members(offline_members)
         embeds = await shorten_embeds(
             [
-                self.create_campaign_embed(campaign_data),
+                self.create_campaign_embed(campaign_data, url),
                 self.create_cause_embed(campaign_data),
                 self.create_streamers_embed(members_str_online, members_str_offline, members_dict),
             ],
@@ -249,7 +253,7 @@ class StreamlabsCharityExtension(Extension):
             members_str_list.append(current_str)
         return members_str_list
 
-    def create_campaign_embed(self, campaign_data):
+    def create_campaign_embed(self, campaign_data, url: str):
         formatted_amount = format_currency(
             campaign_data["amount_raised"] / 100, "EUR", locale="fr_FR"
         )
@@ -260,7 +264,7 @@ class StreamlabsCharityExtension(Extension):
                 f"pour **{campaign_data['campaign']['causable']['display_name']}**.\n\n"
                 f"{campaign_data['campaign']['page_settings']['description']}"
             ),
-            url=STREAMLABS_URL or None,
+            url=url or None,
             color=COLOR,
         )
 
@@ -318,28 +322,29 @@ class StreamlabsCharityExtension(Extension):
         for members_str in members_str_list[1:]:
             embed.add_field(name="\u200b", value=members_str, inline=False)
 
-    # Single-guild module: only the first enabled server is tracked.
     @slash_command(
         "endcharitycount",
         default_member_permissions=Permissions.ADMINISTRATOR,
-        scopes=guild_scopes(_enabled_servers[:1]),
+        scopes=guild_scopes(STREAMLABS.guild_ids()),
     )
     async def endcharitycount(self, ctx):
         await ctx.send("Fin de la collecte de fond", ephemeral=True)
-        if not STREAMLABS_URL:
+        settings = STREAMLABS.get(ctx.guild_id)
+        url = _team_url(settings)
+        if not url:
             await send_error(ctx, "URL de la team Streamlabs non configurée.")
             return
-        message = await self._get_message()
+        message = await self.messages.get(ctx.guild_id, settings)
         if message is None:
             await send_error(ctx, "Message Streamlabs non configuré.")
             return
-        campaign_data = await self.fetch_campaign_data()
+        campaign_data = await self.fetch_campaign_data(url)
         members_dict = await self.fetch_members_data(campaign_data["id"])
         members_list = self.list_members(members_dict)
         members_str = self.split_members(members_list)
         embeds = await shorten_embeds(
             [
-                self.create_campaign_embed(campaign_data),
+                self.create_campaign_embed(campaign_data, url),
                 self.create_cause_embed(campaign_data),
                 self.create_final_members_embed(members_str),
             ],

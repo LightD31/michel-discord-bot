@@ -14,6 +14,7 @@ from ._common import (
     EVENT_MEDALS_URL,
     MEDALLISTS_URL,
     MEDALS_URL,
+    OLYMPICS,
     POLL_INTERVAL_MINUTES,
     logger,
 )
@@ -127,11 +128,40 @@ class TasksMixin:
         data = await self._olympics_fetch(EVENT_MEDALS_URL)
         return data.get("eventMedals", {})
 
+    async def _send_alerts(
+        self,
+        guild_id: str,
+        settings: dict[str, Any],
+        medals: list[dict[str, Any]],
+        france_standing: dict[str, Any] | None,
+    ) -> None:
+        """Poste les alertes dans le salon configuré du serveur."""
+        channel_id = settings.get("olympicsChannelId")
+        if not channel_id:
+            logger.warning("olympicsChannelId non configuré pour le serveur %s", guild_id)
+            return
+        try:
+            channel = await self.bot.fetch_channel(channel_id)
+            logo_url = settings.get("olympicsLogoUrl") or ""
+            for medal in medals:
+                embed = self._build_medal_alert_embed(medal, france_standing, logo_url)
+                await channel.send(embeds=[embed])
+                await asyncio.sleep(1)  # Petite pause entre les messages
+        except Exception as e:  # noqa: BLE001 — un serveur en échec n'arrête pas les autres
+            logger.error("Alertes Olympics impossibles pour le serveur %s : %s", guild_id, e)
+
     # ─── Tâche planifiée ──────────────────────────────────────────────────────
 
     @Task.create(IntervalTrigger(minutes=POLL_INTERVAL_MINUTES))
     async def check_medals(self) -> None:
-        """Vérifie périodiquement les nouvelles médailles françaises."""
+        """Vérifie périodiquement les nouvelles médailles françaises.
+
+        Les alertes partent dans le salon de chaque serveur où le module est
+        activé, lu à chaque passage : un changement dans le dashboard
+        s'applique sans recharger l'extension.
+        """
+        if not OLYMPICS.guild_ids():
+            return
         logger.debug("Vérification des médailles Olympics...")
         try:
             medals = await self._fetch_france_medals()
@@ -153,11 +183,8 @@ class TasksMixin:
                 standings = await self._fetch_medal_standings()
                 france_standing = self._get_country_standing(standings, COUNTRY_CODE)
 
-                for medal in new_medals:
-                    embed = self._build_medal_alert_embed(medal, france_standing)
-                    if self.channel:
-                        await self.channel.send(embeds=[embed])
-                        await asyncio.sleep(1)  # Petite pause entre les messages
+                for guild_id, settings in OLYMPICS.items():
+                    await self._send_alerts(guild_id, settings, new_medals, france_standing)
             else:
                 logger.debug("Aucune nouvelle médaille pour la France")
 

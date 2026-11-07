@@ -1,91 +1,68 @@
 """Minecraft Discord extension — server status, hourly stats, scheduled events.
 
 Assembled as a mixin composition mirroring the vlrgg/zevent packages:
-- :mod:`._common` — config schema, module constants, logger
+- :mod:`._common` — config schema, live config accessor, logger
 - :mod:`.status` — StatusMixin: 30s status poll, embed builders, channel rename
 - :mod:`.stats` — StatsMixin: hourly stats task, table rendering, image cache
 """
 
 from datetime import datetime
 
-from interactions import Client, Extension, Message, listen
+from interactions import Client, Extension, listen
 
-from features.minecraft import stats_cache
-from src.discord_ext.messages import fetch_or_create_persistent_message
+from features.minecraft import clear_stats_caches
+from src.discord_ext.messages import GuildMessages
 
-from ._common import (
-    CHANNEL_ID_KUBZ,
-    MESSAGE_ID_KUBZ,
-    MINECRAFT_GUILD_ID,
-    PIN_STATUS_MESSAGE,
-    MinecraftConfig,
-    enabled_servers,
-    logger,
-)
+from ._common import MINECRAFT, MinecraftConfig, logger
 from .stats import StatsMixin
 from .status import StatusMixin
 
 
 class Minecraft(Extension, StatusMixin, StatsMixin):
-    """Discord extension for Minecraft server monitoring and statistics."""
+    """Each enabled guild's Minecraft server: status every 30 s, player stats hourly.
+
+    The settings are read at each refresh, so a dashboard save (another
+    server, channel or SFTP account) applies at the next one without a reload.
+    """
 
     MODULE_KEYS = ("moduleMinecraft",)
-
-    # Server address, SFTP account and status message taken at import (see ``_common``).
-
-    RELOAD_ON_SAVE = True
 
     def __init__(self, client):
         self.client = client
         self.image_cache = {}
-        self._last_stats_table: str | None = None
-        self.serverColoc = None
-        self.channel_edit_timestamp = datetime.fromtimestamp(0)
-        self.scheduled_event = None
-        self.status_message: Message | None = None
-
-    async def _get_status_message(self) -> Message | None:
-        """Return the persistent status message, creating it on first access."""
-        if self.status_message is not None:
-            return self.status_message
-        self.status_message = await fetch_or_create_persistent_message(
-            self.bot,
-            channel_id=CHANNEL_ID_KUBZ,
-            message_id=MESSAGE_ID_KUBZ,
-            module_name="moduleMinecraft",
-            message_id_key="minecraftMessageId",
-            guild_id=MINECRAFT_GUILD_ID,
+        self.status_messages = GuildMessages(
+            client,
+            module_name=MINECRAFT.key,
+            channel_key="minecraftChannelId",
+            message_key="minecraftMessageId",
+            pin_key="minecraftPinMessage",
             initial_content="Initialisation du statut Minecraft…",
-            pin=PIN_STATUS_MESSAGE,
             logger=logger,
         )
-        return self.status_message
+        # Per guild: the last stats table shown, the last channel rename, and
+        # the scheduled event announcing players online (looked up once).
+        self._last_stats_tables: dict[str, str | None] = {}
+        self.channel_edit_timestamps: dict[str, datetime] = {}
+        self.scheduled_events: dict[str, object] = {}
+        self._events_recovered: set[str] = set()
+
+    def _forget_disabled_guilds(self, enabled: list[str]) -> None:
+        self.status_messages.keep_only(enabled)
+        for state in (self._last_stats_tables, self.channel_edit_timestamps, self.scheduled_events):
+            for guild_id in [g for g in state if g not in enabled]:
+                del state[guild_id]
+        self._events_recovered &= set(enabled)
 
     @listen()
     async def on_startup(self):
-        """Initialize the extension on bot startup."""
-        if not enabled_servers:
-            logger.warning("moduleMinecraft is not enabled for any server, skipping startup")
-            return
-
-        stats_cache.clear()
+        """Start the status and stats tasks; each reads the enabled guilds when it runs."""
+        clear_stats_caches()
         self.image_cache.clear()
         logger.info("Caches cleared on startup")
-
-        try:
-            channel = await self.bot.fetch_channel(CHANNEL_ID_KUBZ)
-            guild = channel.guild
-            for event in await guild.list_scheduled_events():
-                creator = await event.creator
-                if creator.id == self.bot.user.id and "Minecraft" in (event.name or ""):
-                    self.scheduled_event = event
-                    logger.info(f"Recovered existing Minecraft scheduled event: {event.name}")
-                    break
-        except Exception as e:
-            logger.error(f"Failed to recover scheduled event: {e}")
-
-        self.status.start()
-        self.stats.start()
+        if not self.status.running:
+            self.status.start()
+        if not self.stats.running:
+            self.stats.start()
         await self.stats()
 
 
