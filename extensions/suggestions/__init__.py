@@ -18,6 +18,8 @@ from .commands import CommandsMixin
 
 
 class SuggestionsExtension(Extension, CommandsMixin, ButtonsMixin):
+    MODULE_KEYS = ("moduleSuggestions",)
+
     def __init__(self, bot: Client):
         self.bot = bot
         self._repos: dict[str, SuggestionsRepository] = {}

@@ -21,6 +21,8 @@ from .sync import SyncMixin
 class LldapExtension(Extension, CommandsMixin, SyncMixin):
     """Discord extension that creates LLDAP accounts and syncs groups with roles."""
 
+    MODULE_KEYS = ("moduleLldap",)
+
     def __init__(self, bot: Client):
         self.bot: Client = bot
         self.lldap = LldapClient()

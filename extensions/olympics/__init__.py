@@ -22,6 +22,8 @@ class OlympicsExtension(MedalsMixin, TasksMixin, Extension):
     (background polling, HTTP client, state persistence).
     """
 
+    MODULE_KEYS = ("moduleOlympics",)
+
     def __init__(self, bot: Client) -> None:
         self.bot: Client = bot
         self.channel = None

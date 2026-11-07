@@ -10,8 +10,10 @@ from pydantic import BaseModel
 from features.customcommands import MODULE_KEY as CUSTOM_COMMANDS_MODULE
 from src.core import logging as logutil
 from src.core.config import load_config as bot_load_config
+from src.discord_ext.embedmanager import MODULE_KEY as EMBED_MANAGER_MODULE
+from src.discord_ext.embedmanager import build_embeds, publish_embeds
 from src.webui.botops import run_extension_op, sync_commands
-from src.webui.context import WebUIContext, build_module_to_extension_map, discover_modules
+from src.webui.context import WebUIContext
 from src.webui.secrets import mask_server_config, restore_section
 
 logger = logutil.init_logger("webui.routes.servers")
@@ -32,14 +34,17 @@ MAX_MODULE_CONFIG_BYTES = 256 * 1024
 
 
 def _require_known_module(module_name: str) -> None:
-    """404 unless *module_name* is a real per-guild module.
+    """404 unless *module_name* is a registered per-guild module.
 
     Without this, ``servers.<id>.<anything>`` is writable — including keys that
     are not module configs at all, such as the guild's public dashboard token.
+    A module's schema is registered when its extension is imported, so the
+    module of an extension that isn't loaded is unknown too: it does nothing
+    until the extension is enabled.
     """
     from src.webui import schemas
 
-    if module_name not in schemas.MODULE_SCHEMAS and module_name not in discover_modules():
+    if schemas.module_model(module_name) is None:
         raise HTTPException(status_code=404, detail=f"Module inconnu : {module_name}")
 
 
@@ -71,10 +76,12 @@ async def _try_reload_extension_for_module(ctx: WebUIContext, module_name: str) 
     library's command sync stranded on a loop that owns none of the bot's
     connections.
 
-    Every extension reading the module is reloaded (``moduleUtils`` backs
-    admin, polls and reminders) except those disabled in the extension list:
-    the library *loads* an extension it is asked to reload, so a module save
-    would otherwise switch a disabled extension back on.
+    Every loaded extension declaring the module in its ``MODULE_KEYS`` is
+    reloaded (``moduleUtils`` backs admin, polls and reminders), except those
+    disabled in the extension list: the library *loads* an extension it is
+    asked to reload, so a module save racing an unload would otherwise switch
+    a disabled extension back on. A module no loaded extension reads (such as
+    ``discord2name``, read on demand) has nothing to reload.
 
     No command sync here; the callers sync their guild when the module's
     command scopes may have changed (see :func:`_sync_guild_commands`).
@@ -82,20 +89,12 @@ async def _try_reload_extension_for_module(ctx: WebUIContext, module_name: str) 
     Returns ``{"reloaded": str|None, "error": str|None, "skipped": bool}``;
     ``reloaded`` names the reloaded extensions, comma-separated.
     """
-    SKIP_MODULES = {"discord2name", "moduleEmbedManager"}
-    if module_name in SKIP_MODULES:
-        return {"reloaded": None, "error": None, "skipped": True}
     if not ctx.bot or not ctx.bot_loop_alive():
         return {"reloaded": None, "error": "Bot non disponible", "skipped": False}
-    ext_paths = build_module_to_extension_map().get(module_name)
+    ext_paths = ctx.module_extension_map().get(module_name)
     if not ext_paths:
-        return {
-            "reloaded": None,
-            "error": f"Aucune extension trouvée pour {module_name}",
-            "skipped": False,
-        }
-    # Same default as main.py: an extension missing from the list is enabled
-    # (the map never holds the underscore-prefixed ones that default off).
+        return {"reloaded": None, "error": None, "skipped": True}
+    # Same default as main.py: an extension missing from the list is enabled.
     ext_enabled = ctx.get_full_config().get("config", {}).get("extensions", {})
     ext_paths = [path for path in ext_paths if ext_enabled.get(path, True)]
     if not ext_paths:
@@ -488,61 +487,31 @@ def create_router(ctx: WebUIContext) -> APIRouter:
             response["commandSync"] = await _sync_guild_commands(ctx, server_id)
         return JSONResponse(response)
 
-    @router.post("/api/servers/{server_id}/modules/moduleEmbedManager/publish")
+    @router.post(f"/api/servers/{{server_id}}/modules/{EMBED_MANAGER_MODULE}/publish")
     async def api_embedmanager_publish(request: Request, server_id: str):
         """Publish configured embeds to the target Discord message."""
         await ctx.require_guild_admin(request, server_id)
         ctx.require_bot_loop()
 
-        _, module_config, enabled_servers = bot_load_config("moduleEmbedManager")
+        _, module_config, enabled_servers = bot_load_config(EMBED_MANAGER_MODULE)
         if server_id not in enabled_servers:
             raise HTTPException(status_code=400, detail="Module non activé sur ce serveur")
 
         guild_config = module_config.get(server_id, {})
-        channel_id = guild_config.get("channelId")
-        message_id = guild_config.get("messageId")
-        pin_message = bool(guild_config.get("pinMessage", False))
-        embeds_config = guild_config.get("embeds", [])
-
-        if not channel_id:
+        if not guild_config.get("channelId"):
             raise HTTPException(status_code=400, detail="Salon de publication non configuré")
+        embeds_config = guild_config.get("embeds") or []
         if not embeds_config:
             raise HTTPException(status_code=400, detail="Aucun embed configuré")
-
-        from extensions.embedmanager import build_embeds
-
-        discord_embeds = build_embeds(embeds_config)
-        if not discord_embeds:
+        embed_count = len(build_embeds(embeds_config))
+        if not embed_count:
             raise HTTPException(status_code=500, detail="Erreur lors de la génération des embeds")
-        embed_count = len(discord_embeds)
 
         async def _publish():
-            from extensions.embedmanager import build_embeds_with_short_links
-            from src.discord_ext.messages import (
-                edit_message_if_changed,
-                fetch_or_create_persistent_message,
-            )
-
-            # Rebuilt on the bot loop: shortening does HTTP, and the shared
-            # aiohttp session is per-loop.
-            embeds = await build_embeds_with_short_links(embeds_config, server_id)
-
-            message = await fetch_or_create_persistent_message(
-                ctx.bot,
-                channel_id=channel_id,
-                message_id=message_id,
-                module_name="moduleEmbedManager",
-                message_id_key="messageId",
-                guild_id=server_id,
-                initial_content="Initialisation…",
-                pin=pin_message,
-                logger=logger,
-            )
-            if message is None:
+            if not await publish_embeds(ctx.bot, server_id, guild_config, log=logger):
                 raise HTTPException(
                     status_code=502, detail="Impossible de créer ou récupérer le message cible"
                 )
-            await edit_message_if_changed(message, content="", embeds=embeds, logger=logger)
 
         await ctx.call_bot(
             _publish, what=f"publish EmbedManager embeds for guild {server_id}", timeout=60.0

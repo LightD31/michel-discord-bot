@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import asyncio
 import inspect
-import os
 import time
 from dataclasses import dataclass, field
 from typing import Any
@@ -286,94 +285,40 @@ class WebUIContext:
 
     # --- Extension introspection -------------------------------------
 
+    def _loaded_extensions(self) -> list[Any]:
+        """The bot's loaded extension instances (a copy: the bot loop may load or unload)."""
+        if not self.bot or not hasattr(self.bot, "ext"):
+            return []
+        return list(self.bot.ext.values())
+
     def get_extension_module_paths(self) -> list[str]:
         """Return module paths (e.g. ``extensions.tricount``) for loaded extensions."""
-        paths = []
-        if self.bot and hasattr(self.bot, "ext"):
-            for _, ext_instance in self.bot.ext.items():
-                module_path = getattr(ext_instance, "extension_name", None)
-                if module_path:
-                    paths.append(module_path)
-                else:
-                    mod = type(ext_instance).__module__
-                    if mod:
-                        paths.append(mod)
-        return paths
+        return [extension_path(ext) for ext in self._loaded_extensions()]
 
+    def module_extension_map(self) -> dict[str, list[str]]:
+        """Map each module key to the loaded extensions that declare it in ``MODULE_KEYS``.
 
-# ---------------------------------------------------------------------------
-# Module discovery (shared between /api/modules and the auto-reload helper)
-# ---------------------------------------------------------------------------
-
-
-def iter_extension_source_files(ext_dir: str, entry: str):
-    """Yield ``*.py`` source files that belong to an extension entry.
-
-    An entry may be either ``<name>.py`` (single-file extension) or a package
-    directory with ``__init__.py`` — in which case every ``*.py`` within is
-    yielded so ``load_config(...)`` calls in any submodule are picked up.
-    """
-    if entry.startswith("_") or entry.startswith("__"):
-        return
-    full = os.path.join(ext_dir, entry)
-    if entry.endswith(".py") and os.path.isfile(full):
-        yield full
-    elif os.path.isdir(full) and os.path.isfile(os.path.join(full, "__init__.py")):
-        for root, _, files in os.walk(full):
-            for name in files:
-                if name.endswith(".py"):
-                    yield os.path.join(root, name)
-
-
-def discover_modules() -> list[str]:
-    """Discover all module names used by extensions via ``load_config("...")``."""
-    import re
-
-    modules: set[str] = set()
-    ext_dir = "extensions"
-    if os.path.isdir(ext_dir):
-        for fname in os.listdir(ext_dir):
-            for fpath in iter_extension_source_files(ext_dir, fname):
-                try:
-                    with open(fpath, encoding="utf-8") as f:
-                        content = f.read()
-                    for match in re.finditer(r'load_config\(["\']([\w]+)["\']\)', content):
-                        modules.add(match.group(1))
-                except Exception:
-                    pass
-    return sorted(modules)
-
-
-def build_module_to_extension_map() -> dict[str, list[str]]:
-    """Map module config names to the extension module paths that read them.
-
-    E.g. ``{"moduleTricount": ["extensions.tricount"]}``. A module can back
-    several extensions: ``moduleUtils`` is read by admin, polls and reminders.
-    """
-    import re
-
-    mapping: dict[str, list[str]] = {}
-    ext_dir = "extensions"
-    if not os.path.isdir(ext_dir):
+        E.g. ``{"moduleTricount": ["extensions.tricount"]}``. A module can back
+        several extensions: ``moduleUtils`` is read by admin, polls and reminders.
+        An extension that isn't loaded reads nothing, so it isn't listed.
+        """
+        mapping: dict[str, list[str]] = {}
+        for ext in self._loaded_extensions():
+            path = extension_path(ext)
+            for key in declared_modules(ext):
+                paths = mapping.setdefault(key, [])
+                if path not in paths:
+                    paths.append(path)
+        for paths in mapping.values():
+            paths.sort()
         return mapping
-    for fname in sorted(os.listdir(ext_dir)):
-        if fname.startswith("_") or fname.startswith("__"):
-            continue
-        full = os.path.join(ext_dir, fname)
-        if fname.endswith(".py") and os.path.isfile(full):
-            ext_module_path = f"extensions.{fname[:-3]}"
-        elif os.path.isdir(full) and os.path.isfile(os.path.join(full, "__init__.py")):
-            ext_module_path = f"extensions.{fname}"
-        else:
-            continue
-        for fpath in iter_extension_source_files(ext_dir, fname):
-            try:
-                with open(fpath, encoding="utf-8") as f:
-                    content = f.read()
-                for match in re.finditer(r'load_config\(["\']([\w]+)["\']\)', content):
-                    paths = mapping.setdefault(match.group(1), [])
-                    if ext_module_path not in paths:
-                        paths.append(ext_module_path)
-            except Exception:
-                pass
-    return mapping
+
+
+def extension_path(ext: Any) -> str:
+    """The module path an extension instance was loaded from (``extensions.xp``)."""
+    return str(getattr(ext, "extension_name", None) or type(ext).__module__)
+
+
+def declared_modules(ext: Any) -> tuple[str, ...]:
+    """The per-guild config modules an extension reads (its ``MODULE_KEYS``)."""
+    return tuple(getattr(ext, "MODULE_KEYS", ()))

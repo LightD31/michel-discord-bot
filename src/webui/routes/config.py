@@ -5,7 +5,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from src.core import logging as logutil
-from src.webui.context import WebUIContext, discover_modules
+from src.webui.context import WebUIContext
 from src.webui.schemas import (
     GLOBAL_CONFIG_SCHEMAS,
     MODULE_SCHEMAS,
@@ -31,22 +31,6 @@ def create_router(ctx: WebUIContext) -> APIRouter:
         ctx.require_developer(request)
         data = ctx.get_full_config()
         return JSONResponse(mask_full_config(data))
-
-    @router.get("/api/modules")
-    async def api_get_modules(request: Request):
-        """Get all discovered module names with their schemas."""
-        ctx.require_admin(request)
-        discovered = discover_modules()
-        modules = {}
-        for mod_name in discovered:
-            schema = MODULE_SCHEMAS.get(mod_name, {})
-            modules[mod_name] = {
-                "label": schema.get("label", mod_name),
-                "description": schema.get("description", ""),
-                "icon": schema.get("icon", "🧩"),
-                "has_schema": bool(schema),
-            }
-        return JSONResponse({"modules": modules})
 
     @router.get("/api/schemas/modules")
     async def api_module_schemas(request: Request):

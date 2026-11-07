@@ -29,6 +29,8 @@ from .status import StatusMixin
 class Minecraft(Extension, StatusMixin, StatsMixin):
     """Discord extension for Minecraft server monitoring and statistics."""
 
+    MODULE_KEYS = ("moduleMinecraft",)
+
     def __init__(self, client):
         self.client = client
         self.image_cache = {}

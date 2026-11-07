@@ -23,6 +23,8 @@ logger = logutil.init_logger("extensions.errors")
 class ErrorsExtension(Extension):
     """Global handler for interaction errors."""
 
+    MODULE_KEYS = ()
+
     def __init__(self, bot: Client) -> None:
         self.bot = bot
 

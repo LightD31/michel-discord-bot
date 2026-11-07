@@ -28,6 +28,8 @@ logger = logutil.init_logger(__name__)
 class UptimeExtension(Extension, CommandsMixin, NotificationsMixin, TasksMixin):
     """Discord extension that mirrors Uptime Kuma status changes into channels."""
 
+    MODULE_KEYS = ("moduleUptime",)
+
     def __init__(self, bot: Client):
         self.bot: Client = bot
         # {guild_id: {monitor_id: alert}}, guilds with the module enabled only.

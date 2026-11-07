@@ -11,6 +11,8 @@ from .reports import ReportsMixin
 class TricountExtension(GroupsMixin, ExpensesMixin, RecurringMixin, ReportsMixin, Extension):
     """Discord extension combining group management, expenses, recurring, and reports."""
 
+    MODULE_KEYS = ("moduleTricount",)
+
     def __init__(self, bot: Client):
         self.bot: Client = bot
 

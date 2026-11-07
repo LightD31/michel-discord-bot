@@ -69,6 +69,8 @@ YOUTUBE_API_URL = "https://www.googleapis.com/youtube/v3"
 
 
 class YoutubeExtension(Extension):
+    MODULE_KEYS = ("moduleYoutube",)
+
     def __init__(self, bot: Client):
         self.bot: Client = bot
         self.playlist_cache = {}  # Add a cache for playlists

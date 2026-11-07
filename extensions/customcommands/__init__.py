@@ -28,6 +28,8 @@ from src.core.config import load_config
 class CustomCommandsExtension(Extension):
     """Registers each guild's configured commands as real slash commands."""
 
+    MODULE_KEYS = ("moduleCustomCommands",)
+
     def __init__(self, bot: Client) -> None:
         # At startup every extension is loaded before login, so registering
         # here could claim a name another extension has not declared yet.

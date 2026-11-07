@@ -26,6 +26,8 @@ DEFAULT_SEPARATOR = ";"
 
 
 class RandomExtension(Extension):
+    MODULE_KEYS = ()
+
     def __init__(self, bot: Client):
         self.bot = bot
 

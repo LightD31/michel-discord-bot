@@ -23,6 +23,8 @@ logger = logutil.init_logger(__name__)
 class SecretSantaExtension(Extension, SessionsMixin, DrawsMixin, BansMixin, ButtonsMixin):
     """Discord extension combining the Secret Santa subcommands and buttons."""
 
+    MODULE_KEYS = ("moduleSecretSanta",)
+
     def __init__(self, bot: Client):
         self.bot: Client = bot
         self.repository = SecretSantaRepository()

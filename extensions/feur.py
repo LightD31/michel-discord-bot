@@ -65,6 +65,8 @@ def _should_respond(content: str, keyword: str) -> bool:
 
 
 class FeurExtension(Extension):
+    MODULE_KEYS = ("moduleFeur",)
+
     def __init__(self, bot):
         self.bot = bot
 

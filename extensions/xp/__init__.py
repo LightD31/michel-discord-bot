@@ -28,6 +28,8 @@ from .voice import VoiceMixin
 class XpExtension(Extension, LevelingMixin, VoiceMixin, CommandsMixin, LeaderboardMixin):
     """XP and leveling system extension."""
 
+    MODULE_KEYS = ("moduleXp",)
+
     def __init__(self, bot: Client):
         self.bot: Client = bot
         self._db_connected = True

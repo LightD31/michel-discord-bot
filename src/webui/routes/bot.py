@@ -3,7 +3,7 @@
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
-from src.webui.context import WebUIContext, build_module_to_extension_map
+from src.webui.context import WebUIContext
 
 
 def create_router(ctx: WebUIContext) -> APIRouter:
@@ -26,7 +26,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
                 info["latency"] = round(ctx.bot.latency * 1000) if ctx.bot.latency else None
                 if is_admin:
                     info["extensions"] = ctx.get_extension_module_paths()
-                    info["module_extension_map"] = build_module_to_extension_map()
+                    info["module_extension_map"] = ctx.module_extension_map()
                     info["bot_guild_ids"] = (
                         [str(g.id) for g in ctx.bot.guilds] if ctx.bot.guilds else []
                     )

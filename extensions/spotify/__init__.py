@@ -27,6 +27,8 @@ logger = logutil.init_logger(__name__)
 class SpotifyExtension(Extension, PlaylistMixin, VotesMixin):
     """Discord extension combining playlist and vote behaviours."""
 
+    MODULE_KEYS = ("moduleSpotify",)
+
     def __init__(self, bot: Client):
         self.bot: Client = bot
 

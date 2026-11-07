@@ -98,6 +98,8 @@ def _validate_timezone(timezone_str: str) -> pytz.BaseTzInfo:
 
 
 class BirthdayExtension(Extension):
+    MODULE_KEYS = ("moduleBirthday",)
+
     def __init__(self, bot: Client) -> None:
         self.bot = bot
 

@@ -71,6 +71,8 @@ def _load_backup_config() -> dict:
 class BackupExtension(Extension):
     """Daily MongoDB backup extension."""
 
+    MODULE_KEYS = ()
+
     def __init__(self, bot: Client) -> None:
         self.bot = bot
         self._refresh_config()

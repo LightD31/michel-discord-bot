@@ -239,7 +239,7 @@ Config is loaded through `src.core.config`. Extensions call `load_config("module
 An extension is either a single Python file (`extensions/myext.py`) or a package (`extensions/myext/__init__.py`) containing an `interactions.py` `Extension` subclass. To create a new one:
 
 1. Create `extensions/myext.py` (or `extensions/myext/__init__.py` for a multi-file package).
-2. Define an `Extension` subclass.
+2. Define an `Extension` subclass, and list the per-guild config modules it reads in a `MODULE_KEYS` class attribute (`MODULE_KEYS = ("moduleMyext",)`, or `()` for none). The dashboard reloads the loaded extensions that declare a module when that module is saved or toggled.
 3. Expose a module-level `setup(bot)` function that instantiates it.
 4. Declare a Pydantic config schema with `@register_module("moduleMyext")` so it shows up in the Web UI.
 5. Restart the bot — the extension will be auto-loaded.

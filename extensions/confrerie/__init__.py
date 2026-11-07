@@ -37,6 +37,8 @@ class ConfrerieExtension(
 ):
     """Discord extension combining the confrérie stats, updates, drafts and commands."""
 
+    MODULE_KEYS = ("moduleConfrerie",)
+
     def __init__(self, bot: Client):
         self.bot: Client = bot
         self.notion_client = NotionClient(

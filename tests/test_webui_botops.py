@@ -10,13 +10,14 @@ manager should be used inside a task" and, unawaited, only shows up as a stray
 import asyncio
 import threading
 from types import SimpleNamespace
+from typing import ClassVar
 
 import pytest
 from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 
 from src.webui.botops import run_extension_op, sync_commands
-from src.webui.context import WebUIContext, build_module_to_extension_map
+from src.webui.context import WebUIContext
 from src.webui.routes.extensions import create_router
 from src.webui.routes.servers import _try_reload_extension_for_module
 from src.webui.routes.servers import create_router as create_servers_router
@@ -25,7 +26,11 @@ from src.webui.routes.servers import create_router as create_servers_router
 class _FakeBot:
     """Records the loop each call ran on, and ``sync_ext`` as seen at call time."""
 
+    # Loaded extensions, as ``bot.ext`` holds them (see the ``module_map`` fixture).
+    loaded: ClassVar[list[SimpleNamespace]] = []
+
     def __init__(self) -> None:
+        self.ext = {ext.extension_name: ext for ext in self.loaded}
         self.sync_ext = True
         self.calls: list[tuple] = []
         self.sync_calls: list[tuple] = []
@@ -172,14 +177,27 @@ class _GuildAdminCtx(WebUIContext):
 
 @pytest.fixture
 def module_map(monkeypatch):
-    """Point ``moduleUtils`` at two fake extensions (no real package gets purged)."""
-    import src.webui.routes.servers as servers_routes
+    """Load fake extensions declaring ``moduleUtils`` (two) and ``moduleXp``.
 
-    mapping = {
-        "moduleUtils": ["extensions.fake_admin", "extensions.fake_polls"],
-        "moduleXp": ["extensions.fake_xp"],
-    }
-    monkeypatch.setattr(servers_routes, "build_module_to_extension_map", lambda: mapping)
+    Fake paths, so no real package gets purged; the real schemas are
+    registered, since saves and toggles only accept registered modules.
+    """
+    import extensions.admin  # noqa: F401 — registers moduleUtils
+    import extensions.xp._common  # noqa: F401 — registers moduleXp
+
+    def ext(path: str, *keys: str) -> SimpleNamespace:
+        return SimpleNamespace(extension_name=path, MODULE_KEYS=keys)
+
+    monkeypatch.setattr(
+        _FakeBot,
+        "loaded",
+        [
+            ext("extensions.fake_polls", "moduleUtils"),
+            ext("extensions.fake_admin", "moduleUtils"),
+            ext("extensions.fake_xp", "moduleXp"),
+            ext("extensions.fake_random"),
+        ],
+    )
 
 
 def _servers_client(bot, loop, config: dict) -> TestClient:
@@ -265,11 +283,23 @@ async def test_module_save_syncs_only_when_it_flips_the_enabled_state(bot_loop, 
     assert len(bot.calls) == 2  # both saves still reload the extension
 
 
-def test_module_map_lists_every_extension_reading_a_shared_module():
-    mapping = build_module_to_extension_map()
-    assert mapping["moduleUtils"] == [
-        "extensions.admin",
-        "extensions.polls",
-        "extensions.reminders",
-    ]
-    assert mapping["moduleXp"] == ["extensions.xp"]
+async def test_a_module_no_loaded_extension_reads_has_nothing_to_reload(bot_loop, module_map):
+    # discord2name is read on demand; no extension needs a reload for it.
+    result = await _try_reload_extension_for_module(_ctx(_FakeBot(), bot_loop), "discord2name")
+    assert result == {"reloaded": None, "error": None, "skipped": True}
+
+
+async def test_toggle_refuses_a_module_no_loaded_extension_registers(bot_loop, module_map):
+    # An extension that isn't loaded registers no schema: its module is unknown.
+    bot = _FakeBot()
+    config: dict = {"config": {}, "servers": {"42": {}}}
+
+    with _servers_client(bot, bot_loop, config) as client:
+        response = client.post(
+            "/api/servers/42/modules/moduleNotLoaded/toggle",
+            json={"module": "moduleNotLoaded", "enabled": True},
+        )
+
+    assert response.status_code == 404
+    assert config["servers"]["42"] == {}
+    assert bot.calls == []

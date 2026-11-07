@@ -37,6 +37,8 @@ class ZuniversExtension(
 ):
     """Extension for Zunivers features: reminders, events, corporation recap, Ninja, 24/7."""
 
+    MODULE_KEYS = ("moduleZunivers",)
+
     def __init__(self, bot: Client):
         self.bot = bot
         self.api_client = ZuniversAPIClient()

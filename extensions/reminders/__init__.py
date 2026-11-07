@@ -63,6 +63,8 @@ def _snooze_minutes(guild_id: str | int) -> int:
 
 
 class RemindersExtension(Extension):
+    MODULE_KEYS = ("moduleUtils",)
+
     def __init__(self, bot: Client):
         self.bot: Client = bot
         self._reminder_repos: dict[str, ReminderRepository] = {}

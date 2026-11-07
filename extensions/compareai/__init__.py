@@ -35,6 +35,8 @@ from .voting import VotingMixin
 class CompareAIExtension(AskMixin, MentionsMixin, VotingMixin, Extension):
     """Discord extension for Michel's AI answers."""
 
+    MODULE_KEYS = ("moduleIA",)
+
     def __init__(self, bot: Client):
         self.bot: Client = bot
         self.ai_client = AiClient()
