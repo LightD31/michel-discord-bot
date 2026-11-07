@@ -10,14 +10,19 @@ it in the logs.
 
 from __future__ import annotations
 
-import secrets
-
 from interactions import errors
+
+from src.core import log_context
 
 
 def new_reference() -> str:
-    """A short id that ties a member's error message to its log line."""
-    return secrets.token_hex(3)
+    """The id that ties a member's error message to the log lines of what failed.
+
+    The interaction's correlation id when one was bound
+    (``src/discord_ext/interaction_context.py``), so the reference finds every
+    line the interaction logged, not only the error.
+    """
+    return log_context.correlation_id() or log_context.new_id()
 
 
 def is_expected(error: BaseException) -> bool:

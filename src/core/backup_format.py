@@ -21,6 +21,7 @@ from __future__ import annotations
 import gzip
 import json
 from collections.abc import Iterable, Iterator, Mapping
+from datetime import datetime
 from pathlib import Path
 from typing import IO, Any
 
@@ -28,6 +29,8 @@ from bson import json_util
 from bson.json_util import CANONICAL_JSON_OPTIONS
 
 FORMAT_VERSION = 1
+# A backup folder's name, and its manifest's ``created_at``: local time.
+BACKUP_TIMESTAMP_FORMAT = "%Y-%m-%d_%H-%M-%S"
 MANIFEST_FILENAME = "manifest.json"
 COLLECTION_SUFFIX = ".jsonl.gz"
 
@@ -89,12 +92,32 @@ def read_manifest(backup: Path) -> dict[str, Any]:
     return manifest
 
 
+def latest_backup_time(root: Path) -> float | None:
+    """When the newest complete backup under *root* was taken (epoch seconds), if any.
+
+    A folder counts once its manifest is written, the last step of a backup,
+    so one interrupted mid-way is skipped. ``created_at`` is the folder's local
+    timestamp (:data:`BACKUP_TIMESTAMP_FORMAT`).
+    """
+    if not root.is_dir():
+        return None
+    for folder in sorted((p for p in root.iterdir() if p.is_dir()), reverse=True):
+        try:
+            created_at = read_manifest(folder)["created_at"]
+            return datetime.strptime(created_at, BACKUP_TIMESTAMP_FORMAT).timestamp()
+        except (ValueError, KeyError, OSError):
+            continue
+    return None
+
+
 __all__ = [
+    "BACKUP_TIMESTAMP_FORMAT",
     "COLLECTION_SUFFIX",
     "FORMAT_VERSION",
     "MANIFEST_FILENAME",
     "CollectionWriter",
     "collection_path",
+    "latest_backup_time",
     "read_collection",
     "read_manifest",
     "write_manifest",

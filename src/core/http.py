@@ -5,7 +5,8 @@ which:
 
 - Reuses TCP connections (DNS + TLS handshake amortized).
 - Has a single place to set defaults (timeouts, headers, user-agent).
-- Simplifies future work (proxies, per-host rate limiting, metrics).
+- Counts every request per host and outcome in :mod:`src.core.health`
+  (``michel_http_requests_total`` once the Prometheus exporter is on).
 
 Usage::
 
@@ -31,12 +32,16 @@ from aiohttp import (
     ClientSession,
     ClientTimeout,
     TCPConnector,
+    TraceConfig,
+    TraceRequestEndParams,
+    TraceRequestExceptionParams,
 )
 from aiohttp.abc import AbstractResolver, ResolveResult
 from aiohttp.resolver import DefaultResolver
 
 from src.core import logging as _logging
 from src.core.errors import HttpError
+from src.core.health import health
 from src.core.urls import host_is_ip_literal, is_public_address, redact_url
 
 logger = _logging.init_logger(__name__)
@@ -93,6 +98,22 @@ class _PublicOnlyResolver(AbstractResolver):
         await self._inner.close()
 
 
+async def _count_response(_session: Any, _ctx: Any, params: TraceRequestEndParams) -> None:
+    health.record_http(params.url.host or "", params.response.status)
+
+
+async def _count_failure(_session: Any, _ctx: Any, params: TraceRequestExceptionParams) -> None:
+    health.record_http(params.url.host or "", None)
+
+
+def _health_trace() -> TraceConfig:
+    """Request hooks feeding :data:`src.core.health.health`, one record per attempt."""
+    trace = TraceConfig()
+    trace.on_request_end.append(_count_response)
+    trace.on_request_exception.append(_count_failure)
+    return trace
+
+
 class HttpClient:
     """Lazy singleton handing out one ``aiohttp.ClientSession`` per event loop.
 
@@ -128,6 +149,7 @@ class HttpClient:
                     session = ClientSession(
                         timeout=_DEFAULT_TIMEOUT,
                         headers={"User-Agent": _DEFAULT_USER_AGENT},
+                        trace_configs=[_health_trace()],
                     )
                     self._sessions[loop] = session
                     logger.info(
@@ -147,6 +169,7 @@ class HttpClient:
                         connector=TCPConnector(resolver=_PublicOnlyResolver()),
                         timeout=UNTRUSTED_TIMEOUT,
                         headers={"User-Agent": _DEFAULT_USER_AGENT},
+                        trace_configs=[_health_trace()],
                     )
                     self._untrusted_sessions[loop] = session
         return session

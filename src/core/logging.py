@@ -1,15 +1,69 @@
-"""Colored ANSI logger factory.
+"""Logger factory: colored text by default, JSON lines on demand.
 
-Moved from ``src/logutil.py`` as part of the ``src/core/`` restructure. The old
-module path stays available as a re-export shim.
+``MICHEL_LOG_FORMAT=json`` writes one JSON object per line (for Loki, Elastic,
+``jq``…) instead of the colored text. Either way, every record carries what
+the bot was doing when it was logged (:mod:`src.core.log_context`: guild,
+command or task, correlation id): JSON fields, or a ``[ref=… guild=…]``
+suffix on a text line. ``MICHEL_DEBUG=1`` lowers the level to DEBUG.
 """
 
+import json
 import logging
 import os
+from datetime import UTC, datetime
+from typing import Any
+
+from src.core import log_context
 
 # DEBUG flag, sourced from the ``MICHEL_DEBUG`` environment variable.
-# Phase 5: replaces the standalone ``config.py`` flag at the repo root.
 DEBUG = os.environ.get("MICHEL_DEBUG", "").lower() in ("1", "true", "yes", "on")
+JSON_LOGS = os.environ.get("MICHEL_LOG_FORMAT", "").strip().lower() == "json"
+
+# Short names for the context suffix of a text line.
+_TEXT_KEYS = {"correlation_id": "ref", "guild_id": "guild", "command": "cmd", "task": "task"}
+
+
+def _context_record_factory() -> Any:
+    """Wrap the current record factory so each record snapshots the log context."""
+    base = logging.getLogRecordFactory()
+    if getattr(base, "_michel_context", False):
+        return base
+
+    def factory(*args: Any, **kwargs: Any) -> logging.LogRecord:
+        record = base(*args, **kwargs)
+        record.log_context = log_context.current()
+        return record
+
+    factory._michel_context = True  # type: ignore[attr-defined]
+    return factory
+
+
+logging.setLogRecordFactory(_context_record_factory())
+
+
+def _context_of(record: logging.LogRecord) -> dict[str, str]:
+    context = getattr(record, "log_context", None)
+    return context if isinstance(context, dict) else {}
+
+
+class JsonFormatter(logging.Formatter):
+    """One JSON object per record: time, level, logger, message, context, exception."""
+
+    def format(self, record: logging.LogRecord) -> str:
+        payload: dict[str, Any] = {
+            "time": datetime.fromtimestamp(record.created, UTC).isoformat(timespec="milliseconds"),
+            "level": record.levelname,
+            "logger": record.name,
+            "message": record.getMessage(),
+            **_context_of(record),
+        }
+        if DEBUG:
+            payload["line"] = f"{record.pathname}:{record.lineno}"
+        if record.exc_info:
+            payload["exception"] = self.formatException(record.exc_info)
+        elif record.exc_text:
+            payload["exception"] = record.exc_text
+        return json.dumps(payload, ensure_ascii=False, default=str)
 
 
 class CustomFormatter(logging.Formatter):
@@ -57,7 +111,18 @@ class CustomFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
         log_fmt = self.FORMATS.get(record.levelno)
         formatter = logging.Formatter(log_fmt, datefmt="%Y-%m-%d %H:%M:%S")
-        return formatter.format(record)
+        text = formatter.format(record)
+        context = _context_of(record)
+        if not context:
+            return text
+        suffix = " ".join(f"{_TEXT_KEYS.get(k, k)}={v}" for k, v in context.items())
+        first, newline, rest = text.partition("\n")  # keep a traceback below the suffix
+        return f"{first} [{suffix}]{newline}{rest}"
+
+
+def make_formatter() -> logging.Formatter:
+    """The formatter for console output, as chosen by ``MICHEL_LOG_FORMAT``."""
+    return JsonFormatter() if JSON_LOGS else CustomFormatter()
 
 
 _CONFIGURED_ATTR = "_michel_configured"
@@ -90,19 +155,27 @@ def _configure_logger(name: str) -> logging.Logger:
         lgr.propagate = False
         ch = logging.StreamHandler()
         ch.setLevel(logging.DEBUG if DEBUG else logging.INFO)
-        ch.setFormatter(CustomFormatter())
+        ch.setFormatter(make_formatter())
         lgr.addHandler(ch)
         setattr(lgr, _CONFIGURED_ATTR, True)
     _attach_webui_handler(lgr)
     return lgr
 
 
-def overwrite_ipy_loggers() -> None:
-    targets = {"mixin", "dispatch", "http", "gateway", "client", "context"}
-    for k, v in logging.Logger.manager.loggerDict.items():
-        if k in targets and isinstance(v, logging.Logger):
-            for h in v.handlers:
-                h.setFormatter(CustomFormatter())
+def adopt_library_logger(name: str, level: int = logging.WARNING) -> logging.Logger:
+    """Give a library's logger our handlers (console format, WebUI log stream).
+
+    interactions.py logs through ``logging.getLogger("interactions")`` with no
+    handler of its own, so its errors (a failing ``Task``…) otherwise only
+    reach logging's last-resort handler: bare text, outside the JSON format and
+    the dashboard. Console output starts at *level* to keep its routine
+    chatter out.
+    """
+    lgr = _configure_logger(name)
+    for handler in lgr.handlers:
+        if isinstance(handler, logging.StreamHandler) and handler.formatter is not None:
+            handler.setLevel(logging.DEBUG if DEBUG else level)
+    return lgr
 
 
 def get_logger(name: str) -> logging.Logger:

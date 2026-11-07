@@ -46,6 +46,7 @@ from src.core import config as _config
 from src.core import logging as _logging
 from src.core.config import load_config
 from src.core.errors import DatabaseError
+from src.core.health import health
 
 logger = _logging.init_logger(__name__)
 
@@ -234,7 +235,7 @@ class MongoManager:
         Returns:
             The path to the newly created backup folder.
         """
-        timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        timestamp = datetime.now().strftime(backup_format.BACKUP_TIMESTAMP_FORMAT)
         dest = Path(backup_dir) / timestamp
         dest.mkdir(parents=True, exist_ok=True)
 
@@ -256,6 +257,7 @@ class MongoManager:
 
         await asyncio.to_thread(backup_format.write_manifest, dest, timestamp, counts)
         self._copy_config(dest)
+        health.record_backup()
 
         logger.info(
             "Backup complete: %d databases, %d total documents → %s",

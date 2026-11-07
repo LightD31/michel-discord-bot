@@ -24,6 +24,7 @@ from collections.abc import Coroutine
 from typing import Any
 
 from src.core import logging as _logging
+from src.core.health import health
 
 logger = _logging.init_logger(__name__)
 
@@ -65,6 +66,7 @@ def _on_done(task: asyncio.Task[Any], name: str, log: logging.Logger | None) -> 
     # report it later as "Task exception was never retrieved".
     error = task.exception()
     if error is not None:
+        health.record_background_failure(name)
         (log or logger).error("Background task %s failed: %s", name, error, exc_info=error)
 
 

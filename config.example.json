@@ -43,6 +43,10 @@
             "devGuildId": "",
             "devGuildChannelId": ""
         },
+        "errorReporting": {
+            "dsn": "",
+            "environment": "production"
+        },
         "metrics": {
             "enabled": false,
             "host": "0.0.0.0",

@@ -69,6 +69,23 @@ collections. A backup that has never been restored is not a backup.
 
 ## Incidents
 
+**A member reports an error with a reference** (`` `a1b2c3` ``). Every line the
+failed command, button or modal logged carries it:
+```bash
+docker compose logs discord_bot | grep a1b2c3
+```
+With `MICHEL_LOG_FORMAT=json`, filter on the field instead:
+`jq 'select(.correlation_id == "a1b2c3")'`. When error reporting is on
+(global config → *Remontée d'erreurs*), the same id is the `correlation_id`
+tag of the report in Sentry or GlitchTip.
+
+**Monitoring.** With the Prometheus exporter on (global config → *Métriques
+Prometheus*), `michel_task_last_success_timestamp_seconds` shows a periodic
+task that stopped succeeding, `michel_http_requests_total{outcome=~"5xx|error"}`
+an API that fails, `michel_event_loop_lag_seconds` a loop blocked by synchronous
+work, and `michel_backup_last_success_timestamp_seconds` a backup that didn't
+run. The README lists alert rules for each.
+
 **The bot is offline or not answering.**
 - `docker compose ps` shows the container state and health.
 - The bot touches a heartbeat file every 45 s. If its event loop hangs, the
@@ -108,6 +125,7 @@ the file, then the bot is restarted so every extension picks it up.
 | Spotify, Twitch, YouTube, Notion | Each provider's developer console | `spotify`, `twitch`, `youtube`, `notion` sections |
 | AI providers (OpenRouter, NanoGPT) | Provider dashboard | `OpenRouter.openrouterApiKey`, `NanoGPT.apiKey` |
 | Shlink, Uptime Kuma, Random.org | Each service's settings | their sections |
+| Sentry / GlitchTip DSN | Project → Settings → Client Keys | `errorReporting.dsn` |
 
 After a suspected leak, rotate the Discord bot token first: it gives full control
 of the bot. Then check the backups, which also contain the secrets (see

@@ -20,11 +20,9 @@ dependencies = [
     "aiohttp",
     "curl_cffi",
     "uvloop; platform_system != 'Windows'",
-
     # Datastore
     "motor",
     "pydantic>=2",
-
     # Integrations
     "spotipy",
     "twitchAPI",
@@ -36,7 +34,6 @@ dependencies = [
     "pyfactorybridge",
     "rdoclient",
     "ldap3>=2.9.1",
-
     # Utilities
     "pytz",
     "python-dateutil",
@@ -48,10 +45,10 @@ dependencies = [
     "Pillow",
     "prettytable",
     "pandas",
-
     # Monitoring
     "prometheus-client",
-
+    # Optional error reporting to Sentry / GlitchTip (config.errorReporting)
+    "sentry-sdk>=2.73,<3",
     # Optional Web UI
     "fastapi",
     "uvicorn[standard]",
@@ -182,11 +179,11 @@ branch = true
 [tool.coverage.report]
 show_missing = true
 skip_covered = true
-# Floor for `pytest --cov` (CI's test job): total coverage was 73% without MongoDB
-# and 75% with it (CI) when this was last raised. Keep it below the figure
+# Floor for `pytest --cov` (CI's test job): total coverage was 73.8% without MongoDB
+# and 75.4% with it (CI) when this was last raised. Keep it below the figure
 # without MongoDB so a local run passes too. Raise it as tests are added, so
 # coverage can only ratchet up.
-fail_under = 72
+fail_under = 73
 
 # ─── detect-secrets ────────────────────────────────────────────────────
 # Baseline lives at .secrets.baseline; configured via .pre-commit-config.yaml.
