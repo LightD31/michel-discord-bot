@@ -3,7 +3,6 @@
 import pytest
 from confrerie_fixtures import OEUVRES_SCHEMA
 
-from extensions.confrerie import review
 from extensions.confrerie.review import ReviewMixin, review_buttons
 from features.confrerie.drafts import (
     SOURCE_DEFI,
@@ -111,7 +110,9 @@ class FakeCtx:
     def __init__(self, custom_id: str, author_id: int = OWNER_ID) -> None:
         self.custom_id = custom_id
         self.author = FakeUser(author_id)
+        # A DM to the owner: the draft's guild is found from the draft itself.
         self.guild = None
+        self.guild_id = None
         self.replies: list[str] = []
         self.origin_edits: list[dict] = []
         self.modals: list = []
@@ -135,18 +136,19 @@ class Harness(ReviewMixin):
         self.notion_client = notion
         self.bot = FakeBot()
 
-    def _drafts(self):
+    def _drafts(self, guild_id):
+        assert str(guild_id) == "9"
         return self.repo
 
 
 @pytest.fixture(autouse=True)
-def _config(monkeypatch):
-    monkeypatch.setattr(
-        review,
-        "module_config",
-        {"confrerieOwnerId": str(OWNER_ID), "confrerieNotionDbOeuvresId": "db"},
-    )
-    monkeypatch.setattr(review, "config", {"discord": {}})
+def _config(store_config):
+    settings = {
+        "enabled": True,
+        "confrerieOwnerId": str(OWNER_ID),
+        "confrerieNotionDbOeuvresId": "db",
+    }
+    store_config({"config": {"discord": {}}, "servers": {"9": {"moduleConfrerie": settings}}})
 
 
 def _draft(source=SOURCE_DEFI, draft_id="defi-1-2") -> Draft:

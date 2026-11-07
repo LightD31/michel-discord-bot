@@ -11,9 +11,9 @@ from features.links import shorten_keyed
 from src.core import logging as logutil
 from src.core.text import take_within_budget
 from src.discord_ext.embeds import Colors
-from src.discord_ext.messages import edit_message_if_changed, fetch_or_create_persistent_message
+from src.discord_ext.messages import edit_message_if_changed
 
-from ._common import ConfrerieError, guild_id, module_config
+from ._common import CONFRERIE, ConfrerieError
 
 logger = logutil.init_logger(__name__)
 
@@ -100,18 +100,26 @@ class StatsMixin:
 
     @Task.create(OrTrigger(*[TimeTrigger(hour=h, utc=False) for h in range(24)]))
     async def confrerie(self):
-        """Hourly stats refresh + recap message edit."""
+        """Hourly stats refresh + recap message edit, in each enabled guild."""
         logger.debug("Début de la tâche de statistiques de la confrérie")
-        try:
-            stats = await self._fetch_statistics()
-            await self._update_statistics_message(stats)
-            logger.debug("Statistiques de la confrérie mises à jour avec succès")
-        except Exception as e:
-            logger.error(f"Erreur lors de la mise à jour des statistiques: {e}")
+        guilds = CONFRERIE.items()
+        self.recap_messages.keep_only([guild_id for guild_id, _ in guilds])
+        # Guilds sharing a Notion database share one aggregation per run.
+        stats_by_db: dict[str, ConfrerieStats] = {}
+        for guild_id, settings in guilds:
+            db_id = settings.get("confrerieNotionDbOeuvresId")
+            if not db_id:
+                continue
+            try:
+                if db_id not in stats_by_db:
+                    stats_by_db[db_id] = await self._fetch_statistics(db_id)
+                await self._update_statistics_message(guild_id, settings, stats_by_db[db_id])
+                logger.debug("Statistiques de la confrérie mises à jour (serveur %s)", guild_id)
+            except Exception as e:
+                logger.error(f"Erreur lors de la mise à jour des statistiques: {e}")
 
-    async def _fetch_statistics(self) -> ConfrerieStats:
-        """Query every œuvre (all pages) and aggregate them."""
-        db_id = module_config["confrerieNotionDbOeuvresId"]
+    async def _fetch_statistics(self, db_id: str) -> ConfrerieStats:
+        """Query every œuvre (all pages) of *db_id* and aggregate them."""
         pages = await self.notion_client.query_data_source(database_id=db_id)
         try:
             schema = await self.notion_client.get_properties_schema(db_id)
@@ -121,33 +129,21 @@ class StatsMixin:
             defi_options = []
         return aggregate(pages, defi_options)
 
-    async def _update_statistics_message(self, stats: ConfrerieStats):
-        if self._recap_message is None:
-            self._recap_message = await fetch_or_create_persistent_message(
-                self.bot,
-                channel_id=module_config.get("confrerieRecapChannelId"),
-                message_id=module_config.get("confrerieRecapMessageId"),
-                module_name="moduleConfrerie",
-                message_id_key="confrerieRecapMessageId",
-                guild_id=guild_id,
-                initial_content="Initialisation du récapitulatif…",
-                pin=bool(module_config.get("confrerieRecapPinMessage", False)),
-                logger=logger,
-            )
-            if self._recap_message is None:
-                raise ConfrerieError("Canal de récapitulatif introuvable ou invalide")
-            # Keep the in-memory snapshot in step with the id persisted to disk,
-            # so a later refetch finds this message instead of posting another.
-            module_config["confrerieRecapMessageId"] = str(self._recap_message.id)
+    async def _update_statistics_message(
+        self, guild_id: str, settings: dict, stats: ConfrerieStats
+    ):
+        message = await self.recap_messages.get(guild_id, settings)
+        if message is None:
+            raise ConfrerieError("Canal de récapitulatif introuvable ou invalide")
 
         embed = build_statistics_embed(stats)
-        footer = await self._create_embed_footer()
+        footer = await self._create_embed_footer(guild_id)
         embed.set_footer(text=footer.text, icon_url=footer.icon_url)
 
-        texts_url = module_config.get("confrerieTextsUrl") or ""
+        texts_url = settings.get("confrerieTextsUrl") or ""
         if texts_url:
             texts_url = await shorten_keyed(
-                f"confrerie-textes-{guild_id or 'global'}",
+                f"confrerie-textes-{guild_id}",
                 texts_url,
                 title="Textes de la confrérie",
                 tags=["confrerie"],
@@ -159,7 +155,7 @@ class StatsMixin:
             content = ""
         try:
             await edit_message_if_changed(
-                self._recap_message,
+                message,
                 content=content,
                 embed=embed,
                 ignore_timestamp=True,
@@ -167,5 +163,5 @@ class StatsMixin:
             )
         except Exception:
             # Deleted message or lost access: fetch (or recreate) it next cycle.
-            self._recap_message = None
+            self.recap_messages.forget(guild_id)
             raise

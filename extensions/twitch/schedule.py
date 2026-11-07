@@ -93,10 +93,7 @@ class ScheduleMixin:
 
         if guild_id is None:
             streamers = self.get_streamer_by_user_id(user_id)
-            if streamers:
-                guild_id = streamers[0].guild_id
-            else:
-                guild_id = int(self.enabled_servers[0]) if self.enabled_servers else 0
+            guild_id = streamers[0].guild_id if streamers else 0
 
         try:
             bot = await self.bot.fetch_member(self.bot.user.id, guild_id)
@@ -198,7 +195,11 @@ class ScheduleMixin:
                 try:
                     embed = await self.fetch_schedule(streamer.user_id, streamer.guild_id)
                     live_embed = await self.create_stream_embed(
-                        stream, streamer.user_id, offline=False, data=data
+                        stream,
+                        streamer.user_id,
+                        offline=False,
+                        data=data,
+                        guild_id=streamer.guild_id,
                     )
                     await edit_message_if_changed(
                         streamer.message,
@@ -224,7 +225,7 @@ class ScheduleMixin:
                 try:
                     embed = await self.fetch_schedule(streamer.user_id, streamer.guild_id)
                     offline_embed = await self.create_stream_embed(
-                        None, streamer.user_id, offline=True, data=data
+                        None, streamer.user_id, offline=True, data=data, guild_id=streamer.guild_id
                     )
                     await edit_message_if_changed(
                         streamer.message,

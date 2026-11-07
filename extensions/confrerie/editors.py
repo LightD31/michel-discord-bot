@@ -31,7 +31,7 @@ from src.discord_ext.messages import send_error
 from src.discord_ext.scopes import guild_scopes
 from src.integrations.notion import NotionAPIError
 
-from ._common import autocomplete_options, enabled_servers, module_config
+from ._common import CONFRERIE, autocomplete_options
 
 logger = logutil.init_logger(__name__)
 
@@ -54,7 +54,7 @@ class EditorsMixin:
     @slash_command(
         name="editeur",
         description="Ajouter un éditeur à la liste",
-        scopes=guild_scopes(enabled_servers),
+        scopes=guild_scopes(CONFRERIE.guild_ids()),
     )
     @slash_option(
         name="name",
@@ -134,7 +134,7 @@ class EditorsMixin:
         date: str = "",
     ):
         """Validate the options, remember them for this user, then open the modal."""
-        db_id = module_config.get("confrerieNotionDbIdEditorsId")
+        db_id = CONFRERIE.get(ctx.guild_id).get("confrerieNotionDbIdEditorsId")
         if not db_id:
             await send_error(ctx, "La base Notion des éditeurs n'est pas configurée.")
             return
@@ -199,7 +199,7 @@ class EditorsMixin:
         await autocomplete_options(
             ctx,
             self.notion_client,
-            module_config.get("confrerieNotionDbIdEditorsId"),
+            CONFRERIE.get(ctx.guild_id).get("confrerieNotionDbIdEditorsId"),
             column,
         )
 
@@ -223,7 +223,10 @@ class EditorsMixin:
         editor.exemples = exemples
         editor.commentaire = commentaire
 
-        db_id = module_config["confrerieNotionDbIdEditorsId"]
+        db_id = CONFRERIE.get(ctx.guild_id).get("confrerieNotionDbIdEditorsId")
+        if not db_id:
+            await send_error(ctx, "La base Notion des éditeurs n'est pas configurée.")
+            return
         try:
             schema = await self._editor_schema(db_id)
             properties, dropped = np.filter_to_schema(build_editor_properties(editor), schema)

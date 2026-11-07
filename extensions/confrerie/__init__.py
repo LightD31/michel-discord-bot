@@ -11,9 +11,11 @@ import os
 from interactions import Client, EmbedFooter, Extension, listen
 
 from src.core import logging as logutil
+from src.core.config import global_config
+from src.discord_ext.messages import GuildMessages
 from src.integrations.notion import NotionClient
 
-from ._common import config, enabled_servers, guild_id, module_config
+from ._common import CONFRERIE
 from .browse import BrowseMixin
 from .editors import EditorsMixin
 from .forums import ForumsMixin
@@ -39,19 +41,26 @@ class ConfrerieExtension(
 
     MODULE_KEYS = ("moduleConfrerie",)
 
-    # Single-guild settings taken at import (see ``_common``).
-
-    RELOAD_ON_SAVE = True
-
     def __init__(self, bot: Client):
         self.bot: Client = bot
+        # One Notion integration for the bot (global section ``notion``); each
+        # guild names its own databases in ``moduleConfrerie``.
         self.notion_client = NotionClient(
-            auth_token=config.get("notion", {}).get("notionSecret", "")
+            auth_token=global_config().get("notion", {}).get("notionSecret", "")
         )
-        self._recap_message = None
+        self.recap_messages = GuildMessages(
+            bot,
+            module_name=CONFRERIE.key,
+            channel_key="confrerieRecapChannelId",
+            message_key="confrerieRecapMessageId",
+            pin_key="confrerieRecapPinMessage",
+            initial_content="Initialisation du récapitulatif…",
+            logger=logger,
+        )
         self._pending_editors = {}
         self._pending_demandes = {}
-        self._works_cache = None
+        # Œuvres pages per Notion database, for /texte and /auteur.
+        self._works_cache = {}
 
     @listen()
     async def on_startup(self):
@@ -60,10 +69,7 @@ class ConfrerieExtension(
         await self._warm_data_source_cache()
 
     def _start_tasks(self) -> None:
-        if not enabled_servers:
-            logger.warning("moduleConfrerie is not enabled for any server, skipping startup")
-            return
-        if not config.get("notion", {}).get("notionSecret"):
+        if not global_config().get("notion", {}).get("notionSecret"):
             logger.warning("Secret Notion absent (config.notion.notionSecret), tâches désactivées")
             return
         for task in (self.confrerie, self.autoupdate):
@@ -77,20 +83,23 @@ class ConfrerieExtension(
         ``/demande`` and ``/editeur`` read the schema before opening their
         modal, inside Discord's 3 s window: a warm cache keeps that instant.
         """
-        for key in (
-            "confrerieNotionDbOeuvresId",
-            "confrerieNotionDbIdEditorsId",
-            "confrerieNotionDbOutilsId",
-        ):
-            db_id = module_config.get(key)
-            if db_id:
-                try:
-                    await self.notion_client.get_properties_schema(db_id)
-                except Exception as e:
-                    logger.warning(f"Failed to cache data source for {db_id}: {e}")
+        db_ids = {
+            settings.get(key)
+            for _, settings in CONFRERIE.items()
+            for key in (
+                "confrerieNotionDbOeuvresId",
+                "confrerieNotionDbIdEditorsId",
+                "confrerieNotionDbOutilsId",
+            )
+        } - {None, ""}
+        for db_id in db_ids:
+            try:
+                await self.notion_client.get_properties_schema(db_id)
+            except Exception as e:
+                logger.warning(f"Failed to cache data source for {db_id}: {e}")
 
-    async def _create_embed_footer(self) -> EmbedFooter:
-        """Standard footer used by stats and update embeds."""
+    async def _create_embed_footer(self, guild_id) -> EmbedFooter:
+        """Standard footer used by stats and update embeds: the bot as *guild_id* sees it."""
         guild = self.bot.get_guild(guild_id) if guild_id else None
         me = guild.me if guild else None
         return EmbedFooter(
