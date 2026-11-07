@@ -4,7 +4,8 @@ The metrics extension fetches the raw documents on the bot loop and hands them
 to the builders here; :class:`features.metrics.collector.SnapshotCollector`
 serves the result. Every per-guild series carries ``guild_id`` and ``guild``
 (the server's name); per-member series are capped at the top N and labelled
-with both the member's id (stable) and their display name (readable).
+with the member's display name only, so no Discord id reaches the monitoring
+system. Two members sharing a name are told apart with a " (2)" suffix.
 
 All values are gauges: they describe the database as it is now, and
 Prometheus builds the history (``delta(michel_xp_points[1d])`` is the XP
@@ -19,7 +20,28 @@ from features.spotify.stats import PlaylistStats
 from features.xp.stats import level_distribution, summarize, top_members
 
 GUILD_LABELS: tuple[str, ...] = ("guild_id", "guild")
-MEMBER_LABELS: tuple[str, ...] = (*GUILD_LABELS, "user_id", "member")
+MEMBER_LABELS: tuple[str, ...] = (*GUILD_LABELS, "member")
+
+
+class _MemberNames:
+    """Hands out one distinct ``member`` label per user id, in first-seen order."""
+
+    def __init__(self, label_of: Callable[[str], str]) -> None:
+        self._label_of = label_of
+        self._by_id: dict[str, str] = {}
+        self._taken: set[str] = set()
+
+    def __call__(self, user_id: str) -> str:
+        if user_id not in self._by_id:
+            base = self._label_of(user_id)
+            label, n = base, 1
+            while label in self._taken:
+                n += 1
+                label = f"{base} ({n})"
+            self._by_id[user_id] = label
+            self._taken.add(label)
+        return self._by_id[user_id]
+
 
 # Windows (label value → days) reported by ``michel_xp_active_members``.
 ACTIVE_WINDOWS: dict[str, int] = {"1d": 1, "7d": 7, "30d": 30}
@@ -123,8 +145,11 @@ def xp_samples(
         source = str(row.get("source") or "message")
         out.add("michel_xp_source_points", int(row.get("xp") or 0), source=source)
         out.add("michel_xp_source_events", int(row.get("events") or 0), source=source)
-    for member in top_members(docs, {k: dict(v) for k, v in names.items()}, limit=top_n):
-        who = {"user_id": member["user_id"], "member": member["display_name"]}
+    ranked = top_members(docs, {k: dict(v) for k, v in names.items()}, limit=top_n)
+    display = {m["user_id"]: m["display_name"] for m in ranked}
+    member_name = _MemberNames(display.__getitem__)
+    for member in ranked:
+        who = {"member": member_name(member["user_id"])}
         out.add("michel_xp_member_points", member["xp"], **who)
         out.add("michel_xp_member_level", member["level"], **who)
         out.add("michel_xp_member_messages", member["messages"], **who)
@@ -164,13 +189,14 @@ def spotify_samples(
     out.add("michel_spotify_poll_open", 1 if poll else 0)
     out.add("michel_spotify_poll_voters", len(poll.voters) if poll else 0)
 
+    member_name = _MemberNames(label_of)
     for contributor in stats.top_contributors:
-        who = {"user_id": contributor.key, "member": label_of(contributor.key)}
+        who = {"member": member_name(contributor.key)}
         out.add("michel_spotify_contributor_tracks", contributor.count, **who)
     for artist in stats.top_artists:
         out.add("michel_spotify_artist_tracks", artist.count, artist=artist.key)
     for voter in stats.voters:
-        who = {"user_id": voter.user_id, "member": label_of(voter.user_id)}
+        who = {"member": member_name(voter.user_id)}
         out.add("michel_spotify_voter_votes", voter.conserver, **who, choice="conserver")
         out.add("michel_spotify_voter_votes", voter.menfou, **who, choice="menfou")
         out.add("michel_spotify_voter_votes", voter.supprimer, **who, choice="supprimer")
