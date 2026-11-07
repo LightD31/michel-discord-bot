@@ -6,8 +6,7 @@ The original message id doubles as the document ``_id`` for O(1) lookup.
 import pymongo
 
 from features.starboard.models import StarEntry
-from src.core.db import mongo_manager
-from src.core.errors import DatabaseError
+from src.core.db import mongo_manager, translates_db_errors
 from src.core.logging import init_logger
 
 logger = init_logger(__name__)
@@ -39,38 +38,29 @@ class StarboardRepository:
             doc["_id"] = str(doc["_id"])
         return StarEntry(**doc)
 
+    @translates_db_errors
     async def get_by_original(self, original_message_id: str) -> StarEntry | None:
-        try:
-            doc = await self._col().find_one({"_id": str(original_message_id)})
-        except Exception as e:
-            logger.error("DB find_one failed: %s", e)
-            return None
+        """The mirror of a message, or ``None`` if it isn't on the starboard.
+
+        A database error raises rather than reading as "not starred", which
+        would post the message a second time.
+        """
+        doc = await self._col().find_one({"_id": str(original_message_id)})
         return self._doc_to_entry(doc) if doc else None
 
+    @translates_db_errors
     async def upsert(self, entry: StarEntry) -> None:
-        try:
-            payload = entry.model_dump(exclude={"id"})
-            payload["_id"] = entry.original_message_id
-            await self._col().update_one(
-                {"_id": entry.original_message_id}, {"$set": payload}, upsert=True
-            )
-        except Exception as e:
-            logger.error("DB upsert failed: %s", e)
-            raise DatabaseError(f"Failed to upsert starboard entry: {e}") from e
+        payload = entry.model_dump(exclude={"id"})
+        payload["_id"] = entry.original_message_id
+        await self._col().update_one(
+            {"_id": entry.original_message_id}, {"$set": payload}, upsert=True
+        )
 
+    @translates_db_errors
     async def update_count(self, original_message_id: str, count: int) -> None:
-        try:
-            await self._col().update_one(
-                {"_id": str(original_message_id)}, {"$set": {"count": count}}
-            )
-        except Exception as e:
-            logger.error("DB update_one failed: %s", e)
-            raise DatabaseError(f"Failed to update star count: {e}") from e
+        await self._col().update_one({"_id": str(original_message_id)}, {"$set": {"count": count}})
 
+    @translates_db_errors
     async def delete_by_original(self, original_message_id: str) -> int:
-        try:
-            result = await self._col().delete_one({"_id": str(original_message_id)})
-            return result.deleted_count
-        except Exception as e:
-            logger.error("DB delete_one failed: %s", e)
-            raise DatabaseError(f"Failed to delete starboard entry: {e}") from e
+        result = await self._col().delete_one({"_id": str(original_message_id)})
+        return result.deleted_count

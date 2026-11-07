@@ -1,24 +1,9 @@
 """Pydantic models for the birthday feature."""
 
-import re
 from datetime import datetime
 
 import pytz
 from pydantic import BaseModel, field_validator
-
-
-def _safe_replace_year(dt: datetime, year: int) -> datetime:
-    """Replace the year of *dt* handling Feb 29 — falls back to Mar 1."""
-    try:
-        return dt.replace(year=year)
-    except ValueError:
-        return dt.replace(year=year, month=3, day=1)
-
-
-def _strip_year_from_format(date_format: str) -> str:
-    """Remove year tokens (y, yy, yyyy…) from a babel/ICU date format string."""
-    cleaned = re.sub(r"[,/\-.\s]*y+[,/\-.\s]*", " ", date_format)
-    return cleaned.strip(" ,.-/")
 
 
 class BirthdayEntry(BaseModel):

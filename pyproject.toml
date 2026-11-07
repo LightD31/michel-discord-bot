@@ -150,6 +150,12 @@ disallow_incomplete_defs = true
 disallow_untyped_calls = true
 warn_return_any = true
 
+# The framework-free domain layer: function bodies are checked even where
+# they aren't annotated yet.
+[[tool.mypy.overrides]]
+module = "features.*"
+check_untyped_defs = true
+
 # ─── pytest ────────────────────────────────────────────────────────────
 [tool.pytest.ini_options]
 minversion = "8.0"
@@ -159,6 +165,9 @@ testpaths = ["tests"]
 # import from those packages without setting PYTHONPATH at every invocation.
 pythonpath = ["."]
 asyncio_mode = "auto"
+# Repository tests against a real server: skipped unless MONGO_TEST_URL is set
+# (see tests/conftest.py). CI's test job provides one.
+markers = ["mongo: needs a MongoDB server (MONGO_TEST_URL)"]
 filterwarnings = [
     "error",
     "ignore::DeprecationWarning",  # third-party libs
@@ -173,9 +182,11 @@ branch = true
 [tool.coverage.report]
 show_missing = true
 skip_covered = true
-# Floor for `pytest --cov` (CI's test job): total coverage was 62.5% when this was
-# set. Raise it as tests are added, so coverage can only ratchet up.
-fail_under = 65
+# Floor for `pytest --cov` (CI's test job): total coverage was 73% without MongoDB
+# and 75% with it (CI) when this was last raised. Keep it below the figure
+# without MongoDB so a local run passes too. Raise it as tests are added, so
+# coverage can only ratchet up.
+fail_under = 72
 
 # ─── detect-secrets ────────────────────────────────────────────────────
 # Baseline lives at .secrets.baseline; configured via .pre-commit-config.yaml.

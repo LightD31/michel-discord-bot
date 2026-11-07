@@ -38,6 +38,20 @@ def test_picker_survives_all_zero_weights():
     assert pick_weighted_message(config, "msgs", "défaut") in ("a", "b")
 
 
+def test_an_unknown_placeholder_stays_as_written():
+    # A guild admin's typo must not stop the welcome / birthday / level-up message.
+    config = {"msgs": [{"text": "Salut {mention}, bienvenue sur {serveur} !"}]}
+    assert pick_weighted_message(config, "msgs", "défaut", mention="@bob") == (
+        "Salut @bob, bienvenue sur {serveur} !"
+    )
+
+
+def test_a_text_that_is_not_a_format_string_is_sent_as_is():
+    for text in ("Un { tout seul", "Positionnel {0}", "{mention.nope}"):
+        config = {"msgs": [{"text": text}]}
+        assert pick_weighted_message(config, "msgs", "défaut", mention="@bob") == text
+
+
 # ── Schemas ─────────────────────────────────────────────────────────────
 
 

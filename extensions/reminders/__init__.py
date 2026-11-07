@@ -11,11 +11,9 @@ or deletes one-shot reminders. Persistence lives in
 ``moduleUtils``.
 """
 
-import os
 import re
 from datetime import datetime, timedelta
 
-from dateutil.relativedelta import relativedelta
 from interactions import (
     ActionRow,
     Button,
@@ -33,18 +31,26 @@ from interactions import (
     listen,
     slash_command,
     slash_option,
+    spread_to_rows,
 )
 from interactions.client.utils import timestamp_converter
 
-from features.reminders import Reminder, ReminderRepository
+from features.reminders import (
+    PastReminderError,
+    Reminder,
+    ReminderRepository,
+    first_occurrence,
+    next_after,
+    parse_recipients,
+    schedule_label,
+    snooze_minutes,
+)
 from src.core import logging as logutil
 from src.core.config import load_config
 from src.discord_ext.messages import fetch_user_safe, send_error
 from src.discord_ext.scopes import guild_scopes
 
 SNOOZE_PREFIX = "reminder_snooze"
-SNOOZE_MINUTES = 10
-RECIPIENT_SEPARATORS = ",; "
 MAX_EXTRA_RECIPIENTS = 25
 _SNOOZE_RE = re.compile(rf"^{SNOOZE_PREFIX}:(\d+):([0-9a-fA-F]+)$")
 
@@ -52,44 +58,8 @@ logger = logutil.init_logger(__name__)
 _, _module_config, enabled_servers = load_config("moduleUtils")
 
 
-def _snooze_minutes(guild_id: str | int | None) -> int:
-    """Per-guild snooze duration with a sane fallback to the module default."""
-    if guild_id is None:
-        return SNOOZE_MINUTES
-    cfg = _module_config.get(str(guild_id), {})
-    raw = cfg.get("reminderSnoozeMinutes")
-    try:
-        value = int(raw) if raw is not None else SNOOZE_MINUTES
-    except (TypeError, ValueError):
-        value = SNOOZE_MINUTES
-    return max(1, min(value, 1440))
-
-
-def _parse_recipients(raw: str | None) -> list[str] | None:
-    """Parse a free-text recipient list into a list of Discord user IDs.
-
-    Accepts mentions ``<@123>`` / ``<@!123>`` and bare numeric IDs separated
-    by commas, semicolons, or whitespace. Returns ``None`` on malformed input.
-    """
-    if not raw:
-        return []
-    out: list[str] = []
-    seen: set[str] = set()
-    chunk = raw
-    for sep in RECIPIENT_SEPARATORS:
-        chunk = chunk.replace(sep, " ")
-    for token in chunk.split():
-        token = token.strip()
-        if not token:
-            continue
-        if token.startswith("<@") and token.endswith(">"):
-            token = token[2:-1].lstrip("!&")
-        if not token.isdigit():
-            return None
-        if token not in seen:
-            seen.add(token)
-            out.append(token)
-    return out
+def _snooze_minutes(guild_id: str | int) -> int:
+    return snooze_minutes(_module_config.get(str(guild_id), {}))
 
 
 class RemindersExtension(Extension):
@@ -178,39 +148,26 @@ class RemindersExtension(Extension):
         date: str | None = None,
         recipients: str | None = None,
     ):
-        current_time = datetime.now()
-        remind_time = current_time.replace(
-            hour=hour,
-            minute=minute,
-            second=0,
-            microsecond=0,
-        )
+        start = None
         if date:
             try:
-                parseddate = datetime.strptime(date, "%d/%m/%Y")
+                start = datetime.strptime(date, "%d/%m/%Y").date()
             except ValueError:
                 await send_error(ctx, "Format de date invalide. Utilisez JJ/MM/AAAA")
                 return
-            remind_time = remind_time.replace(
-                year=parseddate.year, month=parseddate.month, day=parseddate.day
+        try:
+            remind_time = first_occurrence(
+                datetime.now(),
+                hour=hour,
+                minute=minute,
+                frequency=frequency,  # type: ignore[arg-type]
+                start=start,
             )
+        except PastReminderError as e:
+            await send_error(ctx, str(e))
+            return
 
-        while remind_time <= current_time:
-            if frequency is None:
-                remind_time += timedelta(days=1)
-                if remind_time <= current_time:
-                    await ctx.send("Le rappel ne peut pas être dans le passé")
-                break
-            elif frequency == "daily":
-                remind_time += timedelta(days=1)
-            elif frequency == "weekly":
-                remind_time += timedelta(weeks=1)
-            elif frequency == "monthly":
-                remind_time += relativedelta(months=1)
-            elif frequency == "yearly":
-                remind_time += relativedelta(years=1)
-
-        recipient_ids = _parse_recipients(recipients)
+        recipient_ids = parse_recipients(recipients)
         if recipient_ids is None:
             await send_error(
                 ctx,
@@ -270,32 +227,15 @@ class RemindersExtension(Extension):
         for reminder in reminders:
             if reminder.id is None:
                 continue
-            remind_time = reminder.remind_time
-            if reminder.frequency == "daily":
-                label = f"{reminder.message:40} (Tous les jours à {remind_time.strftime('%H:%M')})"
-            elif reminder.frequency == "weekly":
-                label = (
-                    f"{reminder.message:40} (Tous les {remind_time.strftime('%A')} "
-                    f"à {remind_time.strftime('%H:%M')})"
-                )
-            elif reminder.frequency == "monthly":
-                label = (
-                    f"{reminder.message:40} (Tous les {remind_time.strftime('%d')} "
-                    f"à {remind_time.strftime('%H:%M')})"
-                )
-            elif reminder.frequency == "yearly":
-                label = (
-                    f"{reminder.message:40} (Tous les {remind_time.strftime('%d/%m')} "
-                    f"à {remind_time.strftime('%H:%M')})"
-                )
-            else:
-                label = f"{reminder.message:40} ({remind_time.strftime('%H:%M')})"
+            # Discord caps a button label at 80 characters.
+            label = f"{reminder.message[:40]} ({schedule_label(reminder)})"
             buttons.append(Button(label=label, style=ButtonStyle.SECONDARY, custom_id=reminder.id))
             id_map[reminder.id] = reminder
 
         message = await ctx.send(
             f"Quel rappel veux-tu supprimer (annulation {timestamp_converter(datetime.now() + timedelta(seconds=60)).format(TimestampStyles.RelativeTime)})",
-            components=[ActionRow(*buttons)],
+            # Five buttons per row, 25 per message.
+            components=spread_to_rows(*buttons[:25]),
             ephemeral=True,
         )
 
@@ -326,18 +266,6 @@ class RemindersExtension(Extension):
             await ctx.edit(
                 message=message, content="Annulé, aucun rappel sélectionné", components=[]
             )
-
-    @staticmethod
-    def _next_occurrence(remind_time: datetime, frequency: str | None) -> datetime | None:
-        if frequency == "daily":
-            return remind_time + timedelta(days=1)
-        if frequency == "weekly":
-            return remind_time + timedelta(weeks=1)
-        if frequency == "monthly":
-            return remind_time + relativedelta(months=1)
-        if frequency == "yearly":
-            return remind_time + relativedelta(years=1)
-        return None
 
     @staticmethod
     def _snooze_components(reminder_id: str, guild_id: str, snooze_minutes: int) -> list[ActionRow]:
@@ -397,13 +325,8 @@ class RemindersExtension(Extension):
                     continue
                 await self._dispatch_reminder(gid, reminder)
 
-                next_time = self._next_occurrence(reminder.remind_time, reminder.frequency)
+                next_time = next_after(reminder.remind_time, reminder.frequency, now)
                 try:
-                    if next_time is not None:
-                        while next_time <= now:
-                            next_time = self._next_occurrence(next_time, reminder.frequency)
-                            if next_time is None:
-                                break
                     if next_time is not None:
                         await repo.reschedule(reminder.id, next_time)
                     else:

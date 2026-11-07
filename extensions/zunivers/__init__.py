@@ -24,7 +24,7 @@ from features.coloc import (
     ZuniversAPIClient,
 )
 
-from ._common import ZuniversConfig, config, enabled_servers, logger, module_config
+from ._common import ZuniversConfig, enabled_servers, logger, module_config
 from .corporation import CorporationMixin
 from .events import EventsMixin
 from .ninja import NinjaMixin
@@ -40,9 +40,7 @@ class ZuniversExtension(
     def __init__(self, bot: Client):
         self.bot = bot
         self.api_client = ZuniversAPIClient()
-        self.storage = StorageManager(
-            config["misc"]["dataFolder"], guild_id=enabled_servers[0] if enabled_servers else None
-        )
+        self.storage = StorageManager(enabled_servers[0] if enabled_servers else None)
         self.reminders = ReminderCollection()
         self.event_state = EventState()
         self.request_subscriptions = {}
