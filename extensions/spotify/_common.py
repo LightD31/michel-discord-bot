@@ -135,7 +135,7 @@ class SpotifyConfig(SchemaBase):
         "url",
         description="Icône affichée en pied des embeds Spotify. Vide = aucune icône.",
     )
-    spotifyUsers: dict[str, Any] = ui(
+    spotifyUsers: list[dict[str, str]] = ui(
         "Mapping Spotify → Discord",
         "spotifymap",
         description=(

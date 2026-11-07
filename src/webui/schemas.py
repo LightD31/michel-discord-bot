@@ -25,7 +25,7 @@ Recognised widget types (``type=`` on ``ui()``):
 
 from typing import Any, ClassVar
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 _UNSET = object()
 
@@ -82,9 +82,16 @@ def ui(
 
 
 class SchemaBase(BaseModel):
-    """Base for UI-schema source models; class vars hold module/section metadata."""
+    """Base for UI-schema source models; class vars hold module/section metadata.
 
-    model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
+    Strict about keys (``extra="forbid"``): a dashboard save carrying a field
+    the schema doesn't declare is refused. Numbers are accepted for string
+    fields, since Discord ids are sometimes written as numbers by hand.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid", arbitrary_types_allowed=True, coerce_numbers_to_str=True
+    )
 
     __label__: ClassVar[str] = ""
     __description__: ClassVar[str] = ""
@@ -139,6 +146,42 @@ def register_section(key: str):
         return cls
 
     return decorator
+
+
+def module_model(key: str) -> type[SchemaBase] | None:
+    """The schema class registered for per-server module *key*, if any."""
+    return _MODULE_REGISTRY.get(key)
+
+
+def section_model(key: str) -> type[SchemaBase] | None:
+    """The schema class registered for global config section *key*, if any."""
+    return _SECTION_REGISTRY.get(key)
+
+
+def validation_errors(model: type[SchemaBase], value: Any, *, module: bool) -> list[str]:
+    """Check *value* (a module's or section's config) against *model*.
+
+    Returns readable ``"field: message"`` lines, empty when the value is valid.
+    A module may always carry its ``enabled`` toggle, declared or not, and a
+    ``__direct_value__`` module stores its single field's value directly.
+    """
+    if model.__direct_value__:
+        (field_name,) = model.model_fields
+        value = {field_name: value}
+    if not isinstance(value, dict):
+        return [f"la configuration doit être un objet, pas {type(value).__name__}"]
+    errors: list[str] = []
+    if module and "enabled" not in model.model_fields and "enabled" in value:
+        value = dict(value)
+        if not isinstance(value.pop("enabled"), bool):
+            errors.append("enabled: doit être un booléen")
+    try:
+        model.model_validate(value)
+    except ValidationError as e:
+        for err in e.errors():
+            where = ".".join(str(part) for part in err["loc"]) or "(racine)"
+            errors.append(f"{where}: {err['msg']}")
+    return errors
 
 
 def _fields_of(cls: type[BaseModel]) -> dict[str, dict[str, Any]]:
@@ -649,6 +692,8 @@ class WebuiSection(SchemaBase):
         description=(
             "Adresses ou plages CIDR des reverse proxys devant le dashboard. "
             "Les en-têtes X-Forwarded-For / X-Forwarded-Proto ne sont pris en compte "
-            "que s'ils viennent de l'une d'elles. Vide = loopback et réseaux privés."
+            "que s'ils viennent de l'une d'elles. Vide = loopback uniquement : un proxy "
+            "dans un conteneur ou sur un autre hôte doit être listé (ex. 172.17.0.1, "
+            "la passerelle Docker par défaut)."
         ),
     )

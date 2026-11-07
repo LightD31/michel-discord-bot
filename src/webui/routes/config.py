@@ -1,12 +1,17 @@
 """Global configuration + module schema endpoints."""
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from src.core import logging as logutil
 from src.webui.context import WebUIContext, discover_modules
-from src.webui.schemas import GLOBAL_CONFIG_SCHEMAS, MODULE_SCHEMAS
+from src.webui.schemas import (
+    GLOBAL_CONFIG_SCHEMAS,
+    MODULE_SCHEMAS,
+    section_model,
+    validation_errors,
+)
 from src.webui.secrets import mask_full_config, mask_section, restore_section
 
 logger = logutil.init_logger("webui.routes.config")
@@ -84,11 +89,21 @@ def create_router(ctx: WebUIContext) -> APIRouter:
         current on-disk value (the dashboard never sees real secrets).
         """
         session = ctx.require_developer(request)
+        model = section_model(section)
+        if model is None:
+            raise HTTPException(status_code=404, detail=f"Section inconnue : {section}")
         schema = GLOBAL_CONFIG_SCHEMAS.get(section)
 
         def mutator(data: dict) -> None:
             current = data.get("config", {}).get(section)
-            data.setdefault("config", {})[section] = restore_section(body.config, current, schema)
+            restored = restore_section(body.config, current, schema)
+            errors = validation_errors(model, restored, module=False)
+            if errors:
+                # Raising here leaves config.json untouched (mutate writes after).
+                raise HTTPException(
+                    status_code=422, detail="Configuration invalide : " + " ; ".join(errors[:10])
+                )
+            data.setdefault("config", {})[section] = restored
 
         ctx.mutate_config(mutator)
         logger.info(

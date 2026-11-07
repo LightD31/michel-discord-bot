@@ -49,7 +49,7 @@ _TYPE_PLACEHOLDERS: dict[str, Any] = {
     "models": [],
     "dict": {},
     "keyvaluemap": {},
-    "spotifymap": {},
+    "spotifymap": [],
     "streamermap": {},
     "youtubechannelmap": {},
     "rssfeedmap": {},
