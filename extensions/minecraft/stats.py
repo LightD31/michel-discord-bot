@@ -19,6 +19,7 @@ from src.discord_ext.messages import edit_message_if_changed
 
 from ._common import (
     SFTP_HOST,
+    SFTP_HOST_KEY,
     SFTP_PORT,
     SFTP_USERNAME,
     SFTPS_PASSWORD,
@@ -62,12 +63,21 @@ class StatsMixin:
         """Retrieve player statistics from the Minecraft server."""
         from features.minecraft import get_minecraft_stats_with_retry
 
+        if not SFTP_HOST_KEY:
+            logger.error(
+                "Minecraft stats skipped: no SFTP host key configured (minecraftSftpHostKey)"
+            )
+            return []
         try:
             logger.debug(
                 f"SFTP connection params: host={SFTP_HOST}, port={SFTP_PORT}, username={SFTP_USERNAME}"
             )
             player_stats = await get_minecraft_stats_with_retry(
-                host=SFTP_HOST, port=SFTP_PORT, username=SFTP_USERNAME, password=SFTPS_PASSWORD
+                host=SFTP_HOST,
+                port=SFTP_PORT,
+                username=SFTP_USERNAME,
+                password=SFTPS_PASSWORD,
+                host_key=SFTP_HOST_KEY,
             )
             logger.debug(
                 f"Retrieved stats for {len(player_stats)} players using optimized connection"

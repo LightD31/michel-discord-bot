@@ -91,7 +91,18 @@ class FakeRequest:
         self.url = FakeUrl(scheme)
 
 
-TRUSTED = TrustedProxies()
+TRUSTED = TrustedProxies(["10.0.0.0/8"])
+
+
+def test_only_loopback_is_trusted_by_default():
+    """A private range is not a proxy of ours until the operator lists it."""
+    default = TrustedProxies()
+    assert default.trusts("127.0.0.1") and default.trusts("::1")
+    assert not default.trusts("10.0.0.5")
+    assert not default.trusts("172.17.0.1")
+    assert not default.trusts(None) and not default.trusts("nonsense")
+    request = FakeRequest(headers={"x-forwarded-for": "203.0.113.7"}, peer="172.17.0.1")
+    assert client_ip(request, default) == "172.17.0.1"
 
 
 # --- client identity -------------------------------------------------------
@@ -147,15 +158,6 @@ def test_garbage_in_the_header_is_not_trusted_as_a_proxy():
 # --- trust policy ----------------------------------------------------------
 
 
-def test_default_policy_trusts_loopback_and_private_ranges_only():
-    assert TRUSTED.trusts("127.0.0.1")
-    assert TRUSTED.trusts("::1")
-    assert TRUSTED.trusts("172.17.0.1")
-    assert not TRUSTED.trusts("203.0.113.7")
-    assert not TRUSTED.trusts(None)
-    assert not TRUSTED.trusts("nonsense")
-
-
 def test_an_explicit_policy_replaces_the_defaults():
     policy = TrustedProxies(["203.0.113.0/24"])
     assert policy.trusts("203.0.113.7")
@@ -188,7 +190,7 @@ def test_an_invalid_entry_is_never_echoed_into_the_logs(caplog):
 
 
 def test_forwarded_proto_is_honored_from_a_trusted_proxy():
-    request = FakeRequest(headers={"x-forwarded-proto": "https"}, peer="127.0.0.1")
+    request = FakeRequest(headers={"x-forwarded-proto": "https"}, peer="10.0.0.5")
     assert request_is_https(request, TRUSTED)
 
 

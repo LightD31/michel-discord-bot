@@ -206,6 +206,7 @@
                 "minecraftSftpPort": 2225,
                 "minecraftSftpUsername": "Discord",
                 "minecraftSftpsPassword": "",
+                "minecraftSftpHostKey": "",
                 "minecraftModpackName": "",
                 "minecraftModpackUrl": "",
                 "minecraftModpackVersion": "",
@@ -274,7 +275,7 @@
                 "spotifyPlaylistUrl": "",
                 "spotifyNewPlaylistUrl": "",
                 "spotifyIconUrl": "",
-                "spotifyUsers": {}
+                "spotifyUsers": []
             },
             "moduleStarboard": {
                 "enabled": false,

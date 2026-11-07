@@ -43,6 +43,14 @@ def _require_known_module(module_name: str) -> None:
         raise HTTPException(status_code=404, detail=f"Module inconnu : {module_name}")
 
 
+def _require_valid(errors: list[str]) -> None:
+    """422 listing what the schema rejected, if anything."""
+    if errors:
+        raise HTTPException(
+            status_code=422, detail="Configuration invalide : " + " ; ".join(errors[:10])
+        )
+
+
 def _require_reasonable_size(config: dict) -> None:
     size = len(json.dumps(config, ensure_ascii=False).encode("utf-8"))
     if size > MAX_MODULE_CONFIG_BYTES:
@@ -415,12 +423,17 @@ def create_router(ctx: WebUIContext) -> APIRouter:
         from src.webui import schemas
 
         schema = schemas.MODULE_SCHEMAS.get(module_name)
+        model = schemas.module_model(module_name)
         enabled_change: dict[str, bool] = {}
 
         def mutator(data: dict) -> None:
             server = data.setdefault("servers", {}).setdefault(server_id, {})
             enabled_change["before"] = _module_enabled(server.get(module_name))
-            server[module_name] = restore_section(body.config, server.get(module_name), schema)
+            restored = restore_section(body.config, server.get(module_name), schema)
+            if model is not None:
+                # Raising here leaves config.json untouched (mutate writes after).
+                _require_valid(schemas.validation_errors(model, restored, module=True))
+            server[module_name] = restored
             enabled_change["after"] = _module_enabled(server[module_name])
 
         ctx.mutate_config(mutator)

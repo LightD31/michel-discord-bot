@@ -22,18 +22,11 @@ from src.core import logging as _logging
 
 logger = _logging.init_logger(__name__)
 
-# Reverse proxies in the supported deployments are local to the host
-# (docker-compose publishes the port on loopback) or sit on a private container
-# network. A request arriving from a public address is not one of our proxies,
-# so its forwarding headers are ignored. Override with ``webui.trustedProxies``.
-DEFAULT_TRUSTED_PROXIES: tuple[str, ...] = (
-    "127.0.0.0/8",
-    "::1/128",
-    "10.0.0.0/8",
-    "172.16.0.0/12",
-    "192.168.0.0/16",
-    "fc00::/7",
-)
+# Only a proxy on the same host is trusted by default. Any other reverse proxy,
+# including one on a container network, is listed in ``webui.trustedProxies``:
+# trusting a whole private range would let anything on it (another container, a
+# compromised neighbour) forge X-Forwarded-For and dodge the rate limits.
+DEFAULT_TRUSTED_PROXIES: tuple[str, ...] = ("127.0.0.0/8", "::1/128")
 
 
 class TrustedProxies:

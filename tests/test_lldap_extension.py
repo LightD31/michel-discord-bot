@@ -21,7 +21,7 @@ def _module(**overrides: Any) -> dict[str, Any]:
     return {
         "enabled": True,
         "lldapUrl": "https://lldap.example.com",
-        "lldapLdapUrl": "ldap://lldap.example.com:3890",
+        "lldapLdapUrl": "ldaps://lldap.example.com:6360",
         "lldapBaseDn": "dc=example,dc=com",
         "lldapAdminUsername": "admin",
         "lldapAdminPassword": "hunter2",  # pragma: allowlist secret

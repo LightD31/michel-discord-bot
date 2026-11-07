@@ -1,6 +1,7 @@
 """LLDAP client: login, GraphQL, token refresh and the LDAP password reset."""
 
 import json
+import ssl
 import sys
 import types
 from typing import Any
@@ -70,7 +71,7 @@ def _login(token: str = "jwt-1") -> _FakeResponse:
 def test_settings_normalize_and_derive_dns():
     settings = _settings()
     assert settings.base_url == "https://lldap.example.com"
-    assert settings.ldap_url == "ldap://lldap.example.com:3890"
+    assert settings.ldap_url == "ldaps://lldap.example.com:3890"  # LDAPS by default
     assert settings.bind_dn == "uid=admin,ou=people,dc=example,dc=com"
     assert settings.user_dn("alice") == "uid=alice,ou=people,dc=example,dc=com"
     assert settings.discord_attribute == "discordid"
@@ -252,7 +253,8 @@ def fake_ldap3(monkeypatch):
         pass
 
     module = types.ModuleType("ldap3")
-    module.Server = lambda url, connect_timeout: ("server", url)  # type: ignore[attr-defined]
+    module.Server = lambda url, use_ssl, tls, connect_timeout: ("server", url, use_ssl, tls)  # type: ignore[attr-defined]
+    module.Tls = lambda validate: ("tls", validate)  # type: ignore[attr-defined]
     module.Connection = _FakeLdapConnection  # type: ignore[attr-defined]
     exceptions = types.ModuleType("ldap3.core.exceptions")
     exceptions.LDAPException = LDAPException  # type: ignore[attr-defined]
@@ -269,10 +271,22 @@ async def test_set_password_binds_as_admin_and_resets(fake_ldap3):
     await LldapClient().set_password(_settings(), "alice", "s3cret")  # pragma: allowlist secret
 
     (conn,) = fake_ldap3.instances
-    assert conn.server == ("server", "ldap://lldap.example.com:3890")
+    assert conn.server == (
+        "server",
+        "ldaps://lldap.example.com:3890",
+        True,
+        ("tls", ssl.CERT_REQUIRED),
+    )
     assert conn.user == "uid=admin,ou=people,dc=example,dc=com"
     assert conn.modified == ("uid=alice,ou=people,dc=example,dc=com", None, "s3cret")
     assert conn.unbound
+
+
+async def test_set_password_refuses_plain_ldap(fake_ldap3):
+    settings = _settings(lldapLdapUrl="ldap://lldap:3890")
+    with pytest.raises(LldapError, match="ldaps://"):
+        await LldapClient().set_password(settings, "alice", "s3cret")  # pragma: allowlist secret
+    assert fake_ldap3.instances == []  # never connected
 
 
 async def test_set_password_refused_raises_and_unbinds(fake_ldap3):

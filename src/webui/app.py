@@ -18,6 +18,7 @@ from src.core.config import load_config as bot_load_config
 from src.webui.auth import DiscordOAuth
 from src.webui.context import WebUIContext
 from src.webui.log_handler import WebUILogHandler, install_log_handler
+from src.webui.mutation_limit import MutationRateLimitMiddleware
 from src.webui.ratelimit import TrustedProxies
 from src.webui.routes import (
     ai as ai_routes,
@@ -138,6 +139,7 @@ def create_app(bot=None, bot_loop=None) -> FastAPI:
         oauth=oauth,
         trusted_proxies=TrustedProxies(webui_config.get("trustedProxies") or None),
     )
+    app.add_middleware(MutationRateLimitMiddleware, trusted_proxies=ctx.trusted_proxies)
     app.add_middleware(SecurityHeadersMiddleware, trusted_proxies=ctx.trusted_proxies)
 
     # Order: API routers first, frontend catch-all last.

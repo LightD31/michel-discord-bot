@@ -251,10 +251,12 @@ async def test_module_save_syncs_only_when_it_flips_the_enabled_state(bot_loop, 
 
     with _servers_client(bot, bot_loop, config) as client:
         unchanged = client.put(
-            "/api/servers/42/modules/moduleXp", json={"config": {"enabled": True, "x": 1}}
+            "/api/servers/42/modules/moduleXp",
+            json={"config": {"enabled": True, "xpPinMessage": True}},
         ).json()
         flipped = client.put(
-            "/api/servers/42/modules/moduleXp", json={"config": {"enabled": False, "x": 1}}
+            "/api/servers/42/modules/moduleXp",
+            json={"config": {"enabled": False, "xpPinMessage": True}},
         ).json()
 
     assert "commandSync" not in unchanged

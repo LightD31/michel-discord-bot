@@ -77,12 +77,22 @@ def test_xp_samples_caps_member_series_and_names_members():
 
     points = _by_name(samples, "michel_xp_member_points")
     assert points == {
-        (*GUILD, ("user_id", "1"), ("member", "Alice")): 5000,
+        (*GUILD, ("member", "Alice")): 5000,
         # No stored name: the id stands in, as on the admin page.
-        (*GUILD, ("user_id", "2"), ("member", "2")): 900,
+        (*GUILD, ("member", "2")): 900,
     }
-    assert _value(samples, "michel_xp_member_rank", user_id="2") == 2
-    assert _value(samples, "michel_xp_member_messages", user_id="1") == 300
+    assert _value(samples, "michel_xp_member_rank", member="2") == 2
+    assert _value(samples, "michel_xp_member_messages", member="Alice") == 300
+
+
+def test_members_sharing_a_name_get_distinct_labels():
+    names = {"1": {"display_name": "Alex"}, "2": {"display_name": "Alex"}}
+    samples = xp_samples("42", "Le Serveur", _xp_docs(), names, {}, [], 2)
+    assert set(_by_name(samples, "michel_xp_member_points")) == {
+        (*GUILD, ("member", "Alex")),
+        (*GUILD, ("member", "Alex (2)")),
+    }
+    assert all("user_id" not in dict(s.labels) for s in samples)
 
 
 def test_xp_samples_empty_guild():
@@ -126,7 +136,7 @@ def test_spotify_samples_playlist_polls_and_members():
 
     # top=1 keeps one contributor and one artist.
     assert _by_name(samples, "michel_spotify_contributor_tracks") == {
-        (*GUILD, ("user_id", "7"), ("member", "Septime")): 2
+        (*GUILD, ("member", "Septime")): 2
     }
     assert _by_name(samples, "michel_spotify_artist_tracks") == {(*GUILD, ("artist", "A")): 2}
 

@@ -86,7 +86,7 @@ The Bot also fetches public information (RSS feeds, YouTube, Twitch, game server
 ## 6. Logs, monitoring and backups
 
 - **Technical logs** record the Bot's activity and errors, including usernames and Discord IDs (for example who ran a command or changed a setting). They are kept on the Operator's server, and the most recent 2000 lines are also kept in memory for the Bot's developers.
-- **Monitoring:** when the Operator enables it, a metrics endpoint publishes counters to the Operator's monitoring system. These include, for the most active members, their Discord ID and name.
+- **Monitoring:** when the Operator enables it, a metrics endpoint publishes counters to the Operator's monitoring system. These include the display names of the most active members, but no Discord IDs.
 - **Backups:** the database and the configuration file are copied every day to the Operator's server. Only the last few copies are kept (7 by default), and older ones are deleted. Dashboard sessions are never included.
 
 ## 7. How long data is kept

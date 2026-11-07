@@ -72,6 +72,15 @@ class MinecraftConfig(SchemaBase):
     minecraftSftpsPassword: str | None = secret_field(
         "Mot de passe SFTP", description="Mot de passe SFTP pour l'accès aux fichiers."
     )
+    minecraftSftpHostKey: str | None = ui(
+        "Clé d'hôte SFTP",
+        "string",
+        description=(
+            "Clé publique du serveur SFTP, au format « ssh-ed25519 AAAA… » (une ligne de "
+            "ssh-keyscan -p <port> <hôte> convient). Obligatoire : sans elle, le bot refuse "
+            "de se connecter et les statistiques ne sont pas mises à jour."
+        ),
+    )
     minecraftModpackName: str | None = ui(
         "Nom du modpack", "string", description="Nom du modpack Minecraft."
     )
@@ -113,6 +122,7 @@ SFTPS_PASSWORD = module_config.get("minecraftSftpsPassword", "")
 SFTP_HOST = module_config.get("minecraftSftpHost", MINECRAFT_IP)
 SFTP_PORT = int(module_config.get("minecraftSftpPort", 2225))
 SFTP_USERNAME = module_config.get("minecraftSftpUsername", "Discord")
+SFTP_HOST_KEY = module_config.get("minecraftSftpHostKey") or ""
 MODPACK_NAME = module_config.get("minecraftModpackName", "")
 MODPACK_URL = module_config.get("minecraftModpackUrl", "")
 MODPACK_VERSION = module_config.get("minecraftModpackVersion", "")
@@ -160,6 +170,7 @@ __all__ = [
     "SERVER_TYPE",
     "SFTPS_PASSWORD",
     "SFTP_HOST",
+    "SFTP_HOST_KEY",
     "SFTP_PORT",
     "SFTP_USERNAME",
     "STATUS_URL",
