@@ -184,9 +184,8 @@ class ConfigStore:
     def _update_and_notify(self, data: dict[str, Any]) -> None:
         """Update the cache and fire subscribers.
 
-        Internal — legacy ``save_config`` / ``save_module_field`` call this
-        directly after performing their own atomic write to avoid writing
-        twice.
+        Internal — ``save_module_field`` calls this directly after performing
+        its own atomic write to avoid writing twice.
         """
         with self._state_lock:
             self._data = data
@@ -269,31 +268,6 @@ def load_config(
     )
 
     return config, module_config, enabled_servers
-
-
-def save_config(
-    module_name: str,
-    config: dict[str, Any],
-    module_config: dict[str, Any],
-    enabled_servers: list[str],
-) -> None:
-    """Save the configuration for a specific module."""
-    with _write_lock:
-        with open(CONFIG_PATH, encoding="utf-8") as file:
-            data = json.load(file)
-        for server_id, server_info in data["servers"].items():
-            if str(server_id) in enabled_servers:
-                server_info[module_name] = module_config
-            else:
-                server_info[module_name] = {"enabled": False}
-        data["config"] = config
-        _atomic_write(data)
-    config_store._update_and_notify(data)
-    logger.info(
-        "Saved config for module %s for servers %s",
-        module_name,
-        enabled_servers,
-    )
 
 
 def load_discord2name(guild_id: str | int) -> dict[str, Any]:

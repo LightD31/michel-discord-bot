@@ -254,14 +254,21 @@ class ExpensesMixin:
         if nouveau_payeur and nouveau_payeur.id not in group["members"]:
             await ctx.send("❌ Le nouveau payeur doit être membre du groupe.", ephemeral=True)
             return
+        if nouveau_payeur and nouveau_payeur.id == expense.get("recipient"):
+            await ctx.send(
+                "❌ Un remboursement ne peut pas avoir le même payeur et destinataire.",
+                ephemeral=True,
+            )
+            return
 
         modifications = {}
         changes_description = []
 
+        currency = guild_currency(ctx.guild.id)
         if nouveau_montant is not None:
             modifications["amount"] = round(nouveau_montant, 2)
             changes_description.append(
-                f"Montant: {expense['amount']:.2f}€ → {nouveau_montant:.2f}€"
+                f"Montant: {expense['amount']:.2f}{currency} → {nouveau_montant:.2f}{currency}"
             )
         if nouvelle_description is not None:
             modifications["description"] = nouvelle_description
@@ -333,7 +340,8 @@ class ExpensesMixin:
             except Exception:
                 pass
 
-            display_name = f"[{group_name}] {expense['amount']:.2f}€ - {expense['description']} (par {payer_name})"
+            currency = guild_currency(ctx.guild.id)
+            display_name = f"[{group_name}] {expense['amount']:.2f}{currency} - {expense['description']} (par {payer_name})"
             if len(display_name) > 80:
                 display_name = display_name[:77] + "..."
 

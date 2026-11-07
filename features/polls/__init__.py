@@ -7,6 +7,7 @@ from features.polls.constants import (
 )
 from features.polls.helpers import (
     MAX_POLL_OPTIONS,
+    options_description,
     parse_poll_author_id,
     validate_poll_options,
 )
@@ -27,6 +28,7 @@ __all__ = [
     "Poll",
     "PollMode",
     "PollRepository",
+    "options_description",
     "parse_duration",
     "parse_poll_author_id",
     "render_bar",

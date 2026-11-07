@@ -17,3 +17,8 @@ def parse_poll_author_id(footer_text: str) -> str | None:
 
 
 __all__ = ["MAX_POLL_OPTIONS", "parse_poll_author_id", "validate_poll_options"]
+
+
+def options_description(options: list[str], emojis: list[str]) -> str:
+    """A reaction poll's body: one ``emoji option`` paragraph per option."""
+    return "\n\n".join(f"{emoji} {option}" for emoji, option in zip(emojis, options, strict=False))

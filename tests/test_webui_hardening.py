@@ -267,3 +267,35 @@ def test_call_bot_times_out():
     with pytest.raises(HTTPException) as exc:
         run_on_own_loop(ctx, lambda: ctx.call_bot(stuck, what="stuck", timeout=0.05))
     assert exc.value.status_code == 504
+
+
+# ── SPA caching ─────────────────────────────────────────────────────────
+
+
+def test_spa_is_cached_and_revalidated(tmp_path, monkeypatch):
+    import os
+
+    import src.webui.routes.frontend as frontend
+
+    page = tmp_path / "index.html"
+    page.write_text("<h1>v1</h1>", encoding="utf-8")
+    monkeypatch.setattr(frontend, "_STATIC_DIR", tmp_path)
+    frontend._cache.clear()
+    app = FastAPI()
+    app.include_router(frontend.create_router(None))
+    client = TestClient(app)
+
+    first = client.get("/")
+    assert first.status_code == 200 and first.text == "<h1>v1</h1>"
+    etag = first.headers["etag"]
+    assert first.headers["cache-control"] == "no-cache"
+
+    again = client.get("/servers/1", headers={"If-None-Match": etag})
+    assert again.status_code == 304 and again.content == b""
+
+    page.write_text("<h1>v2</h1>", encoding="utf-8")
+    stat = page.stat()
+    os.utime(page, (stat.st_atime, stat.st_mtime + 5))  # an edit is picked up without restart
+    edited = client.get("/", headers={"If-None-Match": etag})
+    assert edited.status_code == 200 and edited.text == "<h1>v2</h1>"
+    assert edited.headers["etag"] != etag
