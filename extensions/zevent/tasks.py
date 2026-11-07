@@ -14,10 +14,10 @@ from src.discord_ext.messages import edit_message_if_changed
 
 from ._common import (
     API_URL,
-    GUILD_ID,
     MILESTONE_INTERVAL,
     STREAMLABS_API_URL,
     UPDATE_INTERVAL,
+    ZeventGuild,
 )
 
 logger = logutil.init_logger(__name__)
@@ -30,7 +30,7 @@ async def _no_streamlabs_data() -> None:
 
 
 class TasksMixin:
-    """Periodic Zevent refresh that rebuilds and edits the pinned message."""
+    """Periodic Zevent refresh: render once, publish in every enabled guild."""
 
     def _remote_roster_embed(self, streams: dict, viewers: str | None, others: list) -> Embed:
         """Build the remote-participants embed with the leftover character budget.
@@ -49,15 +49,84 @@ class TasksMixin:
             max_chars=self.remaining_embed_budget(others),
         )
 
+    def _tracker_embeds(
+        self,
+        data: dict,
+        planning_data,
+        main_embed: Embed,
+        streams: dict,
+        viewers: dict | None = None,
+    ) -> list[Embed]:
+        """The full tracker message, whatever the phase: only the header differs."""
+        embeds = [
+            main_embed,
+            self.create_location_embed(
+                "streamers présents sur place",
+                streams["LAN"],
+                withlink=False,
+                viewers_count=viewers["LAN"] if viewers else None,
+                total_count=self._get_stream_total_count(streams, "LAN"),
+            ),
+        ]
+
+        top_donations_embed = self.create_top_donations_embed(
+            self._safe_get_data(data, ["live"], [])
+        )
+        if top_donations_embed:
+            embeds.append(top_donations_embed)
+
+        if planning_data and isinstance(planning_data, list):
+            planning_embed = self.create_planning_embed(planning_data)
+            if planning_embed:
+                embeds.append(planning_embed)
+
+        goals_embed = self.create_donation_goals_embed(self._participant_cache)
+        if goals_embed:
+            embeds.append(goals_embed)
+
+        online = viewers["Online"] if viewers else None
+        embeds.insert(2, self._remote_roster_embed(streams, online, embeds))
+        return self.ensure_embeds_fit_limit(embeds)
+
+    async def _publish(self, guilds: list[tuple[ZeventGuild, dict]], embeds: list[Embed]) -> None:
+        """Show the same render in each guild's message; one failure stays local."""
+        for guild, _ in guilds:
+            if guild.message is None:
+                continue
+            try:
+                await edit_message_if_changed(
+                    guild.message,
+                    embeds=embeds,
+                    content="",
+                    files=[File("data/Zevent_logo.png")],
+                    logger=logger,
+                )
+            except Exception as e:  # noqa: BLE001 — a guild's message must not stop the others
+                logger.error("Guild %s: Zevent message not updated: %s", guild.guild_id, e)
+
+    async def _announce(self, guilds: list[tuple[ZeventGuild, dict]], total: float) -> None:
+        """Milestones and the record, announced in each guild's own channel."""
+        for guild, _ in guilds:
+            try:
+                await self.check_and_send_milestone(guild, total)
+                await self.check_and_send_record(guild, total)
+            except Exception as e:  # noqa: BLE001 — same isolation as the message
+                logger.error("Guild %s: Zevent announcement failed: %s", guild.guild_id, e)
+
     @Task.create(IntervalTrigger(seconds=UPDATE_INTERVAL))
     async def zevent(self):
+        guilds = await self._guilds()
+        if not guilds:
+            logger.debug("Zevent: module enabled on no guild; refresh skipped")
+            return
+
         total_amount = "Données indisponibles"
         total_int = 0
 
         try:
             logger.debug("Fetching data from APIs...")
-            # The Streamlabs team URL is configured per guild; without it the
-            # donation total is simply unavailable (the rest still renders).
+            # Without a Streamlabs team URL the donation total is simply
+            # unavailable (the rest still renders).
             data, streamlabs_data = await asyncio.gather(
                 fetch(API_URL, return_type="json"),
                 fetch(STREAMLABS_API_URL, return_type="json")
@@ -68,6 +137,10 @@ class TasksMixin:
 
             planning_data = await self._ensure_planning_cache()
 
+            if isinstance(data, Exception):
+                logger.error(f"Failed to fetch Zevent API: {data}")
+            if isinstance(streamlabs_data, Exception):
+                logger.error(f"Failed to fetch Streamlabs API: {streamlabs_data}")
             data = (
                 data
                 if not isinstance(data, Exception) and self._validate_api_data(data, "zevent")
@@ -80,10 +153,6 @@ class TasksMixin:
                 else None
             )
 
-            if isinstance(data, Exception):
-                logger.error(f"Failed to fetch Zevent API: {data}")
-            if isinstance(streamlabs_data, Exception):
-                logger.error(f"Failed to fetch Streamlabs API: {streamlabs_data}")
             if planning_data is None:
                 logger.warning("Planning data not available")
 
@@ -94,105 +163,50 @@ class TasksMixin:
 
             concert_active = await self._is_concert_active()
 
-            # Kept in step with the same payload the embeds render, so the
-            # guild's scheduled event never contradicts the pinned message.
-            await self.sync_scheduled_event(data, streamlabs_data, concert_active)
+            # Kept in step with the same payload the embeds render, so a
+            # guild's scheduled event never contradicts its tracker message.
+            for guild, settings in guilds:
+                await self.sync_scheduled_event(
+                    guild, settings, data, streamlabs_data, concert_active
+                )
 
             if not self._is_event_started():
                 if data:
                     streams = await self.categorize_streams(self._safe_get_data(data, ["live"], []))
-                    embeds = [
-                        self.create_main_embed("0 €"),
-                        self.create_location_embed(
-                            "streamers présents sur place",
-                            streams["LAN"],
-                            withlink=False,
-                            viewers_count=None,
-                            total_count=self._get_stream_total_count(streams, "LAN"),
-                        ),
-                    ]
-
-                    top_donations_embed = self.create_top_donations_embed(
-                        self._safe_get_data(data, ["live"], [])
+                    embeds = self._tracker_embeds(
+                        data, planning_data, self.create_main_embed("0 €"), streams
                     )
-                    if top_donations_embed:
-                        embeds.append(top_donations_embed)
-
-                    if planning_data and isinstance(planning_data, list):
-                        planning_embed = self.create_planning_embed(planning_data)
-                        if planning_embed:
-                            embeds.append(planning_embed)
-
-                    goals_embed = self.create_donation_goals_embed(self._participant_cache)
-                    if goals_embed:
-                        embeds.append(goals_embed)
-
-                    embeds.insert(2, self._remote_roster_embed(streams, None, embeds))
                 else:
-                    embeds = [self.create_main_embed("0 €")]
-
-                embeds = self.ensure_embeds_fit_limit(embeds)
-
-                file = File("data/Zevent_logo.png")
-                if self.message:
-                    await edit_message_if_changed(
-                        self.message, embeds=embeds, content="", files=[file], logger=logger
-                    )
-                    logger.debug("Pre-event countdown message updated successfully")
+                    embeds = self.ensure_embeds_fit_limit([self.create_main_embed("0 €")])
+                await self._publish(guilds, embeds)
+                logger.debug("Pre-event countdown message updated successfully")
                 return
+
             if concert_active or not self._is_main_event_started():
                 if data:
                     total_amount, total_int = self.get_total_amount(data, streamlabs_data)
                     streams = await self.categorize_streams(self._safe_get_data(data, ["live"], []))
-
                     main_embed_status = "concert_live" if concert_active else "concert_window"
-                    embeds = [
+                    embeds = self._tracker_embeds(
+                        data,
+                        planning_data,
                         self.create_main_embed(total_amount, concert_status=main_embed_status),
-                        self.create_location_embed(
-                            "streamers présents sur place",
-                            streams["LAN"],
-                            withlink=False,
-                            viewers_count=None,
-                            total_count=self._get_stream_total_count(streams, "LAN"),
-                        ),
-                    ]
-
-                    top_donations_embed = self.create_top_donations_embed(
-                        self._safe_get_data(data, ["live"], [])
+                        streams,
                     )
-                    if top_donations_embed:
-                        embeds.append(top_donations_embed)
-
-                    if planning_data and isinstance(planning_data, list):
-                        planning_embed = self.create_planning_embed(planning_data)
-                        if planning_embed:
-                            embeds.append(planning_embed)
-
-                    goals_embed = self.create_donation_goals_embed(self._participant_cache)
-                    if goals_embed:
-                        embeds.append(goals_embed)
-
-                    embeds.insert(2, self._remote_roster_embed(streams, None, embeds))
                 else:
-                    embeds = [self.create_main_embed("Données indisponibles")]
-
-                embeds = self.ensure_embeds_fit_limit(embeds)
-
-                file = File("data/Zevent_logo.png")
-                if self.message:
-                    await edit_message_if_changed(
-                        self.message, embeds=embeds, content="", files=[file], logger=logger
+                    embeds = self.ensure_embeds_fit_limit(
+                        [self.create_main_embed("Données indisponibles")]
                     )
-                    logger.debug("Concert phase message updated successfully")
+                await self._publish(guilds, embeds)
+                logger.debug("Concert phase message updated successfully")
 
                 if data:
-                    await self.check_and_send_milestone(total_int)
-                    await self.check_and_send_record(total_int)
+                    await self._announce(guilds, total_int)
                 return
 
             if not data and not self.last_data_cache:
                 logger.error("All APIs failed and no cached data available")
-                await self.send_simplified_update(total_amount)
+                await self.send_simplified_update(guilds, total_amount)
                 return
 
             if not data and self.last_data_cache:
@@ -211,51 +225,21 @@ class TasksMixin:
                 viewers_data = await self.get_viewers_by_location(
                     self._safe_get_data(data, ["live"], [])
                 )
-
-                embeds = [
+                embeds = self._tracker_embeds(
+                    data,
+                    planning_data,
                     self.create_main_embed(total_amount, viewers_data["Total"]),
-                    self.create_location_embed(
-                        "streamers présents sur place",
-                        streams["LAN"],
-                        withlink=False,
-                        viewers_count=viewers_data["LAN"],
-                        total_count=self._get_stream_total_count(streams, "LAN"),
-                    ),
-                ]
-
-                top_donations_embed = self.create_top_donations_embed(
-                    self._safe_get_data(data, ["live"], [])
+                    streams,
+                    viewers_data,
                 )
-                if top_donations_embed:
-                    embeds.append(top_donations_embed)
+                await self._publish(guilds, embeds)
+                logger.debug("Message updated successfully")
 
-                if planning_data and isinstance(planning_data, list):
-                    planning_embed = self.create_planning_embed(planning_data)
-                    if planning_embed:
-                        embeds.append(planning_embed)
-
-                goals_embed = self.create_donation_goals_embed(self._participant_cache)
-                if goals_embed:
-                    embeds.append(goals_embed)
-
-                embeds.insert(2, self._remote_roster_embed(streams, viewers_data["Online"], embeds))
-
-                embeds = self.ensure_embeds_fit_limit(embeds)
-
-                file = File("data/Zevent_logo.png")
-
-                if self.message:
-                    await edit_message_if_changed(
-                        self.message, embeds=embeds, content="", files=[file], logger=logger
-                    )
-                    logger.debug("Message updated successfully")
-
-                await self.check_and_send_milestone(total_int)
-                await self.check_and_send_record(total_int)
+                await self._announce(guilds, total_int)
 
         except Exception as e:
             logger.error(f"Unexpected error in zevent task: {e}")
-            await self.send_simplified_update(total_amount)
+            await self.send_simplified_update(guilds, total_amount)
 
     async def _milestone_comparison(self, milestone: float) -> str | None:
         """Place this milestone against the same point of a past edition.
@@ -272,19 +256,19 @@ class TasksMixin:
             logger.error(f"Comparaison de palier indisponible : {e}")
             return None
 
-    async def load_milestone_marker(self) -> None:
-        """Restore the last announced milestone for the tracked edition.
+    def _edition_id(self) -> str | None:
+        event = self._stats_event or {}
+        return str(event.get("id") or "") or None
+
+    async def load_milestone_marker(self, guild: ZeventGuild) -> None:
+        """Restore the last milestone announced in this guild for the tracked edition.
 
         Without this a restart resets the marker, and whatever milestone the
         edition crossed while the bot was down would never be announced. Keyed
         by edition, so a new one starts announcing from its own first palier.
         """
-        if GUILD_ID is None:
-            return
-        event = self._stats_event or {}
-        event_id = str(event.get("id") or "") or None
         try:
-            stored = await ZeventStateRepository(GUILD_ID).load_milestone(event_id)
+            stored = await ZeventStateRepository(guild.guild_id).load_milestone(self._edition_id())
         except Exception as e:
             # Deliberately broad: a repository raises DatabaseError, but a
             # deployment with no `mongodb.url` at all raises RuntimeError before
@@ -293,17 +277,14 @@ class TasksMixin:
             logger.error(f"Palier de dons illisible en base : {e}")
             return
         if stored is not None:
-            self.last_milestone = stored
-            logger.info(f"Palier de dons repris à {stored}")
+            guild.last_milestone = stored
+            logger.info("Guild %s: palier de dons repris à %s", guild.guild_id, stored)
 
-    async def _store_milestone_marker(self, milestone: int) -> None:
+    async def _store_milestone_marker(self, guild: ZeventGuild, milestone: int) -> None:
         """Persist the marker so a restart resumes where the run left off."""
-        if GUILD_ID is None:
-            return
-        event = self._stats_event or {}
         try:
-            await ZeventStateRepository(GUILD_ID).save_milestone(
-                str(event.get("id") or "") or None, milestone
+            await ZeventStateRepository(guild.guild_id).save_milestone(
+                self._edition_id(), milestone
             )
         except Exception as e:
             # Broad on purpose (see `load_milestone_marker`): persistence only
@@ -311,8 +292,8 @@ class TasksMixin:
             # announcement or break the refresh cycle that calls this.
             logger.error(f"Palier de dons non enregistré : {e}")
 
-    async def check_and_send_milestone(self, total_amount: float):
-        """Announce a newly crossed donation milestone, once.
+    async def check_and_send_milestone(self, guild: ZeventGuild, total_amount: float):
+        """Announce a newly crossed donation milestone in this guild, once.
 
         With no marker for this edition — its first run — the first reading
         only establishes the baseline: a tracker joining an edition already in
@@ -323,16 +304,16 @@ class TasksMixin:
         """
         # Serialize the read-modify-write on last_milestone so overlapping
         # task runs can't both pass the comparison and announce twice.
-        async with self._milestone_lock:
+        async with guild.milestone_lock:
             current_milestone = int(total_amount // MILESTONE_INTERVAL * MILESTONE_INTERVAL)
 
-            if self.last_milestone is None:
-                self.last_milestone = current_milestone
+            if guild.last_milestone is None:
+                guild.last_milestone = current_milestone
                 logger.debug(f"Palier de départ: {current_milestone}")
-                await self._store_milestone_marker(current_milestone)
+                await self._store_milestone_marker(guild, current_milestone)
                 return
 
-            if current_milestone > self.last_milestone:
+            if current_milestone > guild.last_milestone:
                 milestone_message = (
                     f"🎉 Nouveau palier atteint : {current_milestone:,} € récoltés ! 🎉".replace(
                         ",", " "
@@ -341,53 +322,48 @@ class TasksMixin:
                 comparison = await self._milestone_comparison(current_milestone)
                 if comparison:
                     milestone_message += f"\n{comparison}"
-                if self.channel and hasattr(self.channel, "send"):
-                    await self.channel.send(milestone_message)
+                channel = guild.channel
+                if channel and hasattr(channel, "send"):
+                    await channel.send(milestone_message)
                 else:
                     logger.error(
-                        "Cannot send milestone message: channel not available or doesn't support sending"
+                        "Guild %s: cannot send milestone message: channel not available",
+                        guild.guild_id,
                     )
-                self.last_milestone = current_milestone
-                await self._store_milestone_marker(current_milestone)
+                guild.last_milestone = current_milestone
+                await self._store_milestone_marker(guild, current_milestone)
 
     # ─── Record de l'édition précédente ───────────────────────────────
 
-    async def load_record_marker(self) -> None:
-        """Restore whether this edition's record announcement already went out.
+    async def load_record_marker(self, guild: ZeventGuild) -> None:
+        """Restore whether this edition's record announcement already went out here.
 
         Also restores the "seen below the record" state, which is what lets a
         crossing that happened while the bot was down still be announced
         instead of being mistaken for one the tracker never witnessed.
         """
-        if GUILD_ID is None:
-            return
-        event = self._stats_event or {}
-        event_id = str(event.get("id") or "") or None
         try:
-            self._record_state = await ZeventStateRepository(GUILD_ID).load_record(event_id)
+            guild.record_state = await ZeventStateRepository(guild.guild_id).load_record(
+                self._edition_id()
+            )
         except Exception as e:
             # As broad as the milestone marker's, and for the same reasons: an
             # unreachable (or unconfigured) database costs resilience across
             # restarts, never an announcement.
             logger.error(f"Marqueur de record illisible en base : {e}")
             return
-        if self._record_state is not None:
-            logger.info(f"Record déjà annoncé : {self._record_state}")
+        if guild.record_state is not None:
+            logger.info("Guild %s: record déjà annoncé : %s", guild.guild_id, guild.record_state)
 
-    async def _store_record_state(self, announced: bool) -> None:
+    async def _store_record_state(self, guild: ZeventGuild, announced: bool) -> None:
         """Persist the record marker so a restart resumes where this left off."""
-        if GUILD_ID is None:
-            return
-        event = self._stats_event or {}
         try:
-            await ZeventStateRepository(GUILD_ID).save_record(
-                str(event.get("id") or "") or None, announced
-            )
+            await ZeventStateRepository(guild.guild_id).save_record(self._edition_id(), announced)
         except Exception as e:
             logger.error(f"Marqueur de record non enregistré : {e}")
 
-    async def check_and_send_record(self, total_amount: float) -> None:
-        """Announce this edition passing the series' best total, once.
+    async def check_and_send_record(self, guild: ZeventGuild, total_amount: float) -> None:
+        """Announce this edition passing the series' best total in this guild, once.
 
         The record is the *highest* past edition, not the most recent one —
         ZEvent 2024 finished below 2022, so "last year" would have called it
@@ -403,8 +379,8 @@ class TasksMixin:
         """
         # Same reason as the milestone lock: overlapping runs of the refresh
         # task must not both pass the comparison and announce twice.
-        async with self._record_lock:
-            if self._record_state:
+        async with guild.record_lock:
+            if guild.record_state:
                 return
 
             best = await self.reference_record()
@@ -415,18 +391,19 @@ class TasksMixin:
                 return
 
             if total_amount < record:
-                if self._record_state is None:
-                    self._record_state = False
-                    await self._store_record_state(False)
+                if guild.record_state is None:
+                    guild.record_state = False
+                    await self._store_record_state(guild, False)
                 return
 
-            if self._record_state is None:
+            channel = guild.channel
+            if guild.record_state is None:
                 logger.info(
                     f"Record de {label} ({format_euros(record)}) déjà dépassé à la "
                     f"première lecture ({format_euros(total_amount)}) — rien à annoncer."
                 )
-            elif self.channel and hasattr(self.channel, "send"):
-                await self.channel.send(
+            elif channel and hasattr(channel, "send"):
+                await channel.send(
                     record_message(
                         label, record, total_amount, datetime.now(UTC), self._main_event_start
                     )
@@ -434,13 +411,17 @@ class TasksMixin:
             else:
                 # Unlike a palier, this one never comes round again — leave it
                 # pending rather than burning it on a channel that cannot send.
-                logger.error("Cannot send record message: channel not available")
+                logger.error(
+                    "Guild %s: cannot send record message: channel not available", guild.guild_id
+                )
                 return
 
-            self._record_state = True
-            await self._store_record_state(True)
+            guild.record_state = True
+            await self._store_record_state(guild, True)
 
-    async def send_simplified_update(self, total_amount: str):
+    async def send_simplified_update(
+        self, guilds: list[tuple[ZeventGuild, dict]], total_amount: str
+    ):
         """Fallback embed used when API fetch and cache both fail."""
         try:
             simple_embed = Embed(
@@ -450,9 +431,10 @@ class TasksMixin:
             )
             simple_embed.timestamp = utils.timestamp_converter(datetime.now())
 
-            if self.message:
-                await edit_message_if_changed(
-                    self.message, embeds=[simple_embed], content="", logger=logger
-                )
+            for guild, _ in guilds:
+                if guild.message:
+                    await edit_message_if_changed(
+                        guild.message, embeds=[simple_embed], content="", logger=logger
+                    )
         except Exception as e:
             logger.error(f"Failed to send simplified update: {e}")

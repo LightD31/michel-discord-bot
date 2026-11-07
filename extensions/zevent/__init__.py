@@ -5,33 +5,29 @@ APIs, Twitch stream aggregation, embed rendering, the refresh task, and the
 ``/zevent_finish`` command.
 """
 
-import asyncio
 import os
 from datetime import timedelta
 
-from interactions import BaseChannel, Client, Extension, Message, ScheduledEvent, listen
+from interactions import Client, Extension, listen
 from twitchAPI.twitch import Twitch
 
 from features.zevent.backoff import RetryGate
-from features.zevent.discord_event import ScheduledEventPlan
 from features.zevent.history import DonationCurve
 from features.zevent.models import Participant, Show
 from features.zevent.velocity import DonationVelocity
 from src.core import logging as logutil
-from src.discord_ext.messages import fetch_or_create_persistent_message
+from src.core.config import global_config
+from src.discord_ext.messages import GuildMessages
 
 from ._common import (
-    CHANNEL_ID,
     EVENT_END_OVERRIDE,
     EVENT_NAME,
     EVENT_START_OVERRIDE,
     FALLBACK_EVENT_START,
     FALLBACK_MAIN_EVENT_START,
-    GUILD_ID,
     MAIN_EVENT_START_OVERRIDE,
-    MESSAGE_ID,
-    PIN_MESSAGE,
-    config,
+    ZEVENT,
+    ZeventGuild,
 )
 from .api import ApiMixin
 from .commands import CommandsMixin
@@ -52,27 +48,29 @@ class Zevent(
     TasksMixin,
     CommandsMixin,
 ):
-    """Live Zevent tracker — refreshes a pinned message on a fixed interval."""
+    """Live Zevent tracker — refreshes each enabled guild's message on a fixed interval.
+
+    The edition is tracked once for the whole bot (global section ``zevent``);
+    each guild where the module is on gets the same embeds in its own channel,
+    its own milestone and record announcements, and optionally its own Discord
+    scheduled event. Its settings are read at each refresh.
+    """
 
     MODULE_KEYS = ("moduleZevent",)
 
-    # Single-guild settings taken at import (see ``_common``).
-
-    RELOAD_ON_SAVE = True
-
     def __init__(self, client: Client):
         self.client: Client = client
-        self.channel: BaseChannel | None = None
-        self.message: Message | None = None
         self.twitch: Twitch | None = None
-        # ``None`` until the first total is read: the first reading is the
-        # baseline, not an announcement.
-        self.last_milestone: int | None = None
-        self._milestone_lock = asyncio.Lock()
-        # ``None`` until the first total is read, ``False`` once read while the
-        # reference edition's record still stood, ``True`` once it fell.
-        self._record_state: bool | None = None
-        self._record_lock = asyncio.Lock()
+        self.messages = GuildMessages(
+            client,
+            module_name=ZEVENT.key,
+            channel_key="zeventChannelId",
+            message_key="zeventMessageId",
+            pin_key="zeventPinMessage",
+            initial_content="Initialisation Zevent…",
+            logger=logger,
+        )
+        self.guilds: dict[str, ZeventGuild] = {}
         self.last_data_cache: dict | None = None
         self.last_update_time = None
         self._stats_event: dict | None = None
@@ -88,15 +86,8 @@ class Zevent(
         # Only the Discord scheduled event needs an end; unset, the planner
         # falls back on a duration past the start.
         self._event_end = EVENT_END_OVERRIDE
-        self._scheduled_event: ScheduledEvent | None = None
-        # What was last pushed to that event — `ScheduledEvent.edit()` leaves
-        # the model it edits untouched, so this is what the diff runs against.
-        self._applied_plan: ScheduledEventPlan | None = None
-        # Cover already uploaded, so the image is fetched once per process
-        # rather than on every refresh.
-        self._applied_cover_url: str | None = None
         self._last_event_total: float | None = None
-        self._event_finished = False
+        self._covers: dict[str, bytes | None] = {}
         # Twitch logins seen live on the last poll, shared with the embeds so
         # the goals ranking uses fresh presence rather than the cached flag.
         self._live_logins: set[str] = set()
@@ -120,37 +111,48 @@ class Zevent(
 
     @listen()
     async def on_startup(self):
-        """Resolve/create the pinned message, auth Twitch, and kick off the refresh."""
-        try:
-            self.message = await fetch_or_create_persistent_message(
-                self.client,
-                channel_id=CHANNEL_ID,
-                message_id=MESSAGE_ID,
-                module_name="moduleZevent",
-                message_id_key="zeventMessageId",
-                guild_id=GUILD_ID,
-                initial_content="Initialisation Zevent…",
-                pin=PIN_MESSAGE,
-                logger=logger,
-            )
-            if self.message is not None:
-                self.channel = self.message.channel
+        """Auth Twitch, resolve the edition, and kick off the refresh.
 
-            self.twitch = await Twitch(
-                config["twitch"]["twitchClientId"],
-                config["twitch"]["twitchClientSecret"],
-            )
+        Each guild's message, markers and scheduled event are picked up by the
+        refresh itself, the first time it serves that guild.
+        """
+        try:
+            twitch = global_config().get("twitch") or {}
+            self.twitch = await Twitch(twitch["twitchClientId"], twitch["twitchClientSecret"])
             # Resolve the tracked edition up front so the embed title is right
             # on the very first render, even if zevent.fr is unreachable.
             await self._ensure_stats_event()
-            # Re-attach the scheduled event this bot created before the restart
-            # so the refresh loop edits it instead of creating a duplicate.
-            await self.recover_scheduled_event()
-            # After the edition is resolved: the markers are stored per edition.
-            await self.load_milestone_marker()
-            await self.load_record_marker()
             logger.info("Zevent extension initialized successfully")
-            self.zevent.start()
+            if not self.zevent.running:
+                self.zevent.start()
             await self.zevent()
         except Exception as e:
             logger.error(f"Failed to initialize Zevent extension: {e}")
+
+    async def _guilds(self) -> list[tuple[ZeventGuild, dict]]:
+        """``(state, settings)`` for each guild where the module is on, now.
+
+        A guild seen for the first time gets its message and has its markers
+        picked back up (stored per edition, so after the edition is resolved);
+        its scheduled event is picked back up the first time it asks for one.
+        """
+        guilds = ZEVENT.items()
+        enabled = [guild_id for guild_id, _ in guilds]
+        self.messages.keep_only(enabled)
+        for guild_id in [g for g in self.guilds if g not in enabled]:
+            del self.guilds[guild_id]
+        out = []
+        for guild_id, settings in guilds:
+            guild = self.guilds.setdefault(guild_id, ZeventGuild(guild_id))
+            guild.message = await self.messages.get(guild_id, settings)
+            if not guild.markers_loaded:
+                guild.markers_loaded = True
+                await self.load_milestone_marker(guild)
+                await self.load_record_marker(guild)
+            if not guild.event_recovered and settings.get("zeventManageDiscordEvent"):
+                guild.event_recovered = True
+                # Re-attach the scheduled event this bot created before the
+                # restart so the refresh edits it instead of creating a duplicate.
+                await self.recover_scheduled_event(guild, settings)
+            out.append((guild, settings))
+        return out
