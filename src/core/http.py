@@ -1,15 +1,11 @@
 """Shared HTTP client for extensions.
 
-Replaces the per-call ``aiohttp.ClientSession`` that lived in
-``src/utils.fetch()``. A single long-lived session is reused across the whole
-process, which:
+A single long-lived ``aiohttp`` session is reused across the whole process,
+which:
 
 - Reuses TCP connections (DNS + TLS handshake amortized).
 - Has a single place to set defaults (timeouts, headers, user-agent).
 - Simplifies future work (proxies, per-host rate limiting, metrics).
-
-For backward compatibility ``src.utils.fetch`` now delegates here and keeps
-its original signature.
 
 Usage::
 
@@ -190,8 +186,6 @@ async def fetch(
     pause: int = 1,
 ) -> Any:
     """GET *url* with retry.
-
-    Behaviour intentionally matches the legacy ``src.utils.fetch``:
 
     - Retries up to *retries* times on 5xx responses, ``ClientError``, and
       ``asyncio.TimeoutError``. Exponential backoff with jitter:

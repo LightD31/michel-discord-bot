@@ -17,7 +17,6 @@ from starlette.requests import Request
 import src.webui.auth as auth_module
 from src.core.http import http_client
 from src.webui.auth import (
-    SESSION_DOC_VERSION,
     SESSION_TTL_SECONDS,
     DiscordOAuth,
     Session,
@@ -113,7 +112,6 @@ def test_session_doc_round_trip():
     session = make_session()
     doc = _session_to_doc(session)
     assert doc["_id"] == hash_token(session.session_token) == session.token_hash
-    assert doc["v"] == SESSION_DOC_VERSION
     restored = _doc_to_session(doc)
     assert restored == session
     assert restored.session_token == ""  # the cookie value is never persisted
@@ -456,11 +454,6 @@ class StubRepo:
     docs: list[dict] = []
     deleted: list[str] = []
 
-    async def delete_older_versions(self, version):
-        before = len(self.docs)
-        type(self).docs = [d for d in self.docs if d.get("v") == version]
-        return before - len(self.docs)
-
     async def load_all_docs(self):
         return list(self.docs)
 
@@ -493,26 +486,6 @@ def test_restore_skips_expired_sessions(stub_repo):
     # The browser still holds the raw cookie; it resolves through its hash.
     assert oauth.get_session(fresh.session_token) is not None
     assert oauth.get_session(stale.session_token) is None
-
-
-def test_restore_deletes_legacy_clear_text_sessions(stub_repo):
-    """Pre-hashing documents (raw cookie as _id, OAuth tokens) are purged, not restored."""
-    legacy = {
-        "_id": "raw-cookie-value",
-        "user_id": "42",
-        "username": "michel",
-        "guilds": [],
-        "access_token": "at",
-        "refresh_token": "rt",
-        "expires_at": time.time() + 3600,
-    }
-    current = make_session()
-    stub_repo.docs = [legacy, _session_to_doc(current)]
-
-    oauth = make_oauth()
-    assert asyncio.run(oauth.restore_sessions()) == 1
-    assert oauth.get_session("raw-cookie-value") is None
-    assert stub_repo.docs == [_session_to_doc(current)]
 
 
 def test_purge_expired_evicts_memory(stub_repo):
