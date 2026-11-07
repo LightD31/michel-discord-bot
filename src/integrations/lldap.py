@@ -14,6 +14,7 @@ attribute (``discordid`` by default) that has to exist in LLDAP's user schema.
 from __future__ import annotations
 
 import asyncio
+import ssl
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
 from typing import Any
@@ -68,7 +69,7 @@ class LldapSettings:
 
         return cls(
             base_url=_normalize_url(text("lldapUrl"), "https"),
-            ldap_url=_normalize_url(text("lldapLdapUrl"), "ldap"),
+            ldap_url=_normalize_url(text("lldapLdapUrl"), "ldaps"),
             base_dn=text("lldapBaseDn"),
             admin_username=text("lldapAdminUsername"),
             admin_password=text("lldapAdminPassword"),
@@ -170,13 +171,24 @@ mutation RemoveUserFromGroup($userId: String!, $groupId: Int!) {
 
 
 def _ldap_set_password(settings: LldapSettings, user_id: str, password: str) -> None:
-    """Blocking: bind as the admin and reset *user_id*'s password (RFC 3062)."""
+    """Blocking: bind as the admin and reset *user_id*'s password (RFC 3062).
+
+    Only over LDAPS with a verified certificate: the bind carries the admin
+    password and the request the new user's, so plain ``ldap://`` is refused.
+    """
+    if not settings.ldap_url.lower().startswith("ldaps://"):
+        raise LldapError("LDAP en clair refusé : l'URL LDAP doit commencer par ldaps://")
     # Imported here: ldap3 is only needed once an account is created.
     import ldap3
     from ldap3.core.exceptions import LDAPException
 
     try:
-        server = ldap3.Server(settings.ldap_url, connect_timeout=LDAP_TIMEOUT_SECONDS)
+        server = ldap3.Server(
+            settings.ldap_url,
+            use_ssl=True,
+            tls=ldap3.Tls(validate=ssl.CERT_REQUIRED),
+            connect_timeout=LDAP_TIMEOUT_SECONDS,
+        )
         conn = ldap3.Connection(
             server,
             user=settings.bind_dn,

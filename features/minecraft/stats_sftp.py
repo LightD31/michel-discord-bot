@@ -221,32 +221,40 @@ async def read_nbt_file(sftp: asyncssh.SFTPClient, nbt_file):
         return nbtlib.File.parse(gzip.GzipFile(fileobj=BytesIO(cast(bytes, data))))
 
 
-# Fonction de compatibilité avec l'ancien code
-async def get_player_stats(sftp: asyncssh.SFTPClient, file, nbtfile=None):
-    """Fonction de compatibilité - redirige vers la version optimisée"""
-    uuid = file.removeprefix("world/stats/").removesuffix(".json")
-    player_name = uuid  # Nom par défaut, sera remplacé par le vrai nom si disponible
-
-    return await get_player_stats_optimized(sftp, file, nbtfile, player_name, uuid)
+_KEY_TYPE_PREFIXES = ("ssh-", "ecdsa-", "sk-")
 
 
-async def create_sftp_connection(host, port, username, password):
-    async with (
-        asyncssh.connect(
-            host, port=port, username=username, password=password, known_hosts=None
-        ) as conn,
-        conn.start_sftp_client() as sftp,
-    ):
-        return sftp
+def trusted_host_keys(host_key: str) -> tuple[list[asyncssh.SSHKey], list, list]:
+    """The ``known_hosts`` argument that trusts exactly *host_key* and nothing else.
+
+    *host_key* is the server's public key in OpenSSH format
+    (``ssh-ed25519 AAAA…``). A line copied from ``ssh-keyscan`` or a
+    ``known_hosts`` file, which starts with the host name, is accepted too.
+    Raises ``ValueError`` when no usable key is given: the connection is then
+    refused rather than made to an unauthenticated host.
+    """
+    tokens = host_key.split()
+    if tokens and not tokens[0].startswith(_KEY_TYPE_PREFIXES):
+        tokens = tokens[1:]
+    if len(tokens) < 2:
+        raise ValueError("clé d'hôte SFTP manquante ou illisible")
+    try:
+        key = asyncssh.import_public_key(" ".join(tokens[:2]))
+    except asyncssh.KeyImportError as e:
+        raise ValueError(f"clé d'hôte SFTP illisible : {e}") from e
+    return [key], [], []
 
 
 # Fonction utilitaire pour gérer les connexions SFTP de manière robuste
 async def create_optimized_sftp_connection(
-    host, port, username, password, max_retries=3, timeout=30
+    host, port, username, password, host_key, max_retries=3, timeout=30
 ):
     """
-    Crée une connexion SFTP optimisée avec retry automatique et timeout
+    Crée une connexion SFTP optimisée avec retry automatique et timeout.
+
+    Le serveur doit présenter la clé *host_key* (voir :func:`trusted_host_keys`).
     """
+    known_hosts = trusted_host_keys(host_key)
     for attempt in range(max_retries):
         try:
             logger.debug(f"Tentative de connexion SFTP {attempt + 1}/{max_retries}")
@@ -257,7 +265,7 @@ async def create_optimized_sftp_connection(
                     port=port,
                     username=username,
                     password=password,
-                    known_hosts=None,
+                    known_hosts=known_hosts,
                     connect_timeout=timeout,
                     keepalive_interval=15,  # Maintenir la connexion active
                     keepalive_count_max=3,
@@ -282,13 +290,15 @@ async def create_optimized_sftp_connection(
             await asyncio.sleep(2**attempt)
 
 
-async def get_minecraft_stats_with_retry(host, port, username, password):
+async def get_minecraft_stats_with_retry(host, port, username, password, host_key):
     """
     Récupère les statistiques Minecraft avec gestion d'erreurs robuste
     """
     conn = None
     try:
-        conn, sftp = await create_optimized_sftp_connection(host, port, username, password)
+        conn, sftp = await create_optimized_sftp_connection(
+            host, port, username, password, host_key
+        )
 
         # Utiliser la fonction optimisée
         results = await get_all_player_stats_optimized(sftp)

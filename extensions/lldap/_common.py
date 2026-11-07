@@ -33,8 +33,9 @@ class LldapConfig(SchemaBase):
         "url",
         required=True,
         description=(
-            "Adresse du serveur LDAP de LLDAP, pour définir les mots de passe "
-            "(par exemple ldap://lldap:3890 ; ldaps:// accepté)."
+            "Adresse LDAPS de LLDAP, pour définir les mots de passe (par exemple "
+            "ldaps://lldap.example.com:6360). ldap:// est refusé ; le certificat doit être "
+            "valide pour les autorités du système."
         ),
     )
     lldapBaseDn: str = ui(

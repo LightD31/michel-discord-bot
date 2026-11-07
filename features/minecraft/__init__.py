@@ -9,11 +9,9 @@ from features.minecraft.stats_sftp import (
     MinecraftStatsCache,
     calculate_level,
     create_optimized_sftp_connection,
-    create_sftp_connection,
     format_number,
     get_all_player_stats_optimized,
     get_minecraft_stats_with_retry,
-    get_player_stats,
     get_player_stats_optimized,
     get_single_player_stats_with_semaphore,
     get_users,
@@ -21,6 +19,7 @@ from features.minecraft.stats_sftp import (
     read_stats_file,
     stats_cache,
     ticks_to_hms,
+    trusted_host_keys,
 )
 
 __all__ = [
@@ -29,12 +28,10 @@ __all__ = [
     "apply_optimization_config",
     "calculate_level",
     "create_optimized_sftp_connection",
-    "create_sftp_connection",
     "format_number",
     "get_all_player_stats_optimized",
     "get_config",
     "get_minecraft_stats_with_retry",
-    "get_player_stats",
     "get_player_stats_optimized",
     "get_single_player_stats_with_semaphore",
     "get_users",
@@ -42,4 +39,5 @@ __all__ = [
     "read_stats_file",
     "stats_cache",
     "ticks_to_hms",
+    "trusted_host_keys",
 ]
