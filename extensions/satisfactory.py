@@ -1,21 +1,19 @@
-import os
+import asyncio
 from datetime import datetime
-from typing import Optional
 
 from interactions import (
-    BaseChannel,
+    Client,
     Embed,
     Extension,
     IntervalTrigger,
-    Message,
     Task,
     listen,
 )
 from pyfactorybridge import API
 
 from src.core import logging as logutil
-from src.core.config import ModuleConfig, global_config
-from src.discord_ext.messages import edit_message_if_changed, fetch_or_create_persistent_message
+from src.core.config import ModuleConfig
+from src.discord_ext.messages import GuildMessages, edit_message_if_changed
 from src.webui.schemas import (
     SchemaBase,
     enabled_field,
@@ -64,100 +62,111 @@ class SatisfactoryConfig(SchemaBase):
 logger = logutil.init_logger(__name__)
 
 SATISFACTORY = ModuleConfig("moduleSatisfactory")
-# Taken at import, from the first enabled guild only (phase 4c makes this multi-guild):
-# the extension declares RELOAD_ON_SAVE, so a save of the module re-imports it.
-config = global_config()
-enabled_servers = SATISFACTORY.guild_ids()
-module_config = {gid: dict(cfg) for gid, cfg in SATISFACTORY.items()}
+
+
+def _connection(settings: dict) -> tuple[str, str] | None:
+    """``(address, token)`` of the guild's server, or None until both are configured."""
+    ip = str(settings.get("satisfactoryServerIp") or "").strip()
+    token = str(settings.get("satisfactoryServerToken") or "").strip()
+    if not ip or not token:
+        return None
+    port = str(settings.get("satisfactoryServerPort") or "7777").strip()
+    return f"{ip}:{port}", token
+
+
+def _status_embed(settings: dict, players: int, tier: object) -> Embed:
+    embed = Embed(
+        title="🏭 Serveur Satisfactory de la Coloc",
+        description="Statut du serveur en temps réel",
+        color=0x00A86B,
+        timestamp=datetime.now(),
+    )
+    embed.add_field(
+        name="📡 Informations de Connexion",
+        value=(
+            f"**IP:** `{settings.get('satisfactoryServerIp', '')}`\n"
+            f"**Port:** `{settings.get('satisfactoryServerPort', '')}`\n"
+            f"**Mot de passe:** `{settings.get('satisfactoryServerPassword') or ''}`"
+        ),
+        inline=False,
+    )
+    embed.add_field(
+        name="🎮 Statut du Jeu",
+        value=f"**Tech Tier:** {tier}\n**Joueurs connectés:** {players}",
+        inline=False,
+    )
+    return embed
 
 
 class Satisfactory(Extension):
+    """Each enabled guild's Satisfactory server status, refreshed every minute.
+
+    The settings are read at each refresh, so a dashboard save (a new server,
+    another channel) applies at the next one without a reload.
+    """
+
     MODULE_KEYS = ("moduleSatisfactory",)
-    # Server settings taken when the extension loads.
-    RELOAD_ON_SAVE = True
 
-    def __init__(self, client):
-        self.channel: BaseChannel | None = None
-        self.message: Message | None = None
-        self.api: API | None = None
-        self.server_config: dict | None = None
-        self.guild_id: str | None = None
-
-    async def _ensure_message(self) -> Message | None:
-        if self.message is not None:
-            return self.message
-        if not self.server_config:
-            return None
-        self.message = await fetch_or_create_persistent_message(
-            self.bot,
-            channel_id=self.server_config.get("satisfactoryChannelId"),
-            message_id=self.server_config.get("satisfactoryMessageId"),
-            module_name="moduleSatisfactory",
-            message_id_key="satisfactoryMessageId",
-            guild_id=self.guild_id,
+    def __init__(self, bot: Client):
+        self.bot = bot
+        self.messages = GuildMessages(
+            bot,
+            module_name=SATISFACTORY.key,
+            channel_key="satisfactoryChannelId",
+            message_key="satisfactoryMessageId",
+            pin_key="satisfactoryPinMessage",
             initial_content="Initialisation du statut Satisfactory…",
-            pin=bool(self.server_config.get("satisfactoryPinMessage", False)),
             logger=logger,
         )
-        return self.message
+        # One client per server: guilds watching the same one share it.
+        self._apis: dict[tuple[str, str], API] = {}
 
     @listen()
     async def on_startup(self):
-        if not enabled_servers:
-            logger.warning("moduleSatisfactory is not enabled for any server, skipping startup")
-            return
-
-        self.guild_id = enabled_servers[0]
-        self.server_config = module_config[self.guild_id]
-
-        try:
-            await self._ensure_message()
-            self.api = API(
-                address=f"{self.server_config['satisfactoryServerIp']}:{self.server_config['satisfactoryServerPort']}",
-                token=self.server_config["satisfactoryServerToken"],
-            )
+        if not self.update_message.running:
             self.update_message.start()
-            await self.update_message()
-        except Exception as e:
-            logger.error("Failed to initialize Satisfactory extension: %s", e)
+        await self.update_message()
+
+    async def _api(self, address: str, token: str) -> API:
+        api = self._apis.get((address, token))
+        if api is None:
+            # pyfactorybridge is synchronous (requests), and its constructor
+            # already checks the server and authenticates: off the loop.
+            api = await asyncio.to_thread(API, address=address, token=token)
+            self._apis[(address, token)] = api
+        return api
 
     @Task.create(IntervalTrigger(minutes=1))
     async def update_message(self):
+        guilds = SATISFACTORY.items()
+        self.messages.keep_only([guild_id for guild_id, _ in guilds])
+        for guild_id, settings in guilds:
+            try:
+                await self._refresh(guild_id, settings)
+            except Exception as e:  # noqa: BLE001 — one server down must not stop the others
+                logger.error("Failed to update Satisfactory status for guild %s: %s", guild_id, e)
+
+    async def _refresh(self, guild_id: str, settings: dict) -> None:
+        connection = _connection(settings)
+        if connection is None:
+            logger.debug("Guild %s: Satisfactory server not configured; skipping", guild_id)
+            return
+        message = await self.messages.get(guild_id, settings)
+        if message is None:
+            return
         try:
-            message = await self._ensure_message()
-            if message is None or self.api is None:
-                logger.debug("Satisfactory message or API not ready; skipping")
-                return
-            data = self.api.query_server_state()
-            players = data["serverGameState"]["numConnectedPlayers"]
-            tier = data["serverGameState"]["techTier"]
-
-            embed = Embed(
-                title="🏭 Serveur Satisfactory de la Coloc",
-                description="Statut du serveur en temps réel",
-                color=0x00A86B,
-                timestamp=datetime.now(),
-            )
-
-            embed.add_field(
-                name="📡 Informations de Connexion",
-                value=(
-                    f"**IP:** `{self.server_config['satisfactoryServerIp']}`\n"
-                    f"**Port:** `{self.server_config['satisfactoryServerPort']}`\n"
-                    f"**Mot de passe:** `{self.server_config['satisfactoryServerPassword']}`"
-                ),
-                inline=False,
-            )
-
-            embed.add_field(
-                name="🎮 Statut du Jeu",
-                value=f"**Tech Tier:** {tier}\n**Joueurs connectés:** {players}",
-                inline=False,
-            )
-
-            await edit_message_if_changed(
-                message, content="", embed=embed, ignore_timestamp=True, logger=logger
-            )
-            logger.debug("Updated Satisfactory status: %d players, tier %s", players, tier)
-        except Exception as e:
-            logger.error("Failed to update Satisfactory message: %s", e)
+            api = await self._api(*connection)
+            data = await asyncio.to_thread(api.query_server_state)
+        except Exception:
+            self._apis.pop(connection, None)  # reconnect at the next refresh
+            raise
+        players = data["serverGameState"]["numConnectedPlayers"]
+        tier = data["serverGameState"]["techTier"]
+        await edit_message_if_changed(
+            message,
+            content="",
+            embed=_status_embed(settings, players, tier),
+            ignore_timestamp=True,
+            logger=logger,
+        )
+        logger.debug("Updated Satisfactory status: %d players, tier %s", players, tier)

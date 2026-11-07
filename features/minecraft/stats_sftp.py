@@ -52,8 +52,20 @@ class MinecraftStatsCache:
         self.cache.clear()
 
 
-# Instance globale du cache
-stats_cache = MinecraftStatsCache()
+# Un cache par serveur (hôte:port) : deux serveurs ont chacun leur usercache.json
+# et leurs joueurs, que des clés communes mélangeraient.
+_stats_caches: dict[str, MinecraftStatsCache] = {}
+
+
+def stats_cache_for(host: str, port: int | str) -> MinecraftStatsCache:
+    """Le cache des statistiques lues sur le serveur *host*:*port*."""
+    return _stats_caches.setdefault(f"{host}:{port}", MinecraftStatsCache())
+
+
+def clear_stats_caches() -> None:
+    """Vide le cache de chaque serveur."""
+    for cache in _stats_caches.values():
+        cache.clear()
 
 
 def ticks_to_hms(ticks):
@@ -63,12 +75,12 @@ def ticks_to_hms(ticks):
     return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
 
 
-async def get_users(sftp: asyncssh.SFTPClient, file):
+async def get_users(sftp: asyncssh.SFTPClient, file, cache: MinecraftStatsCache):
     """Récupère la liste des utilisateurs avec cache"""
     cache_key = f"users_{file}"
 
     # Vérifier le cache
-    cached_data = stats_cache.get(cache_key)
+    cached_data = cache.get(cache_key)
     if cached_data is not None:
         logger.debug(f"Using cached user data for {file}")
         return cached_data
@@ -79,16 +91,16 @@ async def get_users(sftp: asyncssh.SFTPClient, file):
         userdata = json.loads(data)
 
     # Mettre en cache
-    stats_cache.set(cache_key, userdata)
+    cache.set(cache_key, userdata)
     logger.debug(f"Cached user data for {file}")
     return userdata
 
 
-async def get_all_player_stats_optimized(sftp: asyncssh.SFTPClient):
+async def get_all_player_stats_optimized(sftp: asyncssh.SFTPClient, cache: MinecraftStatsCache):
     """Version optimisée qui traite tous les joueurs en une seule fois"""
     try:
         # 1. Récupérer la liste des utilisateurs
-        users_data = await get_users(sftp, "usercache.json")
+        users_data = await get_users(sftp, "usercache.json", cache)
         uuid_to_name = {item["uuid"]: item["name"] for item in users_data}
 
         # 2. Lister tous les fichiers de stats
@@ -105,7 +117,7 @@ async def get_all_player_stats_optimized(sftp: asyncssh.SFTPClient):
             player_name = uuid_to_name.get(uuid, uuid)
 
             task = get_single_player_stats_with_semaphore(
-                semaphore, sftp, stats_file, nbt_file, player_name, uuid
+                semaphore, sftp, stats_file, nbt_file, player_name, uuid, cache
             )
             tasks.append(task)
 
@@ -129,21 +141,23 @@ async def get_all_player_stats_optimized(sftp: asyncssh.SFTPClient):
 
 
 async def get_single_player_stats_with_semaphore(
-    semaphore, sftp, stats_file, nbt_file, player_name, uuid
+    semaphore, sftp, stats_file, nbt_file, player_name, uuid, cache: MinecraftStatsCache
 ):
     """Traite les stats d'un seul joueur avec limitation de concurrence"""
     async with semaphore:
-        return await get_player_stats_optimized(sftp, stats_file, nbt_file, player_name, uuid)
+        return await get_player_stats_optimized(
+            sftp, stats_file, nbt_file, player_name, uuid, cache
+        )
 
 
 async def get_player_stats_optimized(
-    sftp: asyncssh.SFTPClient, stats_file, nbt_file, player_name, uuid
+    sftp: asyncssh.SFTPClient, stats_file, nbt_file, player_name, uuid, cache: MinecraftStatsCache
 ):
     """Version optimisée pour traiter les stats d'un joueur avec cache"""
     cache_key = f"player_stats_{uuid}"
 
     # Vérifier le cache
-    cached_data = stats_cache.get(cache_key)
+    cached_data = cache.get(cache_key)
     if cached_data is not None:
         logger.debug(f"Using cached data for player {player_name}")
         return cached_data
@@ -193,7 +207,7 @@ async def get_player_stats_optimized(
         }
 
         # Mettre en cache
-        stats_cache.set(cache_key, player_data)
+        cache.set(cache_key, player_data)
         logger.debug(f"Processed and cached data for player {player_name}")
 
         return player_data
@@ -295,13 +309,14 @@ async def get_minecraft_stats_with_retry(host, port, username, password, host_ke
     Récupère les statistiques Minecraft avec gestion d'erreurs robuste
     """
     conn = None
+    cache = stats_cache_for(host, port)
     try:
         conn, sftp = await create_optimized_sftp_connection(
             host, port, username, password, host_key
         )
 
         # Utiliser la fonction optimisée
-        results = await get_all_player_stats_optimized(sftp)
+        results = await get_all_player_stats_optimized(sftp, cache)
 
         logger.info(f"Statistiques récupérées avec succès pour {len(results)} joueurs")
         return results
@@ -309,7 +324,7 @@ async def get_minecraft_stats_with_retry(host, port, username, password, host_ke
     except Exception as e:
         logger.error(f"Impossible de récupérer les statistiques: {e}")
         # Vider le cache en cas d'erreur pour forcer un reload au prochain essai
-        stats_cache.clear()
+        cache.clear()
         raise
 
     finally:

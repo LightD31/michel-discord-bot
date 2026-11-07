@@ -1,11 +1,9 @@
-"""Shared config schema, logger, and module-level constants for the minecraft extension."""
-
-import os
+"""Shared config schema, logger and stats embed for the minecraft extension."""
 
 from interactions import BrandColors, Embed, Timestamp, TimestampStyles
 
 from src.core import logging as logutil
-from src.core.config import ModuleConfig, global_config
+from src.core.config import ModuleConfig
 from src.webui.schemas import (
     SchemaBase,
     enabled_field,
@@ -109,30 +107,6 @@ class MinecraftConfig(SchemaBase):
 logger = logutil.init_logger("extensions.minecraft")
 
 MINECRAFT = ModuleConfig("moduleMinecraft")
-# Taken at import, from the first enabled guild only (phase 4c makes this multi-guild):
-# the extension declares RELOAD_ON_SAVE, so a save of the module re-imports it.
-config = global_config()
-enabled_servers = MINECRAFT.guild_ids()
-module_config = dict(MINECRAFT.get(enabled_servers[0])) if enabled_servers else {}
-
-MINECRAFT_ADDRESS = module_config.get("minecraftUrl", "")
-MINECRAFT_IP = module_config.get("minecraftIp", "")
-MINECRAFT_PORT = int(module_config.get("minecraftPort", 0))
-CHANNEL_ID_KUBZ = module_config.get("minecraftChannelId")
-MESSAGE_ID_KUBZ = module_config.get("minecraftMessageId")
-MINECRAFT_GUILD_ID = enabled_servers[0] if enabled_servers else None
-PIN_STATUS_MESSAGE = bool(module_config.get("minecraftPinMessage", False))
-SFTPS_PASSWORD = module_config.get("minecraftSftpsPassword", "")
-SFTP_HOST = module_config.get("minecraftSftpHost", MINECRAFT_IP)
-SFTP_PORT = int(module_config.get("minecraftSftpPort", 2225))
-SFTP_USERNAME = module_config.get("minecraftSftpUsername", "Discord")
-SFTP_HOST_KEY = module_config.get("minecraftSftpHostKey") or ""
-MODPACK_NAME = module_config.get("minecraftModpackName", "")
-MODPACK_URL = module_config.get("minecraftModpackUrl", "")
-MODPACK_VERSION = module_config.get("minecraftModpackVersion", "")
-STATUS_URL = module_config.get("minecraftStatusUrl", "")
-FOOTER_TEXT = module_config.get("minecraftFooterText", "")
-SERVER_TYPE = module_config.get("minecraftServerType", "")
 
 
 def build_stats_embed(refreshed_at: Timestamp) -> Embed:
@@ -159,28 +133,8 @@ def build_stats_embed(refreshed_at: Timestamp) -> Embed:
 
 
 __all__ = [
-    "CHANNEL_ID_KUBZ",
-    "FOOTER_TEXT",
-    "MESSAGE_ID_KUBZ",
-    "MINECRAFT_ADDRESS",
-    "MINECRAFT_GUILD_ID",
-    "MINECRAFT_IP",
-    "MINECRAFT_PORT",
-    "MODPACK_NAME",
-    "MODPACK_URL",
-    "MODPACK_VERSION",
+    "MINECRAFT",
     "MinecraftConfig",
-    "PIN_STATUS_MESSAGE",
-    "SERVER_TYPE",
-    "SFTPS_PASSWORD",
-    "SFTP_HOST",
-    "SFTP_HOST_KEY",
-    "SFTP_PORT",
-    "SFTP_USERNAME",
-    "STATUS_URL",
     "build_stats_embed",
-    "config",
-    "enabled_servers",
     "logger",
-    "module_config",
 ]

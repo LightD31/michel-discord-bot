@@ -10,7 +10,7 @@ own module (``medals``, ``tasks``). Shared data, constants, and helpers are in
 
 from interactions import Client, Extension, listen
 
-from ._common import enabled_servers, logger, module_config
+from ._common import OLYMPICS, logger
 from .medals import MedalsMixin
 from .tasks import TasksMixin
 
@@ -24,39 +24,32 @@ class OlympicsExtension(MedalsMixin, TasksMixin, Extension):
 
     MODULE_KEYS = ("moduleOlympics",)
 
-    # Single-guild settings taken at import (see ``_common``).
-
-    RELOAD_ON_SAVE = True
-
     def __init__(self, bot: Client) -> None:
         self.bot: Client = bot
-        self.channel = None
         # État : ensemble des clés de médailles déjà connues
         # Format : "{eventCode}_{medalType}_{competitorCode}"
         self.known_medals: set[str] = set()
 
     @listen()
     async def on_startup(self) -> None:
-        """Initialise le canal et démarre la tâche de surveillance."""
-        if not enabled_servers:
-            logger.warning("moduleOlympics is not enabled for any server, skipping startup")
+        """Charge l'état des médailles et démarre la tâche de surveillance.
+
+        Le salon de chaque serveur est lu à chaque passage de la tâche.
+        Activer le module dans un serveur recharge l'extension, qui repasse ici.
+        """
+        if not OLYMPICS.guild_ids():
+            logger.info("moduleOlympics n'est activé sur aucun serveur : pas de surveillance")
             return
         try:
             await self._load_state()
-            channel_id = module_config.get("olympicsChannelId")
-            if channel_id:
-                self.channel = await self.bot.fetch_channel(channel_id)
-                logger.info(f"Canal Olympics initialisé : {self.channel.name}")
-            else:
-                logger.error("olympicsChannelId non configuré dans moduleOlympics")
-                return
 
             # Initialisation silencieuse : enregistrer les médailles existantes
             # sans envoyer de notifications
             if not self.known_medals:
                 await self._initialize_known_medals()
 
-            self.check_medals.start()
+            if not self.check_medals.running:
+                self.check_medals.start()
             logger.info("Tâche de surveillance des médailles Olympics démarrée")
         except Exception as e:
             logger.exception(f"Erreur lors de l'initialisation Olympics : {e}")

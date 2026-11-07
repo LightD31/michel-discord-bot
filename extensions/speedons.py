@@ -1,15 +1,12 @@
 import asyncio
-import os
 from datetime import datetime
 
 import pytz
 from interactions import (
-    BaseChannel,
     Client,
     Embed,
     Extension,
     IntervalTrigger,
-    Message,
     Task,
     TimestampStyles,
     listen,
@@ -19,7 +16,7 @@ from interactions import (
 from src.core import logging as logutil
 from src.core.config import ModuleConfig
 from src.core.http import fetch
-from src.discord_ext.messages import edit_message_if_changed, fetch_or_create_persistent_message
+from src.discord_ext.messages import GuildMessages, edit_message_if_changed
 from src.discord_ext.paginator import CustomPaginator
 from src.webui.schemas import (
     SchemaBase,
@@ -72,19 +69,7 @@ class SpeedonsConfig(SchemaBase):
 logger = logutil.init_logger(__name__)
 
 SPEEDONS = ModuleConfig("moduleSpeedons")
-# Taken at import, from the first enabled guild only (phase 4c makes this multi-guild):
-# the extension declares RELOAD_ON_SAVE, so a save of the module re-imports it.
-_enabled_servers = SPEEDONS.guild_ids()
-_cfg = dict(SPEEDONS.get(_enabled_servers[0])) if _enabled_servers else {}
-
-# Both come from the guild config — the code carries no Speedons URL.
-BASE_URL = _cfg.get("speedonsApiUrl", "")
-ICON_URL = _cfg.get("speedonsIconUrl") or None
 COLOR = 0xDBEA2B
-
-
-def get_url(endpoint):
-    return f"{BASE_URL}/{endpoint}"
 
 
 async def get_data(url):
@@ -96,209 +81,219 @@ async def get_data(url):
         return None
 
 
+async def render_schedule(base_url: str, icon_url: str | None):
+    """The schedule pages, the live-run embed and the page to land on, or None.
+
+    The live embed says so when no run is in progress.
+
+    *base_url* is the campaign's API URL (``speedonsApiUrl``, the slug
+    included): the code carries no Speedons URL.
+    """
+    events_url = f"{base_url}/events"
+    attendees_url = f"{base_url}/attendees"
+    amount_url = base_url
+    incentives_url = f"{base_url}/challenges"
+
+    events_data, attendees_data, amount_data, incentives_data = await asyncio.gather(
+        get_data(events_url),
+        get_data(attendees_url),
+        get_data(amount_url),
+        get_data(incentives_url),
+    )
+    if None in (events_data, attendees_data, amount_data, incentives_data):
+        logger.warning("Speedons API data incomplete; skipping this update")
+        return None
+    embeds = []
+    embedlive = None
+    current_run = None
+    # Fetch amount
+    amount = float(amount_data["amount"])
+    embed = Embed(
+        title=f"Speedons 4 ({amount:.2f}€)",
+        timestamp=datetime.now(pytz.UTC),
+        color=0xDBEA2B,
+        thumbnail=icon_url,
+    )
+    # Create an incentive dict
+    incentives = {}
+    for incentive in incentives_data:
+        if incentive.get("event_id"):
+            incentives[incentive["event_id"]] = incentive["name"]
+    # Create an attendees dict
+    attendees = {}
+    for attendee in attendees_data:
+        attendees[attendee["id"]] = attendee["name"]
+    i = 0
+    # Parsing JSON
+    for event in events_data:
+        runner = ""
+        commentator = ""
+        category = ""
+        estimate = ""
+        incentive = ""
+        # list attendee
+        runner = ", ".join(
+            [
+                attendees.get(runner_id["attendee_id"], "Unknown")
+                for runner_id in event["participants"]
+                if runner_id["role"] == "ACTOR"
+            ]
+        )
+
+        commentator = ", ".join(
+            [
+                attendees.get(commentator_id["attendee_id"], "Unknown")
+                for commentator_id in event["participants"]
+                if commentator_id["role"] == "COMMENTATOR"
+            ]
+        )
+        if runner != "":
+            if "," in runner:
+                runner = f"\nRunners : **{runner}**"
+            else:
+                runner = f"\nRunner : **{runner}**"
+        if commentator != "":
+            if "," in commentator:
+                commentator = f"\nCommentateurs : **{commentator}**"
+            else:
+                commentator = f"\nCommentateur : **{commentator}**"
+        if event["properties"].get("category", ""):
+            category = f"\nCatégorie : **{event['properties'].get('category', '')}**"
+        if event["properties"].get("estimate", ""):
+            if category:
+                estimate = f" - Estimé : **{event['properties'].get('estimate', '')}**"
+            else:
+                estimate = f"\nEstimé : **{event['properties'].get('estimate', '')}**"
+        if event["id"] in incentives:
+            incentive = f"\nIncentive : **{incentives[event['id']]}**"
+
+        if (
+            utils.timestamp_converter(event["start_date"])
+            < datetime.now(pytz.UTC)
+            < utils.timestamp_converter(event["end_date"])
+        ):
+            current_run = i
+            embedlive = Embed(
+                title=f"Run en cours ({amount:.2f}€)",
+                timestamp=datetime.now(pytz.UTC),
+                color=0xDBEA2B,
+                thumbnail=icon_url,
+            )
+            embedlive.add_field(
+                name=event["properties"].get("game", event["properties"].get("subject", "Unknown")),
+                value=f"Début: **{utils.timestamp_converter(event['start_date']).format(TimestampStyles.ShortTime)}** Fin: **{utils.timestamp_converter(event['end_date']).format(TimestampStyles.ShortTime)}**{category}{estimate}{runner}{commentator}{incentive}",
+            )
+            embed.add_field(
+                name=f"<:zrtON:962320783038890054> {event['properties'].get('game', event['properties'].get('subject', 'Unknown'))} <:zrtON:962320783038890054>",
+                value=f"Début: **{utils.timestamp_converter(event['start_date']).format(TimestampStyles.ShortTime)}** Fin: **{utils.timestamp_converter(event['end_date']).format(TimestampStyles.ShortTime)}**{category}{estimate}{runner}{commentator}{incentive}",
+            )
+        else:
+            embed.add_field(
+                name=event["properties"].get("game", event["properties"].get("subject", "Unknown")),
+                value=f"Début: **{utils.timestamp_converter(event['start_date']).format(TimestampStyles.ShortTime)}** Fin: **{utils.timestamp_converter(event['end_date']).format(TimestampStyles.ShortTime)}**{category}{estimate}{runner}{commentator}{incentive}",
+            )
+        if len(embed.fields) == 5:
+            embeds.append(embed)
+            embed = Embed(
+                title=f"Speedons 4 ({amount:.2f}€)",
+                timestamp=datetime.now(pytz.UTC),
+                color=0xDBEA2B,
+            )
+        i = i + 1
+    embeds.append(embed)
+    live = embedlive or Embed(
+        title=f"Pas de run en cours ({amount:.2f}€)",
+        timestamp=datetime.now(pytz.UTC),
+        color=COLOR,
+        thumbnail=icon_url,
+    )
+    return embeds, live, (int(current_run / 5) if current_run is not None else 0)
+
+
 class SpeedonsExtension(Extension):
+    """Each enabled guild's Speedons schedule and live run, refreshed every 5 minutes.
+
+    The settings are read at each refresh, so a dashboard save applies at the
+    next one without a reload.
+    """
+
     MODULE_KEYS = ("moduleSpeedons",)
-    # Single-guild settings taken at import.
-    RELOAD_ON_SAVE = True
 
     def __init__(self, bot: Client):
         self.bot = bot
-        _raw_channel = _cfg.get("speedonsChannelId") or os.getenv("TWITCH_PLANNING_CHANNEL_ID", "0")
-        self.planning_channel_id = int(_raw_channel) if _raw_channel else 0
-        self.schedule_message_id = _cfg.get("speedonsScheduleMessageId")
-        self.live_message_id = _cfg.get("speedonsLiveMessageId")
-        self.pin_messages = bool(_cfg.get("speedonsPinMessages", False))
-        self.guild_id: str | None = _enabled_servers[0] if _enabled_servers else None
-        self.channel: BaseChannel | None = None
-        self.message: Message | None = None
-        self.message2: Message | None = None
-        self.paginator: CustomPaginator | None = None
-
-    async def _ensure_messages(self) -> bool:
-        if self.message is None:
-            self.message = await fetch_or_create_persistent_message(
-                self.bot,
-                channel_id=self.planning_channel_id,
-                message_id=self.schedule_message_id,
-                module_name="moduleSpeedons",
-                message_id_key="speedonsScheduleMessageId",
-                guild_id=self.guild_id,
-                initial_content="Initialisation du planning Speedons…",
-                pin=self.pin_messages,
-                logger=logger,
-            )
-        if self.message2 is None:
-            self.message2 = await fetch_or_create_persistent_message(
-                self.bot,
-                channel_id=self.planning_channel_id,
-                message_id=self.live_message_id,
-                module_name="moduleSpeedons",
-                message_id_key="speedonsLiveMessageId",
-                guild_id=self.guild_id,
-                initial_content="Initialisation du run en cours…",
-                pin=self.pin_messages,
-                logger=logger,
-            )
-        return self.message is not None and self.message2 is not None
+        self.schedule_messages = GuildMessages(
+            bot,
+            module_name=SPEEDONS.key,
+            channel_key="speedonsChannelId",
+            message_key="speedonsScheduleMessageId",
+            pin_key="speedonsPinMessages",
+            initial_content="Initialisation du planning Speedons…",
+            logger=logger,
+        )
+        self.live_messages = GuildMessages(
+            bot,
+            module_name=SPEEDONS.key,
+            channel_key="speedonsChannelId",
+            message_key="speedonsLiveMessageId",
+            pin_key="speedonsPinMessages",
+            initial_content="Initialisation du run en cours…",
+            logger=logger,
+        )
+        # One paginator per guild's schedule message, reused across refreshes.
+        self.paginators: dict[str, CustomPaginator] = {}
 
     @listen()
     async def on_startup(self):
-        if self.planning_channel_id:
-            try:
-                self.channel = await self.bot.fetch_channel(self.planning_channel_id)
-            except Exception as e:
-                logger.error("Could not fetch Speedons channel: %s", e)
-        await self._ensure_messages()
-        self.get_speedons_schedule.start()
+        if not self.get_speedons_schedule.running:
+            self.get_speedons_schedule.start()
         await self.get_speedons_schedule()
 
     @Task.create(IntervalTrigger(minutes=5))
     async def get_speedons_schedule(self):
-        if not await self._ensure_messages():
-            logger.debug("Speedons messages not available yet; skipping update")
+        guilds = SPEEDONS.items()
+        enabled = [guild_id for guild_id, _ in guilds]
+        self.schedule_messages.keep_only(enabled)
+        self.live_messages.keep_only(enabled)
+        for guild_id in [g for g in self.paginators if g not in enabled]:
+            del self.paginators[guild_id]
+        # Guilds following the same campaign share one rendering per refresh.
+        rendered: dict[tuple[str, str | None], tuple | None] = {}
+        for guild_id, settings in guilds:
+            base_url = str(settings.get("speedonsApiUrl") or "").rstrip("/")
+            if not base_url:
+                logger.debug("Guild %s: Speedons API URL not configured; skipping", guild_id)
+                continue
+            icon_url = settings.get("speedonsIconUrl") or None
+            try:
+                key = (base_url, icon_url)
+                if key not in rendered:
+                    rendered[key] = await render_schedule(base_url, icon_url)
+                if rendered[key] is not None:
+                    await self._publish(guild_id, settings, *rendered[key])
+            except Exception as e:  # noqa: BLE001 — one guild's failure must not stop the others
+                logger.error("Guild %s: Speedons update failed: %s", guild_id, e)
+
+    async def _publish(self, guild_id, settings, embeds, live_embed, page_index):
+        schedule = await self.schedule_messages.get(guild_id, settings)
+        live = await self.live_messages.get(guild_id, settings)
+        if schedule is None or live is None:
+            logger.debug("Guild %s: Speedons messages not available yet; skipping", guild_id)
             return
-        events_url = get_url("events")
-        attendees_url = get_url("attendees")
-        amount_url = BASE_URL
-        incentives_url = get_url("challenges")
-
-        events_data, attendees_data, amount_data, incentives_data = await asyncio.gather(
-            get_data(events_url),
-            get_data(attendees_url),
-            get_data(amount_url),
-            get_data(incentives_url),
-        )
-        if None in (events_data, attendees_data, amount_data, incentives_data):
-            logger.warning("Speedons API data incomplete; skipping this update")
-            return
-        embeds = []
-        embedlive = None
-        current_run = None
-        # Fetch amount
-        amount = float(amount_data["amount"])
-        embed = Embed(
-            title=f"Speedons 4 ({amount:.2f}€)",
-            timestamp=datetime.now(pytz.UTC),
-            color=0xDBEA2B,
-            thumbnail=ICON_URL,
-        )
-        # Create an incentive dict
-        incentives = {}
-        for incentive in incentives_data:
-            if incentive.get("event_id"):
-                incentives[incentive["event_id"]] = incentive["name"]
-        # Create an attendees dict
-        attendees = {}
-        for attendee in attendees_data:
-            attendees[attendee["id"]] = attendee["name"]
-        i = 0
-        # Parsing JSON
-        for event in events_data:
-            runner = ""
-            commentator = ""
-            category = ""
-            estimate = ""
-            incentive = ""
-            # list attendee
-            runner = ", ".join(
-                [
-                    attendees.get(runner_id["attendee_id"], "Unknown")
-                    for runner_id in event["participants"]
-                    if runner_id["role"] == "ACTOR"
-                ]
-            )
-
-            commentator = ", ".join(
-                [
-                    attendees.get(commentator_id["attendee_id"], "Unknown")
-                    for commentator_id in event["participants"]
-                    if commentator_id["role"] == "COMMENTATOR"
-                ]
-            )
-            if runner != "":
-                if "," in runner:
-                    runner = f"\nRunners : **{runner}**"
-                else:
-                    runner = f"\nRunner : **{runner}**"
-            if commentator != "":
-                if "," in commentator:
-                    commentator = f"\nCommentateurs : **{commentator}**"
-                else:
-                    commentator = f"\nCommentateur : **{commentator}**"
-            if event["properties"].get("category", ""):
-                category = f"\nCatégorie : **{event['properties'].get('category', '')}**"
-            if event["properties"].get("estimate", ""):
-                if category:
-                    estimate = f" - Estimé : **{event['properties'].get('estimate', '')}**"
-                else:
-                    estimate = f"\nEstimé : **{event['properties'].get('estimate', '')}**"
-            if event["id"] in incentives:
-                incentive = f"\nIncentive : **{incentives[event['id']]}**"
-
-            if (
-                utils.timestamp_converter(event["start_date"])
-                < datetime.now(pytz.UTC)
-                < utils.timestamp_converter(event["end_date"])
-            ):
-                current_run = i
-                embedlive = Embed(
-                    title=f"Run en cours ({amount:.2f}€)",
-                    timestamp=datetime.now(pytz.UTC),
-                    color=0xDBEA2B,
-                    thumbnail=ICON_URL,
-                )
-                embedlive.add_field(
-                    name=event["properties"].get(
-                        "game", event["properties"].get("subject", "Unknown")
-                    ),
-                    value=f"Début: **{utils.timestamp_converter(event['start_date']).format(TimestampStyles.ShortTime)}** Fin: **{utils.timestamp_converter(event['end_date']).format(TimestampStyles.ShortTime)}**{category}{estimate}{runner}{commentator}{incentive}",
-                )
-                embed.add_field(
-                    name=f"<:zrtON:962320783038890054> {event['properties'].get('game', event['properties'].get('subject', 'Unknown'))} <:zrtON:962320783038890054>",
-                    value=f"Début: **{utils.timestamp_converter(event['start_date']).format(TimestampStyles.ShortTime)}** Fin: **{utils.timestamp_converter(event['end_date']).format(TimestampStyles.ShortTime)}**{category}{estimate}{runner}{commentator}{incentive}",
-                )
-            else:
-                embed.add_field(
-                    name=event["properties"].get(
-                        "game", event["properties"].get("subject", "Unknown")
-                    ),
-                    value=f"Début: **{utils.timestamp_converter(event['start_date']).format(TimestampStyles.ShortTime)}** Fin: **{utils.timestamp_converter(event['end_date']).format(TimestampStyles.ShortTime)}**{category}{estimate}{runner}{commentator}{incentive}",
-                )
-            if len(embed.fields) == 5:
-                embeds.append(embed)
-                embed = Embed(
-                    title=f"Speedons 4 ({amount:.2f}€)",
-                    timestamp=datetime.now(pytz.UTC),
-                    color=0xDBEA2B,
-                )
-            i = i + 1
-        embeds.append(embed)
-        if self.paginator is None:
-            self.paginator = CustomPaginator.create_from_embeds(self.bot, *embeds, timeout=3600)
+        paginator = self.paginators.get(guild_id)
+        if paginator is None:
+            paginator = CustomPaginator.create_from_embeds(self.bot, *embeds, timeout=3600)
+            self.paginators[guild_id] = paginator
         # Same landing page as before this paginator was reused: the live run if
         # there is one, otherwise back to the first page.
-        self.paginator.set_pages(
-            embeds, page_index=int(current_run / 5) if current_run is not None else 0
-        )
-        paginator_dict = self.paginator.to_dict()
+        paginator.set_pages(embeds, page_index=page_index)
+        paginator_dict = paginator.to_dict()
         await edit_message_if_changed(
-            self.message,
+            schedule,
             embeds=paginator_dict["embeds"],
             components=paginator_dict["components"],
             ignore_timestamp=True,
             logger=logger,
         )
-
         await edit_message_if_changed(
-            self.message2,
-            content="",
-            embed=embedlive
-            or Embed(
-                title=f"Pas de run en cours ({amount:.2f}€)",
-                timestamp=datetime.now(pytz.UTC),
-                color=0xDBEA2B,
-                thumbnail=ICON_URL,
-            ),
-            ignore_timestamp=True,
-            logger=logger,
+            live, content="", embed=live_embed, ignore_timestamp=True, logger=logger
         )

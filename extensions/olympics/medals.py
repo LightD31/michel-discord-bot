@@ -14,10 +14,9 @@ from ._common import (
     MEDAL_EMOJIS,
     MEDAL_LABELS,
     MEDALS_URL,
+    OLYMPICS,
     _get_flag,
-    enabled_servers,
     logger,
-    module_config,
 )
 
 
@@ -79,7 +78,7 @@ class MedalsMixin:
     # ─── Embeds ───────────────────────────────────────────────────────────────
 
     def _build_medal_alert_embed(
-        self, medal: dict[str, Any], france_standing: dict[str, Any] | None
+        self, medal: dict[str, Any], france_standing: dict[str, Any] | None, logo_url: str = ""
     ) -> Embed:
         """Construit l'embed d'alerte pour une nouvelle médaille française.
 
@@ -153,7 +152,6 @@ class MedalsMixin:
                 )
 
         embed.set_footer(text="JO d'hiver Milan-Cortina 2026")
-        logo_url = module_config.get("olympicsLogoUrl") or ""
         if logo_url:
             embed.set_thumbnail(url=logo_url)
 
@@ -318,7 +316,7 @@ class MedalsMixin:
         description="Commandes des JO d'hiver Milan-Cortina 2026",
         sub_cmd_name="medailles",
         sub_cmd_description="Affiche le tableau des médailles",
-        scopes=guild_scopes(enabled_servers),
+        scopes=guild_scopes(OLYMPICS.guild_ids()),
     )
     @slash_option(
         name="top",
@@ -350,7 +348,7 @@ class MedalsMixin:
         description="Commandes des JO d'hiver Milan-Cortina 2026",
         sub_cmd_name="france",
         sub_cmd_description="Affiche les médailles de la France",
-        scopes=guild_scopes(enabled_servers),
+        scopes=guild_scopes(OLYMPICS.guild_ids()),
     )
     async def cmd_france(self, ctx: SlashContext) -> None:
         """Affiche le détail des médailles françaises."""
@@ -371,7 +369,7 @@ class MedalsMixin:
         description="Commandes des JO d'hiver Milan-Cortina 2026",
         sub_cmd_name="pays",
         sub_cmd_description="Affiche les médailles d'un pays spécifique",
-        scopes=guild_scopes(enabled_servers),
+        scopes=guild_scopes(OLYMPICS.guild_ids()),
     )
     @slash_option(
         name="code",
@@ -482,7 +480,7 @@ class MedalsMixin:
         description="Commandes des JO d'hiver Milan-Cortina 2026",
         sub_cmd_name="recap",
         sub_cmd_description="Envoie un récapitulatif complet (classement + France)",
-        scopes=guild_scopes(enabled_servers),
+        scopes=guild_scopes(OLYMPICS.guild_ids()),
     )
     async def cmd_recap(self, ctx: SlashContext) -> None:
         """Envoie un récapitulatif complet : classement + médailles France."""
