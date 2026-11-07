@@ -122,6 +122,8 @@ def _command_name(ctx: Any) -> str:
 
 
 class MetricsExtension(Extension):
+    MODULE_KEYS = ("moduleSpotify", "moduleXp")
+
     def __init__(self, bot: Client) -> None:
         self.bot: Client = bot
         self.registry = CollectorRegistry()

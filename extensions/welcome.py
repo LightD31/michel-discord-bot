@@ -85,6 +85,8 @@ def _target_channel(guild, serv_config: dict):
 
 
 class WelcomeExtension(Extension):
+    MODULE_KEYS = ("moduleWelcome",)
+
     def __init__(self, bot: Client):
         self.bot = bot
 

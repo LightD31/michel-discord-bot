@@ -105,6 +105,8 @@ async def _add_poll_reactions(message, options: list[str], use_default: bool = F
 
 
 class PollsExtension(Extension, PollButtonsMixin):
+    MODULE_KEYS = ("moduleUtils",)
+
     def __init__(self, bot: Client):
         self.bot = bot
         self.lock = asyncio.Lock()

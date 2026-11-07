@@ -20,6 +20,8 @@ from .commands import CommandsMixin
 
 
 class ReactionRolesExtension(Extension, CommandsMixin, ButtonsMixin):
+    MODULE_KEYS = ("moduleReactionRoles",)
+
     def __init__(self, bot: Client):
         self.bot = bot
         self._repos: dict[str, ReactionRolesRepository] = {}

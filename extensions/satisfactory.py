@@ -67,6 +67,8 @@ config, module_config, enabled_servers = load_config("moduleSatisfactory")
 
 
 class Satisfactory(Extension):
+    MODULE_KEYS = ("moduleSatisfactory",)
+
     def __init__(self, client):
         self.channel: BaseChannel | None = None
         self.message: Message | None = None

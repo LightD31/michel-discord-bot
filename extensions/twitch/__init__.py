@@ -81,6 +81,8 @@ class TwitchExtension(
 ):
     """Aggregate the four feature mixins into a single Discord extension."""
 
+    MODULE_KEYS = ("moduleTwitch",)
+
     def __init__(self, bot: Client):
         self.bot: Client = bot
         self.config = _config

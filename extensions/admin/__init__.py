@@ -72,6 +72,8 @@ _, _, enabled_servers = load_config("moduleUtils")
 
 
 class AdminExtension(Extension):
+    MODULE_KEYS = ("moduleUtils",)
+
     @slash_command(
         name="ping",
         description="Vérifier la latence du bot",

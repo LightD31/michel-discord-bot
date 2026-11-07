@@ -228,6 +228,8 @@ def _poll_minutes(srv_config: dict) -> int:
 
 
 class RssExtension(Extension):
+    MODULE_KEYS = ("moduleRss",)
+
     def __init__(self, bot: Client):
         self.bot: Client = bot
         self._repos: dict[str, RssRepository] = {}

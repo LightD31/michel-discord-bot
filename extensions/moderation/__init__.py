@@ -19,6 +19,8 @@ from .logging_ import ModLogMixin
 
 
 class ModerationExtension(Extension, CommandsMixin, AutomodMixin, ModLogMixin):
+    MODULE_KEYS = ("moduleModeration",)
+
     def __init__(self, bot: Client):
         self.bot = bot
         self._repos: dict[str, ModerationRepository] = {}

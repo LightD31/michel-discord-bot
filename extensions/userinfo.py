@@ -17,6 +17,8 @@ logger = logutil.init_logger(__name__)
 class UserInfoExtension(Extension):
     """Keeps a per-guild `users` collection up to date with Discord display names."""
 
+    MODULE_KEYS = ()
+
     def __init__(self, bot: Client):
         self.bot: Client = bot
 

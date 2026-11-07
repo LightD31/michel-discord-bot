@@ -185,6 +185,8 @@ async def _collect_entrants(
 
 
 class GiveawayExtension(Extension):
+    MODULE_KEYS = ("moduleGiveaway",)
+
     def __init__(self, bot: Client):
         self.bot: Client = bot
         self._repos: dict[str, GiveawayRepository] = {}

@@ -94,6 +94,8 @@ async def get_data(url):
 
 
 class SpeedonsExtension(Extension):
+    MODULE_KEYS = ("moduleSpeedons",)
+
     def __init__(self, bot: Client):
         self.bot = bot
         _raw_channel = _cfg.get("speedonsChannelId") or os.getenv("TWITCH_PLANNING_CHANNEL_ID", "0")

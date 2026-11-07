@@ -54,6 +54,8 @@ class Zevent(
 ):
     """Live Zevent tracker — refreshes a pinned message on a fixed interval."""
 
+    MODULE_KEYS = ("moduleZevent",)
+
     def __init__(self, client: Client):
         self.client: Client = client
         self.channel: BaseChannel | None = None

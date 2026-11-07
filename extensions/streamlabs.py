@@ -85,6 +85,8 @@ STREAMLABS_URL = _guild_cfg.get("streamlabsTeamUrl") or ""
 
 
 class StreamlabsCharityExtension(Extension):
+    MODULE_KEYS = ("moduleStreamlabsCharity",)
+
     def __init__(self, bot: Client):
         self.bot: Client = bot
         self.twitch = None

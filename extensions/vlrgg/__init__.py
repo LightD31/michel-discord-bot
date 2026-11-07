@@ -47,6 +47,8 @@ class VlrggExtension(
 ):
     """Discord extension combining VLR.gg API, embeds, notifications, reminders and commands."""
 
+    MODULE_KEYS = ("moduleVlrgg",)
+
     def __init__(self, bot: Client):
         self.bot: Client = bot
         self._servers: dict[str, ServerState] = {}

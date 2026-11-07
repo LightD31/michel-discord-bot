@@ -38,10 +38,7 @@ class GiveawayConfig(SchemaBase):
     )
 
 
-# NOTE: keep the literal string here — the WebUI's ``build_module_to_extension_map``
-# scans source files with a regex matching ``load_config("…")``, so a constant
-# would make the module invisible to the dashboard's auto-reload.
-_, module_config, enabled_servers = load_config("moduleGiveaway")
+_, module_config, enabled_servers = load_config(MODULE_KEY)
 
 
 def guild_emoji(guild_id: str | int | None) -> str:

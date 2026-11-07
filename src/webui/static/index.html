@@ -368,6 +368,15 @@
             background: #383a40;
         }
 
+        .module-item.inactive {
+            cursor: default;
+            opacity: 0.6;
+        }
+
+        .module-item.inactive:hover {
+            background: var(--bg-tertiary);
+        }
+
         .module-info {
             display: flex;
             align-items: center;
@@ -2997,7 +3006,6 @@
         config: null,
         servers: null,
         botInfo: null,
-        modules: {},
         moduleSchemas: {},
         globalSchemas: {},
         extensions: [],
@@ -3403,15 +3411,6 @@
             state.servers = await api('/api/servers');
         } catch (e) {
             state.servers = {};
-        }
-    }
-
-    async function loadModules() {
-        try {
-            const data = await api('/api/modules');
-            state.modules = data.modules || {};
-        } catch (e) {
-            state.modules = {};
         }
     }
 
@@ -6628,10 +6627,22 @@
                         const modItems = mods.map(mod => {
                             const modConfig = serverConfig[mod] || {};
                             const schema = state.moduleSchemas[mod];
-                            const noToggle = schema?.noToggle === true;
+                            if (!schema) {
+                                // Configured here, but no loaded extension registers it:
+                                // nothing to edit until the extension is enabled.
+                                return `
+                                <div class="module-item inactive" title="L'extension de ce module n'est pas chargée">
+                                    <div class="module-info">
+                                        <span class="module-name">🧩 ${escapeHtml(mod)}</span>
+                                        <span class="module-status">⏸ Extension inactive</span>
+                                    </div>
+                                </div>
+                            `;
+                            }
+                            const noToggle = schema.noToggle === true;
                             const enabled = modConfig.enabled === true;
-                            const label = schema?.label || state.modules[mod]?.label || mod;
-                            const icon = schema?.icon || state.modules[mod]?.icon || '🧩';
+                            const label = schema.label || mod;
+                            const icon = schema.icon || '🧩';
                             const isConfigured = mod in serverConfig;
                             return `
                                 <div class="module-item" onclick="navigate('module', '${sid}', '${mod}')">
@@ -6694,7 +6705,7 @@
         const schema = state.moduleSchemas[mod];
         const noToggle = schema?.noToggle === true;
         const enabled = modConfig.enabled === true;
-        const label = schema?.label || state.modules[mod]?.label || mod;
+        const label = schema?.label || mod;
         const icon = schema?.icon || '🧩';
         const description = schema?.description || '';
         const formId = `module-${sid}-${mod}`;
@@ -8392,7 +8403,7 @@
         if (state.user) {
             const promises = [loadBotInfo()];
             if (isAdmin()) {
-                promises.push(loadServers(), loadModules(), loadSchemas());
+                promises.push(loadServers(), loadSchemas());
             }
             if (isDeveloper()) {
                 promises.push(loadConfig(), loadLogs(), loadExtensions());

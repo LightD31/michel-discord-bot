@@ -32,6 +32,8 @@ from .notifications import NotificationsMixin
 class MdiExtension(ApiMixin, EmbedsMixin, NotificationsMixin, Extension):
     """Discord extension combining Raider.IO fetch, embeds, and notifications."""
 
+    MODULE_KEYS = ("moduleMDI",)
+
     def __init__(self, bot: Client):
         self.bot: Client = bot
         self._servers: dict[str, GuildState] = {}

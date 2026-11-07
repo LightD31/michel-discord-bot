@@ -21,6 +21,8 @@ from .listeners import ListenersMixin
 
 
 class StarboardExtension(Extension, ListenersMixin):
+    MODULE_KEYS = ("moduleStarboard",)
+
     def __init__(self, bot: Client):
         self.bot = bot
         self.lock = asyncio.Lock()
