@@ -151,16 +151,6 @@ class TwitchExtension(
         for i, event in enumerate(bot_events):
             if self._event_location(event).lower() == expected:
                 return bot_events.pop(i)
-
-        # Legacy fallback: events created before URL disambiguation existed
-        # had no reliable per-streamer marker. Claim one only if this guild
-        # tracks a single streamer; otherwise leave the event alone — the next
-        # update tick will recreate it for whichever streamer needs it.
-        guild_streamer_count = sum(
-            1 for s in self.streamers.values() if s.guild_id == streamer.guild_id
-        )
-        if guild_streamer_count == 1 and bot_events:
-            return bot_events.pop(0)
         return None
 
     # ─── Session-state persistence ────────────────────────────────────
@@ -280,9 +270,6 @@ class TwitchExtension(
             try:
                 # Attach the bot-owned scheduled event whose external_location
                 # URL matches this streamer's Twitch login (case-insensitive).
-                # Falls back to claiming an unclaimed bot event only when this
-                # is the sole streamer in the guild — preserves legacy behavior
-                # for events created before URL disambiguation existed.
                 streamer.scheduled_event = self._match_scheduled_event(
                     streamer, bot_events_by_guild.get(streamer.guild_id, [])
                 )

@@ -124,9 +124,8 @@ def pick_weighted_message(
 ) -> str:
     """Pick a random message from ``config[list_key]`` using weights, then format it.
 
-    Entries are ``{"text": str, "weight": number}`` objects. Bare strings are
-    accepted with weight 1 so an unmigrated config degrades gracefully instead
-    of crashing the welcome/birthday/level-up message.
+    Entries are ``{"text": str, "weight": number}`` objects; anything else is
+    skipped.
 
     Example::
 
@@ -141,19 +140,15 @@ def pick_weighted_message(
     texts: list[str] = []
     weights: list[float] = []
     for entry in entries:
-        if isinstance(entry, dict):
-            text = entry.get("text")
-            if not isinstance(text, str) or not text:
-                continue
-            raw_weight = entry.get("weight", 1)
-            try:
-                weight = max(float(raw_weight), 0.0)
-            except (TypeError, ValueError):
-                weight = 1.0
-        elif isinstance(entry, str) and entry:
-            text, weight = entry, 1.0
-        else:
+        if not isinstance(entry, dict):
             continue
+        text = entry.get("text")
+        if not isinstance(text, str) or not text:
+            continue
+        try:
+            weight = max(float(entry.get("weight", 1)), 0.0)
+        except (TypeError, ValueError):
+            weight = 1.0
         texts.append(text)
         weights.append(weight)
     if not texts:

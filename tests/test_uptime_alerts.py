@@ -109,7 +109,7 @@ def test_alert_round_trip():
         # Written by the previous implementation: no mode, int status.
         ({"channel_id": 5, "last_status": 1}, MonitorAlert(7, 5, AlertMode.DETAILED, UP)),
         ({"channel_id": "5", "last_status": None, "mode": "weird"}, MonitorAlert(7, 5)),
-        ({"channel_id": 5, "last_status": "MAINTENANCE"}, MonitorAlert(7, 5, last_status=MAINT)),
+        ({"channel_id": 5, "last_status": "MAINTENANCE"}, MonitorAlert(7, 5)),  # numbers only
         ({"last_status": 1}, None),
         ({"channel_id": "abc"}, None),
         ("not a dict", None),

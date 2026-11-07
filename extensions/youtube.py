@@ -153,19 +153,9 @@ class YoutubeExtension(Extension):
 
     @staticmethod
     def _iter_channels(srv_config: dict):
-        """Yield ``(handle, channel_cfg)`` pairs from the configured channel list.
-
-        Accepts both the structured dict shape (``youtubechannelmap``) and the
-        legacy ``list[str]`` shape — list entries default to VOD-only with
-        Shorts and Lives disabled, matching the previous behaviour.
-        """
-        raw = srv_config.get("youtubeChannelList")
-        if isinstance(raw, dict):
-            for handle, cfg in raw.items():
-                yield handle, (cfg if isinstance(cfg, dict) else {})
-        elif isinstance(raw, list):
-            for handle in raw:
-                yield handle, {"shorts": False, "live": False, "vod": True}
+        """Yield ``(handle, channel_cfg)`` pairs from the configured channel map."""
+        for handle, cfg in (srv_config.get("youtubeChannelList") or {}).items():
+            yield handle, (cfg if isinstance(cfg, dict) else {})
 
     @staticmethod
     async def _api(endpoint: str, **params: str | int) -> dict:

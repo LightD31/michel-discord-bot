@@ -3712,19 +3712,7 @@
                 }
 
                 case 'youtubechannelmap': {
-                    let channelMap;
-                    if (Array.isArray(value)) {
-                        // Legacy list[str] config — migrate in-place to the
-                        // structured shape with VOD-only defaults.
-                        channelMap = {};
-                        for (const handle of value) {
-                            if (handle) channelMap[handle] = { shorts: false, live: false, vod: true };
-                        }
-                    } else if (typeof value === 'object' && value !== null) {
-                        channelMap = value;
-                    } else {
-                        channelMap = {};
-                    }
+                    const channelMap = (value && typeof value === 'object' && !Array.isArray(value)) ? value : {};
                     html += `<div class="youtubechannel-list" data-field="${key}" data-type="youtubechannelmap">`;
                     Object.entries(channelMap).forEach(([handle, cfg]) => {
                         html += renderYoutubeChannelEntry(handle, cfg || {});
