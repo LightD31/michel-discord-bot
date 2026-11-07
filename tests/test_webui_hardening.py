@@ -11,6 +11,7 @@ from fastapi.testclient import TestClient
 
 import src.core.config as core_config
 import src.webui.routes.servers as servers_routes
+from src.core import backup_format
 from src.core.db import BACKUP_CONFIG_FILENAME, BACKUP_EXCLUDED_COLLECTIONS, MongoManager
 from src.webui import sessions
 from src.webui.ratelimit import TrustedProxies
@@ -190,10 +191,15 @@ def test_backup_skips_sessions_and_copies_config(tmp_path, monkeypatch):
     root = tmp_path / "backups"
     folder = next(root.iterdir())
     assert str(folder) == dest
-    assert not (folder / "global" / "webui_sessions.json").exists()
-    assert json.loads((folder / "global" / "olympics.json").read_text()) == [{"_id": "1"}]
-    assert (folder / "guild_1" / "xp.json").exists()
+    assert not (folder / "global" / "webui_sessions.jsonl.gz").exists()
+    olympics = backup_format.collection_path(folder, "global", "olympics")
+    assert list(backup_format.read_collection(olympics)) == [{"_id": 1}]
+    assert backup_format.collection_path(folder, "guild_1", "xp").exists()
     assert not (folder / "admin").exists()
+    assert backup_format.read_manifest(folder)["databases"] == {
+        "global": {"olympics": 1},
+        "guild_1": {"xp": 1},
+    }
     copied = folder / BACKUP_CONFIG_FILENAME
     assert copied.read_text(encoding="utf-8") == config_file.read_text(encoding="utf-8")
     assert copied.stat().st_mode & 0o077 == 0  # owner-only
