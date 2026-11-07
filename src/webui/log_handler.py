@@ -33,6 +33,15 @@ class LogEntry:
         }
 
 
+def _with_context(record: logging.LogRecord) -> str:
+    """The message, followed by the log context it was written in (see src.core.log_context)."""
+    context = getattr(record, "log_context", None)
+    message = record.getMessage()
+    if not context:
+        return message
+    return f"{message} [" + " ".join(f"{k}={v}" for k, v in context.items()) + "]"
+
+
 class WebUILogHandler(logging.Handler):
     """
     A logging handler that captures records into a fixed-size ring buffer
@@ -74,7 +83,8 @@ class WebUILogHandler(logging.Handler):
                 logger_name=record.name,
                 # Store only the raw message — the UI renders its own columns
                 # (time/level/logger/lineno) so any prefix here would duplicate them.
-                message=record.getMessage(),
+                # The context (ref, guild, command) isn't a column: it trails.
+                message=_with_context(record),
                 lineno=record.lineno,
                 filename=record.filename,
             )

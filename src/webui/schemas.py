@@ -661,6 +661,26 @@ class MetricsSection(SchemaBase):
     )
 
 
+@register_section("errorReporting")
+class ErrorReportingSection(SchemaBase):
+    __label__ = "Remontée d'erreurs"
+    __icon__ = "🚨"
+
+    dsn: str | None = secret_field(
+        "DSN Sentry / GlitchTip",
+        description=(
+            "Clé du projet (Settings → Client Keys) d'un serveur Sentry ou GlitchTip. "
+            "Vide : rien n'est envoyé. Pris en compte au redémarrage du bot."
+        ),
+    )
+    environment: str = ui(
+        "Environnement",
+        "string",
+        default="production",
+        description="Nom de l'environnement affiché sur chaque erreur remontée.",
+    )
+
+
 @register_section("webui")
 class WebuiSection(SchemaBase):
     __label__ = "Dashboard Web"

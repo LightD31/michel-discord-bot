@@ -12,6 +12,9 @@ services:
     environment:
       # Toggle extra debug logging (file/line in log records). Default off.
       MICHEL_DEBUG: "${MICHEL_DEBUG:-false}"
+      # "json" writes one JSON object per log line (Loki, Elastic, jq…) instead of
+      # colored text. Either way each line carries its guild, command and ref.
+      MICHEL_LOG_FORMAT: "${MICHEL_LOG_FORMAT:-text}"
     volumes:
       - ./logs:/app/logs
       - ./data:/app/data

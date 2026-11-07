@@ -16,15 +16,22 @@ from pathlib import Path
 import interactions
 from interactions import IntervalTrigger, Task
 
+from src.core import error_reporting
 from src.core import logging as logutil
 from src.core.config import CONFIG_PATH, load_config
 from src.core.db import mongo_manager
 from src.core.http import http_client
 from src.core.logging import DEBUG
+from src.discord_ext import task_health
+from src.discord_ext.interaction_context import bind_interaction_context
 from src.discord_ext.lifecycle import GracefulShutdown
 
 # Configure logging for this main.py handler
 logger = logutil.init_logger("main.py")
+# interactions.py's own errors (a failing Task…) in our format and the dashboard.
+logutil.adopt_library_logger("interactions")
+# Every Task run is timed, recorded for /metrics and tagged in the logs.
+task_health.install()
 
 config, _, _ = load_config()
 if not config.get("discord", {}).get("botToken"):
@@ -39,6 +46,9 @@ if not config.get("discord", {}).get("botToken"):
 
 DEV_GUILD = config["discord"].get("devGuildId")
 TOKEN = config["discord"]["botToken"]
+
+if error_reporting.init(config.get("errorReporting") or {}):
+    logger.info("Error reporting to Sentry/GlitchTip enabled")
 
 # Web UI configuration
 WEBUI_ENABLED = config.get("webui", {}).get("enabled", False)
@@ -73,12 +83,17 @@ client = interactions.Client(
     delete_unused_application_cmds=True,
     # auto_defer=interactions.AutoDefer(enabled=True, time_until_defer=0),
     send_command_tracebacks=False,
+    # Tags what each command, button and modal logs with its guild, its name and
+    # a correlation id (the reference a member sees if it fails).
+    global_pre_run_callback=bind_interaction_context,
 )
 
 
 # SIGTERM (docker compose stop) and SIGINT stop the bot cleanly instead of
 # killing it mid-task; installed on the bot loop once it runs.
-shutdown = GracefulShutdown(client, closers=[http_client.close, mongo_manager.close])
+shutdown = GracefulShutdown(
+    client, closers=[http_client.close, mongo_manager.close, error_reporting.flush]
+)
 
 
 HEALTH_FILE = "/tmp/bot_heartbeat"

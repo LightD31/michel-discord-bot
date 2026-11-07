@@ -57,7 +57,7 @@ A modular, multi-guild Discord bot built with **interactions.py**. Michel ships 
 | **Admin** | Moderator utilities: `/ping`, `/delete`, `/send`, `/slowmode`, `/lock`, `/unlock`. |
 | **Embed Manager** | Custom embeds created and managed from the Web UI, auto-published to a channel. |
 | **Backup** | Daily (and on-demand `/backup`) exports of all MongoDB databases as compressed Extended JSON that keeps every BSON type, with configurable retention and a copy of `config/config.json` (owner-only permissions). `scripts/restore_backup.py` restores them; see [docs/RUNBOOK.md](docs/RUNBOOK.md). Dashboard sessions are never exported. |
-| **Metrics** | Prometheus exporter: per-guild XP and Spotify statistics, bot health and command counters on a dedicated `/metrics` port. |
+| **Metrics** | Prometheus exporter: per-guild XP and Spotify statistics, bot health (periodic tasks, HTTP errors per host, event-loop lag, last backup) and command counters on a dedicated `/metrics` port. |
 
 ### Integrations & notifications
 
@@ -285,11 +285,28 @@ The `metrics` extension serves `/metrics` in the Prometheus text format on its o
 
 | Group | Metrics |
 |-------|---------|
-| XP (per guild with `moduleXp`) | `michel_xp_members`, `michel_xp_points`, `michel_xp_messages`, `michel_xp_level_members{level}`, `michel_xp_active_members{window="1d"\|"7d"\|"30d"}`, `michel_xp_source_points{source}`, `michel_xp_source_events{source}`, and for the top members `michel_xp_member_points` / `_level` / `_messages` / `_rank{user_id,member}` |
-| Spotify (per guild with `moduleSpotify`) | `michel_spotify_tracks`, `michel_spotify_duration_seconds`, `michel_spotify_artists`, `michel_spotify_contributors`, `michel_spotify_polls_closed`, `michel_spotify_polls_outcome{outcome}`, `michel_spotify_poll_removal_ratio`, `michel_spotify_poll_participation_avg` / `_max`, `michel_spotify_poll_open`, `michel_spotify_poll_voters`, `michel_spotify_contributor_tracks{user_id,member}`, `michel_spotify_artist_tracks{artist}`, `michel_spotify_voter_votes{user_id,member,choice}` |
+| XP (per guild with `moduleXp`) | `michel_xp_members`, `michel_xp_points`, `michel_xp_messages`, `michel_xp_level_members{level}`, `michel_xp_active_members{window="1d"\|"7d"\|"30d"}`, `michel_xp_source_points{source}`, `michel_xp_source_events{source}`, and for the top members `michel_xp_member_points` / `_level` / `_messages` / `_rank{member}` |
+| Spotify (per guild with `moduleSpotify`) | `michel_spotify_tracks`, `michel_spotify_duration_seconds`, `michel_spotify_artists`, `michel_spotify_contributors`, `michel_spotify_polls_closed`, `michel_spotify_polls_outcome{outcome}`, `michel_spotify_poll_removal_ratio`, `michel_spotify_poll_participation_avg` / `_max`, `michel_spotify_poll_open`, `michel_spotify_poll_voters`, `michel_spotify_contributor_tracks{member}`, `michel_spotify_artist_tracks{artist}`, `michel_spotify_voter_votes{member,choice}` |
 | Bot | `michel_gateway_latency_seconds`, `michel_guilds`, `michel_extension_loaded{extension}`, `michel_commands_total{command,status}`, `michel_stats_refresh_timestamp_seconds`, `michel_stats_refresh_duration_seconds`, `michel_stats_refresh_failures_total{module}`, plus the standard `process_*` and `python_*` series |
+| Health | `michel_task_runs_total{task,status}`, `michel_task_last_success_timestamp_seconds{task}`, `michel_task_last_failure_timestamp_seconds{task}`, `michel_task_last_duration_seconds{task}` (every periodic task, e.g. `task="YoutubeExtension.check_youtube"`), `michel_http_requests_total{host,outcome}` (`2xx`…`5xx`, or `error` when no response came; each retry counts), `michel_background_task_failures_total{name}`, `michel_event_loop_lag_seconds` (histogram), `michel_backup_last_success_timestamp_seconds` |
 
 Every per-guild series carries `guild_id` and `guild` (the server name). The values are gauges of the current state; let Prometheus derive the history, e.g. `delta(michel_xp_points[1d])` for the XP earned per day. The open Spotify poll's tally is not exported, only whether a poll is open and how many members voted.
+
+Alerts worth having, for instance:
+
+```yaml
+groups:
+  - name: michel
+    rules:
+      - alert: MichelTaskStalled          # a 5-minute task with no success for 15 minutes
+        expr: time() - michel_task_last_success_timestamp_seconds{task="YoutubeExtension.check_youtube"} > 900
+      - alert: MichelBackupMissing        # the daily backup didn't run
+        expr: time() - michel_backup_last_success_timestamp_seconds > 26 * 3600
+      - alert: MichelApiFailing
+        expr: sum by (host) (rate(michel_http_requests_total{outcome=~"5xx|error"}[15m])) > 0.1
+      - alert: MichelLoopBlocked          # 1% of the loop samples a second late or worse
+        expr: 1 - sum(rate(michel_event_loop_lag_seconds_bucket{le="1.0"}[10m])) / sum(rate(michel_event_loop_lag_seconds_count[10m])) > 0.01
+```
 
 Scrape config, with Prometheus on the same Docker network as the bot:
 
@@ -336,7 +353,8 @@ scrape_configs:
 - Python 3.12+ (`requires-python >= 3.12`; CI/Docker run 3.15), async/await throughout.
 - **Layering** — Discord code in `extensions/`, domain logic in `features/`, shared infrastructure in `src/`. `features/` must not import `interactions`.
 - **Persistence** — One MongoDB database per guild (`guild_{id}`), shared data in `global`. Each feature owns a repository module under `features/<name>/repository.py`.
-- **Logging** — `src.core.logging.init_logger(name)` (colored ANSI output; `MICHEL_DEBUG=1` for debug level).
+- **Logging** — `src.core.logging.init_logger(name)`: colored text by default, one JSON object per line with `MICHEL_LOG_FORMAT=json` (`MICHEL_DEBUG=1` for debug level). Every line logged during a command, button, modal or periodic task carries its guild, its name and a correlation id (`src/core/log_context.py`) — the same id a member sees as the reference when their interaction fails.
+- **Error reporting** — optional: with a DSN in the `errorReporting` global section, exceptions (failed interactions, tasks, background jobs, backups) go to a [Sentry](https://sentry.io/) or [GlitchTip](https://glitchtip.com/) project, tagged with that context. Off by default; see `src/core/error_reporting.py` for what is sent.
 - **HTTP** — Use the shared session from `src.core.http` rather than creating per-call aiohttp clients.
 - **Language** — User-facing strings (command descriptions, embeds) are in French.
 

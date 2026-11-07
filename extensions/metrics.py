@@ -1,13 +1,17 @@
 """Prometheus exporter.
 
 Serves ``/metrics`` on its own port (global config section ``metrics``),
-independent of the Web UI. Three groups of metrics:
+independent of the Web UI. Four groups of metrics:
 
 - **XP and Spotify statistics** per guild, recomputed from MongoDB every
   ``refreshSeconds`` on the bot loop and published to a
   :class:`~features.metrics.SnapshotCollector` — scrapes never touch MongoDB;
-- **bot health** (gateway latency, guilds, loaded extensions), read from the
+- **bot state** (gateway latency, guilds, loaded extensions), read from the
   client at scrape time;
+- **process health** recorded in :mod:`src.core.health` as it happens: each
+  periodic task's runs and last success, HTTP requests per host and outcome,
+  failed background tasks, the last backup (:class:`~features.metrics.HealthCollector`),
+  and how late the event loop wakes up (``michel_event_loop_lag_seconds``);
 - **command invocations** per command and outcome, plus the standard
   ``process_*`` / ``python_*`` collectors.
 
@@ -20,6 +24,7 @@ import asyncio
 import math
 import time
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import Any
 
 from interactions import Client, Extension, IntervalTrigger, Task, listen
@@ -28,6 +33,7 @@ from prometheus_client import (
     CollectorRegistry,
     Counter,
     GCCollector,
+    Histogram,
     PlatformCollector,
     ProcessCollector,
     start_http_server,
@@ -36,6 +42,7 @@ from prometheus_client import (
 from features.metrics import (
     ACTIVE_WINDOWS,
     SNAPSHOT_METRICS,
+    HealthCollector,
     MetricSpec,
     Sample,
     SnapshotCollector,
@@ -46,8 +53,11 @@ from features.spotify import SpotifyRepository, aggregate
 from features.userinfo import UserInfoRepository, member_label_resolver
 from features.xp import XpRepository
 from src.core import logging as logutil
+from src.core.backup_format import latest_backup_time
 from src.core.config import config_store
 from src.core.errors import DatabaseError
+from src.core.health import health, watch_loop_lag
+from src.core.tasks import spawn
 
 logger = logutil.init_logger(__name__)
 
@@ -57,6 +67,8 @@ DEFAULT_REFRESH_SECONDS = 300
 DEFAULT_TOP_MEMBERS = 25
 MIN_REFRESH_SECONDS = 60
 UNKNOWN_MEMBER = "Membre inconnu"
+DEFAULT_BACKUP_DIR = "data/backups"
+LOOP_LAG_BUCKETS = (0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0)
 
 LIVE_METRICS: tuple[MetricSpec, ...] = (
     MetricSpec("michel_gateway_latency_seconds", "Discord gateway heartbeat latency.", ()),
@@ -87,6 +99,12 @@ def _int_setting(settings: dict[str, Any], key: str, default: int, minimum: int 
         return default
 
 
+def _backup_dir() -> Path:
+    section = config_store.get().get("config", {}).get("backup", {})
+    configured = section.get("backupDir") if isinstance(section, dict) else None
+    return Path(configured or DEFAULT_BACKUP_DIR)
+
+
 def _enabled_guilds(module_name: str) -> list[tuple[str, dict[str, Any]]]:
     """``(guild_id, server_config)`` for each guild where *module_name* is on."""
     servers = config_store.get().get("servers", {})
@@ -109,6 +127,7 @@ class MetricsExtension(Extension):
         self.registry = CollectorRegistry()
         self.collector = SnapshotCollector((*SNAPSHOT_METRICS, *LIVE_METRICS), self._live_samples)
         self.registry.register(self.collector)
+        self.registry.register(HealthCollector(health.snapshot))
         ProcessCollector(registry=self.registry)
         PlatformCollector(registry=self.registry)
         GCCollector(registry=self.registry)
@@ -124,6 +143,14 @@ class MetricsExtension(Extension):
             ("module",),
             registry=self.registry,
         )
+        self.loop_lag = Histogram(
+            "michel_event_loop_lag_seconds",
+            "How much later than asked the bot's event loop wakes up, sampled every second. "
+            "Seconds mean something is blocking the loop.",
+            buckets=LOOP_LAG_BUCKETS,
+            registry=self.registry,
+        )
+        self._lag_watcher: asyncio.Task[Any] | None = None
         self._server: Any = None
         self._last_refresh = 0.0
         self._refresh_timestamp: float | None = None
@@ -147,12 +174,19 @@ class MetricsExtension(Extension):
                 logger.error("Prometheus exporter could not bind %s:%s: %s", host, port, e)
                 return
             logger.info("Prometheus exporter listening on http://%s:%s/metrics", host, port)
+        if self._lag_watcher is None or self._lag_watcher.done():
+            self._lag_watcher = spawn(
+                watch_loop_lag(self.loop_lag.observe), name="metrics-loop-lag", log=logger
+            )
         if not self.refresh_tick.running:
             self.refresh_tick.start()
         await self.refresh_tick()
 
     async def async_drop(self) -> None:
         """Dashboard unload/reload: free the port before a new instance binds it."""
+        watcher, self._lag_watcher = self._lag_watcher, None
+        if watcher is not None:
+            watcher.cancel()
         server, self._server = self._server, None
         if server is not None:
             await asyncio.to_thread(server.shutdown)
@@ -208,6 +242,10 @@ class MetricsExtension(Extension):
         settings = _settings()
         if not settings.get("enabled", False):
             return
+        # Read from disk, so the age survives a restart (a backup runs once a day).
+        last_backup = await asyncio.to_thread(latest_backup_time, _backup_dir())
+        if last_backup is not None:
+            health.record_backup(last_backup)
         interval = _int_setting(
             settings, "refreshSeconds", DEFAULT_REFRESH_SECONDS, MIN_REFRESH_SECONDS
         )

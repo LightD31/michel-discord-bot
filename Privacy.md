@@ -1,6 +1,6 @@
 # Privacy Policy
 
-**Effective date: 2026-11-06**
+**Effective date: 2026-11-07**
 
 This policy explains what personal data **Michel** (the "Bot"), a Discord bot, processes, why, with whom it is shared, and how long it is kept. It also covers the Bot's web dashboard.
 
@@ -87,6 +87,7 @@ The Bot also fetches public information (RSS feeds, YouTube, Twitch, game server
 
 - **Technical logs** record the Bot's activity and errors, including usernames and Discord IDs (for example who ran a command or changed a setting). They are kept on the Operator's server, and the most recent 2000 lines are also kept in memory for the Bot's developers.
 - **Monitoring:** when the Operator enables it, a metrics endpoint publishes counters to the Operator's monitoring system. These include the display names of the most active members, but no Discord IDs.
+- **Error reports:** when the Operator enables it, the details of an unexpected error are sent to an error-tracking service chosen by the Operator (Sentry, or a GlitchTip server the Operator may host). A report contains the error, the code where it happened, the server's ID, the command or button involved, and the Bot's warning and error log lines from just before it. Those lines can include usernames, Discord IDs or what was typed in a command. A report does not include the data the code was working on, dashboard sessions or credentials. Reports are kept according to that service's retention settings.
 - **Backups:** the database and the configuration file are copied every day to the Operator's server. Only the last few copies are kept (7 by default), and older ones are deleted. Dashboard sessions are never included.
 
 ## 7. How long data is kept
