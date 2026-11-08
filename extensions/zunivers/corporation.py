@@ -17,8 +17,9 @@ from features.coloc.constants import (
     CURRENCY_EMOJI,
     DEFAULT_CORPORATION_ID,
 )
+from src.discord_ext.messages import send_error
 
-from ._common import logger, zunivers_cmd
+from ._common import logger, zunivers_api_url, zunivers_cmd, zunivers_web_url
 from .embeds import create_corporation_embed, create_corporation_logs_embed
 
 
@@ -45,6 +46,9 @@ class CorporationMixin:
                 channels.append(channel)
         if not channels:
             return
+        if not zunivers_api_url():
+            logger.warning("No ZUnivers API URL (zunivers.apiUrl): skipping the corporation recap")
+            return
 
         try:
             data = await self.api_client.get_corporation(DEFAULT_CORPORATION_ID)
@@ -67,7 +71,7 @@ class CorporationMixin:
 
         all_members = {m["user"]["discordGlobalName"] for m in data.get("userCorporations", [])}
 
-        corp_embed = create_corporation_embed(data, CURRENCY_EMOJI)
+        corp_embed = create_corporation_embed(data, CURRENCY_EMOJI, zunivers_web_url())
         logs_embed = create_corporation_logs_embed(logs, all_members, target_date, CURRENCY_EMOJI)
 
         for channel in channels:
@@ -88,6 +92,9 @@ class CorporationMixin:
     )
     async def corpo_command(self, ctx: SlashContext, date: str | None = None):
         """Manual corporation recap command, posted in this guild's channel."""
+        if not zunivers_api_url():
+            await send_error(ctx, "L'API ZUnivers n'est pas configurée (section globale ZUnivers).")
+            return
         await self._send_corporation_recap(date, only=str(ctx.guild_id))
         await ctx.send("Corporation recap envoyé !", ephemeral=True)
 

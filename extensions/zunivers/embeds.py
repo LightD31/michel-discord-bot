@@ -9,9 +9,11 @@ from interactions import Embed, File
 
 from features.coloc.constants import (
     BONUS_TYPE_NAMES,
+    CORPORATION_PAGE,
     CURRENCY_EMOJI,
     ReminderType,
     get_bonus_value_description,
+    zunivers_link,
 )
 from features.coloc.utils import format_event_items, parse_zunivers_date
 from src.discord_ext.embeds import SPACER_FIELD, Colors, format_discord_timestamp
@@ -153,13 +155,13 @@ def create_season_embed(season: dict, season_type: str, settings: dict | None = 
     return embed
 
 
-def create_corporation_embed(data: dict, currency_emoji: str) -> Embed:
-    """Create the main corporation info embed."""
+def create_corporation_embed(data: dict, currency_emoji: str, site_url: str | None) -> Embed:
+    """Create the main corporation info embed, its title linking to the corporation's page."""
     embed = Embed(
         title=f"{data['name']} Corporation",
         description=data["description"],
         color=Colors.COLOC,
-        url=f"https://zunivers.zerator.com/corporation/{data['id']}",
+        url=zunivers_link(site_url, CORPORATION_PAGE, corp_id=str(data["id"])),
     )
 
     embed.set_thumbnail(url=data["logoUrl"])

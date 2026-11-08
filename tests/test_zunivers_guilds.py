@@ -46,7 +46,12 @@ class Channel:
 
 @pytest.fixture
 def ext(store_config, monkeypatch):
-    store_config({"servers": {g: {"moduleZunivers": cfg} for g, cfg in GUILDS.items()}})
+    store_config(
+        {
+            "config": {"zunivers": {"apiUrl": "https://zunivers.test/api"}},
+            "servers": {g: {"moduleZunivers": cfg} for g, cfg in GUILDS.items()},
+        }
+    )
     FakeStorage.saved = []
     monkeypatch.setattr(zunivers, "StorageManager", FakeStorage)
     channels = {"10": Channel("10"), "20": Channel("20")}
@@ -186,3 +191,18 @@ async def test_the_247_cycle_is_fetched_once_per_site(ext, monkeypatch):
 
     assert fetched == ["https://247.ex", "https://247.ex"]  # once per run, not per guild
     assert announced == ["1", "2"]  # each guild announces a cycle once
+
+
+async def test_without_an_api_url_the_events_check_is_skipped(ext, store_config):
+    store_config({"servers": {g: {"moduleZunivers": cfg} for g, cfg in GUILDS.items()}})
+
+    async def unexpected(*args):
+        raise AssertionError("the API was called")
+
+    ext.api_client = SimpleNamespace(
+        get_current_events=unexpected, get_current_hardcore_season=unexpected
+    )
+
+    await ext._check_zunivers_events()
+
+    assert FakeStorage.saved == []

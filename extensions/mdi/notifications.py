@@ -21,6 +21,8 @@ from ._common import (
     SCHEDULE_SLOT,
     GuildState,
     logger,
+    raiderio_api_url,
+    raiderio_web_url,
 )
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -31,15 +33,18 @@ if TYPE_CHECKING:  # pragma: no cover
 _INACTIVE_POLL_INTERVAL_SECONDS = 1800.0  # 30 min
 
 
-async def _event_url(event_slug: str) -> str:
-    """Raider.IO event page, shortened when Shlink is enabled.
+async def _event_url(event_slug: str) -> str | None:
+    """Raider.IO event page, shortened when Shlink is enabled; ``None`` without a site URL.
 
     The URL is stable for a whole event, and the shortener memoizes it, so the
     refreshed schedule/match embeds keep rendering the same string and
     ``edit_message_if_changed`` still skips no-op edits.
     """
+    site = raiderio_web_url()
+    if not site:
+        return None
     return await shorten_url(
-        f"https://raider.io/events/{event_slug}", title=f"MDI — {event_slug}", tags=["mdi"]
+        f"{site}/events/{event_slug}", title=f"MDI — {event_slug}", tags=["mdi"]
     )
 
 
@@ -58,6 +63,10 @@ class NotificationsMixin:
     @Task.create(IntervalTrigger(minutes=SCHEDULE_INTERVAL_MINUTES))
     async def schedule(self) -> None:
         """Slow ticker — refreshes the pinned schedule embed periodically."""
+        if not raiderio_api_url():
+            if self._servers:
+                logger.warning("No Raider.IO API URL (raiderio.apiUrl): MDI tracking is paused")
+            return
         for server_id, state in list(self._servers.items()):
             try:
                 await self._run_cycle(state, force=True)
@@ -67,6 +76,8 @@ class NotificationsMixin:
     @Task.create(IntervalTrigger(minutes=LIVE_INTERVAL_MINUTES))
     async def live_update(self) -> None:
         """Fast ticker — runs frequently when a bracket is in its window."""
+        if not raiderio_api_url():
+            return  # the slow ticker says why
         for server_id, state in list(self._servers.items()):
             try:
                 await self._run_cycle(state, force=False)

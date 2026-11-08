@@ -104,7 +104,12 @@ def create_app(bot=None, bot_loop=None) -> FastAPI:
 
     client_id = webui_config.get("clientId") or discord_config.get("clientId", "")
     client_secret = webui_config.get("clientSecret", "")
-    base_url = webui_config.get("baseUrl", "http://localhost:8080")
+    base_url = str(webui_config.get("baseUrl") or "").rstrip("/")
+    if not base_url:
+        logger.error(
+            "webui.baseUrl n'est pas renseignée : la connexion Discord ne peut pas revenir "
+            "sur le dashboard."
+        )
     redirect_uri = f"{base_url}/auth/callback"
     developer_user_ids = webui_config.get("developerUserIds", [])
 

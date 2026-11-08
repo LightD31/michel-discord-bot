@@ -16,7 +16,7 @@ from features.coloc.models import HardcoreSeason, ZuniversEvent
 from features.coloc.utils import image_url_needs_download
 from src.discord_ext.messages import send_error
 
-from ._common import GuildState, logger, zunivers_cmd
+from ._common import GuildState, logger, zunivers_api_url, zunivers_cmd
 from .embeds import create_event_embed, create_season_embed, set_event_embed_image
 
 
@@ -34,6 +34,9 @@ class EventsMixin:
     )
     async def zunivers_check(self, ctx: SlashContext):
         """Manually trigger the event check for this guild."""
+        if not zunivers_api_url():
+            await send_error(ctx, "L'API ZUnivers n'est pas configurée (section globale ZUnivers).")
+            return
         await ctx.defer()
         try:
             await self._check_zunivers_events(only=str(ctx.guild_id))
@@ -53,6 +56,9 @@ class EventsMixin:
         if only is not None:
             guilds = [(state, settings) for state, settings in guilds if state.guild_id == only]
         if not guilds:
+            return
+        if not zunivers_api_url():
+            logger.warning("No ZUnivers API URL (zunivers.apiUrl): skipping the events check")
             return
 
         current_events: dict[ReminderType, list[dict]] = {}

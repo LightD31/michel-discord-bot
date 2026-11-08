@@ -22,6 +22,7 @@ from interactions.api.events import Component
 
 from features.coloc import LootStatus, PremiumStatus
 from features.coloc.constants import (
+    ADVENT_CALENDAR_PAGE,
     ADVENT_CALENDAR_REMINDERS,
     BONUS_BEFORE_JOURNA_HINT,
     BONUS_UNLOCKED_BY_JOURNA_HINT,
@@ -33,16 +34,17 @@ from features.coloc.constants import (
     PREMIUM_REMINDERS,
     ReminderType,
     format_bonus_link,
+    format_calendar_link,
     format_journa_link,
     format_premium_link,
-    get_advent_calendar_url,
     get_bonus_reminder_message,
     get_reminder_message,
+    zunivers_link,
 )
 from features.zunivers_ninja import build_web_url
 from src.discord_ext.messages import edit_message_if_changed, fetch_user_safe
 
-from ._common import GuildState, logger, ninja_config, zunivers_cmd
+from ._common import GuildState, logger, ninja_config, zunivers_cmd, zunivers_web_url
 from .ninja import DEFAULT_STRATEGY_CHOICE, ninja_strategies, strategy_choices
 
 
@@ -408,8 +410,12 @@ class RemindersMixin:
         try:
             unopened_days = await self.api_client.get_unopened_calendar_days(user.username, day)
             if unopened_days:
-                url = get_advent_calendar_url(user.username)
-                message = random.choice(ADVENT_CALENDAR_REMINDERS).format(url=url)
+                url = zunivers_link(
+                    zunivers_web_url(), ADVENT_CALENDAR_PAGE, username=user.username
+                )
+                message = random.choice(ADVENT_CALENDAR_REMINDERS).format(
+                    calendar=format_calendar_link(url)
+                )
                 cases_str = ", ".join(map(str, unopened_days))
                 message += f"\n\nCases manquantes : **{cases_str}**"
                 await user.send(message)

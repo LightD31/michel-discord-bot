@@ -8,9 +8,9 @@ from typing import Any
 
 from features.mdi import TeamRef
 from src.core import logging as logutil
-from src.core.config import ModuleConfig
+from src.core.config import ModuleConfig, global_config
 from src.discord_ext.embeds import Colors
-from src.webui.schemas import SchemaBase, enabled_field, register_module, ui
+from src.webui.schemas import SchemaBase, enabled_field, register_module, register_section, ui
 
 # ── Module config (Web UI schema) ─────────────────────────────────────────────
 
@@ -68,8 +68,47 @@ class MDIConfig(SchemaBase):
     )
 
 
+@register_section("raiderio")
+class RaiderIoSection(SchemaBase):
+    """Raider.IO, where the MDI tracker reads the brackets: one for every guild."""
+
+    __label__ = "Raider.IO"
+    __icon__ = "🐉"
+
+    apiUrl: str = ui(
+        "URL de l'API",
+        "url",
+        required=True,
+        description="API de Raider.IO (https://raider.io/api). Vide = suivi MDI à l'arrêt.",
+    )
+    webUrl: str | None = ui(
+        "URL du site",
+        "url",
+        description=(
+            "Site de Raider.IO (https://raider.io) : les embeds du suivi MDI renvoient "
+            "vers la page de l'événement. Vide = aucun lien."
+        ),
+    )
+
+
 logger = logutil.init_logger(__name__)
 MDI = ModuleConfig(MODULE_KEY)
+
+
+def _raiderio(key: str) -> str:
+    section = global_config().get("raiderio")
+    value = section.get(key) if isinstance(section, dict) else None
+    return str(value or "").rstrip("/")
+
+
+def raiderio_api_url() -> str:
+    """The Raider.IO API base (global ``raiderio.apiUrl``), read at use; empty when unset."""
+    return _raiderio("apiUrl")
+
+
+def raiderio_web_url() -> str:
+    """The Raider.IO site (global ``raiderio.webUrl``), for links; empty when unset."""
+    return _raiderio("webUrl")
 
 
 # ── Constants ────────────────────────────────────────────────────────────────
@@ -147,6 +186,7 @@ __all__ = [
     "LIVE_INTERVAL_MINUTES",
     "MDIConfig",
     "MODULE_KEY",
+    "RaiderIoSection",
     "SCHEDULE_INTERVAL_MINUTES",
     "SCHEDULE_SLOT",
     "STATUS_EMOJI_LIVE",
@@ -156,4 +196,6 @@ __all__ = [
     "STATUS_EMOJI_TERMINAL_WIN",
     "MDI",
     "logger",
+    "raiderio_api_url",
+    "raiderio_web_url",
 ]

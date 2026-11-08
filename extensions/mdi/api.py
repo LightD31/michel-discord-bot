@@ -24,7 +24,7 @@ from features.mdi import (
     list_brackets,
 )
 
-from ._common import GuildConfig, GuildState, logger
+from ._common import GuildConfig, GuildState, logger, raiderio_api_url
 
 
 class ApiMixin:
@@ -55,9 +55,12 @@ class ApiMixin:
         slug both on the team object and the bracket payload, so we don't need
         a separate registration lookup.
         """
+        api_url = raiderio_api_url()
+        if not api_url:
+            return None, [], []
         brackets: list[BracketInfo] = []
         try:
-            brackets = await list_brackets(gc.event_slug)
+            brackets = await list_brackets(api_url, gc.event_slug)
         except Exception as e:
             logger.error("Failed to list brackets for %s: %s", gc.event_slug, e)
             return None, [], []
@@ -71,7 +74,7 @@ class ApiMixin:
 
         for bracket in brackets:
             try:
-                matches = await get_bracket_matches(gc.event_slug, bracket.slug)
+                matches = await get_bracket_matches(api_url, gc.event_slug, bracket.slug)
             except Exception as e:
                 logger.warning("Failed to load bracket %s: %s", bracket.slug, e)
                 continue

@@ -14,7 +14,33 @@ from features.zerator247 import RequestSubscription
 from src.core import logging as logutil
 from src.core.config import ModuleConfig, global_config
 from src.discord_ext.scopes import guild_scopes
-from src.webui.schemas import SchemaBase, enabled_field, register_module, ui
+from src.webui.schemas import SchemaBase, enabled_field, register_module, register_section, ui
+
+
+@register_section("zunivers")
+class ZuniversSection(SchemaBase):
+    """ZUnivers itself: the same site and API for every guild."""
+
+    __label__ = "ZUnivers"
+    __icon__ = "🎲"
+
+    apiUrl: str = ui(
+        "URL de l'API",
+        "url",
+        required=True,
+        description=(
+            "API publique de ZUnivers (https://zunivers-api.zerator.com/public). Vide = "
+            "ni rappels de loot, ni annonces d'événements, ni récap corporation."
+        ),
+    )
+    webUrl: str | None = ui(
+        "URL du site",
+        "url",
+        description=(
+            "Site de ZUnivers (https://zunivers.zerator.com) : lien du calendrier festif "
+            "dans les rappels et du titre du récap corporation. Vide = aucun lien."
+        ),
+    )
 
 
 @register_module("moduleZunivers")
@@ -78,6 +104,22 @@ logger = logutil.init_logger("extensions.zunivers")
 ZUNIVERS = ModuleConfig("moduleZunivers")
 
 
+def zunivers_config() -> dict:
+    """The global ``zunivers`` section (ZUnivers' site and API), read at use."""
+    section = global_config().get("zunivers")
+    return section if isinstance(section, dict) else {}
+
+
+def zunivers_api_url() -> str:
+    """The ZUnivers public API base URL; empty when unset."""
+    return str(zunivers_config().get("apiUrl") or "").rstrip("/")
+
+
+def zunivers_web_url() -> str | None:
+    """The ZUnivers site, for links; ``None`` when unset."""
+    return zunivers_config().get("webUrl") or None
+
+
 def ninja_config() -> dict:
     """The global ``zuniversNinja`` section (one server for the whole bot), read at use."""
     section = global_config().get("zuniversNinja")
@@ -107,7 +149,11 @@ __all__ = [
     "ZUNIVERS",
     "GuildState",
     "ZuniversConfig",
+    "ZuniversSection",
     "logger",
     "ninja_config",
+    "zunivers_api_url",
     "zunivers_cmd",
+    "zunivers_config",
+    "zunivers_web_url",
 ]

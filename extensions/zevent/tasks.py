@@ -29,6 +29,12 @@ async def _no_streamlabs_data() -> None:
     return None
 
 
+async def _no_zevent_data() -> None:
+    """Placeholder awaitable used when no Zevent API URL is configured."""
+    logger.warning("Zevent: aucune URL d'API Zevent configurée (zevent.zeventApiUrl).")
+    return None
+
+
 class TasksMixin:
     """Periodic Zevent refresh: render once, publish in every enabled guild."""
 
@@ -156,12 +162,12 @@ class TasksMixin:
     async def _fetch_payloads(self) -> tuple[dict | None, dict | None]:
         """The Zevent and Streamlabs payloads, ``None`` for one that failed or looks wrong.
 
-        Without a Streamlabs team URL the donation total is simply
+        Without one of the two URLs in the config, that payload is simply
         unavailable (the rest still renders).
         """
         logger.debug("Fetching data from APIs...")
         data, streamlabs_data = await asyncio.gather(
-            fetch(API_URL, return_type="json"),
+            fetch(API_URL, return_type="json") if API_URL else _no_zevent_data(),
             fetch(STREAMLABS_API_URL, return_type="json")
             if STREAMLABS_API_URL
             else _no_streamlabs_data(),

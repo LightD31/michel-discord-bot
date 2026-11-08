@@ -72,6 +72,15 @@ class ZeventSection(SchemaBase):
     )
     __icon__ = "🎉"
 
+    zeventApiUrl: str = ui(
+        "URL de l'API Zevent",
+        "url",
+        required=True,
+        description=(
+            "API officielle du Zevent (https://zevent.fr/api/) : streamers en direct et "
+            "cagnotte. Vide = données indisponibles dans le suivi."
+        ),
+    )
     zeventStreamlabsApiUrl: str = ui(
         "URL Streamlabs",
         "url",
@@ -285,7 +294,8 @@ def _parse_event_dt(iso_str: str) -> datetime | None:
     return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
 
 
-API_URL = "https://zevent.fr/api/"
+# The official API: who is live, and the total (global « Zevent » section).
+API_URL = _cfg.get("zeventApiUrl") or ""
 # Planning and the LAN/remote split still come from the same community project
 # (zevent.gdoc.fr) the tracker has always used; only its API moved hosts, from
 # zevent-api.gdoc.fr (now 404) to an EvenMoreStats-hosted backend. That base URL
