@@ -1,6 +1,7 @@
 """Raider.IO async client for MDI tournament data.
 
-Source: https://raider.io/api/events/<slug>/brackets[/<bracket_slug>]
+Source: ``<api>/events/<slug>/brackets[/<bracket_slug>]``, where ``<api>`` is
+the Raider.IO API base the caller reads from config (global ``raiderio`` section).
 
 This module is pure: it has no Discord dependencies. It returns frozen
 dataclasses keyed off the API shape so the extension layer can build embeds
@@ -23,8 +24,6 @@ from src.core import logging as logutil
 from src.core.http import fetch
 
 logger = logutil.init_logger(__name__)
-
-EVENT_BASE = "https://raider.io/api/events"
 
 # Cheap in-memory cache to avoid hammering Raider.IO when multiple guilds run
 # the same poll cycle within a few seconds of each other. Each entry is keyed
@@ -288,9 +287,13 @@ def invalidate_cache() -> None:
 # ── Public API ────────────────────────────────────────────────────────────────
 
 
-async def list_brackets(event_slug: str) -> list[BracketInfo]:
-    """Return the list of brackets for an event."""
-    url = f"{EVENT_BASE}/{event_slug}/brackets"
+def _event_api_url(api_url: str, event_slug: str) -> str:
+    return f"{api_url.rstrip('/')}/events/{event_slug}"
+
+
+async def list_brackets(api_url: str, event_slug: str) -> list[BracketInfo]:
+    """Return the list of brackets for an event, from the Raider.IO API at *api_url*."""
+    url = f"{_event_api_url(api_url, event_slug)}/brackets"
     data = await _cached_get(url)
     out: list[BracketInfo] = []
     for raw in data.get("brackets") or []:
@@ -357,9 +360,11 @@ def _build_match(
     )
 
 
-async def get_bracket_matches(event_slug: str, bracket_slug: str) -> list[MatchSnapshot]:
+async def get_bracket_matches(
+    api_url: str, event_slug: str, bracket_slug: str
+) -> list[MatchSnapshot]:
     """Return every match (upper, lower, tiebreaker, third-place) of a bracket."""
-    url = f"{EVENT_BASE}/{event_slug}/brackets/{bracket_slug}"
+    url = f"{_event_api_url(api_url, event_slug)}/brackets/{bracket_slug}"
     data = await _cached_get(url)
     bracket = data.get("bracket")
     if not isinstance(bracket, dict):

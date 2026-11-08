@@ -13,7 +13,7 @@ from ._common import (
     MEDAL_COLORS,
     MEDAL_EMOJIS,
     MEDAL_LABELS,
-    MEDALS_URL,
+    MEDALS_PATH,
     OLYMPICS,
     _get_flag,
     logger,
@@ -31,7 +31,7 @@ class MedalsMixin:
         Returns:
             Liste des médailles françaises avec détails.
         """
-        data = await self._olympics_fetch(MEDALS_URL)
+        data = await self._olympics_fetch(MEDALS_PATH)
         medal_table = data.get("medalStandings", {}).get("medalsTable", [])
 
         for country in medal_table:
@@ -52,7 +52,7 @@ class MedalsMixin:
         Returns:
             Liste du classement par pays.
         """
-        data = await self._olympics_fetch(MEDALS_URL)
+        data = await self._olympics_fetch(MEDALS_PATH)
         return data.get("medalStandings", {}).get("medalsTable", [])
 
     # ─── Helpers ──────────────────────────────────────────────────────────────
@@ -382,7 +382,7 @@ class MedalsMixin:
         await ctx.defer()
         code = code.upper().strip()
         try:
-            data = await self._olympics_fetch(MEDALS_URL)
+            data = await self._olympics_fetch(MEDALS_PATH)
             medal_table = data.get("medalStandings", {}).get("medalsTable", [])
 
             country_data = None

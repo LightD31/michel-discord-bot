@@ -148,6 +148,7 @@ async def test_the_refresh_renders_once_and_publishes_in_each_guild(ext, monkeyp
         assert kwargs["embeds"] == ["embeds"]
 
     monkeypatch.setattr(tasks, "fetch", fake_fetch)
+    monkeypatch.setattr(tasks, "API_URL", "https://zevent.test/api/")
     monkeypatch.setattr(tasks, "STREAMLABS_API_URL", "")
     monkeypatch.setattr(tasks, "edit_message_if_changed", fake_edit)
     ext._guilds = fake_guilds
@@ -221,6 +222,7 @@ def finishing(ext, monkeypatch):
         calls["edited"].append(message.name)
 
     monkeypatch.setattr(commands, "fetch", fake_fetch)
+    monkeypatch.setattr(commands, "API_URL", "https://zevent.test/api/")
     monkeypatch.setattr(commands, "edit_message_if_changed", fake_edit)
     ext._validate_api_data = lambda data, source: True
     ext._safe_get_data = lambda data, path, default: default

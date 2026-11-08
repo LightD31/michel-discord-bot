@@ -2,6 +2,7 @@ import asyncio
 import os
 from datetime import datetime
 from typing import Optional
+from urllib.parse import urlsplit
 
 from aiohttp import ClientError
 from babel.numbers import format_currency
@@ -81,6 +82,22 @@ STREAMLABS = ModuleConfig("moduleStreamlabsCharity")
 def _team_url(settings: dict) -> str:
     """The guild's Streamlabs Charity team URL; empty means the tracker stays idle."""
     return str(settings.get("streamlabsTeamUrl") or "").strip()
+
+
+def _api_root(team_url: str) -> str:
+    """The Streamlabs Charity API on the team page's own site."""
+    parts = urlsplit(team_url)
+    return f"{parts.scheme}://{parts.netloc}/api/v1"
+
+
+def campaign_api_url(team_url: str) -> str:
+    """``…/teams/@team/campaign`` → the API URL of that campaign, on the same site."""
+    return _api_root(team_url) + urlsplit(team_url).path
+
+
+def members_api_url(team_url: str, campaign_id: object) -> str:
+    """The API URL listing the members of the campaign the team URL points to."""
+    return f"{_api_root(team_url)}/teams/{campaign_id}/members"
 
 
 class StreamlabsCharityExtension(Extension):
@@ -166,19 +183,17 @@ class StreamlabsCharityExtension(Extension):
     async def fetch_team(self, url: str) -> tuple[dict, dict]:
         """The team's campaign and its members, with their live status."""
         campaign_data = await self.fetch_campaign_data(url)
-        members_dict = await self.fetch_members_data(campaign_data["id"])
+        members_dict = await self.fetch_members_data(url, campaign_data["id"])
         await self.update_live_status(members_dict)
         return campaign_data, members_dict
 
     async def fetch_campaign_data(self, url: str):
-        # The team URL is set per guild from the dashboard: never fetch it as
-        # one of the bot's own trusted endpoints.
-        return await fetch_untrusted(url.replace("teams", "api/v1/teams"), "json")
+        # The team URL is set per guild from the dashboard: never fetch it, or
+        # anything derived from it, as one of the bot's own trusted endpoints.
+        return await fetch_untrusted(campaign_api_url(url), "json")
 
-    async def fetch_members_data(self, campaign_id):
-        members_data = await fetch(
-            f"https://streamlabscharity.com/api/v1/teams/{campaign_id}/members", "json"
-        )
+    async def fetch_members_data(self, url: str, campaign_id):
+        members_data = await fetch_untrusted(members_api_url(url, campaign_id), "json")
         members = members_data["data"]
         while members_data.get("next_page_url"):
             # Pagination links come from the API response: treated as untrusted too.
@@ -337,7 +352,7 @@ class StreamlabsCharityExtension(Extension):
             await send_error(ctx, "Message Streamlabs non configuré.")
             return
         campaign_data = await self.fetch_campaign_data(url)
-        members_dict = await self.fetch_members_data(campaign_data["id"])
+        members_dict = await self.fetch_members_data(url, campaign_data["id"])
         members_list = self.list_members(members_dict)
         members_str = self.split_members(members_list)
         embeds = await shorten_embeds(

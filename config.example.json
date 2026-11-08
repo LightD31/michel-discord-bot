@@ -63,6 +63,14 @@
         "notion": {
             "notionSecret": ""
         },
+        "olympics": {
+            "apiUrl": "",
+            "refererUrl": ""
+        },
+        "raiderio": {
+            "apiUrl": "",
+            "webUrl": ""
+        },
         "random": {
             "randomOrgApiKey": ""
         },
@@ -112,6 +120,7 @@
             "youtubeApiUrl": ""
         },
         "zevent": {
+            "zeventApiUrl": "",
             "zeventStreamlabsApiUrl": "",
             "zeventTwitchUrl": "",
             "zeventWebsiteUrl": "",
@@ -134,6 +143,10 @@
             "zeventTopDonationsCount": 5,
             "zeventGoalsVelocityWeight": 2.0,
             "zeventMilestoneInterval": 100000
+        },
+        "zunivers": {
+            "apiUrl": "",
+            "webUrl": ""
         },
         "zuniversNinja": {
             "apiUrl": "",

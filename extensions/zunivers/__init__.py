@@ -21,7 +21,7 @@ from interactions import Client, Extension, GuildText, listen
 
 from features.coloc import StorageManager, ZuniversAPIClient
 
-from ._common import ZUNIVERS, GuildState, ZuniversConfig, logger
+from ._common import ZUNIVERS, GuildState, ZuniversConfig, logger, zunivers_api_url
 from .corporation import CorporationMixin
 from .events import EventsMixin
 from .ninja import NinjaMixin
@@ -38,7 +38,7 @@ class ZuniversExtension(
 
     def __init__(self, bot: Client):
         self.bot = bot
-        self.api_client = ZuniversAPIClient()
+        self.api_client = ZuniversAPIClient(zunivers_api_url)
         # Reminders, event state and !request subscriptions, per guild.
         self._states: dict[str, GuildState] = {}
         self._states_lock = asyncio.Lock()

@@ -1,6 +1,7 @@
 """API client for Zunivers API with retry logic."""
 
 import asyncio
+from collections.abc import Callable
 from datetime import datetime
 from typing import Any
 
@@ -11,17 +12,17 @@ from src.core.errors import IntegrationError
 from src.core.http import http_client
 
 from .constants import (
+    CALENDAR_PATH,
+    CORPORATION_PATH,
+    EVENTS_PATH,
+    HARDCORE_SEASON_PATH,
+    INVENTORY_LOGS_PATH,
     LOG_SOURCE_INVOKE,
+    LOOT_PATH,
     PREMIUM_CARDS_PER_INVOKE,
     PREMIUM_EVENT_NAME,
     PREMIUM_INVOKE_LIMIT,
-    ZUNIVERS_CALENDAR_URL_TEMPLATE,
-    ZUNIVERS_CORPORATION_URL_TEMPLATE,
-    ZUNIVERS_EVENTS_URL,
-    ZUNIVERS_HARDCORE_SEASON_URL,
-    ZUNIVERS_INVENTORY_LOGS_URL_TEMPLATE,
-    ZUNIVERS_LOOT_URL_TEMPLATE,
-    ZUNIVERS_USER_URL_TEMPLATE,
+    USER_PATH,
     ReminderType,
 )
 from .models import LootStatus, PremiumStatus
@@ -38,10 +39,24 @@ class ZuniversAPIError(IntegrationError):
 
 
 class ZuniversAPIClient:
-    """Client for interacting with the Zunivers API."""
+    """Client for interacting with the Zunivers API.
+
+    *base_url* returns the API's base URL (the global ``zunivers.apiUrl``
+    setting), read at each request so a dashboard save applies at once; a
+    request made while it is unset raises :class:`ZuniversAPIError`.
+    """
 
     MAX_RETRIES = 3
     RETRY_DELAY = 1.0  # seconds
+
+    def __init__(self, base_url: Callable[[], str | None]) -> None:
+        self._base_url = base_url
+
+    def _url(self, path: str, **values: str) -> str:
+        base = (self._base_url() or "").rstrip("/")
+        if not base:
+            raise ZuniversAPIError("No ZUnivers API URL configured (zunivers.apiUrl)")
+        return f"{base}/{path.format(**values)}"
 
     async def _get_session(self) -> ClientSession:
         return await http_client.session()
@@ -84,22 +99,22 @@ class ZuniversAPIClient:
 
     async def get_current_events(self, rule_set: ReminderType) -> list[dict]:
         """Get current events for a specific rule set."""
-        result = await self._request(ZUNIVERS_EVENTS_URL, rule_set)
+        result = await self._request(self._url(EVENTS_PATH), rule_set)
         return result if result else []
 
     async def get_current_hardcore_season(self) -> dict | None:
         """Get the current hardcore season."""
-        return await self._request(ZUNIVERS_HARDCORE_SEASON_URL, ReminderType.HARDCORE)
+        return await self._request(self._url(HARDCORE_SEASON_PATH), ReminderType.HARDCORE)
 
     async def get_user_loot(self, username: str, rule_set: ReminderType) -> dict:
         """Get a user's loot data."""
-        url = ZUNIVERS_LOOT_URL_TEMPLATE.format(username=username)
+        url = self._url(LOOT_PATH, username=username)
         result = await self._request(url, rule_set)
         return result if result else {}
 
     async def get_user(self, username: str) -> dict:
         """Get a user's profile (balance, subscription, ...)."""
-        url = ZUNIVERS_USER_URL_TEMPLATE.format(username=username)
+        url = self._url(USER_PATH, username=username)
         result = await self._request(url, ReminderType.NORMAL)
         return result if isinstance(result, dict) else {}
 
@@ -108,7 +123,7 @@ class ZuniversAPIClient:
 
         One page holds as many cards as a whole subscription's free invocations.
         """
-        url = ZUNIVERS_INVENTORY_LOGS_URL_TEMPLATE.format(username=username)
+        url = self._url(INVENTORY_LOGS_PATH, username=username)
         params: dict[str, str | int] = {
             "pageIndex": 0,
             "pageSize": PREMIUM_INVOKE_LIMIT * PREMIUM_CARDS_PER_INVOKE,
@@ -120,13 +135,13 @@ class ZuniversAPIClient:
 
     async def get_user_calendar(self, username: str) -> dict:
         """Get a user's advent calendar data."""
-        url = ZUNIVERS_CALENDAR_URL_TEMPLATE.format(username=username)
+        url = self._url(CALENDAR_PATH, username=username)
         result = await self._request(url, ReminderType.NORMAL)
         return result if isinstance(result, dict) else {}
 
     async def get_corporation(self, corp_id: str) -> dict | None:
         """Get corporation data."""
-        url = ZUNIVERS_CORPORATION_URL_TEMPLATE.format(corp_id=corp_id)
+        url = self._url(CORPORATION_PATH, corp_id=corp_id)
         return await self._request(url, ReminderType.NORMAL)
 
     async def download_image(self, image_url: str) -> bytes | None:

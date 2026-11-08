@@ -145,14 +145,21 @@ async def test_olympics_alerts_reach_every_enabled_guild_with_its_logo(store_con
     import extensions.olympics.tasks as tasks
 
     store_config(
-        _servers(
-            "moduleOlympics",
-            **{
-                "1": {"enabled": True, "olympicsChannelId": "10", "olympicsLogoUrl": "https://l/1"},
-                "2": {"enabled": True, "olympicsChannelId": "20"},
-                "3": {"enabled": True},  # no channel: skipped
-            },
-        )
+        {
+            "config": {"olympics": {"apiUrl": "https://olympics.test/api"}},
+            **_servers(
+                "moduleOlympics",
+                **{
+                    "1": {
+                        "enabled": True,
+                        "olympicsChannelId": "10",
+                        "olympicsLogoUrl": "https://l/1",
+                    },
+                    "2": {"enabled": True, "olympicsChannelId": "20"},
+                    "3": {"enabled": True},  # no channel: skipped
+                },
+            ),
+        }
     )
     sent: dict[str, list] = {"10": [], "20": []}
 

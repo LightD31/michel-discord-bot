@@ -17,19 +17,18 @@ class ReminderType(StrEnum):
     HARDCORE = "HARDCORE"
 
 
-CALENDAR_URL_TEMPLATE: Final[str] = "https://zunivers.zerator.com/calendrier-festif/{username}"
+# Paths on the ZUnivers site and public API. Their base URLs are config (the
+# global ``zunivers`` section): see ``ZuniversAPIClient`` and ``zunivers_link``.
+ADVENT_CALENDAR_PAGE: Final[str] = "calendrier-festif/{username}"
+CORPORATION_PAGE: Final[str] = "corporation/{corp_id}"
 
-# API URLs
-ZUNIVERS_API_BASE: Final[str] = "https://zunivers-api.zerator.com/public"
-ZUNIVERS_EVENTS_URL: Final[str] = f"{ZUNIVERS_API_BASE}/event/current"
-ZUNIVERS_HARDCORE_SEASON_URL: Final[str] = f"{ZUNIVERS_API_BASE}/hardcore/season/current"
-ZUNIVERS_LOOT_URL_TEMPLATE: Final[str] = f"{ZUNIVERS_API_BASE}/loot/{{username}}"
-ZUNIVERS_CALENDAR_URL_TEMPLATE: Final[str] = f"{ZUNIVERS_API_BASE}/calendar/{{username}}"
-ZUNIVERS_CORPORATION_URL_TEMPLATE: Final[str] = f"{ZUNIVERS_API_BASE}/corporation/{{corp_id}}"
-ZUNIVERS_USER_URL_TEMPLATE: Final[str] = f"{ZUNIVERS_API_BASE}/user/{{username}}"
-ZUNIVERS_INVENTORY_LOGS_URL_TEMPLATE: Final[str] = (
-    f"{ZUNIVERS_API_BASE}/inventory/{{username}}/logs"
-)
+EVENTS_PATH: Final[str] = "event/current"
+HARDCORE_SEASON_PATH: Final[str] = "hardcore/season/current"
+LOOT_PATH: Final[str] = "loot/{username}"
+CALENDAR_PATH: Final[str] = "calendar/{username}"
+CORPORATION_PATH: Final[str] = "corporation/{corp_id}"
+USER_PATH: Final[str] = "user/{username}"
+INVENTORY_LOGS_PATH: Final[str] = "inventory/{username}/logs"
 
 # Loot types returned by the ``/loot/{username}`` endpoint
 LOOT_TYPE_JOURNA: Final[str] = "DAILY"
@@ -126,11 +125,11 @@ PREMIUM_REMAINING_HINT: Final[str] = "({remaining}/{limit} restants sur ton abon
 NINJA_PLAN_HINT: Final[str] = "🥷 Ton plan du jour : [ZUnivers Ninja](<{url}>)"
 
 ADVENT_CALENDAR_REMINDERS: Final[list[str]] = [
-    "🎄 Tu n'as pas encore ouvert ta case du [calendrier festif]({url}) aujourd'hui !",
-    "🎁 N'oublie pas d'ouvrir ta case du [calendrier festif]({url}) !",
-    "❄️ Une surprise t'attend dans le [calendrier festif]({url}) !",
-    "🌟 Psst... ta case du jour du [calendrier festif]({url}) n'est pas ouverte !",
-    "🎅 Le Père Noël attend que tu ouvres ta case du [calendrier festif]({url}) !",
+    "🎄 Tu n'as pas encore ouvert ta case du {calendar} aujourd'hui !",
+    "🎁 N'oublie pas d'ouvrir ta case du {calendar} !",
+    "❄️ Une surprise t'attend dans le {calendar} !",
+    "🌟 Psst... ta case du jour du {calendar} n'est pas ouverte !",
+    "🎅 Le Père Noël attend que tu ouvres ta case du {calendar} !",
 ]
 
 # Corporation bonus types
@@ -202,6 +201,13 @@ def get_bonus_reminder_message(reminder_type: ReminderType) -> list[str]:
     return NORMAL_BONUS_REMINDERS
 
 
-def get_advent_calendar_url(username: str) -> str:
-    """Get the advent calendar URL for a specific user."""
-    return CALENDAR_URL_TEMPLATE.format(username=username)
+def format_calendar_link(url: str | None) -> str:
+    """The advent calendar as the reminder names it: a link when the site URL is set."""
+    return f"[calendrier festif]({url})" if url else "calendrier festif"
+
+
+def zunivers_link(site_url: str | None, page: str, **values: str) -> str | None:
+    """A page of the ZUnivers site, or ``None`` when no site URL is configured."""
+    if not site_url:
+        return None
+    return f"{site_url.rstrip('/')}/{page.format(**values)}"

@@ -8,15 +8,18 @@ from curl_cffi import requests as cffi_requests
 from interactions import IntervalTrigger, Task
 
 from features.olympics import OlympicsStateRepository
+from src.core.errors import IntegrationError
 
 from ._common import (
     COUNTRY_CODE,
-    EVENT_MEDALS_URL,
-    MEDALLISTS_URL,
-    MEDALS_URL,
+    EVENT_MEDALS_PATH,
+    MEDALLISTS_PATH,
+    MEDALS_PATH,
     OLYMPICS,
     POLL_INTERVAL_MINUTES,
     logger,
+    olympics_api_url,
+    olympics_headers,
 )
 
 
@@ -25,25 +28,24 @@ class TasksMixin:
 
     # ─── HTTP Client dédié Olympics ──────────────────────────────────────────────
 
-    async def _olympics_fetch(self, url: str, retries: int = 3) -> dict:
-        """Effectue une requête GET vers l'API Olympics.com.
+    async def _olympics_fetch(self, path: str, retries: int = 3) -> dict:
+        """Effectue une requête GET vers l'API Olympics.com configurée.
 
         Utilise curl_cffi pour impersonner le fingerprint TLS de Chrome,
         nécessaire pour contourner le WAF d'olympics.com.
 
         Args:
-            url: URL de l'API.
+            path: Endpoint, relatif à l'URL de l'API (section globale « olympics »).
             retries: Nombre de tentatives.
 
         Returns:
             Données JSON.
         """
-        headers = {
-            "Accept": "application/json, text/plain, */*",
-            "Accept-Language": "fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7",
-            "Referer": "https://www.olympics.com/fr/olympic-games/milan-cortina-2026/medals",
-            "Origin": "https://www.olympics.com",
-        }
+        base = olympics_api_url()
+        if not base:
+            raise IntegrationError("Aucune URL d'API Olympics configurée (olympics.apiUrl)")
+        url = f"{base}/{path}"
+        headers = olympics_headers()
 
         for attempt in range(retries):
             try:
@@ -67,7 +69,7 @@ class TasksMixin:
             if attempt < retries - 1:
                 await asyncio.sleep(2**attempt)  # Backoff exponentiel
 
-        raise Exception(f"Impossible de récupérer {url} après {retries} tentatives")
+        raise IntegrationError(f"Impossible de récupérer {url} après {retries} tentatives")
 
     # ─── Persistance ──────────────────────────────────────────────────────────
 
@@ -116,7 +118,7 @@ class TasksMixin:
         Returns:
             Liste de tous les athlètes médaillés.
         """
-        data = await self._olympics_fetch(MEDALLISTS_URL)
+        data = await self._olympics_fetch(MEDALLISTS_PATH)
         return data.get("athletes", [])
 
     async def _fetch_event_medals(self) -> dict[str, Any]:
@@ -125,7 +127,7 @@ class TasksMixin:
         Returns:
             Données des médailles par discipline/épreuve.
         """
-        data = await self._olympics_fetch(EVENT_MEDALS_URL)
+        data = await self._olympics_fetch(EVENT_MEDALS_PATH)
         return data.get("eventMedals", {})
 
     async def _send_alerts(
@@ -161,6 +163,9 @@ class TasksMixin:
         s'applique sans recharger l'extension.
         """
         if not OLYMPICS.guild_ids():
+            return
+        if not olympics_api_url():
+            logger.warning("Aucune URL d'API Olympics (olympics.apiUrl) : vérification sautée")
             return
         logger.debug("Vérification des médailles Olympics...")
         try:

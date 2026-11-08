@@ -27,6 +27,11 @@ class CommandsMixin:
         if not settings:
             await ctx.send("Le module Zevent n'est pas activé sur ce serveur.", ephemeral=True)
             return
+        if not API_URL:
+            await ctx.send(
+                "L'API Zevent n'est pas configurée (section globale Zevent).", ephemeral=True
+            )
+            return
         guild_id = str(ctx.guild_id)
         guild = self.guilds.setdefault(guild_id, ZeventGuild(guild_id))
         try:
