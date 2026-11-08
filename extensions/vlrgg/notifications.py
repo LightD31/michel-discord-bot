@@ -6,7 +6,11 @@ from interactions import IntervalTrigger, Task
 
 from features.vlrgg import fetch_live_matches, fetch_match_details, is_final, match_id_of
 from src.discord_ext.links import shorten_embeds
-from src.discord_ext.messages import edit_message_if_changed
+from src.discord_ext.messages import (
+    edit_message_if_changed,
+    fetch_or_create_persistent_message,
+    forget_persistent_message,
+)
 
 from ._common import (
     FINALIZE_MAX_ATTEMPTS,
@@ -55,11 +59,26 @@ class NotificationsMixin:
         tc = team_state.team_config
         embeds, ongoing_matches, vlr_data = await self._fetch_team_schedule(tc)
         await self._handle_match_transitions(ongoing_matches, team_state)
-        if team_state.schedule_message and embeds:
+        message = await fetch_or_create_persistent_message(
+            self.bot,
+            guild_id=team_state.server_id,
+            slot=tc.slot,
+            channel_id=tc.channel_id,
+            label=f"Planning {tc.name}",
+            initial_content=f"Initialisation du planning de {tc.name}…",
+            pin=tc.pin,
+            logger=logger,
+        )
+        if message and embeds:
             embeds = await shorten_embeds(embeds, tags=["vlrgg"])
-            await edit_message_if_changed(
-                team_state.schedule_message, embeds=embeds, ignore_timestamp=True, logger=logger
-            )
+            try:
+                await edit_message_if_changed(
+                    message, content="", embeds=embeds, ignore_timestamp=True, logger=logger
+                )
+            except Exception:
+                # Deleted from Discord, say: resolved again (or reposted) next cycle.
+                forget_persistent_message(team_state.server_id, tc.slot)
+                raise
         if vlr_data:
             await self._send_due_reminders(team_state, vlr_data)
 

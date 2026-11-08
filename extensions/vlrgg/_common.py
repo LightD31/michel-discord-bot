@@ -6,8 +6,7 @@ from typing import Any
 
 from features.vlrgg import _clean_vlr_text, expand_round_name
 from src.core import logging as logutil
-from src.core.config import ModuleConfig, config_store
-from src.core.errors import ConfigError
+from src.core.config import ModuleConfig
 from src.discord_ext.embeds import Colors
 from src.webui.schemas import SchemaBase, enabled_field, register_module, ui
 
@@ -72,30 +71,23 @@ class TeamConfig:
 
     name: str
     vlr_team_id: str | None = None
-    channel_id: str | None = None
-    message_id: str | None = None
+    channel_id: str | None = None  # où vit le planning de l'équipe
     pin: bool = False
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "TeamConfig":
         """Construit depuis un dict de config."""
-        channel_id = None
-        message_id = None
-        cm = data.get("channelMessageId", "")
-        if cm:
-            if ":" in cm:
-                parts = cm.split(":", 1)
-                channel_id = parts[0].strip() or None
-                message_id = parts[1].strip() or None
-            else:
-                channel_id = cm.strip() or None
         return cls(
             name=data.get("name", "Unknown"),
             vlr_team_id=data.get("vlrTeamId") or None,
-            channel_id=channel_id,
-            message_id=message_id,
+            channel_id=str(data.get("channelId") or "").strip() or None,
             pin=bool(data.get("pin", False)),
         )
+
+    @property
+    def slot(self) -> str:
+        """Le message de planning de l'équipe dans ``bot_messages``."""
+        return f"vlrgg:team:{self.name}"
 
 
 @dataclass
@@ -113,7 +105,6 @@ class TeamState:
 
     team_config: TeamConfig
     server_id: str = ""
-    schedule_message: Any = None
     notification_channel: Any = None
     reminder_minutes: int = DEFAULT_REMINDER_MINUTES
     ongoing_matches: dict[str, Any] = field(default_factory=dict)
@@ -129,33 +120,6 @@ class ServerState:
     notification_channel_id: str | None = None
     notification_channel: Any = None
     teams: dict[str, TeamState] = field(default_factory=dict)
-
-
-# ── Config persistence ────────────────────────────────────────────────────────
-
-
-def _save_team_channel_message(
-    guild_id: str, team_name: str, channel_id: str, message_id: str
-) -> None:
-    """Update the channelMessageId for a specific team in config.json."""
-    combined = f"{channel_id}:{message_id}"
-
-    def mutator(data: dict) -> None:
-        guild = data.setdefault("servers", {}).setdefault(str(guild_id), {})
-        teams = guild.setdefault(VLRGG.key, {}).setdefault("teams", [])
-        for team in teams:
-            if team.get("name") == team_name:
-                team["channelMessageId"] = combined
-                break
-        else:
-            teams.append({"name": team_name, "channelMessageId": combined})
-
-    try:
-        config_store.mutate(mutator)
-    except (ConfigError, OSError) as e:
-        logger.error("Could not save channelMessageId for team %s: %s", team_name, e)
-        return
-    logger.info("Saved channelMessageId for team %s on guild %s", team_name, guild_id)
 
 
 # Re-export helpers that originate from features.vlrgg but are used across submodules
@@ -176,7 +140,6 @@ __all__ = [
     "TeamConfig",
     "TeamState",
     "ServerState",
-    "_save_team_channel_message",
     "_clean_vlr_text",
     "expand_round_name",
 ]

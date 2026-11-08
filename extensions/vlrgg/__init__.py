@@ -9,7 +9,9 @@ Configuration par serveur via le dashboard web (moduleVlrgg):
 - teams: liste d'équipes, chacune avec:
     - name: nom de l'équipe
     - vlrTeamId: ID VLR.gg (requis)
-    - channelMessageId: "channelId:messageId" pour le planning (optionnel)
+    - channelId: salon du planning (optionnel ; son message est retrouvé via
+      ``bot_messages`` en base)
+    - pin: épingler le planning
 
 The class is assembled as a mixin composition so that each concern lives in its
 own module (``api``, ``embeds``, ``notifications``, ``reminders``, ``commands``).
@@ -24,7 +26,6 @@ from ._common import (
     ServerState,
     TeamConfig,
     TeamState,
-    _save_team_channel_message,
     logger,
 )
 from .api import ApiMixin
@@ -103,46 +104,6 @@ class VlrggExtension(
                     notification_channel=server_state.notification_channel,
                     reminder_minutes=_reminder_minutes(srv_config),
                 )
-
-                # Charger le message de planning; créer si manquant et channel connu
-                if team_cfg.channel_id:
-                    try:
-                        channel = await self.bot.fetch_channel(team_cfg.channel_id)
-                        if channel and hasattr(channel, "send"):
-                            msg = None
-                            if team_cfg.message_id:
-                                try:
-                                    msg = await channel.fetch_message(team_cfg.message_id)
-                                except Exception as e:
-                                    logger.warning(
-                                        f"Serveur {server_id}: message {team_cfg.message_id} "
-                                        f"introuvable pour {team_cfg.name} ({e}); recréation"
-                                    )
-                            if msg is None:
-                                msg = await channel.send(
-                                    f"Initialisation du planning de {team_cfg.name}…"
-                                )
-                                if team_cfg.pin:
-                                    try:
-                                        await msg.pin()
-                                    except Exception as e:
-                                        logger.warning("Impossible d'épingler: %s", e)
-                                _save_team_channel_message(
-                                    server_id,
-                                    team_cfg.name,
-                                    str(channel.id),
-                                    str(msg.id),
-                                )
-                                team_cfg.message_id = str(msg.id)
-                            team_state.schedule_message = msg
-                            logger.info(
-                                f"Serveur {server_id}: message de planning prêt pour {team_cfg.name}"
-                            )
-                    except Exception as e:
-                        logger.warning(
-                            f"Serveur {server_id}: impossible d'initialiser le message de planning "
-                            f"pour {team_cfg.name}: {e}"
-                        )
 
                 server_state.teams[team_cfg.name] = team_state
 

@@ -1,8 +1,8 @@
 """Extension MDI Tracker — suit le tournoi Mythic Dungeon International (Raider.IO).
 
 Configuration par serveur via le dashboard Web (``moduleMDI``):
-    - notificationChannelId: salon des annonces
-    - scheduleChannelMessageId: id du message de planning (channelId:messageId)
+    - notificationChannelId: salon des annonces et du planning (son message est
+      retrouvé via ``bot_messages`` en base)
     - eventSlug: slug Raider.IO de l'événement
     - teamSlug: slug Raider.IO de l'équipe à suivre (par défaut ``mandatory``)
     - pinSchedule: épingler le planning
@@ -78,40 +78,6 @@ class MdiExtension(ApiMixin, EmbedsMixin, NotificationsMixin, Extension):
                     gc.notification_channel_id,
                     e,
                 )
-
-            # Try to recover the schedule message if configured
-            if gc.schedule_channel_id and gc.schedule_message_id:
-                state.schedule_channel = state.notification_channel
-                if (
-                    state.schedule_channel is None
-                    or str(getattr(state.schedule_channel, "id", "")) != gc.schedule_channel_id
-                ):
-                    try:
-                        state.schedule_channel = await self.bot.fetch_channel(
-                            gc.schedule_channel_id
-                        )
-                    except Exception as e:
-                        logger.warning(
-                            "MDI: guild %s — schedule channel %s unreachable: %s",
-                            server_id,
-                            gc.schedule_channel_id,
-                            e,
-                        )
-                if state.schedule_channel is not None and hasattr(
-                    state.schedule_channel, "fetch_message"
-                ):
-                    try:
-                        state.schedule_message = await state.schedule_channel.fetch_message(
-                            gc.schedule_message_id
-                        )
-                    except Exception as e:
-                        logger.info(
-                            "MDI: guild %s — stored schedule message %s not found, will recreate"
-                            " (%s)",
-                            server_id,
-                            gc.schedule_message_id,
-                            e,
-                        )
 
             await self._load_persisted_matches(state)
             self._servers[server_id] = state

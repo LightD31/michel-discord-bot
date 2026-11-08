@@ -213,7 +213,6 @@
             "moduleMDI": {
                 "enabled": false,
                 "notificationChannelId": "",
-                "scheduleChannelMessageId": "",
                 "eventSlug": "mdi-midnight-season-1",
                 "teamSlug": "mandatory",
                 "pinSchedule": true,

@@ -7,7 +7,6 @@ from src.core.config import ModuleConfig
 from src.webui.schemas import (
     SchemaBase,
     enabled_field,
-    hidden_message_id,
     register_module,
     secret_field,
     ui,
@@ -34,7 +33,6 @@ class MinecraftConfig(SchemaBase):
         default=False,
         description="Épingler automatiquement le message de statut.",
     )
-    minecraftMessageId: str | None = hidden_message_id("Message statut", "minecraftChannelId")
     minecraftUrl: str | None = ui(
         "URL publique", "string", description="Nom de domaine public du serveur Minecraft."
     )

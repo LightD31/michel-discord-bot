@@ -17,7 +17,6 @@ from src.discord_ext.messages import GuildMessages, edit_message_if_changed
 from src.webui.schemas import (
     SchemaBase,
     enabled_field,
-    hidden_message_id,
     register_module,
     secret_field,
     ui,
@@ -44,7 +43,6 @@ class SatisfactoryConfig(SchemaBase):
         default=False,
         description="Épingler automatiquement le message de statut.",
     )
-    satisfactoryMessageId: str | None = hidden_message_id("Message statut", "satisfactoryChannelId")
     satisfactoryServerIp: str = ui(
         "IP du serveur", "string", required=True, description="Adresse IP du serveur Satisfactory."
     )
@@ -111,9 +109,9 @@ class Satisfactory(Extension):
         self.bot = bot
         self.messages = GuildMessages(
             bot,
-            module_name=SATISFACTORY.key,
+            slot="satisfactory",
+            label="Statut Satisfactory",
             channel_key="satisfactoryChannelId",
-            message_key="satisfactoryMessageId",
             pin_key="satisfactoryPinMessage",
             initial_content="Initialisation du statut Satisfactory…",
             logger=logger,

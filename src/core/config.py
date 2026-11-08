@@ -99,7 +99,7 @@ class ConfigStore:
     Purpose
     -------
     The store holds the authoritative in-memory copy, which the dashboard's
-    saves and the bot's own writes (``save_module_field``, ``mutate``) update,
+    saves and the bot's own writes (``mutate``) update,
     and notifies subscribers on every successful save or reload. Reads through
     :class:`ModuleConfig` and :func:`global_config` therefore follow every
     edit without a reload.
@@ -186,8 +186,7 @@ class ConfigStore:
     def _update_and_notify(self, data: dict[str, Any]) -> None:
         """Update the cache and fire subscribers.
 
-        Internal — ``save_module_field`` calls this directly after performing
-        its own atomic write to avoid writing twice.
+        Internal — called after the file was written (or read) under the lock.
         """
         with self._state_lock:
             self._data = data
@@ -265,7 +264,7 @@ class ModuleConfig:
     switching a module on or off in a guild reloads its extensions.
 
     Never mutate what it returns: it is the store's own data, shared with
-    every other reader. Write through :func:`save_module_field` or the
+    every other reader. Write through :meth:`ConfigStore.mutate` or the
     dashboard.
     """
 
@@ -312,28 +311,3 @@ def load_discord2name(guild_id: str | int) -> dict[str, Any]:
     server = servers.get(_guild_key(guild_id)) if isinstance(servers, dict) else None
     mapping = server.get("discord2name") if isinstance(server, dict) else None
     return mapping if isinstance(mapping, dict) else {}
-
-
-def save_module_field(module_name: str, guild_id: str | int, field: str, value: Any) -> None:
-    """Update a single field inside ``servers.<guild_id>.<module_name>``.
-
-    Creates intermediate dicts if missing.
-    """
-    with _write_lock:
-        try:
-            with open(CONFIG_PATH, encoding="utf-8") as file:
-                data = json.load(file)
-        except FileNotFoundError:
-            data = {}
-        except json.JSONDecodeError as e:
-            logger.error("Invalid JSON in %s: %s", CONFIG_PATH, e)
-            return
-
-        servers = data.setdefault("servers", {})
-        guild = servers.setdefault(str(guild_id), {})
-        module = guild.setdefault(module_name, {})
-        module[field] = value
-
-        _atomic_write(data)
-    config_store._update_and_notify(data)
-    logger.info("Updated config: servers.%s.%s.%s", guild_id, module_name, field)

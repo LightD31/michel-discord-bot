@@ -53,7 +53,6 @@ class StreamerInfo:
         self.streamer_id = streamer_id
         self.user_id: str | None = None
         self.planning_channel_id = int(config.get("twitchPlanningChannelId", 0))
-        self.planning_message_id = int(config.get("twitchPlanningMessageId", 0))
         self.planning_pin = bool(config.get("twitchPlanningPinMessage", False))
         self.notification_channel_id = int(config.get("twitchNotificationChannelId", 0))
         # Per-streamer notification settings
@@ -62,8 +61,6 @@ class StreamerInfo:
         self.notify_stream_end = bool(config.get("notifyStreamEnd", False))
         self.notify_emote_changes = bool(config.get("notifyEmoteChanges", False))
         self.manage_discord_events = bool(config.get("manageDiscordEvents", False))
-        self.channel = None
-        self.message = None
         self.notif_channel = None
         self.scheduled_event = None
         # Stream session info (stored when stream starts)
@@ -75,3 +72,8 @@ class StreamerInfo:
         self.last_notified_category: str | None = None
         # Ordered list of categories played during the current live session
         self.stream_categories: list[str] = []
+
+    @property
+    def planning_slot(self) -> str:
+        """The streamer's planning message in ``bot_messages`` (src.core.message_refs)."""
+        return f"twitch:planning:{self.streamer_id}"

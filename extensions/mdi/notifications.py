@@ -9,14 +9,18 @@ from interactions import IntervalTrigger, Task
 
 from features.links import shorten_url
 from features.mdi import MatchSnapshot
-from src.discord_ext.messages import edit_message_if_changed
+from src.discord_ext.messages import (
+    edit_message_if_changed,
+    fetch_or_create_persistent_message,
+    forget_persistent_message,
+)
 
 from ._common import (
     LIVE_INTERVAL_MINUTES,
     SCHEDULE_INTERVAL_MINUTES,
+    SCHEDULE_SLOT,
     GuildState,
     logger,
-    save_schedule_channel_message_id,
 )
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -275,44 +279,40 @@ class NotificationsMixin:
         if channel is None:
             return
 
+        message = await fetch_or_create_persistent_message(
+            self.bot,
+            guild_id=state.server_id,
+            slot=SCHEDULE_SLOT,
+            channel_id=str(channel.id),
+            label="Planning MDI",
+            initial_content="Initialisation du planning MDI…",
+            pin=gc.pin_schedule,
+            logger=logger,
+        )
+        if message is None:
+            return
+        new_hash = self._schedule_hash(matches)
+        # A message just (re)created still shows its placeholder.
+        if message is state.schedule_message and state.schedule_last_hash == new_hash:
+            return
+
         embed = self._build_schedule_embed(
             state.tracked_team, gc.team_slug, matches, await _event_url(gc.event_slug), gc.icon_url
         )
-        new_hash = self._schedule_hash(matches)
-
-        # Try to use the existing message
-        if state.schedule_message is not None:
-            if state.schedule_last_hash == new_hash:
-                return
-            try:
-                await edit_message_if_changed(state.schedule_message, embeds=[embed], logger=logger)
-                state.schedule_last_hash = new_hash
-                return
-            except Exception as e:
-                logger.warning(
-                    "MDI: schedule message edit failed in guild %s, will repost: %s",
-                    state.server_id,
-                    e,
-                )
-                state.schedule_message = None
-
-        # Need to (re)create
         try:
-            msg = await channel.send(embeds=[embed])
+            await edit_message_if_changed(message, content="", embeds=[embed], logger=logger)
         except Exception as e:
             logger.warning(
-                "MDI: could not post schedule message in guild %s: %s", state.server_id, e
+                "MDI: schedule message edit failed in guild %s, will repost: %s",
+                state.server_id,
+                e,
             )
+            # Resolved again at the next cycle: fetched back, or posted anew if gone.
+            forget_persistent_message(state.server_id, SCHEDULE_SLOT)
+            state.schedule_message = None
             return
-        if gc.pin_schedule:
-            try:
-                await msg.pin()
-            except Exception as e:
-                logger.debug("MDI: could not pin schedule message: %s", e)
-
-        state.schedule_message = msg
+        state.schedule_message = message
         state.schedule_last_hash = new_hash
-        save_schedule_channel_message_id(state.server_id, str(channel.id), str(msg.id))
 
     # ── Helpers ──────────────────────────────────────────────────────────────
 

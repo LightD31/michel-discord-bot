@@ -15,7 +15,6 @@ from src.discord_ext.embeds import Colors
 from src.webui.schemas import (
     SchemaBase,
     enabled_field,
-    hidden_message_id,
     register_module,
     ui,
 )
@@ -40,7 +39,6 @@ class XpConfig(SchemaBase):
         default=False,
         description="Épingler automatiquement le message du leaderboard.",
     )
-    xpMessageId: str | None = hidden_message_id("Message leaderboard", "xpChannelId")
     publicDashboard: bool = ui(
         "Dashboard public",
         "boolean",

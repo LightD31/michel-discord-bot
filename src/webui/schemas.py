@@ -42,7 +42,6 @@ def ui(
     description: str = "",
     secret: bool = False,
     hidden: bool = False,
-    channel_field: str = "",
     variables: str = "",
     key_label: str = "",
     value_label: str = "",
@@ -72,8 +71,6 @@ def ui(
         meta["valueLabel"] = value_label
     if hidden:
         meta["hidden"] = True
-    if channel_field:
-        meta["channelField"] = channel_field
     if step is not None:
         meta["step"] = step
 
@@ -102,19 +99,11 @@ class SchemaBase(BaseModel):
 
 
 # ── Reusable field fragments (public, used by extensions) ────────────
-_HIDDEN_MSG_DESC = "ID interne (géré automatiquement)."
 
 
 def enabled_field() -> Any:
     """Standard ``enabled`` boolean toggle (default off)."""
     return ui("Activé", "boolean", default=False)
-
-
-def hidden_message_id(label: str, channel_key: str) -> Any:
-    """Hidden ``message`` field for an auto-managed persistent message."""
-    return ui(
-        label, "message", hidden=True, channel_field=channel_key, description=_HIDDEN_MSG_DESC
-    )
 
 
 def secret_field(label: str, required: bool = False, description: str = "") -> Any:

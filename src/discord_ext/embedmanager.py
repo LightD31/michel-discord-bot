@@ -111,11 +111,10 @@ async def publish_embeds(
     embeds = build_embeds(await shorten_links_config(guild_config.get("embeds") or [], guild_id))
     message = await fetch_or_create_persistent_message(
         bot,
-        channel_id=guild_config.get("channelId"),
-        message_id=guild_config.get("messageId"),
-        module_name=MODULE_KEY,
-        message_id_key="messageId",
         guild_id=guild_id,
+        slot="embedmanager",
+        channel_id=guild_config.get("channelId"),
+        label="Embeds",
         initial_content="Initialisation…",
         pin=bool(guild_config.get("pinMessage", False)),
         logger=log or logger,

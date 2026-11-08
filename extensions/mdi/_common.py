@@ -8,7 +8,7 @@ from typing import Any
 
 from features.mdi import TeamRef
 from src.core import logging as logutil
-from src.core.config import ModuleConfig, save_module_field
+from src.core.config import ModuleConfig
 from src.discord_ext.embeds import Colors
 from src.webui.schemas import SchemaBase, enabled_field, register_module, ui
 
@@ -34,14 +34,6 @@ class MDIConfig(SchemaBase):
         "Salon notifications",
         "channel",
         description="Salon où sont publiés le planning épinglé et les messages de match.",
-    )
-    scheduleChannelMessageId: str | None = ui(
-        "Message du planning (channelId:messageId)",
-        "string",
-        description=(
-            "Géré automatiquement par le bot. Vider pour forcer une nouvelle publication "
-            "lors du prochain cycle."
-        ),
     )
     eventSlug: str = ui(
         "Slug de l'événement",
@@ -84,6 +76,8 @@ MDI = ModuleConfig(MODULE_KEY)
 
 SCHEDULE_INTERVAL_MINUTES = 5.0
 LIVE_INTERVAL_MINUTES = 1.0
+# The pinned schedule message, in ``bot_messages`` (src.core.message_refs).
+SCHEDULE_SLOT = "mdi:schedule"
 
 EMBED_COLOR_DEFAULT = Colors.UTIL
 EMBED_COLOR_SCHEDULED = Colors.WARNING
@@ -105,8 +99,6 @@ class GuildConfig:
     """Parsed per-guild module config."""
 
     notification_channel_id: str | None
-    schedule_channel_id: str | None
-    schedule_message_id: str | None
     event_slug: str
     team_slug: str
     pin_schedule: bool
@@ -116,20 +108,8 @@ class GuildConfig:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> GuildConfig:
         notif = (data.get("notificationChannelId") or "") or None
-        sched_cm = data.get("scheduleChannelMessageId") or ""
-        sched_channel: str | None = None
-        sched_message: str | None = None
-        if sched_cm:
-            if ":" in sched_cm:
-                ch, msg = sched_cm.split(":", 1)
-                sched_channel = ch.strip() or None
-                sched_message = msg.strip() or None
-            else:
-                sched_channel = sched_cm.strip() or None
         return cls(
             notification_channel_id=notif,
-            schedule_channel_id=sched_channel or notif,
-            schedule_message_id=sched_message,
             event_slug=(data.get("eventSlug") or DEFAULT_EVENT_SLUG).strip() or DEFAULT_EVENT_SLUG,
             team_slug=(data.get("teamSlug") or DEFAULT_TEAM_SLUG).strip().lower()
             or DEFAULT_TEAM_SLUG,
@@ -146,28 +126,12 @@ class GuildState:
     server_id: str
     guild_config: GuildConfig
     notification_channel: Any = None
-    schedule_channel: Any = None
+    # The schedule message last rendered, to skip an unchanged render.
     schedule_message: Any = None
     tracked_team: TeamRef | None = None
     schedule_last_hash: str | None = None
     matches: dict[int, dict[str, Any]] = field(default_factory=dict)
     """match_id -> persisted document fields {channel_id, message_id, last_hash, terminal, ...}"""
-
-
-# ── Config persistence ────────────────────────────────────────────────────────
-
-
-def save_schedule_channel_message_id(
-    guild_id: str, channel_id: str | None, message_id: str | None
-) -> None:
-    """Persist ``scheduleChannelMessageId`` in the config so it survives restarts."""
-    if channel_id and message_id:
-        value = f"{channel_id}:{message_id}"
-    elif channel_id:
-        value = channel_id
-    else:
-        value = ""
-    save_module_field(MODULE_KEY, guild_id, "scheduleChannelMessageId", value)
 
 
 __all__ = [
@@ -184,6 +148,7 @@ __all__ = [
     "MDIConfig",
     "MODULE_KEY",
     "SCHEDULE_INTERVAL_MINUTES",
+    "SCHEDULE_SLOT",
     "STATUS_EMOJI_LIVE",
     "STATUS_EMOJI_SCHEDULED",
     "STATUS_EMOJI_TERMINAL_LOSS",
@@ -191,5 +156,4 @@ __all__ = [
     "STATUS_EMOJI_TERMINAL_WIN",
     "MDI",
     "logger",
-    "save_schedule_channel_message_id",
 ]

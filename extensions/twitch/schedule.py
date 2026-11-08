@@ -24,7 +24,11 @@ from twitchAPI.type import TwitchResourceNotFound
 
 from src.core import logging as logutil
 from src.discord_ext.embeds import Colors
-from src.discord_ext.messages import edit_message_if_changed
+from src.discord_ext.messages import (
+    edit_message_if_changed,
+    fetch_or_create_persistent_message,
+    forget_persistent_message,
+)
 
 from ._common import StreamerInfo, ensure_utc
 
@@ -35,6 +39,21 @@ class ScheduleMixin:
     """Fetches Twitch schedules, updates the planning message, and manages the
     per-streamer Discord scheduled event.
     """
+
+    async def _planning_message(self, streamer: StreamerInfo):
+        """The streamer's planning message, fetched or posted; ``None`` when not set up."""
+        if not streamer.planning_channel_id:
+            return None
+        return await fetch_or_create_persistent_message(
+            self.bot,
+            guild_id=streamer.guild_id,
+            slot=streamer.planning_slot,
+            channel_id=streamer.planning_channel_id,
+            label=f"Planning Twitch {streamer.streamer_id}",
+            initial_content=f"Initialisation du planning de {streamer.streamer_id}…",
+            pin=streamer.planning_pin,
+            logger=logger,
+        )
 
     def add_field_to_embed(
         self,
@@ -146,7 +165,7 @@ class ScheduleMixin:
         data: ChannelUpdateEvent | StreamOfflineEvent | None = None,
     ) -> None:
         """Update the planning message (if set up) and sync the Discord scheduled event."""
-        has_message = bool(streamer.message and streamer.channel)
+        message = await self._planning_message(streamer)
 
         if offline is False:
             stream = await self.get_stream_data(streamer.user_id)
@@ -191,7 +210,7 @@ class ScheduleMixin:
                 except Exception as e:
                     logger.error(f"Error handling scheduled event for {streamer.streamer_id}: {e}")
 
-            if has_message:
+            if message:
                 try:
                     embed = await self.fetch_schedule(streamer.user_id, streamer.guild_id)
                     live_embed = await self.create_stream_embed(
@@ -202,7 +221,7 @@ class ScheduleMixin:
                         guild_id=streamer.guild_id,
                     )
                     await edit_message_if_changed(
-                        streamer.message,
+                        message,
                         content="",
                         embed=[embed, live_embed],
                         components=[],
@@ -211,6 +230,8 @@ class ScheduleMixin:
                     )
                 except Exception as e:
                     logger.error(f"Error editing message for {streamer.streamer_id}: {e}")
+                    # Deleted from Discord, say: resolved again (or reposted) next time.
+                    forget_persistent_message(streamer.guild_id, streamer.planning_slot)
         else:
             if streamer.scheduled_event:
                 try:
@@ -221,14 +242,14 @@ class ScheduleMixin:
                     logger.error(f"Error deleting scheduled event for {streamer.streamer_id}: {e}")
                 streamer.scheduled_event = None
 
-            if has_message:
+            if message:
                 try:
                     embed = await self.fetch_schedule(streamer.user_id, streamer.guild_id)
                     offline_embed = await self.create_stream_embed(
                         None, streamer.user_id, offline=True, data=data, guild_id=streamer.guild_id
                     )
                     await edit_message_if_changed(
-                        streamer.message,
+                        message,
                         content="",
                         embed=[embed, offline_embed],
                         ignore_timestamp=True,
@@ -236,6 +257,7 @@ class ScheduleMixin:
                     )
                 except Exception as e:
                     logger.error(f"Error editing message for {streamer.streamer_id}: {e}")
+                    forget_persistent_message(streamer.guild_id, streamer.planning_slot)
 
     @Task.create(
         OrTrigger(

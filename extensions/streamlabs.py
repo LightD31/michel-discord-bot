@@ -34,7 +34,6 @@ from src.discord_ext.scopes import guild_scopes
 from src.webui.schemas import (
     SchemaBase,
     enabled_field,
-    hidden_message_id,
     register_module,
     ui,
 )
@@ -69,7 +68,6 @@ class StreamlabsCharityConfig(SchemaBase):
             "ex. https://streamlabscharity.com/teams/@equipe/campagne."
         ),
     )
-    streamlabsMessageId: str | None = hidden_message_id("Message suivi", "streamlabsChannelId")
 
 
 logger = logutil.init_logger(__name__)
@@ -99,9 +97,9 @@ class StreamlabsCharityExtension(Extension):
         self.twitch = None
         self.messages = GuildMessages(
             bot,
-            module_name=STREAMLABS.key,
+            slot="streamlabs",
+            label="Suivi Streamlabs Charity",
             channel_key="streamlabsChannelId",
-            message_key="streamlabsMessageId",
             pin_key="streamlabsPinMessage",
             initial_content="Initialisation Streamlabs Charity…",
             logger=logger,

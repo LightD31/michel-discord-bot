@@ -14,7 +14,6 @@ from src.discord_ext.embedmanager import MODULE_KEY
 from src.webui.schemas import (
     SchemaBase,
     enabled_field,
-    hidden_message_id,
     register_module,
     ui,
 )
@@ -40,7 +39,6 @@ class EmbedManagerConfig(SchemaBase):
         default=False,
         description="Épingler automatiquement le message publié.",
     )
-    messageId: str | None = hidden_message_id("Message cible", "channelId")
     embeds: list[Any] = ui(
         "Embeds",
         "embedlist",
