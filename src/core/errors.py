@@ -1,13 +1,9 @@
 """Base exception hierarchy for the Michel Discord Bot.
 
-Every exception raised by internal code should ultimately derive from
-:class:`BotError` so callers can catch-all without catching the world. Future
-PRs will migrate existing feature-specific exceptions (``BirthdayError``,
-``DatabaseError`` inside birthdayext, ``ZuniversAPIError`` in ``src/coloc``,
-``ConfrerieError`` in confrerieext, …) onto this hierarchy.
-
-For Phase 1 this module only *defines* the base classes — no existing code is
-rewritten, so nothing breaks.
+Every exception raised by internal code derives from :class:`BotError`, so
+callers can catch the bot's own failures without catching the world.
+Repositories raise :class:`DatabaseError` (never a driver exception), clients
+of third-party APIs an :class:`IntegrationError`.
 
 Tree
 ----

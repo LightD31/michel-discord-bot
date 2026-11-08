@@ -23,6 +23,7 @@ from src.discord_ext.messages import (
     send_success,
 )
 from src.discord_ext.scopes import guild_scopes
+from src.discord_ext.staff import is_staff
 
 from ._common import (
     STATUS_COLORS,
@@ -85,23 +86,6 @@ def _vote_components(sugg_id: int, *, disabled: bool = False) -> list[ActionRow]
             ),
         )
     ]
-
-
-def _is_staff(ctx: SlashContext, settings: dict) -> bool:
-    """True if the caller has the configured staff role, or administrator perms."""
-    member = ctx.author
-    try:
-        if member.has_permission(Permissions.ADMINISTRATOR):
-            return True
-    except Exception:
-        pass
-    staff_role_id = settings.get("staffRoleId")
-    if not staff_role_id:
-        return False
-    try:
-        return any(int(getattr(r, "id", r)) == int(staff_role_id) for r in member.roles)
-    except Exception:
-        return False
 
 
 class CommandsMixin:
@@ -263,7 +247,7 @@ class CommandsMixin:
         if not settings:
             await send_error(ctx, "Le module suggestions n'est pas activé sur ce serveur.")
             return
-        if not _is_staff(ctx, settings):
+        if not is_staff(ctx.author, settings.get("staffRoleId")):
             await send_error(ctx, "Réservé au staff.")
             return
 

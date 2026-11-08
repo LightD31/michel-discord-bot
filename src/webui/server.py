@@ -1,7 +1,4 @@
-"""
-Web UI server runner.
-Can be started alongside the bot or independently.
-"""
+"""Web UI server runner: uvicorn on a daemon thread, alongside the bot."""
 
 import asyncio
 import logging
@@ -50,13 +47,3 @@ def start_webui(bot=None, host: str = "0.0.0.0", port: int = 8080):
     thread.start()
     logger.info(f"Web UI started on http://{host}:{port}")
     return server, thread
-
-
-def run_standalone():
-    """Run the web UI as a standalone server (without the bot)."""
-    app = create_app()
-    uvicorn.run(app, host="0.0.0.0", port=8080, log_level="info")
-
-
-if __name__ == "__main__":
-    run_standalone()

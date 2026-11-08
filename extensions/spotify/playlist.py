@@ -24,6 +24,7 @@ from interactions.client.utils import timestamp_converter
 from features.links import shorten_keyed
 from features.messages import finishList, startList
 from features.spotify import plan_duplicate_removal
+from features.spotify.votes import tally_daily_votes
 from src.core import logging as logutil
 from src.core.text import milliseconds_to_string
 from src.discord_ext.embeds import Colors
@@ -42,7 +43,6 @@ from ._common import (
     EmbedType,
     ServerData,
     autocomplete_track_choices,
-    count_votes,
     embed_message_vote,
     embed_song,
     spotify_api,
@@ -350,9 +350,7 @@ class PlaylistMixin:
             )
         if votes:
             if votes.get("votes"):
-                conserver, supprimer, menfou, users = count_votes(
-                    votes.get("votes", {}), server.discord2name
-                )
+                tally = tally_daily_votes(votes.get("votes", {}), server.discord2name)
                 date = votes.get("date")
                 if date:
                     date = timestamp_converter(datetime.strptime(date, "%Y-%m-%d")).format(
@@ -361,10 +359,10 @@ class PlaylistMixin:
                 embeds = [
                     embed,
                     await embed_message_vote(
-                        keep=conserver,
-                        remove=supprimer,
-                        menfou=menfou,
-                        users=users,
+                        keep=tally.conserver,
+                        remove=tally.supprimer,
+                        menfou=tally.menfou,
+                        users=tally.voters,
                         color=Colors.SPOTIFY,
                         guild_id=server.guild_id,
                         description=(

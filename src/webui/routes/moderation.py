@@ -96,7 +96,8 @@ def create_router(ctx: WebUIContext) -> APIRouter:
                 return
             try:
                 channel = await ctx.bot.fetch_channel(int(chan_id))
-            except Exception:
+            except Exception as e:
+                logger.warning("Mod-log channel %s unavailable in %s: %s", chan_id, server_id, e)
                 return
             if channel is None or not hasattr(channel, "send"):
                 return

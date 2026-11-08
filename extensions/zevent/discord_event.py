@@ -215,7 +215,8 @@ class DiscordEventMixin:
                 continue
             try:
                 creator = await event.creator
-            except Exception:
+            except Exception as e:
+                logger.debug("Zevent: creator of event %s unknown: %s", event.id, e)
                 continue
             if creator and self.client.user and creator.id == self.client.user.id:
                 guild.scheduled_event = event

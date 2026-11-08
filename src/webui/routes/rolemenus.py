@@ -7,6 +7,7 @@ Discord message via the bot client, so the menu stays in sync with what
 """
 
 from datetime import datetime
+from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
@@ -98,20 +99,55 @@ def _validate_entries(
     return out
 
 
-async def _resolve_guild_and_channel(bot, guild_id: str, channel_id: str):
+async def _fetch_guild(bot, guild_id: str):
+    """The guild, or a 404 (the reason goes to the logs, never into the response)."""
     try:
         guild = await bot.fetch_guild(int(guild_id))
     except Exception as e:
-        raise HTTPException(status_code=404, detail=f"Serveur introuvable: {e}") from e
+        logger.warning("Guild %s unavailable: %s", guild_id, e)
+        raise HTTPException(status_code=404, detail="Serveur introuvable") from e
     if guild is None:
         raise HTTPException(status_code=404, detail="Serveur introuvable")
+    return guild
+
+
+async def _resolve_guild_and_channel(bot, guild_id: str, channel_id: str):
+    guild = await _fetch_guild(bot, guild_id)
     try:
         channel = await bot.fetch_channel(int(channel_id))
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Salon introuvable: {e}") from e
+        logger.warning("Channel %s of guild %s unavailable: %s", channel_id, guild_id, e)
+        raise HTTPException(status_code=400, detail="Salon introuvable") from e
     if channel is None or not hasattr(channel, "send"):
         raise HTTPException(status_code=400, detail="Salon invalide ou non accessible")
     return guild, channel
+
+
+async def _menu_message(bot, menu: RoleMenu):
+    """The Discord message of *menu*, ``None`` when it has none or it is gone."""
+    if not menu.message_id:
+        return None
+    channel = await bot.fetch_channel(int(menu.channel_id))
+    if not channel or not hasattr(channel, "fetch_message"):
+        return None
+    return await channel.fetch_message(int(menu.message_id))
+
+
+def _role_color(role) -> str | None:
+    color = getattr(role, "color", None)
+    try:
+        return f"#{int(color):06x}" if color is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _parse_entries(entries_in: list[RoleMenuEntryIn], guild) -> list[RoleMenuEntry]:
+    """The validated entries, or a 400 saying which one is wrong."""
+    guild_role_ids = {str(r.id) for r in getattr(guild, "roles", []) or []}
+    parsed = _validate_entries(entries_in, guild_role_ids)
+    if isinstance(parsed, str):
+        raise HTTPException(status_code=400, detail=parsed)
+    return parsed
 
 
 async def _resolve_author(ctx: WebUIContext, guild, session: Session) -> MenuAuthor:
@@ -138,6 +174,118 @@ async def _check_entries(ctx: WebUIContext, guild, session: Session, entries) ->
         raise HTTPException(status_code=400, detail=refusal)
 
 
+# ── Operations (run on the bot loop) ────────────────────────────────
+
+
+async def _role_choices(ctx: WebUIContext, server_id: str, session: Session) -> dict:
+    """The roles the requester may put in a menu, highest first."""
+    guild = await _fetch_guild(ctx.bot, server_id)
+    author = await _resolve_author(ctx, guild, session)
+    bot_position = await bot_top_position(ctx.bot, guild)
+    roles: list[dict[str, Any]] = [
+        {
+            "id": str(r.id),
+            "name": getattr(r, "name", str(r.id)),
+            "position": getattr(r, "position", 0) or 0,
+            "color": _role_color(r),
+        }
+        for r in getattr(guild, "roles", []) or []
+        # Same rules as a save: skips @everyone, integration roles, staff
+        # roles and anything above the requester or the bot.
+        if not role_menu_refusal(
+            role_info(r, guild.id), author=author, bot_top_position=bot_position
+        )
+    ]
+    roles.sort(key=lambda x: -x["position"])
+    return {"roles": roles}
+
+
+async def _create_menu(
+    ctx: WebUIContext, server_id: str, session: Session, body: RoleMenuCreate
+) -> RoleMenu:
+    """Store the menu, then post it; a failed post removes it again."""
+    guild, channel = await _resolve_guild_and_channel(ctx.bot, server_id, body.channel_id)
+    entries = _parse_entries(body.entries, guild)
+    await _check_entries(ctx, guild, session, entries)
+
+    repo = ReactionRolesRepository(server_id)
+    menu = RoleMenu(
+        guild_id=str(server_id),
+        channel_id=str(channel.id),
+        title=body.title,
+        description=body.description,
+        entries=entries,
+        created_by=str(getattr(session, "user_id", "webui")),
+        created_at=datetime.now(),
+    )
+    menu_id = await repo.add(menu)
+    try:
+        sent = await channel.send(
+            embeds=[build_embed(body.title, body.description, entries)],
+            components=build_components(menu_id, entries),
+        )
+    except Exception as e:
+        await repo.delete(menu_id)
+        logger.warning("Posting role menu %s in guild %s failed: %s", menu_id, server_id, e)
+        raise HTTPException(status_code=502, detail="Échec de l'envoi du menu dans Discord") from e
+    await repo.update(menu_id, message_id=str(sent.id))
+    menu.id = menu_id
+    menu.message_id = str(sent.id)
+    return menu
+
+
+async def _update_menu(
+    ctx: WebUIContext, server_id: str, menu_id: str, session: Session, body: RoleMenuUpdate
+) -> RoleMenu | None:
+    """Save the new title, description or entries, then edit the posted menu."""
+    repo = ReactionRolesRepository(server_id)
+    existing = await repo.get(menu_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail="Menu introuvable")
+    guild = await _fetch_guild(ctx.bot, server_id)
+
+    title = body.title if body.title is not None else existing.title
+    description = body.description if body.description is not None else existing.description
+    entries = existing.entries
+    if body.entries is not None:
+        entries = _parse_entries(body.entries, guild)
+        await _check_entries(ctx, guild, session, entries)
+
+    await repo.update(
+        menu_id,
+        title=title,
+        description=description,
+        entries=[e.model_dump() for e in entries],
+    )
+    try:
+        message = await _menu_message(ctx.bot, existing)
+        if message:
+            await edit_message_if_changed(
+                message,
+                embeds=[build_embed(title, description, entries)],
+                components=build_components(menu_id, entries),
+                logger=logger,
+            )
+    except Exception as e:  # noqa: BLE001 — saved; the message catches up at the next edit
+        logger.warning("Could not edit role menu message %s: %s", menu_id, e)
+    return await repo.get(menu_id)
+
+
+async def _delete_menu(ctx: WebUIContext, server_id: str, menu_id: str) -> None:
+    """Forget the menu, then delete its message if it is still there."""
+    repo = ReactionRolesRepository(server_id)
+    existing = await repo.get(menu_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail="Menu introuvable")
+    await repo.delete(menu_id)
+    try:
+        message = await _menu_message(ctx.bot, existing)
+        if message:
+            await message.delete()
+    except Exception as e:  # noqa: BLE001 — the menu is gone either way
+        logger.warning("Could not delete role menu message %s: %s", menu_id, e)
+
+
 # ── Router factory ──────────────────────────────────────────────────
 
 
@@ -148,51 +296,16 @@ def create_router(ctx: WebUIContext) -> APIRouter:
     async def api_list_roles(request: Request, server_id: str):
         """List the roles the requester may put in a menu (for the role-picker)."""
         session = await ctx.require_guild_admin(request, server_id)
-
-        async def _fetch():
-            try:
-                guild = await ctx.bot.fetch_guild(int(server_id))
-            except Exception as e:
-                raise HTTPException(status_code=404, detail=f"Serveur introuvable: {e}") from e
-            if guild is None:
-                raise HTTPException(status_code=404, detail="Serveur introuvable")
-            author = await _resolve_author(ctx, guild, session)
-            bot_position = await bot_top_position(ctx.bot, guild)
-            roles = []
-            for r in getattr(guild, "roles", []) or []:
-                # Same rules as a save: skips @everyone, integration roles,
-                # staff roles and anything above the requester or the bot.
-                if role_menu_refusal(
-                    role_info(r, guild.id), author=author, bot_top_position=bot_position
-                ):
-                    continue
-                color = getattr(r, "color", None)
-                color_hex = None
-                if color is not None:
-                    try:
-                        color_hex = f"#{int(color):06x}"
-                    except Exception:
-                        color_hex = None
-                roles.append(
-                    {
-                        "id": str(r.id),
-                        "name": getattr(r, "name", str(r.id)),
-                        "position": getattr(r, "position", 0) or 0,
-                        "color": color_hex,
-                    }
-                )
-            roles.sort(key=lambda x: -x["position"])  # higher position first
-            return {"roles": roles}
-
-        data = await ctx.call_bot(_fetch, what=f"list roles of guild {server_id}")
+        data = await ctx.call_bot(
+            _role_choices, ctx, server_id, session, what=f"list roles of guild {server_id}"
+        )
         return JSONResponse(data)
 
     @router.get("/api/servers/{server_id}/rolemenus")
     async def api_list_rolemenus(request: Request, server_id: str):
         await ctx.require_guild_admin(request, server_id)
-        repo = ReactionRolesRepository(server_id)
         try:
-            menus = await repo.list()
+            menus = await ReactionRolesRepository(server_id).list()
         except Exception as e:
             logger.exception("List rolemenus failed for %s: %s", server_id, e)
             raise HTTPException(
@@ -203,43 +316,20 @@ def create_router(ctx: WebUIContext) -> APIRouter:
     @router.post("/api/servers/{server_id}/rolemenus")
     async def api_create_rolemenu(request: Request, server_id: str, body: RoleMenuCreate):
         session = await ctx.require_guild_admin(request, server_id)
-
-        async def _create():
-            guild, channel = await _resolve_guild_and_channel(ctx.bot, server_id, body.channel_id)
-            guild_role_ids = {str(r.id) for r in getattr(guild, "roles", []) or []}
-            parsed = _validate_entries(body.entries, guild_role_ids)
-            if isinstance(parsed, str):
-                raise HTTPException(status_code=400, detail=parsed)
-            await _check_entries(ctx, guild, session, parsed)
-
-            repo = ReactionRolesRepository(server_id)
-            menu = RoleMenu(
-                guild_id=str(server_id),
-                channel_id=str(channel.id),
-                title=body.title,
-                description=body.description,
-                entries=parsed,
-                created_by=str(getattr(session, "user_id", "webui")),
-                created_at=datetime.now(),
-            )
-            menu_id = await repo.add(menu)
-
-            embed = build_embed(body.title, body.description, parsed)
-            components = build_components(menu_id, parsed)
-            try:
-                sent = await channel.send(embeds=[embed], components=components)
-            except Exception as e:
-                await repo.delete(menu_id)
-                raise HTTPException(
-                    status_code=500, detail=f"Échec de l'envoi du menu : {e}"
-                ) from e
-            await repo.update(menu_id, message_id=str(sent.id))
-            menu.id = menu_id
-            menu.message_id = str(sent.id)
-            return menu
-
-        menu = await ctx.call_bot(_create, what=f"create a role menu in guild {server_id}")
-        logger.info("Rolemenu created via WebUI for guild %s", server_id)
+        menu = await ctx.call_bot(
+            _create_menu,
+            ctx,
+            server_id,
+            session,
+            body,
+            what=f"create a role menu in guild {server_id}",
+        )
+        logger.info(
+            "Rolemenu created via WebUI for guild %s (by %s/%s)",
+            server_id,
+            session.username,
+            session.user_id,
+        )
         return JSONResponse({"status": "ok", "menu": _menu_to_dict(menu)})
 
     @router.put("/api/servers/{server_id}/rolemenus/{menu_id}")
@@ -247,85 +337,41 @@ def create_router(ctx: WebUIContext) -> APIRouter:
         request: Request, server_id: str, menu_id: str, body: RoleMenuUpdate
     ):
         session = await ctx.require_guild_admin(request, server_id)
-
-        async def _update():
-            repo = ReactionRolesRepository(server_id)
-            existing = await repo.get(menu_id)
-            if not existing:
-                raise HTTPException(status_code=404, detail="Menu introuvable")
-
-            try:
-                guild = await ctx.bot.fetch_guild(int(server_id))
-            except Exception as e:
-                raise HTTPException(status_code=404, detail=f"Serveur introuvable: {e}") from e
-            if guild is None:
-                raise HTTPException(status_code=404, detail="Serveur introuvable")
-            guild_role_ids = {str(r.id) for r in getattr(guild, "roles", []) or []}
-
-            new_title = body.title if body.title is not None else existing.title
-            new_description = (
-                body.description if body.description is not None else existing.description
-            )
-            if body.entries is not None:
-                parsed = _validate_entries(body.entries, guild_role_ids)
-                if isinstance(parsed, str):
-                    raise HTTPException(status_code=400, detail=parsed)
-                await _check_entries(ctx, guild, session, parsed)
-                new_entries = parsed
-            else:
-                new_entries = existing.entries
-
-            await repo.update(
-                menu_id,
-                title=new_title,
-                description=new_description,
-                entries=[e.model_dump() for e in new_entries],
-            )
-
-            if existing.message_id:
-                try:
-                    channel = await ctx.bot.fetch_channel(int(existing.channel_id))
-                    if channel and hasattr(channel, "fetch_message"):
-                        msg = await channel.fetch_message(int(existing.message_id))
-                        if msg:
-                            embed = build_embed(new_title, new_description, new_entries)
-                            components = build_components(menu_id, new_entries)
-                            await edit_message_if_changed(
-                                msg, embeds=[embed], components=components, logger=logger
-                            )
-                except Exception as e:
-                    logger.warning("Could not edit role menu message %s: %s", menu_id, e)
-
-            updated = await repo.get(menu_id)
-            return updated
-
-        menu = await ctx.call_bot(_update, what=f"update role menu {menu_id} in guild {server_id}")
-        logger.info("Rolemenu %s updated via WebUI for guild %s", menu_id, server_id)
+        menu = await ctx.call_bot(
+            _update_menu,
+            ctx,
+            server_id,
+            menu_id,
+            session,
+            body,
+            what=f"update role menu {menu_id} in guild {server_id}",
+        )
+        logger.info(
+            "Rolemenu %s updated via WebUI for guild %s (by %s/%s)",
+            menu_id,
+            server_id,
+            session.username,
+            session.user_id,
+        )
         return JSONResponse({"status": "ok", "menu": _menu_to_dict(menu) if menu else None})
 
     @router.delete("/api/servers/{server_id}/rolemenus/{menu_id}")
     async def api_delete_rolemenu(request: Request, server_id: str, menu_id: str):
-        await ctx.require_guild_admin(request, server_id)
-
-        async def _delete():
-            repo = ReactionRolesRepository(server_id)
-            existing = await repo.get(menu_id)
-            if not existing:
-                raise HTTPException(status_code=404, detail="Menu introuvable")
-
-            await repo.delete(menu_id)
-            if existing.message_id:
-                try:
-                    channel = await ctx.bot.fetch_channel(int(existing.channel_id))
-                    if channel and hasattr(channel, "fetch_message"):
-                        msg = await channel.fetch_message(int(existing.message_id))
-                        if msg:
-                            await msg.delete()
-                except Exception as e:
-                    logger.warning("Could not delete role menu message %s: %s", menu_id, e)
-
-        await ctx.call_bot(_delete, what=f"delete role menu {menu_id} in guild {server_id}")
-        logger.info("Rolemenu %s deleted via WebUI for guild %s", menu_id, server_id)
+        session = await ctx.require_guild_admin(request, server_id)
+        await ctx.call_bot(
+            _delete_menu,
+            ctx,
+            server_id,
+            menu_id,
+            what=f"delete role menu {menu_id} in guild {server_id}",
+        )
+        logger.info(
+            "Rolemenu %s deleted via WebUI for guild %s (by %s/%s)",
+            menu_id,
+            server_id,
+            session.username,
+            session.user_id,
+        )
         return JSONResponse({"status": "ok"})
 
     return router

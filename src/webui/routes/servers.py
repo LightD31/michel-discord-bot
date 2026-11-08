@@ -13,6 +13,7 @@ from src.core.config import ModuleConfig
 from src.discord_ext.embedmanager import MODULE_KEY as EMBED_MANAGER_MODULE
 from src.discord_ext.embedmanager import build_embeds, publish_embeds
 from src.webui.botops import run_extension_op, sync_commands
+from src.webui.channels import list_channels
 from src.webui.context import WebUIContext
 from src.webui.secrets import mask_server_config, restore_section
 
@@ -169,6 +170,95 @@ async def _sync_guild_commands(ctx: WebUIContext, server_id: str) -> dict:
     return {"synced": True, "error": None}
 
 
+async def _apply_module_change(
+    ctx: WebUIContext, server_id: str, module_name: str, *, scopes_changed: bool, sync: bool
+) -> dict:
+    """Reload what reads *module_name*, then sync the guild's commands if asked.
+
+    The sync only follows a reload that brought every extension back: after a
+    failed one the client may lack that extension's commands, and syncing
+    would delete them from Discord. Returns the response's ``reload`` (and
+    ``commandSync``) entries.
+    """
+    reload_result = await _try_reload_extension_for_module(
+        ctx, module_name, enabled_changed=scopes_changed
+    )
+    out: dict = {"reload": reload_result}
+    if sync and _reload_succeeded(reload_result):
+        out["commandSync"] = await _sync_guild_commands(ctx, server_id)
+    return out
+
+
+async def _visible_servers(ctx: WebUIContext, session) -> dict:
+    """The guilds *session* may see in the dashboard, with their masked config.
+
+    Developers see every guild the bot is in; anyone else the guilds they
+    manage now (read live, so a member demoted since login stops seeing one).
+    Only guilds the bot is in are listed.
+    """
+    data = ctx.get_full_config()
+    servers = data.get("servers", {})
+
+    # Bot guild cache: authoritative names/icons even for guilds the
+    # user doesn't manage (OAuth only describes the user's own guilds).
+    bot_guilds: dict[str, object] = {}
+    if ctx.bot and ctx.bot.guilds:
+        bot_guilds = {str(g.id): g for g in ctx.bot.guilds}
+    bot_guild_ids = set(bot_guilds)
+
+    is_developer = ctx.oauth.is_developer(session)
+    # Login-time OAuth snapshot: names/icons, and the guilds worth checking.
+    oauth_guilds = {str(g.get("id")): g for g in session.guilds if isinstance(g, dict)}
+    if ctx.bot and not is_developer:
+        # Who manages what is read live (one cached check per shared guild),
+        # so a member demoted since login stops seeing that guild's config.
+        candidates = sorted(gid for gid in oauth_guilds if gid in bot_guild_ids)
+        allowed = await asyncio.gather(
+            *(ctx.user_manages_guild(session, gid) for gid in candidates),
+            return_exceptions=True,
+        )
+        managed_guilds = {
+            gid: oauth_guilds[gid]
+            for gid, ok in zip(candidates, allowed, strict=True)
+            if ok is True
+        }
+    else:
+        managed_guilds = {g["id"]: g for g in ctx.oauth.get_user_managed_guilds(session)}
+
+    def server_entry(server_id: str, server_config: dict) -> dict:
+        guild_info = managed_guilds.get(server_id) or oauth_guilds.get(server_id, {})
+        bot_guild = bot_guilds.get(server_id)
+        name = (
+            guild_info.get("name")
+            or getattr(bot_guild, "name", None)
+            or server_config.get("serverName")
+            or f"Serveur {server_id}"
+        )
+        icon = guild_info.get("icon") or getattr(getattr(bot_guild, "icon", None), "hash", None)
+        return {"name": name, "icon": icon, "config": mask_server_config(server_config)}
+
+    result: dict = {}
+
+    # Servers already in config — only if bot is in them and the user
+    # manages them (a guild admin must not see other guilds' config).
+    for server_id, server_config in servers.items():
+        if bot_guild_ids and str(server_id) not in bot_guild_ids:
+            continue
+        if not is_developer and str(server_id) not in managed_guilds:
+            continue
+        result[server_id] = server_entry(str(server_id), server_config)
+
+    # Guilds not yet in config — the user's managed guilds, plus every
+    # bot guild for developers. Only if the bot is in them.
+    candidate_ids = set(managed_guilds)
+    if is_developer:
+        candidate_ids |= bot_guild_ids
+    for guild_id in candidate_ids:
+        if guild_id not in result and (not bot_guild_ids or guild_id in bot_guild_ids):
+            result[guild_id] = server_entry(guild_id, {})
+    return result
+
+
 def create_router(ctx: WebUIContext) -> APIRouter:
     router = APIRouter()
 
@@ -176,68 +266,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
     async def api_get_servers(request: Request):
         """Get servers the user manages (developers see every bot guild)."""
         session = ctx.require_admin(request)
-        data = ctx.get_full_config()
-        servers = data.get("servers", {})
-
-        # Bot guild cache: authoritative names/icons even for guilds the
-        # user doesn't manage (OAuth only describes the user's own guilds).
-        bot_guilds: dict[str, object] = {}
-        if ctx.bot and ctx.bot.guilds:
-            bot_guilds = {str(g.id): g for g in ctx.bot.guilds}
-        bot_guild_ids = set(bot_guilds)
-
-        is_developer = ctx.oauth.is_developer(session)
-        # Login-time OAuth snapshot: names/icons, and the guilds worth checking.
-        oauth_guilds = {str(g.get("id")): g for g in session.guilds if isinstance(g, dict)}
-        if ctx.bot and not is_developer:
-            # Who manages what is read live (one cached check per shared guild),
-            # so a member demoted since login stops seeing that guild's config.
-            candidates = sorted(gid for gid in oauth_guilds if gid in bot_guild_ids)
-            allowed = await asyncio.gather(
-                *(ctx.user_manages_guild(session, gid) for gid in candidates),
-                return_exceptions=True,
-            )
-            managed_guilds = {
-                gid: oauth_guilds[gid]
-                for gid, ok in zip(candidates, allowed, strict=True)
-                if ok is True
-            }
-        else:
-            managed_guilds = {g["id"]: g for g in ctx.oauth.get_user_managed_guilds(session)}
-
-        def server_entry(server_id: str, server_config: dict) -> dict:
-            guild_info = managed_guilds.get(server_id) or oauth_guilds.get(server_id, {})
-            bot_guild = bot_guilds.get(server_id)
-            name = (
-                guild_info.get("name")
-                or getattr(bot_guild, "name", None)
-                or server_config.get("serverName")
-                or f"Serveur {server_id}"
-            )
-            icon = guild_info.get("icon") or getattr(getattr(bot_guild, "icon", None), "hash", None)
-            return {"name": name, "icon": icon, "config": mask_server_config(server_config)}
-
-        result: dict = {}
-
-        # Servers already in config — only if bot is in them and the user
-        # manages them (a guild admin must not see other guilds' config).
-        for server_id, server_config in servers.items():
-            if bot_guild_ids and str(server_id) not in bot_guild_ids:
-                continue
-            if not is_developer and str(server_id) not in managed_guilds:
-                continue
-            result[server_id] = server_entry(str(server_id), server_config)
-
-        # Guilds not yet in config — the user's managed guilds, plus every
-        # bot guild for developers. Only if the bot is in them.
-        candidate_ids = set(managed_guilds)
-        if is_developer:
-            candidate_ids |= bot_guild_ids
-        for guild_id in candidate_ids:
-            if guild_id not in result and (not bot_guild_ids or guild_id in bot_guild_ids):
-                result[guild_id] = server_entry(guild_id, {})
-
-        return JSONResponse(result)
+        return JSONResponse(await _visible_servers(ctx, session))
 
     @router.get("/api/servers/{server_id}/channels")
     async def api_get_server_channels(request: Request, server_id: str):
@@ -245,92 +274,9 @@ def create_router(ctx: WebUIContext) -> APIRouter:
         await ctx.require_guild_admin(request, server_id)
         ctx.require_bot_loop()
 
-        async def _fetch():
-            from interactions import ChannelType
-
-            try:
-                guild = await ctx.bot.fetch_guild(int(server_id))
-            except Exception as e:
-                raise HTTPException(status_code=404, detail=f"Serveur introuvable: {e}") from e
-            if guild is None:
-                raise HTTPException(status_code=404, detail="Serveur introuvable")
-            try:
-                channels = await guild.fetch_channels()
-            except Exception:
-                channels = getattr(guild, "channels", []) or []
-            text_channel_types = {
-                ChannelType.GUILD_TEXT,
-                ChannelType.GUILD_NEWS,
-            }
-            thread_channel_types = {
-                ChannelType.GUILD_NEWS_THREAD,
-                ChannelType.GUILD_PUBLIC_THREAD,
-                ChannelType.GUILD_PRIVATE_THREAD,
-            }
-            result = []
-            for c in channels:
-                try:
-                    ctype = getattr(c, "type", None)
-                    if ctype not in text_channel_types and ctype not in thread_channel_types:
-                        continue
-                    parent_id = None
-                    parent = getattr(c, "parent_id", None) or getattr(c, "category_id", None)
-                    if parent:
-                        parent_id = str(parent)
-                    result.append(
-                        {
-                            "id": str(c.id),
-                            "name": getattr(c, "name", str(c.id)),
-                            "parent_id": parent_id,
-                            "position": getattr(c, "position", 0) or 0,
-                            "is_thread": ctype in thread_channel_types,
-                            "archived": bool(getattr(c, "archived", False)),
-                        }
-                    )
-                except Exception:
-                    continue
-            # Active threads (including private ones the bot can see)
-            try:
-                thread_list = await guild.fetch_active_threads()
-                active_threads = getattr(thread_list, "threads", None) or []
-            except Exception as e:
-                logger.debug(f"Could not fetch active threads for {server_id}: {e}")
-                active_threads = []
-            known_ids = {c["id"] for c in result}
-            for t in active_threads:
-                try:
-                    tid = str(t.id)
-                    if tid in known_ids:
-                        continue
-                    parent_id = getattr(t, "parent_id", None)
-                    result.append(
-                        {
-                            "id": tid,
-                            "name": getattr(t, "name", tid),
-                            "parent_id": str(parent_id) if parent_id else None,
-                            "position": 0,
-                            "is_thread": True,
-                            "archived": bool(getattr(t, "archived", False)),
-                        }
-                    )
-                    known_ids.add(tid)
-                except Exception:
-                    continue
-            categories = []
-            for c in channels:
-                if getattr(c, "type", None) == ChannelType.GUILD_CATEGORY:
-                    categories.append(
-                        {
-                            "id": str(c.id),
-                            "name": getattr(c, "name", str(c.id)),
-                            "position": getattr(c, "position", 0) or 0,
-                        }
-                    )
-            result.sort(key=lambda x: (x["position"], x["name"]))
-            categories.sort(key=lambda x: x["position"])
-            return {"channels": result, "categories": categories}
-
-        data = await ctx.call_bot(_fetch, what=f"list channels of guild {server_id}")
+        data = await ctx.call_bot(
+            list_channels, ctx.bot, server_id, what=f"list channels of guild {server_id}"
+        )
         return JSONResponse(data)
 
     @router.get("/api/servers/{server_id}")
@@ -382,15 +328,14 @@ def create_router(ctx: WebUIContext) -> APIRouter:
         # A save only changes the guild's commands when it flips the module's
         # enabled state (the commands follow it) or edits custom commands.
         scopes_changed = enabled_change["before"] != enabled_change["after"]
-        reload_result = await _try_reload_extension_for_module(
-            ctx, module_name, enabled_changed=scopes_changed
+        after = await _apply_module_change(
+            ctx,
+            server_id,
+            module_name,
+            scopes_changed=scopes_changed,
+            sync=scopes_changed or module_name == CUSTOM_COMMANDS_MODULE,
         )
-        response: dict = {"status": "ok", "reload": reload_result}
-        if (scopes_changed or module_name == CUSTOM_COMMANDS_MODULE) and _reload_succeeded(
-            reload_result
-        ):
-            response["commandSync"] = await _sync_guild_commands(ctx, server_id)
-        return JSONResponse(response)
+        return JSONResponse({"status": "ok", **after})
 
     @router.post("/api/servers/{server_id}/modules/{module_name}/toggle")
     async def api_toggle_module(
@@ -417,13 +362,12 @@ def create_router(ctx: WebUIContext) -> APIRouter:
             session.username,
             session.user_id,
         )
-        reload_result = await _try_reload_extension_for_module(ctx, module_name)
-        response: dict = {"status": "ok", "enabled": body.enabled, "reload": reload_result}
-        # The reload re-scoped the module's commands to its new set of guilds;
+        # The reload re-scopes the module's commands to its new set of guilds;
         # syncing this guild makes them appear or disappear without a restart.
-        if _reload_succeeded(reload_result):
-            response["commandSync"] = await _sync_guild_commands(ctx, server_id)
-        return JSONResponse(response)
+        after = await _apply_module_change(
+            ctx, server_id, module_name, scopes_changed=True, sync=True
+        )
+        return JSONResponse({"status": "ok", "enabled": body.enabled, **after})
 
     @router.post(f"/api/servers/{{server_id}}/modules/{EMBED_MANAGER_MODULE}/publish")
     async def api_embedmanager_publish(request: Request, server_id: str):

@@ -66,6 +66,9 @@
         "random": {
             "randomOrgApiKey": ""
         },
+        "rss": {
+            "lootScraperBaseUrl": ""
+        },
         "shlink": {
             "enabled": false,
             "shlinkBaseUrl": "",
@@ -105,7 +108,8 @@
             "trustedProxies": []
         },
         "youtube": {
-            "youtubeApiKey": ""
+            "youtubeApiKey": "",
+            "youtubeApiUrl": ""
         },
         "zevent": {
             "zeventStreamlabsApiUrl": "",

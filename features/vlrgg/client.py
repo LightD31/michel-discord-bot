@@ -464,5 +464,6 @@ async def check_api_health() -> bool:
     try:
         data = await vlrgg_request("v2/health")
         return data.get("status") == "success" or bool(data)
-    except Exception:
+    except Exception as e:  # noqa: BLE001 — any failure means "unhealthy"
+        logger.debug("VLR.gg health check failed: %s", e)
         return False

@@ -5,6 +5,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from src.core import logging as logutil
+from src.core.config import global_config
 from src.webui.context import WebUIContext
 from src.webui.schemas import (
     GLOBAL_CONFIG_SCHEMAS,
@@ -46,6 +47,14 @@ def create_router(ctx: WebUIContext) -> APIRouter:
         if not schema:
             return JSONResponse({"fields": {}, "label": module_name})
         return JSONResponse(schema)
+
+    @router.get("/api/presets/rss")
+    async def api_rss_presets(request: Request):
+        """Where the RSS presets' feeds live (global section ``rss``), "" when unset."""
+        ctx.require_admin(request)
+        section = global_config().get("rss") or {}
+        base = section.get("lootScraperBaseUrl") if isinstance(section, dict) else None
+        return JSONResponse({"lootScraperBaseUrl": base if isinstance(base, str) else ""})
 
     @router.get("/api/schemas/global")
     async def api_global_schemas(request: Request):
