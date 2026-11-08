@@ -43,8 +43,7 @@ dependencies = [
     "defusedxml",
     "beautifulsoup4",
     "Pillow",
-    "prettytable",
-    "pandas",
+    "prettytable>=3.12",
     # Monitoring
     "prometheus-client",
     # Optional error reporting to Sentry / GlitchTip (config.errorReporting)
@@ -183,7 +182,7 @@ skip_covered = true
 # and 75.4% with it (CI) when this was last raised. Keep it below the figure
 # without MongoDB so a local run passes too. Raise it as tests are added, so
 # coverage can only ratchet up.
-fail_under = 74
+fail_under = 75
 
 # ─── detect-secrets ────────────────────────────────────────────────────
 # Baseline lives at .secrets.baseline; configured via .pre-commit-config.yaml.

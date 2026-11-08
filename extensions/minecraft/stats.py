@@ -1,9 +1,7 @@
-"""StatsMixin — hourly stats task, table rendering, and image caching."""
+"""StatsMixin — hourly stats task: the player table, rendered as an image."""
 
-from io import BytesIO, StringIO
+import asyncio
 
-import pandas as pd
-import prettytable
 from interactions import (
     Embed,
     File,
@@ -15,6 +13,7 @@ from interactions import (
 
 from features.minecraft import MinecraftSettings
 from features.minecraft import get_config as get_mc_config
+from features.minecraft.table import build_stats_table
 from src.core.images import create_dynamic_image
 from src.discord_ext.messages import edit_message_if_changed
 
@@ -44,11 +43,15 @@ class StatsMixin:
         embed1 = message.embeds[0] if message.embeds else Embed(title="Minecraft")
 
         player_stats = await self._get_player_stats(settings)
-        table = self._create_stats_table(player_stats)
+        table = build_stats_table(
+            player_stats,
+            max_players=get_mc_config("max_players_displayed", 15),
+            name_length=get_mc_config("player_name_max_length", 14),
+        )
 
-        # Only move the "last refreshed" stamp when the table actually moved.
-        # Holding it otherwise is what lets the whole payload compare equal, so
-        # an hour with no activity costs no edit at all.
+        # Only move the "last refreshed" stamp, and render a new image, when the
+        # table actually moved. Holding both otherwise is what lets the whole
+        # payload compare equal, so an hour with no activity costs no edit at all.
         table_string = table.get_string() if table else None
         previous = message.embeds[1].timestamp if len(message.embeds) > 1 else None
         unchanged = table_string is not None and table_string == self._last_stats_tables.get(
@@ -61,7 +64,23 @@ class StatsMixin:
             previous if unchanged and previous else Timestamp.utcnow().replace(microsecond=0)
         )
 
-        await self._update_stats_message(message, embed1, embed2, table)
+        if table_string is None:
+            logger.warning("Guild %s: no player statistics to display", guild_id)
+        if table_string is None or unchanged:
+            await edit_message_if_changed(
+                message, content="", embeds=[embed1, embed2], logger=logger
+            )
+            return
+        # Pillow work, off the event loop.
+        _, image_io = await asyncio.to_thread(create_dynamic_image, table_string)
+        await edit_message_if_changed(
+            message,
+            content="",
+            embeds=[embed1, embed2],
+            file=File(image_io, "stats.png"),
+            logger=logger,
+        )
+        logger.debug("Guild %s: new stats image posted", guild_id)
 
     async def _get_player_stats(self, settings: MinecraftSettings):
         """Retrieve player statistics from the guild's Minecraft server."""
@@ -100,116 +119,3 @@ class StatsMixin:
                 e,
             )
             return []
-
-    def _create_stats_table(self, player_stats):
-        """Create and format the statistics table."""
-        if not player_stats:
-            df = pd.DataFrame(
-                columns=[
-                    "Joueur",
-                    "Niveau",
-                    "Morts",
-                    "Morts/h",
-                    "Marche (km)",
-                    "Temps de jeu",
-                    "Blocs minés",
-                    "Mobs tués",
-                    "Animaux reproduits",
-                ]
-            )
-            logger.warning("No player data retrieved")
-        else:
-            df = pd.DataFrame(player_stats)
-
-            if "Temps de jeu" in df.columns:
-                df["Temps de jeu"] = pd.to_timedelta(df["Temps de jeu"], unit="s").dt.round("1s")
-                df.sort_values(by="Temps de jeu", ascending=False, inplace=True)
-
-            df = df.head(get_mc_config("max_players_displayed", 15))
-
-        return self._format_table_efficiently(df)
-
-    async def _update_stats_message(self, message, embed1, embed2, table):
-        """Update the stats message with caching logic."""
-        if not table:
-            await edit_message_if_changed(
-                message, content="", embeds=[embed1, embed2], logger=logger
-            )
-            logger.warning("No statistics table to display")
-            return
-
-        table_string = table.get_string()
-
-        if table_string in self.image_cache:
-            await edit_message_if_changed(
-                message, content="", embeds=[embed1, embed2], logger=logger
-            )
-            logger.debug("Image retrieved from cache")
-        else:
-            self._optimize_image_cache()
-
-            imageIO = BytesIO()
-            image, imageIO = create_dynamic_image(table_string)
-            self.image_cache[table_string] = (image, imageIO)
-            image = File(create_dynamic_image(table_string)[1], "stats.png")
-            await edit_message_if_changed(
-                message, content="", embeds=[embed1, embed2], file=image, logger=logger
-            )
-            logger.debug("New image generated and cached")
-
-    def _optimize_image_cache(self):
-        """Clean image cache to prevent memory accumulation."""
-        if len(self.image_cache) > get_mc_config("max_image_cache_size", 5):
-            max_cache = get_mc_config("max_image_cache_size", 5)
-            oldest_keys = list(self.image_cache.keys())[:-max_cache]
-            for key in oldest_keys:
-                del self.image_cache[key]
-            logger.debug(f"Image cache cleaned, {len(oldest_keys)} entries removed")
-
-    def _format_large_number(self, num):
-        """Format large numbers for better readability."""
-        if pd.isna(num):
-            return "0"
-        if num >= 1000000:
-            return f"{num / 1000000:.1f}M"
-        elif num >= 1000:
-            return f"{num / 1000:.1f}k"
-        else:
-            return str(int(num))
-
-    def _format_table_efficiently(self, df):
-        """Format table efficiently to reduce image size."""
-        if df.empty:
-            return None
-
-        if "Morts/h" in df.columns:
-            df["Morts/h"] = df["Morts/h"].round(2)
-        if "Marche (km)" in df.columns:
-            df["Marche (km)"] = df["Marche (km)"].round(1)
-        if "Niveau" in df.columns:
-            df["Niveau"] = df["Niveau"].astype(str)
-
-        if "Blocs minés" in df.columns:
-            df["Blocs minés"] = df["Blocs minés"].apply(self._format_large_number)
-        if "Mobs tués" in df.columns:
-            df["Mobs tués"] = df["Mobs tués"].apply(self._format_large_number)
-        if "Animaux reproduits" in df.columns:
-            df["Animaux reproduits"] = df["Animaux reproduits"].apply(self._format_large_number)
-
-        if "Joueur" in df.columns:
-            df["Joueur"] = df["Joueur"].str[: get_mc_config("player_name_max_length", 14)]
-
-        output = StringIO()
-        df.to_csv(output, index=False, float_format="%.1f")
-        output.seek(0)
-
-        table = prettytable.from_csv(output)
-        table.align = "r"
-        table.align["Joueur"] = "l"
-        table.set_style(prettytable.SINGLE_BORDER)
-        table.padding_width = 1
-        max_players = get_mc_config("max_players_displayed", 15)
-        table.title = f"Stats Joueurs (Top {max_players})"
-        table.hrules = prettytable.ALL
-
-        return table

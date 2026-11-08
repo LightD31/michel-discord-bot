@@ -1,5 +1,6 @@
 """CommandsMixin — /rank and /leaderboard slash commands."""
 
+import asyncio
 from datetime import datetime
 
 from interactions import (
@@ -109,7 +110,8 @@ class CommandsMixin:
 
         avatar_bytes = await _fetch_avatar_bytes(target_user)
         try:
-            buffer = render_rank_card(
+            buffer = await asyncio.to_thread(  # Pillow work, off the event loop
+                render_rank_card,
                 avatar_bytes=avatar_bytes,
                 username=target_user.username,
                 display_name=getattr(target_user, "display_name", target_user.username),

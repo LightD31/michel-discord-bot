@@ -3,11 +3,7 @@
 from datetime import datetime
 
 from features.rss.models import RssFeedState
-from src.core.db import mongo_manager
-from src.core.errors import DatabaseError
-from src.core.logging import init_logger
-
-logger = init_logger(__name__)
+from src.core.db import mongo_manager, translates_db_errors
 
 COLLECTION = "rss"
 # How many seen entry ids to keep per feed. Larger = more dedupe history but
@@ -24,79 +20,66 @@ class RssRepository:
     def _col(self):
         return mongo_manager.get_guild_collection(self._guild_id, COLLECTION)
 
-    @staticmethod
-    def _doc_to_state(doc: dict) -> RssFeedState:
-        return RssFeedState(**doc)
-
+    @translates_db_errors
     async def get(self, feed_id: str) -> RssFeedState | None:
-        try:
-            doc = await self._col().find_one({"_id": feed_id})
-        except Exception as e:
-            logger.error("DB find_one failed: %s", e)
-            raise DatabaseError(f"Failed to load RSS state: {e}") from e
-        return self._doc_to_state(doc) if doc else None
+        doc = await self._col().find_one({"_id": feed_id})
+        return RssFeedState(**doc) if doc else None
 
+    @translates_db_errors
+    async def states(self) -> dict[str, RssFeedState]:
+        """Every feed state of the guild, by feed id: one read per poll cycle."""
+        states: dict[str, RssFeedState] = {}
+        async for doc in self._col().find({}):
+            state = RssFeedState(**doc)
+            states[state.feed_id] = state
+        return states
+
+    @translates_db_errors
     async def initialize(self, feed_id: str, seen_ids: list[str]) -> None:
         """Mark a feed as initialized — seed dedupe set without posting backlog."""
-        bounded = seen_ids[:MAX_SEEN_IDS]
-        try:
-            await self._col().update_one(
-                {"_id": feed_id},
-                {
-                    "$set": {
-                        "seen_ids": bounded,
-                        "initialized": True,
-                        "last_poll_at": datetime.now(),
-                        "last_error": None,
-                    }
-                },
-                upsert=True,
-            )
-        except Exception as e:
-            logger.error("DB upsert failed: %s", e)
-            raise DatabaseError(f"Failed to initialize RSS state: {e}") from e
+        await self._col().update_one(
+            {"_id": feed_id},
+            {
+                "$set": {
+                    "seen_ids": seen_ids[:MAX_SEEN_IDS],
+                    "initialized": True,
+                    "last_poll_at": datetime.now(),
+                    "last_error": None,
+                    "failures": 0,
+                }
+            },
+            upsert=True,
+        )
 
-    async def record_seen(self, feed_id: str, new_ids: list[str]) -> None:
-        """Prepend *new_ids* to the dedupe set, capped at ``MAX_SEEN_IDS``.
+    @translates_db_errors
+    async def record_poll(self, feed_id: str, new_ids: list[str]) -> None:
+        """Stamp a successful poll and prepend *new_ids* to the dedupe set.
 
-        Mongo's ``$push`` with ``$position: 0`` + ``$slice`` is atomic, so
-        concurrent polls (shouldn't happen, but defensive) can't corrupt it.
+        Called after every successful fetch, new entries or not: the poll time
+        is what spaces the next fetch out, and it clears the failure streak.
+        ``$push`` with ``$position: 0`` + ``$slice`` keeps the set capped at
+        ``MAX_SEEN_IDS`` in the same atomic update.
         """
-        if not new_ids:
-            return
-        try:
-            await self._col().update_one(
-                {"_id": feed_id},
-                {
-                    "$push": {
-                        "seen_ids": {
-                            "$each": new_ids,
-                            "$position": 0,
-                            "$slice": MAX_SEEN_IDS,
-                        }
-                    },
-                    "$set": {"last_poll_at": datetime.now(), "last_error": None},
-                },
-                upsert=True,
-            )
-        except Exception as e:
-            logger.error("DB update_one failed: %s", e)
-            raise DatabaseError(f"Failed to record seen RSS ids: {e}") from e
+        update: dict = {"$set": {"last_poll_at": datetime.now(), "last_error": None, "failures": 0}}
+        if new_ids:
+            update["$push"] = {
+                "seen_ids": {"$each": new_ids, "$position": 0, "$slice": MAX_SEEN_IDS}
+            }
+        await self._col().update_one({"_id": feed_id}, update, upsert=True)
 
+    @translates_db_errors
     async def record_error(self, feed_id: str, message: str) -> None:
-        try:
-            await self._col().update_one(
-                {"_id": feed_id},
-                {"$set": {"last_poll_at": datetime.now(), "last_error": message}},
-                upsert=True,
-            )
-        except Exception as e:
-            logger.warning("Could not record RSS error for %s: %s", feed_id, e)
+        """Stamp a failed poll: one more consecutive failure, a longer wait."""
+        await self._col().update_one(
+            {"_id": feed_id},
+            {
+                "$set": {"last_poll_at": datetime.now(), "last_error": message},
+                "$inc": {"failures": 1},
+            },
+            upsert=True,
+        )
 
+    @translates_db_errors
     async def delete(self, feed_id: str) -> int:
-        try:
-            result = await self._col().delete_one({"_id": feed_id})
-            return result.deleted_count
-        except Exception as e:
-            logger.error("DB delete_one failed: %s", e)
-            raise DatabaseError(f"Failed to delete RSS state: {e}") from e
+        result = await self._col().delete_one({"_id": feed_id})
+        return result.deleted_count

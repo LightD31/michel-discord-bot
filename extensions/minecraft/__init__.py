@@ -29,7 +29,6 @@ class Minecraft(Extension, StatusMixin, StatsMixin):
 
     def __init__(self, client):
         self.client = client
-        self.image_cache = {}
         self.status_messages = GuildMessages(
             client,
             slot="minecraft:status",
@@ -57,7 +56,6 @@ class Minecraft(Extension, StatusMixin, StatsMixin):
     async def on_startup(self):
         """Start the status and stats tasks; each reads the enabled guilds when it runs."""
         clear_stats_caches()
-        self.image_cache.clear()
         logger.info("Caches cleared on startup")
         if not self.status.running:
             self.status.start()

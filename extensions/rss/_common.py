@@ -14,6 +14,9 @@ MODULE_KEY = "moduleRss"
 # rotate their guids and look entirely "new" on a single fetch.
 MAX_NEW_PER_POLL = 5
 
+# How many feed URLs are fetched at once in a poll cycle, across every guild.
+MAX_CONCURRENT_FETCHES = 8
+
 DEFAULT_TEMPLATE = "**{label}** — [{title}]({link})"
 
 
@@ -65,6 +68,7 @@ RSS = ModuleConfig(MODULE_KEY)
 
 __all__ = [
     "DEFAULT_TEMPLATE",
+    "MAX_CONCURRENT_FETCHES",
     "MAX_NEW_PER_POLL",
     "MODULE_KEY",
     "RSS",

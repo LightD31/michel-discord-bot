@@ -2,7 +2,6 @@
 MINECRAFT_OPTIMIZATION_CONFIG = {
     # Cache
     "cache_duration": 300,  # 5 minutes
-    "max_image_cache_size": 5,
     # SFTP Connection
     "connection_timeout": 30,
     "max_retries": 3,
