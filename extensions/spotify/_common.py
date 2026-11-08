@@ -18,6 +18,7 @@ import interactions
 
 from features.spotify import SpotifyRepository
 from features.spotify import search as track_search
+from features.spotify.votes import tally_add_votes
 from src.core import logging as logutil
 from src.core.config import ModuleConfig, config_store, global_config, load_discord2name
 from src.core.errors import ConfigError
@@ -190,20 +191,6 @@ class EmbedType(Enum):
     VOTE_ADD = "vote_add"
 
 
-def count_votes(votes, discord2name):
-    """Tally ``conserver``/``supprimer``/``menfou`` votes and resolve voter names."""
-    vote_counts = {}
-    users = []
-    for vote in votes.values():
-        vote_counts[vote] = vote_counts.get(vote, 0) + 1
-    for user in votes:
-        users.append(discord2name.get(user, user))
-    conserver = vote_counts.get("conserver", 0)
-    supprimer = vote_counts.get("supprimer", 0)
-    menfou = vote_counts.get("menfou", 0)
-    return conserver, supprimer, menfou, users
-
-
 class VoteManager:
     """Per-guild add-with-vote storage, persisted through :class:`SpotifyRepository`."""
 
@@ -225,11 +212,8 @@ class VoteManager:
         await self.repo.delete_addwithvote(song_id)
 
     def count_votes(self, data, song):
-        song_data = data[song]
-        yes_votes = sum(1 for v in song_data["votes"].values() if v == "yes")
-        no_votes = sum(1 for v in song_data["votes"].values() if v == "no")
-        users = [self.discord2name.get(user, f"<@{user}>") for user in song_data["votes"]]
-        return yes_votes, no_votes, users
+        """``(yes, no, voters)`` of the add-with-vote poll on *song*."""
+        return tally_add_votes(data[song]["votes"], self.discord2name)
 
     async def check_deadline(self, song_id):
         doc = await self.repo.get_addwithvote_doc(song_id)

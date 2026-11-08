@@ -115,44 +115,15 @@ class TasksMixin:
 
     @Task.create(IntervalTrigger(seconds=UPDATE_INTERVAL))
     async def zevent(self):
+        """Render the tracker for the current phase and publish it in every enabled guild."""
         guilds = await self._guilds()
         if not guilds:
             logger.debug("Zevent: module enabled on no guild; refresh skipped")
             return
 
-        total_amount = "Données indisponibles"
-        total_int = 0
-
         try:
-            logger.debug("Fetching data from APIs...")
-            # Without a Streamlabs team URL the donation total is simply
-            # unavailable (the rest still renders).
-            data, streamlabs_data = await asyncio.gather(
-                fetch(API_URL, return_type="json"),
-                fetch(STREAMLABS_API_URL, return_type="json")
-                if STREAMLABS_API_URL
-                else _no_streamlabs_data(),
-                return_exceptions=True,
-            )
-
+            data, streamlabs_data = await self._fetch_payloads()
             planning_data = await self._ensure_planning_cache()
-
-            if isinstance(data, Exception):
-                logger.error(f"Failed to fetch Zevent API: {data}")
-            if isinstance(streamlabs_data, Exception):
-                logger.error(f"Failed to fetch Streamlabs API: {streamlabs_data}")
-            data = (
-                data
-                if not isinstance(data, Exception) and self._validate_api_data(data, "zevent")
-                else None
-            )
-            streamlabs_data = (
-                streamlabs_data
-                if not isinstance(streamlabs_data, Exception)
-                and self._validate_api_data(streamlabs_data, "streamlabs")
-                else None
-            )
-
             if planning_data is None:
                 logger.warning("Planning data not available")
 
@@ -162,7 +133,6 @@ class TasksMixin:
                 self.record_donation_sample(self._safe_get_data(data, ["live"], []))
 
             concert_active = await self._is_concert_active()
-
             # Kept in step with the same payload the embeds render, so a
             # guild's scheduled event never contradicts its tracker message.
             for guild, settings in guilds:
@@ -171,75 +141,109 @@ class TasksMixin:
                 )
 
             if not self._is_event_started():
-                if data:
-                    streams = await self.categorize_streams(self._safe_get_data(data, ["live"], []))
-                    embeds = self._tracker_embeds(
-                        data, planning_data, self.create_main_embed("0 €"), streams
-                    )
-                else:
-                    embeds = self.ensure_embeds_fit_limit([self.create_main_embed("0 €")])
-                await self._publish(guilds, embeds)
+                await self._publish(guilds, await self._pre_event_embeds(data, planning_data))
                 logger.debug("Pre-event countdown message updated successfully")
-                return
-
-            if concert_active or not self._is_main_event_started():
-                if data:
-                    total_amount, total_int = self.get_total_amount(data, streamlabs_data)
-                    streams = await self.categorize_streams(self._safe_get_data(data, ["live"], []))
-                    main_embed_status = "concert_live" if concert_active else "concert_window"
-                    embeds = self._tracker_embeds(
-                        data,
-                        planning_data,
-                        self.create_main_embed(total_amount, concert_status=main_embed_status),
-                        streams,
-                    )
-                else:
-                    embeds = self.ensure_embeds_fit_limit(
-                        [self.create_main_embed("Données indisponibles")]
-                    )
-                await self._publish(guilds, embeds)
-                logger.debug("Concert phase message updated successfully")
-
-                if data:
-                    await self._announce(guilds, total_int)
-                return
-
-            if not data and not self.last_data_cache:
-                logger.error("All APIs failed and no cached data available")
-                await self.send_simplified_update(guilds, total_amount)
-                return
-
-            if not data and self.last_data_cache:
-                logger.warning("Using cached data due to API failure")
-                data = self.last_data_cache
-            elif isinstance(data, dict):
-                self.last_data_cache = data
-                self.last_update_time = datetime.now()
-
-            if isinstance(data, dict):
-                if not isinstance(streamlabs_data, dict):
-                    streamlabs_data = None
-
-                total_amount, total_int = self.get_total_amount(data, streamlabs_data)
-                streams = await self.categorize_streams(self._safe_get_data(data, ["live"], []))
-                viewers_data = await self.get_viewers_by_location(
-                    self._safe_get_data(data, ["live"], [])
+            elif concert_active or not self._is_main_event_started():
+                await self._refresh_concert_phase(
+                    guilds, data, streamlabs_data, planning_data, concert_active
                 )
-                embeds = self._tracker_embeds(
-                    data,
-                    planning_data,
-                    self.create_main_embed(total_amount, viewers_data["Total"]),
-                    streams,
-                    viewers_data,
-                )
-                await self._publish(guilds, embeds)
-                logger.debug("Message updated successfully")
-
-                await self._announce(guilds, total_int)
-
+            else:
+                await self._refresh_main_event(guilds, data, streamlabs_data, planning_data)
         except Exception as e:
             logger.error(f"Unexpected error in zevent task: {e}")
-            await self.send_simplified_update(guilds, total_amount)
+            await self.send_simplified_update(guilds, "Données indisponibles")
+
+    async def _fetch_payloads(self) -> tuple[dict | None, dict | None]:
+        """The Zevent and Streamlabs payloads, ``None`` for one that failed or looks wrong.
+
+        Without a Streamlabs team URL the donation total is simply
+        unavailable (the rest still renders).
+        """
+        logger.debug("Fetching data from APIs...")
+        data, streamlabs_data = await asyncio.gather(
+            fetch(API_URL, return_type="json"),
+            fetch(STREAMLABS_API_URL, return_type="json")
+            if STREAMLABS_API_URL
+            else _no_streamlabs_data(),
+            return_exceptions=True,
+        )
+        if isinstance(data, Exception):
+            logger.error(f"Failed to fetch Zevent API: {data}")
+        if isinstance(streamlabs_data, Exception):
+            logger.error(f"Failed to fetch Streamlabs API: {streamlabs_data}")
+        valid_data = (
+            data
+            if not isinstance(data, Exception) and self._validate_api_data(data, "zevent")
+            else None
+        )
+        valid_streamlabs = (
+            streamlabs_data
+            if not isinstance(streamlabs_data, Exception)
+            and self._validate_api_data(streamlabs_data, "streamlabs")
+            else None
+        )
+        return valid_data, valid_streamlabs
+
+    async def _pre_event_embeds(self, data: dict | None, planning_data) -> list[Embed]:
+        """Before the start: the countdown, with the roster once the API answers."""
+        if not data:
+            return self.ensure_embeds_fit_limit([self.create_main_embed("0 €")])
+        streams = await self.categorize_streams(self._safe_get_data(data, ["live"], []))
+        return self._tracker_embeds(data, planning_data, self.create_main_embed("0 €"), streams)
+
+    async def _refresh_concert_phase(
+        self,
+        guilds: list[tuple[ZeventGuild, dict]],
+        data: dict | None,
+        streamlabs_data: dict | None,
+        planning_data,
+        concert_active: bool,
+    ) -> None:
+        """The opening concert and the hours before the main event."""
+        if not data:
+            await self._publish(
+                guilds,
+                self.ensure_embeds_fit_limit([self.create_main_embed("Données indisponibles")]),
+            )
+            logger.debug("Concert phase message updated successfully")
+            return
+        total_amount, total_int = self.get_total_amount(data, streamlabs_data)
+        streams = await self.categorize_streams(self._safe_get_data(data, ["live"], []))
+        status = "concert_live" if concert_active else "concert_window"
+        main_embed = self.create_main_embed(total_amount, concert_status=status)
+        await self._publish(guilds, self._tracker_embeds(data, planning_data, main_embed, streams))
+        logger.debug("Concert phase message updated successfully")
+        await self._announce(guilds, total_int)
+
+    async def _refresh_main_event(
+        self,
+        guilds: list[tuple[ZeventGuild, dict]],
+        data: dict | None,
+        streamlabs_data: dict | None,
+        planning_data,
+    ) -> None:
+        """The main event: the full tracker, from the last good payload if the API fails."""
+        if not data:
+            if not self.last_data_cache:
+                logger.error("All APIs failed and no cached data available")
+                await self.send_simplified_update(guilds, "Données indisponibles")
+                return
+            logger.warning("Using cached data due to API failure")
+            data = self.last_data_cache
+        else:
+            self.last_data_cache = data
+            self.last_update_time = datetime.now()
+
+        total_amount, total_int = self.get_total_amount(data, streamlabs_data)
+        live = self._safe_get_data(data, ["live"], [])
+        streams = await self.categorize_streams(live)
+        viewers_data = await self.get_viewers_by_location(live)
+        main_embed = self.create_main_embed(total_amount, viewers_data["Total"])
+        await self._publish(
+            guilds, self._tracker_embeds(data, planning_data, main_embed, streams, viewers_data)
+        )
+        logger.debug("Message updated successfully")
+        await self._announce(guilds, total_int)
 
     async def _milestone_comparison(self, milestone: float) -> str | None:
         """Place this milestone against the same point of a past edition.

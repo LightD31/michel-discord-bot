@@ -120,16 +120,19 @@ class FeurExtension(Extension):
 
         top_users = []
         if ctx.guild:
-            user_totals = await repo.get_all_user_totals()
-            resolved = []
+            # Highest first, stopping at five members still in the guild: one
+            # member fetch per row of the leaderboard, not one per user ever counted.
+            user_totals = sorted(await repo.get_all_user_totals(), key=lambda x: x[1], reverse=True)
             for uid, total in user_totals:
                 try:
                     member = await ctx.guild.fetch_member(int(uid))
-                    if member:
-                        resolved.append((member.display_name, total))
-                except Exception:
-                    pass
-            top_users = sorted(resolved, key=lambda x: x[1], reverse=True)[:5]
+                except Exception as e:  # noqa: BLE001 — a member who left is skipped
+                    logger.debug("Feur leaderboard: member %s unavailable: %s", uid, e)
+                    continue
+                if member:
+                    top_users.append((member.display_name, total))
+                if len(top_users) == 5:
+                    break
 
         embed = Embed(
             title="📊 Statistiques Feur",

@@ -159,13 +159,21 @@ class PollButtonsMixin:
         # the same embed view (counts are still public — only voter identities
         # are hidden, since reactions aren't used).
         poll.votes[user_id] = new_ranking
-        try:
-            embed = copy_embed(ctx.message.embeds[0])
-            update_poll_embed(embed, poll)
-            await edit_message_if_changed(ctx.message, embed=embed, logger=logger)
-        except Exception:
-            pass
+        await self._refresh_poll_embed(ctx, poll)
         await ctx.send(feedback, ephemeral=True)
+
+    @staticmethod
+    async def _refresh_poll_embed(ctx: ComponentContext, poll: Poll) -> None:
+        """Show the new counts on the poll message; the vote is saved either way."""
+        if not ctx.message.embeds:
+            logger.warning("Poll %s: its message has no embed to refresh", poll.id)
+            return
+        embed = copy_embed(ctx.message.embeds[0])
+        update_poll_embed(embed, poll)
+        try:
+            await edit_message_if_changed(ctx.message, embed=embed, logger=logger)
+        except Exception as e:  # noqa: BLE001 — saved anyway; the next vote catches up
+            logger.warning("Poll %s: could not refresh its message: %s", poll.id, e)
 
     @component_callback(_RESET_RE)
     async def on_poll_reset(self, ctx: ComponentContext) -> None:
@@ -184,10 +192,5 @@ class PollButtonsMixin:
             return
         await repo.clear_vote(poll.id, user_id)
         poll.votes.pop(user_id, None)
-        try:
-            embed = copy_embed(ctx.message.embeds[0])
-            update_poll_embed(embed, poll)
-            await edit_message_if_changed(ctx.message, embed=embed, logger=logger)
-        except Exception:
-            pass
+        await self._refresh_poll_embed(ctx, poll)
         await ctx.send("Classement réinitialisé.", ephemeral=True)

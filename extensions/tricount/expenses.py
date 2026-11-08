@@ -15,6 +15,7 @@ from interactions import (
 
 from features.tricount import TricountRepository
 from src.core import logging as logutil
+from src.core.errors import DatabaseError
 from src.discord_ext.autocomplete import guild_group_autocomplete
 from src.discord_ext.embeds import Colors
 from src.discord_ext.messages import fetch_user_safe, require_guild
@@ -166,8 +167,8 @@ class ExpensesMixin:
                         choices.append({"name": cat, "value": cat})
                     if len(choices) >= 25:
                         break
-            except Exception:
-                pass
+            except DatabaseError as e:
+                logger.warning("Tricount categories unavailable for autocomplete: %s", e)
         await ctx.send(choices=choices[:25])
 
     @depense.autocomplete("groupe")
@@ -332,13 +333,8 @@ class ExpensesMixin:
                     group_name = group["name"]
                     break
 
-            payer_name = f"ID:{expense['payer']}"
-            try:
-                payer = self.bot.get_user(expense["payer"])
-                if payer:
-                    payer_name = payer.display_name
-            except Exception:
-                pass
+            payer = self.bot.get_user(expense["payer"])
+            payer_name = payer.display_name if payer else f"ID:{expense['payer']}"
 
             currency = guild_currency(ctx.guild.id)
             display_name = f"[{group_name}] {expense['amount']:.2f}{currency} - {expense['description']} (par {payer_name})"

@@ -302,32 +302,23 @@ class ApiMixin:
         return previous_record(self._stats_events, tracked)
 
     def _validate_api_data(self, data: Any, data_type: str) -> bool:
-        try:
-            if data_type == "planning":
-                return isinstance(data, list)
-            if not isinstance(data, dict):
-                return False
-
-            if data_type == "zevent":
-                required_keys = ["donationAmount", "live"]
-                return all(key in data for key in required_keys)
-            if data_type == "streamlabs":
-                return "amount_raised" in data
+        if data_type == "planning":
+            return isinstance(data, list)
+        if not isinstance(data, dict):
             return False
-        except Exception:
-            return False
+        if data_type == "zevent":
+            return all(key in data for key in ("donationAmount", "live"))
+        if data_type == "streamlabs":
+            return "amount_raised" in data
+        return False
 
     def _safe_get_data(self, data: Any, key_path: list[str], default: Any = None) -> Any:
-        try:
-            current = data
-            for key in key_path:
-                if isinstance(current, dict) and key in current:
-                    current = current[key]
-                else:
-                    return default
-            return current
-        except Exception:
-            return default
+        current = data
+        for key in key_path:
+            if not isinstance(current, dict) or key not in current:
+                return default
+            current = current[key]
+        return current
 
     def _is_event_started(self) -> bool:
         return datetime.now(UTC) >= self._event_start

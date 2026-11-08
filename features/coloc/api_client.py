@@ -7,6 +7,7 @@ from typing import Any
 from aiohttp import ClientError, ClientSession
 
 from src.core import logging as logutil
+from src.core.errors import IntegrationError
 from src.core.http import http_client
 
 from .constants import (
@@ -28,7 +29,7 @@ from .models import LootStatus, PremiumStatus
 logger = logutil.init_logger(__name__)
 
 
-class ZuniversAPIError(Exception):
+class ZuniversAPIError(IntegrationError):
     """Custom exception for Zunivers API errors."""
 
     def __init__(self, message: str, status_code: int | None = None):

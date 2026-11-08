@@ -22,7 +22,9 @@ def youtube(store_config):
     fake_key = "SECRET-KEY"  # pragma: allowlist secret
     store_config(
         {
-            "config": {"youtube": {"youtubeApiKey": fake_key}},
+            "config": {
+                "youtube": {"youtubeApiKey": fake_key, "youtubeApiUrl": "https://yt.example/v3/"}
+            },
             "servers": {
                 guild: {"moduleYoutube": {"enabled": True, **cfg}}
                 for guild, cfg in GUILD_CONFIG.items()
@@ -168,3 +170,15 @@ def test_api_key_never_appears_in_a_url(youtube, monkeypatch):
         assert "SECRET-KEY" not in call["url"]
         assert "key" not in call["params"]
         assert call["headers"]["X-Goog-Api-Key"] == "SECRET-KEY"
+        assert call["url"].startswith("https://yt.example/v3/")  # the configured base
+
+
+def test_no_api_url_means_no_check(youtube, monkeypatch, store_config):
+    calls: list = []
+    install_fakes(monkeypatch, youtube, latest={"alpha": "a1"}, calls=calls)
+    store_config({"config": {"youtube": {"youtubeApiKey": "k"}}, "servers": {}})
+    ext = make_extension(youtube, Bot({"100": Channel(), "200": Channel()}))
+
+    tick(youtube, ext)
+
+    assert calls == []

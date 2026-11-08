@@ -44,7 +44,7 @@ class AutomodMixin:
         settings = get_guild_settings(guild.id)
         if not settings:  # the module is off in this guild
             return
-        if is_staff(author, settings):
+        if is_staff(author, settings.get("staffRoleId")):
             return
 
         ignored_channels = {str(c) for c in settings.get("ignoredChannelIds", []) or []}

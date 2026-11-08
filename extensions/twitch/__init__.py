@@ -241,7 +241,8 @@ class TwitchExtension(
             for event in events:
                 try:
                     creator = await event.creator
-                except Exception:
+                except Exception as e:
+                    logger.debug("Creator of scheduled event %s unknown: %s", event.id, e)
                     continue
                 if creator and creator.id == self.bot.user.id:
                     owned.append(event)

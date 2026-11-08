@@ -4767,12 +4767,20 @@
     // {summary} flattened by the parser plus a Discord timestamp tag for the
     // publish time, and the link goes onto a Discord link button rather than
     // being embedded inline.
+    // The feeds' base URL is config (global section "rss"), fetched on first use.
     const _LOOTSCRAPER_DESC = '{summary}\n\n🕐 Publié {published_relative} ({published_short})';
-    const _LOOTSCRAPER_BASE = 'https://feed.eikowagenknecht.com/';
+    let _lootScraperBase = null;
+    async function lootScraperBase() {
+        if (_lootScraperBase === null) {
+            const data = await api('/api/presets/rss');
+            _lootScraperBase = (data && data.lootScraperBaseUrl) || '';
+        }
+        return _lootScraperBase;
+    }
     function _lsPreset(slug, file, label, color, btnLabel, opts = {}) {
         return {
             feed_id: slug,
-            url: _LOOTSCRAPER_BASE + file,
+            file,
             label,
             mode: 'embed',
             embed_color: color,
@@ -4842,10 +4850,21 @@
         'lootscraper-itch', 'lootscraper-steam',
     ];
 
-    function applyRssPreset(select) {
+    async function applyRssPreset(select) {
         const value = select.value;
         select.value = '';
         if (!value) return;
+        let base = '';
+        try {
+            base = await lootScraperBase();
+        } catch (e) {
+            return;  // api() already showed the error
+        }
+        if (!base) {
+            toast("Préréglages indisponibles : renseignez l'URL des flux LootScraper dans la section globale « Flux RSS ».", 'error');
+            return;
+        }
+        if (!base.endsWith('/')) base += '/';
         let list = select.previousElementSibling;
         while (list && !(list.classList && list.classList.contains('rssfeed-list'))) {
             list = list.previousElementSibling;
@@ -4865,7 +4884,8 @@
             const preset = RSS_PRESETS[id];
             if (!preset || existing.has(preset.feed_id)) continue;
             const wrapper = document.createElement('div');
-            wrapper.innerHTML = renderRssFeedEntry(preset.feed_id, preset).trim();
+            const { file, ...cfg } = preset;
+            wrapper.innerHTML = renderRssFeedEntry(preset.feed_id, { ...cfg, url: base + file }).trim();
             const entry = wrapper.firstElementChild;
             list.appendChild(entry);
             if (typeof populateChannelPickers === 'function') populateChannelPickers(entry);
@@ -8344,10 +8364,6 @@
         const div = document.createElement('div');
         div.textContent = String(str);
         return div.innerHTML.replace(/"/g, '&quot;');
-    }
-
-    function escapeRegExp(string) {
-        return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     }
 
     async function cleanupConfig() {

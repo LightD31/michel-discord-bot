@@ -298,6 +298,15 @@ class YoutubeSection(SchemaBase):
     youtubeApiKey: str = secret_field(
         "Clé API", required=True, description="Clé API YouTube Data v3."
     )
+    youtubeApiUrl: str = ui(
+        "URL de l'API",
+        "url",
+        required=True,
+        description=(
+            "Base de l'API YouTube Data v3 (https://www.googleapis.com/youtube/v3). "
+            "Vide : aucune vérification des chaînes."
+        ),
+    )
 
 
 @register_section("notion")

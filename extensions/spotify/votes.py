@@ -1,7 +1,6 @@
 """Daily poll, add-with-vote, rappelvote reminders, and button handlers."""
 
 import os
-import random
 from datetime import datetime, timedelta
 
 import spotipy
@@ -27,6 +26,13 @@ from interactions.api.events import Component
 from interactions.client.utils import timestamp_converter
 
 from features.spotify import MIN_VOTES, VoteCooldown, should_send_low_vote_reminder
+from features.spotify.votes import (
+    add_vote_deadline,
+    add_vote_passes,
+    daily_outcome,
+    pick_vote_track,
+    tally_daily_votes,
+)
 from src.core import logging as logutil
 from src.discord_ext.messages import (
     copy_embed,
@@ -45,7 +51,6 @@ from ._common import (
     EmbedType,
     ServerData,
     autocomplete_track_choices,
-    count_votes,
     embed_message_vote,
     embed_message_vote_add,
     embed_song,
@@ -91,10 +96,10 @@ class VotesMixin:
         song = await server.repo.get_playlist_item(track_id)
         logger.debug("song : %s\ntrack_id : %s", song, track_id)
         track = await spotify_api.track(track_id, market="FR")
-        conserver, supprimer, menfou, users = count_votes(votes["votes"], server.discord2name)
-
-        total_votes = conserver + supprimer + menfou
-        if total_votes < MIN_VOTES:
+        tally = tally_daily_votes(votes["votes"], server.discord2name)
+        outcome = daily_outcome(tally)
+        total_votes = tally.total
+        if outcome == "extend":
             new_time = str(self.randomvote.next_run)
             embed_original = copy_embed(message.embeds[0])
             embed_original.title = (
@@ -124,76 +129,55 @@ class VotesMixin:
             return
 
         logger.debug(
-            "keep : %s\nremove : %s\nmenfou : %s",
-            str(conserver),
-            str(supprimer),
-            str(menfou),
+            "keep : %s\nremove : %s\nmenfou : %s", tally.conserver, tally.supprimer, tally.menfou
         )
 
         await message.unpin()
         await self._delete_low_vote_reminder(server, channel)
-        if supprimer > conserver or (conserver == 0 and supprimer == 0 and menfou >= 3):
-            embed, file = await embed_song(
-                song=song,
-                track=track,
-                embedtype=EmbedType.VOTE_LOSE,
-                time=Timestamp.now(),
-                guild_id=server.guild_id,
-            )
-            await edit_message_if_changed(
-                message,
-                content="La chanson a été supprimée.",
-                embeds=[
-                    embed,
-                    await embed_message_vote(
-                        keep=conserver,
-                        remove=supprimer,
-                        menfou=menfou,
-                        users=users,
-                        color=MaterialColors.DEEP_ORANGE,
-                        guild_id=server.guild_id,
-                    ),
-                ],
-                components=[],
-                logger=logger,
-            )
+        await self._close_daily_vote(server, message, track_id, song, track, tally, outcome)
+        await self._start_new_vote(server)
+
+    async def _close_daily_vote(
+        self, server: ServerData, message, track_id: str, song: dict, track: dict, tally, outcome
+    ) -> None:
+        """Show the result on the poll and remove the song when it lost."""
+        removed = outcome == "remove"
+        content = "La chanson a été supprimée." if removed else "La chanson a été conservée."
+        embed, _ = await embed_song(
+            song=song,
+            track=track,
+            embedtype=EmbedType.VOTE_LOSE if removed else EmbedType.VOTE_WIN,
+            time=Timestamp.now(),
+            guild_id=server.guild_id,
+        )
+        await edit_message_if_changed(
+            message,
+            content=content,
+            embeds=[
+                embed,
+                await embed_message_vote(
+                    keep=tally.conserver,
+                    remove=tally.supprimer,
+                    menfou=tally.menfou,
+                    users=tally.voters,
+                    color=MaterialColors.DEEP_ORANGE if removed else MaterialColors.LIME,
+                    guild_id=server.guild_id,
+                ),
+            ],
+            components=[],
+            logger=logger,
+        )
+        if removed:
             await spotify_api.playlist_remove_all_occurrences_of_items(
                 server.playlist_id, [track_id]
             )
             await server.repo.delete_playlist_item(track_id)
             await server.repo.set_vote_state(track_id, "supprimée")
-            logger.info("La chanson a été supprimée.")
-            await self._check_playlist_changes_for_server(server)
         else:
-            logger.debug("La chanson a été conservée.")
-            logger.debug("track_id : %s\nmessage_id : %s", track_id, message_id)
-            embed, file = await embed_song(
-                song=song,
-                track=track,
-                embedtype=EmbedType.VOTE_WIN,
-                time=Timestamp.now(),
-                guild_id=server.guild_id,
-            )
-            await edit_message_if_changed(
-                message,
-                content="La chanson a été conservée.",
-                embeds=[
-                    embed,
-                    await embed_message_vote(
-                        keep=conserver,
-                        remove=supprimer,
-                        menfou=menfou,
-                        users=users,
-                        color=MaterialColors.LIME,
-                        guild_id=server.guild_id,
-                    ),
-                ],
-                components=[],
-                logger=logger,
-            )
             await server.repo.set_vote_state(track_id, "conservée")
-            logger.info("La chanson a été conservée.")
-        await self._start_new_vote(server)
+        logger.info(content)
+        if removed:
+            await self._check_playlist_changes_for_server(server)
 
     async def _send_low_vote_reminder(
         self,
@@ -251,14 +235,25 @@ class VotesMixin:
             )
 
     async def _start_new_vote(self, server: ServerData):
-        """Pick a fresh track (not previously voted on) and open a new poll."""
-        track_ids = set(await server.repo.playlist_track_ids())
-        pollhistory = set(await server.repo.voted_track_ids())
-        track_id = random.choice(list(track_ids))
-        logger.debug("track_id choisie : %s", track_id)
-        while track_id in pollhistory:
-            logger.warning("Chanson déjà votée, nouvelle chanson tirée au sort (%s)", track_id)
-            track_id = random.choice(list(track_ids))
+        """Pick a fresh track (not previously voted on) and open a new poll.
+
+        Once every track of the playlist has been put to the vote, no poll
+        opens: the previous one is forgotten, so the next run tries again (a
+        song added since then can be drawn).
+        """
+        track_id = pick_vote_track(
+            await server.repo.playlist_track_ids(), await server.repo.voted_track_ids()
+        )
+        if track_id is None:
+            logger.warning(
+                "Serveur %s : toutes les chansons de la playlist ont déjà été votées",
+                server.guild_id,
+            )
+            server.vote_infos.update(
+                {"message_id": None, "track_id": None, "extensions": 0, "reminder_message_id": None}
+            )
+            await self.save_voteinfos(server)
+            return
         logger.info("Chanson tirée au sort : %s", track_id)
         song = await server.repo.get_playlist_item(track_id)
         track = await spotify_api.track(song["_id"], market="FR")
@@ -353,16 +348,17 @@ class VotesMixin:
             else:
                 votes = await server.repo.record_vote(track_id, user_id, ctx.custom_id)
             logger.info("User %s voted %s", ctx.user.username, ctx.custom_id)
-            conserver, supprimer, menfou, users = count_votes(votes["votes"], server.discord2name)
-            users = ", ".join(users)
+            tally = tally_daily_votes(votes["votes"], server.discord2name)
             logger.info(
                 "Votes : %s conserver, %s supprimer, %s menfou",
-                conserver,
-                supprimer,
-                menfou,
+                tally.conserver,
+                tally.supprimer,
+                tally.menfou,
             )
-            total = conserver + supprimer + menfou
-            embed_original.fields[4].value = f"{total} vote{'s' if total > 1 else ''} ({users})"
+            total = tally.total
+            embed_original.fields[
+                4
+            ].value = f"{total} vote{'s' if total > 1 else ''} ({', '.join(tally.voters)})"
 
             await edit_message_if_changed(ctx.message, embeds=[embed_original], logger=logger)
 
@@ -577,11 +573,7 @@ class VotesMixin:
                         ),
                     ),
                 ]
-                time_deadline = (datetime.now() + timedelta(days=1)).replace(
-                    minute=0, second=0, microsecond=0
-                )
-                if time_deadline < datetime.now() + timedelta(days=1):
-                    time_deadline += timedelta(hours=1)
+                time_deadline = add_vote_deadline(datetime.now())
                 embed, file = await embed_song(
                     song=song,
                     track=track,
@@ -681,7 +673,7 @@ class VotesMixin:
         except spotipy.exceptions.SpotifyException as e:
             logger.error("Spotify API Error while using /addwithvote: %s", e)
             return False
-        if yes_votes > no_votes:
+        if add_vote_passes(yes_votes, no_votes):
             logger.debug("song : %s", song)
             if await server.repo.add_playlist_item(song):
                 try:

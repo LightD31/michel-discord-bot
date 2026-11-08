@@ -4,7 +4,7 @@ import os
 
 from src.core import logging as logutil
 from src.core.config import ModuleConfig
-from src.webui.schemas import SchemaBase, enabled_field, register_module, ui
+from src.webui.schemas import SchemaBase, enabled_field, register_module, register_section, ui
 
 logger = logutil.init_logger(__name__)
 
@@ -66,6 +66,24 @@ class RssConfig(SchemaBase):
 RSS = ModuleConfig(MODULE_KEY)
 
 
+@register_section("rss")
+class RssSection(SchemaBase):
+    """Dashboard-side settings of the RSS module, shared by every guild."""
+
+    __label__ = "Flux RSS"
+    __icon__ = "📰"
+
+    lootScraperBaseUrl: str = ui(
+        "Flux LootScraper",
+        "url",
+        description=(
+            "Adresse de base des flux LootScraper (https://feed.eikowagenknecht.com/), "
+            "utilisée par les préréglages « jeux gratuits » du module Flux RSS. "
+            "Vide : préréglages indisponibles."
+        ),
+    )
+
+
 __all__ = [
     "DEFAULT_TEMPLATE",
     "MAX_CONCURRENT_FETCHES",
@@ -73,5 +91,6 @@ __all__ = [
     "MODULE_KEY",
     "RSS",
     "RssConfig",
+    "RssSection",
     "logger",
 ]

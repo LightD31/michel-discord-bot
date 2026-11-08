@@ -3,11 +3,10 @@
 import os
 from typing import Any
 
-from interactions import Permissions
-
 from src.core import logging as logutil
 from src.core.config import ModuleConfig
 from src.discord_ext.embeds import Colors
+from src.discord_ext.staff import is_staff, top_role_position
 from src.webui.schemas import SchemaBase, enabled_field, register_module, ui
 
 logger = logutil.init_logger(__name__)
@@ -112,31 +111,6 @@ def get_guild_settings(guild_id: int | str) -> dict | None:
     return MODERATION.get(guild_id) or None
 
 
-def _top_role_position(member: Any) -> int:
-    """Highest role position held by *member* (0 if none / on error)."""
-    try:
-        positions = [getattr(r, "position", 0) or 0 for r in getattr(member, "roles", []) or []]
-        return max(positions) if positions else 0
-    except Exception:
-        return 0
-
-
-def is_staff(member: Any, settings: dict) -> bool:
-    """True if *member* is an administrator or holds the configured staff role."""
-    try:
-        if member.has_permission(Permissions.ADMINISTRATOR):
-            return True
-    except Exception:
-        pass
-    staff_role_id = settings.get("staffRoleId")
-    if not staff_role_id:
-        return False
-    try:
-        return any(int(getattr(r, "id", r)) == int(staff_role_id) for r in member.roles)
-    except Exception:
-        return False
-
-
 def can_moderate(actor: Any, target: Any, me: Any) -> str | None:
     """Return a French error string if *actor* may not moderate *target*, else None.
 
@@ -155,10 +129,10 @@ def can_moderate(actor: Any, target: Any, me: Any) -> str | None:
         return "Impossible de modérer le propriétaire du serveur."
 
     actor_is_owner = owner_id is not None and int(actor.id) == int(owner_id)
-    if not actor_is_owner and _top_role_position(target) >= _top_role_position(actor):
+    if not actor_is_owner and top_role_position(target) >= top_role_position(actor):
         return "Tu ne peux pas modérer un membre de rang égal ou supérieur au tien."
 
-    if me is not None and _top_role_position(target) >= _top_role_position(me):
+    if me is not None and top_role_position(target) >= top_role_position(me):
         return "Mon rôle est trop bas dans la hiérarchie pour modérer ce membre."
 
     return None

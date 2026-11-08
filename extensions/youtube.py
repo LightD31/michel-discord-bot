@@ -63,12 +63,21 @@ class YoutubeConfig(SchemaBase):
 
 logger = logutil.init_logger(__name__)
 YOUTUBE = ModuleConfig("moduleYoutube")
-YOUTUBE_API_URL = "https://www.googleapis.com/youtube/v3"
+
+
+def _setting(name: str) -> str:
+    """A field of the global section ``youtube``, read at each call."""
+    return str((global_config().get("youtube") or {}).get(name) or "").strip()
 
 
 def _api_key() -> str:
-    """The YouTube Data API key (global section ``youtube``), read at each call."""
-    return str((global_config().get("youtube") or {}).get("youtubeApiKey") or "").strip()
+    """The YouTube Data API key."""
+    return _setting("youtubeApiKey")
+
+
+def _api_url() -> str:
+    """The YouTube Data API base URL, without a trailing slash."""
+    return _setting("youtubeApiUrl").rstrip("/")
 
 
 class YoutubeExtension(Extension):
@@ -87,6 +96,9 @@ class YoutubeExtension(Extension):
     async def check_youtube(self):
         if not _api_key():
             logger.warning("No YouTube API key (youtube.youtubeApiKey): skipping the check")
+            return
+        if not _api_url():
+            logger.warning("No YouTube API URL (youtube.youtubeApiUrl): skipping the check")
             return
         # One read of every guild's last-seen videos per tick, not one per guild.
         youtube_data = await self.get_youtube_data()
@@ -168,7 +180,7 @@ class YoutubeExtension(Extension):
         it can't end up in a logged URL or an error message.
         """
         data = await fetch(
-            f"{YOUTUBE_API_URL}/{endpoint}",
+            f"{_api_url()}/{endpoint}",
             return_type="json",
             params=params,
             headers={"X-Goog-Api-Key": _api_key()},
