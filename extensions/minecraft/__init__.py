@@ -32,9 +32,9 @@ class Minecraft(Extension, StatusMixin, StatsMixin):
         self.image_cache = {}
         self.status_messages = GuildMessages(
             client,
-            module_name=MINECRAFT.key,
+            slot="minecraft:status",
+            label="Statut Minecraft",
             channel_key="minecraftChannelId",
-            message_key="minecraftMessageId",
             pin_key="minecraftPinMessage",
             initial_content="Initialisation du statut Minecraft…",
             logger=logger,

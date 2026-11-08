@@ -80,7 +80,6 @@ async def test_publish_edits_the_persistent_message_with_short_links(monkeypatch
     monkeypatch.setattr(embedmanager, "shorten_keyed", fake_shorten_keyed)
     guild_config = {
         "channelId": "100",
-        "messageId": "200",
         "pinMessage": True,
         "embeds": [{"title": "Liens", "links": [{"title": "Wiki", "url": "https://w"}]}],
     }
@@ -88,9 +87,7 @@ async def test_publish_edits_the_persistent_message_with_short_links(monkeypatch
     assert await publish_embeds(object(), "42", guild_config) is True
 
     assert fetched["channel_id"] == "100"
-    assert fetched["message_id"] == "200"
-    assert fetched["module_name"] == "moduleEmbedManager"
-    assert fetched["message_id_key"] == "messageId"
+    assert fetched["slot"] == "embedmanager"  # tracked in bot_messages, not in the config
     assert fetched["guild_id"] == "42"
     assert fetched["pin"] is True
     assert edited["message"] is message

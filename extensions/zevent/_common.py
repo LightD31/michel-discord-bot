@@ -18,7 +18,6 @@ from src.core.config import ModuleConfig, global_config
 from src.webui.schemas import (
     SchemaBase,
     enabled_field,
-    hidden_message_id,
     register_module,
     register_section,
     ui,
@@ -50,7 +49,6 @@ class ZeventConfig(SchemaBase):
         default=False,
         description="Épingler automatiquement le message de suivi.",
     )
-    zeventMessageId: str | None = hidden_message_id("Message", "zeventChannelId")
     zeventManageDiscordEvent: bool = ui(
         "Créer un événement Discord",
         "boolean",

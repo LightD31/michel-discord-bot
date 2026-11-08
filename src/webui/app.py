@@ -29,6 +29,9 @@ from src.webui.routes import (
     bot as bot_routes,
 )
 from src.webui.routes import (
+    bot_messages as bot_messages_routes,
+)
+from src.webui.routes import (
     config as config_routes,
 )
 from src.webui.routes import (
@@ -147,6 +150,7 @@ def create_app(bot=None, bot_loop=None) -> FastAPI:
     app.include_router(servers_routes.create_router(ctx))
     app.include_router(rolemenus_routes.create_router(ctx))
     app.include_router(moderation_routes.create_router(ctx))
+    app.include_router(bot_messages_routes.create_router(ctx))
     app.include_router(xp_routes.create_router(ctx))
     app.include_router(extensions_routes.create_router(ctx))
     app.include_router(spotify_routes.create_router(ctx))

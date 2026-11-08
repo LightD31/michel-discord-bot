@@ -47,27 +47,21 @@ logger = logutil.init_logger(__name__)
 TWITCH = ModuleConfig("moduleTwitch")
 
 
-def _save_streamer_channel_message(
-    guild_id: str,
-    streamer_id: str,
-    channel_id: str,
-    message_id: str,
-    pin: bool,
-) -> None:
-    """Persist planning channel/message for a specific streamer in config.json."""
+def _save_streamer_planning(guild_id: str, streamer_id: str, channel_id: str, pin: bool) -> None:
+    """Record in config.json where a streamer's planning goes (the message itself is
+    tracked in ``bot_messages``)."""
 
     def mutator(data: dict) -> None:
         guild = data.setdefault("servers", {}).setdefault(str(guild_id), {})
         streamer_list = guild.setdefault(TWITCH.key, {}).setdefault("twitchStreamerList", {})
         streamer_cfg = streamer_list.setdefault(streamer_id, {})
         streamer_cfg["twitchPlanningChannelId"] = str(channel_id)
-        streamer_cfg["twitchPlanningMessageId"] = str(message_id)
         streamer_cfg["twitchPlanningPinMessage"] = pin
 
     try:
         config_store.mutate(mutator)
     except (ConfigError, OSError) as e:
-        logger.error("Could not save the planning message of streamer %s: %s", streamer_id, e)
+        logger.error("Could not save the planning channel of streamer %s: %s", streamer_id, e)
 
 
 class TwitchExtension(
@@ -259,7 +253,7 @@ class TwitchExtension(
         # notification for that streamer is silently dropped.
         for streamer_key, streamer in self.streamers.items():
             try:
-                await self._hydrate_planning_message(streamer)
+                await self._planning_message(streamer)
             except Exception as e:
                 logger.error("Error initializing planning message for %s: %s", streamer_key, e)
 
@@ -279,47 +273,6 @@ class TwitchExtension(
                 )
             except Exception as e:
                 logger.error("Error matching scheduled event for %s: %s", streamer_key, e)
-
-    async def _hydrate_planning_message(self, streamer: StreamerInfo) -> None:
-        """Fetch (or recreate) the streamer's planning message, if configured."""
-        if not streamer.planning_channel_id:
-            return
-
-        streamer.channel = await self.bot.fetch_channel(streamer.planning_channel_id)
-
-        msg = None
-        if (
-            streamer.planning_message_id
-            and streamer.channel
-            and hasattr(streamer.channel, "fetch_message")
-        ):
-            try:
-                msg = await streamer.channel.fetch_message(streamer.planning_message_id)
-            except Exception as e:
-                logger.warning(
-                    "Streamer %s: could not fetch planning message %s (%s); recreating",
-                    streamer.streamer_id,
-                    streamer.planning_message_id,
-                    e,
-                )
-        if msg is None and streamer.channel and hasattr(streamer.channel, "send"):
-            msg = await streamer.channel.send(
-                f"Initialisation du planning de {streamer.streamer_id}…"
-            )
-            if streamer.planning_pin:
-                try:
-                    await msg.pin()
-                except Exception as e:
-                    logger.warning("Could not pin planning message: %s", e)
-            _save_streamer_channel_message(
-                str(streamer.guild_id),
-                streamer.streamer_id,
-                str(streamer.channel.id),
-                str(msg.id),
-                streamer.planning_pin,
-            )
-            streamer.planning_message_id = int(msg.id)
-        streamer.message = msg
 
     @listen()
     async def on_ready(self):
@@ -399,20 +352,15 @@ class TwitchExtension(
         if streamer_info is None:
             await send_error(ctx, f"Streamer '{streamer}' non trouvé pour ce serveur.")
             return
-        msg = await channel.send(f"Initialisation du planning de {streamer}…")
-        if pin:
-            try:
-                await msg.pin()
-            except Exception as e:
-                logger.warning("Could not pin planning message: %s", e)
-        _save_streamer_channel_message(
-            str(ctx.guild.id), streamer, str(channel.id), str(msg.id), pin
-        )
+        _save_streamer_planning(str(ctx.guild.id), streamer, str(channel.id), pin)
         streamer_info.planning_channel_id = int(channel.id)
-        streamer_info.planning_message_id = int(msg.id)
         streamer_info.planning_pin = pin
-        streamer_info.channel = channel
-        streamer_info.message = msg
+        # The message already in that channel is kept; otherwise one is posted.
+        if await self._planning_message(streamer_info) is None:
+            await send_error(
+                ctx, f"Impossible de créer le message de planning dans {channel.mention}."
+            )
+            return
         await send_success(
             ctx,
             f"Message de planning créé pour **{streamer}** dans {channel.mention}"

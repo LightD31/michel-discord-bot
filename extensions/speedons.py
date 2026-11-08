@@ -21,7 +21,6 @@ from src.discord_ext.paginator import CustomPaginator
 from src.webui.schemas import (
     SchemaBase,
     enabled_field,
-    hidden_message_id,
     register_module,
     ui,
 )
@@ -46,12 +45,6 @@ class SpeedonsConfig(SchemaBase):
         "boolean",
         default=False,
         description="Épingler automatiquement les messages planning et live.",
-    )
-    speedonsScheduleMessageId: str | None = hidden_message_id(
-        "Message planning", "speedonsChannelId"
-    )
-    speedonsLiveMessageId: str | None = hidden_message_id(
-        "Message run en cours", "speedonsChannelId"
     )
     speedonsApiUrl: str = ui(
         "URL API",
@@ -223,18 +216,18 @@ class SpeedonsExtension(Extension):
         self.bot = bot
         self.schedule_messages = GuildMessages(
             bot,
-            module_name=SPEEDONS.key,
+            slot="speedons:schedule",
+            label="Planning Speedons",
             channel_key="speedonsChannelId",
-            message_key="speedonsScheduleMessageId",
             pin_key="speedonsPinMessages",
             initial_content="Initialisation du planning Speedons…",
             logger=logger,
         )
         self.live_messages = GuildMessages(
             bot,
-            module_name=SPEEDONS.key,
+            slot="speedons:live",
+            label="Run Speedons en cours",
             channel_key="speedonsChannelId",
-            message_key="speedonsLiveMessageId",
             pin_key="speedonsPinMessages",
             initial_content="Initialisation du run en cours…",
             logger=logger,

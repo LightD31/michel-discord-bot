@@ -70,6 +70,7 @@ for entry in sorted(os.listdir("extensions")):
             }
     out["extensions"][name] = classes
 out["schemas"] = sorted(schemas.MODULE_SCHEMAS)
+out["fields"] = {key: list(cls.model_fields) for key, cls in schemas._MODULE_REGISTRY.items()}
 with open(sys.argv[1], "w", encoding="utf-8") as f:
     json.dump(out, f)
 """
@@ -90,6 +91,17 @@ def probe(tmp_path_factory) -> dict:
 
 def test_every_extension_imports(probe):
     assert probe["failures"] == []
+
+
+def test_no_module_schema_declares_a_message_id(probe):
+    """Where the bot's messages live is runtime state: ``bot_messages``, not config.json."""
+    offenders = [
+        f"{key}.{name}"
+        for key, names in probe["fields"].items()
+        for name in names
+        if name.lower().endswith("messageid")
+    ]
+    assert offenders == []
 
 
 def test_every_extension_declares_its_modules_explicitly(probe):

@@ -266,26 +266,20 @@ class PlaylistMixin:
                 )
                 recap_content += f"\nDashboard : {dashboard}"
             try:
-                cached_channel = getattr(getattr(server.recap_message, "channel", None), "id", None)
-                if cached_channel is not None and str(cached_channel) != str(
-                    server.recap_channel_id
-                ):
-                    server.recap_message = None  # the recap channel changed in the dashboard
-                if server.recap_message is None:
-                    server.recap_message = await fetch_or_create_persistent_message(
-                        self.bot,
-                        channel_id=server.recap_channel_id,
-                        message_id=server.recap_message_id,
-                        module_name="moduleSpotify",
-                        message_id_key="spotifyRecapMessageId",
-                        guild_id=server.guild_id,
-                        initial_content=recap_content,
-                        pin=server.recap_pin,
-                        logger=logger,
-                    )
-                if server.recap_message is not None:
+                # Resolved again when the recap channel changes in the dashboard.
+                recap_message = await fetch_or_create_persistent_message(
+                    self.bot,
+                    guild_id=server.guild_id,
+                    slot="spotify:recap",
+                    channel_id=server.recap_channel_id,
+                    label="Récap playlist Spotify",
+                    initial_content=recap_content,
+                    pin=server.recap_pin,
+                    logger=logger,
+                )
+                if recap_message is not None:
                     await edit_message_if_changed(
-                        server.recap_message, content=recap_content, logger=logger
+                        recap_message, content=recap_content, logger=logger
                     )
             except Exception as e:
                 logger.error("Error while trying to edit recap message: %s", e)

@@ -160,11 +160,10 @@ class LeaderboardMixin:
 
             message: Message = await fetch_or_create_persistent_message(
                 self.bot,
-                channel_id=channel_id,
-                message_id=guild_config.get("xpMessageId"),
-                module_name="moduleXp",
-                message_id_key="xpMessageId",
                 guild_id=guild_id,
+                slot="xp:leaderboard",
+                channel_id=channel_id,
+                label="Leaderboard XP",
                 initial_content="Initialisation du leaderboard…",
                 pin=bool(guild_config.get("xpPinMessage", False)),
                 logger=logger,

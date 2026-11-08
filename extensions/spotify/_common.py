@@ -15,7 +15,6 @@ from enum import Enum
 from typing import Any
 
 import interactions
-from interactions import Message
 
 from features.spotify import SpotifyRepository
 from features.spotify import search as track_search
@@ -34,7 +33,6 @@ from src.webui.public_links import (
 from src.webui.schemas import (
     SchemaBase,
     enabled_field,
-    hidden_message_id,
     register_module,
     ui,
 )
@@ -93,9 +91,6 @@ class SpotifyConfig(SchemaBase):
         "boolean",
         default=False,
         description="Épingler automatiquement le message de récap de la playlist.",
-    )
-    spotifyRecapMessageId: str | None = hidden_message_id(
-        "ID message récap", "spotifyRecapChannelId"
     )
     publicDashboard: bool = ui(
         "Dashboard public",
@@ -288,7 +283,6 @@ class ServerData:
 
     def __init__(self, guild_id: str):
         self.guild_id = guild_id
-        self.recap_message: Message | None = None
 
         self.repo = SpotifyRepository(guild_id)
 
@@ -330,10 +324,6 @@ class ServerData:
     @property
     def recap_channel_id(self) -> str | None:
         return self._config.get("spotifyRecapChannelId")
-
-    @property
-    def recap_message_id(self) -> str | None:
-        return self._config.get("spotifyRecapMessageId")
 
     @property
     def recap_pin(self) -> bool:

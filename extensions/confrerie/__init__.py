@@ -50,9 +50,9 @@ class ConfrerieExtension(
         )
         self.recap_messages = GuildMessages(
             bot,
-            module_name=CONFRERIE.key,
+            slot="confrerie:recap",
+            label="Récapitulatif Confrérie",
             channel_key="confrerieRecapChannelId",
-            message_key="confrerieRecapMessageId",
             pin_key="confrerieRecapPinMessage",
             initial_content="Initialisation du récapitulatif…",
             logger=logger,

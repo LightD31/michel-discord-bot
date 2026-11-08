@@ -3515,20 +3515,7 @@
             const isRequired = field.required || false;
 
             if (field.hidden) {
-                if (fieldType === 'message') {
-                    const msgId = hasValue ? String(value) : '';
-                    const chanKey = field.channelField || '';
-                    const chanVal = chanKey && values[chanKey] ? String(values[chanKey]) : '';
-                    html += `<div class="form-field" data-key="${key}">
-                        <div class="form-field-header">
-                            <label class="form-label">${field.label || key}</label>
-                        </div>
-                        <div class="message-status ${msgId ? 'configured' : 'pending'}" data-message-status="${key}">
-                            ${renderMessageStatusBody(msgId, chanVal, key)}
-                        </div>
-                        <input type="hidden" data-field="${key}" data-type="message" value="${escapeHtml(msgId)}">
-                    </div>`;
-                } else if (hasValue) {
+                if (hasValue) {
                     html += `<input type="hidden" data-field="${key}" data-type="${fieldType}" value="${escapeHtml(String(value))}">`;
                 }
                 continue;
@@ -4060,13 +4047,12 @@
                     const manualVisible = manual && manual.style.display !== 'none';
                     chan = (manualVisible ? (manual?.value ?? '') : (select?.value ?? '')).trim();
                 }
-                const msg = entry.querySelector('input[data-team-field="messageId"]')?.value?.trim() || '';
                 const pinCb = entry.querySelector('input[type="checkbox"][data-team-field="pin"]');
                 const pin = !!(pinCb && pinCb.checked);
                 if (name) {
                     const team = { name };
                     if (vlrTeamId) team.vlrTeamId = vlrTeamId;
-                    if (chan) team.channelMessageId = msg ? `${chan}:${msg}` : chan;
+                    if (chan) team.channelId = chan;
                     if (pin) team.pin = true;
                     teams.push(team);
                 }
@@ -4228,11 +4214,9 @@
                 };
                 const planningChan = pickValue(planningPicker);
                 const notifChan = pickValue(notifPicker);
-                const messageId = entry.querySelector('[data-streamer-field="twitchPlanningMessageId"]')?.value?.trim() || '';
                 const planningEnabled = !!entry.querySelector('[data-streamer-planning-enabled]')?.checked;
                 const cfg = {};
                 if (planningEnabled && planningChan) cfg.twitchPlanningChannelId = planningChan;
-                if (planningEnabled && messageId) cfg.twitchPlanningMessageId = messageId;
                 if (notifChan) cfg.twitchNotificationChannelId = notifChan;
                 for (const t of STREAMER_TOGGLE_FIELDS) {
                     if (t.planningOnly && !planningEnabled) continue;
@@ -4597,8 +4581,7 @@
     function renderStreamerEntry(login, cfg) {
         const planningChan = cfg.twitchPlanningChannelId ? String(cfg.twitchPlanningChannelId) : '';
         const notifChan = cfg.twitchNotificationChannelId ? String(cfg.twitchNotificationChannelId) : '';
-        const planningMsg = cfg.twitchPlanningMessageId ? String(cfg.twitchPlanningMessageId) : '';
-        const planningEnabled = !!(planningChan || planningMsg);
+        const planningEnabled = !!planningChan;
         const toggles = STREAMER_TOGGLE_FIELDS.map(t => `
             <label class="streamer-toggle-inline${t.planningOnly ? ' planning-only' : ''}">
                 <input type="checkbox" data-streamer-field="${t.key}" ${cfg[t.key] ? 'checked' : ''}>
@@ -4639,10 +4622,6 @@
                     </div>
                 </div>
                 <div class="streamer-toggles">${toggles}</div>
-                <div class="message-status planning-only ${planningMsg ? 'configured' : 'pending'}" data-streamer-status>
-                    ${renderStreamerMessageStatusBody(planningMsg, planningChan)}
-                </div>
-                <input type="hidden" data-streamer-field="twitchPlanningMessageId" value="${escapeHtml(planningMsg)}">
             </div>`;
     }
 
@@ -4650,36 +4629,6 @@
         const entry = checkbox.closest('.streamer-entry');
         if (!entry) return;
         entry.classList.toggle('planning-disabled', !checkbox.checked);
-    }
-
-    function renderStreamerMessageStatusBody(msgId, channelId) {
-        if (!msgId) {
-            return `<span class="status-icon">⏳</span>
-                    <span class="status-text">Message de planning pas encore créé</span>`;
-        }
-        const serverId = state.currentServerId;
-        const link = (serverId && channelId)
-            ? `https://discord.com/channels/${serverId}/${channelId}/${msgId}`
-            : '';
-        return `<span class="status-icon">✅</span>
-                <span class="status-text">Planning <code>${escapeHtml(msgId)}</code></span>
-                ${link ? `<a class="status-link" href="${link}" target="_blank" rel="noreferrer">↗ voir</a>` : ''}
-                <button type="button" class="btn-status-reset" onclick="clearStreamerMessageId(this)"
-                        title="Vider l'ID pour que le bot recrée le message">🔄 Recréer</button>`;
-    }
-
-    function clearStreamerMessageId(btn) {
-        const entry = btn.closest('.streamer-entry');
-        if (!entry) return;
-        const hidden = entry.querySelector('input[data-streamer-field="twitchPlanningMessageId"]');
-        if (hidden) hidden.value = '';
-        const status = entry.querySelector('[data-streamer-status]');
-        if (status) {
-            status.classList.remove('configured');
-            status.classList.add('pending');
-            status.innerHTML = `<span class="status-icon">⏳</span>
-                <span class="status-text">Vidé — sauvegardez pour recréer</span>`;
-        }
     }
 
     function addStreamerEntry(btn) {
@@ -4977,15 +4926,7 @@
 
     function renderTeamEntry(t, idx) {
         t = t || {};
-        let chan = '', msg = '';
-        const cm = t.channelMessageId || '';
-        if (cm.includes(':')) {
-            const parts = cm.split(':', 2);
-            chan = (parts[0] || '').trim();
-            msg = (parts[1] || '').trim();
-        } else if (cm) {
-            chan = cm.trim();
-        }
+        const chan = String(t.channelId || '').trim();
         const pin = !!t.pin;
         return `
             <div class="team-entry" data-team-idx="${idx}">
@@ -5015,43 +4956,9 @@
                         <input type="checkbox" data-team-field="pin" ${pin ? 'checked' : ''}>
                         <span>Épingler le message</span>
                     </label>
-                    <div class="message-status ${msg ? 'configured' : 'pending'}" data-team-status>
-                        ${renderTeamMessageStatusBody(msg, chan)}
-                    </div>
                     <button class="btn-remove-team" onclick="this.closest('.team-entry').remove()" title="Supprimer">✕</button>
                 </div>
-                <input type="hidden" data-team-field="messageId" value="${escapeHtml(msg)}">
             </div>`;
-    }
-
-    function renderTeamMessageStatusBody(msgId, channelId) {
-        if (!msgId) {
-            return `<span class="status-icon">⏳</span>
-                    <span class="status-text">Message pas encore créé</span>`;
-        }
-        const serverId = state.currentServerId;
-        const link = (serverId && channelId)
-            ? `https://discord.com/channels/${serverId}/${channelId}/${msgId}`
-            : '';
-        return `<span class="status-icon">✅</span>
-                <span class="status-text">Message <code>${escapeHtml(msgId)}</code></span>
-                ${link ? `<a class="status-link" href="${link}" target="_blank" rel="noreferrer">↗ voir</a>` : ''}
-                <button type="button" class="btn-status-reset" onclick="clearTeamMessageId(this)"
-                        title="Vider l'ID pour que le bot recrée le message">🔄 Recréer</button>`;
-    }
-
-    function clearTeamMessageId(btn) {
-        const entry = btn.closest('.team-entry');
-        if (!entry) return;
-        const hidden = entry.querySelector('input[data-team-field="messageId"]');
-        if (hidden) hidden.value = '';
-        const status = entry.querySelector('[data-team-status]');
-        if (status) {
-            status.classList.remove('configured');
-            status.classList.add('pending');
-            status.innerHTML = `<span class="status-icon">⏳</span>
-                <span class="status-text">Vidé — sauvegardez pour recréer</span>`;
-        }
     }
 
     function addTeamEntry(btn) {
@@ -5211,37 +5118,6 @@
     function togglePasswordVisibility(btn) {
         const input = btn.previousElementSibling;
         input.type = input.type === 'password' ? 'text' : 'password';
-    }
-
-    // ── Auto-managed message status ───────────────────
-    function renderMessageStatusBody(msgId, channelId, fieldKey) {
-        if (!msgId) {
-            return `<span class="status-icon">⏳</span>
-                    <span class="status-text">Pas encore créé — sera créé au prochain cycle du module.</span>`;
-        }
-        const serverId = state.currentServerId;
-        const link = (serverId && channelId)
-            ? `https://discord.com/channels/${serverId}/${channelId}/${msgId}`
-            : '';
-        return `<span class="status-icon">✅</span>
-                <span class="status-text">Configuré (ID <code>${escapeHtml(msgId)}</code>)</span>
-                ${link ? `<a class="status-link" href="${link}" target="_blank" rel="noreferrer">↗ voir</a>` : ''}
-                <button type="button" class="btn-status-reset" onclick="clearMessageId('${fieldKey}')"
-                        title="Vider l'ID pour que le bot recrée le message">🔄 Recréer</button>`;
-    }
-
-    function clearMessageId(fieldKey) {
-        const form = document.querySelector('.schema-form');
-        if (!form) return;
-        const input = form.querySelector(`input[data-field="${fieldKey}"][data-type="message"]`);
-        if (input) input.value = '';
-        const status = form.querySelector(`[data-message-status="${fieldKey}"]`);
-        if (status) {
-            status.classList.remove('configured');
-            status.classList.add('pending');
-            status.innerHTML = `<span class="status-icon">⏳</span>
-                <span class="status-text">Vidé — sauvegardez pour que le bot recrée le message.</span>`;
-        }
     }
 
     // ── Channel picker ────────────────────────────────
@@ -5596,6 +5472,10 @@
             populateChannelPickers(document);
             populateMemberPickers(document);
             refreshAiModelSelects(document);
+        }
+        // Server page: the messages the bot keeps up to date there.
+        if (state.currentPage === 'server' && state.currentServerId) {
+            loadBotMessages(state.currentServerId);
         }
         // Reaction-roles builder: load existing menus when on its module page.
         if (state.currentPage === 'module' && state.currentModule === 'moduleReactionRoles' && state.currentServerId) {
@@ -6670,7 +6550,57 @@
                     }).join('')}
                 </div>
             </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title">Messages du bot</div>
+                </div>
+                <p style="color:var(--text-muted); margin:0 0 12px;">
+                    Messages que le bot tient à jour dans ce serveur. « Republier » supprime le
+                    message ; le module le reposte en bas de son salon à son prochain rafraîchissement.
+                </p>
+                <div id="bot-messages-list"><div class="loading"><div class="spinner"></div></div></div>
+            </div>
         `;
+    }
+
+    async function loadBotMessages(serverId) {
+        const container = document.getElementById('bot-messages-list');
+        if (!container) return;
+        let items = [];
+        try {
+            const data = await api(`/api/servers/${encodeURIComponent(serverId)}/bot-messages`);
+            items = data?.messages || [];
+        } catch (e) {
+            container.innerHTML = `<p style="color:var(--text-muted)">Liste indisponible.</p>`;
+            return;
+        }
+        if (items.length === 0) {
+            container.innerHTML = `<p style="color:var(--text-muted)">Aucun message pour l'instant : chaque module poste le sien à son premier rafraîchissement.</p>`;
+            return;
+        }
+        container.innerHTML = items.map(m => `
+            <div class="message-status configured" style="margin-bottom:8px;">
+                <span class="status-icon">📌</span>
+                <span class="status-text"><strong>${escapeHtml(m.label)}</strong> · salon <code>${escapeHtml(m.channelId)}</code></span>
+                <a class="status-link" href="${escapeHtml(m.url)}" target="_blank" rel="noreferrer">↗ voir</a>
+                <button type="button" class="btn-status-reset" data-slot="${escapeHtml(m.slot)}"
+                        onclick="republishBotMessage('${escapeHtml(serverId)}', this.dataset.slot, this)"
+                        title="Supprimer le message pour que le bot le reposte">🔄 Republier</button>
+            </div>`).join('');
+    }
+
+    async function republishBotMessage(serverId, slot, btn) {
+        if (!confirm('Supprimer ce message ? Le bot le repostera à son prochain rafraîchissement.')) return;
+        if (btn) btn.disabled = true;
+        try {
+            await api(`/api/servers/${encodeURIComponent(serverId)}/bot-messages/republish`, {
+                method: 'POST',
+                body: JSON.stringify({ slot }),
+            });
+            toast('Message supprimé — il sera reposté au prochain rafraîchissement du module.', 'success');
+        } catch (e) { /* handled by api() */ }
+        await loadBotMessages(serverId);
     }
 
     async function toggleModule(serverId, moduleName, enabled) {

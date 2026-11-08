@@ -63,9 +63,9 @@ class Zevent(
         self.twitch: Twitch | None = None
         self.messages = GuildMessages(
             client,
-            module_name=ZEVENT.key,
+            slot="zevent",
+            label="Suivi Zevent",
             channel_key="zeventChannelId",
-            message_key="zeventMessageId",
             pin_key="zeventPinMessage",
             initial_content="Initialisation Zevent…",
             logger=logger,

@@ -12,7 +12,6 @@ from src.core.errors import BotError
 from src.webui.schemas import (
     SchemaBase,
     enabled_field,
-    hidden_message_id,
     register_module,
     ui,
 )
@@ -49,9 +48,6 @@ class ConfrerieConfig(SchemaBase):
         "boolean",
         default=False,
         description="Épingler automatiquement le message de récap.",
-    )
-    confrerieRecapMessageId: str | None = hidden_message_id(
-        "Message récap", "confrerieRecapChannelId"
     )
     confrerieDefiChannelId: str | None = ui(
         "Salon défis",

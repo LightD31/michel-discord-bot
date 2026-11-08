@@ -7,6 +7,7 @@ previously lived in every extension.
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import logging
 from collections.abc import Sequence
@@ -15,6 +16,9 @@ from urllib.parse import urlsplit
 
 from interactions import Client, Embed, Message, SlashContext, ThreadChannel
 from interactions.models.discord.components import process_components
+
+from src.core.errors import DatabaseError
+from src.core.message_refs import MessageRefRepository
 
 # ---------------------------------------------------------------------------
 # Ephemeral responses
@@ -262,58 +266,102 @@ async def edit_message_if_changed(
 
 
 # ---------------------------------------------------------------------------
-# Persistent module message (auto-create + pin + persist id)
+# Persistent module message (auto-create + pin + remember where it lives)
 # ---------------------------------------------------------------------------
+
+# Messages already resolved in this process, by (guild, slot): the channel each
+# was resolved for and the message. Shared by every caller and kept across
+# extension reloads, so a slot is looked up in MongoDB once per process.
+_resolved: dict[tuple[str, str], tuple[str, Message]] = {}
+# One resolution at a time per slot: two refreshes racing on a slot not yet
+# resolved would otherwise both post a message.
+_slot_locks: dict[tuple[str, str], asyncio.Lock] = {}
 
 
 async def fetch_or_create_persistent_message(
     bot: Client,
     *,
+    guild_id: int | str,
+    slot: str,
     channel_id: int | str | None,
-    message_id: int | str | None,
-    module_name: str,
-    message_id_key: str,
-    guild_id: int | str | None = None,
     initial_content: str = "Initialisation…",
     pin: bool = False,
+    label: str = "",
     logger: logging.Logger | None = None,
 ) -> Message | None:
-    """Return the module's persistent Discord message, creating it if missing.
+    """Return the guild's message for *slot* in *channel_id*, creating it if missing.
 
     Flow:
-      1. If ``message_id`` is set, try to fetch it from ``channel_id``.
-      2. On miss (deleted, None, error), send a placeholder in the channel,
-         optionally pin it, and persist the new id in ``config.json`` under
-         ``servers.<guild_id>.<module_name>.<message_id_key>``.
+      1. Already resolved in this process for this channel: returned as is.
+      2. Otherwise the slot's stored reference (``bot_messages`` in the guild's
+         database, :mod:`src.core.message_refs`) is fetched, when it points
+         into this channel.
+      3. On a miss (nothing stored, another channel, deleted), a placeholder
+         is sent, optionally pinned, and where it lives is stored.
 
-    Callers should store the returned Message and edit it going forward.
+    An unreadable store gives ``None`` rather than a new message: posting
+    while the stored one can't be checked would leave a duplicate behind. The
+    caller tries again at its next refresh. *label* names the message in the
+    dashboard.
     """
     if not channel_id:
         return None
+    gid, wanted = str(guild_id), str(channel_id)
+    cached = _resolved.get((gid, slot))
+    if cached is not None and cached[0] == wanted:
+        return cached[1]
+    async with _slot_locks.setdefault((gid, slot), asyncio.Lock()):
+        cached = _resolved.get((gid, slot))
+        if cached is not None and cached[0] == wanted:
+            return cached[1]
+        message = await _resolve(bot, gid, slot, wanted, initial_content, pin, label, logger)
+        if message is not None:
+            _resolved[(gid, slot)] = (wanted, message)
+        return message
+
+
+async def _resolve(
+    bot: Client,
+    gid: str,
+    slot: str,
+    wanted: str,
+    initial_content: str,
+    pin: bool,
+    label: str,
+    logger: logging.Logger | None,
+) -> Message | None:
+    repo = MessageRefRepository(gid)
+    try:
+        ref = await repo.get(slot)
+    except (DatabaseError, RuntimeError) as e:
+        # RuntimeError: no ``mongodb.url`` at all, raised before the driver.
+        if logger:
+            logger.error("Guild %s: could not read where message %s lives: %s", gid, slot, e)
+        return None
 
     try:
-        channel = await bot.fetch_channel(int(channel_id))
+        channel = await bot.fetch_channel(int(wanted))
     except Exception as e:  # noqa: BLE001 — log and return None
         if logger:
-            logger.error("Could not fetch channel %s: %s", channel_id, e)
+            logger.error("Could not fetch channel %s: %s", wanted, e)
         return None
     if channel is None or not hasattr(channel, "send"):
         return None
 
     await unarchive_if_thread(channel, logger=logger)
 
-    if message_id:
+    if ref is not None and ref.channel_id == wanted and ref.message_id:
         try:
             # hasattr check above narrows this at runtime; mypy can't see it.
-            existing = await channel.fetch_message(int(message_id))  # type: ignore[union-attr]
+            existing = await channel.fetch_message(int(ref.message_id))  # type: ignore[union-attr]
             if existing is not None:
                 return existing
         except Exception as e:  # noqa: BLE001 — log and recreate
             if logger:
                 logger.warning(
                     "Persistent message %s missing in channel %s (%s); recreating",
-                    message_id,
-                    channel_id,
+                    ref.message_id,
+                    wanted,
                     e,
                 )
 
@@ -321,7 +369,7 @@ async def fetch_or_create_persistent_message(
         msg = await channel.send(initial_content)
     except Exception as e:  # noqa: BLE001 — log and return None
         if logger:
-            logger.error("Could not create persistent message in %s: %s", channel_id, e)
+            logger.error("Could not create persistent message in %s: %s", wanted, e)
         return None
 
     if pin:
@@ -331,99 +379,125 @@ async def fetch_or_create_persistent_message(
             if logger:
                 logger.warning("Could not pin persistent message %s: %s", msg.id, e)
 
-    if guild_id is not None:
-        try:
-            from src.core.config import save_module_field
-
-            save_module_field(module_name, guild_id, message_id_key, str(msg.id))
-        except Exception as e:  # noqa: BLE001 — log and continue
-            if logger:
-                logger.error("Could not save message id to config: %s", e)
-
+    try:
+        await repo.save(slot, wanted, str(msg.id), label=label)
+    except (DatabaseError, RuntimeError) as e:
+        if logger:
+            logger.error("Guild %s: could not store where message %s lives: %s", gid, slot, e)
     return msg
+
+
+def forget_persistent_message(guild_id: int | str, slot: str) -> None:
+    """Resolve the slot again at its next use (its message was deleted, say)."""
+    _resolved.pop((str(guild_id), slot), None)
+
+
+def cached_persistent_message(guild_id: int | str, slot: str) -> Message | None:
+    """The slot's message if this process already resolved it, without any call."""
+    entry = _resolved.get((str(guild_id), slot))
+    return entry[1] if entry else None
+
+
+async def republish_persistent_message(
+    bot: Client, guild_id: int | str, slot: str, *, logger: logging.Logger | None = None
+) -> bool:
+    """Delete the slot's message and its reference, so the next refresh posts it anew.
+
+    Used to bring a message back to the bottom of its channel. Returns
+    ``False`` when the slot was unknown. Run it on the bot loop.
+    """
+    ref = await MessageRefRepository(guild_id).delete(slot)
+    forget_persistent_message(guild_id, slot)
+    if ref is None:
+        return False
+    try:
+        channel = await bot.fetch_channel(int(ref.channel_id))
+        message = await channel.fetch_message(int(ref.message_id))  # type: ignore[union-attr]
+        if message is not None:
+            await message.delete()
+    except Exception as e:  # noqa: BLE001 — already gone, or no permission: the slot is reset anyway
+        if logger:
+            logger.info("Guild %s: old message of %s not deleted: %s", guild_id, slot, e)
+    return True
 
 
 class GuildMessages:
     """One persistent message per guild for a module, kept between refreshes.
 
     A periodic refresher calls ``await messages.get(guild_id, settings)`` with
-    the guild's live module settings. The message is fetched (or created, and
-    its id saved under *message_key*) on first use, then reused; it is fetched
-    again when the configured channel changes, so a dashboard edit applies at
-    the next refresh without reloading the extension. A guild without a
-    channel gets ``None``. ``keep_only()`` drops the guilds where the module
-    was switched off.
+    the guild's live module settings; the message lives in the channel named by
+    *channel_key*. It is resolved through :func:`fetch_or_create_persistent_message`
+    under *slot*: fetched (or created, and where it lives stored) on first use,
+    then reused, and resolved again when the configured channel changes, so a
+    dashboard edit applies at the next refresh without reloading the
+    extension. A guild without a channel gets ``None``. ``keep_only()`` drops
+    the guilds where the module was switched off.
     """
 
     def __init__(
         self,
         bot: Client,
         *,
-        module_name: str,
+        slot: str,
         channel_key: str,
-        message_key: str,
+        label: str = "",
         initial_content: str = "Initialisation…",
         pin_key: str | None = None,
         logger: logging.Logger | None = None,
     ) -> None:
         self.bot = bot
-        self.module_name = module_name
+        self.slot = slot
         self.channel_key = channel_key
-        self.message_key = message_key
+        self.label = label
         self.initial_content = initial_content
         self.pin_key = pin_key
         self.logger = logger
-        self._messages: dict[str, tuple[str, Message]] = {}
+        self._guilds: set[str] = set()
 
     async def get(self, guild_id: int | str, settings: dict[str, Any]) -> Message | None:
-        """The guild's message, fetched or created if not cached for its channel."""
+        """The guild's message, fetched or created if not resolved for its channel."""
         gid = str(guild_id)
         channel_id = str(settings.get(self.channel_key) or "").strip()
         if not channel_id:
-            self._messages.pop(gid, None)
+            self.forget(gid)
             return None
-        cached = self._messages.get(gid)
-        if cached is not None and cached[0] == channel_id:
-            return cached[1]
-        message = await fetch_or_create_persistent_message(
+        self._guilds.add(gid)
+        return await fetch_or_create_persistent_message(
             self.bot,
-            channel_id=channel_id,
-            message_id=settings.get(self.message_key),
-            module_name=self.module_name,
-            message_id_key=self.message_key,
             guild_id=gid,
+            slot=self.slot,
+            channel_id=channel_id,
             initial_content=self.initial_content,
             pin=bool(settings.get(self.pin_key)) if self.pin_key else False,
+            label=self.label,
             logger=self.logger,
         )
-        if message is None:
-            self._messages.pop(gid, None)
-        else:
-            self._messages[gid] = (channel_id, message)
-        return message
 
     def cached(self, guild_id: int | str) -> Message | None:
         """The guild's message if one is already held, without any Discord call."""
-        entry = self._messages.get(str(guild_id))
-        return entry[1] if entry else None
+        return cached_persistent_message(guild_id, self.slot)
 
     def forget(self, guild_id: int | str) -> None:
-        """Fetch the guild's message again next time (it was deleted, say)."""
-        self._messages.pop(str(guild_id), None)
+        """Resolve the guild's message again next time (it was deleted, say)."""
+        self._guilds.discard(str(guild_id))
+        forget_persistent_message(guild_id, self.slot)
 
     def keep_only(self, guild_ids: Sequence[int | str]) -> None:
         """Drop the messages of every guild not in *guild_ids*."""
         keep = {str(g) for g in guild_ids}
-        for gid in [g for g in self._messages if g not in keep]:
-            del self._messages[gid]
+        for gid in [g for g in self._guilds if g not in keep]:
+            self.forget(gid)
 
 
 __all__ = [
     "GuildMessages",
     "copy_embed",
     "edit_message_if_changed",
+    "cached_persistent_message",
     "fetch_or_create_persistent_message",
     "fetch_user_safe",
+    "forget_persistent_message",
+    "republish_persistent_message",
     "require_guild",
     "send_error",
     "send_success",
