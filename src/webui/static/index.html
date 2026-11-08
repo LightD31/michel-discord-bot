@@ -949,6 +949,13 @@
             appearance: auto;
             padding-right: 28px;
         }
+        .member-picker .member-picker-search {
+            flex: 0 1 130px;
+        }
+        @media (max-width: 768px) {
+            .member-picker { flex-wrap: wrap; }
+            .member-picker .member-picker-search { flex: 1 1 100%; }
+        }
         .btn-member-toggle {
             background: var(--bg-primary);
             color: var(--text-secondary);
@@ -2073,7 +2080,7 @@
 
         .namemap-header {
             display: grid;
-            grid-template-columns: 1fr 1.5fr auto;
+            grid-template-columns: 2fr 1fr auto;
             gap: 8px;
             padding: 0 12px;
             font-size: 11px;
@@ -2085,7 +2092,7 @@
 
         .namemap-entry {
             display: grid;
-            grid-template-columns: 1fr 1.5fr auto;
+            grid-template-columns: 2fr 1fr auto;
             gap: 8px;
             align-items: center;
             padding: 10px 12px;
@@ -3649,17 +3656,9 @@
                     html += `<div class="namemap-list" data-field="${key}" data-type="discord2name">`;
                     html += `<div class="namemap-header"><span>Membre Discord</span><span>Prénom</span><span></span></div>`;
                     Object.entries(nameMap).forEach(([discordId, name]) => {
-                        const safeId = escapeHtml(discordId);
                         html += `
                             <div class="namemap-entry">
-                                <div class="member-picker" data-current="${safeId}">
-                                    <select class="form-input member-picker-select" onchange="onMemberPickerChange(this)">
-                                        <option value="">— Chargement des membres… —</option>
-                                        ${discordId ? `<option value="${safeId}" selected>${safeId}</option>` : ''}
-                                    </select>
-                                    <input type="text" class="form-input member-picker-manual" data-namemap-field="discord_id" value="${safeId}" placeholder="ex: 123456789012345678" style="display:none;">
-                                    <button type="button" class="btn-member-toggle" onclick="toggleMemberPickerMode(this)" title="Saisie manuelle">✎</button>
-                                </div>
+                                ${memberPickerHtml(discordId, 'data-namemap-field="discord_id"')}
                                 <input type="text" data-namemap-field="name" value="${escapeHtml(String(name))}" placeholder="ex: Jean">
                                 <button class="btn-remove-entry" onclick="removeNameMapEntry(this)" title="Supprimer">✕</button>
                             </div>`;
@@ -3751,18 +3750,10 @@
                     html += `<div class="spotifymap-list" data-field="${key}" data-type="spotifymap">`;
                     html += `<div class="spotifymap-header"><span>Spotify ID</span><span>Membre Discord</span><span></span></div>`;
                     spotifyUsers.forEach((user, idx) => {
-                        const safeDid = escapeHtml(user.discordId || '');
                         html += `
                             <div class="spotifymap-entry" data-user-idx="${idx}">
                                 <input type="text" data-spotifymap-field="spotifyId" value="${escapeHtml(user.spotifyId || '')}" placeholder="ex: exemple123">
-                                <div class="member-picker" data-current="${safeDid}">
-                                    <select class="form-input member-picker-select" onchange="onMemberPickerChange(this)">
-                                        <option value="">— Chargement des membres… —</option>
-                                        ${user.discordId ? `<option value="${safeDid}" selected>${safeDid}</option>` : ''}
-                                    </select>
-                                    <input type="text" class="form-input member-picker-manual" data-spotifymap-field="discordId" value="${safeDid}" placeholder="ex: 123456789012345678" style="display:none;">
-                                    <button type="button" class="btn-member-toggle" onclick="toggleMemberPickerMode(this)" title="Saisie manuelle">✎</button>
-                                </div>
+                                ${memberPickerHtml(user.discordId, 'data-spotifymap-field="discordId"')}
                                 <button class="btn-remove-entry" onclick="removeSpotifyMapEntry(this)" title="Supprimer">✕</button>
                             </div>`;
                     });
@@ -4536,13 +4527,7 @@
         const entry = document.createElement('div');
         entry.className = 'namemap-entry';
         entry.innerHTML = `
-            <div class="member-picker" data-current="">
-                <select class="form-input member-picker-select" onchange="onMemberPickerChange(this)">
-                    <option value="">— Chargement des membres… —</option>
-                </select>
-                <input type="text" class="form-input member-picker-manual" data-namemap-field="discord_id" value="" placeholder="ex: 123456789012345678" style="display:none;">
-                <button type="button" class="btn-member-toggle" onclick="toggleMemberPickerMode(this)" title="Saisie manuelle">✎</button>
-            </div>
+            ${memberPickerHtml('', 'data-namemap-field="discord_id"')}
             <input type="text" data-namemap-field="name" value="" placeholder="ex: Jean">
             <button class="btn-remove-entry" onclick="removeNameMapEntry(this)" title="Supprimer">✕</button>
         `;
@@ -4550,8 +4535,8 @@
         // Populate (fetches if not cached) then refresh the whole list so the new
         // picker excludes already-used IDs and so do siblings
         populateMemberPickers(entry).then(() => refreshNameMapListOptions(list));
-        const select = entry.querySelector('.member-picker-select');
-        if (select) select.focus();
+        const search = entry.querySelector('.member-picker-search');
+        if (search) search.focus();
     }
 
     function addKeyValueMapEntry(btn) {
@@ -4894,13 +4879,7 @@
         entry.className = 'spotifymap-entry';
         entry.innerHTML = `
             <input type="text" data-spotifymap-field="spotifyId" value="" placeholder="ex: exemple123">
-            <div class="member-picker" data-current="">
-                <select class="form-input member-picker-select" onchange="onMemberPickerChange(this)">
-                    <option value="">— Chargement des membres… —</option>
-                </select>
-                <input type="text" class="form-input member-picker-manual" data-spotifymap-field="discordId" value="" placeholder="ex: 123456789012345678" style="display:none;">
-                <button type="button" class="btn-member-toggle" onclick="toggleMemberPickerMode(this)" title="Saisie manuelle">✎</button>
-            </div>
+            ${memberPickerHtml('', 'data-spotifymap-field="discordId"')}
             <button class="btn-remove-entry" onclick="removeSpotifyMapEntry(this)" title="Supprimer">✕</button>
         `;
         list.appendChild(entry);
@@ -4917,11 +4896,7 @@
     }
 
     function refreshSpotifyMapListOptions(list) {
-        if (!list) return;
-        const members = _memberCache[state.currentServerId];
-        if (!members) return;
-        const pickers = list.querySelectorAll('.member-picker');
-        refreshMemberPickerGroup(pickers, members);
+        if (list) refreshMemberPickerGroup(list.querySelectorAll('.member-picker'));
     }
 
     function renderTeamEntry(t, idx) {
@@ -5255,21 +5230,64 @@
     }
 
     // ── Member picker ─────────────────────────────────
-    const _memberCache = {}; // serverId -> [{id, username, display_name}]
+    // A guild can have tens of thousands of members: the dashboard never loads
+    // them all. Each picker shows the first page of the guild's members, or the
+    // page its search box found (server-side, /members?q=), and the members a
+    // form already references are resolved by id (/members?ids=) to be labelled.
+    const MEMBER_PAGE = 50;
+    const MEMBER_IDS_PER_REQUEST = 200;
+    const _memberCache = {}; // serverId -> { byId: Map(id -> member), firstPage, total }
 
-    async function fetchServerMembers(serverId) {
-        if (!serverId) return null;
-        if (_memberCache[serverId]) return _memberCache[serverId];
-        try {
-            const data = await api(`/api/servers/${serverId}/members`);
-            if (data && Array.isArray(data.members)) {
-                _memberCache[serverId] = data.members;
-                return data.members;
-            }
-        } catch (e) {
-            console.warn('Could not fetch members', e);
+    function memberStore(serverId) {
+        if (!_memberCache[serverId]) {
+            _memberCache[serverId] = { byId: new Map(), firstPage: null, total: 0 };
         }
-        return null;
+        return _memberCache[serverId];
+    }
+
+    async function queryServerMembers(serverId, params) {
+        const qs = new URLSearchParams(params).toString();
+        const data = await api(`/api/servers/${encodeURIComponent(serverId)}/members?${qs}`);
+        if (!data || !Array.isArray(data.members)) return null;
+        const store = memberStore(serverId);
+        for (const m of data.members) store.byId.set(String(m.id), m);
+        return data;
+    }
+
+    async function firstMemberPage(serverId) {
+        if (!serverId) return null;
+        const store = memberStore(serverId);
+        if (!store.firstPage) {
+            const data = await queryServerMembers(serverId, { limit: MEMBER_PAGE });
+            if (!data) return null;
+            store.firstPage = data.members;
+            store.total = data.total || data.members.length;
+        }
+        return store.firstPage;
+    }
+
+    // Look up the members behind *ids* not seen yet; returns the id -> member map.
+    async function resolveServerMembers(serverId, ids) {
+        const store = memberStore(serverId);
+        const missing = [...new Set(ids.map(String).filter(id => /^\d+$/.test(id) && !store.byId.has(id)))];
+        for (let i = 0; i < missing.length; i += MEMBER_IDS_PER_REQUEST) {
+            await queryServerMembers(serverId, { ids: missing.slice(i, i + MEMBER_IDS_PER_REQUEST).join(',') });
+        }
+        return store.byId;
+    }
+
+    function memberPickerHtml(currentId, fieldAttr) {
+        const safeId = escapeHtml(currentId || '');
+        return `
+            <div class="member-picker" data-current="${safeId}">
+                <input type="search" class="form-input member-picker-search" placeholder="🔍 Rechercher" oninput="onMemberPickerSearch(this)" aria-label="Rechercher un membre">
+                <select class="form-input member-picker-select" onchange="onMemberPickerChange(this)">
+                    <option value="">— Chargement des membres… —</option>
+                    ${currentId ? `<option value="${safeId}" selected>${safeId}</option>` : ''}
+                </select>
+                <input type="text" class="form-input member-picker-manual" ${fieldAttr} value="${safeId}" placeholder="ex: 123456789012345678" style="display:none;">
+                <button type="button" class="btn-member-toggle" onclick="toggleMemberPickerMode(this)" title="Saisie manuelle">✎</button>
+            </div>`;
     }
 
     function getDiscord2NameMap() {
@@ -5294,9 +5312,15 @@
         return (val || picker.dataset.current || '').trim();
     }
 
-    function refreshMemberPickerGroup(pickers, members) {
-        if (!members) return;
-        const validIds = new Set(members.map(m => m.id));
+    // The pickers whose choices exclude each other: the rows of one list.
+    function memberPickerGroup(picker) {
+        const list = picker.closest('.namemap-list, .spotifymap-list');
+        return list ? list.querySelectorAll('.member-picker') : [picker];
+    }
+
+    function refreshMemberPickerGroup(pickers) {
+        const store = _memberCache[state.currentServerId];
+        if (!store || !store.firstPage) return;
         const currentIds = new Map();
         for (const p of pickers) currentIds.set(p, getPickerSelectedId(p));
         for (const picker of pickers) {
@@ -5309,37 +5333,31 @@
                 const id = currentIds.get(p);
                 if (id) excludeIds.add(id);
             }
-            let opts = '<option value="">— Choisir un membre —</option>';
-            for (const m of members) {
-                if (excludeIds.has(m.id)) continue;
+            const searching = Array.isArray(picker._results);
+            const list = searching ? picker._results : store.firstPage;
+            const total = searching ? picker._total : store.total;
+            let opts = `<option value="">${searching && !list.length ? '— Aucun membre trouvé —' : '— Choisir un membre —'}</option>`;
+            const shown = new Set();
+            if (ownId) {
+                const m = store.byId.get(ownId);
+                opts += `<option value="${escapeHtml(ownId)}">${escapeHtml(m ? memberOptionLabel(m) : `ID inconnu: ${ownId}`)}</option>`;
+                shown.add(ownId);
+            }
+            for (const m of list) {
+                if (shown.has(m.id) || excludeIds.has(m.id)) continue;
+                shown.add(m.id);
                 opts += `<option value="${escapeHtml(m.id)}">${escapeHtml(memberOptionLabel(m))}</option>`;
             }
-            select.innerHTML = opts;
-            if (ownId && validIds.has(ownId)) {
-                if (!select.querySelector(`option[value="${CSS.escape(ownId)}"]`)) {
-                    const m = members.find(x => x.id === ownId);
-                    const opt = document.createElement('option');
-                    opt.value = ownId;
-                    opt.textContent = m ? memberOptionLabel(m) : ownId;
-                    select.insertBefore(opt, select.firstChild.nextSibling);
-                }
-                select.value = ownId;
-            } else if (ownId) {
-                const opt = document.createElement('option');
-                opt.value = ownId;
-                opt.textContent = `ID inconnu: ${ownId}`;
-                opt.selected = true;
-                select.insertBefore(opt, select.firstChild.nextSibling);
+            if (total > list.length) {
+                opts += `<option value="" disabled>… ${total - list.length} autre(s) : affinez la recherche</option>`;
             }
+            select.innerHTML = opts;
+            select.value = ownId;
         }
     }
 
     function refreshNameMapListOptions(list) {
-        if (!list) return;
-        const members = _memberCache[state.currentServerId];
-        if (!members) return;
-        const pickers = list.querySelectorAll('.member-picker');
-        refreshMemberPickerGroup(pickers, members);
+        if (list) refreshMemberPickerGroup(list.querySelectorAll('.member-picker'));
     }
 
     async function populateMemberPickers(container) {
@@ -5347,8 +5365,14 @@
         if (!serverId || !container) return;
         const pickers = container.querySelectorAll('.member-picker');
         if (pickers.length === 0) return;
-        const members = await fetchServerMembers(serverId);
-        if (!members) {
+        let page = null;
+        try {
+            page = await firstMemberPage(serverId);
+            if (page) await resolveServerMembers(serverId, [...pickers].map(getPickerSelectedId).filter(Boolean));
+        } catch (e) {
+            console.warn('Could not fetch members', e);
+        }
+        if (!page) {
             for (const picker of pickers) {
                 toggleMemberPickerMode(picker.querySelector('.btn-member-toggle'), true);
                 const select = picker.querySelector('select');
@@ -5356,24 +5380,45 @@
             }
             return;
         }
-        // Group pickers by their containing list so siblings can exclude each other
-        const byList = new Map();
-        const standalone = [];
+        const groups = new Set();
         for (const picker of pickers) {
             const list = picker.closest('.namemap-list, .spotifymap-list');
-            if (list) {
-                if (!byList.has(list)) byList.set(list, []);
-                byList.get(list).push(picker);
-            } else {
-                standalone.push(picker);
+            groups.add(list || picker);
+        }
+        for (const group of groups) {
+            refreshMemberPickerGroup(group.classList.contains('member-picker') ? [group] : group.querySelectorAll('.member-picker'));
+        }
+    }
+
+    const _memberSearchTimers = new WeakMap();
+
+    function onMemberPickerSearch(input) {
+        const picker = input.closest('.member-picker');
+        if (!picker) return;
+        clearTimeout(_memberSearchTimers.get(picker));
+        _memberSearchTimers.set(picker, setTimeout(() => runMemberPickerSearch(picker, input.value), 250));
+    }
+
+    async function runMemberPickerSearch(picker, query) {
+        const serverId = state.currentServerId;
+        const seq = (picker._searchSeq || 0) + 1;
+        picker._searchSeq = seq;
+        const q = query.trim();
+        let results = null, total = 0;
+        if (q) {
+            let data = null;
+            try {
+                data = await queryServerMembers(serverId, { q, limit: MEMBER_PAGE });
+            } catch (e) {
+                console.warn('Member search failed', e);
             }
+            if (picker._searchSeq !== seq) return;  // a newer search took over
+            results = data ? data.members : [];
+            total = data ? (data.total || 0) : 0;
         }
-        for (const [, group] of byList) {
-            refreshMemberPickerGroup(group, members);
-        }
-        if (standalone.length) {
-            refreshMemberPickerGroup(standalone, members);
-        }
+        picker._results = results;
+        picker._total = total;
+        refreshMemberPickerGroup(memberPickerGroup(picker));
     }
 
     function onMemberPickerChange(select) {
@@ -5386,8 +5431,7 @@
         if (namemapEntry) {
             const nameInput = namemapEntry.querySelector('[data-namemap-field="name"]');
             if (nameInput && !nameInput.value.trim()) {
-                const members = _memberCache[state.currentServerId] || [];
-                const match = members.find(m => m.id === select.value);
+                const match = _memberCache[state.currentServerId]?.byId.get(select.value);
                 if (match) nameInput.value = match.display_name || match.username || '';
             }
         }
@@ -5411,16 +5455,26 @@
         if (!picker) return;
         const select = picker.querySelector('.member-picker-select');
         const manual = picker.querySelector('.member-picker-manual');
+        const search = picker.querySelector('.member-picker-search');
         const showManual = forceManual === true ? true : (manual.style.display === 'none');
         manual.style.display = showManual ? '' : 'none';
         select.style.display = showManual ? 'none' : '';
+        if (search) search.style.display = showManual ? 'none' : '';
         btn.textContent = showManual ? '☰' : '✎';
         btn.title = showManual ? 'Choisir dans la liste' : 'Saisie manuelle';
-        if (showManual && select.value && !manual.value) {
+        const typed = manual.value.trim();
+        if (showManual && select.value && !typed) {
             manual.value = select.value;
-        } else if (!showManual && manual.value && !select.value) {
-            const opt = select.querySelector(`option[value="${CSS.escape(manual.value)}"]`);
-            if (opt) select.value = manual.value;
+        } else if (!showManual && typed && typed !== select.value) {
+            // The id typed by hand becomes the list's choice, labelled once resolved.
+            if (!select.querySelector(`option[value="${CSS.escape(typed)}"]`)) {
+                select.add(new Option(typed, typed), 1);
+            }
+            select.value = typed;
+            const serverId = state.currentServerId;
+            resolveServerMembers(serverId, [typed])
+                .catch(e => console.warn('Could not resolve member', e))
+                .finally(() => refreshMemberPickerGroup(memberPickerGroup(picker)));
         }
     }
 
@@ -6252,11 +6306,11 @@
 
             if (fieldType === 'spotifymap' && Array.isArray(val) && val.length > 0) {
                 const nameMap = getDiscord2NameMap();
-                const members = _memberCache[state.currentServerId] || [];
+                const known = _memberCache[state.currentServerId]?.byId || new Map();
                 const resolveName = (u) => {
                     if (u.name) return u.name;
                     if (u.discordId && nameMap[u.discordId]) return nameMap[u.discordId];
-                    const m = members.find(mm => mm.id === u.discordId);
+                    const m = known.get(String(u.discordId));
                     return m ? (m.display_name || m.username || '') : '';
                 };
                 html += `
@@ -7386,11 +7440,20 @@
         },
     };
 
-    async function spotifyNameResolver(serverId) {
-        const members = await fetchServerMembers(serverId) || [];
-        const byId = Object.fromEntries(members.map(m => [String(m.id), m]));
+    async function spotifyNameResolver(serverId, d) {
+        const ids = [
+            d.current_poll?.added_by,
+            ...(d.top_contributors || []).map(c => c.key),
+            ...(d.voters || []).map(u => u.user_id),
+        ].filter(Boolean).map(String);
+        let byId = new Map();
+        try {
+            byId = await resolveServerMembers(serverId, ids);
+        } catch (e) {
+            console.warn('Could not resolve Spotify member names', e);
+        }
         const prenoms = getDiscord2NameMap();
-        return id => prenoms[id] || byId[id]?.display_name || byId[id]?.username || id;
+        return id => prenoms[id] || byId.get(String(id))?.display_name || byId.get(String(id))?.username || id;
     }
 
     async function loadSpotifyStats(serverId, force = false) {
@@ -7408,12 +7471,13 @@
         let data, nameOf;
         try {
             // The public payload already carries names in place of user ids.
-            [data, nameOf] = state.publicView
-                ? [await publicApi(`/api/public/${state.publicView.token}/spotify/stats`), id => id]
-                : await Promise.all([
-                    api(`/api/servers/${encodeURIComponent(serverId)}/spotify/stats`),
-                    spotifyNameResolver(serverId),
-                ]);
+            if (state.publicView) {
+                data = await publicApi(`/api/public/${state.publicView.token}/spotify/stats`);
+                nameOf = id => id;
+            } else {
+                data = await api(`/api/servers/${encodeURIComponent(serverId)}/spotify/stats`);
+                nameOf = data ? await spotifyNameResolver(serverId, data) : (id => id);
+            }
         } catch (e) {
             if (stale()) return;
             container.classList.remove('viz-refreshing');

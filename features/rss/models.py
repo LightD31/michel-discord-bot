@@ -33,6 +33,8 @@ class RssFeedState(BaseModel):
     ``seen_ids`` is a bounded list (most recent first) used to dedupe entries
     across polls. ``initialized`` is set after the first successful fetch so
     the very first poll's entries don't get blasted to the channel.
+    ``failures`` counts the consecutive failed polls, which stretch the wait
+    before the next one (:mod:`features.rss.scheduling`).
     """
 
     feed_id: str = Field(alias="_id")
@@ -40,5 +42,6 @@ class RssFeedState(BaseModel):
     initialized: bool = False
     last_poll_at: datetime | None = None
     last_error: str | None = None
+    failures: int = 0
 
     model_config = {"populate_by_name": True}

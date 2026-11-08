@@ -63,6 +63,19 @@ class UserInfoRepository:
         }
 
     @translates_db_errors
+    async def all_members(self) -> list[dict[str, str]]:
+        """Every stored member of the guild: ``{"id", "username", "display_name"}``."""
+        cursor = self._col().find({}, {"username": 1, "display_name": 1})
+        return [
+            {
+                "id": str(doc["_id"]),
+                "username": doc.get("username") or "",
+                "display_name": doc.get("display_name") or "",
+            }
+            async for doc in cursor
+        ]
+
+    @translates_db_errors
     async def delete(self, user_id: str) -> None:
         try:
             await self._col().delete_one({"_id": user_id})

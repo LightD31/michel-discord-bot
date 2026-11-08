@@ -1,5 +1,6 @@
 """Expense reports: list expenses, balance, and group overview."""
 
+import asyncio
 import os
 from collections import defaultdict
 
@@ -270,7 +271,8 @@ class ReportsMixin:
             totals[cat] += to_cents(expense.get("amount", 0)) / 100
 
         try:
-            buffer = render_category_chart(
+            buffer = await asyncio.to_thread(  # Pillow work, off the event loop
+                render_category_chart,
                 title=f"Dépenses du groupe {groupe}",
                 category_totals=dict(totals),
                 currency=guild_currency(ctx.guild.id),

@@ -7,6 +7,8 @@ to call.
 
 from __future__ import annotations
 
+import asyncio
+
 from features.rss.models import RssEntry
 from features.rss.parser import parse_feed
 from src.core.http import fetch_untrusted
@@ -17,10 +19,11 @@ async def fetch_feed(url: str) -> list[RssEntry]:
 
     Feed URLs come from guild admins (dashboard) and ``/rss test``, so they go
     through :func:`~src.core.http.fetch_untrusted`: public addresses only, body
-    size capped — never the bot's own network.
+    size capped — never the bot's own network. The XML is parsed on a worker
+    thread: a feed can weigh up to the 5 MB cap, and several are fetched at once.
     """
     body = await fetch_untrusted(url, return_type="text")
-    return parse_feed(body)
+    return await asyncio.to_thread(parse_feed, body)
 
 
 __all__ = ["fetch_feed"]

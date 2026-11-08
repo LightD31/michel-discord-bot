@@ -1,5 +1,7 @@
 """Extension Welcome — messages de bienvenue et d'au revoir personnalisés par serveur."""
 
+import asyncio
+
 from interactions import Client, Extension, File, listen
 from interactions.api.events import MemberAdd, MemberRemove
 
@@ -152,7 +154,8 @@ class WelcomeExtension(Extension):
             return []
         try:
             avatar = await _fetch_avatar_bytes(member)
-            buffer = render_welcome_card(
+            buffer = await asyncio.to_thread(  # Pillow work, off the event loop
+                render_welcome_card,
                 avatar_bytes=avatar,
                 username=member.username,
                 title=title,
