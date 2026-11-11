@@ -15,7 +15,8 @@ from interactions import (
 
 from src.core import logging as logutil
 from src.core.config import ModuleConfig
-from src.core.http import fetch
+from src.core.http import fetch_untrusted
+from src.core.urls import redact_url
 from src.discord_ext.messages import GuildMessages, edit_message_if_changed
 from src.discord_ext.paginator import CustomPaginator
 from src.webui.schemas import (
@@ -66,11 +67,12 @@ COLOR = 0xDBEA2B
 
 
 async def get_data(url):
+    # The API URL is a guild setting: only public addresses, and no retries.
     try:
-        payload = await fetch(url, return_type="json", retries=2)
+        payload = await fetch_untrusted(url, return_type="json")
         return payload["data"]
     except Exception as e:
-        logger.error("Error fetching data from %s: %s", url, e)
+        logger.error("Error fetching data from %s: %s", redact_url(url), e)
         return None
 
 

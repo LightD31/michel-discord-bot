@@ -51,7 +51,10 @@ class LldapConfig(SchemaBase):
         description="Identifiant d'un compte membre du groupe lldap_admin, par exemple admin.",
     )
     lldapAdminPassword: str = secret_field(
-        "Mot de passe administrateur", required=True, description="Mot de passe de ce compte."
+        "Mot de passe administrateur",
+        required=True,
+        description="Mot de passe de ce compte.",
+        sent_to=("lldapUrl", "lldapLdapUrl"),
     )
     lldapDiscordAttribute: str = ui(
         "Attribut ID Discord",

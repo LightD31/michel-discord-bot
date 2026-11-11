@@ -22,6 +22,10 @@ from src.webui.schemas import (
     ui,
 )
 
+# Where the server password and API token are sent: changing either means
+# typing the secrets again (see ``secret_field(sent_to=...)``).
+_SERVER_ADDRESS = ("satisfactoryServerIp", "satisfactoryServerPort")
+
 
 @register_module("moduleSatisfactory")
 class SatisfactoryConfig(SchemaBase):
@@ -50,10 +54,14 @@ class SatisfactoryConfig(SchemaBase):
         "Port du serveur", "string", default="7777", description="Port du serveur Satisfactory."
     )
     satisfactoryServerPassword: str | None = secret_field(
-        "Mot de passe serveur", description="Mot de passe du serveur Satisfactory."
+        "Mot de passe serveur",
+        description="Mot de passe du serveur Satisfactory.",
+        sent_to=_SERVER_ADDRESS,
     )
     satisfactoryServerToken: str | None = secret_field(
-        "Token API serveur", description="Token d'authentification API du serveur."
+        "Token API serveur",
+        description="Token d'authentification API du serveur.",
+        sent_to=_SERVER_ADDRESS,
     )
 
 

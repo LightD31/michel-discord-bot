@@ -12,6 +12,7 @@ from fastapi.responses import JSONResponse
 
 from features.moderation import Infraction, InfractionType, ModerationRepository
 from src.core import logging as logutil
+from src.discord_ext.channels import fetch_guild_channel
 from src.webui.context import WebUIContext
 
 logger = logutil.init_logger("webui.routes.moderation")
@@ -94,11 +95,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
             )
             if not chan_id:
                 return
-            try:
-                channel = await ctx.bot.fetch_channel(int(chan_id))
-            except Exception as e:
-                logger.warning("Mod-log channel %s unavailable in %s: %s", chan_id, server_id, e)
-                return
+            channel = await fetch_guild_channel(ctx.bot, server_id, chan_id, logger=logger)
             if channel is None or not hasattr(channel, "send"):
                 return
             try:

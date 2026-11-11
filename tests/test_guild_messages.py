@@ -46,6 +46,8 @@ class FakeChannel:
     def __init__(self, cid: str, bot: "FakeBot") -> None:
         self.id = cid
         self.bot = bot
+        # Channel "10" or "11" is guild 1's, "20" guild 2's, "90" guild 9's.
+        self._guild_id = cid[0]
 
     async def send(self, content):
         self.bot.next_id += 1
@@ -136,10 +138,10 @@ async def test_a_new_channel_gets_a_new_message(store):
     bot = FakeBot()
     first = await get(bot, channel="10")
 
-    moved = await get(bot, channel="20")
+    moved = await get(bot, channel="11")
 
-    assert moved is not first and moved.channel.id == "20"
-    assert store.docs[("1", "status")].channel_id == "20"
+    assert moved is not first and moved.channel.id == "11"
+    assert store.docs[("1", "status")].channel_id == "11"
 
 
 async def test_a_message_deleted_in_discord_is_posted_again(store):
@@ -172,6 +174,14 @@ async def test_no_channel_means_no_message(store):
     assert bot.channel_fetches == 0
 
 
+async def test_another_guilds_channel_is_refused(store):
+    bot = FakeBot()
+
+    assert await get(bot, channel="90") is None
+
+    assert bot.sent == [] and store.docs == {}
+
+
 async def test_racing_refreshes_post_a_single_message(store):
     bot = FakeBot()
 
@@ -185,7 +195,7 @@ async def test_slots_and_guilds_are_independent(store):
     bot = FakeBot()
     status = await get(bot, slot="status")
     live = await get(bot, slot="live")
-    other = await get(bot, guild="2")
+    other = await get(bot, guild="2", channel="20")
 
     assert len({status.id, live.id, other.id}) == 3
     assert set(store.docs) == {("1", "status"), ("1", "live"), ("2", "status")}

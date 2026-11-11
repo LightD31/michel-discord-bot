@@ -49,7 +49,9 @@ class MinecraftConfig(SchemaBase):
         "Port RCON", "number", default=25575, description="Port RCON du serveur."
     )
     minecraftRconPassword: str | None = secret_field(
-        "Mot de passe RCON", description="Mot de passe RCON du serveur."
+        "Mot de passe RCON",
+        description="Mot de passe RCON du serveur.",
+        sent_to=("minecraftRconHost", "minecraftIp", "minecraftRconPort"),
     )
     minecraftSftpHost: str | None = ui(
         "Hôte SFTP",
@@ -66,7 +68,9 @@ class MinecraftConfig(SchemaBase):
         description="Nom d'utilisateur pour la connexion SFTP.",
     )
     minecraftSftpsPassword: str | None = secret_field(
-        "Mot de passe SFTP", description="Mot de passe SFTP pour l'accès aux fichiers."
+        "Mot de passe SFTP",
+        description="Mot de passe SFTP pour l'accès aux fichiers.",
+        sent_to=("minecraftSftpHost", "minecraftIp", "minecraftSftpPort", "minecraftSftpHostKey"),
     )
     minecraftSftpHostKey: str | None = ui(
         "Clé d'hôte SFTP",

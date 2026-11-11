@@ -19,6 +19,7 @@ from interactions.models.discord.components import process_components
 
 from src.core.errors import DatabaseError
 from src.core.message_refs import MessageRefRepository
+from src.discord_ext.channels import fetch_guild_channel
 
 # ---------------------------------------------------------------------------
 # Ephemeral responses
@@ -339,12 +340,8 @@ async def _resolve(
             logger.error("Guild %s: could not read where message %s lives: %s", gid, slot, e)
         return None
 
-    try:
-        channel = await bot.fetch_channel(int(wanted))
-    except Exception as e:  # noqa: BLE001 — log and return None
-        if logger:
-            logger.error("Could not fetch channel %s: %s", wanted, e)
-        return None
+    # The channel comes from the guild's config: never post outside that guild.
+    channel = await fetch_guild_channel(bot, gid, wanted, logger=logger)
     if channel is None or not hasattr(channel, "send"):
         return None
 
@@ -352,8 +349,7 @@ async def _resolve(
 
     if ref is not None and ref.channel_id == wanted and ref.message_id:
         try:
-            # hasattr check above narrows this at runtime; mypy can't see it.
-            existing = await channel.fetch_message(int(ref.message_id))  # type: ignore[union-attr]
+            existing = await channel.fetch_message(int(ref.message_id))
             if existing is not None:
                 return existing
         except Exception as e:  # noqa: BLE001 — log and recreate

@@ -3771,7 +3771,7 @@
                         html += `
                             <div class="messagelist-entry">
                                 <input type="text" data-msg-field="message" value="${escapeHtml(text)}" placeholder="Message…">
-                                <input type="number" data-msg-field="weight" value="${w}" min="0" placeholder="1">
+                                <input type="number" data-msg-field="weight" value="${escapeHtml(String(w))}" min="0" placeholder="1">
                                 <button class="btn-remove-msg" onclick="this.closest('.messagelist-entry').remove()" title="Supprimer">✕</button>
                             </div>`;
                     });
@@ -6264,7 +6264,7 @@
                                 return `
                                 <div style="display:flex;gap:8px;align-items:center;padding:4px 8px;background:var(--bg-primary);border-radius:var(--radius);font-size:13px;">
                                     <span style="flex:1;color:var(--text-primary);">${escapeHtml(text)}</span>
-                                    <span style="color:var(--text-muted);font-size:12px;">×${w}</span>
+                                    <span style="color:var(--text-muted);font-size:12px;">×${escapeHtml(String(w))}</span>
                                 </div>`;
                             }).join('')}
                         </div>

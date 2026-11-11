@@ -38,6 +38,16 @@ def test_numeric_ids_are_accepted_for_string_fields():
     assert xp_errors({"xpChannelId": 123456789012345678}) == []
 
 
+def test_message_list_weights_must_be_numbers():
+    """The SPA writes each weight back into an input: only a number may reach it."""
+    hostile = [{"text": "Bravo {mention}", "weight": '1" autofocus onfocus="alert(1)'}]
+    (error,) = xp_errors({"levelUpMessageList": hostile})
+    assert error.startswith("levelUpMessageList.0.weight:")
+    assert xp_errors({"levelUpMessageList": [{"text": "x", "weight": -1}]}) != []
+    assert xp_errors({"levelUpMessageList": [{"text": "x", "extra": 1}]}) != []
+    assert xp_errors({"levelUpMessageList": [{"text": "x", "weight": "2"}, {"text": "y"}]}) == []
+
+
 def test_enabled_is_always_allowed_on_a_module_but_must_be_a_boolean():
     model = schemas.module_model("discord2name")  # no ``enabled`` field, direct value
     assert schemas.validation_errors(model, {"1": "Alice"}, module=True) == []
