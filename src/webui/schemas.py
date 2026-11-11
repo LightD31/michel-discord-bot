@@ -25,7 +25,9 @@ Recognised widget types (``type=`` on ``ui()``):
 
 from typing import Any, ClassVar
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
+
+from src.core.text import template_problem
 
 _UNSET = object()
 
@@ -109,6 +111,23 @@ class WeightedMessage(BaseModel):
 
     text: str
     weight: float = Field(default=1, ge=0)
+
+    @field_validator("text")
+    @classmethod
+    def _plain_placeholders(cls, text: str) -> str:
+        return check_template(text)
+
+
+def check_template(text: str) -> str:
+    """Refuse a template the bot would not fill: ``{name}`` placeholders only.
+
+    For a schema's ``field_validator``; :func:`src.core.text.format_template`
+    refuses the same templates at render time.
+    """
+    problem = template_problem(text)
+    if problem:
+        raise ValueError(problem)
+    return text
 
 
 # ── Reusable field fragments (public, used by extensions) ────────────

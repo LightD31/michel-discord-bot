@@ -141,11 +141,88 @@ def extract_answer(text: str) -> str | None:
 # ---------------------------------------------------------------------------
 
 
-class _KeepUnknown(dict[str, Any]):
-    """Format mapping that leaves a placeholder it doesn't know as written."""
+# ---------------------------------------------------------------------------
+# Templates written by server admins
+# ---------------------------------------------------------------------------
 
-    def __missing__(self, key: str) -> str:
-        return "{" + key + "}"
+
+class TemplateError(ValueError):
+    """A configured template uses more than plain ``{name}`` placeholders."""
+
+
+class _Unknown:
+    """A placeholder the template names but no value fills: rendered as written."""
+
+    def __init__(self, name: str) -> None:
+        self.text = "{" + name + "}"
+
+
+class _TemplateFormatter(string.Formatter):
+    """``str.format`` limited to ``{name}``: no format spec, conversion, attribute or index.
+
+    A server admin writes these templates and the bot renders them for every
+    server: ``{mention:>2000000000}`` would allocate gigabytes and take the
+    process down, ``{title.__class__}`` would walk object attributes.
+    """
+
+    def __init__(self, *, keep_unknown: bool) -> None:
+        super().__init__()
+        self._keep_unknown = keep_unknown
+
+    def get_field(self, field_name: str, args: Any, kwargs: Any) -> Any:
+        if not field_name.isidentifier():
+            raise TemplateError(f"{{{field_name}}} : seules les variables {{nom}} sont permises")
+        return super().get_field(field_name, args, kwargs)
+
+    def get_value(self, key: int | str, args: Any, kwargs: Any) -> Any:
+        if key in kwargs:
+            return kwargs[key]
+        if self._keep_unknown:
+            return _Unknown(str(key))
+        raise KeyError(key)
+
+    def convert_field(self, value: Any, conversion: str | None) -> Any:
+        if conversion is not None:
+            raise TemplateError(f"!{conversion} n'est pas permis dans un modèle")
+        return value
+
+    def format_field(self, value: Any, format_spec: str) -> str:
+        if format_spec:
+            raise TemplateError(f":{format_spec} n'est pas permis dans un modèle")
+        return value.text if isinstance(value, _Unknown) else str(value)
+
+
+def format_template(template: str, *, keep_unknown: bool = False, **values: Any) -> str:
+    """Fill a template a server admin configured: ``{name}`` placeholders only.
+
+    Raises :class:`TemplateError` (a ``ValueError``) for a format spec, a
+    conversion, an attribute or an index; ``KeyError`` for a name *values*
+    doesn't have, unless *keep_unknown* leaves it as written; ``ValueError``
+    for a malformed template (a stray brace).
+    """
+    return _TemplateFormatter(keep_unknown=keep_unknown).vformat(template, (), values)
+
+
+def template_problem(template: str) -> str | None:
+    """Why a dashboard save should refuse *template*, in French, or None.
+
+    Only what :func:`format_template` refuses is reported. Unknown names and
+    stray braces are left alone: those templates are sent as written, as before.
+    """
+    try:
+        fields = [
+            (name, spec, conversion)
+            for _, name, spec, conversion in string.Formatter().parse(template)
+            if name is not None
+        ]
+    except ValueError:
+        return None
+    for name, spec, conversion in fields:
+        if not name.isidentifier():
+            return f"« {{{name}}} » : seules les variables simples comme {{mention}} sont permises."
+        if spec or conversion:
+            return f"« {{{name}…}} » : les formats (après « : » ou « ! ») ne sont pas permis."
+    return None
 
 
 def pick_weighted_message(
@@ -192,8 +269,8 @@ def pick_weighted_message(
         weights = [1.0] * len(texts)
     chosen: str = random.choices(texts, weights=weights)[0]
     try:
-        return chosen.format_map(_KeepUnknown(format_kwargs))
-    except (ValueError, IndexError, AttributeError, KeyError):
+        return format_template(chosen, keep_unknown=True, **format_kwargs)
+    except (ValueError, KeyError):
         return chosen
 
 
@@ -202,11 +279,14 @@ __all__ = [
     "clip",
     "escape_md",
     "extract_answer",
+    "TemplateError",
     "format_number",
+    "format_template",
     "mentions_in",
     "milliseconds_to_string",
     "pick_weighted_message",
     "remove_punctuation",
     "sanitize_content",
     "search_dict_by_sentence",
+    "template_problem",
 ]

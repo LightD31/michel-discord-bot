@@ -9,6 +9,7 @@ from datetime import datetime, timedelta
 from types import SimpleNamespace
 
 import pytest
+from interactions.client.errors import BadRequest
 
 import extensions.rss as rss_ext
 from extensions.rss import RssExtension
@@ -120,8 +121,12 @@ class Channel:
     def __init__(self) -> None:
         self.sent: list[str] = []
         self.allowed_mentions: list = []
+        self.refuse: dict[str, Exception] = {}  # title -> what Discord answers
 
     async def send(self, content=None, **kwargs):
+        for title, error in self.refuse.items():
+            if content and title in content:
+                raise error
         self.sent.append(content)
         self.allowed_mentions.append(kwargs.get("allowed_mentions"))
 
@@ -315,3 +320,20 @@ async def test_a_feed_title_cannot_ping_but_the_template_can(cycle):
 
     [allowed] = cycle.channel.allowed_mentions
     assert allowed.to_dict() == {"roles": [42], "replied_user": False}
+
+
+async def test_an_entry_discord_refuses_is_not_retried_but_an_outage_is(cycle):
+    url = "https://example.com/feed"
+    cycle.configure({"1": guild(("news", url))})
+    cycle.network.feeds[url] = [entry(3), entry(2), entry(1)]
+    seen("1", "news", "e1")
+    response = SimpleNamespace(status=400, reason="Bad Request")
+    cycle.channel.refuse = {
+        "Titre 2": BadRequest(response, {"message": "Invalid Form Body", "code": 50035}),
+        "Titre 3": RuntimeError("Discord down"),
+    }
+
+    await cycle.run()
+
+    # Titre 2 is marked seen (it can only fail again), Titre 3 stays unseen for the next poll.
+    assert FakeRepo.calls == [("poll", "1", "news", ["e2"])]

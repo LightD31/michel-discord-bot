@@ -2,9 +2,18 @@
 
 import os
 
+from pydantic import field_validator
+
 from src.core import logging as logutil
 from src.core.config import ModuleConfig
-from src.webui.schemas import SchemaBase, enabled_field, register_module, register_section, ui
+from src.webui.schemas import (
+    SchemaBase,
+    check_template,
+    enabled_field,
+    register_module,
+    register_section,
+    ui,
+)
 
 logger = logutil.init_logger(__name__)
 
@@ -55,6 +64,17 @@ class RssConfig(SchemaBase):
             "timestamps Discord rendus dans le fuseau du lecteur)."
         ),
     )
+
+    @field_validator("rssFeeds")
+    @classmethod
+    def _plain_placeholders(cls, feeds: dict[str, dict]) -> dict[str, dict]:
+        """Every text of a feed is a template (text, embed title, description…)."""
+        for feed in feeds.values():
+            for value in feed.values() if isinstance(feed, dict) else ():
+                if isinstance(value, str):
+                    check_template(value)
+        return feeds
+
     rssPollMinutes: int = ui(
         "Intervalle de relève (minutes)",
         "number",
