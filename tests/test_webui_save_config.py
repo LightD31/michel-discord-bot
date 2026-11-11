@@ -35,8 +35,10 @@ def test_save_surfaces_permission_error(ctx, monkeypatch):
     with pytest.raises(HTTPException) as exc:
         ctx.save_config({"config": {"x": 1}, "servers": {}})
     assert exc.value.status_code == 500
-    assert "Permission denied" in exc.value.detail
+    assert "PermissionError" in exc.value.detail
     assert "chown -R 1000:1000" in exc.value.detail
+    # The OS message and the path stay in the logs.
+    assert ".config-x.json.tmp" not in exc.value.detail
 
 
 def test_save_passes_through_on_success(ctx, monkeypatch):

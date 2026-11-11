@@ -3828,7 +3828,10 @@
                     html += `<div class="embedlist-list" data-field="${key}" data-type="embedlist">`;
                     embeds.forEach((embed, embedIdx) => {
                         const embedTitle = embed.title || 'Sans titre';
-                        const embedColor = embed.color || '3498db';
+                        // Free text in the stored config: anything but six hex digits falls
+                        // back to the default rather than landing in the markup.
+                        const rawColor = String(embed.color || '').replace(/^#/, '');
+                        const embedColor = /^[0-9a-fA-F]{6}$/.test(rawColor) ? rawColor : '3498db';
                         const embedLinks = Array.isArray(embed.links) ? embed.links : [];
 
                         html += `<div class="embedlist-entry" data-embed-idx="${embedIdx}">`;
@@ -5596,10 +5599,10 @@
                 return `
                     <div class="nav-item ${isActive ? 'active' : ''}" onclick="navigate('server', '${id}')">
                         <div class="server-icon">
-                            ${iconUrl ? `<img src="${iconUrl}" alt="">` : s.name?.charAt(0) || '?'}
+                            ${iconUrl ? `<img src="${escapeHtml(iconUrl)}" alt="">` : escapeHtml(s.name?.charAt(0) || '?')}
                         </div>
                         <div class="nav-item-label">
-                            <span class="nav-item-name">${s.name || id}</span>
+                            <span class="nav-item-name">${escapeHtml(s.name || id)}</span>
                             <span class="nav-item-sub">${id}</span>
                         </div>
                     </div>
@@ -5645,12 +5648,12 @@
                     <div class="user-info">
                         <div class="user-avatar">
                             ${state.user.avatar
-                                ? `<img src="https://cdn.discordapp.com/avatars/${state.user.user_id}/${state.user.avatar}.png?size=64" alt="">`
-                                : state.user.username.charAt(0)
+                                ? `<img src="https://cdn.discordapp.com/avatars/${encodeURIComponent(state.user.user_id)}/${encodeURIComponent(state.user.avatar)}.png?size=64" alt="">`
+                                : escapeHtml(state.user.username.charAt(0))
                             }
                         </div>
-                        <span class="user-name">${state.user.username}</span>
-                        <button class="logout-btn" onclick="window.location='/auth/logout'" title="Déconnexion">🚪</button>
+                        <span class="user-name">${escapeHtml(state.user.username)}</span>
+                        <button class="logout-btn" onclick="logout()" title="Déconnexion">🚪</button>
                     </div>
                 </div>
             </div>
@@ -6437,7 +6440,7 @@
             if (!(key in fields)) {
                 html += `
                     <div class="preview-row">
-                        <span class="preview-label" style="color:var(--warning)">${key} <small>(non défini dans le schéma)</small></span>
+                        <span class="preview-label" style="color:var(--warning)">${escapeHtml(key)} <small>(non défini dans le schéma)</small></span>
                         <span class="preview-value">${escapeHtml(JSON.stringify(values[key]))}</span>
                     </div>
                 `;
@@ -6557,10 +6560,10 @@
             <div class="page-header">
                 <div style="display:flex; align-items:center; gap:16px; flex-wrap:wrap;">
                     <div class="server-icon" style="width:48px;height:48px;font-size:20px;">
-                        ${iconUrl ? `<img src="${iconUrl}" alt="">` : server.name?.charAt(0) || '?'}
+                        ${iconUrl ? `<img src="${escapeHtml(iconUrl)}" alt="">` : escapeHtml(server.name?.charAt(0) || '?')}
                     </div>
                     <div>
-                        <h2>${server.name || sid}</h2>
+                        <h2>${escapeHtml(server.name || sid)}</h2>
                         <p>ID: ${sid} — ${configuredModules.length} module(s) configuré(s)</p>
                     </div>
                 </div>
@@ -6716,7 +6719,7 @@
 
         return `
             <div class="breadcrumb">
-                <a onclick="navigate('server', '${sid}')">${server.name || sid}</a>
+                <a onclick="navigate('server', '${sid}')">${escapeHtml(server.name || sid)}</a>
                 <span>›</span>
                 <span>${icon} ${label}</span>
             </div>
@@ -6725,7 +6728,7 @@
                 <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px;">
                     <div>
                         <h2>${icon} ${label}</h2>
-                        <p>${description || 'Configuration du module pour ' + (server.name || sid)}</p>
+                        <p>${escapeHtml(description || 'Configuration du module pour ' + (server.name || sid))}</p>
                     </div>
                     ${noToggle ? '' : `
                     <label class="toggle" style="transform: scale(1.2);">
@@ -6891,7 +6894,7 @@
                 </div>
                 <div class="kv-grid">
                     ${extraKeys.map(key => `
-                        <div class="kv-key" style="color:var(--warning)">${key}</div>
+                        <div class="kv-key" style="color:var(--warning)">${escapeHtml(key)}</div>
                         <div class="kv-value"><input type="text" value="${escapeHtml(JSON.stringify(config[key]))}" readonly></div>
                     `).join('')}
                 </div>
@@ -8316,7 +8319,7 @@
         let data;
         try {
             data = await api(`/api/servers/${encodeURIComponent(serverId)}/public-dashboard${rotate ? '/rotate' : ''}`,
-                rotate ? { method: 'POST' } : {});
+                { method: 'POST' });
         } catch (e) { return; /* handled by api() */ }
         if (!data) return;
         const url = `${location.origin}/public/${data.token}/${kind}`;
@@ -8357,6 +8360,14 @@
     function rotatePublicLink(serverId, kind) {
         if (!confirm('Régénérer le lien ? Les liens déjà partagés (XP et Spotify) cesseront de fonctionner.')) return;
         showPublicLink(serverId, kind, true);
+    }
+
+    async function logout() {
+        try {
+            await fetch('/auth/logout', { method: 'POST' });
+        } finally {
+            window.location = '/';
+        }
     }
 
     // ── Utility ───────────────────────────────────────

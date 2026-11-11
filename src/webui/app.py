@@ -111,13 +111,11 @@ def create_app(bot=None, bot_loop=None) -> FastAPI:
             "sur le dashboard."
         )
     redirect_uri = f"{base_url}/auth/callback"
-    developer_user_ids = webui_config.get("developerUserIds", [])
 
     oauth = DiscordOAuth(
         client_id=client_id,
         client_secret=client_secret,
         redirect_uri=redirect_uri,
-        developer_user_ids=developer_user_ids,
     )
 
     # Install WebUI log handler on first app creation.

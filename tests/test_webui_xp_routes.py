@@ -149,9 +149,9 @@ def test_requires_guild_admin(client):
     assert http.get("/api/servers/123/xp/stats").status_code == 403
 
 
-def test_database_error_is_surfaced_as_500(client):
+def test_database_error_is_503_without_the_driver_message(client):
     http, _ = client
-    _FakeXpRepo.error = DatabaseError("MongoDB injoignable")
+    _FakeXpRepo.error = DatabaseError("MongoDB injoignable sur mongo:27017")
     resp = http.get("/api/servers/123/xp/stats")
-    assert resp.status_code == 500
-    assert "MongoDB" in resp.json()["detail"]
+    assert resp.status_code == 503
+    assert "mongo" not in resp.json()["detail"].lower()

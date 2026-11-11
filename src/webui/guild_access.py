@@ -10,10 +10,22 @@ whose cache the gateway keeps current (``GUILD_MEMBERS`` intent), and
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Any
 
 from src.core.permissions import can_manage_guild
+
+# A Discord id as Discord writes it: decimal digits, no sign, no leading zero,
+# no whitespace or underscores. ``int()`` accepts all of those, so without this
+# "0123" would pass the permission check for guild 123 and then be written to
+# config.json as a separate guild.
+_GUILD_ID_RE = re.compile(r"[1-9][0-9]{0,19}")
+
+
+def is_guild_id(value: object) -> bool:
+    """True if *value* is a guild id in its one canonical spelling."""
+    return isinstance(value, str) and _GUILD_ID_RE.fullmatch(value) is not None
 
 
 @dataclass(frozen=True)
@@ -53,4 +65,4 @@ async def read_guild_access(bot: Any, guild_id: str | int, user_id: str | int) -
     )
 
 
-__all__ = ["NO_ACCESS", "GuildAccess", "read_guild_access"]
+__all__ = ["NO_ACCESS", "GuildAccess", "is_guild_id", "read_guild_access"]

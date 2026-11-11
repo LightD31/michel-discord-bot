@@ -11,6 +11,7 @@ leaked database or backup holds nothing that can be replayed as a cookie.
 import hashlib
 import secrets
 import time
+from collections.abc import Callable, Iterable
 from dataclasses import asdict, dataclass, field
 from typing import Any
 from urllib.parse import urlencode
@@ -18,6 +19,7 @@ from urllib.parse import urlencode
 from aiohttp import ClientError
 
 from src.core import logging as logutil
+from src.core.config import global_config
 from src.core.http import http_client
 from src.webui.sessions import SessionRepository, expires_dt_from_ts
 
@@ -29,6 +31,13 @@ DISCORD_TOKEN_URL = "https://discord.com/api/oauth2/token"
 
 # Server-side session lifetime; the session cookie's max-age matches it.
 SESSION_TTL_SECONDS = 86400
+
+
+def configured_developer_ids() -> list[str]:
+    """``webui.developerUserIds`` as the config store holds it now, as strings."""
+    webui = global_config().get("webui")
+    ids = webui.get("developerUserIds") if isinstance(webui, dict) else None
+    return [str(i).strip() for i in ids] if isinstance(ids, list) else []
 
 
 def hash_token(session_token: str) -> str:
@@ -88,12 +97,14 @@ class DiscordOAuth:
         client_id: str,
         client_secret: str,
         redirect_uri: str,
-        developer_user_ids: list[str] | None = None,
+        developer_ids: Callable[[], Iterable[object]] = configured_developer_ids,
     ):
         self.client_id = client_id
         self.client_secret = client_secret
         self.redirect_uri = redirect_uri
-        self.developer_user_ids = developer_user_ids or []
+        # Read on every check, so removing someone from the list in the config
+        # takes their developer rights away at once, without a restart.
+        self._developer_ids = developer_ids
         self.sessions: dict[str, Session] = {}
 
     def get_oauth_url(self, state: str) -> str:
@@ -184,7 +195,7 @@ class DiscordOAuth:
 
     def is_developer(self, session: Session) -> bool:
         """Check if a session user is a developer (has access to extensions and logs)."""
-        return session.user_id in self.developer_user_ids
+        return session.user_id in {str(i) for i in self._developer_ids()}
 
     def get_session(self, session_token: str) -> Session | None:
         """Retrieve a session by its cookie value."""

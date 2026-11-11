@@ -21,7 +21,7 @@ from fastapi import HTTPException, Request
 
 from src.core import logging as logutil
 from src.webui.auth import DiscordOAuth, Session
-from src.webui.guild_access import GuildAccess, read_guild_access
+from src.webui.guild_access import GuildAccess, is_guild_id, read_guild_access
 from src.webui.ratelimit import TrustedProxies
 
 logger = logutil.init_logger("webui.context")
@@ -172,7 +172,8 @@ class WebUIContext:
     @staticmethod
     def _raise_save_error(e: Exception) -> None:
         logger.exception("Config save failed")
-        detail = f"Échec d'écriture de config/config.json : {e}"
+        # The exception text (paths, OS messages) stays in the logs.
+        detail = f"Échec d'écriture de config/config.json ({type(e).__name__}). Voir les logs."
         if isinstance(e, PermissionError):
             detail += (
                 " — le dossier config/ n'est pas inscriptible par l'utilisateur du "
@@ -269,8 +270,15 @@ class WebUIContext:
         return (await self.guild_access(session, guild_id)).manages_guild
 
     async def require_guild_admin(self, request: Request, guild_id: str | int) -> Session:
-        """Per-guild authorization — managing one guild grants nothing on the others."""
+        """Per-guild authorization — managing one guild grants nothing on the others.
+
+        Also the gate on the id's spelling: every per-guild route uses the id
+        from its path as a key in config.json and as a database name, so one
+        guild spelled two ways ("123", "0123") would be two guilds there.
+        """
         session = self.require_session(request)
+        if not is_guild_id(str(guild_id)):
+            raise HTTPException(status_code=404, detail="Serveur non trouvé")
         if not await self.user_manages_guild(session, guild_id):
             raise HTTPException(
                 status_code=403, detail="Accès réservé aux administrateurs de ce serveur"

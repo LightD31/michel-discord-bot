@@ -71,9 +71,16 @@ def _short_url_to_dict(item: dict[str, Any]) -> dict[str, Any]:
 
 
 def _shlink_error(e: ShlinkError) -> HTTPException:
-    """Map an integration failure onto a status the dashboard can display."""
-    status = 400 if e.status and 400 <= e.status < 500 else 502
-    return HTTPException(status_code=status, detail=str(e))
+    """Map an integration failure onto a status the dashboard can display.
+
+    A 4xx carries Shlink's own explanation of what it refused ("slug already
+    in use"), meant for whoever typed the request. Anything else (Shlink down,
+    a transport error naming the host) stays in the logs.
+    """
+    if e.status and 400 <= e.status < 500:
+        return HTTPException(status_code=400, detail=str(e))
+    logger.error("Shlink call failed: %s", e)
+    return HTTPException(status_code=502, detail="Shlink ne répond pas — voir les logs du bot.")
 
 
 # ── Router factory ──────────────────────────────────────────────────
