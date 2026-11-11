@@ -12,7 +12,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from interactions import Client
+from interactions import Client, Permissions
 
 
 def channel_guild_id(channel: Any) -> str | None:
@@ -61,4 +61,22 @@ async def fetch_guild_channel(
     return channel
 
 
-__all__ = ["channel_guild_id", "channel_in_guild", "fetch_guild_channel"]
+def member_can(member: Any, channel: Any, permission: Permissions) -> bool:
+    """Whether *member* holds every bit of *permission* in *channel*.
+
+    Counts the channel's overwrites (a thread's are its parent's). A command's
+    ``default_member_permissions`` is only checked in the channel it is run
+    from, so a command acting on another channel checks the author there too.
+    Anything it can't work out (a DM, a channel from another guild, a thread
+    whose parent isn't cached) is a no.
+    """
+    permissions_for = getattr(channel, "permissions_for", None)
+    if member is None or not callable(permissions_for):
+        return False
+    try:
+        return permission in permissions_for(member)
+    except (AttributeError, RuntimeError, ValueError):  # guild or parent not cached
+        return False
+
+
+__all__ = ["channel_guild_id", "channel_in_guild", "fetch_guild_channel", "member_can"]
