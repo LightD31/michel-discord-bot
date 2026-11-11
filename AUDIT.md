@@ -20,7 +20,11 @@ dans la **logique des extensions** (27 k lignes, hors couverture de tests). Les 
    tout membre) recrachent le texte saisi sans `allowed_mentions` → `@everyone` via le bot ; `/send`,
    `/delete`, `/lock`, `/slowmode` agissent sur un autre salon sans vérifier les droits de l'auteur
    dans ce salon ; `/reminder set` permet d'envoyer des DM quotidiens à 25 personnes arbitraires, sans
-   opt-out possible.
+   opt-out possible. Le rôle du bot ayant Administrateur et « Mentionner @everyone » sur vos serveurs, le
+   ping `@everyone` via `/pick` est effectif.
+
+Le bot servant aussi d'autres petites communautés, un admin d'**un** serveur peut faire tomber le bot pour
+**tous** les serveurs avec un message configuré du type `{mention:>2000000000}` (S04, mesuré).
 
 Quick win à part : `/ban jours_messages:7` ne supprime que **7 heures** de messages (B03, bug de la librairie
 sur un paramètre déprécié).
@@ -100,10 +104,10 @@ Les tests MongoDB n'ont pas tourné (pas de `MONGO_TEST_URL`).
 | B17 | bug | basse | S | extensions/twitch/eventsub.py:149 ; extensions/twitch/__init__.py:301-311 | Twitch installe son propre handler SIGTERM qui appelle `bot.stop()` en parallèle de `GracefulShutdown` → sortie possible avant la fermeture des autres extensions, de MongoDB et du HTTP [V lecture / S chronologie] |
 | B18 | bug | basse | S | extensions/random_.py:45,98 | `/pick`, `/shuffle` sans `max_length` : une liste longue dépasse 2000 caractères → 400, le membre reçoit l'erreur générique [V] |
 | B19 | bug | basse | S | extensions/moderation/__init__.py:27 ; extensions/confrerie/requests.py:96, editors.py:157 | Caches jamais purgés : une `deque` anti-spam par membre ayant écrit ; saisies de modal abandonnées gardées à vie [V] |
-| S01 | sécurité | haute* | S | extensions/random_.py:52,107 ; extensions/rss/__init__.py:401 ; main.py:79 | Aucune politique `allowed_mentions` : `/pick @everyone` (global, tout membre) et titres RSS tiers peuvent pinger [V code / S effet] |
+| S01 | sécurité | haute | S | extensions/random_.py:52,107 ; extensions/rss/__init__.py:401 ; main.py:79 | Aucune politique `allowed_mentions` : `/pick @everyone` (global, tout membre) et titres RSS tiers peuvent pinger [V code / S effet] |
 | S02 | sécurité | moyenne | S | extensions/admin/__init__.py:127,183,~273,~319 | `/delete`, `/send`, `/lock`, `/slowmode` agissent sur un salon où l'auteur n'a pas forcément de droits [V] |
-| S03 | sécurité | moyenne | S | extensions/reminders/__init__.py:137,54 ; features/reminders/repository.py:65 | DM récurrents vers 25 destinataires arbitraires, sans consentement, sans quota, sans désinscription [V] |
-| S04 | sécurité | moyenne | S | src/core/text.py:170 ; extensions/rss/__init__.py:117 ; features/youtube/videos.py:53 | `{mention:>2000000000}` dans un message configuré → allocation géante → OOM du bot pour tous les serveurs [V 200 Mo/0,12 s] |
+| S03 | sécurité | moyenne | S | extensions/reminders/__init__.py:137,54 ; features/reminders/repository.py:65 | DM récurrents vers 25 destinataires arbitraires, sans consentement, sans quota, sans désinscription ; décision : rappels réservés au membre lui-même [V] |
+| S04 | sécurité | haute | S | src/core/text.py:170 ; extensions/rss/__init__.py:117 ; features/youtube/videos.py:53 | `{mention:>2000000000}` dans un message configuré → allocation géante → OOM du bot pour tous les serveurs [V 200 Mo/0,12 s] |
 | S05 | sécurité | moyenne | S | extensions/secretsanta/draws.py:103 | `/secretsanta draw` lançable par n'importe qui (cancel/reveal sont protégés) ; deux `draw` simultanés tirent deux fois [V] |
 | S06 | sécurité | moyenne | S | extensions/starboard/listeners.py:87 | Un message d'un salon NSFW est recopié dans le starboard (SFW) [V absence de contrôle] |
 | S07 | sécurité | basse | S | src/webui/app.py:142 | `/openapi.json` reste exposé (docs désactivées mais pas le schéma) [V] |
@@ -127,7 +131,7 @@ Les tests MongoDB n'ont pas tourné (pas de `MONGO_TEST_URL`).
 | F04 | fonctionnel | basse | S | — | Aucune commande `/aide` ; 5 cooldowns seulement (aucun sur `/pick`, `/roll`, `/shuffle`, `/feurstats`) |
 | F05 | fonctionnel | basse | M | — | Interface 100 % FR alors que `/pick`, `/roll`, `/shuffle`, `/ask` sont installables par n'importe quel utilisateur : localisations Discord |
 
-\* S01 est **haute** si le rôle du bot a « Mentionner @everyone » ou Administrateur sur un serveur, moyenne sinon.
+Gravités ajustées après les réponses du mainteneur (section 4) : S01 et S04 passent en haute.
 
 ## 3. Détail des constats et correctifs
 
@@ -299,7 +303,7 @@ interactions.py 5.16 n'a pas de `allowed_mentions` par défaut au niveau client 
 (seuls compareai, zunivers/ninja et confrerie/review en passent). `/pick choix:@everyone;@here` et `/shuffle`
 sont **globales** et ouvertes à tout membre ; le bot renvoie le texte tel quel. En mode texte, un flux RSS tiers
 dont le titre contient `@everyone` pinge le serveur. L'effet dépend de la permission « Mentionner @everyone »
-du bot dans le salon.
+du bot dans le salon : le mainteneur confirme que le rôle du bot l'a (et Administrateur) sur ses serveurs.
 Correctif : `allowed_mentions=AllowedMentions.none()` sur toute sortie reprenant du texte d'utilisateur ou d'un
 tiers (random_, rss texte, reminders, suggestions, tricount…), via un helper commun (T03).
 
@@ -319,14 +323,20 @@ et `allowed_mentions` restreint pour `/send` si l'auteur n'a pas `MENTION_EVERYO
 ### S03 — Rappels utilisables pour harceler [V]
 `/reminder set destinataires:` accepte 25 IDs quelconques (ni membres du serveur, ni consentement), récurrence
 quotidienne, nombre de rappels illimité ; le destinataire ne peut ni voir ni supprimer le rappel
-(`list_for_user` filtre sur le créateur). Correctif : restreindre aux membres du serveur, quota par créateur
-(ex. 20 rappels), bouton « Ne plus recevoir » dans le DM qui retire le destinataire, `/reminder list`.
+(`list_for_user` filtre sur le créateur).
+Décision du mainteneur : un rappel ne s'adresse qu'au membre qui le crée. Correctif : retirer l'option
+`destinataires`, le champ `recipient_ids` du modèle (`features/reminders/models.py`), `parse_recipients` et
+`MAX_EXTRA_RECIPIENTS` ; `all_recipients()` devient le seul créateur. Garder un quota par membre (ex. 20 rappels)
+et ajouter `/reminder list` (F03). Pas de migration (règle du dépôt) : à exécuter une fois sur chaque base
+`guild_<id>` qui a des rappels partagés :
+`db.task_reminders.updateMany({}, {$unset: {recipient_ids: ""}})`.
 
 ### S04 — Amplification par spécification de format [V]
 `pick_weighted_message` (`format_map`), `_format_template` RSS et `render_notification` YouTube acceptent les
 spécifications de format. Un admin d'**un** serveur qui saisit `{mention:>2000000000}` dans un message de
 bienvenue/niveau/anniversaire provoque une allocation de ~2 Go à l'événement suivant → OOM-kill du conteneur pour
-**tous** les serveurs (mesuré : `>200000000` = 190 Mo en 0,12 s). Correctif : un `string.Formatter` restreint
+**tous** les serveurs (mesuré : `>200000000` = 190 Mo en 0,12 s). Le bot servant d'autres communautés,
+leurs admins ne sont pas le mainteneur : gravité haute. Correctif : un `string.Formatter` restreint
 (refus de `format_spec`, de la conversion `!r` et des accès `.`/`[]`), partagé par les trois sites, + validation
 au moment de la sauvegarde.
 
@@ -389,25 +399,25 @@ digest, Actions épinglées par SHA, pip-audit hebdomadaire, détection de secre
   les giveaways/sondages actifs du serveur, ou commandes de menu contextuel « Clore le giveaway » sur le message.
 - F02 : bouton « Participer » (`$addToSet` atomique, compteur exact, pas de relecture des réactions), bouton
   « Se retirer » ; corrige B10 au passage.
-- F03 : `/reminder list`, désinscription des destinataires (S03), ne pas empiler « ⏰ (snooze) ».
+- F03 : `/reminder list`, ne pas empiler « ⏰ (snooze) » (les destinataires disparaissent avec S03).
 - F04 : `/aide` générée depuis les commandes chargées pour le serveur (les scopes sont connus), cooldowns sur
   les commandes globales et lourdes.
 - F05 : `name_localizations`/`description_localizations` (fr par défaut, en) pour les commandes installables
   par tous.
 
-## 4. Questions ouvertes
-1. Les destinataires de `/reminder set` doivent-ils pouvoir être n'importe qui, ou seulement des membres du
-   serveur qui acceptent (S03) ?
-2. Le rôle du bot a-t-il Administrateur ou « Mentionner @everyone » sur vos serveurs (gravité de S01/S02) ?
-3. Le bot est-il destiné à d'autres communautés que les vôtres (priorité de F05, des quotas, des cooldowns) ?
+## 4. Réponses du mainteneur et impact
+| Question | Réponse | Impact |
+|---|---|---|
+| Destinataires de `/reminder set` | Seulement le membre lui-même | S03 : suppression des destinataires (correctif S, lot 1) |
+| Le rôle du bot a-t-il Administrateur / « Mentionner @everyone » ? | Oui, les deux | S01 haute ; S02 garde sa gravité (`/delete` et `/send` restent réservés aux admins par défaut) |
+| D'autres communautés que les vôtres ? | Oui, de petite taille | S04 haute (un admin externe peut faire tomber le bot pour tous) ; cooldowns (F04) utiles ; localisations (F05) restent basses |
 
 ## 5. Plan d'action par lots
 
-**Lot 1 — Quick wins (≈ 1 j, S)** : B01, B03, B04, B05, B08, B09, B13, B16, B17, B18, S01 (random_ + RSS texte),
-S05, S06, S07, S08, S10.
+**Lot 1 — Quick wins (≈ 1,5 j, S)** : B01, B03, B04, B05, B08, B09, B13, B16, B17, B18, S01 (random_ + RSS texte),
+S03 (rappels réservés au membre), S04 (formatter restreint), S05, S06, S07, S08, S10.
 **Lot 2 — Concurrence et fiabilité des tâches (≈ 2 j, M)** : T01 garde anti-chevauchement, B02 réclamations
 atomiques (giveaway, reminders, polls, tricount), B06, B07, B11, B12, B15.
-**Lot 3 — Abus et durcissement (≈ 1–2 j)** : S02, S03 (+F03), S04 (formatter restreint), S09, S12, T03 helper
-d'envoi sûr, B10.
+**Lot 3 — Abus et durcissement (≈ 1 j)** : S02, F03, S09, S12, T03 helper d'envoi sûr, B10, cooldowns de F04.
 **Lot 4 — Socle et tests (≈ 3–5 j, L)** : T04 harnais de tests d'extensions + couverture, T05, T06, T07, T08, B19.
-**Lot 5 — Évolutions (à la demande)** : T02 migration PyMongo async, F01, F02, F04, F05, T09 CSP.
+**Lot 5 — Évolutions (à la demande)** : T02 migration PyMongo async, F01, F02, F04 (`/aide`), F05, T09 CSP.
