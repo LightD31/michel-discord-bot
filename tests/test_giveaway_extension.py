@@ -133,3 +133,66 @@ async def test_a_deleted_announcement_closes_without_winners(ext):
     ext.bot = bot_with(None)  # fetch_channel answers None: the channel is gone
     assert await ext._draw(giveaway()) == "drawn"
     assert ext.repo.released == 0 and ext.edits == []
+
+
+# Live participants (B10) -------------------------------------------------------
+
+BOT_ID = 99
+
+
+class RecordingRefreshes:
+    def __init__(self):
+        self.requests = []
+
+    def request(self, key, refresh):
+        self.requests.append((key, refresh))
+
+
+@pytest.fixture
+def live(ext, store_config):
+    store_config({"servers": {"1": {"moduleGiveaway": {"enabled": True}}}})
+    ext.bot = SimpleNamespace(user=SimpleNamespace(id=BOT_ID))
+    ext._refreshes = RecordingRefreshes()
+    return ext
+
+
+def reaction_on(message, emoji="🎉", author_id=BOT_ID, guild_id=1):
+    message.author = SimpleNamespace(id=author_id)
+    message.guild = SimpleNamespace(id=guild_id)
+    return SimpleNamespace(message=message, emoji=emoji)
+
+
+def test_a_reaction_on_someone_elses_message_costs_nothing(live):
+    live._refresh_participants_embed(reaction_on(announcement([]), author_id=5))
+    assert live._refreshes.requests == []
+
+
+def test_a_reaction_where_giveaways_are_off_costs_nothing(live, store_config):
+    store_config({"servers": {"1": {"moduleGiveaway": {"enabled": False}}}})
+    live._refresh_participants_embed(reaction_on(announcement([])))
+    assert live._refreshes.requests == []
+
+
+async def test_a_reaction_on_a_giveaway_refreshes_its_participants(live):
+    message = announcement(["10", "11"])
+    live.repo.get_by_message = lambda message_id: _async(giveaway())
+    live._refresh_participants_embed(reaction_on(message))
+    [(key, refresh)] = live._refreshes.requests
+    assert key == (5, ("🎉", "🎉"))
+    await refresh()
+    [edit] = live.edits
+    assert "<@10>" in str(edit["embeds"][0].to_dict())
+
+
+async def test_another_emoji_doesnt_reread_the_entrants(live):
+    message = announcement(["10"])
+    message.reactions[0].users = lambda: pytest.fail("the entrants were read")
+    live.repo.get_by_message = lambda message_id: _async(giveaway())
+    live._refresh_participants_embed(reaction_on(message, emoji="😂"))
+    [(_, refresh)] = live._refreshes.requests
+    await refresh()
+    assert live.edits == []
+
+
+async def _async(value):
+    return value

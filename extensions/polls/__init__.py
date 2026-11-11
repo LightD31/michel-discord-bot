@@ -50,6 +50,7 @@ from features.polls import (
 )
 from src.core import logging as logutil
 from src.core.config import ModuleConfig
+from src.core.debounce import Coalescer
 from src.discord_ext.embeds import Colors, format_discord_timestamp
 from src.discord_ext.messages import copy_embed, edit_message_if_changed, send_error
 from src.discord_ext.paginator import format_poll
@@ -59,6 +60,8 @@ from .buttons import PollButtonsMixin, render_results_field, update_poll_embed, 
 
 logger = logutil.init_logger(__name__)
 UTILS = ModuleConfig("moduleUtils")
+# Votes on a reaction poll within this many seconds share one re-read of its voters.
+REFRESH_DELAY_SECONDS = 3
 
 
 def _default_poll_seconds(guild_id: str | int | None) -> int | None:
@@ -117,7 +120,8 @@ class PollsExtension(Extension, PollButtonsMixin):
 
     def __init__(self, bot: Client):
         self.bot = bot
-        self.lock = asyncio.Lock()
+        # A burst of votes on a reaction poll re-reads its voters once.
+        self._refreshes = Coalescer(REFRESH_DELAY_SECONDS, name="poll-refresh", log=logger)
         self._poll_repos: dict[str, PollRepository] = {}
 
     def _poll_repo(self, guild_id: str | int) -> PollRepository:
@@ -463,25 +467,26 @@ class PollsExtension(Extension, PollButtonsMixin):
             return None
         return message
 
-    async def _refresh_reaction_poll(
-        self, event: MessageReactionAdd | MessageReactionRemove
-    ) -> None:
+    def _refresh_reaction_poll(self, event: MessageReactionAdd | MessageReactionRemove) -> None:
+        """Schedule a re-render of the reaction poll *event* voted on, if it is one."""
         message = self._reaction_poll_message(event)
         if message is None:
             return
-        async with self.lock:
-            embed = await format_poll(event)
-            await edit_message_if_changed(message, embed=embed, logger=logger)
+        self._refreshes.request(int(message.id), lambda: self._render_reaction_poll(message))
+
+    async def _render_reaction_poll(self, message) -> None:
+        embed = await format_poll(message)
+        await edit_message_if_changed(message, embed=embed, logger=logger)
 
     @listen(MessageReactionAdd)
     async def on_message_reaction_add(self, event: MessageReactionAdd):
         """Count reactions and update the poll embed."""
-        await self._refresh_reaction_poll(event)
+        self._refresh_reaction_poll(event)
 
     @listen(MessageReactionRemove)
     async def on_message_reaction_remove(self, event: MessageReactionRemove):
         """Count reactions and update the poll embed."""
-        await self._refresh_reaction_poll(event)
+        self._refresh_reaction_poll(event)
 
     @slash_command(
         name="editpoll",

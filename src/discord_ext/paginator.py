@@ -2,16 +2,15 @@
 
 - :class:`CustomPaginator` — drop-in replacement for ``interactions.ext.paginators.Paginator``
   with a ``callback`` button, select-dropdown jumps, and keep-alive pings.
-- :func:`format_poll` — mutates a poll embed in place to render vote counts per
-  option and the voters behind each one, keyed off the reaction payload.
+- :func:`format_poll` — renders a reaction poll's vote counts per option and the
+  voters behind each one into a copy of its embed.
 """
 
 from __future__ import annotations
 
 import time
 
-from interactions import ComponentContext, Message
-from interactions.api.events import MessageReactionAdd, MessageReactionRemove
+from interactions import ComponentContext, Embed, Message
 from interactions.ext import paginators
 
 from features.polls import poll_option_emojis, render_reaction_poll
@@ -92,15 +91,14 @@ def _guild_name_overrides(server_id: str) -> dict[str, str]:
     return name_cache[server_id]
 
 
-async def format_poll(event: MessageReactionAdd | MessageReactionRemove):
-    """Render the current vote counts + voter names into a poll embed.
+async def format_poll(message: Message) -> Embed:
+    """Render the current vote counts + voter names of a reaction poll's *message*.
 
     The embed's description is the "\\n\\n"-separated option list the poll
     command produced. Only the reactions of the poll's own option emojis are
     read. Each call replaces the description of a copy and returns it (the
     message is left untouched).
     """
-    message = event.message
     embed = copy_embed(message.embeds[0])
     description = embed.description or ""
     option_emojis = poll_option_emojis(description)
