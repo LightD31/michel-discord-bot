@@ -41,6 +41,7 @@ from interactions.api.events import MessageReactionAdd, MessageReactionRemove
 
 from features.giveaway import MAX_WINNERS, Giveaway, GiveawayRepository, pick_winners
 from features.polls import parse_duration  # reused: same DSL as /poll
+from src.core.text import EMBED_DESCRIPTION_LIMIT, clip
 from src.discord_ext.embeds import Colors, format_discord_timestamp
 from src.discord_ext.messages import (
     edit_message_if_changed,
@@ -532,7 +533,7 @@ class GiveawayExtension(Extension):
             )
         embed = Embed(
             title="Giveaways en cours",
-            description="\n".join(lines)[:4000],
+            description=clip("\n".join(lines), EMBED_DESCRIPTION_LIMIT),
             color=Colors.UTIL,
         )
         await ctx.send(embeds=[embed], ephemeral=True)

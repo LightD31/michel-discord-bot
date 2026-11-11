@@ -41,6 +41,7 @@ from src.core.config import ModuleConfig
 from src.core.errors import DatabaseError, ValidationError
 from src.core.text import pick_weighted_message
 from src.discord_ext.embeds import Colors
+from src.discord_ext.mentions import everyone_if_written
 from src.discord_ext.messages import edit_message_if_changed, fetch_user_safe, require_guild
 from src.discord_ext.paginator import CustomPaginator
 from src.discord_ext.scopes import guild_scopes
@@ -444,7 +445,8 @@ class BirthdayExtension(Extension):
                 mention=member.mention,
                 age=age,
             )
-            await channel.send(text)
+            # The admins' template filled with a mention and an age.
+            await channel.send(text, allowed_mentions=everyone_if_written(text))
             logger.debug("Birthday message sent for %s", member.display_name)
         except Exception as e:
             logger.error("Error sending birthday message: %s", e)

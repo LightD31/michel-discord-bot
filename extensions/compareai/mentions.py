@@ -24,9 +24,9 @@ from features.ai import (
     mention_question,
     render_single,
 )
+from src.discord_ext.mentions import NO_PINGS
 
 from ._common import SCOPE_GUILD, global_settings, guild_settings, logger, repo_for
-from .ask import NO_PINGS
 
 # How far up a reply chain Michel reads to follow a conversation.
 MAX_REPLY_CHAIN = 5

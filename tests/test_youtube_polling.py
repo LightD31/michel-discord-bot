@@ -41,7 +41,7 @@ class Channel:
     def __init__(self):
         self.sent: list[str] = []
 
-    async def send(self, content):
+    async def send(self, content, allowed_mentions=None):
         self.sent.append(content)
 
 

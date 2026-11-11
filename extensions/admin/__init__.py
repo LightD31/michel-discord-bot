@@ -35,7 +35,8 @@ from src.core import logging as logutil
 from src.core.config import ModuleConfig
 from src.discord_ext.channels import member_can
 from src.discord_ext.errors import failure_reply
-from src.discord_ext.messages import mentions_member_could_send, send_error, send_success
+from src.discord_ext.mentions import mentions_member_could_send
+from src.discord_ext.messages import send_error, send_success
 from src.discord_ext.scopes import guild_scopes
 from src.webui.schemas import SchemaBase, enabled_field, register_module, ui
 

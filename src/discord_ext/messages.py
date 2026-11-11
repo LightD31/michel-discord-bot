@@ -14,68 +14,12 @@ from collections.abc import Sequence
 from typing import Any
 from urllib.parse import urlsplit
 
-from interactions import (
-    AllowedMentions,
-    Client,
-    Embed,
-    Message,
-    Permissions,
-    SlashContext,
-    ThreadChannel,
-)
+from interactions import Client, Embed, Message, SlashContext, ThreadChannel
 from interactions.models.discord.components import process_components
 
 from src.core.errors import DatabaseError
 from src.core.message_refs import MessageRefRepository
-from src.core.text import mentions_in
-from src.discord_ext.channels import fetch_guild_channel, member_can
-
-# ---------------------------------------------------------------------------
-# Mentions
-# ---------------------------------------------------------------------------
-
-
-def mentions_written_in(template: str) -> AllowedMentions:
-    """Let a message ping only what its configured *template* mentions.
-
-    The rendered text also carries text someone else wrote (a feed title, a
-    member's input): an ``@everyone`` in there must not ping a server the bot
-    can mention everyone in.
-    """
-    users, roles, everyone = mentions_in(template)
-    return AllowedMentions(
-        parse=["everyone"] if everyone else [],
-        users=[int(uid) for uid in users],
-        roles=[int(rid) for rid in roles],
-    )
-
-
-def mentions_member_could_send(member: Any, channel: Any, text: str) -> AllowedMentions:
-    """What *text*, posted by the bot for *member* in *channel*, may ping.
-
-    What the member could ping writing it themselves: the users it names; the
-    roles it names that anyone may mention; every role and ``@everyone`` /
-    ``@here`` when they hold Mention Everyone in *channel*. The bot's own
-    permissions are wider (it is an administrator on most servers).
-    """
-    users, roles, everyone = mentions_in(text)
-    if member_can(member, channel, Permissions.MENTION_EVERYONE):
-        allowed_roles = roles
-    else:
-        everyone = False
-        guild = getattr(channel, "guild", None)
-        get_role = getattr(guild, "get_role", None)
-        allowed_roles = [
-            rid
-            for rid in roles
-            if callable(get_role) and getattr(get_role(int(rid)), "mentionable", False)
-        ]
-    return AllowedMentions(
-        parse=["everyone"] if everyone else [],
-        users=[int(uid) for uid in users],
-        roles=[int(rid) for rid in allowed_roles],
-    )
-
+from src.discord_ext.channels import fetch_guild_channel
 
 # ---------------------------------------------------------------------------
 # Ephemeral responses
@@ -549,8 +493,6 @@ __all__ = [
     "fetch_or_create_persistent_message",
     "fetch_user_safe",
     "forget_persistent_message",
-    "mentions_member_could_send",
-    "mentions_written_in",
     "republish_persistent_message",
     "require_guild",
     "send_error",

@@ -12,7 +12,7 @@ from interactions import Permissions, errors
 from extensions.admin import AdminExtension
 from src.discord_ext.channels import member_can
 from src.discord_ext.errors import failure_reply
-from src.discord_ext.messages import mentions_member_could_send
+from src.discord_ext.mentions import mentions_member_could_send
 
 AUTHOR = SimpleNamespace(id=1, username="mod")
 MOD_RIGHTS = Permissions.VIEW_CHANNEL | Permissions.SEND_MESSAGES | Permissions.MANAGE_MESSAGES

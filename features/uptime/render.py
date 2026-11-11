@@ -7,10 +7,8 @@ from datetime import datetime
 from enum import StrEnum
 
 from features.uptime.models import AlertEvent, AlertMode
+from src.core.text import EMBED_FIELD_VALUE_LIMIT, clip
 from src.integrations.uptime_kuma import MonitorStatus
-
-# Discord's limit on an embed field value.
-FIELD_VALUE_LIMIT = 1024
 
 
 class AlertTone(StrEnum):
@@ -70,10 +68,6 @@ _TEXTS: dict[AlertEvent, tuple[AlertTone, str, str, str, str]] = {
 }
 
 
-def _clip(text: str, limit: int = FIELD_VALUE_LIMIT) -> str:
-    return text if len(text) <= limit else text[: limit - 1] + "…"
-
-
 def render_alert(
     event: AlertEvent,
     mode: AlertMode,
@@ -103,7 +97,7 @@ def render_alert(
     if previous is not None and previous is not current:
         fields.append(AlertField("État précédent", previous.label))
     if url:
-        fields.append(AlertField("URL", _clip(url), inline=False))
+        fields.append(AlertField("URL", clip(url, EMBED_FIELD_VALUE_LIMIT), inline=False))
     if ping is not None:
         fields.append(AlertField("Ping", f"{ping:g} ms"))
     return AlertMessage(
