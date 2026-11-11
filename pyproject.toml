@@ -175,11 +175,11 @@ branch = true
 [tool.coverage.report]
 show_missing = true
 skip_covered = true
-# Floor for `pytest --cov` (CI's test job): total coverage was 73.8% without MongoDB
-# and 75.4% with it (CI) when this was last raised. Keep it below the figure
+# Floor for `pytest --cov` (CI's test job): total coverage was 78.5% without MongoDB
+# and 80.7% with it (CI) when this was last raised. Keep it below the figure
 # without MongoDB so a local run passes too. Raise it as tests are added, so
 # coverage can only ratchet up.
-fail_under = 77
+fail_under = 78
 
 # ─── detect-secrets ────────────────────────────────────────────────────
 # Baseline lives at .secrets.baseline; configured via .pre-commit-config.yaml.
