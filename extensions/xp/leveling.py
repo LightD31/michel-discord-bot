@@ -26,6 +26,7 @@ class LevelingMixin:
     _db_connected: bool
     _rank_cache: TTLCache
     _repos: dict[str, XpRepository]
+    _xp_collections: set[str]
 
     def _repo(self, guild_id: str) -> XpRepository:
         repo = self._repos.get(guild_id)
@@ -80,10 +81,14 @@ class LevelingMixin:
         return True
 
     async def _ensure_guild_collection(self, guild_id: str, guild_name: str) -> None:
+        # Checked once per guild and process, not with a collection listing per message.
+        if guild_id in self._xp_collections:
+            return
         try:
             created = await self._repo(guild_id).ensure_collection(guild_name)
             if created:
                 logger.debug("Created xp collection for %s.", guild_name)
+            self._xp_collections.add(guild_id)
         except DatabaseError as e:
             logger.error("Failed to create collection for %s: %s", guild_name, e)
 
@@ -112,16 +117,23 @@ class LevelingMixin:
         repo = self._repo(guild_id)
 
         try:
-            updated = await repo.award_xp(user_id, xp_gained, 1, message.created_at.timestamp())
-            self._invalidate_rank_cache(guild_id)
-            logger.debug("Gave %s XP.", user_id)
+            updated = await repo.award_xp(
+                user_id,
+                xp_gained,
+                1,
+                message.created_at.timestamp(),
+                min_interval=XP_COOLDOWN_SECONDS,
+            )
         except DatabaseError as e:
             logger.error("Failed to update XP for %s: %s", user_id, e)
             return
 
         if updated is None:
-            logger.debug("XP row for %s disappeared mid-update; skipping level check.", user_id)
+            # Another message of theirs just earned XP (or the row is gone).
+            logger.debug("No XP for %s: within the cooldown.", user_id)
             return
+        self._invalidate_rank_cache(guild_id)
+        logger.debug("Gave %s XP.", user_id)
 
         # The post-increment total from the database, not stats + xp_gained:
         # a concurrent voice-tick award would make the local sum wrong.
