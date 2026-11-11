@@ -16,6 +16,7 @@ from interactions import (
 
 from features.reactionroles import RoleMenu, RoleMenuEntry
 from src.discord_ext.embeds import Colors
+from src.discord_ext.errors import failure_reply
 from src.discord_ext.messages import (
     edit_message_if_changed,
     require_guild,
@@ -141,7 +142,7 @@ class CommandsMixin:
             sent = await channel.send(embeds=[embed], components=components)  # type: ignore[union-attr]
         except Exception as e:
             await self.repository(ctx.guild_id).delete(menu_id)
-            await send_error(ctx, f"Échec de l'envoi du menu : {e}")
+            await send_error(ctx, failure_reply("Échec de l'envoi du menu", e, logger))
             return
 
         await self.repository(ctx.guild_id).update(menu_id, message_id=str(sent.id))

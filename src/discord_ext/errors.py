@@ -10,6 +10,8 @@ it in the logs.
 
 from __future__ import annotations
 
+import logging
+
 from interactions import errors
 
 from src.core import log_context
@@ -48,4 +50,24 @@ def user_message(error: BaseException, reference: str) -> str:
     )
 
 
-__all__ = ["is_expected", "new_reference", "user_message"]
+def failure_reply(what: str, error: BaseException, logger: logging.Logger) -> str:
+    """Log why *what* failed and say it to the member, without the exception's own text.
+
+    *what* reads as a sentence on its own ("Impossible de bannir ce membre").
+    The library's message (a route, a JSON error body) means nothing to a
+    member and can end up in a public channel. A refusal from Discord or a
+    target that is gone is a normal outcome, logged as a warning; anything
+    else is logged with its traceback, under the reference the member is given.
+    """
+    if isinstance(error, errors.Forbidden):
+        logger.warning("%s: %s", what, error)
+        return f"{what} : je n'ai pas les droits nécessaires (permission ou position de mon rôle)."
+    if isinstance(error, errors.NotFound):
+        logger.warning("%s: %s", what, error)
+        return f"{what} : introuvable sur Discord."
+    reference = new_reference()
+    logger.error("%s (réf. %s)", what, reference, exc_info=error)
+    return f"{what}. Si ça continue, donne cette référence à un admin : `{reference}`."
+
+
+__all__ = ["failure_reply", "is_expected", "new_reference", "user_message"]

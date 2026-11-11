@@ -56,8 +56,12 @@ class CorporationMixin:
                 logger.warning("Could not fetch corporation data")
                 return
         except ZuniversAPIError as e:
+            # The API's own message (a URL, a status) means nothing in a public channel.
+            logger.warning("Corporation recap: ZUnivers API error: %s", e)
             for channel in channels:
-                await channel.send(f"Erreur lors de la récupération des données: {e}")
+                await channel.send(
+                    "⚠️ Récap de la corporation indisponible : l'API ZUnivers ne répond pas."
+                )
             return
 
         target_date = self._parse_date(date)

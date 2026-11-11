@@ -14,6 +14,7 @@ from interactions import (
 from features.coloc.constants import ReminderType
 from features.coloc.models import HardcoreSeason, ZuniversEvent
 from features.coloc.utils import image_url_needs_download
+from src.discord_ext.errors import failure_reply
 from src.discord_ext.messages import send_error
 
 from ._common import GuildState, logger, zunivers_api_url, zunivers_cmd
@@ -42,8 +43,7 @@ class EventsMixin:
             await self._check_zunivers_events(only=str(ctx.guild_id))
             await ctx.send("Vérification des événements Zunivers terminée ! 🎉", ephemeral=True)
         except Exception as e:
-            await send_error(ctx, f"Erreur lors de la vérification: {e}")
-            logger.error(f"Manual event check failed: {e}")
+            await send_error(ctx, failure_reply("La vérification a échoué", e, logger))
 
     async def _check_zunivers_events(self, only: str | None = None) -> None:
         """Compare the current events with each enabled guild's last known state.

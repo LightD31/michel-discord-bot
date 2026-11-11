@@ -97,9 +97,13 @@ async def test_ban_deletes_the_requested_days_of_messages(ext):
 async def test_a_failed_ban_corrects_the_dm(ext):
     guild = FakeGuild(fail=True)
     target = member(2, position=1)
-    await CommandsMixin.ban.callback(ext, FakeCtx(guild, member(3, position=10)), target, None, 0)
+    ctx = FakeCtx(guild, member(3, position=10))
+    await CommandsMixin.ban.callback(ext, ctx, target, None, 0)
     assert guild.bans == []
     assert len(target.sent) == 2 and "pas été banni" in target.sent[1]
+    # The moderator gets a reference to the logged error, not its text.
+    [(args, _)] = ctx.sent
+    assert "Missing Permissions" not in args[0] and "référence" in args[0]
 
 
 async def test_untimeout_respects_the_hierarchy(ext):
