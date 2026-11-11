@@ -241,6 +241,23 @@ def global_config() -> dict[str, Any]:
     return data if isinstance(data, dict) else {}
 
 
+BIND_HOST_ENV = "MICHEL_BIND_HOST"
+LOOPBACK = "127.0.0.1"
+
+
+def bind_host(configured: object) -> str:
+    """The address a server of the bot (dashboard, metrics) listens on.
+
+    The configured one, else ``$MICHEL_BIND_HOST``, else loopback: a bot run
+    by hand doesn't publish its dashboard on every interface of the machine.
+    The Docker image sets the variable to ``0.0.0.0``, where the container's
+    port mapping decides what is reachable.
+    """
+    if isinstance(configured, str) and configured.strip():
+        return configured.strip()
+    return os.environ.get(BIND_HOST_ENV, "").strip() or LOOPBACK
+
+
 def _guild_key(guild_id: object) -> str:
     return "" if guild_id is None else str(guild_id).strip()
 

@@ -727,8 +727,11 @@ class MetricsSection(SchemaBase):
     host: str = ui(
         "Hôte",
         "string",
-        default="0.0.0.0",
-        description="Adresse de liaison de l'endpoint /metrics.",
+        default="",
+        description=(
+            "Adresse de liaison de l'endpoint /metrics. Vide : 127.0.0.1, ou 0.0.0.0 "
+            "dans l'image Docker (variable MICHEL_BIND_HOST)."
+        ),
     )
     port: int = ui(
         "Port",
@@ -777,7 +780,13 @@ class WebuiSection(SchemaBase):
 
     enabled: bool = enabled_field()
     host: str = ui(
-        "Hôte", "string", default="0.0.0.0", description="Adresse de liaison du serveur web."
+        "Hôte",
+        "string",
+        default="",
+        description=(
+            "Adresse de liaison du serveur web. Vide : 127.0.0.1, ou 0.0.0.0 dans "
+            "l'image Docker (variable MICHEL_BIND_HOST). Pris en compte au redémarrage."
+        ),
     )
     port: int = ui("Port", "number", default=8080)
     baseUrl: str = ui(

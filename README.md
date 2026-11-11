@@ -193,7 +193,7 @@ Volumes:
 - `./data` → `/app/data` (persistent data, backups)
 - `./logs` → `/app/logs` (log files)
 
-The Web UI is bound to `127.0.0.1:8080` — put a TLS-terminating reverse proxy in front of it. The container runs as a non-root user and has a healthcheck wired to the bot's heartbeat file, so a wedged gateway connection triggers an automatic restart (`restart: unless-stopped`).
+The Web UI is published on `127.0.0.1:8080` — put a TLS-terminating reverse proxy in front of it. Inside the container it listens on every interface (`MICHEL_BIND_HOST=0.0.0.0` in the image); run outside Docker, it and `/metrics` listen on `127.0.0.1` unless `webui.host` / `metrics.host` say otherwise. The container runs as a non-root user and has a healthcheck wired to the bot's heartbeat file, so a wedged gateway connection triggers an automatic restart (`restart: unless-stopped`).
 
 ### Local Development
 
@@ -277,7 +277,7 @@ The `metrics` extension serves `/metrics` in the Prometheus text format on its o
 | Key | Default | Meaning |
 |-----|---------|---------|
 | `enabled` | `false` | Start the exporter. |
-| `host` / `port` | `0.0.0.0` / `9108` | Where `/metrics` listens. |
+| `host` / `port` | empty / `9108` | Where `/metrics` listens. An empty host means `127.0.0.1`, or `0.0.0.0` in the Docker image (`MICHEL_BIND_HOST`). |
 | `refreshSeconds` | `300` | How often XP and Spotify statistics are recomputed from MongoDB (minimum 60). |
 | `topMembers` | `25` | How many members get their own series (XP leaderboard, Spotify contributors and voters). |
 

@@ -18,7 +18,7 @@ from interactions import IntervalTrigger, Task
 
 from src.core import error_reporting
 from src.core import logging as logutil
-from src.core.config import CONFIG_PATH, global_config
+from src.core.config import CONFIG_PATH, bind_host, global_config
 from src.core.db import mongo_manager
 from src.core.http import http_client
 from src.core.logging import DEBUG
@@ -52,7 +52,7 @@ if error_reporting.init(config.get("errorReporting") or {}):
 
 # Web UI configuration
 WEBUI_ENABLED = config.get("webui", {}).get("enabled", False)
-WEBUI_HOST = config.get("webui", {}).get("host", "0.0.0.0")
+WEBUI_HOST = bind_host(config.get("webui", {}).get("host"))
 WEBUI_PORT = config.get("webui", {}).get("port", 8080)
 
 logger.debug(

@@ -19,7 +19,7 @@ class _FilterInvalidHTTP(logging.Filter):
         return "Invalid HTTP request received" not in record.getMessage()
 
 
-def start_webui(bot=None, host: str = "0.0.0.0", port: int = 8080):
+def start_webui(bot=None, host: str = "127.0.0.1", port: int = 8080):
     """
     Start the web UI server in a background thread.
 

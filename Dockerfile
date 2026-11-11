@@ -41,6 +41,11 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONPATH=/app \
     PATH="/opt/venv/bin:$PATH"
 
+# The dashboard and /metrics listen on every interface of the container unless
+# config.json names a host (run by hand, they default to 127.0.0.1); the port
+# mapping in docker-compose.yml decides what is reachable.
+ENV MICHEL_BIND_HOST=0.0.0.0
+
 RUN useradd --system --create-home --uid 1000 michel
 
 WORKDIR /app
