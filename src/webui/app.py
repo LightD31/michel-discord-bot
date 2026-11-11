@@ -139,7 +139,14 @@ def create_app(bot=None, bot_loop=None) -> FastAPI:
         finally:
             cleanup_task.cancel()
 
-    app = FastAPI(title="Michel Bot Dashboard", docs_url=None, redoc_url=None, lifespan=lifespan)
+    # No docs and no schema: the API is the SPA's, not a public one to map out.
+    app = FastAPI(
+        title="Michel Bot Dashboard",
+        docs_url=None,
+        redoc_url=None,
+        openapi_url=None,
+        lifespan=lifespan,
+    )
 
     ctx = WebUIContext(
         bot=bot,

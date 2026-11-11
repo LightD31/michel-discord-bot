@@ -147,6 +147,9 @@ Thumbs.db
 logs/
 log/
 
+# Runtime data: MongoDB backups (members' data) and caches, mounted from the host
+/data/
+
 # Temporary files
 *.tmp
 *.temp

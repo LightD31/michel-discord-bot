@@ -16,7 +16,6 @@ readme = "README.md"
 dependencies = [
     # Bot framework & core
     "discord-py-interactions",
-    "python-dotenv",
     "aiohttp",
     "curl_cffi",
     "uvloop; platform_system != 'Windows'",
@@ -32,7 +31,6 @@ dependencies = [
     "asyncssh",
     "nbtlib==2.0.4",
     "pyfactorybridge",
-    "rdoclient",
     "ldap3>=2.9.1",
     # Utilities
     "pytz",
@@ -41,7 +39,6 @@ dependencies = [
     "isodate",
     "emoji",
     "defusedxml",
-    "beautifulsoup4",
     "Pillow",
     "prettytable>=3.12",
     # Monitoring

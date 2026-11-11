@@ -3,7 +3,6 @@
 import asyncio
 import contextlib
 import os
-import signal
 
 from interactions import IntervalTrigger, OrTrigger, Task, TimeTrigger
 from twitchAPI.eventsub.websocket import EventSubWebsocket
@@ -143,10 +142,8 @@ class EventSubMixin:
             )
 
         await self.update()
-
-        # Only valid from the main thread; the watchdog in main.py covers the rest.
-        with contextlib.suppress(ValueError):
-            signal.signal(signal.SIGTERM, self.stop_on_signal)
+        # No SIGTERM handler here: main.py's GracefulShutdown releases every
+        # extension (async_drop closes EventSub) before it stops the gateway.
 
     async def run(self):
         """Start (or restart) the Twitch API + EventSub websocket.
