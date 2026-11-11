@@ -71,6 +71,7 @@ for entry in sorted(os.listdir("extensions")):
     out["extensions"][name] = classes
 out["schemas"] = sorted(schemas.MODULE_SCHEMAS)
 out["fields"] = {key: list(cls.model_fields) for key, cls in schemas._MODULE_REGISTRY.items()}
+out["module_schemas"] = schemas.MODULE_SCHEMAS
 with open(sys.argv[1], "w", encoding="utf-8") as f:
     json.dump(out, f)
 """
@@ -101,6 +102,29 @@ def test_no_module_schema_declares_a_message_id(probe):
         for name in names
         if name.lower().endswith("messageid")
     ]
+    assert offenders == []
+
+
+def test_module_secrets_name_where_they_are_sent(probe):
+    """A guild admin who re-points a secret must type it again (``secret_field(sent_to=…)``).
+
+    Without ``sent_to``, the masked placeholder would carry the stored secret to
+    whatever host a co-admin just entered.
+    """
+    offenders = []
+    for key, schema in probe["module_schemas"].items():
+        fields = schema["fields"]
+        for name, meta in fields.items():
+            if not meta.get("secret"):
+                continue
+            targets = meta.get("sentTo") or []
+            if not targets:
+                offenders.append(f"{key}.{name}: no sent_to")
+            offenders.extend(
+                f"{key}.{name}: sent_to names unknown field {target}"
+                for target in targets
+                if target not in fields
+            )
     assert offenders == []
 
 

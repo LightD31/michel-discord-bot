@@ -7,7 +7,6 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pytest
-from aiohttp import ClientConnectionError
 
 from features.zerator247 import (
     Cycle,
@@ -18,6 +17,8 @@ from features.zerator247 import (
     describe_cycle,
     should_notify,
 )
+from src.core.errors import HttpError
+from src.core.http import BlockedUrlError
 
 AT_MS = 1_791_839_200_000
 AT = datetime.fromtimestamp(AT_MS / 1000, UTC)
@@ -169,60 +170,42 @@ def test_describe_cycle_per_phase():
 # ── client ───────────────────────────────────────────────────────────
 
 
-class _FakeResponse:
-    def __init__(self, status: int, body: Any = None):
-        self.status = status
-        self._body = body
+class _FakeFetch:
+    """Answers each GET with the queued body, or raises the queued error."""
 
-    async def json(self, content_type: str | None = "application/json") -> Any:
-        if isinstance(self._body, Exception):
-            raise self._body
-        return self._body
-
-    async def __aenter__(self) -> "_FakeResponse":
-        return self
-
-    async def __aexit__(self, *exc: object) -> None:
-        return None
-
-
-class _FakeSession:
-    """Answers each GET with the next queued response (the last one repeats)."""
-
-    def __init__(self, *responses: _FakeResponse | Exception):
-        self.responses = list(responses)
+    def __init__(self, answer: Any):
+        self.answer = answer
         self.urls: list[str] = []
 
-    def get(self, url: str, **kwargs: Any) -> _FakeResponse:
+    async def __call__(self, url: str) -> Any:
         self.urls.append(url)
-        response = self.responses.pop(0) if len(self.responses) > 1 else self.responses[0]
-        if isinstance(response, Exception):
-            raise response
-        return response
-
-
-def _client(session: _FakeSession) -> Zerator247Client:
-    async def factory() -> Any:
-        return session
-
-    return Zerator247Client("https://247.zerator.com/", session_factory=factory)
+        if isinstance(self.answer, Exception):
+            raise self.answer
+        return self.answer
 
 
 async def test_client_reads_the_cycle():
-    session = _FakeSession(_FakeResponse(200, _payload()))
-    cycle = await _client(session).get_cycle()
-    assert session.urls == ["https://247.zerator.com/api/now"]
+    fetch = _FakeFetch(_payload())
+    cycle = await Zerator247Client("https://247.zerator.com/", get_json=fetch).get_cycle()
+    assert fetch.urls == ["https://247.zerator.com/api/now"]
     assert cycle is not None and cycle.phase == "requests"
 
 
 @pytest.mark.parametrize(
-    "response",
+    "error",
     [
-        _FakeResponse(503, {"message": "down"}),
-        _FakeResponse(200, ValueError("not json")),
-        ClientConnectionError("refused"),
+        HttpError("Failed to fetch", url="https://247.zerator.com/api/now", status=503),
+        HttpError("Réponse JSON invalide", url="https://247.zerator.com/api/now"),
+        BlockedUrlError("Adresse non publique refusée", url="http://127.0.0.1/api/now"),
     ],
 )
-async def test_client_errors(response: Any):
+async def test_client_errors(error: Exception):
+    client = Zerator247Client("https://247.zerator.com/", get_json=_FakeFetch(error))
     with pytest.raises(Zerator247Error):
-        await _client(_FakeSession(response)).get_cycle()
+        await client.get_cycle()
+
+
+async def test_client_refuses_a_site_on_the_bots_network():
+    """The site is a guild setting: the real fetch never reaches a private address."""
+    with pytest.raises(Zerator247Error):
+        await Zerator247Client("http://127.0.0.1:8080").get_cycle()

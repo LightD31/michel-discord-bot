@@ -44,7 +44,7 @@ from src.discord_ext.embeds import Colors
 from src.discord_ext.messages import edit_message_if_changed, fetch_user_safe, require_guild
 from src.discord_ext.paginator import CustomPaginator
 from src.discord_ext.scopes import guild_scopes
-from src.webui.schemas import SchemaBase, enabled_field, register_module, ui
+from src.webui.schemas import SchemaBase, WeightedMessage, enabled_field, register_module, ui
 
 
 @register_module("moduleBirthday")
@@ -71,7 +71,7 @@ class BirthdayConfig(SchemaBase):
         default="en_US",
         description="Locale utilisée pour formater les dates de la liste (ex : fr_FR).",
     )
-    birthdayMessageList: list[dict] = ui(
+    birthdayMessageList: list[WeightedMessage] = ui(
         "Messages d'anniversaire",
         "messagelist",
         description="Liste de messages avec poids de probabilité.",

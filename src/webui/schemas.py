@@ -98,6 +98,19 @@ class SchemaBase(BaseModel):
     __direct_value__: ClassVar[bool] = False
 
 
+class WeightedMessage(BaseModel):
+    """One entry of a ``messagelist`` field: a text and its draw weight.
+
+    Typed rather than a bare ``dict`` so a save can't smuggle anything but a
+    number into the weight, which the SPA writes back into an input.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    text: str
+    weight: float = Field(default=1, ge=0)
+
+
 # ── Reusable field fragments (public, used by extensions) ────────────
 
 
@@ -106,9 +119,26 @@ def enabled_field() -> Any:
     return ui("Activé", "boolean", default=False)
 
 
-def secret_field(label: str, required: bool = False, description: str = "") -> Any:
-    """Secret string field (masked in the UI)."""
-    return ui(label, "secret", required=required, description=description, secret=True)
+def secret_field(
+    label: str,
+    required: bool = False,
+    description: str = "",
+    *,
+    sent_to: tuple[str, ...] = (),
+) -> Any:
+    """Secret string field (masked in the UI).
+
+    *sent_to* names the fields of the same schema that say where the secret
+    goes (a URL, a host, a port, a pinned host key). A save that changes one
+    of them must carry the secret again rather than the masked placeholder
+    (:func:`src.webui.secrets.restore_section`), so whoever re-points it can't
+    have the stored value sent to a host of their choosing. Every per-guild
+    module secret declares it (``tests/test_module_registry.py``).
+    """
+    field = ui(label, "secret", required=required, description=description, secret=True)
+    if sent_to:
+        field.json_schema_extra["ui"]["sentTo"] = list(sent_to)
+    return field
 
 
 # ── Registry + lazy aggregation ──────────────────────────────────────
@@ -145,6 +175,48 @@ def module_model(key: str) -> type[SchemaBase] | None:
 def section_model(key: str) -> type[SchemaBase] | None:
     """The schema class registered for global config section *key*, if any."""
     return _SECTION_REGISTRY.get(key)
+
+
+# Widget types whose entries carry channel ids of their own, and under which keys.
+NESTED_CHANNEL_KEYS: dict[str, tuple[str, ...]] = {
+    "rssfeedmap": ("channel_id",),
+    "streamermap": ("twitchNotificationChannelId", "twitchPlanningChannelId"),
+    "teams": ("channelId",),
+}
+
+
+def _entries(value: Any) -> list[Any]:
+    if isinstance(value, dict):
+        return list(value.values())
+    if isinstance(value, list):
+        return value
+    return []
+
+
+def channel_ids(model: type[SchemaBase], value: Any) -> set[str]:
+    """Every channel id *value* (a module's config) names, top level and nested.
+
+    The fields of type ``channel``, plus the per-entry channel keys of the
+    widget types in :data:`NESTED_CHANNEL_KEYS`. Empty values are skipped.
+    """
+    if not isinstance(value, dict):
+        return set()
+    found: set[str] = set()
+
+    def add(raw: Any) -> None:
+        text = "" if raw is None or isinstance(raw, (dict, list)) else str(raw).strip()
+        if text:
+            found.add(text)
+
+    for name, meta in _fields_of(model).items():
+        kind = meta.get("type")
+        if kind == "channel":
+            add(value.get(name))
+        for key in NESTED_CHANNEL_KEYS.get(kind or "", ()):
+            for entry in _entries(value.get(name)):
+                if isinstance(entry, dict):
+                    add(entry.get(key))
+    return found
 
 
 def validation_errors(model: type[SchemaBase], value: Any, *, module: bool) -> list[str]:

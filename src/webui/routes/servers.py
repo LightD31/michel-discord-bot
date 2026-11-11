@@ -10,12 +10,13 @@ from pydantic import BaseModel
 from features.customcommands import MODULE_KEY as CUSTOM_COMMANDS_MODULE
 from src.core import logging as logutil
 from src.core.config import ModuleConfig
+from src.discord_ext.channels import fetch_guild_channel
 from src.discord_ext.embedmanager import MODULE_KEY as EMBED_MANAGER_MODULE
 from src.discord_ext.embedmanager import build_embeds, publish_embeds
 from src.webui.botops import run_extension_op, sync_commands
 from src.webui.channels import list_channels
 from src.webui.context import WebUIContext
-from src.webui.secrets import mask_server_config, restore_section
+from src.webui.secrets import SecretRebindError, mask_server_config, restore_section
 
 logger = logutil.init_logger("webui.routes.servers")
 
@@ -54,6 +55,57 @@ def _require_valid(errors: list[str]) -> None:
     if errors:
         raise HTTPException(
             status_code=422, detail="Configuration invalide : " + " ; ".join(errors[:10])
+        )
+
+
+# A save rarely names more than a handful of channels it didn't before; each
+# unknown one costs the bot a Discord API call to check.
+MAX_NEW_CHANNELS_PER_SAVE = 50
+
+
+async def _foreign_channels(bot, guild_id: str, channel_ids: list[str]) -> list[str]:
+    """Of *channel_ids*, those that aren't channels of guild *guild_id*. Bot loop."""
+    return [
+        cid
+        for cid in channel_ids
+        if await fetch_guild_channel(bot, guild_id, cid, logger=logger) is None
+    ]
+
+
+async def _require_own_channels(
+    ctx: WebUIContext, server_id: str, module_name: str, incoming: dict
+) -> None:
+    """422 unless every channel *incoming* adds to the module is one of the guild's.
+
+    The bot posts wherever a guild's settings point, with its own permissions,
+    and ``fetch_channel`` answers for every guild it is in: without this an
+    admin could aim a module at another server's channel. Only ids the stored
+    config doesn't already name are checked, so a channel deleted since the
+    last save doesn't block an unrelated edit. A dashboard without a bot has
+    nothing to check against (the bot then posts nowhere either).
+    """
+    from src.webui import schemas
+
+    model = schemas.module_model(module_name)
+    if model is None or ctx.bot is None:
+        return
+    stored = ctx.get_full_config().get("servers", {}).get(server_id, {}).get(module_name)
+    added = sorted(schemas.channel_ids(model, incoming) - schemas.channel_ids(model, stored))
+    if not added:
+        return
+    if len(added) > MAX_NEW_CHANNELS_PER_SAVE:
+        raise HTTPException(status_code=422, detail="Trop de nouveaux salons en une fois.")
+    foreign = await ctx.call_bot(
+        _foreign_channels,
+        ctx.bot,
+        server_id,
+        added,
+        what=f"check the channels of {module_name} for guild {server_id}",
+    )
+    if foreign:
+        raise HTTPException(
+            status_code=422,
+            detail="Salon inconnu sur ce serveur : " + ", ".join(foreign[:10]),
         )
 
 
@@ -301,6 +353,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
         session = await ctx.require_guild_admin(request, server_id)
         _require_known_module(module_name)
         _require_reasonable_size(body.config)
+        await _require_own_channels(ctx, server_id, module_name, body.config)
         from src.webui import schemas
 
         schema = schemas.MODULE_SCHEMAS.get(module_name)
@@ -310,7 +363,11 @@ def create_router(ctx: WebUIContext) -> APIRouter:
         def mutator(data: dict) -> None:
             server = data.setdefault("servers", {}).setdefault(server_id, {})
             enabled_change["before"] = _module_enabled(server.get(module_name))
-            restored = restore_section(body.config, server.get(module_name), schema)
+            try:
+                restored = restore_section(body.config, server.get(module_name), schema)
+            except SecretRebindError as e:
+                # The message is ours (French, names the field), not driver text.
+                raise HTTPException(status_code=422, detail=str(e)) from e
             if model is not None:
                 # Raising here leaves config.json untouched (mutate writes after).
                 _require_valid(schemas.validation_errors(model, restored, module=True))

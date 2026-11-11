@@ -152,8 +152,9 @@ def test_entries_refusal_names_the_offending_entry():
 
 
 class FakeChannel:
-    def __init__(self):
+    def __init__(self, guild_id: int = 1000):
         self.id = 555
+        self._guild_id = guild_id  # the FakeGuild's: a channel of that server
         self.sent: list = []
 
     async def send(self, **kwargs):

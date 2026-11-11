@@ -21,6 +21,7 @@ from features.reactionroles import (
     role_menu_refusal,
 )
 from src.core import logging as logutil
+from src.discord_ext.channels import fetch_guild_channel
 from src.discord_ext.messages import edit_message_if_changed
 from src.discord_ext.rolemenus import (
     MAX_ENTRIES,
@@ -113,12 +114,12 @@ async def _fetch_guild(bot, guild_id: str):
 
 async def _resolve_guild_and_channel(bot, guild_id: str, channel_id: str):
     guild = await _fetch_guild(bot, guild_id)
-    try:
-        channel = await bot.fetch_channel(int(channel_id))
-    except Exception as e:
-        logger.warning("Channel %s of guild %s unavailable: %s", channel_id, guild_id, e)
-        raise HTTPException(status_code=400, detail="Salon introuvable") from e
-    if channel is None or not hasattr(channel, "send"):
+    # Another guild's channel is refused like an unknown one: the bot would
+    # otherwise post the menu there with its own permissions.
+    channel = await fetch_guild_channel(bot, guild_id, channel_id, logger=logger)
+    if channel is None:
+        raise HTTPException(status_code=400, detail="Salon introuvable sur ce serveur")
+    if not hasattr(channel, "send"):
         raise HTTPException(status_code=400, detail="Salon invalide ou non accessible")
     return guild, channel
 

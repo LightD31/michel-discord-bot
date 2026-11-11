@@ -14,6 +14,7 @@ from src.core.config import ModuleConfig
 from src.discord_ext.embeds import Colors
 from src.webui.schemas import (
     SchemaBase,
+    WeightedMessage,
     enabled_field,
     register_module,
     ui,
@@ -70,7 +71,7 @@ class XpConfig(SchemaBase):
             "supérieur est franchi."
         ),
     )
-    levelUpMessageList: list[dict] = ui(
+    levelUpMessageList: list[WeightedMessage] = ui(
         "Messages de level-up",
         "messagelist",
         description="Liste de messages avec poids de probabilité.",

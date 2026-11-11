@@ -1,8 +1,11 @@
 """Tests for secret masking/restoring in Web UI config endpoints."""
 
+import pytest
+
 from src.webui.schemas import SchemaBase, register_module, secret_field, ui
 from src.webui.secrets import (
     SECRET_PLACEHOLDER,
+    SecretRebindError,
     mask_full_config,
     mask_section,
     mask_server_config,
@@ -133,3 +136,72 @@ def test_mask_server_config_masks_registered_module():
     masked = mask_server_config(server_config)
     assert masked["moduleSecretMaskTest"]["password"] == SECRET_PLACEHOLDER
     assert masked["moduleSecretMaskTest"]["channelId"] == "1"
+
+
+BOUND_SCHEMA = {
+    "label": "Test",
+    "fields": {
+        "url": {"label": "URL", "type": "url"},
+        "port": {"label": "Port", "type": "number"},
+        "password": {
+            "label": "Mot de passe",
+            "type": "secret",
+            "secret": True,
+            "sentTo": ["url", "port"],
+        },
+        "channel": {"label": "Salon", "type": "channel"},
+    },
+}
+
+
+def test_restore_section_keeps_a_bound_secret_when_its_destination_is_unchanged():
+    current = {"url": "https://lldap.example", "port": 17170, "password": FAKE_SECRET}
+    # Another field changes; the port comes back as a string from a form.
+    incoming = {
+        "url": " https://lldap.example ",
+        "port": "17170",
+        "password": SECRET_PLACEHOLDER,
+        "channel": "9",
+    }
+    assert restore_section(incoming, current, BOUND_SCHEMA)["password"] == FAKE_SECRET
+
+
+def test_restore_section_refuses_the_placeholder_once_the_destination_moved():
+    current = {"url": "https://lldap.example", "password": FAKE_SECRET}
+    incoming = {"url": "https://attacker.example", "password": SECRET_PLACEHOLDER}
+    with pytest.raises(SecretRebindError, match="Mot de passe"):
+        restore_section(incoming, current, BOUND_SCHEMA)
+
+
+def test_restore_section_refuses_the_placeholder_when_a_destination_is_added():
+    current = {"url": "https://lldap.example", "password": FAKE_SECRET}
+    incoming = {"url": "https://lldap.example", "port": 1, "password": SECRET_PLACEHOLDER}
+    with pytest.raises(SecretRebindError):
+        restore_section(incoming, current, BOUND_SCHEMA)
+
+
+def test_restore_section_accepts_a_moved_secret_typed_again():
+    current = {"url": "https://lldap.example", "password": OLD_SECRET}
+    incoming = {"url": "https://new.example", "password": NEW_SECRET}
+    assert restore_section(incoming, current, BOUND_SCHEMA)["password"] == NEW_SECRET
+
+
+def test_restore_section_lets_a_moved_secret_be_cleared():
+    current = {"url": "https://lldap.example", "password": OLD_SECRET}
+    incoming = {"url": "https://new.example", "password": ""}
+    assert restore_section(incoming, current, BOUND_SCHEMA)["password"] == ""
+
+
+def test_secret_field_records_where_it_is_sent():
+    @register_module("moduleSecretBindTest")
+    class _Bound(SchemaBase):
+        __label__ = "Module de test (destination)"
+
+        host: str | None = ui("Hôte", "string")
+        password: str | None = secret_field("Mot de passe", sent_to=("host",))
+
+    from src.webui import schemas
+
+    meta = schemas.MODULE_SCHEMAS["moduleSecretBindTest"]["fields"]["password"]
+    assert meta["sentTo"] == ["host"]
+    assert "sentTo" not in schemas.MODULE_SCHEMAS["moduleSecretMaskTest"]["fields"]["password"]

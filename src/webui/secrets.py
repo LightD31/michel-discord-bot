@@ -38,6 +38,18 @@ def mask_section(data: Any, schema: dict[str, Any] | None) -> Any:
     return masked
 
 
+class SecretRebindError(ValueError):
+    """A masked secret came back while the place it is sent to changed.
+
+    The message is user-facing (French) and names the field to fill in again.
+    """
+
+
+def _setting(section: dict[str, Any], name: str) -> str:
+    value = section.get(name)
+    return "" if value is None else str(value).strip()
+
+
 def restore_section(
     incoming: dict[str, Any], current: Any, schema: dict[str, Any] | None
 ) -> dict[str, Any]:
@@ -45,12 +57,30 @@ def restore_section(
 
     A secret field whose submitted value is the untouched placeholder means
     "keep the existing secret"; an empty/missing field still clears it.
+
+    Raises :class:`SecretRebindError` when a placeholder comes back for a
+    secret whose ``sentTo`` fields (its URL, host, port…) changed: the stored
+    value is only ever sent where it was entered for, so moving it means
+    typing it again.
     """
     restored = dict(incoming)
     current_dict = current if isinstance(current, dict) else {}
+    fields = (schema or {}).get("fields") or {}
     for name in secret_field_names(schema):
-        if restored.get(name) == SECRET_PLACEHOLDER:
-            restored[name] = current_dict.get(name, "")
+        if restored.get(name) != SECRET_PLACEHOLDER:
+            continue
+        meta = fields.get(name) or {}
+        moved = [
+            target
+            for target in meta.get("sentTo") or ()
+            if _setting(restored, target) != _setting(current_dict, target)
+        ]
+        if moved:
+            label = meta.get("label") or name
+            raise SecretRebindError(
+                f"Saisissez à nouveau « {label} » : l'adresse à laquelle il est envoyé a changé."
+            )
+        restored[name] = current_dict.get(name, "")
     return restored
 
 

@@ -13,7 +13,12 @@ from src.webui.schemas import (
     section_model,
     validation_errors,
 )
-from src.webui.secrets import mask_full_config, mask_section, restore_section
+from src.webui.secrets import (
+    SecretRebindError,
+    mask_full_config,
+    mask_section,
+    restore_section,
+)
 
 logger = logutil.init_logger("webui.routes.config")
 
@@ -89,7 +94,10 @@ def create_router(ctx: WebUIContext) -> APIRouter:
 
         def mutator(data: dict) -> None:
             current = data.get("config", {}).get(section)
-            restored = restore_section(body.config, current, schema)
+            try:
+                restored = restore_section(body.config, current, schema)
+            except SecretRebindError as e:
+                raise HTTPException(status_code=422, detail=str(e)) from e
             errors = validation_errors(model, restored, module=False)
             if errors:
                 # Raising here leaves config.json untouched (mutate writes after).

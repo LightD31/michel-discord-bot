@@ -9,7 +9,7 @@ from features.welcome import render_welcome_card
 from src.core import logging as logutil
 from src.core.config import ModuleConfig
 from src.core.text import pick_weighted_message
-from src.webui.schemas import SchemaBase, enabled_field, register_module, ui
+from src.webui.schemas import SchemaBase, WeightedMessage, enabled_field, register_module, ui
 
 
 @register_module("moduleWelcome")
@@ -32,14 +32,14 @@ class WelcomeConfig(SchemaBase):
         default=True,
         description="Joindre une image générée avec l'avatar et le pseudo du membre.",
     )
-    welcomeMessageList: list[dict] = ui(
+    welcomeMessageList: list[WeightedMessage] = ui(
         "Messages de bienvenue",
         "messagelist",
         description="Liste de messages avec poids de probabilité.",
         default=[{"text": "Bienvenue {mention} !", "weight": 1}],
         variables="{mention}",
     )
-    leaveMessageList: list[dict] = ui(
+    leaveMessageList: list[WeightedMessage] = ui(
         "Messages de départ",
         "messagelist",
         description="Liste de messages de départ avec poids de probabilité.",
