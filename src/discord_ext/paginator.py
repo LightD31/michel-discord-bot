@@ -9,12 +9,12 @@
 from __future__ import annotations
 
 import time
-from collections import defaultdict
 
 from interactions import ComponentContext, Message
 from interactions.api.events import MessageReactionAdd, MessageReactionRemove
 from interactions.ext import paginators
 
+from features.polls import poll_option_emojis, render_reaction_poll
 from src.core.config import load_discord2name
 from src.discord_ext.messages import copy_embed
 
@@ -95,56 +95,28 @@ def _guild_name_overrides(server_id: str) -> dict[str, str]:
 async def format_poll(event: MessageReactionAdd | MessageReactionRemove):
     """Render the current vote counts + voter names into a poll embed.
 
-    The embed's description is expected to be the "\\n\\n"-separated option
-    list initially produced by the poll command. Each call replaces the
-    description of a copy and returns it (the message is left untouched).
+    The embed's description is the "\\n\\n"-separated option list the poll
+    command produced. Only the reactions of the poll's own option emojis are
+    read. Each call replaces the description of a copy and returns it (the
+    message is left untouched).
     """
     message = event.message
     embed = copy_embed(message.embeds[0])
-    options = (embed.description or "").split("\n\n")
-    reactions = message.reactions
+    description = embed.description or ""
+    option_emojis = poll_option_emojis(description)
+    overrides = _guild_name_overrides(str(message.guild.id))
 
-    reaction_users = defaultdict(list)
-    reaction_counts = defaultdict(int)
-    max_reaction_count = 0
-    for reaction in reactions:
+    voters: dict[str, list[str]] = {}
+    participants: set[int] = set()
+    for reaction in message.reactions:
+        emoji = str(reaction.emoji)
+        if emoji not in option_emojis:
+            continue
         users = [user for user in await reaction.users().flatten() if not user.bot]
-        reaction_users[str(reaction.emoji)] = users
-        reaction_counts[str(reaction.emoji)] = reaction.count - 1
-        if reaction.count > max_reaction_count:
-            max_reaction_count = reaction.count - 1
+        voters[emoji] = [overrides.get(str(user.id), user.display_name) for user in users]
+        participants.update(user.id for user in users)
 
-    max_reaction_indices = [
-        i for i, count in reaction_counts.items() if count == max_reaction_count
-    ]
-    participant_count = len(
-        {user.id for users in reaction_users.values() for user in users} - {message.author.id}
-    )
-
-    overrides = _guild_name_overrides(str(event.message.guild.id))
-
-    description_list = []
-    for _i, option in enumerate(options):
-        option = option.split(":", 1)[0].replace("**", "")
-        emoji_str = option.split(" ", 1)[0]
-
-        reaction_count = reaction_counts[emoji_str]
-        user_list = reaction_users[emoji_str]
-
-        user_names = [overrides.get(str(user.id), user.display_name) for user in user_list]
-        user_names_str = ", ".join(user_names)
-
-        description = f"{option}"
-        if reaction_count > 0:
-            description = (
-                f"**{option} : {reaction_count}/{participant_count} votes\n({user_names_str})**"
-                if emoji_str in max_reaction_indices
-                else f"{option} : **{reaction_count}/{participant_count} votes**\n({user_names_str})"
-            )
-
-        description_list.append(description)
-
-    embed.description = "\n\n".join(description_list)
+    embed.description = render_reaction_poll(description, voters, len(participants))
     return embed
 
 
