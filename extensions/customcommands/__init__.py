@@ -23,6 +23,7 @@ from extensions.customcommands._common import CustomCommandsConfig, logger
 from features.customcommands import MODULE_KEY, CustomCommand, parse_commands, pick_response
 from features.links import shorten_text
 from src.core.config import ModuleConfig
+from src.discord_ext.mentions import everyone_if_written
 
 CUSTOM_COMMANDS = ModuleConfig(MODULE_KEY)
 
@@ -93,7 +94,9 @@ def _build_callback(command: CustomCommand):
     """Build the coroutine answering *command* with one of its responses."""
 
     async def respond(ctx: SlashContext) -> None:
-        await ctx.send(await shorten_text(pick_response(command)))
+        # The response is what the server's admins wrote: it may ping @everyone.
+        response = pick_response(command)
+        await ctx.send(await shorten_text(response), allowed_mentions=everyone_if_written(response))
 
     return respond
 

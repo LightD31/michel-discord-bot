@@ -235,8 +235,10 @@ async def test_the_registered_command_answers_with_a_configured_response(config_
     sent: list[str] = []
 
     class FakeContext:
-        async def send(self, content):
+        async def send(self, content, allowed_mentions=None):
             sent.append(content)
+            # The admins' response may ping roles and users, @everyone only if it says so.
+            assert "everyone" not in allowed_mentions.parse
 
     await command.call_callback(command.callback, FakeContext())
     assert sent[0] in ("paf", "pif")

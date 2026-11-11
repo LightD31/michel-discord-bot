@@ -11,6 +11,7 @@ from features.reminders import (
     next_after,
     schedule_label,
     snooze_minutes,
+    snoozed_text,
 )
 
 NOW = datetime(2026, 3, 10, 12, 0)  # a Tuesday
@@ -99,3 +100,16 @@ def test_a_stored_shared_reminder_still_loads():
     """Documents written before reminders went to their author only keep loading."""
     reminder = Reminder(user_id="1", message="m", remind_time=NOW, recipient_ids=["2"])
     assert not hasattr(reminder, "recipient_ids")
+
+
+@pytest.mark.parametrize(
+    ("dm", "stored"),
+    [
+        ("Sortir le chien", "⏰ (snooze) Sortir le chien"),
+        ("⏰ (snooze) Sortir le chien", "⏰ (snooze) Sortir le chien"),
+        ("⏰ (snooze) ⏰ (snooze) Sortir le chien", "⏰ (snooze) Sortir le chien"),
+        (None, "⏰ (snooze) Rappel"),
+    ],
+)
+def test_snoozing_marks_the_text_once(dm, stored):
+    assert snoozed_text(dm) == stored

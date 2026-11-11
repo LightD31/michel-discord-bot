@@ -6,6 +6,7 @@ from typing import Any
 from interactions import Embed
 
 from features.moderation import Infraction, humanize_duration
+from src.core.text import EMBED_FIELD_VALUE_LIMIT, clip
 from src.discord_ext.embeds import Colors
 
 from ._common import AUTOMOD_MODERATOR_ID, TYPE_COLORS, TYPE_LABELS, logger
@@ -35,7 +36,11 @@ def build_case_embed(
         embed.add_field(
             name="Durée", value=humanize_duration(infraction.duration_seconds), inline=True
         )
-    embed.add_field(name="Raison", value=(infraction.reason or "*Aucune*")[:1024], inline=False)
+    embed.add_field(
+        name="Raison",
+        value=clip(infraction.reason or "*Aucune*", EMBED_FIELD_VALUE_LIMIT),
+        inline=False,
+    )
     if not infraction.active:
         embed.add_field(name="Statut", value="❌ Révoqué", inline=True)
     embed.timestamp = infraction.created_at

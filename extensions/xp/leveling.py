@@ -16,6 +16,7 @@ from features.xp import (
 )
 from src.core.errors import DatabaseError
 from src.core.text import pick_weighted_message
+from src.discord_ext.mentions import everyone_if_written
 
 from ._common import XP, logger
 
@@ -163,7 +164,10 @@ class LevelingMixin:
             mention=message.author.mention,
             lvl=new_level,
         )
-        await message.channel.send(formatted_message)
+        # The admins' template filled with a mention and a level.
+        await message.channel.send(
+            formatted_message, allowed_mentions=everyone_if_written(formatted_message)
+        )
         await self._apply_level_rewards(guild_id, message.author, new_level)
 
     async def _apply_level_rewards(self, guild_id: str, member, new_level: int) -> None:

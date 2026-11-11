@@ -49,7 +49,7 @@
         },
         "metrics": {
             "enabled": false,
-            "host": "0.0.0.0",
+            "host": "",
             "port": 9108,
             "refreshSeconds": 300,
             "topMembers": 25
@@ -107,7 +107,7 @@
         },
         "webui": {
             "enabled": false,
-            "host": "0.0.0.0",
+            "host": "",
             "port": 8080,
             "baseUrl": "",
             "clientId": "",

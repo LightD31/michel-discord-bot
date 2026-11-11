@@ -1,6 +1,5 @@
 """Reactions refresh reaction polls only, and the refresh keeps every option's text."""
 
-import asyncio
 from types import SimpleNamespace
 
 import pytest
@@ -106,6 +105,19 @@ def message(embed, *, author_id=BOT_ID, reactions=()):
     )
 
 
+class RecordingRefreshes:
+    """Stands for the Coalescer: records what would be refreshed."""
+
+    def __init__(self):
+        self.requests = []
+
+    def request(self, key, refresh):
+        self.requests.append((key, refresh))
+
+    def pending(self):
+        return len(self.requests)
+
+
 @pytest.fixture
 def ext(monkeypatch, store_config):
     store_config({"servers": {"1": {"moduleUtils": {"enabled": True}}}})
@@ -118,7 +130,7 @@ def ext(monkeypatch, store_config):
     monkeypatch.setattr(polls_module, "edit_message_if_changed", fake_edit)
     extension = object.__new__(PollsExtension)  # skip interactions' Extension wiring
     extension.bot = SimpleNamespace(user=SimpleNamespace(id=BOT_ID))
-    extension.lock = asyncio.Lock()
+    extension._refreshes = RecordingRefreshes()
     extension.edits = edits
     return extension
 
@@ -138,34 +150,34 @@ async def test_a_reaction_on_an_rss_post_leaves_it_alone(ext):
     )
     rss.set_footer(text="Flux : Le Monde")
     event = SimpleNamespace(message=message(rss), emoji="👍")
-    await ext._refresh_reaction_poll(event)
-    assert ext.edits == []
+    ext._refresh_reaction_poll(event)
+    assert ext._refreshes.pending() == 0
 
 
 async def test_a_reaction_on_a_role_menu_leaves_it_alone(ext):
     menu = Embed(title="Rôles", description="<:pepe:123456> <@&42> — Joueurs", color=Colors.UTIL)
     event = SimpleNamespace(message=message(menu), emoji="<:pepe:123456>")
-    await ext._refresh_reaction_poll(event)
-    assert ext.edits == []
+    ext._refresh_reaction_poll(event)
+    assert ext._refreshes.pending() == 0
 
 
 async def test_a_poll_posted_by_someone_else_is_ignored(ext):
     event = SimpleNamespace(message=message(poll_embed(), author_id=5), emoji="1️⃣")
-    await ext._refresh_reaction_poll(event)
-    assert ext.edits == []
+    ext._refresh_reaction_poll(event)
+    assert ext._refreshes.pending() == 0
 
 
 async def test_a_reaction_outside_the_options_is_ignored(ext):
     event = SimpleNamespace(message=message(poll_embed()), emoji="😂")
-    await ext._refresh_reaction_poll(event)
-    assert ext.edits == []
+    ext._refresh_reaction_poll(event)
+    assert ext._refreshes.pending() == 0
 
 
 async def test_polls_off_in_the_server_means_no_refresh(ext, store_config):
     store_config({"servers": {"1": {"moduleUtils": {"enabled": False}}}})
     event = SimpleNamespace(message=message(poll_embed()), emoji="1️⃣")
-    await ext._refresh_reaction_poll(event)
-    assert ext.edits == []
+    ext._refresh_reaction_poll(event)
+    assert ext._refreshes.pending() == 0
 
 
 async def test_a_vote_refreshes_the_poll(ext):
@@ -175,7 +187,10 @@ async def test_a_vote_refreshes_the_poll(ext):
         FakeReaction("😂", [user(2, "Eve")]),  # not an option: neither read nor counted
     ]
     event = SimpleNamespace(message=message(poll_embed(), reactions=reactions), emoji="1️⃣")
-    await ext._refresh_reaction_poll(event)
+    ext._refresh_reaction_poll(event)
+    [(key, refresh)] = ext._refreshes.requests
+    assert key == 10
+    await refresh()  # what the coalesced refresh runs, a few seconds later
     [(_, kwargs)] = ext.edits
     assert kwargs["embed"].description == (
         "**1️⃣ Pizza : 4 fromages : 1/1 votes\n(Bob)**\n\n"

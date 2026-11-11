@@ -27,6 +27,7 @@ from features.moderation import (
     parse_duration,
 )
 from src.discord_ext.embeds import Colors, format_discord_timestamp
+from src.discord_ext.errors import failure_reply
 from src.discord_ext.messages import require_guild, send_error, send_success
 from src.discord_ext.scopes import guild_scopes
 
@@ -190,8 +191,7 @@ class CommandsMixin:
                 reason=reason or f"Timeout par {ctx.author.username}",
             )
         except Exception as e:
-            logger.warning("timeout failed for %s: %s", member.id, e)
-            await send_error(ctx, f"Impossible d'exclure ce membre : {e}")
+            await send_error(ctx, failure_reply("Impossible d'exclure ce membre", e, logger))
             return
         infraction = await self._record(
             ctx,
@@ -251,7 +251,7 @@ class CommandsMixin:
                 reason=reason or f"Fin d'exclusion par {ctx.author.username}",
             )
         except Exception as e:
-            await send_error(ctx, f"Impossible de lever l'exclusion : {e}")
+            await send_error(ctx, failure_reply("Impossible de lever l'exclusion", e, logger))
             return
         infraction = await self._record(ctx, mtype="untimeout", target_id=member.id, reason=reason)
         await self.log_case(
@@ -304,7 +304,7 @@ class CommandsMixin:
             await self.dm_target(
                 settings, member, f"Finalement, tu n'as pas été expulsé de **{ctx.guild.name}**."
             )
-            await send_error(ctx, f"Impossible d'expulser ce membre : {e}")
+            await send_error(ctx, failure_reply("Impossible d'expulser ce membre", e, logger))
             return
         infraction = await self._record(ctx, mtype="kick", target_id=member.id, reason=reason)
         await self.log_case(
@@ -374,7 +374,7 @@ class CommandsMixin:
             await self.dm_target(
                 settings, member, f"Finalement, tu n'as pas été banni de **{ctx.guild.name}**."
             )
-            await send_error(ctx, f"Impossible de bannir ce membre : {e}")
+            await send_error(ctx, failure_reply("Impossible de bannir ce membre", e, logger))
             return
         infraction = await self._record(ctx, mtype="ban", target_id=member.id, reason=reason)
         await self.log_case(
@@ -416,7 +416,9 @@ class CommandsMixin:
         try:
             await ctx.guild.unban(int(user_id), reason=reason or f"Unban par {ctx.author.username}")
         except Exception as e:
-            await send_error(ctx, f"Impossible de débannir cet utilisateur : {e}")
+            await send_error(
+                ctx, failure_reply("Impossible de débannir cet utilisateur", e, logger)
+            )
             return
         infraction = await self._record(ctx, mtype="unban", target_id=user_id, reason=reason)
         await self.log_case(

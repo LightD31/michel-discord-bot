@@ -73,6 +73,13 @@ def take_within_budget(
 
 # Discord's cap on a message's content.
 MESSAGE_LIMIT = 2000
+# Discord's limits on the parts of an embed (a longer one is refused with a 400).
+EMBED_TITLE_LIMIT = 256
+EMBED_DESCRIPTION_LIMIT = 4096
+EMBED_FIELD_NAME_LIMIT = 256
+EMBED_FIELD_VALUE_LIMIT = 1024
+EMBED_FOOTER_LIMIT = 2048
+EMBED_AUTHOR_LIMIT = 256
 
 _USER_MENTION = re.compile(r"<@!?(\d+)>")
 _ROLE_MENTION = re.compile(r"<@&(\d+)>")
@@ -275,6 +282,12 @@ def pick_weighted_message(
 
 
 __all__ = [
+    "EMBED_AUTHOR_LIMIT",
+    "EMBED_DESCRIPTION_LIMIT",
+    "EMBED_FIELD_NAME_LIMIT",
+    "EMBED_FIELD_VALUE_LIMIT",
+    "EMBED_FOOTER_LIMIT",
+    "EMBED_TITLE_LIMIT",
     "MESSAGE_LIMIT",
     "clip",
     "escape_md",

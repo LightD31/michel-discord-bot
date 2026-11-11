@@ -6,10 +6,12 @@ from collections import defaultdict
 
 from interactions import (
     AutocompleteContext,
+    Buckets,
     Embed,
     File,
     OptionType,
     SlashContext,
+    cooldown,
     slash_command,
     slash_option,
 )
@@ -242,6 +244,7 @@ class ReportsMixin:
         required=True,
         autocomplete=True,
     )
+    @cooldown(Buckets.USER, 1, 15)
     async def tricount_graphique(self, ctx: SlashContext, groupe: str):
         if not await require_guild(ctx):
             return

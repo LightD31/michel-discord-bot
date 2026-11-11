@@ -48,15 +48,18 @@ from features.rss.network import fetch_feed
 from features.rss.scheduling import is_due, next_poll_at
 from src.core.errors import DatabaseError, IntegrationError
 from src.core.http import BlockedUrlError
-from src.core.text import format_template
+from src.core.text import (
+    EMBED_AUTHOR_LIMIT,
+    EMBED_DESCRIPTION_LIMIT,
+    EMBED_FOOTER_LIMIT,
+    EMBED_TITLE_LIMIT,
+    clip,
+    format_template,
+)
 from src.core.urls import redact_url
 from src.discord_ext.embeds import Colors, format_discord_timestamp
-from src.discord_ext.messages import (
-    mentions_written_in,
-    require_guild,
-    send_error,
-    send_success,
-)
+from src.discord_ext.mentions import mentions_written_in
+from src.discord_ext.messages import require_guild, send_error, send_success
 from src.discord_ext.scopes import guild_scopes
 
 from ._common import (
@@ -209,8 +212,8 @@ def _render_embed(feed_id: str, feed_cfg: dict, entry: RssEntry) -> Embed:
     description = _format_template(desc_tpl, label=label, entry=entry, fallback=entry.summary)
 
     embed = Embed(
-        title=title[:256] if title else "(sans titre)",
-        description=description[:4000] if description else None,
+        title=clip(title, EMBED_TITLE_LIMIT) if title else "(sans titre)",
+        description=clip(description, EMBED_DESCRIPTION_LIMIT) if description else None,
         url=entry.link or None,
         color=_parse_color(feed_cfg.get("embed_color")) or Colors.UTIL,
     )
@@ -220,10 +223,10 @@ def _render_embed(feed_id: str, feed_cfg: dict, entry: RssEntry) -> Embed:
         except Exception as e:  # noqa: BLE001 — bad URLs shouldn't lose the post
             logger.debug("Could not set embed image %s: %s", entry.image_url, e)
     if entry.author:
-        embed.set_author(name=entry.author[:256])
+        embed.set_author(name=clip(entry.author, EMBED_AUTHOR_LIMIT))
     if entry.published:
         embed.timestamp = entry.published
-    embed.set_footer(text=label[:2048])
+    embed.set_footer(text=clip(label, EMBED_FOOTER_LIMIT))
     return embed
 
 
@@ -529,7 +532,7 @@ class RssExtension(Extension):
             lines.append(f"`{feed_id}` — **{label}**\n  <{url}>\n  Dernière relève : {status}")
         embed = Embed(
             title="Flux RSS configurés",
-            description="\n\n".join(lines)[:4000],
+            description=clip("\n\n".join(lines), EMBED_DESCRIPTION_LIMIT),
             color=Colors.UTIL,
         )
         await ctx.send(embeds=[embed], ephemeral=True)

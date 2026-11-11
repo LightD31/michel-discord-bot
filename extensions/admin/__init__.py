@@ -18,6 +18,7 @@ from typing import cast
 
 from interactions import (
     BaseChannel,
+    Buckets,
     ChannelType,
     Client,
     Extension,
@@ -26,6 +27,7 @@ from interactions import (
     OptionType,
     Permissions,
     SlashContext,
+    cooldown,
     slash_command,
     slash_default_member_permission,
     slash_option,
@@ -33,6 +35,9 @@ from interactions import (
 
 from src.core import logging as logutil
 from src.core.config import ModuleConfig
+from src.discord_ext.channels import member_can
+from src.discord_ext.errors import failure_reply
+from src.discord_ext.mentions import mentions_member_could_send
 from src.discord_ext.messages import send_error, send_success
 from src.discord_ext.scopes import guild_scopes
 from src.webui.schemas import SchemaBase, enabled_field, register_module, ui
@@ -80,6 +85,22 @@ PURGEABLE_CHANNEL_TYPES = [
     ChannelType.GUILD_PRIVATE_THREAD,
     ChannelType.GUILD_NEWS_THREAD,
 ]
+# What the author must hold in the channel a command acts on.
+CAN_PURGE = Permissions.VIEW_CHANNEL | Permissions.MANAGE_MESSAGES
+CAN_SEND = Permissions.VIEW_CHANNEL | Permissions.SEND_MESSAGES
+CAN_MANAGE = Permissions.VIEW_CHANNEL | Permissions.MANAGE_CHANNELS
+
+
+async def author_can(ctx: SlashContext, channel: BaseChannel, permission: Permissions) -> bool:
+    """Whether the author holds *permission* in *channel*, telling them when they don't.
+
+    Discord checks a command's ``default_member_permissions`` in the channel
+    it is run from; the bot then acts on the target with its own rights.
+    """
+    if member_can(ctx.author, channel, permission):
+        return True
+    await send_error(ctx, f"Tu n'as pas les droits nécessaires dans <#{channel.id}>.")
+    return False
 
 
 class AdminExtension(Extension):
@@ -91,6 +112,7 @@ class AdminExtension(Extension):
         scopes=guild_scopes(UTILS.guild_ids()),
         integration_types=[IntegrationType.GUILD_INSTALL, IntegrationType.USER_INSTALL],  # type: ignore
     )
+    @cooldown(Buckets.USER, 3, 30)
     async def ping(self, ctx: SlashContext):
         await ctx.send(f"Pong ! Latence : {round(ctx.bot.latency * 1000)}ms")
 
@@ -140,6 +162,8 @@ class AdminExtension(Extension):
         if not hasattr(channel, "purge"):
             await send_error(ctx, "Impossible de supprimer des messages dans ce salon.")
             return
+        if not await author_can(ctx, channel, CAN_PURGE):
+            return
         bounds = {}
         for name, value in (("before", before), ("after", after)):
             if value is None:
@@ -177,6 +201,7 @@ class AdminExtension(Extension):
         "Message à envoyer",
         opt_type=OptionType.STRING,
         required=True,
+        max_length=2000,
     )
     @slash_option(
         "channel",
@@ -204,9 +229,14 @@ class AdminExtension(Extension):
         if not hasattr(channel, "send"):
             await send_error(ctx, "Ce type de channel ne supporte pas l'envoi de messages")
             return
+        if not await author_can(ctx, channel, CAN_SEND):
+            return
 
         text_channel = cast(GuildText, channel)
-        sent = await text_channel.send(message)
+        sent = await text_channel.send(
+            message,
+            allowed_mentions=mentions_member_could_send(ctx.author, channel, message),
+        )
         logger.info(
             "%s (ID: %s) a envoyé un message dans le channel #%s (ID: %s)",
             ctx.user.username,
@@ -250,13 +280,15 @@ class AdminExtension(Extension):
         channel: BaseChannel | None = None,
     ):
         target = channel or ctx.channel
+        if not await author_can(ctx, target, CAN_MANAGE):
+            return
         try:
             await target.edit(
                 rate_limit_per_user=secondes,
                 reason=f"Slowmode défini par {ctx.user.username} (ID: {ctx.user.id})",
             )
         except Exception as e:
-            await send_error(ctx, f"Impossible de modifier le salon : {e}")
+            await send_error(ctx, failure_reply("Impossible de modifier le salon", e, logger))
             return
 
         if secondes == 0:
@@ -300,6 +332,8 @@ class AdminExtension(Extension):
         if not ctx.guild:
             await send_error(ctx, "Cette commande ne peut être utilisée que dans un serveur.")
             return
+        if not await author_can(ctx, target, CAN_MANAGE):
+            return
         everyone = ctx.guild.default_role
         try:
             await target.add_permission(
@@ -311,7 +345,7 @@ class AdminExtension(Extension):
                 reason=raison or f"Verrouillé par {ctx.user.username} (ID: {ctx.user.id})",
             )
         except Exception as e:
-            await send_error(ctx, f"Impossible de verrouiller le salon : {e}")
+            await send_error(ctx, failure_reply("Impossible de verrouiller le salon", e, logger))
             return
 
         suffix = f" — {raison}" if raison else ""
@@ -346,6 +380,8 @@ class AdminExtension(Extension):
         if not ctx.guild:
             await send_error(ctx, "Cette commande ne peut être utilisée que dans un serveur.")
             return
+        if not await author_can(ctx, target, CAN_MANAGE):
+            return
         everyone = ctx.guild.default_role
         try:
             # Clear the deny mask we set in /lock by passing an empty Permissions flag.
@@ -355,7 +391,7 @@ class AdminExtension(Extension):
                 reason=f"Déverrouillé par {ctx.user.username} (ID: {ctx.user.id})",
             )
         except Exception as e:
-            await send_error(ctx, f"Impossible de déverrouiller le salon : {e}")
+            await send_error(ctx, failure_reply("Impossible de déverrouiller le salon", e, logger))
             return
 
         await send_success(ctx, f"🔓 <#{target.id}> déverrouillé.")

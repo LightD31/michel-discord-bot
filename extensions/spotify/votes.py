@@ -7,6 +7,7 @@ import spotipy
 from interactions import (
     ActionRow,
     AutocompleteContext,
+    Buckets,
     Button,
     ButtonStyle,
     IntervalTrigger,
@@ -18,6 +19,7 @@ from interactions import (
     Timestamp,
     TimestampStyles,
     TimeTrigger,
+    cooldown,
     listen,
     slash_command,
     slash_option,
@@ -549,6 +551,7 @@ class VotesMixin:
         required=True,
         autocomplete=True,
     )
+    @cooldown(Buckets.USER, 1, 10)
     async def addwithvote(self, ctx: SlashContext, song):
         server = self.get_server(ctx.guild_id)
         if str(ctx.channel_id) == str(server.channel_id):

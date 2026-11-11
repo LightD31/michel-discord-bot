@@ -54,14 +54,13 @@ from features.userinfo import UserInfoRepository, member_label_resolver
 from features.xp import XpRepository
 from src.core import logging as logutil
 from src.core.backup_format import latest_backup_time
-from src.core.config import config_store
+from src.core.config import bind_host, config_store
 from src.core.errors import DatabaseError
 from src.core.health import health, watch_loop_lag
 from src.core.tasks import spawn
 
 logger = logutil.init_logger(__name__)
 
-DEFAULT_HOST = "0.0.0.0"
 DEFAULT_PORT = 9108
 DEFAULT_REFRESH_SECONDS = 300
 DEFAULT_TOP_MEMBERS = 25
@@ -168,7 +167,7 @@ class MetricsExtension(Extension):
             logger.info("Prometheus exporter disabled (config.metrics.enabled)")
             return
         if self._server is None:
-            host = str(settings.get("host") or DEFAULT_HOST)
+            host = bind_host(settings.get("host"))
             port = _int_setting(settings, "port", DEFAULT_PORT)
             try:
                 self._server, _ = start_http_server(port, addr=host, registry=self.registry)

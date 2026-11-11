@@ -7,12 +7,13 @@ import os
 import random
 
 from interactions import (
-    AllowedMentions,
+    Buckets,
     Client,
     Extension,
     IntegrationType,
     OptionType,
     SlashContext,
+    cooldown,
     slash_command,
     slash_option,
 )
@@ -21,15 +22,15 @@ from features.messages import chooseList
 from features.random import validate_choices, validate_die_faces
 from src.core import logging as logutil
 from src.core.text import clip
+from src.discord_ext.mentions import NO_PINGS
 
 logger = logutil.init_logger(__name__)
 
 DEFAULT_SEPARATOR = ";"
 # The answer repeats the input: keep it within a message's 2000 characters.
 MAX_INPUT_LENGTH = 1500
-# Anyone can run these, in any server that installs the app: what they type
-# is echoed, so "@everyone" in a choice must not ping.
-NO_PINGS = AllowedMentions.none()
+# Anyone can run these, in any server that installs the app: what they type is
+# echoed (with NO_PINGS), so "@everyone" or a role in a choice must not ping.
 
 
 class RandomExtension(Extension):
@@ -57,6 +58,7 @@ class RandomExtension(Extension):
         required=False,
         max_length=10,
     )
+    @cooldown(Buckets.USER, 5, 30)
     async def pick(self, ctx: SlashContext, choix: str, séparateur: str = DEFAULT_SEPARATOR):
         choices = [c.strip() for c in choix.split(séparateur) if c.strip()]
         error_msg = validate_choices(choices)
@@ -79,6 +81,7 @@ class RandomExtension(Extension):
         opt_type=OptionType.INTEGER,
         required=True,
     )
+    @cooldown(Buckets.USER, 5, 30)
     async def roll(self, ctx: SlashContext, faces: int):
         error_msg = validate_die_faces(faces)
         if error_msg:
@@ -91,6 +94,7 @@ class RandomExtension(Extension):
         description="Lance une pièce de monnaie",
         integration_types=[IntegrationType.GUILD_INSTALL, IntegrationType.USER_INSTALL],
     )
+    @cooldown(Buckets.USER, 5, 30)
     async def coin(self, ctx: SlashContext):
         result = "🪙 **Pile**" if random.randint(1, 2) == 1 else "🪙 **Face**"
         await ctx.send(result)
@@ -114,6 +118,7 @@ class RandomExtension(Extension):
         required=False,
         max_length=10,
     )
+    @cooldown(Buckets.USER, 5, 30)
     async def shuffle(self, ctx: SlashContext, liste: str, séparateur: str = DEFAULT_SEPARATOR):
         items = [item.strip() for item in liste.split(séparateur) if item.strip()]
         error_msg = validate_choices(items)

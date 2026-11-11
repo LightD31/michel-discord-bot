@@ -2,6 +2,8 @@
 
 from types import SimpleNamespace
 
+from interactions import Permissions
+
 from extensions.admin import AdminExtension
 
 
@@ -12,6 +14,9 @@ class FakeChannel:
         self.events = events
         self.deleted = deleted
 
+    def permissions_for(self, member):
+        return Permissions.ALL
+
     async def purge(self, **kwargs):
         self.events.append(("purge", kwargs))
         return self.deleted
@@ -21,6 +26,7 @@ class FakeCtx:
     def __init__(self, channel):
         self.channel = channel
         self.user = SimpleNamespace(id=1, username="mod")
+        self.author = self.user
         self.events = channel.events
 
     async def defer(self, **kwargs):

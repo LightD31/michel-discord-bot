@@ -8,6 +8,7 @@ import pytz
 import spotipy
 from interactions import (
     AutocompleteContext,
+    Buckets,
     Embed,
     IntervalTrigger,
     OptionType,
@@ -16,6 +17,7 @@ from interactions import (
     Timestamp,
     TimestampStyles,
     TimeTrigger,
+    cooldown,
     slash_command,
     slash_option,
 )
@@ -66,6 +68,7 @@ class PlaylistMixin:
         required=True,
         autocomplete=True,
     )
+    @cooldown(Buckets.USER, 1, 10)
     async def addsong(self, ctx: SlashContext, song):
         server = self.get_server(ctx.guild_id)
         if str(ctx.channel_id) != str(server.channel_id):
@@ -322,6 +325,7 @@ class PlaylistMixin:
         autocomplete=True,
         argument_name="song_id",
     )
+    @cooldown(Buckets.USER, 1, 10)
     async def songinfo(self, ctx: SlashContext, song_id):
         """Show combined MongoDB + Spotify info (and any vote history) for a song."""
         server = self.get_server(ctx.guild_id)

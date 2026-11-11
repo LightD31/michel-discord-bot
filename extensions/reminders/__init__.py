@@ -2,6 +2,7 @@
 
 Slash commands:
 - ``/reminder set`` — create a reminder for yourself (optional recurrence)
+- ``/reminder list`` — your reminders on this server and when they next fire
 - ``/reminder remove`` — interactive button list to delete one of your reminders
 
 The background ``check_reminders`` task polls every minute, moves each due
@@ -20,6 +21,7 @@ from interactions import (
     ButtonStyle,
     Client,
     ComponentContext,
+    Embed,
     Extension,
     IntervalTrigger,
     OptionType,
@@ -43,9 +45,12 @@ from features.reminders import (
     next_after,
     schedule_label,
     snooze_minutes,
+    snoozed_text,
 )
 from src.core import logging as logutil
 from src.core.config import ModuleConfig
+from src.core.text import EMBED_DESCRIPTION_LIMIT, clip
+from src.discord_ext.embeds import Colors, format_discord_timestamp
 from src.discord_ext.messages import fetch_user_safe, send_error
 from src.discord_ext.scopes import guild_scopes
 
@@ -54,6 +59,8 @@ SNOOZE_PREFIX = "reminder_snooze"
 MAX_REMINDERS_PER_MEMBER = 25
 # A DM is capped at 2000 characters; snoozes prefix the text.
 MAX_REMINDER_LENGTH = 1500
+# How much of each reminder's text /reminder list shows.
+LIST_PREVIEW_LENGTH = 120
 _SNOOZE_RE = re.compile(rf"^{SNOOZE_PREFIX}:(\d+):([0-9a-fA-F]+)$")
 
 logger = logutil.init_logger(__name__)
@@ -62,6 +69,20 @@ UTILS = ModuleConfig("moduleUtils")
 
 def _snooze_minutes(guild_id: str | int) -> int:
     return snooze_minutes(UTILS.get(guild_id))
+
+
+def reminders_embed(reminders: list[Reminder]) -> Embed:
+    """A member's reminders: what each says, its schedule and when it next fires."""
+    lines = [
+        f"**{schedule_label(r)}** — prochain {format_discord_timestamp(r.remind_time, 'R')}\n"
+        f"{clip(r.message, LIST_PREVIEW_LENGTH)}"
+        for r in reminders
+    ]
+    return Embed(
+        title=f"Tes rappels ({len(reminders)}/{MAX_REMINDERS_PER_MEMBER})",
+        description=clip("\n\n".join(lines), EMBED_DESCRIPTION_LIMIT),
+        color=Colors.UTIL,
+    )
 
 
 class RemindersExtension(Extension):
@@ -195,6 +216,17 @@ class RemindersExtension(Extension):
         )
 
     @reminder_set.subcommand(
+        sub_cmd_name="list",
+        sub_cmd_description="Affiche tes rappels sur ce serveur",
+    )
+    async def list_reminders(self, ctx: SlashContext):
+        reminders = await self._reminder_repo(ctx.guild_id).list_for_user(str(ctx.author.id))
+        if not reminders:
+            await ctx.send("Tu n'as aucun rappel sur ce serveur.", ephemeral=True)
+            return
+        await ctx.send(embeds=[reminders_embed(reminders)], ephemeral=True)
+
+    @reminder_set.subcommand(
         sub_cmd_name="remove",
         sub_cmd_description="Supprime un rappel",
     )
@@ -274,16 +306,22 @@ class RemindersExtension(Extension):
             return
         gid, reminder_id = match.group(1), match.group(2)
         minutes = _snooze_minutes(gid)
+        repo = self._reminder_repo(gid)
 
-        original_message = ctx.message.content if ctx.message and ctx.message.content else "Rappel"
+        if await repo.count_for_user(str(ctx.author.id)) >= MAX_REMINDERS_PER_MEMBER:
+            await ctx.send(
+                f"Tu as déjà {MAX_REMINDERS_PER_MEMBER} rappels sur ce serveur.", ephemeral=True
+            )
+            return
         new_time = datetime.now() + timedelta(minutes=minutes)
         snoozed = Reminder(
             user_id=str(ctx.author.id),
-            message=f"⏰ (snooze) {original_message}",
+            # Snoozing a snoozed reminder doesn't stack the mark.
+            message=snoozed_text(ctx.message.content if ctx.message else None),
             remind_time=new_time,
         )
         try:
-            await self._reminder_repo(gid).add(snoozed)
+            await repo.add(snoozed)
         except Exception as e:
             logger.error("Failed to snooze reminder %s: %s", reminder_id, e)
             await ctx.send("Impossible de reporter le rappel.", ephemeral=True)

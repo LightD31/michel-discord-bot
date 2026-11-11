@@ -20,6 +20,7 @@ from features.lldap import (
 )
 from src.core import logging as logutil
 from src.discord_ext.embeds import Colors
+from src.discord_ext.errors import failure_reply
 from src.discord_ext.messages import require_guild, send_error
 from src.discord_ext.scopes import guild_scopes
 from src.integrations.lldap import LldapError
@@ -137,8 +138,7 @@ class CommandsMixin:
                 if e.conflict:
                     await send_error(ctx, USERNAME_TAKEN)
                 else:
-                    logger.error("Guild %s: LLDAP account creation failed: %s", guild_id, e)
-                    await send_error(ctx, f"Impossible de créer le compte : {e}")
+                    await send_error(ctx, failure_reply("Impossible de créer le compte", e, logger))
                 return
             try:
                 await self.lldap.set_password(settings, user_id, password)
@@ -157,7 +157,7 @@ class CommandsMixin:
                         user_id,
                         rollback_error,
                     )
-                await send_error(ctx, f"Impossible de finaliser le compte : {e}")
+                await send_error(ctx, failure_reply("Impossible de finaliser le compte", e, logger))
                 return
 
         logger.info(

@@ -82,6 +82,17 @@ def snooze_minutes(guild_config: dict[str, Any]) -> int:
     return max(1, min(value, MAX_SNOOZE_MINUTES))
 
 
+SNOOZE_MARK = "⏰ (snooze) "
+
+
+def snoozed_text(text: str | None) -> str:
+    """The text of a snoozed reminder: marked once, however many times it was snoozed."""
+    text = text or "Rappel"
+    while text.startswith(SNOOZE_MARK):
+        text = text.removeprefix(SNOOZE_MARK)
+    return SNOOZE_MARK + text
+
+
 def schedule_label(reminder: Reminder) -> str:
     """How the reminder's schedule reads in French, e.g. ``Tous les lundis à 08:30``."""
     when = reminder.remind_time
@@ -105,4 +116,5 @@ __all__ = [
     "next_occurrence",
     "schedule_label",
     "snooze_minutes",
+    "snoozed_text",
 ]

@@ -54,6 +54,7 @@ from features.ai import (
 )
 from features.ai.quota import QUOTA_UNAVAILABLE, access_refusal, limit_message
 from src.core.errors import DatabaseError
+from src.discord_ext.mentions import NO_PINGS
 from src.discord_ext.messages import send_error
 from src.integrations import llm
 
@@ -70,7 +71,6 @@ PROMPT_TIMEZONE = pytz.timezone("Europe/Paris")
 MODE_COMPARE = "comparer"
 MODE_QUICK = "rapide"
 VOTE_PREFIX = "aivote"
-NO_PINGS = AllowedMentions.none()
 
 _USER_MENTION_ID = re.compile(r"<@!?(\d+)>")
 

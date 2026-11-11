@@ -6,6 +6,7 @@ from features.reminders.schedule import (
     next_after,
     schedule_label,
     snooze_minutes,
+    snoozed_text,
 )
 
 __all__ = [
@@ -17,4 +18,5 @@ __all__ = [
     "next_after",
     "schedule_label",
     "snooze_minutes",
+    "snoozed_text",
 ]

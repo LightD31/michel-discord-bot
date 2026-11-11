@@ -30,7 +30,7 @@ class Channel:
     def __init__(self):
         self.sent = []
 
-    async def send(self, content, files=None):
+    async def send(self, content, files=None, allowed_mentions=None):
         self.sent.append(content)
 
 

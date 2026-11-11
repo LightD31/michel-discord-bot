@@ -15,6 +15,7 @@ from features.youtube import (
 from src.core import logging as logutil
 from src.core.config import ModuleConfig, global_config
 from src.core.http import fetch
+from src.discord_ext.mentions import everyone_if_written
 from src.webui.schemas import SchemaBase, check_template, enabled_field, register_module, ui
 
 
@@ -159,7 +160,9 @@ class YoutubeExtension(Extension):
                     # Shortens every link the template rendered — the video URL
                     # and any extra link the guild added to its template.
                     rendered = await shorten_text(rendered, tags=["youtube", handle])
-                    await channel.send(rendered)
+                    # @everyone pings only when the template writes it, not
+                    # through a value (a handle) it is filled with.
+                    await channel.send(rendered, allowed_mentions=everyone_if_written(template))
             except Exception as e:  # noqa: BLE001 — retried next tick, others carry on
                 logger.warning("YouTube check failed for %s on server %s: %s", handle, server, e)
                 continue

@@ -43,7 +43,7 @@ A modular, multi-guild Discord bot built with **interactions.py**. Michel ships 
 | **Giveaway** | Reaction-entry giveaways with a scheduled random draw. |
 | **Secret Santa** | Organize a Secret Santa entirely in Discord — registrations, forbidden pairings, random draw, and DM delivery. |
 | **Reaction Roles** | Self-assignable roles via persistent buttons, with a menu builder in the Web UI. |
-| **Reminders** | `/reminder` with optional recurrence, DM delivery to its author with a snooze button, persisted and restored across restarts. |
+| **Reminders** | `/reminder set` with optional recurrence (25 per member and server), `/reminder list` to see them and when they next fire, `/reminder remove`. DM delivery to its author with a snooze button, persisted and restored across restarts. |
 | **Custom Commands** | Slash commands defined per server from the Web UI — a name, a description, and a pool of responses (GIF links or plain text) picked at random. New commands reach Discord without a restart. |
 | **Random** | `/pick` (random choice from a list) and `/dice` (configurable die roll) powered by Random.org. |
 | **User Info** | Per-user profile lookup and shared member-tracking stats. |
@@ -193,7 +193,7 @@ Volumes:
 - `./data` → `/app/data` (persistent data, backups)
 - `./logs` → `/app/logs` (log files)
 
-The Web UI is bound to `127.0.0.1:8080` — put a TLS-terminating reverse proxy in front of it. The container runs as a non-root user and has a healthcheck wired to the bot's heartbeat file, so a wedged gateway connection triggers an automatic restart (`restart: unless-stopped`).
+The Web UI is published on `127.0.0.1:8080` — put a TLS-terminating reverse proxy in front of it. Inside the container it listens on every interface (`MICHEL_BIND_HOST=0.0.0.0` in the image); run outside Docker, it and `/metrics` listen on `127.0.0.1` unless `webui.host` / `metrics.host` say otherwise. The container runs as a non-root user and has a healthcheck wired to the bot's heartbeat file, so a wedged gateway connection triggers an automatic restart (`restart: unless-stopped`).
 
 ### Local Development
 
@@ -277,7 +277,7 @@ The `metrics` extension serves `/metrics` in the Prometheus text format on its o
 | Key | Default | Meaning |
 |-----|---------|---------|
 | `enabled` | `false` | Start the exporter. |
-| `host` / `port` | `0.0.0.0` / `9108` | Where `/metrics` listens. |
+| `host` / `port` | empty / `9108` | Where `/metrics` listens. An empty host means `127.0.0.1`, or `0.0.0.0` in the Docker image (`MICHEL_BIND_HOST`). |
 | `refreshSeconds` | `300` | How often XP and Spotify statistics are recomputed from MongoDB (minimum 60). |
 | `topMembers` | `25` | How many members get their own series (XP leaderboard, Spotify contributors and voters). |
 

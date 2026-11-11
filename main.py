@@ -18,11 +18,11 @@ from interactions import IntervalTrigger, Task
 
 from src.core import error_reporting
 from src.core import logging as logutil
-from src.core.config import CONFIG_PATH, global_config
+from src.core.config import CONFIG_PATH, bind_host, global_config
 from src.core.db import mongo_manager
 from src.core.http import http_client
 from src.core.logging import DEBUG
-from src.discord_ext import task_health
+from src.discord_ext import mentions, task_health
 from src.discord_ext.interaction_context import bind_interaction_context
 from src.discord_ext.lifecycle import GracefulShutdown
 
@@ -32,6 +32,8 @@ logger = logutil.init_logger("main.py")
 logutil.adopt_library_logger("interactions")
 # Every Task run is timed, recorded for /metrics and tagged in the logs.
 task_health.install()
+# A message sent without allowed_mentions never pings @everyone / @here.
+mentions.install()
 
 config = global_config()
 if not config.get("discord", {}).get("botToken"):
@@ -52,7 +54,7 @@ if error_reporting.init(config.get("errorReporting") or {}):
 
 # Web UI configuration
 WEBUI_ENABLED = config.get("webui", {}).get("enabled", False)
-WEBUI_HOST = config.get("webui", {}).get("host", "0.0.0.0")
+WEBUI_HOST = bind_host(config.get("webui", {}).get("host"))
 WEBUI_PORT = config.get("webui", {}).get("port", 8080)
 
 logger.debug(

@@ -9,6 +9,7 @@ from features.welcome import render_welcome_card
 from src.core import logging as logutil
 from src.core.config import ModuleConfig
 from src.core.text import pick_weighted_message
+from src.discord_ext.mentions import everyone_if_written
 from src.webui.schemas import SchemaBase, WeightedMessage, enabled_field, register_module, ui
 
 
@@ -116,7 +117,10 @@ class WelcomeExtension(Extension):
             title="Bienvenue",
             enabled=serv_config.get("welcomeImageEnabled", True),
         )
-        await channel.send(filled_message, files=files)
+        # The admins' template filled with a mention: it may ping @everyone.
+        await channel.send(
+            filled_message, files=files, allowed_mentions=everyone_if_written(filled_message)
+        )
 
     @listen()
     async def on_member_remove(self, event: MemberRemove):
@@ -147,7 +151,9 @@ class WelcomeExtension(Extension):
             title="Au revoir",
             enabled=serv_config.get("welcomeImageEnabled", True),
         )
-        await channel.send(filled_message, files=files)
+        await channel.send(
+            filled_message, files=files, allowed_mentions=everyone_if_written(filled_message)
+        )
 
     async def _build_card_files(self, member, guild, *, title: str, enabled: bool) -> list[File]:
         if not enabled:

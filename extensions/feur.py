@@ -8,7 +8,16 @@ import re
 import string
 from datetime import datetime
 
-from interactions import Embed, EmbedFooter, Extension, SlashContext, listen, slash_command
+from interactions import (
+    Buckets,
+    Embed,
+    EmbedFooter,
+    Extension,
+    SlashContext,
+    cooldown,
+    listen,
+    slash_command,
+)
 from interactions.api.events import MessageCreate
 
 from features.feur import FeurRepository
@@ -107,6 +116,7 @@ class FeurExtension(Extension):
         description="Affiche les statistiques de feur",
         scopes=guild_scopes(FEUR.guild_ids()),
     )
+    @cooldown(Buckets.USER, 1, 30)
     async def feur_stats(self, ctx: SlashContext):
         if not await require_guild(ctx):
             return

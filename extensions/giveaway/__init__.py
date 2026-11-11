@@ -17,7 +17,6 @@ Persistence: per-guild ``giveaways`` collection. Enabled per-guild via
 
 from __future__ import annotations
 
-from asyncio import Lock
 from datetime import datetime, timedelta
 from typing import Literal
 
@@ -41,6 +40,8 @@ from interactions.api.events import MessageReactionAdd, MessageReactionRemove
 
 from features.giveaway import MAX_WINNERS, Giveaway, GiveawayRepository, pick_winners
 from features.polls import parse_duration  # reused: same DSL as /poll
+from src.core.debounce import Coalescer
+from src.core.text import EMBED_DESCRIPTION_LIMIT, clip
 from src.discord_ext.embeds import Colors, format_discord_timestamp
 from src.discord_ext.messages import (
     edit_message_if_changed,
@@ -71,6 +72,8 @@ MAX_PARTICIPANTS_FIELD_CHARS = 900
 MAX_DRAW_FAILURES = 10
 # The title is "🏁 GIVEAWAY TERMINÉ — {prize}" and Discord caps titles at 256.
 MAX_PRIZE_LENGTH = 200
+# Reactions on a giveaway within this many seconds share one re-read of its entrants.
+REFRESH_DELAY_SECONDS = 3
 MAX_DESCRIPTION_LENGTH = 1000
 
 
@@ -226,7 +229,8 @@ class GiveawayExtension(Extension):
     def __init__(self, bot: Client):
         self.bot: Client = bot
         self._repos: dict[str, GiveawayRepository] = {}
-        self._reaction_lock = Lock()
+        # A burst of reactions on a giveaway re-reads its entrants once.
+        self._refreshes = Coalescer(REFRESH_DELAY_SECONDS, name="giveaway-refresh", log=logger)
 
     def _repo(self, guild_id: str | int) -> GiveawayRepository:
         gid = str(guild_id)
@@ -532,7 +536,7 @@ class GiveawayExtension(Extension):
             )
         embed = Embed(
             title="Giveaways en cours",
-            description="\n".join(lines)[:4000],
+            description=clip("\n".join(lines), EMBED_DESCRIPTION_LIMIT),
             color=Colors.UTIL,
         )
         await ctx.send(embeds=[embed], ephemeral=True)
@@ -543,51 +547,64 @@ class GiveawayExtension(Extension):
 
     @listen(MessageReactionAdd)
     async def on_message_reaction_add(self, event: MessageReactionAdd) -> None:
-        await self._refresh_participants_embed(event)
+        self._refresh_participants_embed(event)
 
     @listen(MessageReactionRemove)
     async def on_message_reaction_remove(self, event: MessageReactionRemove) -> None:
-        await self._refresh_participants_embed(event)
+        self._refresh_participants_embed(event)
 
-    async def _refresh_participants_embed(
+    def _refresh_participants_embed(
         self,
         event: MessageReactionAdd | MessageReactionRemove,
     ) -> None:
-        message = event.message
-        if message is None or message.guild is None:
-            return
+        """Schedule a refresh of the participants a reaction may have changed.
 
+        Only the bot's own messages, in servers where giveaways are on, can be
+        giveaways: any other reaction costs nothing. A burst of reactions with
+        one emoji on one message is folded into one refresh.
+        """
+        message = event.message
+        guild = getattr(message, "guild", None)
+        if guild is None or not GIVEAWAY.enabled(guild.id):
+            return
+        author = getattr(message, "author", None)
+        if author is None or author.id != self.bot.user.id:
+            return
+        # A giveaway stores its emoji as a name (🎉) or in full (<:name:id>).
+        emoji = (str(getattr(event.emoji, "name", event.emoji)), str(event.emoji))
+        self._refreshes.request(
+            (int(message.id), emoji), lambda: self._refresh_participants(message, emoji)
+        )
+
+    async def _refresh_participants(self, message: Message, emoji: tuple[str, str]) -> None:
+        """Re-render the participants of the giveaway *message* is, after *emoji* moved."""
         giveaway = await self._repo(message.guild.id).get_by_message(str(message.id))
         if giveaway is None or giveaway.drawn or giveaway.cancelled:
             return
-
-        # Ignore unrelated emojis to avoid editing on every reaction event.
-        emoji_name = str(getattr(event.emoji, "name", event.emoji))
-        if emoji_name != giveaway.emoji and str(event.emoji) != giveaway.emoji:
+        # Another emoji's reactions leave the entrants as they are.
+        if giveaway.emoji not in emoji:
             return
-
-        async with self._reaction_lock:
-            try:
-                entrants = await _collect_entrants(
-                    message,
-                    giveaway.emoji,
-                    giveaway.host_id,
-                    allow_host=_allow_host(giveaway),
-                )
-            except Exception as e:
-                logger.debug("Could not read the entrants of giveaway %s: %s", giveaway.id, e)
-                return
-            host_name, host_avatar = _footer_host(message, giveaway)
-            embed = _build_embed(
-                giveaway,
-                host_name=host_name,
-                host_avatar=host_avatar,
-                entrants=entrants,
+        try:
+            entrants = await _collect_entrants(
+                message,
+                giveaway.emoji,
+                giveaway.host_id,
+                allow_host=_allow_host(giveaway),
             )
-            try:
-                await edit_message_if_changed(message, embeds=[embed], logger=logger)
-            except Exception as e:
-                logger.debug("Could not refresh giveaway participants for %s: %s", giveaway.id, e)
+        except Exception as e:
+            logger.debug("Could not read the entrants of giveaway %s: %s", giveaway.id, e)
+            return
+        host_name, host_avatar = _footer_host(message, giveaway)
+        embed = _build_embed(
+            giveaway,
+            host_name=host_name,
+            host_avatar=host_avatar,
+            entrants=entrants,
+        )
+        try:
+            await edit_message_if_changed(message, embeds=[embed], logger=logger)
+        except Exception as e:
+            logger.debug("Could not refresh giveaway participants for %s: %s", giveaway.id, e)
 
     # ------------------------------------------------------------------
     # Background scheduler
