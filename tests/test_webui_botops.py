@@ -18,7 +18,7 @@ from fastapi.testclient import TestClient
 
 from src.webui.botops import run_extension_op, sync_commands
 from src.webui.context import WebUIContext
-from src.webui.routes.extensions import create_router
+from src.webui.routes.extensions import available_extensions, create_router
 from src.webui.routes.servers import _try_reload_extension_for_module
 from src.webui.routes.servers import create_router as create_servers_router
 
@@ -147,6 +147,71 @@ async def test_reload_route_dispatches_and_syncs_once(bot_loop):
     assert all(call[2] is bot_loop for call in bot.calls)
     # One sync for the reload, not the two unawaited ones the client would fire.
     assert bot.sync_calls == [(None, bot_loop)]
+
+
+class _RecordingDevCtx(_DevCtx):
+    """Developer context whose config writes are recorded instead of made."""
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.mutations: list = []
+
+    def mutate_config(self, mutator) -> dict:
+        data: dict = {"config": {}, "servers": {}}
+        mutator(data)
+        self.mutations.append(data)
+        return data
+
+
+def _extensions_client(bot, loop) -> tuple[TestClient, _RecordingDevCtx]:
+    ctx = _RecordingDevCtx(bot=bot, bot_loop=loop, oauth=None)  # type: ignore[arg-type]
+    app = FastAPI()
+    app.include_router(create_router(ctx))
+    return TestClient(app), ctx
+
+
+@pytest.mark.parametrize("name", ["os", "extensions.does_not_exist", "src.core.db", "extensions"])
+async def test_unknown_extensions_are_refused_before_any_import_or_write(bot_loop, name):
+    bot = _FakeBot()
+    client, ctx = _extensions_client(bot, bot_loop)
+    with client:
+        assert client.post(f"/api/reload/{name}").status_code == 404
+        toggle = client.post(f"/api/extensions/{name}/toggle", json={"enabled": True})
+        assert toggle.status_code == 404
+    assert bot.calls == []
+    assert ctx.mutations == []
+
+
+async def test_a_loaded_extension_is_known_even_if_not_on_disk(bot_loop, monkeypatch):
+    monkeypatch.setattr(_FakeBot, "loaded", [SimpleNamespace(extension_name="extensions._parked")])
+    bot = _FakeBot()
+    client, _ = _extensions_client(bot, bot_loop)
+    with client:
+        assert client.post("/api/reload/extensions._parked").status_code == 200
+
+
+async def test_failed_reload_reports_the_error_type_only(bot_loop):
+    bot = _FakeBot()
+    bot.fail = RuntimeError("mongodb://admin:hunter2@db:27017 unreachable")
+    client, _ = _extensions_client(bot, bot_loop)
+    with client:
+        one = client.post("/api/reload/extensions.xp")
+        assert one.status_code == 500
+        assert "hunter2" not in one.text
+        assert "RuntimeError" in one.json()["detail"]
+
+
+def test_available_extensions_matches_main_discovery(tmp_path):
+    (tmp_path / "solo.py").write_text("")
+    (tmp_path / "pkg").mkdir()
+    (tmp_path / "pkg" / "__init__.py").write_text("")
+    (tmp_path / "notapkg").mkdir()
+    (tmp_path / "_parked.py").write_text("")
+    (tmp_path / "README.md").write_text("")
+    assert available_extensions(str(tmp_path)) == [
+        ("extensions.pkg", "pkg"),
+        ("extensions.solo", "solo.py"),
+    ]
 
 
 # ── Per-guild module toggle / save ──────────────────────────────────────

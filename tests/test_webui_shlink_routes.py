@@ -176,5 +176,7 @@ def test_client_error_is_surfaced_as_400(client):
 
 def test_upstream_failure_is_surfaced_as_502(client):
     http, fake = client
-    fake.error = ShlinkError("Shlink injoignable")
-    assert http.get("/api/shlink/short-urls").status_code == 502
+    fake.error = ShlinkError("Shlink injoignable : Cannot connect to host shlink.internal:8080")
+    resp = http.get("/api/shlink/short-urls")
+    assert resp.status_code == 502
+    assert "shlink.internal" not in resp.json()["detail"]

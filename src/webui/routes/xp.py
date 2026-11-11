@@ -93,7 +93,9 @@ def create_router(ctx: WebUIContext) -> APIRouter:
             stats = await collect_xp_stats(server_id, days)
         except DatabaseError as e:
             logger.error("XP stats failed for %s: %s", server_id, e)
-            raise HTTPException(status_code=500, detail=str(e)) from e
+            raise HTTPException(
+                status_code=503, detail="Statistiques momentanément indisponibles."
+            ) from e
         return JSONResponse(stats)
 
     return router

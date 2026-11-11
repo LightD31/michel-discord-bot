@@ -240,11 +240,11 @@ def test_find_guild_by_token_skips_guilds_without_token():
 
 def test_link_endpoint_mints_once_then_reuses(http, store):
     store.data["servers"]["333"] = {"moduleXp": {"enabled": True, "publicDashboard": True}}
-    first = http.get("/api/servers/333/public-dashboard").json()
+    first = http.post("/api/servers/333/public-dashboard").json()
     assert len(first["token"]) >= 20
     assert first["dashboards"] == ["xp"]
     assert store.writes == 1
-    second = http.get("/api/servers/333/public-dashboard").json()
+    second = http.post("/api/servers/333/public-dashboard").json()
     assert second["token"] == first["token"]
     assert store.writes == 1  # an existing token is never rewritten
     assert http.get(f"/api/public/{first['token']}").status_code == 200
@@ -259,7 +259,7 @@ def test_rotate_revokes_the_old_link(http, store):
 
 def test_link_endpoints_require_guild_admin(http, ctx, store):
     ctx.allowed = False
-    assert http.get(f"/api/servers/{PUBLISHED}/public-dashboard").status_code == 403
+    assert http.post(f"/api/servers/{PUBLISHED}/public-dashboard").status_code == 403
     assert http.post(f"/api/servers/{PUBLISHED}/public-dashboard/rotate").status_code == 403
     assert store.writes == 0
 

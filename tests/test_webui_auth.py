@@ -25,7 +25,7 @@ from src.webui.auth import (
     hash_token,
 )
 from src.webui.context import WebUIContext
-from src.webui.guild_access import NO_ACCESS, GuildAccess, read_guild_access
+from src.webui.guild_access import NO_ACCESS, GuildAccess, is_guild_id, read_guild_access
 from src.webui.routes import auth as auth_routes
 
 
@@ -34,6 +34,7 @@ def make_oauth(**kwargs) -> DiscordOAuth:
         "client_id": "123",
         "client_secret": "s3cret",  # pragma: allowlist secret
         "redirect_uri": "https://michel.example/auth/callback",
+        "developer_ids": lambda: [],
     }
     defaults.update(kwargs)
     return DiscordOAuth(**defaults)
@@ -152,7 +153,7 @@ def test_server_list_scoping_and_bot_cache_names():
 
     import src.webui.routes.servers as servers_routes
 
-    oauth = make_oauth(developer_user_ids=["42"])
+    oauth = make_oauth(developer_ids=lambda: ["42"])
     bot = SimpleNamespace(
         guilds=[
             SimpleNamespace(id=1, name="Coloc", icon=SimpleNamespace(hash="abc123")),
@@ -301,7 +302,7 @@ def test_without_bot_falls_back_to_oauth_snapshot():
 
 
 def test_developer_bypasses_guild_check():
-    oauth = make_oauth(developer_user_ids=["42"])
+    oauth = make_oauth(developer_ids=lambda: ["42"])
     ctx = WebUIContext(bot=None, bot_loop=None, oauth=oauth)
     session = make_session(guilds=[])
     assert asyncio.run(ctx.user_manages_guild(session, "999"))
@@ -447,6 +448,48 @@ def test_require_guild_admin_enforces_per_guild_access():
     assert granted is session
 
 
+@pytest.mark.parametrize("alias", ["0001", "+1", " 1", "1 ", "1_0", "١", "", "-1"])
+def test_require_guild_admin_rejects_other_spellings_of_an_id(alias):
+    """int() reads all of these as a guild the user manages; config.json would not."""
+    from fastapi import HTTPException
+
+    guild = FakeGuild(1, owner_id=5, members={42: FakeMember(42, 0x20)})
+    ctx = live_ctx(FakeBot(guild))
+    session = make_session()
+    ctx.oauth.sessions[session.token_hash] = session
+    with pytest.raises(HTTPException) as exc:
+        run_live(
+            ctx, lambda: ctx.require_guild_admin(make_authed_request(session.session_token), alias)
+        )
+    assert exc.value.status_code == 404
+
+
+def test_is_guild_id_accepts_only_the_canonical_spelling():
+    assert is_guild_id("1")
+    assert is_guild_id("123456789012345678")
+    assert not is_guild_id("0123")
+    assert not is_guild_id("12345678901234567890123")  # longer than any snowflake
+    assert not is_guild_id(123)  # only path strings come through here
+
+
+def test_developer_rights_follow_the_config_without_a_restart():
+    ids = ["42"]
+    oauth = make_oauth(developer_ids=lambda: ids)
+    session = make_session()
+    assert oauth.is_developer(session)
+    ids.clear()
+    assert not oauth.is_developer(session)
+
+
+def test_configured_developer_ids_reads_the_store(store_config):
+    # A number typed into config.json still matches the string user id.
+    store_config({"config": {"webui": {"developerUserIds": [42, " 7 "]}}})
+    assert auth_module.configured_developer_ids() == ["42", "7"]
+    assert DiscordOAuth("", "", "").is_developer(make_session())
+    store_config({"config": {"webui": {}}})
+    assert not DiscordOAuth("", "", "").is_developer(make_session())
+
+
 # ── Persistence glue (stubbed repository) ───────────────────────────────
 
 
@@ -508,3 +551,27 @@ def test_invalidate_session_removes_everywhere(stub_repo):
     asyncio.run(oauth.invalidate_session(session.session_token))
     assert session.token_hash not in oauth.sessions
     assert stub_repo.deleted == [session.token_hash]  # never the raw cookie
+
+
+def test_logout_is_a_post_that_ends_the_session(stub_repo):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    oauth = make_oauth()
+    session = make_session()
+    oauth.sessions[session.token_hash] = session
+    app = FastAPI()
+    app.include_router(
+        auth_routes.create_router(WebUIContext(bot=None, bot_loop=None, oauth=oauth))
+    )
+    client = TestClient(app, cookies={"michel_session": session.session_token})
+
+    # A link or an image on another site can't log anyone out.
+    assert client.get("/auth/logout").status_code == 405
+    assert oauth.get_session(session.session_token) is session
+
+    resp = client.post("/auth/logout")
+    assert resp.status_code == 200
+    assert oauth.get_session(session.session_token) is None
+    assert stub_repo.deleted == [session.token_hash]
+    assert "michel_session=" in resp.headers["set-cookie"]

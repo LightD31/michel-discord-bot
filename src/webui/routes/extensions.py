@@ -13,12 +13,47 @@ from src.webui.context import WebUIContext
 logger = logutil.init_logger("webui.routes.extensions")
 
 
+EXTENSIONS_DIR = "extensions"
+
+
 class ExtensionToggle(BaseModel):
     enabled: bool
 
 
+def available_extensions(ext_dir: str = EXTENSIONS_DIR) -> list[tuple[str, str]]:
+    """``(module path, file name)`` of every extension the dashboard can manage.
+
+    Same discovery as ``main.py``: a ``.py`` file or a package under
+    ``extensions/``. Names starting with ``_`` are parked work in progress and
+    are not offered.
+    """
+    found: list[tuple[str, str]] = []
+    if not os.path.isdir(ext_dir):
+        return found
+    for fname in sorted(os.listdir(ext_dir)):
+        if fname.startswith("_"):
+            continue
+        full_path = os.path.join(ext_dir, fname)
+        if fname.endswith(".py") and os.path.isfile(full_path):
+            found.append((f"extensions.{fname[:-3]}", fname))
+        elif os.path.isdir(full_path) and os.path.isfile(os.path.join(full_path, "__init__.py")):
+            found.append((f"extensions.{fname}", fname))
+    return found
+
+
 def create_router(ctx: WebUIContext) -> APIRouter:
     router = APIRouter()
+
+    def _require_known_extension(ext_name: str) -> None:
+        """404 unless *ext_name* is an extension on disk or one that is loaded.
+
+        The name ends up in ``config.extensions`` and in an import: anything
+        else would write junk keys to config.json and import arbitrary modules.
+        """
+        known = {path for path, _ in available_extensions()}
+        known.update(ctx.get_extension_module_paths())
+        if ext_name not in known:
+            raise HTTPException(status_code=404, detail="Extension inconnue")
 
     async def _sync_all_commands() -> str | None:
         """Push the reloaded command set to Discord. Returns an error message, or None.
@@ -51,7 +86,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
                 results["reloaded"].append(ext_path)
                 logger.info(f"Reloaded extension: {ext_path}")
             except Exception as e:
-                results["failed"].append({"name": ext_path, "error": str(e)})
+                results["failed"].append({"name": ext_path, "error": type(e).__name__})
                 logger.error(f"Failed to reload {ext_path}: {e}")
 
         # One sync for the whole pass, and only once every extension is back:
@@ -74,6 +109,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
         ctx.require_developer(request)
         if not ctx.bot:
             raise HTTPException(status_code=503, detail="Bot non disponible")
+        _require_known_extension(ext_name)
         try:
             await run_extension_op(ctx, "reload", ext_name)
             logger.info(f"Reloaded extension: {ext_name}")
@@ -81,7 +117,10 @@ def create_router(ctx: WebUIContext) -> APIRouter:
             raise
         except Exception as e:
             logger.error(f"Failed to reload {ext_name}: {e}")
-            raise HTTPException(status_code=500, detail=str(e)) from e
+            raise HTTPException(
+                status_code=500,
+                detail=f"Échec du rechargement ({type(e).__name__}). Voir les logs.",
+            ) from e
         sync_error = await _sync_all_commands()
         return JSONResponse(
             {
@@ -100,39 +139,24 @@ def create_router(ctx: WebUIContext) -> APIRouter:
 
         loaded_exts = set(ctx.get_extension_module_paths()) if ctx.bot else set()
 
-        result = []
-        ext_dir = "extensions"
-        if os.path.isdir(ext_dir):
-            for fname in sorted(os.listdir(ext_dir)):
-                if fname.startswith("_") or fname.startswith("__"):
-                    continue
-                full_path = os.path.join(ext_dir, fname)
-                if fname.endswith(".py") and os.path.isfile(full_path):
-                    ext_path = f"extensions.{fname[:-3]}"
-                    short_name = fname[:-3]
-                elif os.path.isdir(full_path) and os.path.isfile(
-                    os.path.join(full_path, "__init__.py")
-                ):
-                    ext_path = f"extensions.{fname}"
-                    short_name = fname
-                else:
-                    continue
-                default_enabled = not short_name.startswith("_")
-                enabled = ext_config.get(ext_path, default_enabled)
-                result.append(
-                    {
-                        "path": ext_path,
-                        "filename": fname,
-                        "enabled": enabled,
-                        "loaded": ext_path in loaded_exts,
-                    }
-                )
+        # Underscore-prefixed entries aren't listed, so every listed one is
+        # enabled unless the config says otherwise (same default as main.py).
+        result = [
+            {
+                "path": ext_path,
+                "filename": fname,
+                "enabled": ext_config.get(ext_path, True),
+                "loaded": ext_path in loaded_exts,
+            }
+            for ext_path, fname in available_extensions()
+        ]
         return JSONResponse({"extensions": result})
 
     @router.post("/api/extensions/{ext_name:path}/toggle")
     async def api_toggle_extension(request: Request, ext_name: str, body: ExtensionToggle):
         """Enable or disable an extension globally (updates config and loads/unloads)."""
         session = ctx.require_developer(request)
+        _require_known_extension(ext_name)
 
         def mutator(data: dict) -> None:
             data.setdefault("config", {}).setdefault("extensions", {})[ext_name] = body.enabled

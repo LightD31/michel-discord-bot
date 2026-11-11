@@ -89,13 +89,17 @@ def create_router(ctx: WebUIContext) -> APIRouter:
         response.delete_cookie("oauth_state")
         return response
 
-    @router.get("/auth/logout")
+    @router.post("/auth/logout")
     async def auth_logout(request: Request):
-        """Logout and invalidate the session."""
+        """Logout and invalidate the session.
+
+        A POST: the session cookie is SameSite=Lax, so another site can't send
+        one along (a GET link or image could log the user out from anywhere).
+        """
         token = request.cookies.get(COOKIE_NAME)
         if token:
             await ctx.oauth.invalidate_session(token)
-        response = RedirectResponse(url="/")
+        response = JSONResponse({"status": "ok"})
         response.delete_cookie(COOKIE_NAME)
         return response
 

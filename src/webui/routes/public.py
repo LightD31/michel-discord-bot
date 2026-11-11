@@ -18,7 +18,7 @@ The payloads reuse the admin module-page aggregations with these differences:
   concurrent misses share one computation, so anonymous traffic costs at most
   one MongoDB aggregation per guild per period.
 
-Guild admins fetch the link from ``GET /api/servers/{id}/public-dashboard``
+Guild admins fetch the link from ``POST /api/servers/{id}/public-dashboard``
 (minting the token on first use) and revoke it with
 ``POST /api/servers/{id}/public-dashboard/rotate``.
 """
@@ -148,9 +148,13 @@ def create_router(ctx: WebUIContext) -> APIRouter:
         server = config_store.get().get("servers", {}).get(server_id) or {}
         return JSONResponse({"token": token, "dashboards": enabled_public_dashboards(server)})
 
-    @router.get("/api/servers/{server_id}/public-dashboard")
+    @router.post("/api/servers/{server_id}/public-dashboard")
     async def api_public_link(request: Request, server_id: str):
-        """The guild's public token, minted on first request."""
+        """The guild's public token, minted on first request.
+
+        A POST, since the first call writes config.json: it then counts against
+        the dashboard's mutation rate limit like every other write.
+        """
         session = await ctx.require_guild_admin(request, server_id)
         had_token = bool(public_token(config_store.get().get("servers", {}).get(server_id) or {}))
         token = ensure_public_token(server_id, mutate=ctx.mutate_config)
