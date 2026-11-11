@@ -7,6 +7,7 @@ import os
 import random
 
 from interactions import (
+    AllowedMentions,
     Client,
     Extension,
     IntegrationType,
@@ -19,10 +20,16 @@ from interactions import (
 from features.messages import chooseList
 from features.random import validate_choices, validate_die_faces
 from src.core import logging as logutil
+from src.core.text import clip
 
 logger = logutil.init_logger(__name__)
 
 DEFAULT_SEPARATOR = ";"
+# The answer repeats the input: keep it within a message's 2000 characters.
+MAX_INPUT_LENGTH = 1500
+# Anyone can run these, in any server that installs the app: what they type
+# is echoed, so "@everyone" in a choice must not ping.
+NO_PINGS = AllowedMentions.none()
 
 
 class RandomExtension(Extension):
@@ -37,10 +44,18 @@ class RandomExtension(Extension):
         integration_types=[IntegrationType.GUILD_INSTALL, IntegrationType.USER_INSTALL],
     )
     @slash_option(
-        "choix", "Choix, séparés par des point-virgules", opt_type=OptionType.STRING, required=True
+        "choix",
+        "Choix, séparés par des point-virgules",
+        opt_type=OptionType.STRING,
+        required=True,
+        max_length=MAX_INPUT_LENGTH,
     )
     @slash_option(
-        "séparateur", "Séparateur des choix (Défaut: ;)", opt_type=OptionType.STRING, required=False
+        "séparateur",
+        "Séparateur des choix (Défaut: ;)",
+        opt_type=OptionType.STRING,
+        required=False,
+        max_length=10,
     )
     async def pick(self, ctx: SlashContext, choix: str, séparateur: str = DEFAULT_SEPARATOR):
         choices = [c.strip() for c in choix.split(séparateur) if c.strip()]
@@ -49,7 +64,9 @@ class RandomExtension(Extension):
             await ctx.send(error_msg)
             return
         selected = choices[random.randint(0, len(choices) - 1)]
-        await ctx.send(f"{random.choice(chooseList)} : **{selected}**")
+        await ctx.send(
+            clip(f"{random.choice(chooseList)} : **{selected}**"), allowed_mentions=NO_PINGS
+        )
 
     @slash_command(
         name="roll",
@@ -88,12 +105,14 @@ class RandomExtension(Extension):
         "Éléments à mélanger, séparés par des point-virgules",
         opt_type=OptionType.STRING,
         required=True,
+        max_length=MAX_INPUT_LENGTH,
     )
     @slash_option(
         "séparateur",
         "Séparateur des éléments (Défaut: ;)",
         opt_type=OptionType.STRING,
         required=False,
+        max_length=10,
     )
     async def shuffle(self, ctx: SlashContext, liste: str, séparateur: str = DEFAULT_SEPARATOR):
         items = [item.strip() for item in liste.split(séparateur) if item.strip()]
@@ -104,4 +123,4 @@ class RandomExtension(Extension):
         shuffled = items.copy()
         random.shuffle(shuffled)
         numbered = "\n".join(f"{i + 1}. {item}" for i, item in enumerate(shuffled))
-        await ctx.send(f"🔀 **Liste mélangée :**\n{numbered}")
+        await ctx.send(clip(f"🔀 **Liste mélangée :**\n{numbered}"), allowed_mentions=NO_PINGS)

@@ -49,7 +49,12 @@ from src.core.errors import DatabaseError, IntegrationError
 from src.core.http import BlockedUrlError
 from src.core.urls import redact_url
 from src.discord_ext.embeds import Colors, format_discord_timestamp
-from src.discord_ext.messages import require_guild, send_error, send_success
+from src.discord_ext.messages import (
+    mentions_written_in,
+    require_guild,
+    send_error,
+    send_success,
+)
 from src.discord_ext.scopes import guild_scopes
 
 from ._common import (
@@ -397,8 +402,12 @@ class RssExtension(Extension):
                     embed = _render_embed(job.feed_id, job.feed_cfg, entry)
                     await channel.send(embeds=[embed], **send_kwargs)  # type: ignore[union-attr]
                 else:
+                    # Only what the admin wrote in the template pings: a feed
+                    # title saying "@everyone" must not.
+                    template = job.feed_cfg.get("template") or DEFAULT_TEMPLATE
                     await channel.send(
                         _render_text(job.feed_id, job.feed_cfg, entry),
+                        allowed_mentions=mentions_written_in(template),
                         **send_kwargs,  # type: ignore[union-attr]
                     )
                 posted_ids.append(entry.entry_id)

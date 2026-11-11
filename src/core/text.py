@@ -71,6 +71,31 @@ def take_within_budget(
     return kept, used
 
 
+# Discord's cap on a message's content.
+MESSAGE_LIMIT = 2000
+
+_USER_MENTION = re.compile(r"<@!?(\d+)>")
+_ROLE_MENTION = re.compile(r"<@&(\d+)>")
+
+
+def clip(text: str, limit: int = MESSAGE_LIMIT) -> str:
+    """*text* cut to *limit* characters, ending with "…" when it was cut."""
+    if len(text) <= limit:
+        return text
+    return text[: limit - 1].rstrip() + "…"
+
+
+def mentions_in(text: str) -> tuple[list[str], list[str], bool]:
+    """The user ids, role ids, and whether ``@everyone``/``@here``, written in *text*.
+
+    Used to let a message ping what a server admin wrote in its template and
+    nothing a third party's text (a feed title, a member's input) adds to it.
+    """
+    users = list(dict.fromkeys(_USER_MENTION.findall(text)))
+    roles = list(dict.fromkeys(_ROLE_MENTION.findall(text)))
+    return users, roles, "@everyone" in text or "@here" in text
+
+
 def escape_md(text: str) -> str:
     """Escape Markdown special characters."""
     return re.sub(r"([_*\[\]()~`>#+\-=|{}.!])", r"\\\1", text)
@@ -173,9 +198,12 @@ def pick_weighted_message(
 
 
 __all__ = [
+    "MESSAGE_LIMIT",
+    "clip",
     "escape_md",
     "extract_answer",
     "format_number",
+    "mentions_in",
     "milliseconds_to_string",
     "pick_weighted_message",
     "remove_punctuation",

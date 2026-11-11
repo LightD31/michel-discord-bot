@@ -119,9 +119,11 @@ class Network:
 class Channel:
     def __init__(self) -> None:
         self.sent: list[str] = []
+        self.allowed_mentions: list = []
 
     async def send(self, content=None, **kwargs):
         self.sent.append(content)
+        self.allowed_mentions.append(kwargs.get("allowed_mentions"))
 
 
 @pytest.fixture
@@ -296,3 +298,20 @@ async def test_a_cycle_still_running_makes_the_next_one_a_no_op(cycle):
         await cycle.run()
 
     assert cycle.network.fetched == []
+
+
+async def test_a_feed_title_cannot_ping_but_the_template_can(cycle):
+    url = "https://example.com/feed"
+    feeds = guild(("news", url))
+    feeds["rssFeeds"]["news"]["template"] = "<@&42> {title}"
+    cycle.configure({"1": feeds})
+    cycle.network.feeds[url] = [
+        RssEntry(entry_id="e2", title="@everyone <@&7> regardez", link="https://example.com/2"),
+        entry(1),
+    ]
+    seen("1", "news", "e1")
+
+    await cycle.run()
+
+    [allowed] = cycle.channel.allowed_mentions
+    assert allowed.to_dict() == {"roles": [42], "replied_user": False}
