@@ -27,7 +27,9 @@ from src.core.health import HealthSnapshot
 
 def health_families(snapshot: HealthSnapshot) -> list[Metric]:
     runs = CounterMetricFamily(
-        "michel_task_runs", "Periodic task runs, per outcome.", labels=("task", "status")
+        "michel_task_runs",
+        "Periodic task runs, per outcome (skipped: the previous run hadn't finished).",
+        labels=("task", "status"),
     )
     last_success = GaugeMetricFamily(
         "michel_task_last_success_timestamp_seconds",
@@ -47,6 +49,7 @@ def health_families(snapshot: HealthSnapshot) -> list[Metric]:
     for name, record in sorted(snapshot.tasks.items()):
         runs.add_metric([name, "ok"], record.successes)
         runs.add_metric([name, "error"], record.failures)
+        runs.add_metric([name, "skipped"], record.skipped)
         if record.last_success is not None:
             last_success.add_metric([name], record.last_success)
         if record.last_failure is not None:

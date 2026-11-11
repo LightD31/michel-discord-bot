@@ -32,6 +32,7 @@ class TaskRecord:
 
     successes: int = 0
     failures: int = 0
+    skipped: int = 0  # firings dropped because the previous run hadn't finished
     last_success: float | None = None  # epoch seconds
     last_failure: float | None = None
     last_duration: float | None = None  # seconds, last run whatever its outcome
@@ -73,6 +74,11 @@ class HealthRegistry:
                     record, failures=record.failures + 1, last_failure=now, last_duration=duration
                 )
             self._tasks[name] = record
+
+    def record_task_skipped(self, name: str) -> None:
+        with self._lock:
+            record = self._tasks.get(name, TaskRecord())
+            self._tasks[name] = replace(record, skipped=record.skipped + 1)
 
     def record_http(self, host: str, status: int | None) -> None:
         with self._lock:
