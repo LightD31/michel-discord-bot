@@ -4,12 +4,14 @@ import asyncio
 from datetime import datetime
 
 from interactions import (
+    Buckets,
     Client,
     Embed,
     File,
     OptionType,
     SlashContext,
     User,
+    cooldown,
     slash_command,
     slash_option,
 )
@@ -84,6 +86,7 @@ class CommandsMixin:
         opt_type=OptionType.USER,
         required=False,
     )
+    @cooldown(Buckets.USER, 3, 30)
     async def rank(self, ctx: SlashContext, utilisateur: User = None):
         if not self._db_connected:
             await send_error(ctx, "La base de données n'est pas disponible.")
@@ -153,6 +156,7 @@ class CommandsMixin:
         description="Affiche le classement des utilisateurs",
         scopes=guild_scopes(XP.guild_ids()),
     )
+    @cooldown(Buckets.USER, 1, 30)
     async def leaderboard(self, ctx: SlashContext):
         # Members who left are fetched one by one: longer than Discord's 3 s on a big server.
         await ctx.defer()

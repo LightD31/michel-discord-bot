@@ -18,6 +18,7 @@ from typing import cast
 
 from interactions import (
     BaseChannel,
+    Buckets,
     ChannelType,
     Client,
     Extension,
@@ -26,6 +27,7 @@ from interactions import (
     OptionType,
     Permissions,
     SlashContext,
+    cooldown,
     slash_command,
     slash_default_member_permission,
     slash_option,
@@ -110,6 +112,7 @@ class AdminExtension(Extension):
         scopes=guild_scopes(UTILS.guild_ids()),
         integration_types=[IntegrationType.GUILD_INSTALL, IntegrationType.USER_INSTALL],  # type: ignore
     )
+    @cooldown(Buckets.USER, 3, 30)
     async def ping(self, ctx: SlashContext):
         await ctx.send(f"Pong ! Latence : {round(ctx.bot.latency * 1000)}ms")
 
