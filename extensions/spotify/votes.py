@@ -552,6 +552,8 @@ class VotesMixin:
     async def addwithvote(self, ctx: SlashContext, song):
         server = self.get_server(ctx.guild_id)
         if str(ctx.channel_id) == str(server.channel_id):
+            # Spotify and MongoDB can take longer than Discord's 3 s.
+            await ctx.defer()
             last_track_ids = await server.repo.playlist_track_ids()
             logger.info(
                 "/addwithvote '%s' utilisé par %s(id:%s)",
