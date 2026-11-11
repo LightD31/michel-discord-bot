@@ -40,6 +40,7 @@ from interactions import (
     slash_default_member_permission,
     slash_option,
 )
+from interactions.client.errors import BadRequest
 
 from features.links import shorten_url
 from features.rss import RssEntry, RssFeedState, RssRepository
@@ -47,9 +48,15 @@ from features.rss.network import fetch_feed
 from features.rss.scheduling import is_due, next_poll_at
 from src.core.errors import DatabaseError, IntegrationError
 from src.core.http import BlockedUrlError
+from src.core.text import format_template
 from src.core.urls import redact_url
 from src.discord_ext.embeds import Colors, format_discord_timestamp
-from src.discord_ext.messages import require_guild, send_error, send_success
+from src.discord_ext.messages import (
+    mentions_written_in,
+    require_guild,
+    send_error,
+    send_success,
+)
 from src.discord_ext.scopes import guild_scopes
 
 from ._common import (
@@ -115,9 +122,15 @@ def _published_tokens(entry: RssEntry) -> dict[str, str]:
 
 
 def _format_template(template: str, *, label: str, entry: RssEntry, fallback: str) -> str:
-    """Apply ``str.format`` with the entry context, swallowing bad placeholders."""
+    """Fill the guild's template with the entry; a template that can't be filled gives *fallback*.
+
+    ``{name}`` placeholders only (:func:`format_template`): any other mistake
+    (``{title:d}``, ``{title.x}``, an unknown name) falls back instead of
+    failing the post, which left the entry unseen and retried forever.
+    """
     try:
-        return template.format(
+        return format_template(
+            template,
             title=entry.title,
             link=entry.link,
             summary=entry.summary,
@@ -126,7 +139,7 @@ def _format_template(template: str, *, label: str, entry: RssEntry, fallback: st
             image=entry.image_url,
             **_published_tokens(entry),
         )
-    except (KeyError, IndexError):
+    except (KeyError, ValueError):
         return fallback
 
 
@@ -397,17 +410,27 @@ class RssExtension(Extension):
                     embed = _render_embed(job.feed_id, job.feed_cfg, entry)
                     await channel.send(embeds=[embed], **send_kwargs)  # type: ignore[union-attr]
                 else:
+                    # Only what the admin wrote in the template pings: a feed
+                    # title saying "@everyone" must not.
+                    template = job.feed_cfg.get("template") or DEFAULT_TEMPLATE
                     await channel.send(
                         _render_text(job.feed_id, job.feed_cfg, entry),
+                        allowed_mentions=mentions_written_in(template),
                         **send_kwargs,  # type: ignore[union-attr]
                     )
+                posted_ids.append(entry.entry_id)
+            except BadRequest as e:
+                # Discord refuses this entry's message itself (too long, an
+                # invalid URL...): retrying it every cycle can only fail again.
+                logger.warning("Discord refused RSS entry %s, skipping it: %s", entry.entry_id, e)
                 posted_ids.append(entry.entry_id)
             except Exception as e:
                 logger.warning("Failed to send RSS entry %s: %s", entry.entry_id, e)
 
         # Recorded in feed order (most recent first) so the head of seen_ids
         # always reflects the latest known entry. An entry that failed to send
-        # stays unseen and is tried again at the next poll.
+        # for another reason (no permission, Discord down) stays unseen and is
+        # tried again at the next poll.
         posted_ids.reverse()
         await repo.record_poll(job.feed_id, posted_ids)
 

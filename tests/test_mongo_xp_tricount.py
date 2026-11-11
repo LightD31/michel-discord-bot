@@ -28,6 +28,19 @@ async def test_concurrent_awards_all_land(mongo):
     assert await repo.award_xp("nobody", 5, 1, 0.0) is None
 
 
+async def test_two_messages_within_the_cooldown_earn_xp_once(mongo):
+    repo = XpRepository(mongo.guild_id)
+    await repo.insert_new_user("1", 10, 0.0)
+    awards = await asyncio.gather(
+        *(repo.award_xp("1", 5, 1, 100.0, min_interval=60) for _ in range(5))
+    )
+    assert sum(award is not None for award in awards) == 1
+    assert await repo.award_xp("1", 5, 1, 130.0, min_interval=60) is None  # 30 s later
+    assert await repo.award_xp("1", 5, 1, 160.0, min_interval=60) is not None
+    user = await repo.get_user("1")
+    assert (user["xp"], user["msg"]) == (20, 3)
+
+
 async def test_ranks_follow_xp_with_ties_sharing_a_rank(mongo):
     repo = XpRepository(mongo.guild_id)
     for user, xp in (("a", 50), ("b", 300), ("c", 300), ("d", 10)):
@@ -160,7 +173,9 @@ async def test_recurring_expenses_are_due_stopped_and_rescheduled(mongo):
     assert [r["_id"] for r in await repo.list_active_recurring(1)] == [due, later]
     assert [r["_id"] for r in await repo.list_active_recurring(1, "autre")] == [later]
 
-    await repo.reschedule_recurring(due, now + timedelta(days=30))
+    [due_doc] = await repo.list_due_recurring(now)
+    assert await repo.claim_recurring(due_doc, now + timedelta(days=30))
+    assert not await repo.claim_recurring(due_doc, now + timedelta(days=30))  # claimed once
     assert await repo.list_due_recurring(now) == []
 
     assert await repo.stop_recurring(str(later), user_id=2) == 0  # not theirs

@@ -32,5 +32,7 @@ class Giveaway(BaseModel):
     drawn: bool = False
     cancelled: bool = False
     winners: list[str] = Field(default_factory=list)
+    # Draws given back because Discord didn't answer (5xx, timeout).
+    draw_failures: int = 0
 
     model_config = {"populate_by_name": True}

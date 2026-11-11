@@ -1,8 +1,8 @@
 """When a reminder fires, and how its schedule reads.
 
 Pure functions used by ``extensions/reminders``: the first occurrence of a new
-reminder, the next one after it fires, the recipient list a member typed, and
-the label shown in ``/reminder remove``.
+reminder, the next one after it fires, and the label shown in
+``/reminder remove``.
 """
 
 from __future__ import annotations
@@ -16,7 +16,6 @@ from features.reminders.models import Frequency, Reminder
 
 DEFAULT_SNOOZE_MINUTES = 10
 MAX_SNOOZE_MINUTES = 1440
-RECIPIENT_SEPARATORS = ",; "
 
 _STEPS: dict[str, timedelta | relativedelta] = {
     "daily": timedelta(days=1),
@@ -73,27 +72,6 @@ def first_occurrence(
     raise PastReminderError("Le rappel ne peut pas être dans le passé.")
 
 
-def parse_recipients(raw: str | None) -> list[str] | None:
-    """Discord user ids from a free-text list; ``None`` when a token isn't one.
-
-    Accepts mentions (``<@123>``, ``<@!123>``) and bare ids, separated by
-    commas, semicolons or spaces. Duplicates are dropped, order is kept.
-    """
-    if not raw:
-        return []
-    for sep in RECIPIENT_SEPARATORS:
-        raw = raw.replace(sep, " ")
-    ids: list[str] = []
-    for token in raw.split():
-        if token.startswith("<@") and token.endswith(">"):
-            token = token[2:-1].lstrip("!")
-        if not token.isdigit():
-            return None
-        if token not in ids:
-            ids.append(token)
-    return ids
-
-
 def snooze_minutes(guild_config: dict[str, Any]) -> int:
     """The guild's snooze delay: ``reminderSnoozeMinutes`` clamped to 1 min – 24 h."""
     raw = guild_config.get("reminderSnoozeMinutes")
@@ -125,7 +103,6 @@ __all__ = [
     "first_occurrence",
     "next_after",
     "next_occurrence",
-    "parse_recipients",
     "schedule_label",
     "snooze_minutes",
 ]

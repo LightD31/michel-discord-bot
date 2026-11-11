@@ -154,6 +154,8 @@ class CommandsMixin:
         scopes=guild_scopes(XP.guild_ids()),
     )
     async def leaderboard(self, ctx: SlashContext):
+        # Members who left are fetched one by one: longer than Discord's 3 s on a big server.
+        await ctx.defer()
         embeds = await self._build_leaderboard_embeds(ctx.guild)
         paginator = CustomPaginator.create_from_embeds(self.bot, *embeds, timeout=3600)
         await paginator.send(ctx)

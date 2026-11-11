@@ -110,6 +110,8 @@ class FeurExtension(Extension):
     async def feur_stats(self, ctx: SlashContext):
         if not await require_guild(ctx):
             return
+        # One member fetch per leaderboard row can take longer than Discord's 3 s.
+        await ctx.defer()
 
         guild_id = str(ctx.guild_id)
         user_id = str(ctx.author.id)

@@ -85,7 +85,13 @@ class XpRepository:
 
     @translates_db_errors
     async def award_xp(
-        self, user_id: str, xp_gained: int, message_delta: int, timestamp: float
+        self,
+        user_id: str,
+        xp_gained: int,
+        message_delta: int,
+        timestamp: float,
+        *,
+        min_interval: float | None = None,
     ) -> dict[str, Any] | None:
         """Credit XP atomically and return the document as it stands afterwards.
 
@@ -96,10 +102,17 @@ class XpRepository:
         authoritative post-increment state, so callers derive the new level
         from it rather than from their own stale arithmetic.
 
-        Returns ``None`` when the user has no row yet.
+        With *min_interval*, the award only lands when the user's last one is
+        at least that many seconds before *timestamp*: the cooldown is checked
+        in the same update, so two messages sent together earn XP once.
+
+        Returns ``None`` when the user has no row yet, or is within *min_interval*.
         """
+        query: dict[str, Any] = {"_id": user_id}
+        if min_interval is not None:
+            query["time"] = {"$lte": timestamp - min_interval}
         result: dict[str, Any] | None = await self._xp().find_one_and_update(
-            {"_id": user_id},
+            query,
             {
                 "$inc": {"xp": xp_gained, "msg": message_delta},
                 "$set": {"time": timestamp},

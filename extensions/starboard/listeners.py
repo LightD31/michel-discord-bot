@@ -177,6 +177,12 @@ class ListenersMixin:
             return
         if channel is None or not hasattr(channel, "send"):
             return
+        # Starring copies the message into the starboard: content from an
+        # age-restricted channel must not land in one that isn't (a thread
+        # reports its parent's setting).
+        if getattr(message.channel, "nsfw", False) and not getattr(channel, "nsfw", False):
+            logger.info("Starboard: message %s is in an NSFW channel, not mirrored", message.id)
+            return
         try:
             sent = await channel.send(embeds=[_build_embed(message, count, emoji)])  # type: ignore[union-attr]
         except Exception as e:

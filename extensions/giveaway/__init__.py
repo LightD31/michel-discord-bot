@@ -19,6 +19,7 @@ from __future__ import annotations
 
 from asyncio import Lock
 from datetime import datetime, timedelta
+from typing import Literal
 
 from interactions import (
     BaseChannel,
@@ -65,6 +66,12 @@ MAX_DURATION_SECONDS = 30 * 86400
 # Affiche les mentions tant que la liste reste lisible dans un champ d'embed.
 MAX_LISTED_PARTICIPANTS = 15
 MAX_PARTICIPANTS_FIELD_CHARS = 900
+# A draw Discord doesn't answer for (5xx, timeout) is retried at the next runs
+# (every 30 s), then the giveaway closes without winners.
+MAX_DRAW_FAILURES = 10
+# The title is "🏁 GIVEAWAY TERMINÉ — {prize}" and Discord caps titles at 256.
+MAX_PRIZE_LENGTH = 200
+MAX_DESCRIPTION_LENGTH = 1000
 
 
 def _participants_field_value(entrant_ids: list[str]) -> str:
@@ -154,6 +161,34 @@ def _build_embed(
     return embed
 
 
+def _footer_host(message: Message | None, giveaway: Giveaway) -> tuple[str, str | None]:
+    """The host name and avatar the announcement's footer shows, to keep them on a re-render."""
+    host_name = f"ID:{giveaway.host_id}"
+    host_avatar: str | None = None
+    if message is None or not message.embeds:
+        return host_name, host_avatar
+    footer = getattr(message.embeds[0], "footer", None)
+    footer_text = getattr(footer, "text", None)
+    if isinstance(footer_text, str) and footer_text.startswith("Lancé par "):
+        resolved = footer_text.removeprefix("Lancé par ").strip()
+        if resolved:
+            host_name = resolved
+    footer_icon = getattr(footer, "icon_url", None)
+    if isinstance(footer_icon, str) and footer_icon:
+        host_avatar = footer_icon
+    return host_name, host_avatar
+
+
+DrawOutcome = Literal["drawn", "taken", "retry"]
+
+
+def _allow_host(giveaway: Giveaway) -> bool:
+    """Whether the host may win: the giveaway's own setting, else the server's."""
+    if giveaway.allow_host_win is not None:
+        return giveaway.allow_host_win
+    return guild_allow_host_win(giveaway.guild_id)
+
+
 async def _collect_entrants(
     message: Message,
     emoji: str,
@@ -161,7 +196,11 @@ async def _collect_entrants(
     *,
     allow_host: bool,
 ) -> list[str]:
-    """Read reactions from *message* and return valid entrant IDs."""
+    """Read reactions from *message* and return valid entrant IDs.
+
+    Raises when Discord stops answering midway: a partial list would make a
+    draw pick among some of the entrants only.
+    """
     target = next(
         (r for r in (message.reactions or []) if str(getattr(r.emoji, "name", r.emoji)) == emoji),
         None,
@@ -170,17 +209,14 @@ async def _collect_entrants(
         return []
     entrants: list[str] = []
     seen: set[str] = set()
-    try:
-        async for user in target.users():
-            if getattr(user, "bot", False):
-                continue
-            uid = str(user.id)
-            if (not allow_host and uid == host_id) or uid in seen:
-                continue
-            seen.add(uid)
-            entrants.append(uid)
-    except Exception as e:
-        logger.warning("Could not iterate reactions on %s: %s", message.id, e)
+    async for user in target.users():
+        if getattr(user, "bot", False):
+            continue
+        uid = str(user.id)
+        if (not allow_host and uid == host_id) or uid in seen:
+            continue
+        seen.add(uid)
+        entrants.append(uid)
     return entrants
 
 
@@ -226,6 +262,7 @@ class GiveawayExtension(Extension):
         "Lot mis en jeu",
         opt_type=OptionType.STRING,
         required=True,
+        max_length=MAX_PRIZE_LENGTH,
         argument_name="prize",
     )
     @slash_option(
@@ -249,6 +286,7 @@ class GiveawayExtension(Extension):
         "Texte additionnel affiché dans l'embed",
         opt_type=OptionType.STRING,
         required=False,
+        max_length=MAX_DESCRIPTION_LENGTH,
         argument_name="description",
     )
     @slash_option(
@@ -355,8 +393,13 @@ class GiveawayExtension(Extension):
         if giveaway.cancelled:
             await send_error(ctx, "Ce giveaway a été annulé.")
             return
-        await self._draw(giveaway)
-        await send_success(ctx, "Tirage effectué.")
+        outcome = await self._draw(giveaway)
+        if outcome == "drawn":
+            await send_success(ctx, "Tirage effectué.")
+        elif outcome == "taken":
+            await send_error(ctx, "Ce giveaway vient d'être clos.")
+        else:
+            await send_error(ctx, "Discord n'a pas répondu, réessaie dans un instant.")
 
     @giveaway_start.subcommand(
         sub_cmd_name="cancel",
@@ -383,20 +426,20 @@ class GiveawayExtension(Extension):
         if giveaway.cancelled:
             await send_error(ctx, "Ce giveaway a déjà été annulé.")
             return
-        await self._repo(ctx.guild_id).mark_cancelled(giveaway.id)
+        if not await self._repo(ctx.guild_id).mark_cancelled(giveaway.id):
+            await send_error(ctx, "Ce giveaway vient d'être clos.")
+            return
         giveaway.cancelled = True
-        message = await self._fetch_message(giveaway)
-        if message is not None:
-            embed = _build_embed(
-                giveaway,
-                host_name=ctx.user.username,
-                host_avatar=None,
-                cancelled=True,
-            )
-            try:
+        try:
+            message = await self._fetch_message(giveaway)
+            if message is not None:
+                host_name, host_avatar = _footer_host(message, giveaway)
+                embed = _build_embed(
+                    giveaway, host_name=host_name, host_avatar=host_avatar, cancelled=True
+                )
                 await edit_message_if_changed(message, embeds=[embed], logger=logger)
-            except Exception as e:
-                logger.warning("Could not edit cancelled giveaway message: %s", e)
+        except Exception as e:
+            logger.warning("Could not edit cancelled giveaway message: %s", e)
         await send_success(ctx, "Giveaway annulé.")
 
     @giveaway_start.subcommand(
@@ -436,22 +479,21 @@ class GiveawayExtension(Extension):
             await send_error(ctx, "Tirez d'abord les gagnants avec /giveaway end.")
             return
 
-        message = await self._fetch_message(giveaway)
-        if message is None:
-            await send_error(ctx, "Message original introuvable.")
+        try:
+            message = await self._fetch_message(giveaway)
+            if message is None:
+                await send_error(ctx, "Message original introuvable.")
+                return
+            entrants = await _collect_entrants(
+                message,
+                giveaway.emoji,
+                giveaway.host_id,
+                allow_host=_allow_host(giveaway),
+            )
+        except Exception as e:
+            logger.warning("Could not read giveaway %s for a reroll: %s", giveaway.id, e)
+            await send_error(ctx, "Discord n'a pas répondu, réessaie dans un instant.")
             return
-
-        allow_host = (
-            giveaway.allow_host_win
-            if giveaway.allow_host_win is not None
-            else guild_allow_host_win(ctx.guild_id)
-        )
-        entrants = await _collect_entrants(
-            message,
-            giveaway.emoji,
-            giveaway.host_id,
-            allow_host=allow_host,
-        )
         count = winners if winners is not None else giveaway.winners_count
         new_winners = pick_winners(entrants, count, exclude=giveaway.winners)
         if not new_winners:
@@ -525,31 +567,17 @@ class GiveawayExtension(Extension):
             return
 
         async with self._reaction_lock:
-            allow_host = (
-                giveaway.allow_host_win
-                if giveaway.allow_host_win is not None
-                else guild_allow_host_win(message.guild.id)
-            )
-            entrants = await _collect_entrants(
-                message,
-                giveaway.emoji,
-                giveaway.host_id,
-                allow_host=allow_host,
-            )
-
-            host_name = f"ID:{giveaway.host_id}"
-            host_avatar: str | None = None
-            if message.embeds:
-                footer = getattr(message.embeds[0], "footer", None)
-                footer_text = getattr(footer, "text", None)
-                if isinstance(footer_text, str) and footer_text.startswith("Lancé par "):
-                    resolved = footer_text.removeprefix("Lancé par ").strip()
-                    if resolved:
-                        host_name = resolved
-                footer_icon = getattr(footer, "icon_url", None)
-                if isinstance(footer_icon, str) and footer_icon:
-                    host_avatar = footer_icon
-
+            try:
+                entrants = await _collect_entrants(
+                    message,
+                    giveaway.emoji,
+                    giveaway.host_id,
+                    allow_host=_allow_host(giveaway),
+                )
+            except Exception as e:
+                logger.debug("Could not read the entrants of giveaway %s: %s", giveaway.id, e)
+                return
+            host_name, host_avatar = _footer_host(message, giveaway)
             embed = _build_embed(
                 giveaway,
                 host_name=host_name,
@@ -581,48 +609,64 @@ class GiveawayExtension(Extension):
                     logger.exception("Unhandled error drawing giveaway %s: %s", giveaway.id, e)
 
     async def _fetch_message(self, giveaway: Giveaway) -> Message | None:
-        try:
-            channel: BaseChannel = await self.bot.fetch_channel(int(giveaway.channel_id))
-        except Exception as e:
-            logger.warning("Could not fetch giveaway channel %s: %s", giveaway.channel_id, e)
-            return None
-        if not hasattr(channel, "fetch_message"):
-            return None
-        try:
-            return await channel.fetch_message(int(giveaway.message_id))  # type: ignore[union-attr]
-        except Exception as e:
-            logger.warning("Could not fetch giveaway message %s: %s", giveaway.message_id, e)
-            return None
+        """The announcement, or None when it (or its channel) no longer exists.
 
-    async def _draw(self, giveaway: Giveaway) -> None:
-        """Pick winners, edit the announcement, and persist the result."""
+        Raises when Discord doesn't answer (5xx, timeout), which is not the
+        same thing: the giveaway must not close for a passing outage.
+        """
+        channel: BaseChannel | None = await self.bot.fetch_channel(int(giveaway.channel_id))
+        if channel is None or not hasattr(channel, "fetch_message"):
+            return None
+        return await channel.fetch_message(int(giveaway.message_id))  # type: ignore[union-attr]
+
+    async def _draw(self, giveaway: Giveaway) -> DrawOutcome:
+        """Pick winners, edit the announcement, and persist the result.
+
+        The giveaway is claimed first (open → drawn, in one update), so of two
+        draws racing (the scheduler and ``/giveaway end`` at the deadline) one
+        returns ``"taken"`` without touching anything. When Discord doesn't
+        answer, the claim is given back and the next run retries (``"retry"``),
+        up to :data:`MAX_DRAW_FAILURES` times.
+        """
         if giveaway.id is None:
-            return
-        message = await self._fetch_message(giveaway)
+            return "taken"
+        repo = self._repo(giveaway.guild_id)
+        if not await repo.claim_draw(giveaway.id):
+            return "taken"
+        try:
+            message = await self._fetch_message(giveaway)
+            entrants = (
+                []
+                if message is None
+                else await _collect_entrants(
+                    message, giveaway.emoji, giveaway.host_id, allow_host=_allow_host(giveaway)
+                )
+            )
+        except Exception as e:
+            if giveaway.draw_failures + 1 < MAX_DRAW_FAILURES:
+                logger.warning("Could not read giveaway %s, retrying later: %s", giveaway.id, e)
+                await repo.release_draw(giveaway.id)
+                return "retry"
+            logger.error(
+                "Giveaway %s closed without winners: Discord didn't answer %d times (%s)",
+                giveaway.id,
+                MAX_DRAW_FAILURES,
+                e,
+            )
+            return "drawn"
         if message is None:
-            # Mark drawn anyway so we don't keep retrying a deleted message.
-            await self._repo(giveaway.guild_id).mark_drawn(giveaway.id, [])
-            return
+            logger.info("Giveaway %s closed without winners: its message is gone", giveaway.id)
+            return "drawn"
 
-        allow_host = (
-            giveaway.allow_host_win
-            if giveaway.allow_host_win is not None
-            else guild_allow_host_win(giveaway.guild_id)
-        )
-        entrants = await _collect_entrants(
-            message,
-            giveaway.emoji,
-            giveaway.host_id,
-            allow_host=allow_host,
-        )
         winners = pick_winners(entrants, giveaway.winners_count)
-        await self._repo(giveaway.guild_id).mark_drawn(giveaway.id, winners)
+        await repo.update_winners(giveaway.id, winners)
 
         mention = ", ".join(f"<@{w}>" for w in winners) if winners else None
+        host_name, host_avatar = _footer_host(message, giveaway)
         embed = _build_embed(
             giveaway,
-            host_name=f"ID:{giveaway.host_id}",
-            host_avatar=None,
+            host_name=host_name,
+            host_avatar=host_avatar,
             closed=True,
             winners_mention=mention,
             entry_count=len(entrants),
@@ -651,6 +695,7 @@ class GiveawayExtension(Extension):
             len(entrants),
             len(winners),
         )
+        return "drawn"
 
 
 def setup(bot: Client) -> None:

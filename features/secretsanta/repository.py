@@ -49,6 +49,18 @@ class SecretSantaRepository:
         logger.info(f"Session saved for {session.context_id}")
 
     @translates_db_errors
+    async def claim_draw(self, context_id: str) -> bool:
+        """Mark the session drawn; False when it already was (or no longer exists).
+
+        One conditional update, so of two draws racing only one sends DMs.
+        """
+        sessions_col, _, _ = self._collections(context_id)
+        result = await sessions_col.update_one(
+            {"_id": context_id, "is_drawn": {"$ne": True}}, {"$set": {"is_drawn": True}}
+        )
+        return bool(result.modified_count)
+
+    @translates_db_errors
     async def delete_session(self, context_id: str) -> bool:
         sessions_col, _, _ = self._collections(context_id)
         result = await sessions_col.delete_one({"_id": context_id})

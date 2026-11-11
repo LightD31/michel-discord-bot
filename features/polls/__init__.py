@@ -7,8 +7,11 @@ from features.polls.constants import (
 )
 from features.polls.helpers import (
     MAX_POLL_OPTIONS,
+    is_reaction_poll_text,
     options_description,
     parse_poll_author_id,
+    poll_option_emojis,
+    render_reaction_poll,
     validate_poll_options,
 )
 from features.polls.models import Poll, PollMode
@@ -28,10 +31,13 @@ __all__ = [
     "Poll",
     "PollMode",
     "PollRepository",
+    "is_reaction_poll_text",
     "options_description",
     "parse_duration",
     "parse_poll_author_id",
+    "poll_option_emojis",
     "render_bar",
+    "render_reaction_poll",
     "tally_first_past_post",
     "tally_ranked_choice",
     "validate_poll_options",

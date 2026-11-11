@@ -30,6 +30,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 OUTPUT = Path(__file__).resolve().parent.parent / "config.example.json"
 
+# Extensions tied to a dated event (or a single server's game) that ship off:
+# main.py loads every other extension unless config.extensions says otherwise.
+DISABLED_BY_DEFAULT = ("minecraft", "olympics", "speedons", "zevent")
+
 # Empty value per widget type when the schema declares no default.
 _TYPE_PLACEHOLDERS: dict[str, Any] = {
     "string": "",
@@ -86,6 +90,16 @@ def _skeleton_from_fields(fields: dict[str, dict[str, Any]]) -> dict[str, Any]:
     return {name: _field_value(meta) for name, meta in fields.items() if not meta.get("hidden")}
 
 
+def _extension_toggles() -> dict[str, bool]:
+    """``config.extensions``: the extensions that ship disabled (read by main.py)."""
+    toggles = {}
+    for name in DISABLED_BY_DEFAULT:
+        if not (Path("extensions", f"{name}.py").exists() or Path("extensions", name).is_dir()):
+            raise SystemExit(f"DISABLED_BY_DEFAULT names a missing extension: {name}")
+        toggles[f"extensions.{name}"] = False
+    return toggles
+
+
 def build_example() -> dict[str, Any]:
     failures = _import_extensions()
     if failures:
@@ -106,6 +120,7 @@ def build_example() -> dict[str, Any]:
         key: _skeleton_from_fields(schema.get("fields", {}))
         for key, schema in sorted(schemas_module.GLOBAL_CONFIG_SCHEMAS.items())
     }
+    global_sections["extensions"] = _extension_toggles()
 
     modules: dict[str, Any] = {}
     for key, schema in sorted(schemas_module.MODULE_SCHEMAS.items()):

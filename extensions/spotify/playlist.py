@@ -79,6 +79,8 @@ class PlaylistMixin:
             ctx.author.username,
             ctx.author_id,
         )
+        # Spotify, MongoDB and the cover image can take longer than Discord's 3 s.
+        await ctx.defer()
 
         try:
             track = await spotify_api.track(song, market="FR")
@@ -323,9 +325,12 @@ class PlaylistMixin:
     async def songinfo(self, ctx: SlashContext, song_id):
         """Show combined MongoDB + Spotify info (and any vote history) for a song."""
         server = self.get_server(ctx.guild_id)
+        # Spotify, MongoDB and the cover image can take longer than Discord's 3 s.
+        await ctx.defer()
         embed = None
         song = await server.repo.get_playlist_item(song_id)
-        votes = await server.repo.get_votes_doc(song_id)
+        # A song neither in the playlist nor ever voted on has no votes document.
+        votes = await server.repo.get_votes_doc(song_id) or {}
         track = await spotify_api.track(song_id, market="FR")
         if song:
             embed, file = await embed_song(

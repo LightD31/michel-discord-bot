@@ -21,6 +21,7 @@ from interactions import (
     listen,
     slash_command,
     slash_option,
+    spread_to_rows,
 )
 from interactions.api.events import Component
 from interactions.client.utils import timestamp_converter
@@ -58,6 +59,9 @@ from ._common import (
 )
 
 logger = logutil.init_logger(__name__)
+
+# Discord shows at most 25 buttons on a message (5 rows of 5).
+MAX_BUTTONS = 25
 
 # Mongo-backed per-user cooldown shared across both button handlers
 # (conserver/supprimer/menfou + addwithvote). TTL indexes auto-expire entries.
@@ -435,39 +439,43 @@ class VotesMixin:
         logger.debug("reminder_check lancé pour le serveur %s", server.guild_id)
         current_time = datetime.now()
         reminders_to_remove = []
-        for remind_time, user_ids in server.reminders.copy().items():
-            if current_time >= remind_time:
+        try:
+            for remind_time, user_ids in server.reminders.copy().items():
+                if current_time < remind_time:
+                    continue
                 for user_id in user_ids.copy():
-                    _, user = await fetch_user_safe(self.bot, user_id)
-                    if user:
-                        vote_doc = await server.repo.get_votes_doc(
-                            str(server.vote_infos["track_id"])
-                        )
-                        vote = vote_doc["votes"].get(str(user_id)) if vote_doc else None
-                        if vote is None:
-                            await user.send(
-                                f"Hey {user.mention}, tu n'as pas voté aujourd'hui "
-                                f":pleading_face: \n"
-                                f"https://discord.com/channels/{server.guild_id}/"
-                                f"{server.channel_id}/{server.vote_infos.get('message_id')}"
-                            )
-                            logger.debug("Rappel envoyé à %s", user.display_name)
-                        else:
-                            logger.debug(
-                                "%s a déjà voté aujourd'hui !, pas de rappel envoyé",
-                                user.display_name,
-                            )
-                    next_remind_time = remind_time + timedelta(days=1)
-                    if next_remind_time not in server.reminders:
-                        server.reminders[next_remind_time] = set()
-                    server.reminders[next_remind_time].add(user_id)
+                    # Rescheduled whatever the DM does: one member with closed
+                    # DMs must not keep the others' reminders from going out.
+                    await self._send_vote_reminder(server, user_id)
+                    server.reminders.setdefault(remind_time + timedelta(days=1), set()).add(user_id)
                     user_ids.remove(user_id)
                 if not user_ids:
                     reminders_to_remove.append(remind_time)
-        for remind_time in reminders_to_remove:
-            del server.reminders[remind_time]
+        finally:
+            for remind_time in reminders_to_remove:
+                del server.reminders[remind_time]
+            await self.save_reminders(server)
 
-        await self.save_reminders(server)
+    async def _send_vote_reminder(self, server: ServerData, user_id) -> None:
+        """DM *user_id* a nudge to vote, unless they already voted today. Never raises."""
+        try:
+            _, user = await fetch_user_safe(self.bot, user_id)
+            if not user:
+                return
+            vote_doc = await server.repo.get_votes_doc(str(server.vote_infos["track_id"]))
+            if vote_doc and vote_doc["votes"].get(str(user_id)) is not None:
+                logger.debug(
+                    "%s a déjà voté aujourd'hui !, pas de rappel envoyé", user.display_name
+                )
+                return
+            await user.send(
+                f"Hey {user.mention}, tu n'as pas voté aujourd'hui :pleading_face: \n"
+                f"https://discord.com/channels/{server.guild_id}/"
+                f"{server.channel_id}/{server.vote_infos.get('message_id')}"
+            )
+            logger.debug("Rappel envoyé à %s", user.display_name)
+        except Exception as e:
+            logger.warning("Vote reminder for %s not sent: %s", user_id, e)
 
     @setreminder.subcommand(
         sub_cmd_name="remove",
@@ -476,45 +484,58 @@ class VotesMixin:
     async def deletereminder(self, ctx: SlashContext):
         server = self.get_server(ctx.guild_id)
         user_id = ctx.user.id
-        reminders_list = []
-        for remind_time, user_ids in server.reminders.copy().items():
-            if user_id in user_ids:
-                reminders_list.append(remind_time)
+        reminders_list = sorted(
+            remind_time for remind_time, user_ids in server.reminders.items() if user_id in user_ids
+        )
+        if not reminders_list:
+            await send_error(ctx, "Tu n'as aucun rappel de vote.")
+            return
+        # One custom_id per member and reminder: another member's click on a
+        # reminder at the same time must not resolve this wait.
+        by_custom_id = {
+            f"spotify_vote_reminder_remove:{user_id}:{i}": remind_time
+            for i, remind_time in enumerate(reminders_list[:MAX_BUTTONS])
+        }
         buttons = [
             Button(
                 label=remind_time.strftime("%H:%M"),
                 style=ButtonStyle.SECONDARY,
-                custom_id=str(remind_time.timestamp()),
+                custom_id=custom_id,
             )
-            for remind_time in reminders_list
+            for custom_id, remind_time in by_custom_id.items()
         ]
-        await ctx.send(
+        message = await ctx.send(
             "Quel rappel veux-tu supprimer ?",
-            components=[ActionRow(*buttons)],
+            components=spread_to_rows(*buttons),
             ephemeral=True,
         )
         try:
             button_ctx: Component = await self.bot.wait_for_component(
-                components=[str(remind_time.timestamp()) for remind_time in reminders_list],
+                components=list(by_custom_id),
+                messages=message,
+                check=lambda component: component.ctx.author.id == user_id,
                 timeout=60,
             )
-            remind_time = datetime.fromtimestamp(float(button_ctx.ctx.custom_id))
-            server.reminders[remind_time].remove(user_id)
-            if not server.reminders[remind_time]:
-                del server.reminders[remind_time]
-            await self.save_reminders(server)
-            await button_ctx.ctx.edit_origin(
-                content=f"Rappel à {remind_time.strftime('%H:%M')} supprimé.",
-                components=[],
-            )
-            logger.info(
-                "Rappel à %s supprimé pour %s",
-                remind_time.strftime("%H:%M"),
-                ctx.user.display_name,
-            )
         except TimeoutError:
-            await send_error(ctx, "Tu n'as pas sélectionné de rappel à supprimer.")
-            await button_ctx.ctx.edit_origin(content="Aucun rappel sélectionné.", components=[])
+            # An ephemeral message is edited through the interaction, not the channel.
+            await ctx.edit(message=message, content="Aucun rappel sélectionné.", components=[])
+            return
+        remind_time = by_custom_id[button_ctx.ctx.custom_id]
+        holders = server.reminders.get(remind_time)
+        if holders is not None:
+            holders.discard(user_id)
+            if not holders:
+                del server.reminders[remind_time]
+        await self.save_reminders(server)
+        await button_ctx.ctx.edit_origin(
+            content=f"Rappel à {remind_time.strftime('%H:%M')} supprimé.",
+            components=[],
+        )
+        logger.info(
+            "Rappel à %s supprimé pour %s",
+            remind_time.strftime("%H:%M"),
+            ctx.user.display_name,
+        )
 
     @slash_command(
         name="addwithvote",
@@ -531,6 +552,8 @@ class VotesMixin:
     async def addwithvote(self, ctx: SlashContext, song):
         server = self.get_server(ctx.guild_id)
         if str(ctx.channel_id) == str(server.channel_id):
+            # Spotify and MongoDB can take longer than Discord's 3 s.
+            await ctx.defer()
             last_track_ids = await server.repo.playlist_track_ids()
             logger.info(
                 "/addwithvote '%s' utilisé par %s(id:%s)",

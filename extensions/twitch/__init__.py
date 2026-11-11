@@ -298,18 +298,6 @@ class TwitchExtension(
         self.stop = True
         await self._shutdown_eventsub()
 
-    def stop_on_signal(self, signum, frame):
-        """SIGTERM handler — trigger graceful shutdown."""
-        self.stop = True
-        logger.info("Stopping TwitchExtension")
-        spawn(self.cleanup(), name="twitch-shutdown", log=logger)
-
-    async def cleanup(self):
-        """Close the EventSub websocket + Twitch client then stop the bot."""
-        await self._shutdown_eventsub()
-        logger.info("TwitchExtension stopped")
-        await self.bot.stop()
-
     # ─── Slash commands ───────────────────────────────────────────────
 
     @slash_command(

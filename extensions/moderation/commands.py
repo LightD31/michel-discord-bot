@@ -40,6 +40,9 @@ from ._common import (
 )
 from .logging_ import build_case_embed
 
+# Discord's cap on an audit-log reason: a longer one makes the action fail.
+MAX_REASON_LENGTH = 512
+
 
 class CommandsMixin:
     """Member-moderation commands and infraction-history sub-commands."""
@@ -104,6 +107,7 @@ class CommandsMixin:
         "Raison de l'avertissement",
         opt_type=OptionType.STRING,
         required=False,
+        max_length=MAX_REASON_LENGTH,
         argument_name="reason",
     )
     @slash_default_member_permission(Permissions.MODERATE_MEMBERS)
@@ -155,7 +159,12 @@ class CommandsMixin:
         argument_name="duration",
     )
     @slash_option(
-        "raison", "Raison", opt_type=OptionType.STRING, required=False, argument_name="reason"
+        "raison",
+        "Raison",
+        opt_type=OptionType.STRING,
+        required=False,
+        max_length=MAX_REASON_LENGTH,
+        argument_name="reason",
     )
     @slash_default_member_permission(Permissions.MODERATE_MEMBERS)
     async def timeout(
@@ -217,12 +226,23 @@ class CommandsMixin:
         "membre", "Membre concerné", opt_type=OptionType.USER, required=True, argument_name="member"
     )
     @slash_option(
-        "raison", "Raison", opt_type=OptionType.STRING, required=False, argument_name="reason"
+        "raison",
+        "Raison",
+        opt_type=OptionType.STRING,
+        required=False,
+        max_length=MAX_REASON_LENGTH,
+        argument_name="reason",
     )
     @slash_default_member_permission(Permissions.MODERATE_MEMBERS)
     async def untimeout(self, ctx: SlashContext, member: Member, reason: str | None = None) -> None:
         settings = await self._guild_settings_or_error(ctx)
         if settings is None:
+            return
+        # Lifting a timeout follows the same hierarchy as setting one: a
+        # moderator can't undo a sanction on a member who outranks them.
+        guard = can_moderate(ctx.author, member, getattr(ctx.guild, "me", None))
+        if guard:
+            await send_error(ctx, guard)
             return
         await ctx.defer(ephemeral=True)
         try:
@@ -254,7 +274,12 @@ class CommandsMixin:
         argument_name="member",
     )
     @slash_option(
-        "raison", "Raison", opt_type=OptionType.STRING, required=False, argument_name="reason"
+        "raison",
+        "Raison",
+        opt_type=OptionType.STRING,
+        required=False,
+        max_length=MAX_REASON_LENGTH,
+        argument_name="reason",
     )
     @slash_default_member_permission(Permissions.KICK_MEMBERS)
     async def kick(self, ctx: SlashContext, member: Member, reason: str | None = None) -> None:
@@ -274,6 +299,11 @@ class CommandsMixin:
         try:
             await ctx.guild.kick(member, reason=reason or f"Kick par {ctx.author.username}")
         except Exception as e:
+            # The DM went first (afterwards the bot may share no server with
+            # them): correct it.
+            await self.dm_target(
+                settings, member, f"Finalement, tu n'as pas été expulsé de **{ctx.guild.name}**."
+            )
             await send_error(ctx, f"Impossible d'expulser ce membre : {e}")
             return
         infraction = await self._record(ctx, mtype="kick", target_id=member.id, reason=reason)
@@ -293,7 +323,12 @@ class CommandsMixin:
         "membre", "Membre à bannir", opt_type=OptionType.USER, required=True, argument_name="member"
     )
     @slash_option(
-        "raison", "Raison", opt_type=OptionType.STRING, required=False, argument_name="reason"
+        "raison",
+        "Raison",
+        opt_type=OptionType.STRING,
+        required=False,
+        max_length=MAX_REASON_LENGTH,
+        argument_name="reason",
     )
     @slash_option(
         "jours_messages",
@@ -328,10 +363,17 @@ class CommandsMixin:
         try:
             await ctx.guild.ban(
                 member,
-                delete_message_days=delete_days,
+                # Not the deprecated delete_message_days: the library turns it
+                # into days * 3600 seconds, so "7 days" deleted 7 hours.
+                delete_message_seconds=delete_days * 86400,
                 reason=reason or f"Ban par {ctx.author.username}",
             )
         except Exception as e:
+            # The DM went first (afterwards the bot may share no server with
+            # them): correct it.
+            await self.dm_target(
+                settings, member, f"Finalement, tu n'as pas été banni de **{ctx.guild.name}**."
+            )
             await send_error(ctx, f"Impossible de bannir ce membre : {e}")
             return
         infraction = await self._record(ctx, mtype="ban", target_id=member.id, reason=reason)
@@ -355,7 +397,12 @@ class CommandsMixin:
         argument_name="user_id",
     )
     @slash_option(
-        "raison", "Raison", opt_type=OptionType.STRING, required=False, argument_name="reason"
+        "raison",
+        "Raison",
+        opt_type=OptionType.STRING,
+        required=False,
+        max_length=MAX_REASON_LENGTH,
+        argument_name="reason",
     )
     @slash_default_member_permission(Permissions.BAN_MEMBERS)
     async def unban(self, ctx: SlashContext, user_id: str, reason: str | None = None) -> None:
@@ -463,6 +510,7 @@ class CommandsMixin:
         "Raison de la révocation",
         opt_type=OptionType.STRING,
         required=False,
+        max_length=MAX_REASON_LENGTH,
         argument_name="reason",
     )
     async def infraction_remove(

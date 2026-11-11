@@ -1,6 +1,7 @@
 """Extension YouTube — notifications automatiques de nouvelles vidéos."""
 
 from interactions import BaseChannel, Client, Extension, IntervalTrigger, Task, listen
+from pydantic import field_validator
 
 from features.links import shorten_text
 from features.youtube import (
@@ -14,7 +15,7 @@ from features.youtube import (
 from src.core import logging as logutil
 from src.core.config import ModuleConfig, global_config
 from src.core.http import fetch
-from src.webui.schemas import SchemaBase, enabled_field, register_module, ui
+from src.webui.schemas import SchemaBase, check_template, enabled_field, register_module, ui
 
 
 @register_module("moduleYoutube")
@@ -59,6 +60,11 @@ class YoutubeConfig(SchemaBase):
             "`{video_id}`, `{handle}`, `{label}`."
         ),
     )
+
+    @field_validator("youtubeNotificationTemplate")
+    @classmethod
+    def _plain_placeholders(cls, template: str) -> str:
+        return check_template(template)
 
 
 logger = logutil.init_logger(__name__)

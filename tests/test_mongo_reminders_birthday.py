@@ -21,11 +21,12 @@ def reminder(user="1", minutes=0, **kw) -> Reminder:
 async def test_reminders_are_listed_per_user_soonest_first(mongo):
     repo = ReminderRepository(mongo.guild_id)
     later = await repo.add(reminder(minutes=30))
-    sooner = await repo.add(reminder(minutes=5, frequency="daily", recipient_ids=["2"]))
+    sooner = await repo.add(reminder(minutes=5, frequency="daily"))
     await repo.add(reminder(user="9"))
     listed = await repo.list_for_user("1")
     assert [r.id for r in listed] == [sooner, later]
-    assert listed[0].frequency == "daily" and listed[0].recipient_ids == ["2"]
+    assert listed[0].frequency == "daily"
+    assert await repo.count_for_user("1") == 2
 
 
 async def test_only_due_reminders_are_returned(mongo):
@@ -34,6 +35,24 @@ async def test_only_due_reminders_are_returned(mongo):
     on_time = await repo.add(reminder(minutes=0))
     await repo.add(reminder(minutes=1))
     assert {r.id for r in await repo.list_due(NOW)} == {due, on_time}
+
+
+async def test_a_due_reminder_is_claimed_once(mongo):
+    repo = ReminderRepository(mongo.guild_id)
+    await repo.add(reminder(minutes=-1, frequency="daily"))
+    [due] = await repo.list_due(NOW)
+    claims = [await repo.claim_due(due, NOW + timedelta(days=1)) for _ in range(3)]
+    assert claims == [True, False, False]  # a second check holding the same copy sends nothing
+    assert await repo.list_due(NOW) == []
+
+
+async def test_a_one_shot_reminder_is_claimed_by_deleting_it(mongo):
+    repo = ReminderRepository(mongo.guild_id)
+    await repo.add(reminder(minutes=-1))
+    [due] = await repo.list_due(NOW)
+    assert await repo.claim_due(due, None)
+    assert not await repo.claim_due(due, None)
+    assert await repo.list_for_user("1") == []
 
 
 async def test_a_reminder_is_rescheduled_then_deleted(mongo):

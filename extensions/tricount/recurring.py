@@ -238,13 +238,23 @@ class RecurringMixin:
                 await self._materialise_recurring(guild_id, doc)
 
     async def _materialise_recurring(self, guild_id: str, doc: dict) -> None:
-        """Create the next concrete expense and reschedule the recurrence."""
+        """Reschedule the recurrence, then create the expense it was due for.
+
+        The recurrence is claimed first (moved to its next date only if it
+        still holds this one), so the expense is created once: two runs can't
+        both create it, and a failed write creates nothing.
+        """
         repo = TricountRepository(guild_id)
         try:
             group = await repo.find_active_group_by_id(doc["group_id"])
             if not group:
                 # Group was deleted — deactivate the recurrence.
                 await repo.deactivate_recurring(doc["_id"])
+                return
+            next_run = _next_occurrence(doc["next_run"], doc["frequency"])
+            while next_run <= datetime.now():
+                next_run = _next_occurrence(next_run, doc["frequency"])
+            if not await repo.claim_recurring(doc, next_run):
                 return
             expense = {
                 "group_id": group["_id"],
@@ -259,9 +269,5 @@ class RecurringMixin:
                 "recurring_id": doc["_id"],
             }
             await repo.add_expense(expense)
-            next_run = _next_occurrence(doc["next_run"], doc["frequency"])
-            while next_run <= datetime.now():
-                next_run = _next_occurrence(next_run, doc["frequency"])
-            await repo.reschedule_recurring(doc["_id"], next_run)
         except Exception as e:
             logger.error("Failed to materialise recurring expense %s: %s", doc.get("_id"), e)

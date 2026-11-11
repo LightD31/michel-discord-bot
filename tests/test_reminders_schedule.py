@@ -1,4 +1,4 @@
-"""When a reminder fires: first occurrence, catch-up after downtime, recipients, labels."""
+"""When a reminder fires: first occurrence, catch-up after downtime, labels."""
 
 from datetime import date, datetime
 
@@ -9,7 +9,6 @@ from features.reminders import (
     Reminder,
     first_occurrence,
     next_after,
-    parse_recipients,
     schedule_label,
     snooze_minutes,
 )
@@ -70,17 +69,6 @@ def test_next_after_steps_one_period_when_on_time():
     assert next_after(datetime(2024, 2, 29, 8, 0), "yearly", NOW) == datetime(2027, 2, 28, 8, 0)
 
 
-def test_recipients_accept_mentions_and_ids_without_duplicates():
-    assert parse_recipients("<@1>, <@!2>;3 1  2") == ["1", "2", "3"]
-    assert parse_recipients(None) == []
-    assert parse_recipients("") == []
-
-
-@pytest.mark.parametrize("raw", ["alice", "<@&42>", "12a", "<#5>"])
-def test_recipients_reject_anything_but_user_ids(raw):
-    assert parse_recipients(raw) is None
-
-
 @pytest.mark.parametrize(
     ("configured", "expected"),
     [(None, 10), (5, 5), ("15", 15), (0, 1), (-3, 1), (10_000, 1440), ("abc", 10)],
@@ -107,7 +95,7 @@ def test_schedule_labels_read_in_french(frequency, label):
     assert schedule_label(reminder) == label
 
 
-def test_all_recipients_always_include_the_author_once():
-    reminder = Reminder(user_id="1", message="m", remind_time=NOW, recipient_ids=["2", "1", "3"])
-    assert reminder.all_recipients() == ["1", "2", "3"]
-    assert Reminder(user_id="1", message="m", remind_time=NOW).all_recipients() == ["1"]
+def test_a_stored_shared_reminder_still_loads():
+    """Documents written before reminders went to their author only keep loading."""
+    reminder = Reminder(user_id="1", message="m", remind_time=NOW, recipient_ids=["2"])
+    assert not hasattr(reminder, "recipient_ids")

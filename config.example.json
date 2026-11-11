@@ -151,6 +151,12 @@
         "zuniversNinja": {
             "apiUrl": "",
             "webUrl": ""
+        },
+        "extensions": {
+            "extensions.minecraft": false,
+            "extensions.olympics": false,
+            "extensions.speedons": false,
+            "extensions.zevent": false
         }
     },
     "servers": {

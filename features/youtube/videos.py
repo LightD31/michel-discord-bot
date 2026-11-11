@@ -11,6 +11,8 @@ from typing import Any, Literal
 
 import isodate
 
+from src.core.text import format_template
+
 VideoKind = Literal["live", "short", "vod"]
 
 DEFAULT_SHORT_MAX_SECONDS = 90
@@ -48,10 +50,14 @@ def wanted(kind: VideoKind, channel_config: dict[str, Any]) -> bool:
 
 
 def render_notification(template: str, *, video_id: str, handle: str, label: str) -> str:
-    """Fill the guild's template; a broken template falls back to the plain video link."""
+    """Fill the guild's template; a broken template falls back to the plain video link.
+
+    ``{name}`` placeholders only: a format spec (``{label:>2000000000}``)
+    would otherwise make one guild's template allocate gigabytes.
+    """
     try:
-        return template.format(video_id=video_id, handle=handle, label=label)
-    except (KeyError, IndexError, ValueError, AttributeError):
+        return format_template(template, video_id=video_id, handle=handle, label=label)
+    except (KeyError, ValueError):
         return DEFAULT_TEMPLATE.format(video_id=video_id)
 
 

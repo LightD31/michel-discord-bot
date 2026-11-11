@@ -66,25 +66,44 @@ class GiveawayRepository:
         docs = await cursor.to_list(length=None)
         return [self._doc_to_giveaway(d) for d in docs]
 
-    async def mark_drawn(self, giveaway_id: str, winners: list[str]) -> None:
+    async def claim_draw(self, giveaway_id: str) -> bool:
+        """Mark an open giveaway drawn; False when it was already drawn or cancelled.
+
+        One conditional update, so of two draws racing (the scheduler and
+        ``/giveaway end`` at the deadline), only one gets True.
+        """
         try:
-            await self._col().update_one(
-                {"_id": ObjectId(giveaway_id)},
-                {"$set": {"drawn": True, "winners": winners}},
+            result = await self._col().update_one(
+                {"_id": ObjectId(giveaway_id), "drawn": False, "cancelled": False},
+                {"$set": {"drawn": True, "winners": []}},
             )
         except Exception as e:
             logger.error("DB update_one failed: %s", e)
-            raise DatabaseError(f"Failed to mark giveaway drawn: {e}") from e
+            raise DatabaseError(f"Failed to claim giveaway draw: {e}") from e
+        return result.modified_count == 1
 
-    async def mark_cancelled(self, giveaway_id: str) -> None:
+    async def release_draw(self, giveaway_id: str) -> None:
+        """Give a claimed draw back to the scheduler, counting the failed attempt."""
         try:
             await self._col().update_one(
-                {"_id": ObjectId(giveaway_id)},
+                {"_id": ObjectId(giveaway_id), "drawn": True},
+                {"$set": {"drawn": False}, "$inc": {"draw_failures": 1}},
+            )
+        except Exception as e:
+            logger.error("DB update_one failed: %s", e)
+            raise DatabaseError(f"Failed to release giveaway draw: {e}") from e
+
+    async def mark_cancelled(self, giveaway_id: str) -> bool:
+        """Cancel an open giveaway; False when it was drawn or cancelled meanwhile."""
+        try:
+            result = await self._col().update_one(
+                {"_id": ObjectId(giveaway_id), "drawn": False, "cancelled": False},
                 {"$set": {"cancelled": True}},
             )
         except Exception as e:
             logger.error("DB update_one failed: %s", e)
             raise DatabaseError(f"Failed to cancel giveaway: {e}") from e
+        return result.modified_count == 1
 
     async def update_winners(self, giveaway_id: str, winners: list[str]) -> None:
         try:

@@ -41,9 +41,11 @@ from features.polls import (
     POLL_EMOJIS,
     Poll,
     PollRepository,
+    is_reaction_poll_text,
     options_description,
     parse_duration,
     parse_poll_author_id,
+    poll_option_emojis,
     validate_poll_options,
 )
 from src.core import logging as logutil
@@ -95,7 +97,13 @@ async def _lock_reaction_poll(message, options: list[str], emojis: list[str]) ->
 
 
 def _is_poll_embed(embed: Embed) -> bool:
-    return embed.color == Colors.UTIL
+    """A reaction poll's embed: the poll colour, an author footer and option paragraphs.
+
+    The colour alone is shared with RSS posts, role menus, giveaways and button
+    polls, which a reaction must never rewrite.
+    """
+    footer_text = embed.footer.text if embed.footer else None
+    return embed.color == Colors.UTIL and is_reaction_poll_text(footer_text, embed.description)
 
 
 async def _add_poll_reactions(message, options: list[str], use_default: bool = False) -> None:
@@ -436,39 +444,44 @@ class PollsExtension(Extension, PollButtonsMixin):
             logger.warning("Could not edit closed poll %s: %s", poll.id, e)
         await self._poll_repo(guild_id).mark_closed(poll.id)
 
+    def _reaction_poll_message(self, event: MessageReactionAdd | MessageReactionRemove):
+        """The reaction poll *event* happened on, or None for any other message.
+
+        Checked before any work: a reaction poll is the bot's own message, in a
+        server where polls are on, and the reaction is one of its options.
+        """
+        message = event.message
+        guild = getattr(message, "guild", None)
+        if guild is None or not UTILS.enabled(guild.id):
+            return None
+        if not message.embeds or message.author.id != self.bot.user.id:
+            return None
+        embed = message.embeds[0]
+        if not _is_poll_embed(embed):
+            return None
+        if str(event.emoji) not in poll_option_emojis(embed.description):
+            return None
+        return message
+
+    async def _refresh_reaction_poll(
+        self, event: MessageReactionAdd | MessageReactionRemove
+    ) -> None:
+        message = self._reaction_poll_message(event)
+        if message is None:
+            return
+        async with self.lock:
+            embed = await format_poll(event)
+            await edit_message_if_changed(message, embed=embed, logger=logger)
+
     @listen(MessageReactionAdd)
     async def on_message_reaction_add(self, event: MessageReactionAdd):
         """Count reactions and update the poll embed."""
-        async with self.lock:
-            logger.debug(
-                "Reaction added : %s\npoll message id : %s\nperson : %s\nreaction : %s",
-                event.emoji,
-                event.message,
-                event.author,
-                event.reaction,
-            )
-            if len(event.message.embeds) == 0:
-                return
-            if event.message.embeds[0].color == Colors.UTIL:
-                embed = await format_poll(event)
-                await edit_message_if_changed(event.message, embed=embed, logger=logger)
+        await self._refresh_reaction_poll(event)
 
     @listen(MessageReactionRemove)
     async def on_message_reaction_remove(self, event: MessageReactionRemove):
         """Count reactions and update the poll embed."""
-        async with self.lock:
-            logger.debug(
-                "Reaction removed : %s\npoll message id : %s\nperson : %s\nreaction : %s",
-                event.emoji,
-                event.message,
-                event.author,
-                event.reaction,
-            )
-            if len(event.message.embeds) == 0:
-                return
-            if event.message.embeds[0].color == Colors.UTIL:
-                embed = await format_poll(event)
-                await edit_message_if_changed(event.message, embed=embed, logger=logger)
+        await self._refresh_reaction_poll(event)
 
     @slash_command(
         name="editpoll",

@@ -62,6 +62,28 @@ class ReminderRepository:
         )
 
     @translates_db_errors
+    async def claim_due(self, reminder: Reminder, next_time: datetime | None) -> bool:
+        """Move a due reminder to *next_time* (or delete it), if no one did meanwhile.
+
+        Called before the reminder is sent: the update only matches while the
+        reminder still holds the due time it was listed with, so it is sent
+        once even if two checks race, and a failed write sends nothing rather
+        than the same DM every minute.
+        """
+        if reminder.id is None:
+            return False
+        claim = {"_id": ObjectId(reminder.id), "remind_time": reminder.remind_time}
+        if next_time is None:
+            deleted = await self._col().delete_one(claim)
+            return bool(deleted.deleted_count)
+        updated = await self._col().update_one(claim, {"$set": {"remind_time": next_time}})
+        return bool(updated.modified_count)
+
+    @translates_db_errors
+    async def count_for_user(self, user_id: str) -> int:
+        return int(await self._col().count_documents({"user_id": user_id}))
+
+    @translates_db_errors
     async def list_for_user(self, user_id: str) -> list[Reminder]:
         cursor = self._col().find({"user_id": user_id}).sort("remind_time", pymongo.ASCENDING)
         return [self._doc_to_reminder(d) for d in await cursor.to_list(length=None)]

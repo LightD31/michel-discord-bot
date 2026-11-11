@@ -39,3 +39,19 @@ def test_a_custom_separator_is_accounted_for() -> None:
     kept, used = take_within_budget(["ab", "cd"], 5, separator=" | ")
     assert kept == ["ab"]
     assert used == 2
+
+
+def test_clip_keeps_short_text_and_marks_a_cut():
+    from src.core.text import clip
+
+    assert clip("abc", 5) == "abc"
+    assert clip("abcdefgh", 5) == "abcd…"
+    assert len(clip("x" * 3000)) == 2000
+
+
+def test_mentions_in_reads_only_real_mentions():
+    from src.core.text import mentions_in
+
+    assert mentions_in("<@1> <@!2> <@&3> <@1> <#4>") == (["1", "2"], ["3"], False)
+    assert mentions_in("salut @here") == ([], [], True)
+    assert mentions_in("{title}") == ([], [], False)

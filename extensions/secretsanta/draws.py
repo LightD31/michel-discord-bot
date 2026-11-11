@@ -113,6 +113,16 @@ class DrawsMixin:
             )
             return
 
+        # Same rule as /secretsanta cancel: drawing closes the session for
+        # everyone and DMs every participant.
+        is_creator = ctx.author.id == session.created_by
+        is_admin = ctx.author.has_permission(Permissions.ADMINISTRATOR) if ctx.guild else False
+        if not is_creator and not is_admin:
+            await send_error(
+                ctx, "Seul le créateur de la session ou un administrateur peut lancer le tirage."
+            )
+            return
+
         if session.is_drawn:
             await send_error(ctx, "Le tirage au sort a déjà été effectué pour cette session !")
             return
@@ -143,6 +153,11 @@ class DrawsMixin:
 
             await send_error(ctx, error_msg)
             return
+
+        if not await self.repository.claim_draw(context_id):
+            await send_error(ctx, "Le tirage au sort a déjà été effectué pour cette session !")
+            return
+        session.is_drawn = True
 
         server = str(ctx.guild.id) if ctx.guild else None
         discord2name_data = load_discord2name(server) if server else {}
@@ -177,8 +192,6 @@ class DrawsMixin:
                 failed_dms.append(giver_id)
 
         await self.repository.save_draw_results(context_id, assignments)
-        session.is_drawn = True
-        await self.repository.save_session(session)
 
         context_name = ctx.guild.name if ctx.guild else f"DM Group {ctx.channel.id}"
         await self._save_human_readable_draw(context_id, assignments, session, context_name)

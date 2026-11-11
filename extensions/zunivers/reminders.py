@@ -4,7 +4,6 @@ import random
 from datetime import datetime, timedelta
 
 from interactions import (
-    ActionRow,
     AutocompleteContext,
     Button,
     ButtonStyle,
@@ -17,6 +16,7 @@ from interactions import (
     TimeTrigger,
     User,
     slash_option,
+    spread_to_rows,
 )
 from interactions.api.events import Component
 
@@ -42,7 +42,7 @@ from features.coloc.constants import (
     zunivers_link,
 )
 from features.zunivers_ninja import build_web_url
-from src.discord_ext.messages import edit_message_if_changed, fetch_user_safe
+from src.discord_ext.messages import fetch_user_safe
 
 from ._common import GuildState, logger, ninja_config, zunivers_cmd, zunivers_web_url
 from .ninja import DEFAULT_STRATEGY_CHOICE, ninja_strategies, strategy_choices
@@ -221,49 +221,53 @@ class RemindersMixin:
             await ctx.send("Tu n'as aucun rappel configuré.", ephemeral=True)
             return
 
+        # One custom_id per member and reminder: another member's click on a
+        # reminder at the same time must not resolve this wait. Discord shows
+        # 25 buttons at most.
+        by_custom_id = {
+            f"zunivers_reminder_remove:{user_id}:{i}": reminder
+            for i, reminder in enumerate(user_reminders[:25])
+        }
         buttons = [
             Button(
                 label=f"{remind_time.strftime('%H:%M')} - {reminder_type.value.capitalize()}",
                 style=ButtonStyle.SECONDARY,
-                custom_id=f"{remind_time.timestamp()}_{reminder_type.value}",
+                custom_id=custom_id,
             )
-            for remind_time, reminder_type in user_reminders
+            for custom_id, (remind_time, reminder_type) in by_custom_id.items()
         ]
-
-        components = [ActionRow(*buttons[i : i + 5]) for i in range(0, len(buttons), 5)]
         message = await ctx.send(
             "Quel rappel veux-tu supprimer ?",
-            components=components,
+            components=spread_to_rows(*buttons),
             ephemeral=True,
         )
 
         try:
             button_ctx: Component = await self.bot.wait_for_component(
-                components=components,
+                components=list(by_custom_id),
+                messages=message,
+                check=lambda component: str(component.ctx.author.id) == user_id,
                 timeout=60,
             )
-
-            timestamp, reminder_type_str = button_ctx.ctx.custom_id.split("_")
-            remind_time = datetime.fromtimestamp(float(timestamp))
-            reminder_type = ReminderType(reminder_type_str)
-
-            state.reminders.remove_reminder(remind_time, user_id, reminder_type)
-            await state.storage.save_reminders(state.reminders)
-
-            await button_ctx.ctx.edit_origin(
-                content=f"Rappel {reminder_type.value} à {remind_time.strftime('%H:%M')} supprimé.",
-                components=[],
-            )
-            logger.info(
-                "Reminder %s at %s removed for %s",
-                reminder_type.value,
-                remind_time.strftime("%H:%M"),
-                ctx.user.display_name,
-            )
         except TimeoutError:
-            await edit_message_if_changed(
-                message, content="Aucun rappel sélectionné.", components=[], logger=logger
-            )
+            # An ephemeral message is edited through the interaction, not the channel.
+            await ctx.edit(message=message, content="Aucun rappel sélectionné.", components=[])
+            return
+
+        remind_time, reminder_type = by_custom_id[button_ctx.ctx.custom_id]
+        state.reminders.remove_reminder(remind_time, user_id, reminder_type)
+        await state.storage.save_reminders(state.reminders)
+
+        await button_ctx.ctx.edit_origin(
+            content=f"Rappel {reminder_type.value} à {remind_time.strftime('%H:%M')} supprimé.",
+            components=[],
+        )
+        logger.info(
+            "Reminder %s at %s removed for %s",
+            reminder_type.value,
+            remind_time.strftime("%H:%M"),
+            ctx.user.display_name,
+        )
 
     @Task.create(IntervalTrigger(minutes=1))
     async def reminder_checker(self):

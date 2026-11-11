@@ -70,6 +70,17 @@ class UtilsConfig(SchemaBase):
 logger = logutil.init_logger(__name__)
 UTILS = ModuleConfig("moduleUtils")
 
+# One /delete purges this many messages at most.
+MAX_PURGE = 1000
+# Channels a purge can run in: text, announcements and their threads.
+PURGEABLE_CHANNEL_TYPES = [
+    ChannelType.GUILD_TEXT,
+    ChannelType.GUILD_NEWS,
+    ChannelType.GUILD_PUBLIC_THREAD,
+    ChannelType.GUILD_PRIVATE_THREAD,
+    ChannelType.GUILD_NEWS_THREAD,
+]
+
 
 class AdminExtension(Extension):
     MODULE_KEYS = ("moduleUtils",)
@@ -94,12 +105,14 @@ class AdminExtension(Extension):
         opt_type=OptionType.INTEGER,
         required=False,
         min_value=1,
+        max_value=MAX_PURGE,
     )
     @slash_option(
         "channel",
         "Channel dans lequel supprimer les messages",
         opt_type=OptionType.CHANNEL,
         required=False,
+        channel_types=PURGEABLE_CHANNEL_TYPES,
     )
     @slash_option(
         "before",
@@ -124,19 +137,32 @@ class AdminExtension(Extension):
     ):
         if channel is None:
             channel = ctx.channel
-        await channel.purge(
+        if not hasattr(channel, "purge"):
+            await send_error(ctx, "Impossible de supprimer des messages dans ce salon.")
+            return
+        bounds = {}
+        for name, value in (("before", before), ("after", after)):
+            if value is None:
+                continue
+            if not str(value).strip().isdigit():
+                await send_error(ctx, f"`{name}` doit être un ID de message.")
+                return
+            bounds[name] = int(value)
+        # A purge of hundreds of messages (or of messages over 14 days old,
+        # deleted one by one) outlasts the 3 seconds Discord gives to answer.
+        await ctx.defer(ephemeral=True)
+        deleted = await channel.purge(
             deletion_limit=nombre,
             reason=f"Suppression de {nombre} message(s) par {ctx.user.username} (ID: {ctx.user.id}) via la commande /delete",
-            before=before,
-            after=after,
+            **bounds,
         )
         await ctx.send(
-            f"{nombre} message(s) supprimé(s) dans le channel <#{channel.id}>",
+            f"{deleted} message(s) supprimé(s) dans le channel <#{channel.id}>",
             ephemeral=True,
         )
         logger.info(
             "Suppression de %s message(s) par %s (ID: %s) via la commande /delete",
-            nombre,
+            deleted,
             ctx.user.username,
             ctx.user.id,
         )

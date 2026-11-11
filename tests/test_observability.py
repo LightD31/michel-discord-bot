@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 import time
+from datetime import datetime
 from types import SimpleNamespace
 
 import pytest
@@ -191,6 +192,52 @@ async def test_a_cancelled_run_counts_as_nothing(installed):
     assert health.snapshot().tasks == {}
 
 
+async def test_a_firing_during_a_run_is_skipped_and_counted(installed):
+    release = asyncio.Event()
+    runs = []
+
+    @Task.create(IntervalTrigger(seconds=30))
+    async def slow():
+        runs.append(1)
+        await release.wait()
+
+    first = slow._fire(datetime.now())
+    await asyncio.sleep(0.01)
+    assert task_health.is_running(slow)
+
+    fire_time = datetime.now()
+    second = slow._fire(fire_time)
+    assert second.done()  # nothing scheduled
+    assert slow.trigger.last_call_time == fire_time  # next firing computed from this one
+    assert slow.iteration == 1
+
+    release.set()
+    await first
+    assert runs == [1]
+    assert not task_health.is_running(slow)
+    record = health.snapshot().tasks[task_health.task_name(slow)]
+    assert (record.successes, record.skipped) == (1, 1)
+
+    third = slow._fire(datetime.now())  # once finished, the task runs again
+    await third
+    assert runs == [1, 1]
+
+
+async def test_a_direct_call_in_progress_also_blocks_a_firing(installed):
+    release = asyncio.Event()
+
+    @Task.create(IntervalTrigger(seconds=30))
+    async def slow():
+        await release.wait()
+
+    direct = asyncio.create_task(slow())
+    await asyncio.sleep(0.01)
+    assert slow._fire(datetime.now()).done()
+    release.set()
+    await direct
+    assert health.snapshot().tasks[task_health.task_name(slow)].skipped == 1
+
+
 # ── HTTP health ─────────────────────────────────────────────────────────
 
 
@@ -274,6 +321,7 @@ def test_the_exporter_serves_the_health_series():
     task = 'task="YoutubeExtension.check_youtube"'
     assert f'michel_task_runs_total{{status="ok",{task}}} 1.0' in text
     assert f'michel_task_runs_total{{status="error",{task}}} 1.0' in text
+    assert f'michel_task_runs_total{{status="skipped",{task}}} 0.0' in text
     assert f"michel_task_last_success_timestamp_seconds{{{task}}} 1000.0" in text
     assert f"michel_task_last_failure_timestamp_seconds{{{task}}} 1100.0" in text
     assert 'michel_http_requests_total{host="www.googleapis.com",outcome="5xx"} 1.0' in text
