@@ -43,7 +43,7 @@ A modular, multi-guild Discord bot built with **interactions.py**. Michel ships 
 | **Giveaway** | Reaction-entry giveaways with a scheduled random draw. |
 | **Secret Santa** | Organize a Secret Santa entirely in Discord — registrations, forbidden pairings, random draw, and DM delivery. |
 | **Reaction Roles** | Self-assignable roles via persistent buttons, with a menu builder in the Web UI. |
-| **Reminders** | `/reminder` with optional recurrence, DM delivery to its author with a snooze button, persisted and restored across restarts. |
+| **Reminders** | `/reminder set` with optional recurrence (25 per member and server), `/reminder list` to see them and when they next fire, `/reminder remove`. DM delivery to its author with a snooze button, persisted and restored across restarts. |
 | **Custom Commands** | Slash commands defined per server from the Web UI — a name, a description, and a pool of responses (GIF links or plain text) picked at random. New commands reach Discord without a restart. |
 | **Random** | `/pick` (random choice from a list) and `/dice` (configurable die roll) powered by Random.org. |
 | **User Info** | Per-user profile lookup and shared member-tracking stats. |
