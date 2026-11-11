@@ -102,3 +102,62 @@ def test_embed_image_then_thumbnail():
         "https://cdn/t.png"
     )
     assert first_image_url(SimpleNamespace(attachments=None, embeds=None)) is None
+
+
+# ── NSFW sources ────────────────────────────────────────────────────────
+
+
+class _Channel:
+    def __init__(self, nsfw):
+        self.id = 50
+        self.nsfw = nsfw
+        self.sent = []
+
+    async def send(self, embeds):
+        self.sent.append(embeds)
+        return SimpleNamespace(id=60)
+
+
+def _starred(source_nsfw):
+    author = SimpleNamespace(id=1, display_name="alice", avatar_url=None, bot=False)
+    return SimpleNamespace(
+        id=10,
+        guild=SimpleNamespace(id=1),
+        channel=SimpleNamespace(id=20, name="memes", nsfw=source_nsfw),
+        author=author,
+        content="regardez",
+        attachments=[],
+        embeds=[],
+        created_at=None,
+    )
+
+
+def _mixin(starboard):
+    from extensions.starboard.listeners import ListenersMixin
+
+    stored = []
+
+    class Ext(ListenersMixin):
+        pass
+
+    async def fetch_channel(cid):
+        return starboard
+
+    async def upsert(entry):
+        stored.append(entry)
+
+    ext = Ext()
+    ext.bot = SimpleNamespace(fetch_channel=fetch_channel)
+    ext.repository = lambda guild_id: SimpleNamespace(upsert=upsert)
+    return ext, stored
+
+
+@pytest.mark.parametrize(
+    ("source_nsfw", "board_nsfw", "mirrored"),
+    [(True, False, False), (True, True, True), (False, False, True)],
+)
+async def test_nsfw_messages_reach_only_an_nsfw_starboard(source_nsfw, board_nsfw, mirrored):
+    board = _Channel(board_nsfw)
+    ext, stored = _mixin(board)
+    await ext._post_mirror(_starred(source_nsfw), "1", 3, "⭐", "50")
+    assert bool(board.sent) is mirrored and bool(stored) is mirrored
