@@ -160,7 +160,9 @@ async def test_recurring_expenses_are_due_stopped_and_rescheduled(mongo):
     assert [r["_id"] for r in await repo.list_active_recurring(1)] == [due, later]
     assert [r["_id"] for r in await repo.list_active_recurring(1, "autre")] == [later]
 
-    await repo.reschedule_recurring(due, now + timedelta(days=30))
+    [due_doc] = await repo.list_due_recurring(now)
+    assert await repo.claim_recurring(due_doc, now + timedelta(days=30))
+    assert not await repo.claim_recurring(due_doc, now + timedelta(days=30))  # claimed once
     assert await repo.list_due_recurring(now) == []
 
     assert await repo.stop_recurring(str(later), user_id=2) == 0  # not theirs

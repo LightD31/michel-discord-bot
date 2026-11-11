@@ -233,8 +233,15 @@ class TricountRepository:
         )
 
     @translates_db_errors
-    async def reschedule_recurring(self, recurring_id: ObjectId, next_run: datetime) -> None:
-        """Set the next occurrence date of a recurrence."""
-        await self._col(RECURRING_COLLECTION).update_one(
-            {"_id": recurring_id}, {"$set": {"next_run": next_run}}
+    async def claim_recurring(self, doc: dict, next_run: datetime) -> bool:
+        """Move a due recurrence to *next_run*, if it still holds the due date it was listed with.
+
+        Called before the expense is created: of two runs holding the same due
+        template only one gets True, and a failed write creates nothing rather
+        than the same expense at every run.
+        """
+        result = await self._col(RECURRING_COLLECTION).update_one(
+            {"_id": doc["_id"], "active": True, "next_run": doc["next_run"]},
+            {"$set": {"next_run": next_run}},
         )
+        return bool(result.modified_count)

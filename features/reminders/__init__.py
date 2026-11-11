@@ -4,7 +4,6 @@ from features.reminders.schedule import (
     PastReminderError,
     first_occurrence,
     next_after,
-    parse_recipients,
     schedule_label,
     snooze_minutes,
 )
@@ -16,7 +15,6 @@ __all__ = [
     "ReminderRepository",
     "first_occurrence",
     "next_after",
-    "parse_recipients",
     "schedule_label",
     "snooze_minutes",
 ]
