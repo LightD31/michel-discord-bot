@@ -146,7 +146,7 @@ src/                    # Shared infrastructure
 │   │                   #   moderation, spotify, shlink, frontend (SPA catch-all)
 │   ├── sse/            #   live log streaming over Server-Sent Events
 │   ├── log_handler.py  #   in-memory ring buffer feeding the log view
-│   └── static/         #   single-page app (index.html)
+│   └── static/         #   single-page app (index.html + app.js)
 └── assets/             # Bundled fonts used by image rendering
 
 tests/                  # pytest suite (core, webui auth/config, feature logic)
@@ -267,7 +267,7 @@ An optional FastAPI-based dashboard, enabled when `webui.enabled` is `true` in c
 - **Short links** — The developer-only « Liens courts » page lists the Shlink instance's short URLs and creates, retargets, retags or deletes them; Shlink stays the source of truth (nothing is mirrored into MongoDB).
 - **No URLs in the code** — every user-facing link, icon and third-party endpoint is a `url` config field (per-guild module config or a global section), so dashboards, playlists, GIFs, logos and self-hosted API bases are edited from the Web UI. Unset URLs degrade gracefully: the embed field is omitted, or the task logs and skips.
 - **Live logs** — Streaming over Server-Sent Events from an in-memory ring buffer (developer-only).
-- **Frontend** — A single-page app in `src/webui/static/index.html`; `routes/frontend.py` catch-alls unknown paths back to it.
+- **Frontend** — A single-page app: `src/webui/static/index.html` and its script `app.js`, under a Content-Security-Policy that runs no inline code; `routes/frontend.py` catch-alls unknown paths back to the page.
 
 ---
 

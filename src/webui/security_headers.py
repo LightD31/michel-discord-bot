@@ -6,11 +6,18 @@ pass through untouched.
 
 What it sets, and why:
 
-- ``Content-Security-Policy: frame-ancestors 'none'; base-uri 'self';
-  object-src 'none'`` plus ``X-Frame-Options: DENY`` — no other site can frame
-  the dashboard (clickjacking a "save" or "rotate link" button), inject a
-  ``<base>`` or load plugins. Script and style sources are not restricted yet:
-  the SPA is one HTML file full of inline handlers.
+- ``Content-Security-Policy`` (:data:`CONTENT_SECURITY_POLICY`) plus
+  ``X-Frame-Options: DENY``. Scripts run only from the dashboard's own files
+  and the pinned Chart.js build: no inline script, no inline handler, no
+  ``eval``, so markup injected through a value the SPA forgot to escape
+  cannot run code. The SPA's script is ``/static/app.js`` and its controls
+  name an action (``data-click="…"``) dispatched by one listener. Styles may
+  be inline (the markup carries ``style`` attributes; CSS cannot run code).
+  Images may come from any HTTPS host (guild icons, avatars, embed previews
+  of configured URLs); requests (``fetch``, the log stream) only go to the
+  dashboard itself. No other site can frame the dashboard (clickjacking a
+  "save" or "rotate link" button), inject a ``<base>``, load plugins or
+  receive a form.
 - ``X-Content-Type-Options: nosniff`` — responses are taken as the type they declare.
 - ``Referrer-Policy: same-origin`` — the public dashboards carry their secret
   token in the path, so full URLs must never leave the origin (the lazily
@@ -35,8 +42,25 @@ Receive = Callable[[], Awaitable[Message]]
 Send = Callable[[Message], Awaitable[None]]
 ASGIApp = Callable[[Scope, Receive, Send], Awaitable[None]]
 
+# Chart.js, lazily loaded by the XP stats page: the exact pinned file, which
+# the SPA also loads with its SRI digest. Bump both with the SPA's CHARTJS_SRC.
+CHARTJS_URL = "https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js"
+CONTENT_SECURITY_POLICY = "; ".join(
+    (
+        "default-src 'self'",
+        f"script-src 'self' {CHARTJS_URL}",
+        "style-src 'self' 'unsafe-inline'",
+        "img-src 'self' https: data:",
+        "connect-src 'self'",
+        "frame-ancestors 'none'",
+        "base-uri 'self'",
+        "object-src 'none'",
+        "form-action 'self'",
+    )
+)
+
 BASE_HEADERS: tuple[tuple[str, str], ...] = (
-    ("content-security-policy", "frame-ancestors 'none'; base-uri 'self'; object-src 'none'"),
+    ("content-security-policy", CONTENT_SECURITY_POLICY),
     ("x-frame-options", "DENY"),
     ("x-content-type-options", "nosniff"),
     ("referrer-policy", "same-origin"),
@@ -75,4 +99,10 @@ class SecurityHeadersMiddleware:
         await self.app(scope, receive, send_with_headers)
 
 
-__all__ = ["BASE_HEADERS", "HSTS_HEADER", "SecurityHeadersMiddleware"]
+__all__ = [
+    "BASE_HEADERS",
+    "CHARTJS_URL",
+    "CONTENT_SECURITY_POLICY",
+    "HSTS_HEADER",
+    "SecurityHeadersMiddleware",
+]

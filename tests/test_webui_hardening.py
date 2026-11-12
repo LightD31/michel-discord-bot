@@ -15,7 +15,7 @@ from src.core import backup_format
 from src.core.db import BACKUP_CONFIG_FILENAME, BACKUP_EXCLUDED_COLLECTIONS, MongoManager
 from src.webui import sessions
 from src.webui.ratelimit import TrustedProxies
-from src.webui.security_headers import SecurityHeadersMiddleware
+from src.webui.security_headers import CHARTJS_URL, SecurityHeadersMiddleware
 
 # ── Security headers ────────────────────────────────────────────────────
 
@@ -38,7 +38,14 @@ def make_app(trusted: TrustedProxies | None = None) -> FastAPI:
 def test_every_response_carries_the_hardening_headers():
     resp = TestClient(make_app()).get("/plain")
     assert resp.headers["x-frame-options"] == "DENY"
-    assert "frame-ancestors 'none'" in resp.headers["content-security-policy"]
+    csp = dict(
+        directive.strip().split(" ", 1)
+        for directive in resp.headers["content-security-policy"].split(";")
+    )
+    assert csp["frame-ancestors"] == "'none'"
+    # No inline script, no inline handler, no eval: only the dashboard's own files and Chart.js.
+    assert csp["script-src"].split() == ["'self'", CHARTJS_URL]
+    assert csp["connect-src"] == "'self'" and csp["object-src"] == "'none'"
     assert resp.headers["x-content-type-options"] == "nosniff"
     assert resp.headers["referrer-policy"] == "same-origin"
     assert "strict-transport-security" not in resp.headers  # plain HTTP: never pinned
@@ -305,3 +312,20 @@ def test_spa_is_cached_and_revalidated(tmp_path, monkeypatch):
     edited = client.get("/", headers={"If-None-Match": etag})
     assert edited.status_code == 200 and edited.text == "<h1>v2</h1>"
     assert edited.headers["etag"] != etag
+
+
+def test_the_spa_script_is_served_as_its_own_file(tmp_path, monkeypatch):
+    import src.webui.routes.frontend as frontend
+
+    (tmp_path / "app.js").write_text("init();", encoding="utf-8")
+    monkeypatch.setattr(frontend, "_STATIC_DIR", tmp_path)
+    frontend._cache.clear()
+    app = FastAPI()
+    app.include_router(frontend.create_router(None))
+    client = TestClient(app)
+
+    script = client.get("/static/app.js")
+    assert script.status_code == 200 and script.text == "init();"
+    assert script.headers["content-type"] == "text/javascript; charset=utf-8"
+    again = client.get("/static/app.js", headers={"If-None-Match": script.headers["etag"]})
+    assert again.status_code == 304
