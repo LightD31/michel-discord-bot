@@ -28,7 +28,7 @@ def _allowlisted_actions() -> set[str]:
 
 
 def test_no_inline_script_or_handler_in_the_page():
-    assert re.findall(r"<script(?![^>]*\bsrc=)[^>]*>", INDEX) == []
+    assert re.findall(r"<script(?![^>]*\bsrc=)[^>]*>", INDEX, re.IGNORECASE) == []
     assert '<script src="/static/app.js"></script>' in INDEX
     assert INLINE_HANDLER.findall(INDEX) == []
 
