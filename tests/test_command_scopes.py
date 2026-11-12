@@ -75,9 +75,11 @@ COMMAND_FACTORIES = {
     "user_context_menu",
 }
 
-# Deliberately available everywhere: random_ reads no per-guild config, and
-# compareai's /ask and /ask-stats are user-installable so they work in DMs.
+# Deliberately available everywhere: random_ reads no per-guild config,
+# compareai's /ask and /ask-stats are user-installable so they work in DMs, and
+# /aide lists whatever each server has (guild-only: contexts=[GUILD]).
 GLOBAL_COMMAND_FILES = {
+    "extensions/help.py",
     "extensions/random_.py",
     "extensions/compareai/ask.py",
     "extensions/compareai/voting.py",

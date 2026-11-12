@@ -35,6 +35,7 @@ MAX_INPUT_LENGTH = 1500
 
 class RandomExtension(Extension):
     MODULE_KEYS = ()
+    HELP_LABEL = "🎲 Hasard"  # heading in /aide
 
     def __init__(self, bot: Client):
         self.bot = bot

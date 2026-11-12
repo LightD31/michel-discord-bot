@@ -27,7 +27,7 @@ A modular, multi-guild Discord bot built with **interactions.py**. Michel ships 
 
 ## Features
 
-36 extensions are auto-discovered from `extensions/` at startup. Each one can be toggled per server from the Web UI.
+39 extensions are auto-discovered from `extensions/` at startup. Each one can be toggled per server from the Web UI.
 
 ### Community & engagement
 
@@ -55,6 +55,7 @@ A modular, multi-guild Discord bot built with **interactions.py**. Michel ships 
 |--------|-------------|
 | **Moderation** | `/warn`, `/timeout`, `/kick`, `/ban`, `/unban`, numbered infraction history, a modlog channel, and automod (anti-invite / anti-spam / banned-words). Infractions are browsable and revocable from the Web UI. |
 | **Admin** | Moderator utilities: `/ping`, `/delete`, `/send`, `/slowmode`, `/lock`, `/unlock`. |
+| **Help** | `/aide` lists the commands a member can use on the server, grouped by module and built from what is loaded (nothing to maintain by hand), with an optional search. |
 | **Embed Manager** | Custom embeds created and managed from the Web UI, auto-published to a channel. |
 | **Backup** | Daily (and on-demand `/backup`) exports of all MongoDB databases as compressed Extended JSON that keeps every BSON type, with configurable retention and a copy of `config/config.json` (owner-only permissions). `scripts/restore_backup.py` restores them; see [docs/RUNBOOK.md](docs/RUNBOOK.md). Dashboard sessions are never exported. |
 | **Metrics** | Prometheus exporter: per-guild XP and Spotify statistics, bot health (periodic tasks, HTTP errors per host, event-loop lag, last backup) and command counters on a dedicated `/metrics` port. |
