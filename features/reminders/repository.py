@@ -88,9 +88,9 @@ class ReminderRepository:
     @translates_db_errors
     async def list_for_user(self, user_id: str) -> list[Reminder]:
         cursor = self._col().find({"user_id": user_id}).sort("remind_time", pymongo.ASCENDING)
-        return [self._doc_to_reminder(d) for d in await cursor.to_list(length=None)]
+        return [self._doc_to_reminder(d) for d in await cursor.to_list()]
 
     @translates_db_errors
     async def list_due(self, now: datetime) -> list[Reminder]:
         cursor = self._col().find({"remind_time": {"$lte": now}})
-        return [self._doc_to_reminder(d) for d in await cursor.to_list(length=None)]
+        return [self._doc_to_reminder(d) for d in await cursor.to_list()]

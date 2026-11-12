@@ -83,7 +83,7 @@ class ModerationRepository:
             cursor = (
                 self._col().find({"user_id": str(user_id)}).sort("created_at", pymongo.DESCENDING)
             )
-            docs = await cursor.to_list(length=None)
+            docs = await cursor.to_list()
             return [self._doc_to_infraction(d) for d in docs]
         except Exception as e:
             log_failure(logger, "DB find failed: %s", e)

@@ -27,7 +27,7 @@ class TricountRepository:
     """Per-guild data access for tricount groups, expenses, and recurring templates.
 
     Methods are thin pass-throughs to MongoDB: query filters, update documents,
-    and return shapes mirror the underlying motor calls (raw dicts). Driver
+    and return shapes mirror the underlying driver calls (raw dicts). Driver
     errors are translated to :class:`~src.core.errors.DatabaseError` so callers
     in ``extensions/`` never import ``pymongo``.
 
@@ -96,7 +96,7 @@ class TricountRepository:
         return (
             await self._col(GROUPS_COLLECTION)
             .find({"is_active": True, "members": user_id})
-            .to_list(length=None)
+            .to_list()
         )
 
     # --- Expenses -----------------------------------------------------
@@ -128,9 +128,7 @@ class TricountRepository:
     @translates_db_errors
     async def list_group_expenses(self, group_id: ObjectId) -> list[dict]:
         """All expenses of a group."""
-        return (
-            await self._col(EXPENSES_COLLECTION).find({"group_id": group_id}).to_list(length=None)
-        )
+        return await self._col(EXPENSES_COLLECTION).find({"group_id": group_id}).to_list()
 
     @translates_db_errors
     async def list_recent_expenses(self, group_id: ObjectId, limit: int) -> list[dict]:
@@ -140,7 +138,7 @@ class TricountRepository:
             .find({"group_id": group_id})
             .sort("date", -1)
             .limit(limit)
-            .to_list(length=None)
+            .to_list()
         )
 
     @translates_db_errors
@@ -158,7 +156,7 @@ class TricountRepository:
             )
             .sort("date", -1)
             .limit(limit)
-            .to_list(length=None)
+            .to_list()
         )
 
     @translates_db_errors
@@ -193,12 +191,7 @@ class TricountRepository:
         query: dict = {"active": True, "added_by": user_id}
         if group_name:
             query["group_name"] = group_name
-        return (
-            await self._col(RECURRING_COLLECTION)
-            .find(query)
-            .sort("next_run", 1)
-            .to_list(length=None)
-        )
+        return await self._col(RECURRING_COLLECTION).find(query).sort("next_run", 1).to_list()
 
     @translates_db_errors
     async def list_due_recurring(self, now: datetime) -> list[dict]:
@@ -206,7 +199,7 @@ class TricountRepository:
         return (
             await self._col(RECURRING_COLLECTION)
             .find({"active": True, "next_run": {"$lte": now}})
-            .to_list(length=None)
+            .to_list()
         )
 
     @translates_db_errors

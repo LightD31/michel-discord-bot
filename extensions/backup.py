@@ -70,6 +70,7 @@ class BackupExtension(Extension):
     """Daily MongoDB backup extension."""
 
     MODULE_KEYS = ()
+    HELP_LABEL = "💾 Sauvegardes"  # heading in /aide (dev guild only)
 
     def __init__(self, bot: Client) -> None:
         self.bot = bot

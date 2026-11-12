@@ -36,12 +36,12 @@ async def test_saving_replaces_the_map(mongo):
     assert await repo.get_last_video_ids() == {}
 
 
-def poll(message_id="m1", closes_in=None, **kw) -> Poll:
+def poll(message_id="m1", closes_in=None, author_id="2", **kw) -> Poll:
     closes_at = NOW + timedelta(minutes=closes_in) if closes_in is not None else None
     return Poll(
         channel_id="1",
         message_id=message_id,
-        author_id="2",
+        author_id=author_id,
         question="?",
         options=["a", "b", "c"],
         closes_at=closes_at,
@@ -85,3 +85,16 @@ async def test_one_poll_per_message(mongo):
     await repo.add(poll())
     with pytest.raises(DatabaseError):
         await repo.add(poll())
+
+
+async def test_editpoll_offers_the_authors_open_reaction_polls_newest_first(mongo):
+    repo = PollRepository(mongo.guild_id)
+    await repo.add(poll("old", mode="reaction", author_id="7"))
+    await repo.add(poll("buttons", mode="public", author_id="7"))
+    await repo.add(poll("someone", mode="reaction", author_id="8"))
+    closed_id = await repo.add(poll("closed", mode="reaction", author_id="7"))
+    await repo.mark_closed(closed_id)
+    await repo.add(poll("new", mode="reaction", author_id="7"))
+    found = await repo.list_open_reaction_polls("7", 25)
+    assert [p.message_id for p in found] == ["new", "old"]
+    assert [p.message_id for p in await repo.list_open_reaction_polls("7", 1)] == ["new"]

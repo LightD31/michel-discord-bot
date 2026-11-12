@@ -118,7 +118,7 @@ class SpotifyRepository:
     async def added_by_counts(self) -> dict[str, int]:
         """Return how many mirrored playlist tracks each ``added_by`` value holds."""
         pipeline = [{"$group": {"_id": "$added_by", "count": {"$sum": 1}}}]
-        rows = await self._col(PLAYLIST_COLLECTION).aggregate(pipeline).to_list(length=None)
+        rows = await (await self._col(PLAYLIST_COLLECTION).aggregate(pipeline)).to_list()
         return {str(row["_id"]): row["count"] for row in rows if row["_id"]}
 
     @translates_db_errors

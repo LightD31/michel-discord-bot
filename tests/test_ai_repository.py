@@ -1,4 +1,4 @@
-"""``AiComparisonRepository`` against a small in-memory stand-in for a motor collection."""
+"""``AiComparisonRepository`` against a small in-memory stand-in for a MongoDB collection."""
 
 import copy
 from datetime import UTC, datetime, timedelta

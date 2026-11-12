@@ -14,7 +14,7 @@ class MdiMatchesRepository:
 
     @translates_db_errors
     async def load_all(self) -> list[dict[str, Any]]:
-        return await self._col().find({}).to_list(length=None)
+        return await self._col().find({}).to_list()
 
     @translates_db_errors
     async def upsert(self, doc: dict[str, Any]) -> None:

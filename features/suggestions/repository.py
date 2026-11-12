@@ -75,7 +75,7 @@ class SuggestionsRepository:
     async def list(self, status: SuggestionStatus | None = None) -> list[Suggestion]:
         query = {"status": status} if status else {}
         cursor = self._col().find(query).sort("created_at", pymongo.DESCENDING)
-        return [self._doc_to_suggestion(d) for d in await cursor.to_list(length=None)]
+        return [self._doc_to_suggestion(d) for d in await cursor.to_list()]
 
     @translates_db_errors
     async def set_message(self, sugg_id: int, message_id: str) -> None:

@@ -43,7 +43,7 @@ async def mongo(monkeypatch) -> AsyncIterator[MongoTestEnv]:
 
     Each test gets a random guild id and its own ``global`` database, both
     dropped afterwards, so tests can run in parallel against one server and
-    never touch real data. The motor client is created on the test's own loop
+    never touch real data. The client is created on the test's own loop
     and closed at the end.
     """
     if not MONGO_TEST_URL:
@@ -62,8 +62,7 @@ async def mongo(monkeypatch) -> AsyncIterator[MongoTestEnv]:
         client = manager.client
         await client.drop_database(f"{db.GUILD_DB_PREFIX}{guild_id}")
         await client.drop_database(db.GLOBAL_DB_NAME)
-        for opened in db.MongoManager._clients.values():
-            opened.close()
+        await manager.close()
 
 
 @pytest.fixture

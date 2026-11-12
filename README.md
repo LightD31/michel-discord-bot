@@ -27,7 +27,7 @@ A modular, multi-guild Discord bot built with **interactions.py**. Michel ships 
 
 ## Features
 
-36 extensions are auto-discovered from `extensions/` at startup. Each one can be toggled per server from the Web UI.
+39 extensions are auto-discovered from `extensions/` at startup. Each one can be toggled per server from the Web UI.
 
 ### Community & engagement
 
@@ -40,7 +40,7 @@ A modular, multi-guild Discord bot built with **interactions.py**. Michel ships 
 | **Starboard** | Mirrors highly-reacted messages to a dedicated channel once a reaction threshold is hit. |
 | **Suggestions** | Community suggestion box with up/down voting and approve/deny/implement workflows. |
 | **Polls** | `/poll`, `/poll-anonyme`, and `/poll-classement` (ranked-choice) — button-based, persisted across restarts, with optional auto-close. |
-| **Giveaway** | Reaction-entry giveaways with a scheduled random draw. |
+| **Giveaway** | Giveaways with a "Participer" button and a scheduled random draw. |
 | **Secret Santa** | Organize a Secret Santa entirely in Discord — registrations, forbidden pairings, random draw, and DM delivery. |
 | **Reaction Roles** | Self-assignable roles via persistent buttons, with a menu builder in the Web UI. |
 | **Reminders** | `/reminder set` with optional recurrence (25 per member and server), `/reminder list` to see them and when they next fire, `/reminder remove`. DM delivery to its author with a snooze button, persisted and restored across restarts. |
@@ -55,6 +55,7 @@ A modular, multi-guild Discord bot built with **interactions.py**. Michel ships 
 |--------|-------------|
 | **Moderation** | `/warn`, `/timeout`, `/kick`, `/ban`, `/unban`, numbered infraction history, a modlog channel, and automod (anti-invite / anti-spam / banned-words). Infractions are browsable and revocable from the Web UI. |
 | **Admin** | Moderator utilities: `/ping`, `/delete`, `/send`, `/slowmode`, `/lock`, `/unlock`. |
+| **Help** | `/aide` lists the commands a member can use on the server, grouped by module and built from what is loaded (nothing to maintain by hand), with an optional search. |
 | **Embed Manager** | Custom embeds created and managed from the Web UI, auto-published to a channel. |
 | **Backup** | Daily (and on-demand `/backup`) exports of all MongoDB databases as compressed Extended JSON that keeps every BSON type, with configurable retention and a copy of `config/config.json` (owner-only permissions). `scripts/restore_backup.py` restores them; see [docs/RUNBOOK.md](docs/RUNBOOK.md). Dashboard sessions are never exported. |
 | **Metrics** | Prometheus exporter: per-guild XP and Spotify statistics, bot health (periodic tasks, HTTP errors per host, event-loop lag, last backup) and command counters on a dedicated `/metrics` port. |
@@ -118,7 +119,7 @@ features/               # Domain logic — pure Python, no Discord imports
 src/                    # Shared infrastructure
 ├── core/               # Framework-free essentials (strictly typed under mypy)
 │   ├── config.py       #   reactive ConfigStore with atomic writes
-│   ├── db.py           #   MongoManager singleton (motor, per-event-loop clients)
+│   ├── db.py           #   MongoManager singleton (PyMongo async, per-event-loop clients)
 │   ├── http.py         #   shared aiohttp session with retry/backoff + URL redaction
 │   ├── logging.py      #   colored ANSI logger factory
 │   ├── errors.py       #   exception hierarchy (BotError, HttpError, …)
@@ -145,7 +146,7 @@ src/                    # Shared infrastructure
 │   │                   #   moderation, spotify, shlink, frontend (SPA catch-all)
 │   ├── sse/            #   live log streaming over Server-Sent Events
 │   ├── log_handler.py  #   in-memory ring buffer feeding the log view
-│   └── static/         #   single-page app (index.html)
+│   └── static/         #   single-page app (index.html + app.js)
 └── assets/             # Bundled fonts used by image rendering
 
 tests/                  # pytest suite (core, webui auth/config, feature logic)
@@ -159,7 +160,7 @@ scripts/                # generate_config_example.py — config skeleton from sc
 - **Auto-discovered extensions** — Extensions are loaded at startup unless disabled via the Web UI or `config["extensions"]`.
 - **Mixin-based extensions** — Larger extensions (xp, twitch, uptime, zevent, tricount…) are split into mixin classes by concern and composed in the package's `__init__.py`.
 - **Schema-driven dashboard** — Each module declares a Pydantic config schema; the Web UI renders typed forms, per-server toggles, and validation from it.
-- **Async everywhere** — Motor for MongoDB, aiohttp for HTTP, asyncssh for SFTP, native async RCON. The bot loop and the Web UI loop each get their own motor/aiohttp clients.
+- **Async everywhere** — PyMongo's async API for MongoDB, aiohttp for HTTP, asyncssh for SFTP, native async RCON. The bot loop and the Web UI loop each get their own MongoDB/aiohttp clients.
 - **Self-healing** — A heartbeat file plus a watchdog thread make the process exit when the gateway wedges, so Docker's restart policy brings it back.
 
 ---
@@ -266,7 +267,7 @@ An optional FastAPI-based dashboard, enabled when `webui.enabled` is `true` in c
 - **Short links** — The developer-only « Liens courts » page lists the Shlink instance's short URLs and creates, retargets, retags or deletes them; Shlink stays the source of truth (nothing is mirrored into MongoDB).
 - **No URLs in the code** — every user-facing link, icon and third-party endpoint is a `url` config field (per-guild module config or a global section), so dashboards, playlists, GIFs, logos and self-hosted API bases are edited from the Web UI. Unset URLs degrade gracefully: the embed field is omitted, or the task logs and skips.
 - **Live logs** — Streaming over Server-Sent Events from an in-memory ring buffer (developer-only).
-- **Frontend** — A single-page app in `src/webui/static/index.html`; `routes/frontend.py` catch-alls unknown paths back to it.
+- **Frontend** — A single-page app: `src/webui/static/index.html` and its script `app.js`, under a Content-Security-Policy that runs no inline code; `routes/frontend.py` catch-alls unknown paths back to the page.
 
 ---
 
@@ -326,7 +327,7 @@ scrape_configs:
 | Layer | Technology |
 |-------|-----------|
 | Bot framework | [interactions.py](https://github.com/interactions-py/interactions.py) (`discord-py-interactions`) |
-| Database | MongoDB via [Motor](https://motor.readthedocs.io/) (async) |
+| Database | MongoDB via [PyMongo](https://pymongo.readthedocs.io/)'s async API (`AsyncMongoClient`) |
 | Web UI | [FastAPI](https://fastapi.tiangolo.com/) + [Uvicorn](https://www.uvicorn.org/) + [sse-starlette](https://github.com/sysid/sse-starlette) |
 | Config validation | [Pydantic v2](https://docs.pydantic.dev/) |
 | Spotify | [Spotipy](https://spotipy.readthedocs.io/) |

@@ -16,16 +16,16 @@ DEFAULT_ALLOW_HOST_WIN = False
 @register_module(MODULE_KEY)
 class GiveawayConfig(SchemaBase):
     __label__ = "Giveaways"
-    __description__ = "Tirages au sort à entrée par réaction avec tirage planifié."
+    __description__ = "Tirages au sort avec bouton de participation et tirage planifié."
     __icon__ = "🎁"
     __category__ = "Communauté"
 
     enabled: bool = enabled_field()
     giveawayEmoji: str = ui(
-        "Emoji d'entrée",
+        "Emoji du bouton Participer",
         "string",
         default=DEFAULT_EMOJI,
-        description="Emoji unicode utilisé pour participer (par défaut 🎉).",
+        description="Emoji affiché sur le bouton de participation (par défaut 🎉).",
     )
     allowHostWin: bool = ui(
         "Autoriser l'organisateur à gagner",
@@ -33,7 +33,7 @@ class GiveawayConfig(SchemaBase):
         default=DEFAULT_ALLOW_HOST_WIN,
         description=(
             "Si activé, l'hôte du giveaway peut participer et être tiré au sort "
-            "s'il réagit avec l'emoji d'entrée."
+            "s'il clique sur Participer."
         ),
     )
 

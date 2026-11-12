@@ -20,7 +20,8 @@ dependencies = [
     "curl_cffi",
     "uvloop; platform_system != 'Windows'",
     # Datastore
-    "motor",
+    # MongoDB driver, native async API (AsyncMongoClient, src/core/db.py)
+    "pymongo>=4.13",
     "pydantic>=2",
     # Integrations
     "spotipy",

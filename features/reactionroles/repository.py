@@ -61,7 +61,7 @@ class ReactionRolesRepository:
     async def list(self) -> list[RoleMenu]:
         try:
             cursor = self._col().find().sort("created_at", pymongo.DESCENDING)
-            docs = await cursor.to_list(length=None)
+            docs = await cursor.to_list()
             return [self._doc_to_menu(d) for d in docs]
         except Exception as e:
             log_failure(logger, "DB find failed: %s", e)

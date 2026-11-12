@@ -77,7 +77,7 @@ INTENTS = (
     | interactions.Intents.GUILD_MEMBERS  # welcome + userinfo member events, lldap role sync
     | interactions.Intents.GUILD_MESSAGES  # feur, xp leveling, automod, AI mention replies
     | interactions.Intents.MESSAGE_CONTENT  # feur keyword match, automod filters, AI context
-    | interactions.Intents.GUILD_MESSAGE_REACTIONS  # giveaway, polls, starboard
+    | interactions.Intents.GUILD_MESSAGE_REACTIONS  # polls, starboard
     | interactions.Intents.GUILD_VOICE_STATES  # xp voice activity
     | interactions.Intents.GUILD_SCHEDULED_EVENTS  # minecraft, twitch, zevent scheduled events
 )

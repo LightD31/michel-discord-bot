@@ -1,8 +1,9 @@
-"""Frontend HTML serving + the unauthenticated health probe.
+"""Frontend serving + the unauthenticated health probe.
 
-The catch-all just returns the SPA — the client-side router handles all
-unknown paths. To serve real static assets later, mount
-``fastapi.staticfiles.StaticFiles`` at a prefix in ``src/webui/app.py``.
+The SPA is two files: ``index.html`` (markup and styles) and ``app.js`` (its
+script, served at ``/static/app.js``: the Content-Security-Policy allows no
+inline script). The catch-all returns ``index.html`` for every other path —
+the client-side router handles them.
 """
 
 import hashlib
@@ -15,10 +16,11 @@ from src.webui.context import WebUIContext
 
 _STATIC_DIR = Path("src/webui/static").resolve()
 
-# The SPA (~370 KB) is read once and kept in memory with its ETag, instead of
+# The SPA's files are read once and kept in memory with their ETag, instead of
 # being read from disk on every page load. Keyed on the file's mtime, so an
-# edited index.html is still picked up without a restart.
+# edited file is still picked up without a restart.
 _cache: dict[str, tuple[float, str, str]] = {}
+SCRIPT_MEDIA_TYPE = "text/javascript; charset=utf-8"
 
 
 def _load_frontend(path: Path) -> tuple[str, str]:
@@ -33,10 +35,10 @@ def _load_frontend(path: Path) -> tuple[str, str]:
     return cached[1], cached[2]
 
 
-def _serve_frontend(request: Request | None = None) -> Response:
-    """The frontend HTML, or a 304 when the browser already has this version."""
+def _serve_file(name: str, media_type: str, request: Request | None) -> Response:
+    """Static file *name*, or a 304 when the browser already has this version."""
     try:
-        html, etag = _load_frontend(_STATIC_DIR / "index.html")
+        content, etag = _load_frontend(_STATIC_DIR / name)
     except FileNotFoundError:
         return HTMLResponse(
             content="<h1>Dashboard en construction</h1><p>Le fichier frontend n'a pas été trouvé.</p>",
@@ -46,7 +48,12 @@ def _serve_frontend(request: Request | None = None) -> Response:
     headers = {"ETag": etag, "Cache-Control": "no-cache"}
     if request is not None and etag in request.headers.get("if-none-match", ""):
         return Response(status_code=304, headers=headers)
-    return HTMLResponse(content=html, headers=headers)
+    return Response(content=content, media_type=media_type, headers=headers)
+
+
+def _serve_frontend(request: Request | None = None) -> Response:
+    """The frontend HTML, or a 304 when the browser already has this version."""
+    return _serve_file("index.html", "text/html; charset=utf-8", request)
 
 
 def create_router(ctx: WebUIContext) -> APIRouter:
@@ -56,6 +63,11 @@ def create_router(ctx: WebUIContext) -> APIRouter:
     async def health():
         """Unauthenticated liveness probe."""
         return JSONResponse({"status": "ok"})
+
+    @router.get("/static/app.js")
+    async def script(request: Request):
+        """The SPA's script (a separate file: the CSP allows no inline script)."""
+        return _serve_file("app.js", SCRIPT_MEDIA_TYPE, request)
 
     @router.get("/", response_class=HTMLResponse)
     async def index(request: Request):

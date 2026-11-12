@@ -4,18 +4,16 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
-# Discord caps reactions per message at 20 unique emojis; we only use one
-# (configurable). Winner count is bounded so the draw embed stays readable.
+# Winner count is bounded so the draw embed stays readable.
 MAX_WINNERS = 20
 
 
 class Giveaway(BaseModel):
     """A scheduled giveaway persisted to MongoDB.
 
-    Entry tracking is intentionally indirect: we don't mirror Discord's
-    reaction list into Mongo. At draw time the scheduler refetches the message
-    and reads ``message.get_reaction(emoji).users()`` so the source of truth
-    stays Discord — votes added/removed while the bot is offline still count.
+    Members enter with the announcement's "Participer" button: ``entrants``
+    holds their ids, added and removed with one atomic update per click, and
+    the draw picks among them. ``emoji`` decorates that button.
     """
 
     id: str | None = Field(default=None, alias="_id")
@@ -31,6 +29,7 @@ class Giveaway(BaseModel):
     ends_at: datetime
     drawn: bool = False
     cancelled: bool = False
+    entrants: list[str] = Field(default_factory=list)
     winners: list[str] = Field(default_factory=list)
     # Draws given back because Discord didn't answer (5xx, timeout).
     draw_failures: int = 0

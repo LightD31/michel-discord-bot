@@ -65,9 +65,20 @@ class PollRepository:
         )
 
     @translates_db_errors
+    async def list_open_reaction_polls(self, author_id: str, limit: int) -> list[Poll]:
+        """The *limit* newest open reaction polls *author_id* posted (``/editpoll``)."""
+        cursor = (
+            self._col()
+            .find({"author_id": str(author_id), "mode": "reaction", "closed": False})
+            .sort("_id", -1)
+            .limit(limit)
+        )
+        return [self._doc_to_poll(d) for d in await cursor.to_list()]
+
+    @translates_db_errors
     async def list_due(self, now: datetime) -> list[Poll]:
         cursor = self._col().find({"closed": False, "closes_at": {"$ne": None, "$lte": now}})
-        return [self._doc_to_poll(d) for d in await cursor.to_list(length=None)]
+        return [self._doc_to_poll(d) for d in await cursor.to_list()]
 
     @translates_db_errors
     async def set_options(self, poll_id: str, options: list[str], emojis: list[str]) -> None:
