@@ -7,14 +7,13 @@ mirrors it to the modlog, and DMs the author (when enabled).
 """
 
 import time
-from collections import deque
 from datetime import datetime
 from typing import Any
 
 from interactions import listen
 from interactions.api.events import MessageCreate
 
-from features.moderation import Infraction, contains_invite, match_banned_word
+from features.moderation import Infraction, SpamTracker, contains_invite, match_banned_word
 
 from ._common import AUTOMOD_MODERATOR_ID, get_guild_settings, is_staff, logger
 
@@ -23,7 +22,7 @@ class AutomodMixin:
     """MessageCreate-driven invite/spam/word filtering."""
 
     # Per-(guild, user) sliding window of message timestamps for anti-spam.
-    _spam: dict[tuple[str, str], deque]
+    _spam: SpamTracker
 
     @listen(MessageCreate)
     async def on_message_automod(self, event: MessageCreate) -> None:
@@ -78,15 +77,7 @@ class AutomodMixin:
         threshold = int(settings.get("spamThreshold", 5) or 5)
         window = float(settings.get("spamWindowSeconds", 7) or 7)
         key = (str(msg.guild.id), str(msg.author.id))
-        now = time.monotonic()
-        dq = self._spam.setdefault(key, deque())
-        dq.append(now)
-        while dq and now - dq[0] > window:
-            dq.popleft()
-        if len(dq) >= threshold:
-            dq.clear()  # reset so we don't re-trigger on every subsequent message
-            return True
-        return False
+        return self._spam.hit(key, time.monotonic(), threshold=threshold, window=window)
 
     async def _punish(self, msg: Any, settings: dict, reason: str) -> None:
         try:

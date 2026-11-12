@@ -6,11 +6,9 @@ banned-words) runs via a ``MessageCreate`` listener. Per-guild config:
 ``moduleModeration`` (modlog channel, staff role, automod toggles).
 """
 
-from collections import deque
-
 from interactions import Client, Extension, listen
 
-from features.moderation import ModerationRepository
+from features.moderation import ModerationRepository, SpamTracker
 
 from ._common import MODERATION, logger
 from .automod import AutomodMixin
@@ -24,7 +22,7 @@ class ModerationExtension(Extension, CommandsMixin, AutomodMixin, ModLogMixin):
     def __init__(self, bot: Client):
         self.bot = bot
         self._repos: dict[str, ModerationRepository] = {}
-        self._spam: dict[tuple[str, str], deque] = {}
+        self._spam = SpamTracker()
 
     def repository(self, guild_id: str | int) -> ModerationRepository:
         gid = str(guild_id)

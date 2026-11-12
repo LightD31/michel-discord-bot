@@ -25,6 +25,7 @@ from features.confrerie import notion_props as np
 from features.confrerie.drafts import SOURCE_DEMANDE, Draft, demande_draft_id, resolve_author
 from features.confrerie.stats import COL_DEFI, COL_GENRE, COL_TYPE
 from src.core import logging as logutil
+from src.core.cache import ExpiringMap
 from src.core.errors import ValidationError
 from src.discord_ext.messages import send_error
 from src.discord_ext.scopes import guild_scopes
@@ -48,7 +49,7 @@ def _normalise_link(link: str) -> str:
 class RequestsMixin:
     """Collect ``/demande`` submissions and hand them to the review flow."""
 
-    _pending_demandes: dict[int, dict]
+    _pending_demandes: ExpiringMap[dict]
 
     @slash_command(
         name="demande",
@@ -136,7 +137,7 @@ class RequestsMixin:
     async def demande_callback(
         self, ctx: ModalContext, title: str = "", lien: str = "", details: str = ""
     ):
-        choices = self._pending_demandes.pop(ctx.author.id, {})
+        choices = self._pending_demandes.pop(ctx.author.id) or {}
         title = title.strip()
         if not title:
             await send_error(ctx, "Le titre est obligatoire.")
