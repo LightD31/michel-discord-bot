@@ -152,7 +152,7 @@ class RecurringMixin:
             title="✅ Dépense récurrente créée",
             description=(
                 f"**{description}** — {montant:.2f}€ ({frequence})\n"
-                f"Prochaine occurrence : {next_run:%d/%m/%Y %H:%M}"
+                f"Prochaine occurrence : {clock.to_local(next_run):%d/%m/%Y %H:%M}"
             ),
             color=Colors.SUCCESS,
         )
@@ -200,7 +200,7 @@ class RecurringMixin:
                 value=(
                     f"Groupe : **{doc['group_name']}** · {doc['frequency']}\n"
                     f"Catégorie : {doc.get('category', DEFAULT_CATEGORY)}\n"
-                    f"Prochaine : {doc['next_run']:%d/%m/%Y %H:%M}\n"
+                    f"Prochaine : {clock.to_local(doc['next_run']):%d/%m/%Y %H:%M}\n"
                     f"ID : `{doc['_id']}`"
                 ),
                 inline=False,
