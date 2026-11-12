@@ -15,6 +15,8 @@ from interactions import (
 )
 
 from features.suggestions import Suggestion
+from src.core import clock
+from src.core.logging import log_failure
 from src.discord_ext.embeds import Colors
 from src.discord_ext.messages import (
     edit_message_if_changed,
@@ -138,7 +140,7 @@ class CommandsMixin:
             channel_id=str(channel.id),
             author_id=str(ctx.author.id),
             text=text,
-            created_at=datetime.now(),
+            created_at=clock.now(),
         )
         await repo.add(suggestion)
 
@@ -149,7 +151,7 @@ class CommandsMixin:
         try:
             sent = await channel.send(embeds=[embed], components=components)  # type: ignore[union-attr]
         except Exception as e:
-            logger.error("Failed to publish suggestion %s: %s", sugg_id, e)
+            log_failure(logger, "Failed to publish suggestion %s: %s", sugg_id, e)
             await send_error(ctx, "Impossible de publier la suggestion.")
             return
 

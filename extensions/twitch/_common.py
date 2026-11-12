@@ -5,10 +5,8 @@ schedule, emotes) can import these without triggering an import cycle through
 the package root.
 """
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
-
-import pytz
 
 from src.webui.schemas import SchemaBase, enabled_field, register_module, ui
 
@@ -37,8 +35,8 @@ def ensure_utc(dt: datetime | None) -> datetime | None:
     if dt is None:
         return None
     if dt.tzinfo is None:
-        return pytz.UTC.localize(dt)
-    return dt.astimezone(pytz.UTC)
+        return dt.replace(tzinfo=UTC)
+    return dt.astimezone(UTC)
 
 
 class StreamerInfo:

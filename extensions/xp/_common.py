@@ -7,8 +7,7 @@ through the package root.
 
 import os
 
-import pytz
-
+from src.core import clock
 from src.core import logging as logutil
 from src.core.config import ModuleConfig
 from src.discord_ext.embeds import Colors
@@ -84,7 +83,7 @@ logger = logutil.init_logger(__name__)
 XP = ModuleConfig("moduleXp")
 
 EMBED_COLOR = Colors.SUCCESS
-TIMEZONE = pytz.timezone("Europe/Paris")
+TIMEZONE = clock.LOCAL_TZ
 
 __all__ = [
     "EMBED_COLOR",

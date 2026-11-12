@@ -24,6 +24,7 @@ import spotipy
 
 from src.core import logging as logutil
 from src.core.config import config_store
+from src.core.errors import register_expected_failure
 
 logger = logutil.init_logger(__name__)
 
@@ -125,6 +126,17 @@ SPOTIFY_ERRORS: tuple[type[Exception], ...] = (
     spotipy.SpotifyException,
     requests.exceptions.RequestException,
 )
+
+
+def is_spotify_outage(error: BaseException) -> bool:
+    """A transport failure, a rate limit or a 5xx from Spotify: not a bug in the bot."""
+    if isinstance(error, requests.exceptions.RequestException):
+        return True
+    status = getattr(error, "http_status", None) or 0
+    return isinstance(error, spotipy.SpotifyException) and (status == 429 or status >= 500)
+
+
+register_expected_failure(is_spotify_outage)
 
 
 def get_token_status() -> dict[str, Any]:

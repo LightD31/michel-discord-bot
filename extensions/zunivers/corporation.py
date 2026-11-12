@@ -17,6 +17,8 @@ from features.coloc.constants import (
     CURRENCY_EMOJI,
     DEFAULT_CORPORATION_ID,
 )
+from src.core import clock
+from src.core.logging import log_failure
 from src.discord_ext.messages import send_error
 
 from ._common import logger, zunivers_api_url, zunivers_cmd, zunivers_web_url
@@ -82,7 +84,7 @@ class CorporationMixin:
             try:
                 await channel.send(embeds=[corp_embed, logs_embed])
             except Exception as e:  # noqa: BLE001 — one guild's failure must not stop the others
-                logger.error("Could not post the corporation recap in %s: %s", channel.id, e)
+                log_failure(logger, "Could not post the corporation recap in %s: %s", channel.id, e)
 
     @zunivers_cmd.subcommand(
         sub_cmd_name="corpo",
@@ -105,7 +107,7 @@ class CorporationMixin:
     def _parse_date(self, date_str: str | None = None) -> date_type | None:
         """Parse a date string or return today's date."""
         if date_str is None:
-            return datetime.today().date()
+            return clock.local_now().date()
         try:
             return datetime.strptime(date_str, "%Y-%m-%d").date()
         except ValueError:

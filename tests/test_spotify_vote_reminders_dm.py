@@ -2,7 +2,7 @@
 
 import importlib
 import sys
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
 import pytest
@@ -72,7 +72,7 @@ def mixin(votes_module):
 
 
 async def test_closed_dms_dont_stop_the_others(users, votes_module):
-    due = datetime.now() - timedelta(minutes=1)
+    due = datetime.now(UTC) - timedelta(minutes=1)
     server = server_due(due, [1, 2, 3])
     ext = mixin(votes_module)
     await ext._reminder_check_for_server(server)
@@ -83,7 +83,7 @@ async def test_closed_dms_dont_stop_the_others(users, votes_module):
 
 
 async def test_reminders_are_saved_even_when_the_vote_lookup_fails(users, votes_module):
-    due = datetime.now() - timedelta(minutes=1)
+    due = datetime.now(UTC) - timedelta(minutes=1)
     server = server_due(due, [2])
     server.vote_infos = {}  # no poll today: the lookup raises KeyError
     ext = mixin(votes_module)

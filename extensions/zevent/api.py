@@ -25,8 +25,10 @@ from features.zevent.stats import (
     select_event,
 )
 from features.zevent.velocity import DonationVelocity
+from src.core import clock
 from src.core import logging as logutil
 from src.core.http import fetch
+from src.core.logging import log_failure
 
 from ._common import (
     COMPARE_EVENT_ID,
@@ -75,7 +77,7 @@ class ApiMixin:
         """
         if not STATS_API_URL:
             return None
-        now = datetime.now()
+        now = clock.now()
         if not self._event_gate.ready(now):
             return self._stats_event
 
@@ -83,7 +85,7 @@ class ApiMixin:
             events = await fetch(f"{STATS_API_URL}/events", return_type="json")
         except Exception as e:
             self._event_gate.failed(now)
-            logger.error(f"Failed to fetch stats events ({self._event_gate.failures}x): {e}")
+            log_failure(logger, f"Failed to fetch stats events ({self._event_gate.failures}x): {e}")
             return self._stats_event
 
         if isinstance(events, list):
@@ -131,7 +133,7 @@ class ApiMixin:
         ``zevent.fr`` stopped serving a ``location`` on its streamer entries, so
         this is what tells the two location embeds apart.
         """
-        now = datetime.now()
+        now = clock.now()
         if not self._participant_gate.ready(now):
             return self._participant_cache
 
@@ -143,7 +145,9 @@ class ApiMixin:
             payload = await fetch(url, return_type="json")
         except Exception as e:
             self._participant_gate.failed(now)
-            logger.error(f"Failed to fetch participants ({self._participant_gate.failures}x): {e}")
+            log_failure(
+                logger, f"Failed to fetch participants ({self._participant_gate.failures}x): {e}"
+            )
             return self._participant_cache
 
         participants = parse_participants(payload)
@@ -167,7 +171,7 @@ class ApiMixin:
         so one unfiltered fetch replaces a day-filtered call plus the
         empty-day fallback that used to double it.
         """
-        now = datetime.now()
+        now = clock.now()
         if not self._planning_gate.ready(now) and self._planning_cache is not None:
             return self._planning_cache
 
@@ -179,7 +183,9 @@ class ApiMixin:
             shows = parse_shows(await fetch(url, return_type="json"))
         except Exception as e:
             self._planning_gate.failed(now)
-            logger.error(f"Failed to update planning cache ({self._planning_gate.failures}x): {e}")
+            log_failure(
+                logger, f"Failed to update planning cache ({self._planning_gate.failures}x): {e}"
+            )
             return self._planning_cache
 
         self._planning_cache = shows
@@ -203,7 +209,7 @@ class ApiMixin:
             amount = self._safe_get_data(entry, ["donationAmount", "number"], 0) or 0
             amounts[login] = float(amount)
         if amounts:
-            self._velocity.record(amounts, datetime.now())
+            self._velocity.record(amounts, clock.now())
 
     def goal_etas(self) -> dict[str, float]:
         """Minutes to each participant's next goal at its current rate.
@@ -233,7 +239,7 @@ class ApiMixin:
         """
         if not METRICS_BASE_URL:
             return None
-        now = datetime.now()
+        now = clock.now()
         if not self._reference_gate.ready(now):
             return self._reference_curve
 
@@ -335,7 +341,7 @@ class ApiMixin:
                 return True
             return False
         except Exception as e:
-            logger.error(f"Error checking if Zevent channel is live: {e}")
+            log_failure(logger, f"Error checking if Zevent channel is live: {e}")
             return False
 
     async def _is_concert_active(self) -> bool:
@@ -363,5 +369,5 @@ class ApiMixin:
 
             return total_amount, total_int
         except Exception as e:
-            logger.error(f"Error calculating total amount: {e}")
+            log_failure(logger, f"Error calculating total amount: {e}")
             return "Erreur de calcul", 0.0

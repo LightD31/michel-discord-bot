@@ -264,6 +264,33 @@ def validation_errors(model: type[SchemaBase], value: Any, *, module: bool) -> l
     return errors
 
 
+def config_problems(data: dict[str, Any]) -> list[str]:
+    """Every problem in a whole ``config.json``, as ``"location: field: message"`` lines.
+
+    Only sections and modules with a registered schema are checked, so the
+    result covers the extensions imported so far. The dashboard refuses to
+    save what fails here; this finds a hand edit or a key an older version
+    left behind before a save trips on it.
+    """
+    problems: list[str] = []
+    for section, value in sorted((data.get("config") or {}).items()):
+        model = section_model(section)
+        if model is None:
+            continue  # not editable from the dashboard
+        for error in validation_errors(model, value, module=False):
+            problems.append(f"config.{section}: {error}")
+    for server_id, server in sorted((data.get("servers") or {}).items()):
+        if not isinstance(server, dict):
+            continue
+        for module_name, value in sorted(server.items()):
+            model = module_model(module_name)
+            if model is None:
+                continue  # not a schema-backed module (e.g. the public dashboard token)
+            for error in validation_errors(model, value, module=True):
+                problems.append(f"servers.{server_id}.{module_name}: {error}")
+    return problems
+
+
 def _fields_of(cls: type[BaseModel]) -> dict[str, dict[str, Any]]:
     out: dict[str, dict[str, Any]] = {}
     for name, info in cls.model_fields.items():

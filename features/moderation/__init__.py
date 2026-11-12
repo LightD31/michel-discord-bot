@@ -12,6 +12,7 @@ from features.moderation.duration import (
 from features.moderation.filters import INVITE_RE, contains_invite, match_banned_word
 from features.moderation.models import Infraction, InfractionSource, InfractionType
 from features.moderation.repository import ModerationRepository
+from features.moderation.spam import SpamTracker
 
 __all__ = [
     "INVITE_RE",
@@ -20,6 +21,7 @@ __all__ = [
     "InfractionSource",
     "InfractionType",
     "ModerationRepository",
+    "SpamTracker",
     "clamp_timeout",
     "contains_invite",
     "humanize_duration",

@@ -37,7 +37,6 @@ class VoiceMixin:
     bot: Client
     _db_connected: bool
     _rank_cache: TTLCache
-    _repos: dict[str, XpRepository]
     _voice_sessions: dict[tuple[str, str], float]  # (guild_id, user_id) -> last-award ts
 
     def _repo(self, guild_id: str) -> XpRepository: ...  # provided by LevelingMixin

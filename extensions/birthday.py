@@ -4,9 +4,9 @@ All business logic lives in features/birthday/.
 """
 
 import random
-from datetime import date, datetime
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
-import pytz
 from babel.dates import format_date, get_date_format
 from interactions import (
     ActionRow,
@@ -28,6 +28,7 @@ from interactions import (
 )
 
 from features.birthday import (
+    TIMEZONES,
     BirthdayEntry,
     BirthdayRepository,
     age_on,
@@ -36,9 +37,11 @@ from features.birthday import (
     parse_birth_date,
     strip_year_from_format,
 )
+from src.core import clock
 from src.core import logging as logutil
 from src.core.config import ModuleConfig
 from src.core.errors import DatabaseError, ValidationError
+from src.core.logging import log_failure
 from src.core.text import pick_weighted_message
 from src.discord_ext.embeds import Colors
 from src.discord_ext.mentions import everyone_if_written
@@ -87,15 +90,15 @@ MODULE = ModuleConfig("moduleBirthday")
 
 def _validate_and_parse_date(date_str: str) -> datetime:
     try:
-        return parse_birth_date(date_str, today=date.today())
+        return parse_birth_date(date_str, today=clock.local_now().date())
     except ValueError as e:
         raise ValidationError(str(e)) from e
 
 
-def _validate_timezone(timezone_str: str) -> pytz.BaseTzInfo:
-    if timezone_str not in pytz.all_timezones:
+def _validate_timezone(timezone_str: str) -> ZoneInfo:
+    if timezone_str not in TIMEZONES:
         raise ValidationError("Fuseau horaire invalide")
-    return pytz.timezone(timezone_str)
+    return ZoneInfo(timezone_str)
 
 
 class BirthdayExtension(Extension):
@@ -140,7 +143,7 @@ class BirthdayExtension(Extension):
                 )
         except Exception as e:
             action = "giving" if add else "removing"
-            logger.error("Error %s birthday role: %s", action, e)
+            log_failure(logger, "Error %s birthday role: %s", action, e)
 
     @listen()
     async def on_startup(self) -> None:
@@ -148,7 +151,7 @@ class BirthdayExtension(Extension):
             try:
                 await self._repo(guild_id).ensure_indexes()
             except Exception as e:
-                logger.error("Failed to create indexes for guild %s: %s", guild_id, e)
+                log_failure(logger, "Failed to create indexes for guild %s: %s", guild_id, e)
         self.anniversaire_check.start()
 
     @slash_command(
@@ -196,7 +199,7 @@ class BirthdayExtension(Extension):
             entry = BirthdayEntry(
                 user=ctx.author.id,
                 date=parsed_date,
-                timezone=validated_tz.zone,
+                timezone=validated_tz.key,
                 hideyear=hideyear or False,
                 isBirthday=existing.isBirthday if existing else False,
             )
@@ -216,13 +219,13 @@ class BirthdayExtension(Extension):
             logger.error("Database error for user %s: %s", ctx.author.display_name, e)
             await ctx.send("Erreur lors de l'enregistrement. Veuillez réessayer.", ephemeral=True)
         except Exception as e:
-            logger.error("Unexpected error in anniversaire command: %s", e)
+            log_failure(logger, "Unexpected error in anniversaire command: %s", e)
             await ctx.send("Une erreur inattendue s'est produite.", ephemeral=True)
 
     @anniversaire.autocomplete("timezone")
     async def anniversaire_timezone(self, ctx: AutocompleteContext) -> None:
         timezone_input = ctx.input_text.lower()
-        all_tz = list(pytz.all_timezones)
+        all_tz = sorted(TIMEZONES)
         filtered = (
             [tz for tz in all_tz if timezone_input in tz.lower()][:25]
             if timezone_input
@@ -324,7 +327,7 @@ class BirthdayExtension(Extension):
                     if entry.hideyear:
                         lines.append(f"**{user.mention}** : {formatted}")
                     else:
-                        age = age_on(entry.date, date.today())
+                        age = age_on(entry.date, clock.local_now().date())
                         lines.append(f"**{user.mention}** : {formatted} ({age} ans)")
                     if len(lines) % 25 == 0:
                         embeds.append(
@@ -336,7 +339,7 @@ class BirthdayExtension(Extension):
                         )
                         lines = []
                 except Exception as e:
-                    logger.error("Error processing birthday for user %s: %s", entry.user, e)
+                    log_failure(logger, "Error processing birthday for user %s: %s", entry.user, e)
 
             if lines:
                 embeds.append(
@@ -353,7 +356,7 @@ class BirthdayExtension(Extension):
             await paginator.send(ctx)
 
         except Exception as e:
-            logger.error("Error in anniversaire_liste: %s", e)
+            log_failure(logger, "Error in anniversaire_liste: %s", e)
             await ctx.send("Erreur lors de la récupération des anniversaires.", ephemeral=True)
 
     @Task.create(OrTrigger(*[TimeTrigger(hour, 0) for hour in range(24)]))
@@ -370,14 +373,16 @@ class BirthdayExtension(Extension):
                         try:
                             await self._process_birthday(entry, int(guild_id))
                         except Exception as e:
-                            logger.error("Error processing birthday for user %s: %s", entry.user, e)
+                            log_failure(
+                                logger, "Error processing birthday for user %s: %s", entry.user, e
+                            )
                 except Exception as e:
-                    logger.error("Error loading birthdays for guild %s: %s", guild_id, e)
+                    log_failure(logger, "Error loading birthdays for guild %s: %s", guild_id, e)
         except Exception as e:
-            logger.error("Critical error in anniversaire_check task: %s", e)
+            log_failure(logger, "Critical error in anniversaire_check task: %s", e)
 
     async def _process_birthday(self, entry: BirthdayEntry, guild_id: int) -> None:
-        now_tz = datetime.now(pytz.timezone(entry.timezone))
+        now_tz = datetime.now(ZoneInfo(entry.timezone))
         if is_birthday(entry, now_tz.date()):
             await self._handle_birthday_celebration(entry, guild_id, now_tz)
         else:
@@ -417,7 +422,7 @@ class BirthdayExtension(Extension):
                 age,
             )
         except Exception as e:
-            logger.error("Error handling birthday celebration: %s", e)
+            log_failure(logger, "Error handling birthday celebration: %s", e)
 
     async def _handle_birthday_end(self, entry: BirthdayEntry, guild_id: int) -> None:
         if not entry.isBirthday:
@@ -433,7 +438,7 @@ class BirthdayExtension(Extension):
             logger.info("Birthday ended for %s on server %s", member.display_name, server.name)
             await self._toggle_birthday_role(server, member, guild_id, add=False)
         except Exception as e:
-            logger.error("Error handling birthday end: %s", e)
+            log_failure(logger, "Error handling birthday end: %s", e)
 
     async def _send_birthday_message(self, channel, member, age: int, server_id: int) -> None:
         try:
@@ -449,4 +454,4 @@ class BirthdayExtension(Extension):
             await channel.send(text, allowed_mentions=everyone_if_written(text))
             logger.debug("Birthday message sent for %s", member.display_name)
         except Exception as e:
-            logger.error("Error sending birthday message: %s", e)
+            log_failure(logger, "Error sending birthday message: %s", e)

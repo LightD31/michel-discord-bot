@@ -2,6 +2,7 @@
 
 from src.core import logging as logutil
 from src.core.db import mongo_manager
+from src.core.logging import log_failure
 
 from .models import EventState, ReminderCollection
 
@@ -42,7 +43,7 @@ class StorageManager:
             logger.info("No reminders document found, starting with empty collection")
             return ReminderCollection()
         except Exception as e:
-            logger.error(f"Failed to load reminders: {e}")
+            log_failure(logger, f"Failed to load reminders: {e}")
             return ReminderCollection()
 
     async def save_reminders(self, reminders: ReminderCollection) -> None:
@@ -60,7 +61,7 @@ class StorageManager:
                 upsert=True,
             )
         except Exception as e:
-            logger.error(f"Failed to save reminders: {e}")
+            log_failure(logger, f"Failed to save reminders: {e}")
 
     # Event state storage
 
@@ -74,7 +75,7 @@ class StorageManager:
             logger.info("No events document found, starting with empty state")
             return EventState()
         except Exception as e:
-            logger.error(f"Failed to load event state: {e}")
+            log_failure(logger, f"Failed to load event state: {e}")
             return EventState()
 
     async def save_event_state(self, state: EventState) -> None:
@@ -86,4 +87,4 @@ class StorageManager:
                 upsert=True,
             )
         except Exception as e:
-            logger.error(f"Failed to save event state: {e}")
+            log_failure(logger, f"Failed to save event state: {e}")

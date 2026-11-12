@@ -124,6 +124,9 @@ class ConfrerieConfig(SchemaBase):
 
 CONFRERIE = ModuleConfig("moduleConfrerie")
 
+# How long /demande and /editeur keep what a member chose while their modal is open.
+PENDING_INPUT_TTL_SECONDS = 15 * 60
+
 
 class ConfrerieError(BotError):
     """Base exception for Confrérie extension errors (domain-level)."""

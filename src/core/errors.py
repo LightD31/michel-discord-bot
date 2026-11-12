@@ -15,6 +15,10 @@ Tree
     - :class:`ValidationError`            — user-supplied input is invalid
 """
 
+from collections.abc import Callable
+
+from aiohttp import ClientError
+
 from src.core.urls import redact_url, redact_urls_in
 
 
@@ -64,11 +68,45 @@ class HttpError(IntegrationError):
         return f"{super().__str__()} (url={self.url!r})"
 
 
+# Failures that come from outside the code (an outage, a refusal) rather than
+# from a bug in it: a caught one is logged on one line, without its traceback.
+EXPECTED_FAILURES: tuple[type[BaseException], ...] = (
+    DatabaseError,
+    IntegrationError,
+    TimeoutError,
+    ConnectionError,
+    ClientError,
+)
+
+_expected_checks: list[Callable[[BaseException], bool]] = []
+
+
+def register_expected_failure(check: Callable[[BaseException], bool]) -> None:
+    """Also count as expected the errors *check* accepts (a library's own outage errors)."""
+    if check not in _expected_checks:
+        _expected_checks.append(check)
+
+
+def is_expected_failure(error: BaseException) -> bool:
+    """Whether *error* is an outage or a refusal rather than a bug.
+
+    The bot's own database and integration errors, timeouts and connection
+    failures, plus what :func:`register_expected_failure` added (Discord's
+    403/404/5xx answers, Spotify's transport errors).
+    """
+    if isinstance(error, EXPECTED_FAILURES):
+        return True
+    return any(check(error) for check in _expected_checks)
+
+
 __all__ = [
+    "EXPECTED_FAILURES",
     "BotError",
     "ConfigError",
     "DatabaseError",
     "HttpError",
     "IntegrationError",
     "ValidationError",
+    "is_expected_failure",
+    "register_expected_failure",
 ]

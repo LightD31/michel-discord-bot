@@ -15,6 +15,7 @@ from interactions import (
 )
 
 from features.reactionroles import RoleMenu, RoleMenuEntry
+from src.core import clock
 from src.discord_ext.embeds import Colors
 from src.discord_ext.errors import failure_reply
 from src.discord_ext.messages import (
@@ -132,7 +133,7 @@ class CommandsMixin:
             description=description,
             entries=parsed,
             created_by=str(ctx.author.id),
-            created_at=datetime.now(),
+            created_at=clock.now(),
         )
         menu_id = await self.repository(ctx.guild_id).add(menu)
 

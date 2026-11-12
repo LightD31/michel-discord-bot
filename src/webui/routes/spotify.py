@@ -30,6 +30,7 @@ from features.spotify import PlaylistStats, SpotifyRepository, aggregate
 from src.core import logging as logutil
 from src.core.config import config_store
 from src.core.errors import DatabaseError
+from src.core.logging import log_failure
 from src.integrations.spotify import (
     build_oauth,
     fetch_account_summary,
@@ -157,7 +158,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
             # Blocking HTTP + token cache write: on the Spotify worker, never the loop.
             await run_spotify(oauth.get_access_token, code=code, as_dict=False, check_cache=False)
         except Exception as e:
-            logger.error("Spotify token exchange failed: %s", e)
+            log_failure(logger, "Spotify token exchange failed: %s", e)
             return _result_page(
                 ok=False,
                 message="Échec de l'échange du code. Voir les logs du bot pour le détail.",

@@ -22,15 +22,9 @@ class SuggestionsExtension(Extension, CommandsMixin, ButtonsMixin):
 
     def __init__(self, bot: Client):
         self.bot = bot
-        self._repos: dict[str, SuggestionsRepository] = {}
 
     def repository(self, guild_id: str | int) -> SuggestionsRepository:
-        gid = str(guild_id)
-        repo = self._repos.get(gid)
-        if repo is None:
-            repo = SuggestionsRepository(gid)
-            self._repos[gid] = repo
-        return repo
+        return SuggestionsRepository(str(guild_id))
 
     @listen()
     async def on_startup(self):

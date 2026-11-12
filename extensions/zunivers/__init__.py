@@ -20,6 +20,7 @@ import asyncio
 from interactions import Client, Extension, GuildText, listen
 
 from features.coloc import StorageManager, ZuniversAPIClient
+from src.core.logging import log_failure
 
 from ._common import ZUNIVERS, GuildState, ZuniversConfig, logger, zunivers_api_url
 from .corporation import CorporationMixin
@@ -97,7 +98,7 @@ class ZuniversExtension(
                 return channel
             return None
         except Exception as e:
-            logger.error(f"Could not fetch Zunivers channel: {e}")
+            log_failure(logger, f"Could not fetch Zunivers channel: {e}")
             return None
 
 

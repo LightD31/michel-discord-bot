@@ -5,8 +5,8 @@ global database.
 """
 
 from dataclasses import asdict
-from datetime import datetime
 
+from src.core import clock
 from src.core.db import mongo_manager, translates_db_errors
 from src.core.logging import init_logger
 
@@ -97,7 +97,7 @@ class SecretSantaRepository:
             {
                 "$set": {
                     "results": [list(p) for p in draw_results],
-                    "drawn_at": datetime.now().isoformat(),
+                    "drawn_at": clock.now().isoformat(),
                 }
             },
             upsert=True,

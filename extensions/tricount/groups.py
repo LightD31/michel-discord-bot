@@ -21,6 +21,7 @@ from features.tricount import (
     format_amount,
     to_cents,
 )
+from src.core import clock
 from src.core import logging as logutil
 from src.discord_ext.autocomplete import guild_group_autocomplete
 from src.discord_ext.embeds import Colors
@@ -78,7 +79,7 @@ class GroupsMixin:
             "description": description or "",
             "creator": ctx.author.id,
             "members": [ctx.author.id],
-            "created_at": datetime.now(),
+            "created_at": clock.now(),
             "is_active": True,
         }
         group_id = await repo.create_group(group_data)
@@ -291,7 +292,7 @@ class GroupsMixin:
                 # it and the payer's debt with it.
                 "participants": [destinataire.id],
                 "added_by": ctx.author.id,
-                "date": datetime.now(),
+                "date": clock.now(),
             }
         )
         after = compute_balances(await repo.list_group_expenses(group["_id"]), members)

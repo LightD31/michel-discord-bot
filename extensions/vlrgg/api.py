@@ -8,6 +8,7 @@ from features.vlrgg import VlrggLiveRepository, match_id_of
 from features.vlrgg import (
     fetch_all_team_data as vlrgg_fetch_all,
 )
+from src.core.logging import log_failure
 
 from ._common import TeamConfig, logger
 
@@ -47,7 +48,7 @@ class ApiMixin:
                 return None
             return data
         except Exception as e:
-            logger.error(f"Erreur récupération VLR.gg pour {tc.name}: {e}")
+            log_failure(logger, f"Erreur récupération VLR.gg pour {tc.name}: {e}")
             return None
 
     # ── Data parsing ──────────────────────────────────────────────────────────

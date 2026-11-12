@@ -47,6 +47,7 @@ from typing import TYPE_CHECKING, Any, Literal
 from interactions import events
 
 from src.core import logging as logutil
+from src.core.logging import log_failure
 from src.core.tasks import spawn
 from src.discord_ext.lifecycle import release
 
@@ -119,7 +120,9 @@ async def _boot_sequence(bot: Any, ext: Any, ext_path: str) -> None:
             try:
                 await _run_listener(listener, event_cls, bot)
             except Exception as e:  # noqa: BLE001 — same as a failing boot listener
-                logger.error("%s listener of %s failed after load: %s", event_name, ext_path, e)
+                log_failure(
+                    logger, "%s listener of %s failed after load: %s", event_name, ext_path, e
+                )
 
 
 def boot(bot: Any, ext_path: str) -> None:

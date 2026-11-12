@@ -16,6 +16,7 @@ from interactions import Client, Extension, Task, TimeTrigger, listen
 
 from features.xp import RANK_CACHE_TTL, USER_CACHE_TTL, TTLCache, XpRepository
 from src.core.db import mongo_manager
+from src.core.logging import log_failure
 from src.discord_ext.paginator import CustomPaginator
 
 from ._common import XP, XpConfig, logger
@@ -35,7 +36,6 @@ class XpExtension(Extension, LevelingMixin, VoiceMixin, CommandsMixin, Leaderboa
         self._db_connected = True
         self._user_cache = TTLCache(ttl=USER_CACHE_TTL)
         self._rank_cache = TTLCache(ttl=RANK_CACHE_TTL)
-        self._repos: dict[str, XpRepository] = {}
         self._xp_collections: set[str] = set()  # guilds whose xp collection exists
         self._voice_sessions: dict[tuple[str, str], float] = {}
         self._leaderboard_paginators: dict[str, CustomPaginator] = {}
@@ -62,7 +62,7 @@ class XpExtension(Extension, LevelingMixin, VoiceMixin, CommandsMixin, Leaderboa
                 logger.error("MongoDB connection failed at startup, XP module disabled.")
                 self._db_connected = False
         except Exception as e:
-            logger.error("MongoDB ping failed: %s", e)
+            log_failure(logger, "MongoDB ping failed: %s", e)
             self._db_connected = False
 
         for guild_id in XP.guild_ids():
@@ -70,7 +70,7 @@ class XpExtension(Extension, LevelingMixin, VoiceMixin, CommandsMixin, Leaderboa
                 await self._repo(guild_id).ensure_indexes()
                 logger.debug("Ensured indexes for guild %s", guild_id)
             except Exception as e:
-                logger.error("Failed to create indexes for guild %s: %s", guild_id, e)
+                log_failure(logger, "Failed to create indexes for guild %s: %s", guild_id, e)
 
         self._cache_cleanup_task.start()
         self._voice_xp_tick.start()

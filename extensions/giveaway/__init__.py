@@ -40,7 +40,9 @@ from interactions.api.events import MessageReactionAdd, MessageReactionRemove
 
 from features.giveaway import MAX_WINNERS, Giveaway, GiveawayRepository, pick_winners
 from features.polls import parse_duration  # reused: same DSL as /poll
+from src.core import clock
 from src.core.debounce import Coalescer
+from src.core.logging import log_failure
 from src.core.text import EMBED_DESCRIPTION_LIMIT, clip
 from src.discord_ext.embeds import Colors, format_discord_timestamp
 from src.discord_ext.messages import (
@@ -228,17 +230,11 @@ class GiveawayExtension(Extension):
 
     def __init__(self, bot: Client):
         self.bot: Client = bot
-        self._repos: dict[str, GiveawayRepository] = {}
         # A burst of reactions on a giveaway re-reads its entrants once.
         self._refreshes = Coalescer(REFRESH_DELAY_SECONDS, name="giveaway-refresh", log=logger)
 
     def _repo(self, guild_id: str | int) -> GiveawayRepository:
-        gid = str(guild_id)
-        repo = self._repos.get(gid)
-        if repo is None:
-            repo = GiveawayRepository(gid)
-            self._repos[gid] = repo
-        return repo
+        return GiveawayRepository(str(guild_id))
 
     @listen()
     async def on_startup(self) -> None:
@@ -246,7 +242,7 @@ class GiveawayExtension(Extension):
             try:
                 await self._repo(gid).ensure_indexes()
             except Exception as e:
-                logger.error("Could not init giveaway indexes for %s: %s", gid, e)
+                log_failure(logger, "Could not init giveaway indexes for %s: %s", gid, e)
         self.check_giveaways.start()
         logger.info("Giveaway extension ready (%d guild(s))", len(GIVEAWAY.guild_ids()))
 
@@ -323,7 +319,7 @@ class GiveawayExtension(Extension):
             await send_error(ctx, "Durée maximale : 30 jours.")
             return
 
-        ends_at = datetime.now() + timedelta(seconds=seconds)
+        ends_at = clock.now() + timedelta(seconds=seconds)
         emoji = guild_emoji(ctx.guild_id)
         effective_allow_host_win = (
             allow_host_win if allow_host_win is not None else guild_allow_host_win(ctx.guild_id)
@@ -354,7 +350,7 @@ class GiveawayExtension(Extension):
         try:
             giveaway.id = await self._repo(ctx.guild_id).add(giveaway)
         except Exception as e:
-            logger.error("Could not persist giveaway: %s", e)
+            log_failure(logger, "Could not persist giveaway: %s", e)
             await send_error(ctx, "Le giveaway a été posté mais sa persistance a échoué.")
             return
         try:
@@ -612,12 +608,12 @@ class GiveawayExtension(Extension):
 
     @Task.create(IntervalTrigger(seconds=30))
     async def check_giveaways(self) -> None:
-        now = datetime.now()
+        now = clock.now()
         for gid in GIVEAWAY.guild_ids():
             try:
                 due = await self._repo(gid).list_due(now)
             except Exception as e:
-                logger.error("Could not fetch due giveaways for %s: %s", gid, e)
+                log_failure(logger, "Could not fetch due giveaways for %s: %s", gid, e)
                 continue
             for giveaway in due:
                 try:
@@ -664,7 +660,8 @@ class GiveawayExtension(Extension):
                 logger.warning("Could not read giveaway %s, retrying later: %s", giveaway.id, e)
                 await repo.release_draw(giveaway.id)
                 return "retry"
-            logger.error(
+            log_failure(
+                logger,
                 "Giveaway %s closed without winners: Discord didn't answer %d times (%s)",
                 giveaway.id,
                 MAX_DRAW_FAILURES,

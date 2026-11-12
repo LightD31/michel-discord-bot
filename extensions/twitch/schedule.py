@@ -4,7 +4,6 @@ import contextlib
 import os
 from datetime import datetime, timedelta
 
-import pytz
 from interactions import (
     Embed,
     EmbedFooter,
@@ -22,7 +21,9 @@ from twitchAPI.object.api import ChannelStreamSchedule, ChannelStreamScheduleSeg
 from twitchAPI.object.eventsub import ChannelUpdateEvent, StreamOfflineEvent
 from twitchAPI.type import TwitchResourceNotFound
 
+from src.core import clock
 from src.core import logging as logutil
+from src.core.logging import log_failure
 from src.discord_ext.embeds import Colors
 from src.discord_ext.messages import (
     edit_message_if_changed,
@@ -61,7 +62,7 @@ class ScheduleMixin:
         stream: ChannelStreamScheduleSegment,
         is_now: bool = False,
     ) -> None:
-        now = datetime.now(pytz.UTC)
+        now = clock.now()
         start_time = ensure_utc(stream.start_time)
         end_time = ensure_utc(stream.end_time)
         title = stream.title if stream.title is not None else "Pas de titre défini"
@@ -107,7 +108,7 @@ class ScheduleMixin:
             logger.error("No schedule found for user %s: %s", user_id, e)
             schedule = None
         except Exception as e:
-            logger.error(f"Error fetching schedule for user {user_id}: {e}")
+            log_failure(logger, f"Error fetching schedule for user {user_id}: {e}")
             schedule = None
 
         if guild_id is None:
@@ -126,10 +127,10 @@ class ScheduleMixin:
                     ),
                     description="Les 5 prochains streams planifiés et dans moins de 10 jours.",
                     color=Colors.TWITCH,
-                    timestamp=datetime.now(pytz.UTC),
+                    timestamp=clock.now(),
                     footer=EmbedFooter(text=bot.display_name, icon_url=bot.avatar_url),
                 )
-                now = datetime.now(pytz.UTC)
+                now = clock.now()
                 for stream in segments:
                     start_time = ensure_utc(stream.start_time)
                     end_time = ensure_utc(stream.end_time)
@@ -144,18 +145,18 @@ class ScheduleMixin:
                 ),
                 description="Aucun stream planifié",
                 color=Colors.TWITCH,
-                timestamp=datetime.now(pytz.UTC),
+                timestamp=clock.now(),
                 footer=EmbedFooter(text=bot.display_name, icon_url=bot.avatar_url),
             )
         except Exception as e:
-            logger.error(
-                f"Error creating schedule embed for user {user_id} in guild {guild_id}: {e}"
+            log_failure(
+                logger, f"Error creating schedule embed for user {user_id} in guild {guild_id}: {e}"
             )
             return Embed(
                 title="Planning",
                 description="Erreur lors de la récupération du planning",
                 color=Colors.ERROR,
-                timestamp=datetime.now(pytz.UTC),
+                timestamp=clock.now(),
             )
 
     async def edit_message(
@@ -208,7 +209,9 @@ class ScheduleMixin:
                             await streamer.scheduled_event.delete()
                         streamer.scheduled_event = None
                 except Exception as e:
-                    logger.error(f"Error handling scheduled event for {streamer.streamer_id}: {e}")
+                    log_failure(
+                        logger, f"Error handling scheduled event for {streamer.streamer_id}: {e}"
+                    )
 
             if message:
                 try:
@@ -229,7 +232,7 @@ class ScheduleMixin:
                         logger=logger,
                     )
                 except Exception as e:
-                    logger.error(f"Error editing message for {streamer.streamer_id}: {e}")
+                    log_failure(logger, f"Error editing message for {streamer.streamer_id}: {e}")
                     # Deleted from Discord, say: resolved again (or reposted) next time.
                     forget_persistent_message(streamer.guild_id, streamer.planning_slot)
         else:
@@ -239,7 +242,9 @@ class ScheduleMixin:
                 except NotFound:
                     pass
                 except Exception as e:
-                    logger.error(f"Error deleting scheduled event for {streamer.streamer_id}: {e}")
+                    log_failure(
+                        logger, f"Error deleting scheduled event for {streamer.streamer_id}: {e}"
+                    )
                 streamer.scheduled_event = None
 
             if message:
@@ -256,7 +261,7 @@ class ScheduleMixin:
                         logger=logger,
                     )
                 except Exception as e:
-                    logger.error(f"Error editing message for {streamer.streamer_id}: {e}")
+                    log_failure(logger, f"Error editing message for {streamer.streamer_id}: {e}")
                     forget_persistent_message(streamer.guild_id, streamer.planning_slot)
 
     @Task.create(
@@ -286,6 +291,7 @@ class ScheduleMixin:
                     stream = await self.get_stream_data(streamer.user_id)
                     await self.edit_message(streamer, offline=(stream is None))
                 except Exception as e:
-                    logger.error(
-                        f"Error updating streamer {streamer.streamer_id} in guild {streamer.guild_id}: {e}"
+                    log_failure(
+                        logger,
+                        f"Error updating streamer {streamer.streamer_id} in guild {streamer.guild_id}: {e}",
                     )

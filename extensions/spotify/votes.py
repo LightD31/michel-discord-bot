@@ -36,7 +36,9 @@ from features.spotify.votes import (
     pick_vote_track,
     tally_daily_votes,
 )
+from src.core import clock
 from src.core import logging as logutil
+from src.core.logging import log_failure
 from src.discord_ext.messages import (
     copy_embed,
     edit_message_if_changed,
@@ -80,7 +82,7 @@ class VotesMixin:
             try:
                 await self._randomvote_for_server(server)
             except Exception as e:
-                logger.error("Error in randomvote for server %s: %s", server.guild_id, e)
+                log_failure(logger, "Error in randomvote for server %s: %s", server.guild_id, e)
 
     async def _randomvote_for_server(self, server: ServerData):
         logger.info("Tache randomvote lancée pour le serveur %s", server.guild_id)
@@ -324,7 +326,7 @@ class VotesMixin:
                 "name": (
                     f"{', '.join(artist['name'] for artist in track['artists'])} - {track['name']}"
                 ),
-                "date": datetime.now().strftime("%Y-%m-%d"),
+                "date": clock.local_now().strftime("%Y-%m-%d"),
                 "added_by": song["added_by"],
                 "votes": {},
             },
@@ -404,22 +406,18 @@ class VotesMixin:
         server = self.get_server(ctx.guild_id)
         if str(ctx.channel_id) == str(server.channel_id):
             logger.info("%s a ajouté un rappel à %s:%s", ctx.user.display_name, heure, minute)
-            remind_time = datetime.strptime(f"{heure}:{minute}", "%H:%M")
-            current_time = datetime.now()
-            remind_time = current_time.replace(
-                hour=remind_time.hour,
-                minute=remind_time.minute,
-                second=0,
-                microsecond=0,
-            )
-            if remind_time <= current_time:
-                remind_time += timedelta(days=1)
+            today = clock.local_now().date()
+            remind_time = clock.at_local(today, int(heure), int(minute))
+            if remind_time <= clock.now():
+                remind_time = clock.at_local(today + timedelta(days=1), int(heure), int(minute))
             if remind_time not in server.reminders:
                 server.reminders[remind_time] = set()
             server.reminders[remind_time].add(ctx.user.id)
             await self.save_reminders(server)
 
-            await ctx.send(f"Rappel défini à {remind_time.strftime('%H:%M')}.", ephemeral=True)
+            await ctx.send(
+                f"Rappel défini à {clock.to_local(remind_time).strftime('%H:%M')}.", ephemeral=True
+            )
         else:
             await send_error(ctx, "Cette commande n'est pas disponible dans ce salon.")
             logger.info(
@@ -435,11 +433,11 @@ class VotesMixin:
             try:
                 await self._reminder_check_for_server(server)
             except Exception as e:
-                logger.error("Error in reminder_check for server %s: %s", server.guild_id, e)
+                log_failure(logger, "Error in reminder_check for server %s: %s", server.guild_id, e)
 
     async def _reminder_check_for_server(self, server: ServerData):
         logger.debug("reminder_check lancé pour le serveur %s", server.guild_id)
-        current_time = datetime.now()
+        current_time = clock.now()
         reminders_to_remove = []
         try:
             for remind_time, user_ids in server.reminders.copy().items():
@@ -449,7 +447,9 @@ class VotesMixin:
                     # Rescheduled whatever the DM does: one member with closed
                     # DMs must not keep the others' reminders from going out.
                     await self._send_vote_reminder(server, user_id)
-                    server.reminders.setdefault(remind_time + timedelta(days=1), set()).add(user_id)
+                    server.reminders.setdefault(
+                        clock.local_step(remind_time, timedelta(days=1)), set()
+                    ).add(user_id)
                     user_ids.remove(user_id)
                 if not user_ids:
                     reminders_to_remove.append(remind_time)
@@ -500,7 +500,7 @@ class VotesMixin:
         }
         buttons = [
             Button(
-                label=remind_time.strftime("%H:%M"),
+                label=clock.to_local(remind_time).strftime("%H:%M"),
                 style=ButtonStyle.SECONDARY,
                 custom_id=custom_id,
             )
@@ -530,12 +530,12 @@ class VotesMixin:
                 del server.reminders[remind_time]
         await self.save_reminders(server)
         await button_ctx.ctx.edit_origin(
-            content=f"Rappel à {remind_time.strftime('%H:%M')} supprimé.",
+            content=f"Rappel à {clock.to_local(remind_time).strftime('%H:%M')} supprimé.",
             components=[],
         )
         logger.info(
             "Rappel à %s supprimé pour %s",
-            remind_time.strftime("%H:%M"),
+            clock.to_local(remind_time).strftime("%H:%M"),
             ctx.user.display_name,
         )
 
@@ -599,7 +599,7 @@ class VotesMixin:
                         ),
                     ),
                 ]
-                time_deadline = add_vote_deadline(datetime.now())
+                time_deadline = add_vote_deadline(clock.now())
                 embed, file = await embed_song(
                     song=song,
                     track=track,
@@ -764,7 +764,7 @@ class VotesMixin:
             try:
                 data = await server.vote_manager.load_data()
             except Exception as e:
-                logger.error("Error in check_for_end for server %s: %s", server.guild_id, e)
+                log_failure(logger, "Error in check_for_end for server %s: %s", server.guild_id, e)
                 continue
             # One try per poll, so a failing poll doesn't keep the others open.
             for song_id in data:
@@ -774,7 +774,8 @@ class VotesMixin:
                     if await self.endvote(song_id, server):
                         await server.vote_manager.delete(song_id)
                 except Exception as e:
-                    logger.error(
+                    log_failure(
+                        logger,
                         "Error in check_for_end for server %s, song %s: %s",
                         server.guild_id,
                         song_id,

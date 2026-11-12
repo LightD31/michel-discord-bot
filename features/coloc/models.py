@@ -1,8 +1,10 @@
 """Data models for the Coloc module."""
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Optional
+
+from src.core.clock import LOCAL_TZ, to_local
 
 from .constants import (
     BONUS_JOURNA_INTERVAL,
@@ -17,6 +19,9 @@ from .utils import (
     premium_invocation_dates,
 )
 
+# Reminder times are stored as text, on the community's wall clock.
+STORED_TIME_FORMAT = "%Y-%m-%d %H:%M:%S"
+
 
 @dataclass
 class Reminder:
@@ -30,7 +35,7 @@ class Reminder:
         """Convert to dictionary for JSON serialization."""
         return {
             "user_id": self.user_id,
-            "remind_time": self.remind_time.strftime("%Y-%m-%d %H:%M:%S"),
+            "remind_time": to_local(self.remind_time).strftime(STORED_TIME_FORMAT),
             "reminder_type": self.reminder_type.value,
         }
 
@@ -121,7 +126,7 @@ class ReminderCollection:
     def to_dict(self) -> dict:
         """Convert the schedule to a dictionary (the Ninja preferences are stored alongside)."""
         return {
-            remind_time.strftime("%Y-%m-%d %H:%M:%S"): reminder_types
+            to_local(remind_time).strftime(STORED_TIME_FORMAT): reminder_types
             for remind_time, reminder_types in self.reminders.items()
         }
 
@@ -137,7 +142,8 @@ class ReminderCollection:
             ninja_users=set(ninja_users or []), ninja_strategies=dict(ninja_strategies or {})
         )
         for remind_time_str, reminder_types in data.items():
-            remind_time = datetime.strptime(remind_time_str, "%Y-%m-%d %H:%M:%S")
+            wall = datetime.strptime(remind_time_str, STORED_TIME_FORMAT)
+            remind_time = wall.replace(tzinfo=LOCAL_TZ).astimezone(UTC)
             collection.reminders[remind_time] = {
                 "NORMAL": reminder_types.get("NORMAL", []),
                 "HARDCORE": reminder_types.get("HARDCORE", []),

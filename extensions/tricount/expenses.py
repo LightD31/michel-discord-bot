@@ -14,6 +14,7 @@ from interactions import (
 )
 
 from features.tricount import TricountRepository
+from src.core import clock
 from src.core import logging as logutil
 from src.core.errors import DatabaseError
 from src.discord_ext.autocomplete import guild_group_autocomplete
@@ -117,7 +118,7 @@ class ExpensesMixin:
             "payer": payeur.id,
             "added_by": ctx.author.id,
             "participants": group["members"],
-            "date": datetime.now(),
+            "date": clock.now(),
         }
         await repo.add_expense(expense_data)
 

@@ -7,6 +7,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from src.core import logging as logutil
+from src.core.logging import log_failure
 from src.webui.botops import ExtensionAction, run_extension_op, sync_commands
 from src.webui.context import WebUIContext
 
@@ -67,7 +68,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
             logger.error("Command sync timed out after an extension change")
             return "Synchronisation des commandes trop longue"
         except Exception as e:
-            logger.error("Command sync failed after an extension change: %s", e)
+            log_failure(logger, "Command sync failed after an extension change: %s", e)
             return f"Échec de la synchronisation ({type(e).__name__}). Voir les logs."
         logger.info("Synced slash commands after an extension change")
         return None
@@ -87,7 +88,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
                 logger.info(f"Reloaded extension: {ext_path}")
             except Exception as e:
                 results["failed"].append({"name": ext_path, "error": type(e).__name__})
-                logger.error(f"Failed to reload {ext_path}: {e}")
+                log_failure(logger, f"Failed to reload {ext_path}: {e}")
 
         # One sync for the whole pass, and only once every extension is back:
         # the client deletes commands it no longer knows about, so syncing
@@ -116,7 +117,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
         except HTTPException:
             raise
         except Exception as e:
-            logger.error(f"Failed to reload {ext_name}: {e}")
+            log_failure(logger, f"Failed to reload {ext_name}: {e}")
             raise HTTPException(
                 status_code=500,
                 detail=f"Échec du rechargement ({type(e).__name__}). Voir les logs.",
@@ -181,7 +182,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
                 logger.info("%sed extension: %s", action.capitalize(), ext_name)
             except Exception as e:
                 error = f"Échec ({type(e).__name__}). Voir les logs."
-                logger.error(f"Failed to {action} {ext_name}: {e}")
+                log_failure(logger, f"Failed to {action} {ext_name}: {e}")
                 loaded = ext_name in set(ctx.get_extension_module_paths())
             else:
                 # Toggling an extension adds or removes its commands, so this

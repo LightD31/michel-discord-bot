@@ -6,10 +6,10 @@ the Discord scheduled event looking healthy.
 """
 
 import asyncio
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
+from zoneinfo import ZoneInfo
 
-import pytz
 from twitchAPI.type import EventSubSubscriptionConflict
 
 from extensions.twitch import TwitchExtension
@@ -73,7 +73,7 @@ class FakeTwitch:
             game_name="Jeu",
             viewer_count=42,
             thumbnail_url="http://thumb/{width}x{height}",
-            started_at=datetime.now(pytz.UTC),
+            started_at=datetime.now(UTC),
         )
         return _agen([stream] if self.live else [])
 
@@ -146,7 +146,7 @@ def make_extension(streamers=None, live: bool = False) -> TwitchExtension:
     ext.stop = False
     ext._run_lock = asyncio.Lock()
     ext.enabled_servers = [str(GUILD_ID)]
-    ext.timezone = pytz.timezone("Europe/Paris")
+    ext.timezone = ZoneInfo("Europe/Paris")
     ext.streamers = {f"{s.guild_id}_{s.streamer_id}": s for s in (streamers or [make_streamer()])}
     return ext
 
@@ -330,7 +330,7 @@ async def test_planning_failure_still_resolves_the_notification_channel():
 async def test_stream_end_notification_is_sent():
     ext = make_extension()
     streamer = next(iter(ext.streamers.values()))
-    streamer.stream_start_time = datetime.now(pytz.UTC) - timedelta(hours=2)
+    streamer.stream_start_time = datetime.now(UTC) - timedelta(hours=2)
     streamer.stream_title = "Un titre"
     streamer.stream_categories = ["Jeu A", "Jeu B"]
 

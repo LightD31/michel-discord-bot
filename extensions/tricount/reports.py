@@ -27,7 +27,9 @@ from features.tricount import (
     to_cents,
     visible_balances,
 )
+from src.core import clock
 from src.core import logging as logutil
+from src.core.logging import log_failure
 from src.discord_ext.autocomplete import guild_group_autocomplete
 from src.discord_ext.embeds import Colors
 from src.discord_ext.messages import fetch_user_safe, require_guild
@@ -113,7 +115,7 @@ class ReportsMixin:
         for i, expense in enumerate(expenses, 1):
             payer_name, _ = await fetch_user_safe(self.bot, expense["payer"])
             added_by_name, _ = await fetch_user_safe(self.bot, expense["added_by"])
-            date_str = expense["date"].strftime("%d/%m/%Y %H:%M")
+            date_str = clock.to_local(expense["date"]).strftime("%d/%m/%Y %H:%M")
             amount = format_amount(to_cents(expense["amount"]), currency)
             if is_transfer(expense):
                 recipient_name, _ = await fetch_user_safe(self.bot, expense["recipient"])
@@ -281,7 +283,7 @@ class ReportsMixin:
                 currency=guild_currency(ctx.guild.id),
             )
         except Exception as e:
-            logger.error("Could not render tricount chart: %s", e)
+            log_failure(logger, "Could not render tricount chart: %s", e)
             await ctx.send("❌ Erreur lors de la génération du graphique.")
             return
         await ctx.send(file=File(file=buffer, file_name="tricount.png"))

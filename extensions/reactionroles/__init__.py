@@ -24,15 +24,9 @@ class ReactionRolesExtension(Extension, CommandsMixin, ButtonsMixin):
 
     def __init__(self, bot: Client):
         self.bot = bot
-        self._repos: dict[str, ReactionRolesRepository] = {}
 
     def repository(self, guild_id: str | int) -> ReactionRolesRepository:
-        gid = str(guild_id)
-        repo = self._repos.get(gid)
-        if repo is None:
-            repo = ReactionRolesRepository(gid)
-            self._repos[gid] = repo
-        return repo
+        return ReactionRolesRepository(str(guild_id))
 
     @listen()
     async def on_startup(self):

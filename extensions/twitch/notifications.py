@@ -3,14 +3,15 @@
 import os
 from datetime import datetime
 
-import pytz
 from interactions import Embed, EmbedFooter
 from twitchAPI.helper import first
 from twitchAPI.object.api import ChannelInformation, Stream, TwitchUser
 from twitchAPI.object.eventsub import ChannelUpdateEvent
 from twitchAPI.type import VideoType
 
+from src.core import clock
 from src.core import logging as logutil
+from src.core.logging import log_failure
 from src.discord_ext.embeds import Colors
 
 logger = logutil.init_logger(__name__)
@@ -37,7 +38,7 @@ class NotificationsMixin:
         color: int = DEFAULT_EMBED_COLOR,
     ) -> Embed:
         """Create a notification embed with a uniform footer/timestamp layout."""
-        now = datetime.now(pytz.UTC)
+        now = clock.now()
         try:
             bot = await self.bot.fetch_member(self.bot.user.id, guild_id)
             return Embed(
@@ -48,7 +49,7 @@ class NotificationsMixin:
                 footer=EmbedFooter(text=bot.display_name, icon_url=bot.avatar_url),
             )
         except Exception as e:
-            logger.error("Error creating notification embed for guild %s: %s", guild_id, e)
+            log_failure(logger, "Error creating notification embed for guild %s: %s", guild_id, e)
             return Embed(
                 title=title,
                 description=description,
@@ -70,7 +71,7 @@ class NotificationsMixin:
         embed = await self.create_embed(title, description, user_login, guild_id)
         if stream:
             embed.set_image(
-                url=f"{stream.thumbnail_url.format(width=1280, height=720)}?{datetime.now().timestamp()}"
+                url=f"{stream.thumbnail_url.format(width=1280, height=720)}?{clock.now().timestamp()}"
             )
         await self.add_user(embed, user_id, offline)
         return embed
@@ -141,7 +142,7 @@ class NotificationsMixin:
                 description=description,
                 color=Colors.TWITCH,
                 url=f"https://twitch.tv/{user_login}",
-                timestamp=datetime.now(pytz.UTC),
+                timestamp=clock.now(),
             )
 
         try:
@@ -152,16 +153,16 @@ class NotificationsMixin:
                 color=Colors.TWITCH,
                 url=f"https://twitch.tv/{user_login}",
                 footer=EmbedFooter(text=bot.display_name, icon_url=bot.avatar_url),
-                timestamp=datetime.now(pytz.UTC),
+                timestamp=clock.now(),
             )
         except Exception as e:
-            logger.error(f"Error creating embed for {user_login} in guild {guild_id}: {e}")
+            log_failure(logger, f"Error creating embed for {user_login} in guild {guild_id}: {e}")
             return Embed(
                 title=title,
                 description=description,
                 color=Colors.TWITCH,
                 url=f"https://twitch.tv/{user_login}",
-                timestamp=datetime.now(pytz.UTC),
+                timestamp=clock.now(),
             )
 
     async def add_user(self, embed: Embed, user_id: str, offline: bool = False) -> Embed:
@@ -176,11 +177,11 @@ class NotificationsMixin:
             )
 
             if offline and hasattr(user, "offline_image_url") and user.offline_image_url:
-                embed.set_image(url=f"{user.offline_image_url}?{datetime.now().timestamp()}")
+                embed.set_image(url=f"{user.offline_image_url}?{clock.now().timestamp()}")
 
             return embed
         except Exception as e:
-            logger.error(f"Error adding user {user_id} to embed: {e}")
+            log_failure(logger, f"Error adding user {user_id} to embed: {e}")
             return embed
 
     async def send_stream_start_notification(
@@ -214,7 +215,7 @@ class NotificationsMixin:
 
             if stream and stream.thumbnail_url:
                 embed.set_image(
-                    url=f"{stream.thumbnail_url.format(width=1280, height=720)}?{datetime.now().timestamp()}"
+                    url=f"{stream.thumbnail_url.format(width=1280, height=720)}?{clock.now().timestamp()}"
                 )
 
             try:
@@ -231,7 +232,8 @@ class NotificationsMixin:
                 streamer.guild_id,
             )
         except Exception as e:
-            logger.error(
+            log_failure(
+                logger,
                 "Error sending stream start notification for %s: %s",
                 streamer.streamer_id,
                 e,
@@ -245,7 +247,7 @@ class NotificationsMixin:
             return
 
         try:
-            end_time = datetime.now(pytz.UTC)
+            end_time = clock.now()
             duration_str = "Durée inconnue"
 
             if streamer.stream_start_time:
@@ -311,4 +313,6 @@ class NotificationsMixin:
             )
 
         except Exception as e:
-            logger.error(f"Error sending stream end notification for {streamer.streamer_id}: {e}")
+            log_failure(
+                logger, f"Error sending stream end notification for {streamer.streamer_id}: {e}"
+            )

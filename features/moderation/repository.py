@@ -10,7 +10,7 @@ from pymongo import ReturnDocument
 from features.moderation.models import Infraction, InfractionType
 from src.core.db import mongo_manager
 from src.core.errors import DatabaseError
-from src.core.logging import init_logger
+from src.core.logging import init_logger, log_failure
 
 logger = init_logger(__name__)
 
@@ -38,7 +38,7 @@ class ModerationRepository:
             await self._col().create_index([("type", pymongo.ASCENDING)], name="type_idx")
             await self._col().create_index([("active", pymongo.ASCENDING)], name="active_idx")
         except Exception as e:
-            logger.error("Failed to create infraction indexes for %s: %s", self._guild_id, e)
+            log_failure(logger, "Failed to create infraction indexes for %s: %s", self._guild_id, e)
 
     async def next_case_id(self) -> int:
         try:
@@ -50,7 +50,7 @@ class ModerationRepository:
             )
             return int(doc["value"])
         except Exception as e:
-            logger.error("Counter increment failed: %s", e)
+            log_failure(logger, "Counter increment failed: %s", e)
             raise DatabaseError(f"Failed to mint case id: {e}") from e
 
     @staticmethod
@@ -67,14 +67,14 @@ class ModerationRepository:
             infraction.object_id = str(result.inserted_id)
             return infraction
         except Exception as e:
-            logger.error("DB insert_one failed: %s", e)
+            log_failure(logger, "DB insert_one failed: %s", e)
             raise DatabaseError(f"Failed to add infraction: {e}") from e
 
     async def get(self, case_id: int) -> Infraction | None:
         try:
             doc = await self._col().find_one({"id": case_id})
         except Exception as e:
-            logger.error("DB find_one failed: %s", e)
+            log_failure(logger, "DB find_one failed: %s", e)
             return None
         return self._doc_to_infraction(doc) if doc else None
 
@@ -86,7 +86,7 @@ class ModerationRepository:
             docs = await cursor.to_list(length=None)
             return [self._doc_to_infraction(d) for d in docs]
         except Exception as e:
-            logger.error("DB find failed: %s", e)
+            log_failure(logger, "DB find failed: %s", e)
             raise DatabaseError(f"Failed to list infractions: {e}") from e
 
     async def list(
@@ -111,7 +111,7 @@ class ModerationRepository:
             docs = await cursor.to_list(length=limit)
             return [self._doc_to_infraction(d) for d in docs]
         except Exception as e:
-            logger.error("DB find failed: %s", e)
+            log_failure(logger, "DB find failed: %s", e)
             raise DatabaseError(f"Failed to list infractions: {e}") from e
 
     async def set_active(self, case_id: int, active: bool) -> bool:
@@ -120,7 +120,7 @@ class ModerationRepository:
             result = await self._col().update_one({"id": case_id}, {"$set": {"active": active}})
             return result.matched_count > 0
         except Exception as e:
-            logger.error("DB update_one failed: %s", e)
+            log_failure(logger, "DB update_one failed: %s", e)
             raise DatabaseError(f"Failed to update infraction: {e}") from e
 
     async def count_active_warnings(self, user_id: str) -> int:
@@ -129,5 +129,5 @@ class ModerationRepository:
                 {"user_id": str(user_id), "type": "warn", "active": True}
             )
         except Exception as e:
-            logger.error("DB count failed: %s", e)
+            log_failure(logger, "DB count failed: %s", e)
             return 0

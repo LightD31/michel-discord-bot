@@ -33,7 +33,8 @@ dependencies = [
     "pyfactorybridge",
     "ldap3>=2.9.1",
     # Utilities
-    "pytz",
+    # IANA time zone database for zoneinfo (src/core/clock.py): the slim image has none.
+    "tzdata",
     "python-dateutil",
     "babel",
     "isodate",
@@ -168,18 +169,20 @@ filterwarnings = [
 
 # ─── coverage ──────────────────────────────────────────────────────────
 [tool.coverage.run]
-# features/ is the deliberately unit-testable layer — measure it too.
-source = ["src", "features"]
+# features/ is the deliberately unit-testable layer; extensions/ is tested
+# through tests/discord_fakes.py. `pytest --cov` measures all three.
+source = ["src", "features", "extensions"]
 branch = true
 
 [tool.coverage.report]
 show_missing = true
 skip_covered = true
-# Floor for `pytest --cov` (CI's test job): total coverage was 78.5% without MongoDB
-# and 80.7% with it (CI) when this was last raised. Keep it below the figure
-# without MongoDB so a local run passes too. Raise it as tests are added, so
-# coverage can only ratchet up.
-fail_under = 78
+# Floor for `pytest --cov` over src, features and extensions: 61.6% without
+# MongoDB and 62.6% with it (CI) when this was last raised. CI's test job also
+# holds src + features alone at 78% (79.1% / 81.2%), so tests added for the
+# extensions can't hide a drop there. Keep both below the figures without
+# MongoDB so a local run passes too, and raise them as tests are added.
+fail_under = 61
 
 # ─── detect-secrets ────────────────────────────────────────────────────
 # Baseline lives at .secrets.baseline; configured via .pre-commit-config.yaml.

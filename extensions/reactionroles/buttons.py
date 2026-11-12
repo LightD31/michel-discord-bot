@@ -5,6 +5,7 @@ import re
 from interactions import ComponentContext, component_callback
 
 from features.reactionroles import self_assign_refusal
+from src.core.logging import log_failure
 from src.discord_ext.messages import send_error
 from src.discord_ext.rolemenus import role_info
 
@@ -71,5 +72,5 @@ class ButtonsMixin:
                 await ctx.send(f"Rôle <@&{role_id}> ajouté ✅", ephemeral=True)
                 logger.info("Added role %s to %s in guild %s", role_id, ctx.author.id, ctx.guild_id)
         except Exception as e:
-            logger.error("Failed to toggle role %s for %s: %s", role_id, ctx.author.id, e)
+            log_failure(logger, "Failed to toggle role %s for %s: %s", role_id, ctx.author.id, e)
             await send_error(ctx, "Impossible de modifier ce rôle (permissions ou hiérarchie ?).")

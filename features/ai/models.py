@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from src.integrations.llm import API_OPENROUTER, SUPPORTED_APIS
@@ -186,7 +186,7 @@ class Comparison:
             answers=[ComparisonAnswer.from_mongo(a) for a in doc.get("answers") or []],
             message_ids=[str(m) for m in doc.get("message_ids") or []],
             votes={str(k): str(v) for k, v in (doc.get("votes") or {}).items()},
-            closes_at=doc.get("closes_at") or datetime.min,
+            closes_at=doc.get("closes_at") or datetime.min.replace(tzinfo=UTC),
             closed=bool(doc.get("closed", False)),
             created_at=doc.get("created_at"),
         )

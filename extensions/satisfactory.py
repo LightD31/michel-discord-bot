@@ -11,8 +11,10 @@ from interactions import (
 )
 from pyfactorybridge import API
 
+from src.core import clock
 from src.core import logging as logutil
 from src.core.config import ModuleConfig
+from src.core.logging import log_failure
 from src.discord_ext.messages import GuildMessages, edit_message_if_changed
 from src.webui.schemas import (
     SchemaBase,
@@ -85,7 +87,7 @@ def _status_embed(settings: dict, players: int, tier: object) -> Embed:
         title="🏭 Serveur Satisfactory de la Coloc",
         description="Statut du serveur en temps réel",
         color=0x00A86B,
-        timestamp=datetime.now(),
+        timestamp=clock.now(),
     )
     embed.add_field(
         name="📡 Informations de Connexion",
@@ -150,7 +152,9 @@ class Satisfactory(Extension):
             try:
                 await self._refresh(guild_id, settings)
             except Exception as e:  # noqa: BLE001 — one server down must not stop the others
-                logger.error("Failed to update Satisfactory status for guild %s: %s", guild_id, e)
+                log_failure(
+                    logger, "Failed to update Satisfactory status for guild %s: %s", guild_id, e
+                )
 
     async def _refresh(self, guild_id: str, settings: dict) -> None:
         connection = _connection(settings)

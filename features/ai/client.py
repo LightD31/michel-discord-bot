@@ -9,6 +9,7 @@ from collections.abc import Awaitable, Callable, Sequence
 from features.ai.models import ModelAnswer, ModelConfig
 from features.ai.prompt import extract_response
 from src.core import logging as logutil
+from src.core.logging import log_failure
 from src.integrations import llm
 
 logger = logutil.init_logger(__name__)
@@ -36,7 +37,7 @@ class AiClient:
         except TimeoutError:
             return ModelAnswer(model, error="délai dépassé", latency=time.monotonic() - start)
         except Exception as e:
-            logger.error("Error calling %s (%s): %s", model.key, model.model_id, e)
+            log_failure(logger, "Error calling %s (%s): %s", model.key, model.model_id, e)
             return ModelAnswer(
                 model, error=str(e) or type(e).__name__, latency=time.monotonic() - start
             )

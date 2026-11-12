@@ -7,7 +7,7 @@ from bson import ObjectId
 
 from features.reminders.models import Reminder
 from src.core.db import mongo_manager, translates_db_errors
-from src.core.logging import init_logger
+from src.core.logging import init_logger, log_failure
 
 logger = init_logger(__name__)
 
@@ -36,7 +36,9 @@ class ReminderRepository:
             )
             await self._col().create_index([("user_id", pymongo.ASCENDING)], name="user_id_idx")
         except Exception as e:
-            logger.error("Failed to create reminder indexes for guild %s: %s", self._guild_id, e)
+            log_failure(
+                logger, "Failed to create reminder indexes for guild %s: %s", self._guild_id, e
+            )
 
     @staticmethod
     def _doc_to_reminder(doc: dict) -> Reminder:

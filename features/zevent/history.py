@@ -24,22 +24,16 @@ Pure parsing and arithmetic — the fetch lives in ``extensions/zevent/api.py``.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta, tzinfo
+from datetime import UTC, datetime, timedelta
 from typing import Any
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+from src.core.clock import LOCAL_TZ
 
 _WEEKDAYS = ("lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche")
 
 
-def _display_zone() -> tzinfo:
-    """The audience's clock. Falls back to UTC if the tz database is absent."""
-    try:
-        return ZoneInfo("Europe/Paris")
-    except (ZoneInfoNotFoundError, KeyError):  # pragma: no cover - image-dependent
-        return UTC
-
-
-DISPLAY_TZ = _display_zone()
+# The audience's clock (src/core/clock.py).
+DISPLAY_TZ = LOCAL_TZ
 _MONTHS = (
     "janvier",
     "février",

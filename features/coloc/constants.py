@@ -4,10 +4,10 @@ from datetime import timedelta
 from enum import StrEnum
 from typing import Final
 
-import pytz
+from src.core.clock import LOCAL_TZ
 
-# Timezone
-PARIS_TZ: Final = pytz.timezone("Europe/Paris")
+# ZUnivers runs on Paris time: the community's time zone (src/core/clock.py).
+PARIS_TZ: Final = LOCAL_TZ
 
 
 class ReminderType(StrEnum):

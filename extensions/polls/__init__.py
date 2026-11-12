@@ -9,9 +9,10 @@ Slash commands:
 Listens to :class:`MessageReactionAdd` / :class:`MessageReactionRemove` to keep
 reaction-based poll embeds' vote counts fresh. Button-based polls persist their
 state in MongoDB (``polls`` collection) and close automatically once their
-``closes_at`` deadline elapses. Reaction polls with a deadline are stored there
-too (``mode="reaction"``), so their auto-close survives a restart. Only a poll
-posted outside the enabled servers (user install) still relies on an in-memory
+``closes_at`` deadline elapses. Reaction polls are stored there too
+(``mode="reaction"``): the reaction listener re-renders and ``/editpoll`` edits
+only a stored poll, and its auto-close survives a restart. A poll posted outside
+the enabled servers (user install) is not stored, and closes on an in-memory
 timer. Enabled per-guild via ``moduleUtils``.
 """
 
@@ -44,13 +45,14 @@ from features.polls import (
     is_reaction_poll_text,
     options_description,
     parse_duration,
-    parse_poll_author_id,
     poll_option_emojis,
     validate_poll_options,
 )
+from src.core import clock
 from src.core import logging as logutil
 from src.core.config import ModuleConfig
 from src.core.debounce import Coalescer
+from src.core.logging import log_failure
 from src.discord_ext.embeds import Colors, format_discord_timestamp
 from src.discord_ext.messages import copy_embed, edit_message_if_changed, send_error
 from src.discord_ext.paginator import format_poll
@@ -122,15 +124,9 @@ class PollsExtension(Extension, PollButtonsMixin):
         self.bot = bot
         # A burst of votes on a reaction poll re-reads its voters once.
         self._refreshes = Coalescer(REFRESH_DELAY_SECONDS, name="poll-refresh", log=logger)
-        self._poll_repos: dict[str, PollRepository] = {}
 
     def _poll_repo(self, guild_id: str | int) -> PollRepository:
-        gid = str(guild_id)
-        repo = self._poll_repos.get(gid)
-        if repo is None:
-            repo = PollRepository(gid)
-            self._poll_repos[gid] = repo
-        return repo
+        return PollRepository(str(guild_id))
 
     @listen()
     async def on_startup(self) -> None:
@@ -138,7 +134,7 @@ class PollsExtension(Extension, PollButtonsMixin):
             try:
                 await self._poll_repo(guild_id).ensure_indexes()
             except Exception as e:
-                logger.error("Could not init poll indexes for %s: %s", guild_id, e)
+                log_failure(logger, "Could not init poll indexes for %s: %s", guild_id, e)
         self.check_closing_polls.start()
 
     @slash_command(
@@ -194,7 +190,7 @@ class PollsExtension(Extension, PollButtonsMixin):
             close_seconds = _default_poll_seconds(ctx.guild_id)
         description = "\n\n".join([f"{emojis[i]} {option}" for i, option in enumerate(options)])
         if close_seconds:
-            close_time = datetime.now() + timedelta(seconds=close_seconds)
+            close_time = clock.now() + timedelta(seconds=close_seconds)
             description += (
                 f"\n\n*Fermeture automatique : {format_discord_timestamp(close_time, 'R')}*"
             )
@@ -205,10 +201,7 @@ class PollsExtension(Extension, PollButtonsMixin):
         )
         message = await ctx.send(embed=embed)
         await _add_poll_reactions(message, options, use_default=(options == DEFAULT_POLL_OPTIONS))
-        if close_seconds:
-            await self._schedule_reaction_close(
-                ctx, message, close_seconds, question, options, emojis
-            )
+        await self._record_reaction_poll(ctx, message, close_seconds, question, options, emojis)
         logger.debug(
             "Création d'un sondage par %s (ID: %s)\nQuestion : %s\nOptions : %s",
             ctx.user.username,
@@ -217,20 +210,21 @@ class PollsExtension(Extension, PollButtonsMixin):
             options,
         )
 
-    async def _schedule_reaction_close(
+    async def _record_reaction_poll(
         self,
         ctx: SlashContext,
         message,
-        seconds: int,
+        seconds: int | None,
         question: str,
         options: list[str],
         emojis: list[str],
     ) -> None:
-        """Arrange for the poll to close in *seconds*: persisted where possible.
+        """Store the poll where polls are on, and arrange its close after *seconds*.
 
-        In an enabled server the poll is stored and check_closing_polls closes
-        it, even across restarts. Elsewhere (user install), or if the database
-        refuses the write, an in-memory timer is the fallback.
+        A stored poll is what the reaction listener re-renders and /editpoll
+        edits, and check_closing_polls closes it, even across restarts.
+        Elsewhere (user install), or if the database refuses the write, a poll
+        with a deadline closes on an in-memory timer instead.
         """
         guild_id = str(ctx.guild_id) if ctx.guild_id else None
         if UTILS.enabled(guild_id):
@@ -242,13 +236,15 @@ class PollsExtension(Extension, PollButtonsMixin):
                 options=options,
                 emojis=emojis[: len(options)],
                 mode="reaction",
-                closes_at=datetime.now() + timedelta(seconds=seconds),
+                closes_at=clock.now() + timedelta(seconds=seconds) if seconds else None,
             )
             try:
                 await self._poll_repo(guild_id).add(poll)
                 return
             except Exception as e:
-                logger.warning("Could not persist reaction poll, closing it in memory: %s", e)
+                logger.warning("Could not store reaction poll %s: %s", message.id, e)
+        if not seconds:
+            return
 
         async def _close():
             try:
@@ -357,7 +353,7 @@ class PollsExtension(Extension, PollButtonsMixin):
         else:
             seconds = _default_poll_seconds(ctx.guild_id)
         if seconds:
-            closes_at = datetime.now() + timedelta(seconds=seconds)
+            closes_at = clock.now() + timedelta(seconds=seconds)
 
         mode_label = "anonyme" if mode == "anonymous" else "classement"
         embed = Embed(
@@ -392,12 +388,12 @@ class PollsExtension(Extension, PollButtonsMixin):
 
     @Task.create(IntervalTrigger(seconds=30))
     async def check_closing_polls(self) -> None:
-        now = datetime.now()
+        now = clock.now()
         for gid in UTILS.guild_ids():
             try:
                 due = await self._poll_repo(gid).list_due(now)
             except Exception as e:
-                logger.error("Failed to fetch due polls for guild %s: %s", gid, e)
+                log_failure(logger, "Failed to fetch due polls for guild %s: %s", gid, e)
                 continue
             for poll in due:
                 if poll.id is None:
@@ -475,6 +471,8 @@ class PollsExtension(Extension, PollButtonsMixin):
         self._refreshes.request(int(message.id), lambda: self._render_reaction_poll(message))
 
     async def _render_reaction_poll(self, message) -> None:
+        if await self._stored_reaction_poll(message.guild.id, message.id) is None:
+            return
         embed = await format_poll(message)
         await edit_message_if_changed(message, embed=embed, logger=logger)
 
@@ -534,24 +532,12 @@ class PollsExtension(Extension, PollButtonsMixin):
 
         assert message is not None
 
-        if message.author != ctx.bot.user:
-            await send_error(ctx, "Vous ne pouvez modifier que les sondages créés par le bot")
+        stored = await self._stored_reaction_poll(ctx.guild_id, message.id)
+        if stored is None or not message.embeds:
+            await send_error(ctx, "Ce message n'est pas un sondage à réactions de ce serveur")
             return
-        if not message.embeds:
-            await send_error(ctx, "Vous ne pouvez modifier que les sondages créés par le bot")
-            return
-        if not _is_poll_embed(message.embeds[0]):
-            await send_error(ctx, "Vous ne pouvez modifier que les sondages créés par le bot")
-            return
-        footer_text = message.embeds[0].footer.text if message.embeds[0].footer else ""
-        author_id = parse_poll_author_id(footer_text)
-        if not author_id or author_id != str(ctx.user.id):
-            await send_error(
-                ctx,
-                "Vous ne pouvez modifier que les sondages que vous avez créés"
-                if author_id
-                else "Impossible de vérifier l'auteur de ce sondage",
-            )
+        if stored.author_id != str(ctx.user.id):
+            await send_error(ctx, "Vous ne pouvez modifier que les sondages que vous avez créés")
             return
         embed = copy_embed(message.embeds[0])
         if reset_reactions:
@@ -569,7 +555,7 @@ class PollsExtension(Extension, PollButtonsMixin):
                 [f"{POLL_EMOJIS[i]} {option}" for i, option in enumerate(options)]
             )
             await _add_poll_reactions(message, options)
-            await self._update_stored_options(ctx.guild_id, message_id, options)
+            await self._update_stored_options(ctx.guild_id, stored, options)
         elif reset_reactions:
             description = embed.description or ""
             option_count = len(description.split("\n\n")) if description else 2
@@ -580,17 +566,25 @@ class PollsExtension(Extension, PollButtonsMixin):
         logger.info("Poll edited")
         await ctx.send("Sondage modifié", ephemeral=True)
 
-    async def _update_stored_options(self, guild_id, message_id, options: list[str]) -> None:
-        """Keep a stored reaction poll's options in step with /editpoll, for its close."""
-        if not UTILS.enabled(guild_id):
-            return
-        repo = self._poll_repo(guild_id)
+    async def _stored_reaction_poll(self, guild_id, message_id) -> Poll | None:
+        """The reaction poll stored for *message_id*, or None for any other message."""
         try:
-            stored = await repo.get_by_message(str(message_id))
-            if stored and stored.id and stored.mode == "reaction" and not stored.closed:
-                await repo.set_options(stored.id, options, POLL_EMOJIS[: len(options)])
+            stored = await self._poll_repo(guild_id).get_by_message(str(message_id))
         except Exception as e:
-            logger.warning("Could not update stored poll %s: %s", message_id, e)
+            logger.warning("Could not read poll %s: %s", message_id, e)
+            return None
+        return stored if stored is not None and stored.mode == "reaction" else None
+
+    async def _update_stored_options(self, guild_id, stored: Poll, options: list[str]) -> None:
+        """Keep a stored reaction poll's options in step with /editpoll, for its close."""
+        if stored.id is None or stored.closed:
+            return
+        try:
+            await self._poll_repo(guild_id).set_options(
+                stored.id, options, POLL_EMOJIS[: len(options)]
+            )
+        except Exception as e:
+            logger.warning("Could not update stored poll %s: %s", stored.message_id, e)
 
 
 def setup(bot: Client) -> None:

@@ -19,6 +19,7 @@ import interactions
 from features.spotify import SpotifyRepository
 from features.spotify import search as track_search
 from features.spotify.votes import tally_add_votes
+from src.core import clock
 from src.core import logging as logutil
 from src.core.config import ModuleConfig, config_store, global_config, load_discord2name
 from src.core.errors import ConfigError
@@ -219,7 +220,7 @@ class VoteManager:
         doc = await self.repo.get_addwithvote_doc(song_id)
         if doc is None:
             return True
-        return float(doc["deadline"]) <= datetime.now().timestamp()
+        return float(doc["deadline"]) <= clock.now().timestamp()
 
     async def save_vote(self, author_id, vote, song):
         logger.info("%s voted %s to add %s", author_id, vote, song)
@@ -536,7 +537,7 @@ async def embed_message_vote(
     if links.dashboard:
         embed.add_field(name="\u200b", value=f"Dashboard votes: {links.dashboard}")
     embed.set_footer(text="Nettoyeur de Playlist", icon_url=links.icon or None)
-    embed.timestamp = interactions.utils.timestamp_converter(datetime.now())
+    embed.timestamp = interactions.utils.timestamp_converter(clock.now())
     return embed
 
 
@@ -562,5 +563,5 @@ async def embed_message_vote_add(
     )
     embed.add_field(name="\u200b", value=f"Votes de {', '.join(users)}")
     embed.set_footer(text="", icon_url=guild_links(guild_id).icon or None)
-    embed.timestamp = interactions.utils.timestamp_converter(datetime.now())
+    embed.timestamp = interactions.utils.timestamp_converter(clock.now())
     return embed

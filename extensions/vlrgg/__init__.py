@@ -20,6 +20,8 @@ Shared data classes, constants, and helpers are in :mod:`._common`.
 
 from interactions import Client, Extension, listen
 
+from src.core.logging import log_failure
+
 from ._common import (
     DEFAULT_REMINDER_MINUTES,
     VLRGG,
@@ -67,7 +69,7 @@ class VlrggExtension(
             if not self.live_update.running:
                 self.live_update.start()
         except Exception as e:
-            logger.error(f"Erreur lors de l'initialisation: {e}")
+            log_failure(logger, f"Erreur lors de l'initialisation: {e}")
 
     async def _initialize_all_servers(self) -> None:
         """Initialise les messages et canaux pour tous les serveurs activés."""

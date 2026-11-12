@@ -17,6 +17,8 @@ from __future__ import annotations
 
 from interactions import Client, Extension, listen
 
+from src.core.logging import log_failure
+
 from ._common import (
     MDI,
     GuildConfig,
@@ -48,13 +50,13 @@ class MdiExtension(ApiMixin, EmbedsMixin, NotificationsMixin, Extension):
         try:
             await self._initialize_all_servers()
         except Exception as e:
-            logger.error("MDI: initialisation failed: %s", e)
+            log_failure(logger, "MDI: initialisation failed: %s", e)
             return
         try:
             self.schedule.start()
             self.live_update.start()
         except Exception as e:
-            logger.error("MDI: failed to start tasks: %s", e)
+            log_failure(logger, "MDI: failed to start tasks: %s", e)
 
     async def _initialize_all_servers(self) -> None:
         for server_id in MDI.guild_ids():

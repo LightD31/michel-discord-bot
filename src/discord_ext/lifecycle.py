@@ -18,6 +18,7 @@ from typing import Any
 from interactions import Task
 
 from src.core import logging as logutil
+from src.core.logging import log_failure
 from src.core.tasks import spawn
 
 logger = logutil.init_logger("discord_ext.lifecycle")
@@ -54,7 +55,7 @@ async def release(ext: Any, *, timeout: float = ASYNC_DROP_TIMEOUT_SECONDS) -> l
         try:
             await asyncio.wait_for(async_drop(), timeout=timeout)
         except Exception as e:  # noqa: BLE001 — never block on cleanup
-            logger.error("async_drop() failed for %s: %s", name, e)
+            log_failure(logger, "async_drop() failed for %s: %s", name, e)
     return stopped
 
 
@@ -117,7 +118,7 @@ class GracefulShutdown:
             try:
                 await close()
             except Exception as e:  # noqa: BLE001 — keep closing the rest
-                logger.error("Error while closing during shutdown: %s", e)
+                log_failure(logger, "Error while closing during shutdown: %s", e)
         await self.client.stop()
 
 

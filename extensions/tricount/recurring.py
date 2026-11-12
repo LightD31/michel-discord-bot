@@ -1,7 +1,7 @@
 """Recurring expenses: scheduled templates that re-create an expense on cadence."""
 
 import os
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 from dateutil.relativedelta import relativedelta
 from interactions import (
@@ -18,7 +18,9 @@ from interactions import (
 )
 
 from features.tricount import TricountRepository
+from src.core import clock
 from src.core import logging as logutil
+from src.core.logging import log_failure
 from src.discord_ext.autocomplete import guild_group_autocomplete
 from src.discord_ext.embeds import Colors
 from src.discord_ext.messages import require_guild
@@ -33,16 +35,21 @@ from ._common import (
 logger = logutil.init_logger(__name__)
 
 
+_STEPS: dict[str, timedelta | relativedelta] = {
+    "daily": timedelta(days=1),
+    "weekly": timedelta(weeks=1),
+    "monthly": relativedelta(months=1),
+    "yearly": relativedelta(years=1),
+}
+
+
 def _next_occurrence(remind_time: datetime, frequency: str) -> datetime:
-    if frequency == "daily":
-        return remind_time + timedelta(days=1)
-    if frequency == "weekly":
-        return remind_time + timedelta(weeks=1)
-    if frequency == "monthly":
-        return remind_time + relativedelta(months=1)
-    if frequency == "yearly":
-        return remind_time + relativedelta(years=1)
-    raise ValueError(f"Unknown frequency: {frequency}")
+    """One period after *remind_time*, counted on the community's wall clock."""
+    step = _STEPS.get(frequency)
+    if step is None:
+        raise ValueError(f"Unknown frequency: {frequency}")
+    wall = clock.to_local(remind_time).replace(tzinfo=None) + step
+    return wall.replace(tzinfo=clock.LOCAL_TZ).astimezone(UTC)
 
 
 class RecurringMixin:
@@ -126,7 +133,7 @@ class RecurringMixin:
             return
 
         category = (categorie or DEFAULT_CATEGORY).strip() or DEFAULT_CATEGORY
-        next_run = _next_occurrence(datetime.now(), frequence)
+        next_run = _next_occurrence(clock.now(), frequence)
         doc = {
             "group_id": group["_id"],
             "group_name": groupe,
@@ -138,14 +145,14 @@ class RecurringMixin:
             "frequency": frequence,
             "next_run": next_run,
             "active": True,
-            "created_at": datetime.now(),
+            "created_at": clock.now(),
         }
         inserted_id = await repo.add_recurring(doc)
         embed = Embed(
             title="✅ Dépense récurrente créée",
             description=(
                 f"**{description}** — {montant:.2f}€ ({frequence})\n"
-                f"Prochaine occurrence : {next_run:%d/%m/%Y %H:%M}"
+                f"Prochaine occurrence : {clock.to_local(next_run):%d/%m/%Y %H:%M}"
             ),
             color=Colors.SUCCESS,
         )
@@ -193,7 +200,7 @@ class RecurringMixin:
                 value=(
                     f"Groupe : **{doc['group_name']}** · {doc['frequency']}\n"
                     f"Catégorie : {doc.get('category', DEFAULT_CATEGORY)}\n"
-                    f"Prochaine : {doc['next_run']:%d/%m/%Y %H:%M}\n"
+                    f"Prochaine : {clock.to_local(doc['next_run']):%d/%m/%Y %H:%M}\n"
                     f"ID : `{doc['_id']}`"
                 ),
                 inline=False,
@@ -227,12 +234,12 @@ class RecurringMixin:
 
     @Task.create(IntervalTrigger(minutes=5))
     async def recurring_tick(self):
-        now = datetime.now()
+        now = clock.now()
         for guild_id in TRICOUNT.guild_ids():
             try:
                 due = await TricountRepository(guild_id).list_due_recurring(now)
             except Exception as e:
-                logger.error("Could not list due recurring expenses for %s: %s", guild_id, e)
+                log_failure(logger, "Could not list due recurring expenses for %s: %s", guild_id, e)
                 continue
             for doc in due:
                 await self._materialise_recurring(guild_id, doc)
@@ -252,7 +259,7 @@ class RecurringMixin:
                 await repo.deactivate_recurring(doc["_id"])
                 return
             next_run = _next_occurrence(doc["next_run"], doc["frequency"])
-            while next_run <= datetime.now():
+            while next_run <= clock.now():
                 next_run = _next_occurrence(next_run, doc["frequency"])
             if not await repo.claim_recurring(doc, next_run):
                 return
@@ -265,9 +272,9 @@ class RecurringMixin:
                 "payer": doc["payer"],
                 "added_by": doc["added_by"],
                 "participants": group["members"],
-                "date": datetime.now(),
+                "date": clock.now(),
                 "recurring_id": doc["_id"],
             }
             await repo.add_expense(expense)
         except Exception as e:
-            logger.error("Failed to materialise recurring expense %s: %s", doc.get("_id"), e)
+            log_failure(logger, "Failed to materialise recurring expense %s: %s", doc.get("_id"), e)

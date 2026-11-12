@@ -45,6 +45,7 @@ from src.core import logging as logutil
 from src.core.config import config_store
 from src.core.errors import HttpError
 from src.core.http import fetch
+from src.core.logging import log_failure
 
 logger = logutil.init_logger(__name__)
 
@@ -239,7 +240,7 @@ async def vlrgg_request(endpoint: str, params: dict[str, str] | None = None) -> 
         _cache_store(key, data)
         return data
     except Exception as e:
-        logger.error(f"Erreur API VLR.gg pour {endpoint}: {e}")
+        log_failure(logger, f"Erreur API VLR.gg pour {endpoint}: {e}")
         if isinstance(e, HttpError) and e.status == 429 and _is_rate_limited(endpoint):
             _rate_limited.hold(_RATE_LIMIT_BACKOFF_SECONDS)
         # Renvoyer le cache expiré plutôt que rien si on en a un

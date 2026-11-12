@@ -44,6 +44,7 @@ from features.confrerie.stats import COL_AUTHOR, COL_DEFI, COL_GENRE, COL_TYPE
 from src.core import logging as logutil
 from src.core.config import global_config
 from src.core.errors import BotError
+from src.core.logging import log_failure
 from src.discord_ext.embeds import Colors
 from src.discord_ext.messages import fetch_user_safe
 
@@ -383,7 +384,7 @@ class ReviewMixin:
                 logger.warning("Colonnes absentes de la base Œuvres, ignorées : %s", dropped)
             page = await self.notion_client.create_page(database_id=db_id, properties=properties)
         except Exception as e:  # noqa: BLE001 — put the draft back up for review
-            logger.error("Création de la fiche %s impossible: %s", draft.id, e)
+            log_failure(logger, "Création de la fiche %s impossible: %s", draft.id, e)
             await repo.set_status(draft.id, STATUS_PENDING)
             return False
         draft.status = STATUS_APPROVED

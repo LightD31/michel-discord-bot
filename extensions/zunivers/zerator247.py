@@ -12,7 +12,6 @@ from datetime import datetime
 
 from interactions import IntervalTrigger, OptionType, SlashContext, Task, slash_option
 
-from features.coloc.constants import PARIS_TZ
 from features.links import shorten_url
 from features.zerator247 import (
     CHOSEN_REQUEST_HINT,
@@ -26,6 +25,7 @@ from features.zerator247 import (
     describe_cycle,
     should_notify,
 )
+from src.core import clock
 from src.core.errors import DatabaseError
 from src.discord_ext.messages import fetch_user_safe
 
@@ -78,7 +78,7 @@ class Zerator247Mixin:
     async def _announce_requests(
         self, state: GuildState, settings: dict, site: str, cycle: Cycle
     ) -> None:
-        hour = datetime.now(PARIS_TZ).hour
+        hour = clock.local_now().hour
         recipients = [s.user_id for s in state.request_subscriptions.values() if s.accepts(hour)]
         if not recipients:
             return

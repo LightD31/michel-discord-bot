@@ -1,8 +1,7 @@
 """MongoDB I/O for RSS feed bookkeeping — one document per ``feed_id`` per guild."""
 
-from datetime import datetime
-
 from features.rss.models import RssFeedState
+from src.core import clock
 from src.core.db import mongo_manager, translates_db_errors
 
 COLLECTION = "rss"
@@ -43,7 +42,7 @@ class RssRepository:
                 "$set": {
                     "seen_ids": seen_ids[:MAX_SEEN_IDS],
                     "initialized": True,
-                    "last_poll_at": datetime.now(),
+                    "last_poll_at": clock.now(),
                     "last_error": None,
                     "failures": 0,
                 }
@@ -60,7 +59,7 @@ class RssRepository:
         ``$push`` with ``$position: 0`` + ``$slice`` keeps the set capped at
         ``MAX_SEEN_IDS`` in the same atomic update.
         """
-        update: dict = {"$set": {"last_poll_at": datetime.now(), "last_error": None, "failures": 0}}
+        update: dict = {"$set": {"last_poll_at": clock.now(), "last_error": None, "failures": 0}}
         if new_ids:
             update["$push"] = {
                 "seen_ids": {"$each": new_ids, "$position": 0, "$slice": MAX_SEEN_IDS}
@@ -73,7 +72,7 @@ class RssRepository:
         await self._col().update_one(
             {"_id": feed_id},
             {
-                "$set": {"last_poll_at": datetime.now(), "last_error": message},
+                "$set": {"last_poll_at": clock.now(), "last_error": message},
                 "$inc": {"failures": 1},
             },
             upsert=True,

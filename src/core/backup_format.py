@@ -28,6 +28,8 @@ from typing import IO, Any
 from bson import json_util
 from bson.json_util import CANONICAL_JSON_OPTIONS
 
+from src.core.clock import LOCAL_TZ
+
 FORMAT_VERSION = 1
 # A backup folder's name, and its manifest's ``created_at``: local time.
 BACKUP_TIMESTAMP_FORMAT = "%Y-%m-%d_%H-%M-%S"
@@ -96,15 +98,16 @@ def latest_backup_time(root: Path) -> float | None:
     """When the newest complete backup under *root* was taken (epoch seconds), if any.
 
     A folder counts once its manifest is written, the last step of a backup,
-    so one interrupted mid-way is skipped. ``created_at`` is the folder's local
-    timestamp (:data:`BACKUP_TIMESTAMP_FORMAT`).
+    so one interrupted mid-way is skipped. ``created_at`` is the folder's
+    timestamp (:data:`BACKUP_TIMESTAMP_FORMAT`) on the community's wall clock.
     """
     if not root.is_dir():
         return None
     for folder in sorted((p for p in root.iterdir() if p.is_dir()), reverse=True):
         try:
             created_at = read_manifest(folder)["created_at"]
-            return datetime.strptime(created_at, BACKUP_TIMESTAMP_FORMAT).timestamp()
+            stamp = datetime.strptime(created_at, BACKUP_TIMESTAMP_FORMAT)
+            return stamp.replace(tzinfo=LOCAL_TZ).timestamp()
         except (ValueError, KeyError, OSError):
             continue
     return None

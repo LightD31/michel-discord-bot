@@ -10,7 +10,6 @@ from fastapi import HTTPException
 import extensions.xp._common  # noqa: F401 — registers the moduleXp schema
 import src.webui.routes.config as config_routes
 import src.webui.routes.servers as servers_routes
-from scripts.check_config import check
 from src.webui import schemas
 
 # ── The validator ───────────────────────────────────────────────────────
@@ -61,7 +60,7 @@ def test_a_section_must_be_an_object():
     assert schemas.validation_errors(model, {"enabled": True}, module=False) != []
 
 
-def test_check_config_reports_every_location():
+def test_config_problems_reports_every_location():
     data = {
         "config": {"discord": {"devGuildId": "1", "typo": True}, "unregistered": {"x": 1}},
         "servers": {
@@ -71,8 +70,16 @@ def test_check_config_reports_every_location():
             }
         },
     }
-    problems = check(data)
+    problems = schemas.config_problems(data)
     assert [p.split(":")[0] for p in problems] == ["config.discord", "servers.42.moduleXp"]
+
+
+def test_config_problems_is_empty_for_a_valid_config():
+    data = {
+        "config": {"discord": {"devGuildId": "1"}},
+        "servers": {"42": {"moduleXp": {"enabled": True, "xpChannelId": "123"}}},
+    }
+    assert schemas.config_problems(data) == []
 
 
 # ── The save routes ─────────────────────────────────────────────────────

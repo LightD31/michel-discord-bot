@@ -26,15 +26,10 @@ class LevelingMixin:
     bot: Client
     _db_connected: bool
     _rank_cache: TTLCache
-    _repos: dict[str, XpRepository]
     _xp_collections: set[str]
 
     def _repo(self, guild_id: str) -> XpRepository:
-        repo = self._repos.get(guild_id)
-        if repo is None:
-            repo = XpRepository(guild_id)
-            self._repos[guild_id] = repo
-        return repo
+        return XpRepository(str(guild_id))
 
     @listen()
     async def on_message(self, event: MessageCreate):

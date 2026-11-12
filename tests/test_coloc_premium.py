@@ -32,7 +32,7 @@ def _logs(*timestamps: str, event: str = "premium", source: str = "INVOKE") -> d
 
 
 def _paris(*args: int) -> datetime:
-    return PARIS_TZ.localize(datetime(*args))
+    return datetime(*args, tzinfo=PARIS_TZ)
 
 
 def test_invocation_dates_count_one_per_timestamp_oldest_first():

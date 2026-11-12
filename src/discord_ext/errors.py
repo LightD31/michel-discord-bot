@@ -15,6 +15,7 @@ import logging
 from interactions import errors
 
 from src.core import log_context
+from src.core.errors import register_expected_failure
 
 
 def new_reference() -> str:
@@ -33,6 +34,23 @@ def is_expected(error: BaseException) -> bool:
         error,
         errors.CommandOnCooldown | errors.MaxConcurrencyReached | errors.CommandCheckFailure,
     )
+
+
+def is_discord_refusal_or_outage(error: BaseException) -> bool:
+    """A refusal (403, 404), a rate limit or an outage (5xx) from Discord's API.
+
+    Not a bug in the bot: a missing permission or a deleted target is for a
+    server's admins to fix. A 400 means the bot sent something malformed.
+    """
+    if not isinstance(error, errors.HTTPException):
+        return False
+    status = getattr(error, "status", 0)
+    return status in (403, 404, 429) or status >= 500
+
+
+def install() -> None:
+    """Have :func:`src.core.logging.log_failure` log Discord's refusals and outages on one line."""
+    register_expected_failure(is_discord_refusal_or_outage)
 
 
 def user_message(error: BaseException, reference: str) -> str:
@@ -70,4 +88,11 @@ def failure_reply(what: str, error: BaseException, logger: logging.Logger) -> st
     return f"{what}. Si ça continue, donne cette référence à un admin : `{reference}`."
 
 
-__all__ = ["failure_reply", "is_expected", "new_reference", "user_message"]
+__all__ = [
+    "failure_reply",
+    "install",
+    "is_discord_refusal_or_outage",
+    "is_expected",
+    "new_reference",
+    "user_message",
+]

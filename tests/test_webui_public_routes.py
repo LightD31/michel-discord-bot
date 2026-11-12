@@ -8,9 +8,9 @@ poll results in the payloads, and the cache.
 
 from datetime import UTC, datetime
 from types import SimpleNamespace
+from zoneinfo import ZoneInfo
 
 import pytest
-import pytz
 from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 
@@ -70,7 +70,7 @@ class _FakeXpRepo:
         return [{"_id": "1", "xp": 475, "msg": 20}, {"_id": "2", "xp": 120, "msg": 5}]
 
     async def daily_activity(self, since, tz):
-        day = datetime.now(UTC).astimezone(pytz.timezone(tz)).date().isoformat()
+        day = datetime.now(UTC).astimezone(ZoneInfo(tz)).date().isoformat()
         return [{"day": day, "source": "message", "xp": 60, "events": 3}]
 
     async def daily_active_users(self, since, tz):

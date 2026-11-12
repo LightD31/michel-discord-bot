@@ -4,7 +4,6 @@ import os
 import random
 from datetime import datetime
 
-import pytz
 import spotipy
 from interactions import (
     AutocompleteContext,
@@ -27,7 +26,9 @@ from features.links import shorten_keyed
 from features.messages import finishList, startList
 from features.spotify import plan_duplicate_removal
 from features.spotify.votes import tally_daily_votes
+from src.core import clock
 from src.core import logging as logutil
+from src.core.logging import log_failure
 from src.core.text import milliseconds_to_string
 from src.discord_ext.embeds import Colors
 from src.discord_ext.messages import (
@@ -131,7 +132,8 @@ class PlaylistMixin:
             try:
                 await self._check_playlist_changes_for_server(server)
             except Exception as e:
-                logger.error(
+                log_failure(
+                    logger,
                     "Error in check_playlist_changes for server %s: %s",
                     server.guild_id,
                     e,
@@ -200,9 +202,7 @@ class PlaylistMixin:
                     if not skip_notifications:
                         track = await spotify_api.track(track["track"]["id"], market="FR")
                         dt = timestamp_converter(
-                            datetime.fromisoformat(song["added_at"]).astimezone(
-                                pytz.timezone("Europe/Paris")
-                            )
+                            datetime.fromisoformat(song["added_at"]).astimezone(clock.LOCAL_TZ)
                         )
                         embed, file = await embed_song(
                             song=song,
@@ -287,7 +287,7 @@ class PlaylistMixin:
                         recap_message, content=recap_content, logger=logger
                     )
             except Exception as e:
-                logger.error("Error while trying to edit recap message: %s", e)
+                log_failure(logger, "Error while trying to edit recap message: %s", e)
 
     async def _remove_duplicate_tracks(self, server: ServerData, tracks: list[dict]) -> list[dict]:
         """Collapse duplicate tracks in the Spotify playlist to their first copy.
@@ -362,9 +362,9 @@ class PlaylistMixin:
                 tally = tally_daily_votes(votes.get("votes", {}), server.discord2name)
                 date = votes.get("date")
                 if date:
-                    date = timestamp_converter(datetime.strptime(date, "%Y-%m-%d")).format(
-                        TimestampStyles.LongDate
-                    )
+                    date = timestamp_converter(
+                        datetime.strptime(date, "%Y-%m-%d").replace(tzinfo=clock.LOCAL_TZ)
+                    ).format(TimestampStyles.LongDate)
                 embeds = [
                     embed,
                     await embed_message_vote(
@@ -442,7 +442,8 @@ class PlaylistMixin:
             try:
                 await self._new_titles_playlist_for_server(server)
             except Exception as e:
-                logger.error(
+                log_failure(
+                    logger,
                     "Error in new_titles_playlist for server %s: %s",
                     server.guild_id,
                     e,

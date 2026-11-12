@@ -1,6 +1,6 @@
 """Zunivers serves every enabled guild, each with its own reminders and event state."""
 
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
 import pytest
@@ -129,7 +129,7 @@ async def test_events_are_fetched_once_and_announced_in_each_guild(ext, monkeypa
 
 
 async def test_due_reminders_are_sent_per_guild_with_its_link(ext):
-    due = datetime.now() - timedelta(minutes=1)
+    due = datetime.now(UTC) - timedelta(minutes=1)
     (await ext._state("1")).reminders.add_reminder(due, "100", ReminderType.NORMAL)
     (await ext._state("2")).reminders.add_reminder(due, "200", ReminderType.NORMAL)
     processed: list[tuple] = []

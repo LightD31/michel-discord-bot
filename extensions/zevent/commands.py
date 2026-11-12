@@ -6,6 +6,7 @@ from interactions import SlashContext, slash_command
 
 from src.core import logging as logutil
 from src.core.http import fetch
+from src.core.logging import log_failure
 from src.discord_ext.messages import edit_message_if_changed
 from src.discord_ext.scopes import guild_scopes
 
@@ -80,5 +81,5 @@ class CommandsMixin:
             else:
                 await ctx.send("Erreur: Message non trouvé", ephemeral=True)
         except Exception as e:
-            logger.error(f"Error in zevent_finish command: {e}")
+            log_failure(logger, f"Error in zevent_finish command: {e}")
             await ctx.send("Erreur lors de la création de l'embed final", ephemeral=True)

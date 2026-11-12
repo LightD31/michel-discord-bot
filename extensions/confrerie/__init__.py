@@ -10,12 +10,14 @@ import os
 
 from interactions import Client, EmbedFooter, Extension, listen
 
+from features.confrerie.editors import EditorInput
 from src.core import logging as logutil
+from src.core.cache import ExpiringMap
 from src.core.config import global_config
 from src.discord_ext.messages import GuildMessages
 from src.integrations.notion import NotionClient
 
-from ._common import CONFRERIE
+from ._common import CONFRERIE, PENDING_INPUT_TTL_SECONDS
 from .browse import BrowseMixin
 from .editors import EditorsMixin
 from .forums import ForumsMixin
@@ -57,8 +59,9 @@ class ConfrerieExtension(
             initial_content="Initialisation du récapitulatif…",
             logger=logger,
         )
-        self._pending_editors = {}
-        self._pending_demandes = {}
+        # What /editeur and /demande chose, until their modal is submitted.
+        self._pending_editors: ExpiringMap[EditorInput] = ExpiringMap(PENDING_INPUT_TTL_SECONDS)
+        self._pending_demandes: ExpiringMap[dict] = ExpiringMap(PENDING_INPUT_TTL_SECONDS)
         # Œuvres pages per Notion database, for /texte and /auteur.
         self._works_cache = {}
 

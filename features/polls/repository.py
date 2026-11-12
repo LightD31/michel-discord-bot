@@ -7,7 +7,7 @@ from bson import ObjectId
 
 from features.polls.models import Poll
 from src.core.db import mongo_manager, translates_db_errors
-from src.core.logging import init_logger
+from src.core.logging import init_logger, log_failure
 
 logger = init_logger(__name__)
 
@@ -33,7 +33,7 @@ class PollRepository:
                 name="closes_at_idx",
             )
         except Exception as e:
-            logger.error("Failed to create poll indexes for guild %s: %s", self._guild_id, e)
+            log_failure(logger, "Failed to create poll indexes for guild %s: %s", self._guild_id, e)
 
     @staticmethod
     def _doc_to_poll(doc: dict) -> Poll:

@@ -15,6 +15,7 @@ from features.minecraft import MinecraftSettings
 from features.minecraft import get_config as get_mc_config
 from features.minecraft.table import build_stats_table
 from src.core.images import create_dynamic_image
+from src.core.logging import log_failure
 from src.discord_ext.messages import edit_message_if_changed
 
 from ._common import MINECRAFT, build_stats_embed, logger
@@ -33,7 +34,7 @@ class StatsMixin:
             try:
                 await self._update_stats(guild_id, config, MinecraftSettings.from_config(config))
             except Exception as e:  # noqa: BLE001 — one server down must not stop the others
-                logger.error("Guild %s: failed to update Minecraft stats: %s", guild_id, e)
+                log_failure(logger, "Guild %s: failed to update Minecraft stats: %s", guild_id, e)
 
     async def _update_stats(self, guild_id: str, config: dict, settings: MinecraftSettings):
         message = await self.status_messages.get(guild_id, config)
@@ -111,7 +112,8 @@ class StatsMixin:
             return player_stats
 
         except Exception as e:
-            logger.error(
+            log_failure(
+                logger,
                 "Failed to get stats with optimized method (host=%s, port=%s, user=%s): %s",
                 settings.sftp_host,
                 settings.sftp_port,

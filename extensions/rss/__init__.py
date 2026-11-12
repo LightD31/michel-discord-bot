@@ -46,8 +46,10 @@ from features.links import shorten_url
 from features.rss import RssEntry, RssFeedState, RssRepository
 from features.rss.network import fetch_feed
 from features.rss.scheduling import is_due, next_poll_at
+from src.core import clock
 from src.core.errors import DatabaseError, IntegrationError
 from src.core.http import BlockedUrlError
+from src.core.logging import log_failure
 from src.core.text import (
     EMBED_AUTHOR_LIMIT,
     EMBED_DESCRIPTION_LIMIT,
@@ -264,16 +266,10 @@ class RssExtension(Extension):
 
     def __init__(self, bot: Client):
         self.bot: Client = bot
-        self._repos: dict[str, RssRepository] = {}
         self._poll_lock = asyncio.Lock()
 
     def _repo(self, guild_id: str | int) -> RssRepository:
-        gid = str(guild_id)
-        repo = self._repos.get(gid)
-        if repo is None:
-            repo = RssRepository(gid)
-            self._repos[gid] = repo
-        return repo
+        return RssRepository(str(guild_id))
 
     @listen()
     async def on_startup(self):
@@ -301,7 +297,7 @@ class RssExtension(Extension):
             logger.info("Previous RSS cycle still running, skipping this one")
             return
         async with self._poll_lock:
-            jobs = await self._due_jobs(datetime.now())
+            jobs = await self._due_jobs(clock.now())
             if not jobs:
                 return
             semaphore = asyncio.Semaphore(MAX_CONCURRENT_FETCHES)
@@ -392,7 +388,7 @@ class RssExtension(Extension):
         try:
             channel: BaseChannel = await self.bot.fetch_channel(int(channel_id))
         except Exception as e:
-            logger.error("Could not fetch RSS channel %s: %s", channel_id, e)
+            log_failure(logger, "Could not fetch RSS channel %s: %s", channel_id, e)
             await repo.record_error(job.feed_id, f"Salon {channel_id} introuvable")
             return
         if not hasattr(channel, "send"):

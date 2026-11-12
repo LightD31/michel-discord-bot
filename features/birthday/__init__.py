@@ -6,10 +6,11 @@ from features.birthday.dates import (
     parse_birth_date,
     strip_year_from_format,
 )
-from features.birthday.models import BirthdayEntry
+from features.birthday.models import TIMEZONES, BirthdayEntry
 from features.birthday.repository import BirthdayRepository
 
 __all__ = [
+    "TIMEZONES",
     "BirthdayEntry",
     "BirthdayRepository",
     "age_on",

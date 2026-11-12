@@ -13,6 +13,7 @@ from features.xp import (
     get_rank_display,
 )
 from src.core.errors import DatabaseError
+from src.core.logging import log_failure
 from src.core.text import format_number
 from src.discord_ext.embeds import Colors
 from src.discord_ext.messages import (
@@ -36,7 +37,6 @@ class LeaderboardMixin:
     bot: Client
     _db_connected: bool
     _user_cache: TTLCache
-    _repos: dict[str, XpRepository]
     _leaderboard_paginators: dict[str, CustomPaginator]
 
     def _repo(self, guild_id: str) -> XpRepository: ...  # provided by LevelingMixin
@@ -191,7 +191,8 @@ class LeaderboardMixin:
                 logger=logger,
             )
         except Exception as e:
-            logger.error(
+            log_failure(
+                logger,
                 "Failed to update leaderboard for guild %s: %s\n%s",
                 guild_id,
                 e,

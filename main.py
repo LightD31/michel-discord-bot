@@ -18,13 +18,15 @@ from interactions import IntervalTrigger, Task
 
 from src.core import error_reporting
 from src.core import logging as logutil
-from src.core.config import CONFIG_PATH, bind_host, global_config
+from src.core.config import CONFIG_PATH, bind_host, config_store, global_config
 from src.core.db import mongo_manager
 from src.core.http import http_client
-from src.core.logging import DEBUG
+from src.core.logging import DEBUG, log_failure
+from src.discord_ext import errors as discord_errors
 from src.discord_ext import mentions, task_health
 from src.discord_ext.interaction_context import bind_interaction_context
 from src.discord_ext.lifecycle import GracefulShutdown
+from src.webui.schemas import config_problems
 
 # Configure logging for this main.py handler
 logger = logutil.init_logger("main.py")
@@ -34,6 +36,8 @@ logutil.adopt_library_logger("interactions")
 task_health.install()
 # A message sent without allowed_mentions never pings @everyone / @here.
 mentions.install()
+# log_failure() logs Discord's refusals and outages without a traceback.
+discord_errors.install()
 
 config = global_config()
 if not config.get("discord", {}).get("botToken"):
@@ -103,6 +107,8 @@ HEALTH_FILE = "/tmp/bot_heartbeat"
 # the supervisor (Docker `restart: unless-stopped`) restarts the process.
 WATCHDOG_STALE_SECONDS = 180
 WATCHDOG_GRACE_SECONDS = 120
+# Startup lists at most this many config problems; scripts/check_config.py lists them all.
+MAX_CONFIG_PROBLEMS_LOGGED = 20
 
 
 @Task.create(IntervalTrigger(seconds=45))
@@ -156,7 +162,7 @@ async def on_startup():
 
             start_webui(bot=client, host=WEBUI_HOST, port=WEBUI_PORT)
         except Exception as e:
-            logger.error(f"Failed to start Web UI: {e}")
+            log_failure(logger, f"Failed to start Web UI: {e}")
 
 
 # Discover extensions: either single-file modules (extensions/<name>.py) or
@@ -184,6 +190,19 @@ for extension in extensions:
         logger.info(f"Loaded extension {extension}")
     except interactions.errors.ExtensionLoadException as e:
         logger.exception(f"Failed to load extension {extension}.", exc_info=e)
+
+# The dashboard refuses to save a config that doesn't match the schemas; a hand
+# edit or a key an older version left behind is reported here, at each start.
+# The schemas are those of the extensions just loaded. The bot runs anyway.
+config_report = config_problems(config_store.get())
+if config_report:
+    logger.warning(
+        "%s: %d problème(s) de configuration (python scripts/check_config.py les liste tous)",
+        CONFIG_PATH,
+        len(config_report),
+    )
+    for problem in config_report[:MAX_CONFIG_PROBLEMS_LOGGED]:
+        logger.warning("config: %s", problem)
 
 threading.Thread(target=_watchdog_loop, name="bot-watchdog", daemon=True).start()
 try:

@@ -22,6 +22,7 @@ from typing import Any
 
 from src.core import logging as logutil
 from src.core.http import fetch
+from src.core.logging import log_failure
 
 logger = logutil.init_logger(__name__)
 
@@ -267,7 +268,7 @@ async def _cached_get(url: str) -> dict[str, Any]:
     try:
         data = await fetch(url, return_type="json")
     except Exception as e:
-        logger.error("Raider.IO fetch failed for %s: %s", url, e)
+        log_failure(logger, "Raider.IO fetch failed for %s: %s", url, e)
         # Serve stale rather than nothing if we have it.
         if cached is not None:
             return cached[1]

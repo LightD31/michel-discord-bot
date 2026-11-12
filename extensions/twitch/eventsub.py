@@ -17,6 +17,7 @@ from twitchAPI.twitch import Twitch
 from twitchAPI.type import AuthScope, EventSubSubscriptionConflict
 
 from src.core import logging as logutil
+from src.core.logging import log_failure
 from src.core.tasks import spawn
 
 from ._common import ensure_utc
@@ -40,7 +41,7 @@ class EventSubMixin:
         try:
             return await first(self.twitch.get_streams(user_id=user_id))
         except Exception as e:
-            logger.error(f"Error getting stream data for user {user_id}: {e}")
+            log_failure(logger, f"Error getting stream data for user {user_id}: {e}")
             return None
 
     def eventsub_is_alive(self) -> bool:
@@ -96,7 +97,7 @@ class EventSubMixin:
             except EventSubSubscriptionConflict:
                 logger.debug("%s already subscribed for %s", method_name, streamer_id)
             except Exception as e:
-                logger.error("Error subscribing %s for %s: %s", method_name, streamer_id, e)
+                log_failure(logger, "Error subscribing %s for %s: %s", method_name, streamer_id, e)
 
     async def _start_eventsub(self) -> None:
         """(Re)create the Twitch client + websocket and subscribe every streamer."""
@@ -126,7 +127,7 @@ class EventSubMixin:
             try:
                 user = await first(self.twitch.get_users(logins=[streamer.streamer_id]))
             except Exception as e:
-                logger.error("Error resolving Twitch user %s: %s", streamer.streamer_id, e)
+                log_failure(logger, "Error resolving Twitch user %s: %s", streamer.streamer_id, e)
                 continue
             if not user:
                 logger.error("Could not find Twitch user for %s", streamer.streamer_id)
@@ -162,7 +163,7 @@ class EventSubMixin:
                 try:
                     await self._start_eventsub()
                 except Exception as e:
-                    logger.error("Error starting EventSub: %s", e)
+                    log_failure(logger, "Error starting EventSub: %s", e)
                 else:
                     return
                 await asyncio.sleep(30)
@@ -213,8 +214,9 @@ class EventSubMixin:
                 await self.send_stream_start_notification(streamer, broadcaster_name, stream)
                 await self.edit_message(streamer, offline=False)
             except Exception as e:
-                logger.error(
-                    f"Error handling live start for {streamer.streamer_id} in guild {streamer.guild_id}: {e}"
+                log_failure(
+                    logger,
+                    f"Error handling live start for {streamer.streamer_id} in guild {streamer.guild_id}: {e}",
                 )
 
         for streamer_id in {s.streamer_id for s in streamers}:
@@ -241,8 +243,9 @@ class EventSubMixin:
                 # Keep last_notified_title / last_notified_category so off-live
                 # updates can still be diffed.
             except Exception as e:
-                logger.error(
-                    f"Error handling live end for {streamer.streamer_id} in guild {streamer.guild_id}: {e}"
+                log_failure(
+                    logger,
+                    f"Error handling live end for {streamer.streamer_id} in guild {streamer.guild_id}: {e}",
                 )
 
         for streamer_id in {s.streamer_id for s in streamers}:
@@ -328,8 +331,9 @@ class EventSubMixin:
 
                 await self.edit_message(streamer, offline=(stream is None), data=data)
             except Exception as e:
-                logger.error(
-                    f"Error handling update for {streamer.streamer_id} in guild {streamer.guild_id}: {e}"
+                log_failure(
+                    logger,
+                    f"Error handling update for {streamer.streamer_id} in guild {streamer.guild_id}: {e}",
                 )
 
         for streamer_id in {s.streamer_id for s in streamers}:

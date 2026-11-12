@@ -26,6 +26,7 @@ from features.confrerie.editors import (
     validate_editor,
 )
 from src.core import logging as logutil
+from src.core.cache import ExpiringMap
 from src.core.errors import ValidationError
 from src.discord_ext.messages import send_error
 from src.discord_ext.scopes import guild_scopes
@@ -49,7 +50,7 @@ _AUTOCOMPLETE_COLUMNS = {
 class EditorsMixin:
     """Collect, validate, and persist new editor entries to the Notion DB."""
 
-    _pending_editors: dict[int, EditorInput]
+    _pending_editors: ExpiringMap[EditorInput]
 
     @slash_command(
         name="editeur",
@@ -213,7 +214,7 @@ class EditorsMixin:
         commentaire: str = "",
     ):
         """Create the Notion page from this user's pending options + modal text."""
-        editor = self._pending_editors.pop(ctx.author.id, None)
+        editor = self._pending_editors.pop(ctx.author.id)
         if editor is None:
             await send_error(ctx, "Données manquantes, veuillez relancer /editeur.")
             return
