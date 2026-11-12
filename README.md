@@ -40,7 +40,7 @@ A modular, multi-guild Discord bot built with **interactions.py**. Michel ships 
 | **Starboard** | Mirrors highly-reacted messages to a dedicated channel once a reaction threshold is hit. |
 | **Suggestions** | Community suggestion box with up/down voting and approve/deny/implement workflows. |
 | **Polls** | `/poll`, `/poll-anonyme`, and `/poll-classement` (ranked-choice) — button-based, persisted across restarts, with optional auto-close. |
-| **Giveaway** | Reaction-entry giveaways with a scheduled random draw. |
+| **Giveaway** | Giveaways with a "Participer" button and a scheduled random draw. |
 | **Secret Santa** | Organize a Secret Santa entirely in Discord — registrations, forbidden pairings, random draw, and DM delivery. |
 | **Reaction Roles** | Self-assignable roles via persistent buttons, with a menu builder in the Web UI. |
 | **Reminders** | `/reminder set` with optional recurrence (25 per member and server), `/reminder list` to see them and when they next fire, `/reminder remove`. DM delivery to its author with a snooze button, persisted and restored across restarts. |

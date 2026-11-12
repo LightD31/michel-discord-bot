@@ -4,6 +4,7 @@ from datetime import datetime
 
 import pymongo
 from bson import ObjectId
+from pymongo import ReturnDocument
 
 from features.giveaway.models import Giveaway
 from src.core.db import mongo_manager
@@ -68,21 +69,55 @@ class GiveawayRepository:
         docs = await cursor.to_list()
         return [self._doc_to_giveaway(d) for d in docs]
 
-    async def claim_draw(self, giveaway_id: str) -> bool:
-        """Mark an open giveaway drawn; False when it was already drawn or cancelled.
+    async def add_entrant(self, message_id: str, user_id: str, now: datetime) -> Giveaway | None:
+        """Enter *user_id* in the giveaway of *message_id* if it is still open at *now*.
 
-        One conditional update, so of two draws racing (the scheduler and
-        ``/giveaway end`` at the deadline), only one gets True.
+        One atomic update. Returns the giveaway as it was *before* the click, so
+        the caller can tell a new entry from a repeated one, or None when no
+        open giveaway is on that message (drawn, cancelled, past its end).
         """
+        return await self._change_entrants(message_id, now, {"$addToSet": {"entrants": user_id}})
+
+    async def remove_entrant(self, message_id: str, user_id: str, now: datetime) -> Giveaway | None:
+        """Withdraw *user_id* from the open giveaway of *message_id*; see :meth:`add_entrant`."""
+        return await self._change_entrants(message_id, now, {"$pull": {"entrants": user_id}})
+
+    async def _change_entrants(
+        self, message_id: str, now: datetime, update: dict
+    ) -> Giveaway | None:
         try:
-            result = await self._col().update_one(
-                {"_id": ObjectId(giveaway_id), "drawn": False, "cancelled": False},
-                {"$set": {"drawn": True, "winners": []}},
+            doc = await self._col().find_one_and_update(
+                {
+                    "message_id": str(message_id),
+                    "drawn": False,
+                    "cancelled": False,
+                    "ends_at": {"$gt": now},
+                },
+                update,
+                return_document=ReturnDocument.BEFORE,
             )
         except Exception as e:
-            log_failure(logger, "DB update_one failed: %s", e)
+            log_failure(logger, "DB find_one_and_update failed: %s", e)
+            raise DatabaseError(f"Failed to update giveaway entrants: {e}") from e
+        return self._doc_to_giveaway(doc) if doc else None
+
+    async def claim_draw(self, giveaway_id: str) -> Giveaway | None:
+        """Mark an open giveaway drawn and return it, entrants included; None when taken.
+
+        One conditional update, so of two draws racing (the scheduler and
+        ``/giveaway end`` at the deadline), only one gets the giveaway. Entries
+        close with it: the entrants returned are the final ones.
+        """
+        try:
+            doc = await self._col().find_one_and_update(
+                {"_id": ObjectId(giveaway_id), "drawn": False, "cancelled": False},
+                {"$set": {"drawn": True, "winners": []}},
+                return_document=ReturnDocument.AFTER,
+            )
+        except Exception as e:
+            log_failure(logger, "DB find_one_and_update failed: %s", e)
             raise DatabaseError(f"Failed to claim giveaway draw: {e}") from e
-        return result.modified_count == 1
+        return self._doc_to_giveaway(doc) if doc else None
 
     async def release_draw(self, giveaway_id: str) -> None:
         """Give a claimed draw back to the scheduler, counting the failed attempt."""

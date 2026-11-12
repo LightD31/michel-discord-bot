@@ -1,4 +1,4 @@
-"""/giveaway start, end, cancel, reroll and list, called as Discord would (T04)."""
+"""/giveaway start, end, cancel, reroll and list, and its entry buttons, as Discord calls them."""
 
 from datetime import timedelta
 
@@ -44,9 +44,27 @@ class MemoryGiveaways:
     async def claim_draw(self, giveaway_id):
         g = self.items[giveaway_id]
         if g.drawn or g.cancelled:
-            return False
+            return None
         g.drawn = True
-        return True
+        return g.model_copy(deep=True)
+
+    async def _change(self, message_id, now, change):
+        g = await self.get_by_message(message_id)
+        if g is None or g.drawn or g.cancelled or g.ends_at <= now:
+            return None
+        before = g.model_copy(deep=True)
+        change(g.entrants)
+        return before
+
+    async def add_entrant(self, message_id, user_id, now):
+        return await self._change(
+            message_id, now, lambda e: e.append(user_id) if user_id not in e else None
+        )
+
+    async def remove_entrant(self, message_id, user_id, now):
+        return await self._change(
+            message_id, now, lambda e: e.remove(user_id) if user_id in e else None
+        )
 
     async def release_draw(self, giveaway_id):
         self.items[giveaway_id].drawn = False
@@ -56,27 +74,6 @@ class MemoryGiveaways:
 
     async def list_active(self):
         return [g for g in self.items.values() if not g.drawn and not g.cancelled]
-
-
-class Reactors:
-    def __init__(self, users):
-        self._users = users
-
-    def __aiter__(self):
-        async def gen():
-            for user in self._users:
-                yield user
-
-        return gen()
-
-
-class Reaction:
-    def __init__(self, emoji, users):
-        self.emoji = emoji
-        self._users = users
-
-    def users(self):
-        return Reactors(self._users)
 
 
 @pytest.fixture
@@ -91,10 +88,20 @@ def setup(monkeypatch, store_config):
     channel = guild.add_channel(FakeChannel(10))
     host = guild.add_member(FakeMember(3, "alice"))
     repo = MemoryGiveaways()
-    ext = bare_extension(GiveawayExtension, _repo=lambda guild_id: repo)
+    ext = bare_extension(
+        GiveawayExtension, _repo=lambda guild_id: repo, _refreshes=RecordingRefreshes()
+    )
     ctx = FakeCtx(host, channel)
     ext.bot = ctx.bot
     return ext, ctx, repo, channel
+
+
+class RecordingRefreshes:
+    def __init__(self):
+        self.requests = []
+
+    def request(self, key, refresh):
+        self.requests.append((key, refresh))
 
 
 async def start(ext, ctx, **options):
@@ -107,6 +114,9 @@ async def test_start_posts_the_announcement_and_stores_the_giveaway(setup):
     (stored,) = repo.items.values()
     (announcement,) = [r for r in ctx.replies if r.get("embeds")]
     assert "Un jeu" in announcement["embeds"][0].title
+    buttons = announcement["components"][0].components
+    assert [b.custom_id for b in buttons] == ["giveaway:enter", "giveaway:leave"]
+    assert buttons[0].emoji.name == "🎉"
     assert stored.winners_count == 2 and stored.host_id == "3"
     assert stored.ends_at - clock.now() == pytest.approx(
         timedelta(hours=2), abs=timedelta(seconds=5)
@@ -126,9 +136,8 @@ async def test_start_refuses_a_bad_duration(setup, duration, error):
 
 
 def posted(repo, channel, entrants=(), **fields):
-    """A running giveaway with its announcement in *channel*, reacted to by *entrants*."""
+    """A running giveaway with its announcement in *channel*, entered by *entrants*."""
     message = FakeMessage(500, embeds=[Embed(title="🎁 GIVEAWAY — Un jeu")], channel=channel)
-    message.reactions = [Reaction("🎉", [FakeMember(int(e)) for e in entrants])]
     channel.messages[message.id] = message
     gid = f"{len(repo.items) + 1:024x}"
     repo.items[gid] = Giveaway(
@@ -140,6 +149,7 @@ def posted(repo, channel, entrants=(), **fields):
         prize="Un jeu",
         allow_host_win=False,
         ends_at=clock.now() + timedelta(hours=1),
+        entrants=list(entrants),
         **fields,
     )
     return repo.items[gid], message
@@ -205,7 +215,7 @@ async def test_reroll_with_nobody_left(setup):
 
 async def test_the_host_never_enters_unless_allowed(setup):
     ext, ctx, repo, channel = setup
-    giveaway, _ = posted(repo, channel, entrants=["3"])  # only the host reacted
+    giveaway, _ = posted(repo, channel, entrants=["3"])  # only the host entered
     await run(GiveawayExtension.giveaway_end, ext, ctx, "500")
     assert giveaway.drawn and giveaway.winners == []
 
@@ -223,3 +233,97 @@ async def test_list_when_nothing_runs(setup):
     ext, ctx, _, _ = setup
     await run(GiveawayExtension.giveaway_list, ext, ctx)
     assert ctx.last == "Aucun giveaway en cours."
+
+
+async def test_a_failed_save_takes_the_announcement_down(setup):
+    ext, ctx, repo, channel = setup
+
+    async def broken(giveaway):
+        raise RuntimeError("mongo down")
+
+    repo.add = broken
+    await start(ext, ctx, prize="Un jeu", duration="2h")
+    assert all(m.deleted for m in channel.messages.values())
+    assert "pas pu être enregistré" in ctx.last
+
+
+async def click(ext, member, message, button="enter"):
+    ctx = FakeCtx(member, message.channel, message=message, custom_id=f"giveaway:{button}")
+    handler = GiveawayExtension.on_enter if button == "enter" else GiveawayExtension.on_leave
+    await run(handler, ext, ctx)
+    return ctx
+
+
+async def test_a_member_enters_once_and_the_announcement_is_refreshed(setup):
+    ext, _, repo, channel = setup
+    giveaway, message = posted(repo, channel)
+    bob = channel.guild.add_member(FakeMember(7, "bob"))
+
+    first = await click(ext, bob, message)
+    assert first.last == "🎉 Ta participation est enregistrée !"
+    assert first.replies[-1]["ephemeral"] is True
+    assert giveaway.entrants == ["7"]
+    again = await click(ext, bob, message)
+    assert again.last == "Tu participes déjà." and giveaway.entrants == ["7"]
+
+    [(key, refresh)] = ext._refreshes.requests  # the repeated click changed nothing
+    assert key == 500
+    await refresh()
+    (edit,) = message.edits
+    participants = next(f for f in edit["embeds"][0].fields if f.name == "Participants")
+    assert participants.value == "<@7>"
+    assert [b.custom_id for b in edit["components"][0].components] == [
+        "giveaway:enter",
+        "giveaway:leave",
+    ]
+
+
+async def test_a_member_withdraws(setup):
+    ext, _, repo, channel = setup
+    giveaway, message = posted(repo, channel, entrants=["7"])
+    bob = channel.guild.add_member(FakeMember(7, "bob"))
+    left = await click(ext, bob, message, "leave")
+    assert left.last == "Ta participation est retirée." and giveaway.entrants == []
+    again = await click(ext, bob, message, "leave")
+    assert again.last == "Tu ne participais pas."
+
+
+async def test_the_host_cannot_enter_unless_allowed(setup):
+    ext, ctx, repo, channel = setup
+    giveaway, message = posted(repo, channel)
+    refused = await click(ext, ctx.author, message)
+    assert "organisateur ne peut pas" in refused.last and giveaway.entrants == []
+    giveaway.allow_host_win = True
+    await click(ext, ctx.author, message)
+    assert giveaway.entrants == ["3"]
+
+
+@pytest.mark.parametrize(
+    "fields",
+    [{"drawn": True}, {"cancelled": True}, {"ends_at": clock.now() - timedelta(seconds=1)}],
+)
+async def test_a_closed_giveaway_takes_no_entries(setup, fields):
+    ext, _, repo, channel = setup
+    giveaway, message = posted(repo, channel)
+    for name, value in fields.items():
+        setattr(giveaway, name, value)
+    bob = channel.guild.add_member(FakeMember(7, "bob"))
+    late = await click(ext, bob, message)
+    assert late.last == "Ce giveaway est terminé." and giveaway.entrants == []
+    assert ext._refreshes.requests == []
+
+
+async def test_buttons_where_giveaways_are_off(setup, store_config):
+    ext, _, repo, channel = setup
+    _, message = posted(repo, channel)
+    store_config({"servers": {}})
+    bob = channel.guild.add_member(FakeMember(7, "bob"))
+    off = await click(ext, bob, message)
+    assert "pas activés" in off.last
+
+
+async def test_cancel_removes_the_buttons(setup):
+    ext, ctx, repo, channel = setup
+    _, message = posted(repo, channel)
+    await run(GiveawayExtension.giveaway_cancel, ext, ctx, "500")
+    assert message.edits[-1]["components"] == []

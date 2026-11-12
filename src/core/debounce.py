@@ -1,9 +1,10 @@
 """Fold a burst of events into a few runs of the work they all ask for.
 
-A reaction on a giveaway or a poll re-reads every reactor of the message to
-re-render it: one re-read per reaction made a busy message cost O(n²) calls to
-Discord. :class:`Coalescer` runs the work for a key at most once per *delay*,
-with the latest state, however many events ask for it in between.
+A reaction on a poll re-reads every reactor of the message to re-render it: one
+re-read per reaction made a busy message cost O(n²) calls to Discord. A click
+on a giveaway's buttons re-renders its participant count the same way.
+:class:`Coalescer` runs the work for a key at most once per *delay*, with the
+latest state, however many events ask for it in between.
 """
 
 from __future__ import annotations

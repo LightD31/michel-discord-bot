@@ -2,27 +2,35 @@
 
 Slash commands:
 - ``/giveaway start prize:<str> duration:<30m|2h|1d> winners:<int> [allow_host_win:<bool>]`` — post a
-  giveaway embed and start accepting reaction entries.
+  giveaway embed with its "Participer" / "Se retirer" buttons.
 - ``/giveaway end message_id:<id>`` — end a giveaway early and draw winners now.
 - ``/giveaway reroll message_id:<id> [winners:<int>]`` — pick fresh winners
   excluding any prior winners.
 - ``/giveaway list`` — list active giveaways on this guild.
 - ``/giveaway cancel message_id:<id>`` — cancel without drawing.
 
-Reaction-based entry: users click the configured emoji (🎉 by default).
-A background task scans every 30 s for due giveaways and draws winners.
+Button entry: each click adds or removes the member in the giveaway's
+``entrants`` with one atomic update, and the announcement shows the exact
+count a few seconds later. A background task scans every 30 s for due
+giveaways and draws winners among the stored entrants.
 Persistence: per-guild ``giveaways`` collection. Enabled per-guild via
 ``moduleGiveaway``.
 """
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+import re
+from datetime import timedelta
 from typing import Literal
 
+import emoji as emoji_lib
 from interactions import (
+    ActionRow,
     BaseChannel,
+    Button,
+    ButtonStyle,
     Client,
+    ComponentContext,
     Embed,
     Extension,
     IntervalTrigger,
@@ -31,12 +39,12 @@ from interactions import (
     Permissions,
     SlashContext,
     Task,
+    component_callback,
     listen,
     slash_command,
     slash_default_member_permission,
     slash_option,
 )
-from interactions.api.events import MessageReactionAdd, MessageReactionRemove
 
 from features.giveaway import MAX_WINNERS, Giveaway, GiveawayRepository, pick_winners
 from features.polls import parse_duration  # reused: same DSL as /poll
@@ -63,8 +71,7 @@ from ._common import (
 # Floor on giveaway duration. Anything shorter than 10 s is almost certainly a
 # typo and races the background scheduler.
 MIN_DURATION_SECONDS = 10
-# Hard ceiling — 30 days. Discord stops surfacing reactions on very old
-# messages, so longer giveaways risk silent entry loss.
+# Hard ceiling — 30 days.
 MAX_DURATION_SECONDS = 30 * 86400
 # Affiche les mentions tant que la liste reste lisible dans un champ d'embed.
 MAX_LISTED_PARTICIPANTS = 15
@@ -74,9 +81,39 @@ MAX_PARTICIPANTS_FIELD_CHARS = 900
 MAX_DRAW_FAILURES = 10
 # The title is "🏁 GIVEAWAY TERMINÉ — {prize}" and Discord caps titles at 256.
 MAX_PRIZE_LENGTH = 200
-# Reactions on a giveaway within this many seconds share one re-read of its entrants.
+# Clicks on a giveaway within this many seconds share one re-render of its participants.
 REFRESH_DELAY_SECONDS = 3
 MAX_DESCRIPTION_LENGTH = 1000
+# The buttons' ids are the same on every giveaway: the message they sit on says which one.
+ENTER_ID = "giveaway:enter"
+LEAVE_ID = "giveaway:leave"
+_CUSTOM_EMOJI = re.compile(r"^<a?:\w{2,32}:\d{17,20}>$")
+
+
+def _button_emoji(raw: str) -> str | None:
+    """The configured emoji when Discord takes it on a button, else None (no emoji).
+
+    A message whose button carries anything else is refused by Discord, which
+    would stop the giveaway from being posted at all.
+    """
+    if _CUSTOM_EMOJI.match(raw) or emoji_lib.is_emoji(raw):
+        return raw
+    return None
+
+
+def _entry_buttons(giveaway: Giveaway) -> list[ActionRow]:
+    """The "Participer" / "Se retirer" row of an open giveaway."""
+    return [
+        ActionRow(
+            Button(
+                style=ButtonStyle.SUCCESS,
+                label="Participer",
+                emoji=_button_emoji(giveaway.emoji),
+                custom_id=ENTER_ID,
+            ),
+            Button(style=ButtonStyle.SECONDARY, label="Se retirer", custom_id=LEAVE_ID),
+        )
+    ]
 
 
 def _participants_field_value(entrant_ids: list[str]) -> str:
@@ -134,7 +171,7 @@ def _build_embed(
         else:
             description_lines.append("**Aucune participation valide.**")
     else:
-        description_lines.append(f"Réagissez avec {giveaway.emoji} pour participer !")
+        description_lines.append("Clique sur **Participer** pour tenter ta chance !")
     if description_lines:
         embed.description = "\n\n".join(description_lines)
 
@@ -194,35 +231,11 @@ def _allow_host(giveaway: Giveaway) -> bool:
     return guild_allow_host_win(giveaway.guild_id)
 
 
-async def _collect_entrants(
-    message: Message,
-    emoji: str,
-    host_id: str,
-    *,
-    allow_host: bool,
-) -> list[str]:
-    """Read reactions from *message* and return valid entrant IDs.
-
-    Raises when Discord stops answering midway: a partial list would make a
-    draw pick among some of the entrants only.
-    """
-    target = next(
-        (r for r in (message.reactions or []) if str(getattr(r.emoji, "name", r.emoji)) == emoji),
-        None,
-    )
-    if target is None:
-        return []
-    entrants: list[str] = []
-    seen: set[str] = set()
-    async for user in target.users():
-        if getattr(user, "bot", False):
-            continue
-        uid = str(user.id)
-        if (not allow_host and uid == host_id) or uid in seen:
-            continue
-        seen.add(uid)
-        entrants.append(uid)
-    return entrants
+def _eligible(giveaway: Giveaway) -> list[str]:
+    """The entrants who may win: the host only where the giveaway allows it."""
+    if _allow_host(giveaway):
+        return list(giveaway.entrants)
+    return [uid for uid in giveaway.entrants if uid != giveaway.host_id]
 
 
 class GiveawayExtension(Extension):
@@ -230,7 +243,7 @@ class GiveawayExtension(Extension):
 
     def __init__(self, bot: Client):
         self.bot: Client = bot
-        # A burst of reactions on a giveaway re-reads its entrants once.
+        # A burst of clicks on a giveaway re-renders its announcement once.
         self._refreshes = Coalescer(REFRESH_DELAY_SECONDS, name="giveaway-refresh", log=logger)
 
     def _repo(self, guild_id: str | int) -> GiveawayRepository:
@@ -254,7 +267,7 @@ class GiveawayExtension(Extension):
         name="giveaway",
         description="Gérer les giveaways",
         sub_cmd_name="start",
-        sub_cmd_description="Lancer un giveaway avec entrée par réaction",
+        sub_cmd_description="Lancer un giveaway avec bouton de participation",
         scopes=guild_scopes(GIVEAWAY.guild_ids()),
     )
     @slash_option(
@@ -320,7 +333,6 @@ class GiveawayExtension(Extension):
             return
 
         ends_at = clock.now() + timedelta(seconds=seconds)
-        emoji = guild_emoji(ctx.guild_id)
         effective_allow_host_win = (
             allow_host_win if allow_host_win is not None else guild_allow_host_win(ctx.guild_id)
         )
@@ -332,7 +344,7 @@ class GiveawayExtension(Extension):
             host_id=str(ctx.user.id),
             prize=prize,
             description=description,
-            emoji=emoji,
+            emoji=guild_emoji(ctx.guild_id),
             allow_host_win=effective_allow_host_win,
             winners_count=winners,
             ends_at=ends_at,
@@ -344,19 +356,20 @@ class GiveawayExtension(Extension):
             host_avatar=str(ctx.user.avatar_url) if ctx.user.avatar_url else None,
             entrants=[],
         )
-        message = await ctx.send(embeds=[embed])
+        message = await ctx.send(embeds=[embed], components=_entry_buttons(giveaway))
         giveaway.message_id = str(message.id)
 
         try:
             giveaway.id = await self._repo(ctx.guild_id).add(giveaway)
         except Exception as e:
             log_failure(logger, "Could not persist giveaway: %s", e)
-            await send_error(ctx, "Le giveaway a été posté mais sa persistance a échoué.")
+            # Its buttons would answer nothing: take the announcement down.
+            try:
+                await message.delete()
+            except Exception as delete_error:
+                logger.warning("Could not delete unsaved giveaway %s: %s", message.id, delete_error)
+            await send_error(ctx, "Le giveaway n'a pas pu être enregistré, réessaie plus tard.")
             return
-        try:
-            await message.add_reaction(emoji)
-        except Exception as e:
-            logger.warning("Could not seed reaction %s on %s: %s", emoji, message.id, e)
 
         logger.info(
             "Giveaway %s started by %s (prize=%r, winners=%d, host_can_win=%s, ends=%s)",
@@ -437,7 +450,7 @@ class GiveawayExtension(Extension):
                 embed = _build_embed(
                     giveaway, host_name=host_name, host_avatar=host_avatar, cancelled=True
                 )
-                await edit_message_if_changed(message, embeds=[embed], logger=logger)
+                await edit_message_if_changed(message, embeds=[embed], components=[], logger=logger)
         except Exception as e:
             logger.warning("Could not edit cancelled giveaway message: %s", e)
         await send_success(ctx, "Giveaway annulé.")
@@ -479,23 +492,8 @@ class GiveawayExtension(Extension):
             await send_error(ctx, "Tirez d'abord les gagnants avec /giveaway end.")
             return
 
-        try:
-            message = await self._fetch_message(giveaway)
-            if message is None:
-                await send_error(ctx, "Message original introuvable.")
-                return
-            entrants = await _collect_entrants(
-                message,
-                giveaway.emoji,
-                giveaway.host_id,
-                allow_host=_allow_host(giveaway),
-            )
-        except Exception as e:
-            logger.warning("Could not read giveaway %s for a reroll: %s", giveaway.id, e)
-            await send_error(ctx, "Discord n'a pas répondu, réessaie dans un instant.")
-            return
         count = winners if winners is not None else giveaway.winners_count
-        new_winners = pick_winners(entrants, count, exclude=giveaway.winners)
+        new_winners = pick_winners(_eligible(giveaway), count, exclude=giveaway.winners)
         if not new_winners:
             await send_error(ctx, "Pas assez de participants pour un nouveau tirage.")
             return
@@ -505,9 +503,11 @@ class GiveawayExtension(Extension):
 
         mention = ", ".join(f"<@{w}>" for w in new_winners)
         try:
-            await message.reply(
-                f"🎉 Reroll : nouveau(x) gagnant(s) du giveaway **{giveaway.prize}** : {mention}"
-            )
+            message = await self._fetch_message(giveaway)
+            if message is not None:
+                await message.reply(
+                    f"🎉 Reroll : nouveau(x) gagnant(s) du giveaway **{giveaway.prize}** : {mention}"
+                )
         except Exception as e:
             logger.warning("Could not post reroll reply: %s", e)
         await send_success(ctx, f"Nouveau tirage : {mention}")
@@ -528,6 +528,7 @@ class GiveawayExtension(Extension):
             link = f"https://discord.com/channels/{g.guild_id}/{g.channel_id}/{g.message_id}"
             lines.append(
                 f"• **{g.prize}** — {g.winners_count} gagnant(s) — "
+                f"{len(g.entrants)} participant(s) — "
                 f"fin {format_discord_timestamp(g.ends_at, 'R')} [↗]({link})"
             )
         embed = Embed(
@@ -538,67 +539,64 @@ class GiveawayExtension(Extension):
         await ctx.send(embeds=[embed], ephemeral=True)
 
     # ------------------------------------------------------------------
-    # Live participant updates on reactions
+    # Entry buttons
     # ------------------------------------------------------------------
 
-    @listen(MessageReactionAdd)
-    async def on_message_reaction_add(self, event: MessageReactionAdd) -> None:
-        self._refresh_participants_embed(event)
+    @component_callback(ENTER_ID)
+    async def on_enter(self, ctx: ComponentContext) -> None:
+        await self._change_entry(ctx, entering=True)
 
-    @listen(MessageReactionRemove)
-    async def on_message_reaction_remove(self, event: MessageReactionRemove) -> None:
-        self._refresh_participants_embed(event)
+    @component_callback(LEAVE_ID)
+    async def on_leave(self, ctx: ComponentContext) -> None:
+        await self._change_entry(ctx, entering=False)
 
-    def _refresh_participants_embed(
-        self,
-        event: MessageReactionAdd | MessageReactionRemove,
-    ) -> None:
-        """Schedule a refresh of the participants a reaction may have changed.
-
-        Only the bot's own messages, in servers where giveaways are on, can be
-        giveaways: any other reaction costs nothing. A burst of reactions with
-        one emoji on one message is folded into one refresh.
-        """
-        message = event.message
-        guild = getattr(message, "guild", None)
-        if guild is None or not GIVEAWAY.enabled(guild.id):
+    async def _change_entry(self, ctx: ComponentContext, *, entering: bool) -> None:
+        """Enter or withdraw the member who clicked, then refresh the announcement."""
+        if ctx.guild_id is None or not GIVEAWAY.enabled(ctx.guild_id):
+            await ctx.send("Les giveaways ne sont pas activés sur ce serveur.", ephemeral=True)
             return
-        author = getattr(message, "author", None)
-        if author is None or author.id != self.bot.user.id:
+        repo = self._repo(ctx.guild_id)
+        message_id, user_id = str(ctx.message.id), str(ctx.author.id)
+        giveaway = await repo.get_by_message(message_id)
+        if giveaway is None:
+            await ctx.send("Ce giveaway est introuvable.", ephemeral=True)
             return
-        # A giveaway stores its emoji as a name (🎉) or in full (<:name:id>).
-        emoji = (str(getattr(event.emoji, "name", event.emoji)), str(event.emoji))
-        self._refreshes.request(
-            (int(message.id), emoji), lambda: self._refresh_participants(message, emoji)
-        )
-
-    async def _refresh_participants(self, message: Message, emoji: tuple[str, str]) -> None:
-        """Re-render the participants of the giveaway *message* is, after *emoji* moved."""
-        giveaway = await self._repo(message.guild.id).get_by_message(str(message.id))
-        if giveaway is None or giveaway.drawn or giveaway.cancelled:
+        if entering and user_id == giveaway.host_id and not _allow_host(giveaway):
+            await ctx.send("L'organisateur ne peut pas participer à ce giveaway.", ephemeral=True)
             return
-        # Another emoji's reactions leave the entrants as they are.
-        if giveaway.emoji not in emoji:
+        change = repo.add_entrant if entering else repo.remove_entrant
+        before = await change(message_id, user_id, clock.now())
+        if before is None:
+            await ctx.send("Ce giveaway est terminé.", ephemeral=True)
             return
-        try:
-            entrants = await _collect_entrants(
-                message,
-                giveaway.emoji,
-                giveaway.host_id,
-                allow_host=_allow_host(giveaway),
+        was_in = user_id in before.entrants
+        if entering:
+            reply = "Tu participes déjà." if was_in else "🎉 Ta participation est enregistrée !"
+        else:
+            reply = "Ta participation est retirée." if was_in else "Tu ne participais pas."
+        await ctx.send(reply, ephemeral=True)
+        if was_in != entering:
+            message = ctx.message
+            self._refreshes.request(
+                int(message.id), lambda: self._refresh_participants(message, str(ctx.guild_id))
             )
-        except Exception as e:
-            logger.debug("Could not read the entrants of giveaway %s: %s", giveaway.id, e)
+
+    async def _refresh_participants(self, message: Message, guild_id: str) -> None:
+        """Re-render the participants of the giveaway *message* announces, from the database."""
+        giveaway = await self._repo(guild_id).get_by_message(str(message.id))
+        if giveaway is None or giveaway.drawn or giveaway.cancelled:
             return
         host_name, host_avatar = _footer_host(message, giveaway)
         embed = _build_embed(
             giveaway,
             host_name=host_name,
             host_avatar=host_avatar,
-            entrants=entrants,
+            entrants=giveaway.entrants,
         )
         try:
-            await edit_message_if_changed(message, embeds=[embed], logger=logger)
+            await edit_message_if_changed(
+                message, embeds=[embed], components=_entry_buttons(giveaway), logger=logger
+            )
         except Exception as e:
             logger.debug("Could not refresh giveaway participants for %s: %s", giveaway.id, e)
 
@@ -644,17 +642,12 @@ class GiveawayExtension(Extension):
         if giveaway.id is None:
             return "taken"
         repo = self._repo(giveaway.guild_id)
-        if not await repo.claim_draw(giveaway.id):
+        claimed = await repo.claim_draw(giveaway.id)
+        if claimed is None:
             return "taken"
+        giveaway = claimed
         try:
             message = await self._fetch_message(giveaway)
-            entrants = (
-                []
-                if message is None
-                else await _collect_entrants(
-                    message, giveaway.emoji, giveaway.host_id, allow_host=_allow_host(giveaway)
-                )
-            )
         except Exception as e:
             if giveaway.draw_failures + 1 < MAX_DRAW_FAILURES:
                 logger.warning("Could not read giveaway %s, retrying later: %s", giveaway.id, e)
@@ -672,6 +665,7 @@ class GiveawayExtension(Extension):
             logger.info("Giveaway %s closed without winners: its message is gone", giveaway.id)
             return "drawn"
 
+        entrants = _eligible(giveaway)
         winners = pick_winners(entrants, giveaway.winners_count)
         await repo.update_winners(giveaway.id, winners)
 
@@ -686,7 +680,7 @@ class GiveawayExtension(Extension):
             entry_count=len(entrants),
         )
         try:
-            await edit_message_if_changed(message, embeds=[embed], logger=logger)
+            await edit_message_if_changed(message, embeds=[embed], components=[], logger=logger)
         except Exception as e:
             logger.warning("Could not edit closed giveaway %s: %s", giveaway.id, e)
 
