@@ -30,7 +30,7 @@ import contextlib
 import functools
 import shutil
 from collections.abc import Awaitable, Callable
-from datetime import datetime
+from datetime import UTC
 from pathlib import Path
 from typing import Any, ClassVar, Optional
 
@@ -41,7 +41,7 @@ from motor.motor_asyncio import (
     AsyncIOMotorDatabase,
 )
 
-from src.core import backup_format
+from src.core import backup_format, clock
 from src.core import config as _config
 from src.core import logging as _logging
 from src.core.config import global_config
@@ -140,6 +140,9 @@ class MongoManager:
 
             client = AsyncIOMotorClient(
                 self._url,
+                # Dates come back as aware UTC datetimes (src/core/clock.py).
+                tz_aware=True,
+                tzinfo=UTC,
                 serverSelectionTimeoutMS=5000,
                 connectTimeoutMS=10000,
                 socketTimeoutMS=60000,
@@ -238,7 +241,7 @@ class MongoManager:
         Returns:
             The path to the newly created backup folder.
         """
-        timestamp = datetime.now().strftime(backup_format.BACKUP_TIMESTAMP_FORMAT)
+        timestamp = clock.local_now().strftime(backup_format.BACKUP_TIMESTAMP_FORMAT)
         dest = Path(backup_dir) / timestamp
         dest.mkdir(parents=True, exist_ok=True)
 

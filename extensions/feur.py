@@ -21,6 +21,7 @@ from interactions import (
 from interactions.api.events import MessageCreate
 
 from features.feur import FeurRepository
+from src.core import clock
 from src.core import logging as logutil
 from src.core.config import ModuleConfig
 from src.core.text import sanitize_content
@@ -149,7 +150,7 @@ class FeurExtension(Extension):
         embed = Embed(
             title="📊 Statistiques Feur",
             color=Colors.FEUR,
-            timestamp=datetime.now(),
+            timestamp=clock.now(),
             footer=EmbedFooter(text=f"Demandé par {ctx.author.display_name}"),
         )
         embed.add_field(

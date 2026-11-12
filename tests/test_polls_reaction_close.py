@@ -1,7 +1,7 @@
 """Reaction polls with a deadline are persisted, so their auto-close survives a restart."""
 
 import asyncio
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
 import pytest
@@ -101,7 +101,7 @@ def test_poll_in_an_enabled_server_is_persisted(enabled):
     (stored,) = repo.added
     assert stored.mode == "reaction" and stored.options == ["Oui", "Non"]
     assert stored.emojis == POLL_EMOJIS[:2]
-    assert stored.closes_at > datetime.now() + timedelta(minutes=59)
+    assert stored.closes_at > datetime.now(UTC) + timedelta(minutes=59)
 
 
 def test_a_poll_without_a_deadline_is_stored_too(enabled):

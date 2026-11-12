@@ -8,6 +8,7 @@ from interactions import Embed, File, IntervalTrigger, Task, utils
 
 from features.zevent.history import compare_milestone, format_euros, record_message
 from features.zevent.repository import ZeventStateRepository
+from src.core import clock
 from src.core import logging as logutil
 from src.core.http import fetch
 from src.core.logging import log_failure
@@ -244,7 +245,7 @@ class TasksMixin:
             data = self.last_data_cache
         else:
             self.last_data_cache = data
-            self.last_update_time = datetime.now()
+            self.last_update_time = clock.now()
 
         total_amount, total_int = self.get_total_amount(data, streamlabs_data)
         live = self._safe_get_data(data, ["live"], [])
@@ -445,7 +446,7 @@ class TasksMixin:
                 description=f"Total récolté: {total_amount}\n\nDésolé, nous rencontrons des difficultés techniques pour afficher les détails des streamers.",
                 color=0x59AF37,
             )
-            simple_embed.timestamp = utils.timestamp_converter(datetime.now())
+            simple_embed.timestamp = utils.timestamp_converter(clock.now())
 
             for guild, _ in guilds:
                 if guild.message:

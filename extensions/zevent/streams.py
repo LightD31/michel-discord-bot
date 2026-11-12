@@ -4,6 +4,7 @@ import os
 from datetime import datetime, timedelta
 
 from features.zevent.stats import LAN, ONLINE, resolve_location
+from src.core import clock
 from src.core import logging as logutil
 from src.core.logging import log_failure
 
@@ -40,7 +41,7 @@ class StreamsMixin:
         and used to fetch it separately, doubling the Twitch traffic for
         identical data. They now share one snapshot.
         """
-        now = datetime.now()
+        now = clock.now()
         if self._stream_snapshot_time and now - self._stream_snapshot_time < _SNAPSHOT_TTL:
             return self._stream_viewers
 

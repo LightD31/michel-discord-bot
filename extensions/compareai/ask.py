@@ -7,7 +7,6 @@ import re
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-import pytz
 from interactions import (
     AllowedMentions,
     Buckets,
@@ -53,6 +52,7 @@ from features.ai import (
     usable_models,
 )
 from features.ai.quota import QUOTA_UNAVAILABLE, access_refusal, limit_message
+from src.core import clock
 from src.core.errors import DatabaseError
 from src.discord_ext.mentions import NO_PINGS
 from src.discord_ext.messages import send_error
@@ -67,7 +67,7 @@ from ._common import (
     scope_for,
 )
 
-PROMPT_TIMEZONE = pytz.timezone("Europe/Paris")
+PROMPT_TIMEZONE = clock.LOCAL_TZ
 MODE_COMPARE = "comparer"
 MODE_QUICK = "rapide"
 VOTE_PREFIX = "aivote"

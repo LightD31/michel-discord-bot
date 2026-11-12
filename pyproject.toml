@@ -33,7 +33,8 @@ dependencies = [
     "pyfactorybridge",
     "ldap3>=2.9.1",
     # Utilities
-    "pytz",
+    # IANA time zone database for zoneinfo (src/core/clock.py): the slim image has none.
+    "tzdata",
     "python-dateutil",
     "babel",
     "isodate",

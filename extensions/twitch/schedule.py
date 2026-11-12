@@ -4,7 +4,6 @@ import contextlib
 import os
 from datetime import datetime, timedelta
 
-import pytz
 from interactions import (
     Embed,
     EmbedFooter,
@@ -22,6 +21,7 @@ from twitchAPI.object.api import ChannelStreamSchedule, ChannelStreamScheduleSeg
 from twitchAPI.object.eventsub import ChannelUpdateEvent, StreamOfflineEvent
 from twitchAPI.type import TwitchResourceNotFound
 
+from src.core import clock
 from src.core import logging as logutil
 from src.core.logging import log_failure
 from src.discord_ext.embeds import Colors
@@ -62,7 +62,7 @@ class ScheduleMixin:
         stream: ChannelStreamScheduleSegment,
         is_now: bool = False,
     ) -> None:
-        now = datetime.now(pytz.UTC)
+        now = clock.now()
         start_time = ensure_utc(stream.start_time)
         end_time = ensure_utc(stream.end_time)
         title = stream.title if stream.title is not None else "Pas de titre défini"
@@ -127,10 +127,10 @@ class ScheduleMixin:
                     ),
                     description="Les 5 prochains streams planifiés et dans moins de 10 jours.",
                     color=Colors.TWITCH,
-                    timestamp=datetime.now(pytz.UTC),
+                    timestamp=clock.now(),
                     footer=EmbedFooter(text=bot.display_name, icon_url=bot.avatar_url),
                 )
-                now = datetime.now(pytz.UTC)
+                now = clock.now()
                 for stream in segments:
                     start_time = ensure_utc(stream.start_time)
                     end_time = ensure_utc(stream.end_time)
@@ -145,7 +145,7 @@ class ScheduleMixin:
                 ),
                 description="Aucun stream planifié",
                 color=Colors.TWITCH,
-                timestamp=datetime.now(pytz.UTC),
+                timestamp=clock.now(),
                 footer=EmbedFooter(text=bot.display_name, icon_url=bot.avatar_url),
             )
         except Exception as e:
@@ -156,7 +156,7 @@ class ScheduleMixin:
                 title="Planning",
                 description="Erreur lors de la récupération du planning",
                 color=Colors.ERROR,
-                timestamp=datetime.now(pytz.UTC),
+                timestamp=clock.now(),
             )
 
     async def edit_message(

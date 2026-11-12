@@ -4,7 +4,6 @@ import os
 import random
 from datetime import datetime
 
-import pytz
 import spotipy
 from interactions import (
     AutocompleteContext,
@@ -27,6 +26,7 @@ from features.links import shorten_keyed
 from features.messages import finishList, startList
 from features.spotify import plan_duplicate_removal
 from features.spotify.votes import tally_daily_votes
+from src.core import clock
 from src.core import logging as logutil
 from src.core.logging import log_failure
 from src.core.text import milliseconds_to_string
@@ -202,9 +202,7 @@ class PlaylistMixin:
                     if not skip_notifications:
                         track = await spotify_api.track(track["track"]["id"], market="FR")
                         dt = timestamp_converter(
-                            datetime.fromisoformat(song["added_at"]).astimezone(
-                                pytz.timezone("Europe/Paris")
-                            )
+                            datetime.fromisoformat(song["added_at"]).astimezone(clock.LOCAL_TZ)
                         )
                         embed, file = await embed_song(
                             song=song,
@@ -364,9 +362,9 @@ class PlaylistMixin:
                 tally = tally_daily_votes(votes.get("votes", {}), server.discord2name)
                 date = votes.get("date")
                 if date:
-                    date = timestamp_converter(datetime.strptime(date, "%Y-%m-%d")).format(
-                        TimestampStyles.LongDate
-                    )
+                    date = timestamp_converter(
+                        datetime.strptime(date, "%Y-%m-%d").replace(tzinfo=clock.LOCAL_TZ)
+                    ).format(TimestampStyles.LongDate)
                 embeds = [
                     embed,
                     await embed_message_vote(

@@ -15,6 +15,7 @@ from interactions import (
 )
 
 from features.suggestions import Suggestion
+from src.core import clock
 from src.core.logging import log_failure
 from src.discord_ext.embeds import Colors
 from src.discord_ext.messages import (
@@ -139,7 +140,7 @@ class CommandsMixin:
             channel_id=str(channel.id),
             author_id=str(ctx.author.id),
             text=text,
-            created_at=datetime.now(),
+            created_at=clock.now(),
         )
         await repo.add(suggestion)
 

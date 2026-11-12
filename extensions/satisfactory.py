@@ -11,6 +11,7 @@ from interactions import (
 )
 from pyfactorybridge import API
 
+from src.core import clock
 from src.core import logging as logutil
 from src.core.config import ModuleConfig
 from src.core.logging import log_failure
@@ -86,7 +87,7 @@ def _status_embed(settings: dict, players: int, tier: object) -> Embed:
         title="🏭 Serveur Satisfactory de la Coloc",
         description="Statut du serveur en temps réel",
         color=0x00A86B,
-        timestamp=datetime.now(),
+        timestamp=clock.now(),
     )
     embed.add_field(
         name="📡 Informations de Connexion",

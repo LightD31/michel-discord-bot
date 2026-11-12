@@ -7,9 +7,9 @@ without an OAuth session or MongoDB.
 
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from zoneinfo import ZoneInfo
 
 import pytest
-import pytz
 from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 
@@ -59,7 +59,7 @@ class _FakeXpRepo:
     async def daily_activity(self, since, tz):
         self._check()
         _FakeXpRepo.since = since
-        day = datetime.now(UTC).astimezone(pytz.timezone(tz)).date().isoformat()
+        day = datetime.now(UTC).astimezone(ZoneInfo(tz)).date().isoformat()
         return [
             {"day": day, "source": "message", "xp": 60, "events": 3},
             {"day": day, "source": "voice", "xp": 16, "events": 2},

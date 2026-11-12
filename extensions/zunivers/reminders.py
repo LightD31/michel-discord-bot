@@ -42,6 +42,7 @@ from features.coloc.constants import (
     zunivers_link,
 )
 from features.zunivers_ninja import build_web_url
+from src.core import clock
 from src.core.logging import log_failure
 from src.discord_ext.messages import fetch_user_safe
 
@@ -68,7 +69,7 @@ class RemindersMixin:
         if not channel:
             return
 
-        now = datetime.now(PARIS_TZ)
+        now = clock.local_now()
         history = channel.history(limit=1)
         messages = await history.flatten()
         if not messages:
@@ -165,9 +166,10 @@ class RemindersMixin:
             if ninja is None:
                 ninja = True
 
-        remind_time = datetime.now().replace(hour=heure, minute=minute, second=0, microsecond=0)
-        if remind_time <= datetime.now():
-            remind_time += timedelta(days=1)
+        today = clock.local_now().date()
+        remind_time = clock.at_local(today, heure, minute)
+        if remind_time <= clock.now():
+            remind_time = clock.at_local(today + timedelta(days=1), heure, minute)
 
         user_id = str(ctx.author.id)
         state = await self._state(ctx.guild_id)
@@ -184,7 +186,7 @@ class RemindersMixin:
 
         await state.storage.save_reminders(state.reminders)
 
-        reply = f"Rappel ajouté à {remind_time.strftime('%H:%M')}"
+        reply = f"Rappel ajouté à {clock.to_local(remind_time).strftime('%H:%M')}"
         if ninja and not ninja_config().get("webUrl"):
             reply += " (le lien ZUnivers Ninja n'est pas configuré sur ce serveur)"
         elif ninja is not None:
@@ -198,7 +200,7 @@ class RemindersMixin:
         logger.info(
             "Reminder %s at %s added for %s",
             type,
-            remind_time.strftime("%H:%M"),
+            clock.to_local(remind_time).strftime("%H:%M"),
             ctx.author.display_name,
         )
 
@@ -231,7 +233,7 @@ class RemindersMixin:
         }
         buttons = [
             Button(
-                label=f"{remind_time.strftime('%H:%M')} - {reminder_type.value.capitalize()}",
+                label=f"{clock.to_local(remind_time).strftime('%H:%M')} - {reminder_type.value.capitalize()}",
                 style=ButtonStyle.SECONDARY,
                 custom_id=custom_id,
             )
@@ -260,20 +262,20 @@ class RemindersMixin:
         await state.storage.save_reminders(state.reminders)
 
         await button_ctx.ctx.edit_origin(
-            content=f"Rappel {reminder_type.value} à {remind_time.strftime('%H:%M')} supprimé.",
+            content=f"Rappel {reminder_type.value} à {clock.to_local(remind_time).strftime('%H:%M')} supprimé.",
             components=[],
         )
         logger.info(
             "Reminder %s at %s removed for %s",
             reminder_type.value,
-            remind_time.strftime("%H:%M"),
+            clock.to_local(remind_time).strftime("%H:%M"),
             ctx.user.display_name,
         )
 
     @Task.create(IntervalTrigger(minutes=1))
     async def reminder_checker(self):
         """Send the reminders due in each guild."""
-        current_time = datetime.now()
+        current_time = clock.now()
         for state, settings in await self._guilds():
             try:
                 await self._send_due_reminders(state, settings, current_time)
@@ -298,7 +300,7 @@ class RemindersMixin:
                         state, settings, user_id, reminder_type, current_time
                     )
 
-                    next_remind = remind_time + timedelta(days=1)
+                    next_remind = clock.local_step(remind_time, timedelta(days=1))
                     if next_remind not in reminders_to_add:
                         reminders_to_add[next_remind] = {"NORMAL": [], "HARDCORE": []}
                     reminders_to_add[next_remind][type_name].append(user_id)
@@ -329,15 +331,14 @@ class RemindersMixin:
             if not user:
                 logger.warning("Could not fetch user %s", user_id)
                 return
-            today = current_time.strftime("%Y-%m-%d")
+            local = clock.to_local(current_time)
+            today = local.strftime("%Y-%m-%d")
 
             status = await self.api_client.get_user_loot_status(user.username, reminder_type, today)
             # The Premium subscription only exists in the normal rule set.
             premium = None
             if reminder_type == ReminderType.NORMAL:
-                premium = await self.api_client.get_available_premium(
-                    user.username, datetime.now(PARIS_TZ)
-                )
+                premium = await self.api_client.get_available_premium(user.username, local)
             message = self._build_reminder_message(reminder_type, status, premium, settings)
             if message:
                 ninja_url = ninja_config().get("webUrl")
@@ -352,12 +353,8 @@ class RemindersMixin:
                 await user.send(message)
                 logger.info(f"Sent {reminder_type.value} reminder to {user.display_name}")
 
-            if (
-                current_time.month == 12
-                and 1 <= current_time.day <= 25
-                and reminder_type == ReminderType.NORMAL
-            ):
-                await self._check_advent_calendar(user, current_time.day)
+            if local.month == 12 and 1 <= local.day <= 25 and reminder_type == ReminderType.NORMAL:
+                await self._check_advent_calendar(user, local.day)
 
         except Exception as e:
             if "404" not in str(e):

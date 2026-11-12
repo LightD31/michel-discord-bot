@@ -17,6 +17,7 @@ from features.secretsanta import (
     generate_assignments_with_subgroups,
     generate_valid_assignments,
 )
+from src.core import clock
 from src.core import logging as logutil
 from src.core.config import load_discord2name
 from src.core.logging import log_failure
@@ -41,7 +42,7 @@ class DrawsMixin:
     ) -> None:
         draw_file = (
             DATA_DIR
-            / f"draw_{context_id.replace(':', '_')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+            / f"draw_{context_id.replace(':', '_')}_{clock.local_now().strftime('%Y%m%d_%H%M%S')}.txt"
         )
 
         lines = [
@@ -49,7 +50,7 @@ class DrawsMixin:
             "🎅 PÈRE NOËL SECRET - RÉSULTATS DU TIRAGE 🎅",
             "=" * 50,
             "",
-            f"📅 Date du tirage : {datetime.now().strftime('%d/%m/%Y à %H:%M')}",
+            f"📅 Date du tirage : {clock.local_now().strftime('%d/%m/%Y à %H:%M')}",
             f"📍 Contexte : {context_name}",
             f"👥 Nombre de participants : {len(assignments)}",
         ]

@@ -24,7 +24,7 @@ def parse_zunivers_date(date_str: str) -> datetime:
         date_str.replace("Z", "+00:00") if date_str.endswith("Z") else date_str
     )
     if dt.tzinfo is None:
-        dt = PARIS_TZ.localize(dt)
+        dt = dt.replace(tzinfo=PARIS_TZ)
     return dt
 
 

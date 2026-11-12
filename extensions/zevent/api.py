@@ -25,6 +25,7 @@ from features.zevent.stats import (
     select_event,
 )
 from features.zevent.velocity import DonationVelocity
+from src.core import clock
 from src.core import logging as logutil
 from src.core.http import fetch
 from src.core.logging import log_failure
@@ -76,7 +77,7 @@ class ApiMixin:
         """
         if not STATS_API_URL:
             return None
-        now = datetime.now()
+        now = clock.now()
         if not self._event_gate.ready(now):
             return self._stats_event
 
@@ -132,7 +133,7 @@ class ApiMixin:
         ``zevent.fr`` stopped serving a ``location`` on its streamer entries, so
         this is what tells the two location embeds apart.
         """
-        now = datetime.now()
+        now = clock.now()
         if not self._participant_gate.ready(now):
             return self._participant_cache
 
@@ -170,7 +171,7 @@ class ApiMixin:
         so one unfiltered fetch replaces a day-filtered call plus the
         empty-day fallback that used to double it.
         """
-        now = datetime.now()
+        now = clock.now()
         if not self._planning_gate.ready(now) and self._planning_cache is not None:
             return self._planning_cache
 
@@ -208,7 +209,7 @@ class ApiMixin:
             amount = self._safe_get_data(entry, ["donationAmount", "number"], 0) or 0
             amounts[login] = float(amount)
         if amounts:
-            self._velocity.record(amounts, datetime.now())
+            self._velocity.record(amounts, clock.now())
 
     def goal_etas(self) -> dict[str, float]:
         """Minutes to each participant's next goal at its current rate.
@@ -238,7 +239,7 @@ class ApiMixin:
         """
         if not METRICS_BASE_URL:
             return None
-        now = datetime.now()
+        now = clock.now()
         if not self._reference_gate.ready(now):
             return self._reference_curve
 

@@ -48,6 +48,7 @@ from features.polls import (
     poll_option_emojis,
     validate_poll_options,
 )
+from src.core import clock
 from src.core import logging as logutil
 from src.core.config import ModuleConfig
 from src.core.debounce import Coalescer
@@ -189,7 +190,7 @@ class PollsExtension(Extension, PollButtonsMixin):
             close_seconds = _default_poll_seconds(ctx.guild_id)
         description = "\n\n".join([f"{emojis[i]} {option}" for i, option in enumerate(options)])
         if close_seconds:
-            close_time = datetime.now() + timedelta(seconds=close_seconds)
+            close_time = clock.now() + timedelta(seconds=close_seconds)
             description += (
                 f"\n\n*Fermeture automatique : {format_discord_timestamp(close_time, 'R')}*"
             )
@@ -235,7 +236,7 @@ class PollsExtension(Extension, PollButtonsMixin):
                 options=options,
                 emojis=emojis[: len(options)],
                 mode="reaction",
-                closes_at=datetime.now() + timedelta(seconds=seconds) if seconds else None,
+                closes_at=clock.now() + timedelta(seconds=seconds) if seconds else None,
             )
             try:
                 await self._poll_repo(guild_id).add(poll)
@@ -352,7 +353,7 @@ class PollsExtension(Extension, PollButtonsMixin):
         else:
             seconds = _default_poll_seconds(ctx.guild_id)
         if seconds:
-            closes_at = datetime.now() + timedelta(seconds=seconds)
+            closes_at = clock.now() + timedelta(seconds=seconds)
 
         mode_label = "anonyme" if mode == "anonymous" else "classement"
         embed = Embed(
@@ -387,7 +388,7 @@ class PollsExtension(Extension, PollButtonsMixin):
 
     @Task.create(IntervalTrigger(seconds=30))
     async def check_closing_polls(self) -> None:
-        now = datetime.now()
+        now = clock.now()
         for gid in UTILS.guild_ids():
             try:
                 due = await self._poll_repo(gid).list_due(now)

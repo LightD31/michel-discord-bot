@@ -47,6 +47,7 @@ from features.reminders import (
     snooze_minutes,
     snoozed_text,
 )
+from src.core import clock
 from src.core import logging as logutil
 from src.core.config import ModuleConfig
 from src.core.logging import log_failure
@@ -170,7 +171,7 @@ class RemindersExtension(Extension):
                 return
         try:
             remind_time = first_occurrence(
-                datetime.now(),
+                clock.now(),
                 hour=hour,
                 minute=minute,
                 frequency=frequency,  # type: ignore[arg-type]
@@ -198,14 +199,14 @@ class RemindersExtension(Extension):
         await repo.add(reminder)
 
         await ctx.send(
-            f"Rappel {frequency or ''} créé à {remind_time.strftime('%H:%M')}"
+            f"Rappel {frequency or ''} créé à {clock.to_local(remind_time).strftime('%H:%M')}"
             f" avec le message: {task}",
             ephemeral=True,
         )
         logger.info(
             "Reminder set for %s at %s with message %s (%s)",
             ctx.author.display_name,
-            remind_time.strftime("%H:%M"),
+            clock.to_local(remind_time).strftime("%H:%M"),
             task,
             frequency,
         )
@@ -246,7 +247,7 @@ class RemindersExtension(Extension):
             id_map[reminder.id] = reminder
 
         message = await ctx.send(
-            f"Quel rappel veux-tu supprimer (annulation {timestamp_converter(datetime.now() + timedelta(seconds=60)).format(TimestampStyles.RelativeTime)})",
+            f"Quel rappel veux-tu supprimer (annulation {timestamp_converter(clock.now() + timedelta(seconds=60)).format(TimestampStyles.RelativeTime)})",
             # Five buttons per row, 25 per message.
             components=spread_to_rows(*buttons[:25]),
             ephemeral=True,
@@ -263,12 +264,12 @@ class RemindersExtension(Extension):
                 deleted = await repo.delete(selected.id)
                 if deleted:
                     await ctx.edit_origin(
-                        content=f"Rappel à {selected.remind_time.strftime('%H:%M')} supprimé.",
+                        content=f"Rappel à {clock.to_local(selected.remind_time).strftime('%H:%M')} supprimé.",
                         components=[],
                     )
                     logger.info(
                         "Reminder at %s deleted for %s",
-                        selected.remind_time.strftime("%H:%M"),
+                        clock.to_local(selected.remind_time).strftime("%H:%M"),
                         ctx.author.display_name,
                     )
                 else:
@@ -308,7 +309,7 @@ class RemindersExtension(Extension):
                 f"Tu as déjà {MAX_REMINDERS_PER_MEMBER} rappels sur ce serveur.", ephemeral=True
             )
             return
-        new_time = datetime.now() + timedelta(minutes=minutes)
+        new_time = clock.now() + timedelta(minutes=minutes)
         snoozed = Reminder(
             user_id=str(ctx.author.id),
             # Snoozing a snoozed reminder doesn't stack the mark.
@@ -330,7 +331,7 @@ class RemindersExtension(Extension):
 
     @Task.create(IntervalTrigger(minutes=1))
     async def check_reminders(self):
-        now = datetime.now()
+        now = clock.now()
         for gid in UTILS.guild_ids():
             repo = self._reminder_repo(gid)
             try:

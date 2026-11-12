@@ -1,7 +1,6 @@
 import asyncio
 from datetime import datetime
 
-import pytz
 from interactions import (
     Client,
     Embed,
@@ -13,6 +12,7 @@ from interactions import (
     utils,
 )
 
+from src.core import clock
 from src.core import logging as logutil
 from src.core.config import ModuleConfig
 from src.core.http import fetch_untrusted
@@ -106,7 +106,7 @@ async def render_schedule(base_url: str, icon_url: str | None):
     amount = float(amount_data["amount"])
     embed = Embed(
         title=f"Speedons 4 ({amount:.2f}€)",
-        timestamp=datetime.now(pytz.UTC),
+        timestamp=clock.now(),
         color=0xDBEA2B,
         thumbnail=icon_url,
     )
@@ -165,13 +165,13 @@ async def render_schedule(base_url: str, icon_url: str | None):
 
         if (
             utils.timestamp_converter(event["start_date"])
-            < datetime.now(pytz.UTC)
+            < clock.now()
             < utils.timestamp_converter(event["end_date"])
         ):
             current_run = i
             embedlive = Embed(
                 title=f"Run en cours ({amount:.2f}€)",
-                timestamp=datetime.now(pytz.UTC),
+                timestamp=clock.now(),
                 color=0xDBEA2B,
                 thumbnail=icon_url,
             )
@@ -192,14 +192,14 @@ async def render_schedule(base_url: str, icon_url: str | None):
             embeds.append(embed)
             embed = Embed(
                 title=f"Speedons 4 ({amount:.2f}€)",
-                timestamp=datetime.now(pytz.UTC),
+                timestamp=clock.now(),
                 color=0xDBEA2B,
             )
         i = i + 1
     embeds.append(embed)
     live = embedlive or Embed(
         title=f"Pas de run en cours ({amount:.2f}€)",
-        timestamp=datetime.now(pytz.UTC),
+        timestamp=clock.now(),
         color=COLOR,
         thumbnail=icon_url,
     )

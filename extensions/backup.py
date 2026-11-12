@@ -31,6 +31,7 @@ from interactions import (
     slash_option,
 )
 
+from src.core import clock
 from src.core import logging as logutil
 from src.core.config import global_config
 from src.core.db import mongo_manager
@@ -104,7 +105,7 @@ class BackupExtension(Extension):
         if not self.backup_enabled:
             return
 
-        if datetime.now().hour != self.backup_hour:
+        if clock.local_now().hour != self.backup_hour:
             return
 
         logger.info("Starting scheduled daily backup…")
@@ -137,11 +138,11 @@ class BackupExtension(Extension):
 
         await ctx.defer()
         try:
-            start = datetime.now()
+            start = clock.now()
             path = await mongo_manager.backup_all(
                 backup_dir=self.backup_dir, max_backups=effective_max
             )
-            elapsed = (datetime.now() - start).total_seconds()
+            elapsed = (clock.now() - start).total_seconds()
 
             embed = Embed(
                 title="✅ Sauvegarde terminée",

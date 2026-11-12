@@ -46,6 +46,7 @@ from features.links import shorten_url
 from features.rss import RssEntry, RssFeedState, RssRepository
 from features.rss.network import fetch_feed
 from features.rss.scheduling import is_due, next_poll_at
+from src.core import clock
 from src.core.errors import DatabaseError, IntegrationError
 from src.core.http import BlockedUrlError
 from src.core.logging import log_failure
@@ -296,7 +297,7 @@ class RssExtension(Extension):
             logger.info("Previous RSS cycle still running, skipping this one")
             return
         async with self._poll_lock:
-            jobs = await self._due_jobs(datetime.now())
+            jobs = await self._due_jobs(clock.now())
             if not jobs:
                 return
             semaphore = asyncio.Semaphore(MAX_CONCURRENT_FETCHES)

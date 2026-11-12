@@ -4,7 +4,7 @@ import asyncio
 import json
 import logging
 import time
-from datetime import datetime
+from datetime import UTC, datetime
 from types import SimpleNamespace
 
 import pytest
@@ -291,7 +291,8 @@ def test_the_newest_complete_backup_gives_the_age(tmp_path):
         (tmp_path / name).mkdir()
         backup_format.write_manifest(tmp_path / name, name, {})
     (tmp_path / "2026-03-10_04-00-00").mkdir()  # interrupted: no manifest
-    expected = time.mktime(time.strptime("2026-03-09_04-00-00", "%Y-%m-%d_%H-%M-%S"))
+    # The folder name is a wall time in Paris: 04:00 there is 03:00 UTC in March.
+    expected = datetime(2026, 3, 9, 3, 0, tzinfo=UTC).timestamp()
     assert backup_format.latest_backup_time(tmp_path) == expected
 
 

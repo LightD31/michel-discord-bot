@@ -8,6 +8,7 @@ from interactions import Embed, OrTrigger, Task, TimeTrigger
 from features.confrerie import notion_props as np
 from features.confrerie.stats import COL_DEFI, ConfrerieStats, aggregate
 from features.links import shorten_keyed
+from src.core import clock
 from src.core import logging as logutil
 from src.core.logging import log_failure
 from src.core.text import take_within_budget
@@ -42,7 +43,7 @@ def build_statistics_embed(stats: ConfrerieStats) -> Embed:
             f"**{plural(stats.author_count, 'auteur·ice')}**"
         ),
         color=Colors.CONFRERIE,
-        timestamp=datetime.now(),
+        timestamp=clock.now(),
     )
 
     embed.add_field(

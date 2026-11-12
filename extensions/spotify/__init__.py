@@ -15,6 +15,7 @@ from datetime import datetime
 from interactions import Client, Extension, listen
 
 from features.spotify import reattribution_map, unmapped_contributors
+from src.core import clock
 from src.core import logging as logutil
 from src.core.logging import log_failure
 
@@ -107,13 +108,14 @@ class SpotifyExtension(Extension, PlaylistMixin, VotesMixin):
 
     async def load_reminders(self, server: ServerData):
         for doc in await server.repo.list_reminders():
-            remind_time = datetime.strptime(doc["_id"], "%Y-%m-%d %H:%M:%S")
-            server.reminders[remind_time] = set(doc["user_ids"])
+            # Stored as text on the community's wall clock.
+            wall = datetime.strptime(doc["_id"], "%Y-%m-%d %H:%M:%S")
+            server.reminders[wall.replace(tzinfo=clock.LOCAL_TZ)] = set(doc["user_ids"])
 
     async def save_reminders(self, server: ServerData):
         docs = [
             {
-                "_id": remind_time.strftime("%Y-%m-%d %H:%M:%S"),
+                "_id": clock.to_local(remind_time).strftime("%Y-%m-%d %H:%M:%S"),
                 "user_ids": list(user_ids),
             }
             for remind_time, user_ids in server.reminders.items()

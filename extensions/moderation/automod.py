@@ -14,6 +14,7 @@ from interactions import listen
 from interactions.api.events import MessageCreate
 
 from features.moderation import Infraction, SpamTracker, contains_invite, match_banned_word
+from src.core import clock
 
 from ._common import AUTOMOD_MODERATOR_ID, get_guild_settings, is_staff, logger
 
@@ -96,7 +97,7 @@ class AutomodMixin:
                 type="automod",
                 reason=reason,
                 source="automod",
-                created_at=datetime.now(),
+                created_at=clock.now(),
             )
             await repo.add(infraction)
             await self.log_case(settings, infraction, target_name=msg.author.mention)

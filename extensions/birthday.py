@@ -4,9 +4,9 @@ All business logic lives in features/birthday/.
 """
 
 import random
-from datetime import date, datetime
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
-import pytz
 from babel.dates import format_date, get_date_format
 from interactions import (
     ActionRow,
@@ -28,6 +28,7 @@ from interactions import (
 )
 
 from features.birthday import (
+    TIMEZONES,
     BirthdayEntry,
     BirthdayRepository,
     age_on,
@@ -36,6 +37,7 @@ from features.birthday import (
     parse_birth_date,
     strip_year_from_format,
 )
+from src.core import clock
 from src.core import logging as logutil
 from src.core.config import ModuleConfig
 from src.core.errors import DatabaseError, ValidationError
@@ -88,15 +90,15 @@ MODULE = ModuleConfig("moduleBirthday")
 
 def _validate_and_parse_date(date_str: str) -> datetime:
     try:
-        return parse_birth_date(date_str, today=date.today())
+        return parse_birth_date(date_str, today=clock.local_now().date())
     except ValueError as e:
         raise ValidationError(str(e)) from e
 
 
-def _validate_timezone(timezone_str: str) -> pytz.BaseTzInfo:
-    if timezone_str not in pytz.all_timezones:
+def _validate_timezone(timezone_str: str) -> ZoneInfo:
+    if timezone_str not in TIMEZONES:
         raise ValidationError("Fuseau horaire invalide")
-    return pytz.timezone(timezone_str)
+    return ZoneInfo(timezone_str)
 
 
 class BirthdayExtension(Extension):
@@ -197,7 +199,7 @@ class BirthdayExtension(Extension):
             entry = BirthdayEntry(
                 user=ctx.author.id,
                 date=parsed_date,
-                timezone=validated_tz.zone,
+                timezone=validated_tz.key,
                 hideyear=hideyear or False,
                 isBirthday=existing.isBirthday if existing else False,
             )
@@ -223,7 +225,7 @@ class BirthdayExtension(Extension):
     @anniversaire.autocomplete("timezone")
     async def anniversaire_timezone(self, ctx: AutocompleteContext) -> None:
         timezone_input = ctx.input_text.lower()
-        all_tz = list(pytz.all_timezones)
+        all_tz = sorted(TIMEZONES)
         filtered = (
             [tz for tz in all_tz if timezone_input in tz.lower()][:25]
             if timezone_input
@@ -325,7 +327,7 @@ class BirthdayExtension(Extension):
                     if entry.hideyear:
                         lines.append(f"**{user.mention}** : {formatted}")
                     else:
-                        age = age_on(entry.date, date.today())
+                        age = age_on(entry.date, clock.local_now().date())
                         lines.append(f"**{user.mention}** : {formatted} ({age} ans)")
                     if len(lines) % 25 == 0:
                         embeds.append(
@@ -380,7 +382,7 @@ class BirthdayExtension(Extension):
             log_failure(logger, "Critical error in anniversaire_check task: %s", e)
 
     async def _process_birthday(self, entry: BirthdayEntry, guild_id: int) -> None:
-        now_tz = datetime.now(pytz.timezone(entry.timezone))
+        now_tz = datetime.now(ZoneInfo(entry.timezone))
         if is_birthday(entry, now_tz.date()):
             await self._handle_birthday_celebration(entry, guild_id, now_tz)
         else:

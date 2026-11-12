@@ -1,7 +1,7 @@
 """StatusMixin — server status task, embed builders, channel renames, scheduled events."""
 
 import asyncio
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 from interactions import (
     BaseChannel,
@@ -17,6 +17,7 @@ from interactions import (
 from mcstatus import JavaServer
 
 from features.minecraft import MinecraftSettings
+from src.core import clock
 from src.core.logging import log_failure
 from src.discord_ext.messages import edit_message_if_changed
 
@@ -203,10 +204,10 @@ class StatusMixin:
 
     async def _update_channel_name(self, guild_id: str, channel, name):
         """Update channel name if needed and not recently changed."""
-        last_edit = self.channel_edit_timestamps.get(guild_id, datetime.fromtimestamp(0))
-        if channel.name != name and last_edit < datetime.now() - timedelta(minutes=5):
+        last_edit = self.channel_edit_timestamps.get(guild_id, datetime.fromtimestamp(0, UTC))
+        if channel.name != name and last_edit < clock.now() - timedelta(minutes=5):
             await channel.edit(name=name)
-            self.channel_edit_timestamps[guild_id] = datetime.now()
+            self.channel_edit_timestamps[guild_id] = clock.now()
 
     async def _update_scheduled_event(
         self, guild_id: str, channel, players_online, settings: MinecraftSettings
@@ -222,8 +223,8 @@ class StatusMixin:
                         name=event_name,
                         event_type=ScheduledEventType.EXTERNAL,
                         external_location=f"Serveur Minecraft : {settings.address}",
-                        start_time=datetime.now().astimezone() + timedelta(seconds=5),
-                        end_time=datetime.now().astimezone() + timedelta(days=1),
+                        start_time=clock.now().astimezone() + timedelta(seconds=5),
+                        end_time=clock.now().astimezone() + timedelta(days=1),
                         description=f"Des joueurs sont connectés sur le serveur Minecraft !\nAdresse : `{settings.address}`",
                     )
                     self.scheduled_events[guild_id] = event
@@ -234,7 +235,7 @@ class StatusMixin:
                     if event.name != event_name:
                         await event.edit(
                             name=event_name,
-                            end_time=datetime.now().astimezone() + timedelta(days=1),
+                            end_time=clock.now().astimezone() + timedelta(days=1),
                         )
                         logger.debug(f"Updated Minecraft scheduled event: {event_name}")
             else:

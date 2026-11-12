@@ -12,7 +12,6 @@ import copy
 import os
 from collections import defaultdict
 
-import pytz
 from interactions import (
     AutocompleteContext,
     BaseChannel,
@@ -29,6 +28,7 @@ from interactions import (
 )
 
 from features.twitch import TwitchStateRepository
+from src.core import clock
 from src.core import logging as logutil
 from src.core.config import ModuleConfig, config_store, global_config
 from src.core.errors import ConfigError
@@ -96,7 +96,7 @@ class TwitchExtension(
         self.stop = False
         self._run_lock = asyncio.Lock()
         self._hydrated = asyncio.Event()
-        self.timezone = pytz.timezone("Europe/Paris")
+        self.timezone = clock.LOCAL_TZ
 
         os.makedirs(EMOTE_CACHE_DIR, exist_ok=True)
 

@@ -20,6 +20,7 @@ from twitchAPI.oauth import UserAuthenticationStorageHelper
 from twitchAPI.twitch import Twitch
 from twitchAPI.type import AuthScope
 
+from src.core import clock
 from src.core import logging as logutil
 from src.core.config import ModuleConfig, global_config
 from src.core.http import fetch, fetch_untrusted
@@ -315,7 +316,7 @@ class StreamlabsCharityExtension(Extension):
         embed_streamers = Embed(
             title="Participants",
             color=COLOR,
-            timestamp=datetime.now(),
+            timestamp=clock.now(),
         )
         self.add_embed_fields(
             embed_streamers, f"En ligne ({online_count}/{len(members_dict)})", members_str_online

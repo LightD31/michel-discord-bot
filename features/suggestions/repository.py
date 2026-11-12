@@ -4,12 +4,11 @@ One ``suggestions`` collection per guild plus a ``suggestions_meta`` collection
 holding a single counter document used to mint per-guild human IDs.
 """
 
-from datetime import datetime
-
 import pymongo
 from pymongo import ReturnDocument
 
 from features.suggestions.models import Suggestion, SuggestionStatus, VoteDirection
+from src.core import clock
 from src.core.db import mongo_manager, translates_db_errors
 from src.core.logging import init_logger, log_failure
 
@@ -97,7 +96,7 @@ class SuggestionsRepository:
                     "status": status,
                     "reason": reason,
                     "decided_by": decided_by,
-                    "decided_at": datetime.now(),
+                    "decided_at": clock.now(),
                 }
             },
         )

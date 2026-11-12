@@ -5,7 +5,7 @@ tests/test_mongo_rss.py.
 """
 
 import asyncio
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
 import pytest
@@ -204,7 +204,7 @@ async def test_fetches_run_concurrently_within_the_bound(cycle, monkeypatch):
 
 async def test_a_feed_polled_recently_is_skipped(cycle):
     cycle.configure({"1": guild(("news", "https://example.com/feed"))})
-    seen("1", "news", "e1", last_poll_at=datetime.now() - timedelta(minutes=5))
+    seen("1", "news", "e1", last_poll_at=datetime.now(UTC) - timedelta(minutes=5))
 
     await cycle.run()
 
@@ -216,12 +216,12 @@ async def test_a_failing_feed_backs_off(cycle):
     cycle.configure({"1": guild(("news", url))})
     cycle.network.feeds[url] = IntegrationError("HTTP 503")
     # Polled 20 minutes ago, after two failures: next try at 1 h, not 15 min.
-    seen("1", "news", "e0", last_poll_at=datetime.now() - timedelta(minutes=20), failures=2)
+    seen("1", "news", "e0", last_poll_at=datetime.now(UTC) - timedelta(minutes=20), failures=2)
 
     await cycle.run()
     assert cycle.network.fetched == []
 
-    seen("1", "news", "e0", last_poll_at=datetime.now() - timedelta(hours=2), failures=2)
+    seen("1", "news", "e0", last_poll_at=datetime.now(UTC) - timedelta(hours=2), failures=2)
     await cycle.run()
     assert cycle.network.fetched == [url]
     assert FakeRepo.calls == [("error", "1", "news", "HTTP 503")]

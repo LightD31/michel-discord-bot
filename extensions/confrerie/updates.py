@@ -7,6 +7,7 @@ from interactions import Embed, EmbedFooter, OrTrigger, Task, TimeTrigger
 
 from features.confrerie.works import Work, parse_work
 from features.links import shorten_url
+from src.core import clock
 from src.core import logging as logutil
 from src.core.logging import log_failure
 from src.discord_ext.embeds import Colors, format_discord_timestamp
@@ -47,7 +48,7 @@ def build_work_embed(
     footer: EmbedFooter | None = None,
 ) -> Embed:
     """Embed describing one œuvre (update announcements and ``/texte``)."""
-    embed = Embed(title=title, color=Colors.CONFRERIE, footer=footer, timestamp=datetime.now())
+    embed = Embed(title=title, color=Colors.CONFRERIE, footer=footer, timestamp=clock.now())
     embed.add_field(name="Titre", value=work.title[:1024], inline=True)
     if work.authors:
         embed.add_field(name="Auteur", value=", ".join(work.authors)[:1024], inline=True)

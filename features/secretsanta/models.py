@@ -1,7 +1,8 @@
 """Domain model for a Secret Santa session."""
 
 from dataclasses import dataclass, field
-from datetime import datetime
+
+from src.core import clock
 
 
 @dataclass
@@ -20,4 +21,4 @@ class SecretSantaSession:
 
     def __post_init__(self):
         if not self.created_at:
-            self.created_at = datetime.now().isoformat()
+            self.created_at = clock.now().isoformat()

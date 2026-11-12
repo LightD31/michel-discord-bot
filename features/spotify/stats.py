@@ -19,9 +19,10 @@ serialises identically.
 from collections import Counter
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import asdict, dataclass, field, replace
-from datetime import UTC, datetime, tzinfo
+from datetime import UTC, datetime
 from typing import Any
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+from src.core.clock import LOCAL_TZ
 
 VOTE_CHOICES = ("conserver", "menfou", "supprimer")
 STATE_KEPT = "conservée"
@@ -31,15 +32,8 @@ BUCKET_SECONDS = 30
 OVERFLOW_SECONDS = 600  # everything from 10 min up shares the last bucket
 
 
-def _display_zone() -> tzinfo:
-    """The audience's clock. Falls back to UTC if the tz database is absent."""
-    try:
-        return ZoneInfo("Europe/Paris")
-    except (ZoneInfoNotFoundError, KeyError):  # pragma: no cover - image-dependent
-        return UTC
-
-
-DISPLAY_TZ = _display_zone()
+# The audience's clock (src/core/clock.py).
+DISPLAY_TZ = LOCAL_TZ
 
 
 @dataclass(frozen=True)

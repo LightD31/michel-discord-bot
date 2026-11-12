@@ -6,7 +6,6 @@ Discord message via the bot client, so the menu stays in sync with what
 ``/rolemenu`` would produce.
 """
 
-from datetime import datetime
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
@@ -20,6 +19,7 @@ from features.reactionroles import (
     RoleMenuEntry,
     role_menu_refusal,
 )
+from src.core import clock
 from src.core import logging as logutil
 from src.discord_ext.channels import fetch_guild_channel
 from src.discord_ext.messages import edit_message_if_changed
@@ -217,7 +217,7 @@ async def _create_menu(
         description=body.description,
         entries=entries,
         created_by=str(getattr(session, "user_id", "webui")),
-        created_at=datetime.now(),
+        created_at=clock.now(),
     )
     menu_id = await repo.add(menu)
     try:

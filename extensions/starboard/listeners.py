@@ -13,6 +13,7 @@ from features.starboard import (
     first_image_url,
     plan_mirror,
 )
+from src.core import clock
 from src.core.logging import log_failure
 from src.discord_ext.embeds import Colors
 from src.discord_ext.messages import edit_message_if_changed
@@ -48,7 +49,7 @@ def _build_embed(message, count: int, emoji: str) -> Embed:
     embed.set_footer(
         text=f"{emoji} {count} • #{getattr(message.channel, 'name', message.channel.id)}"
     )
-    embed.timestamp = getattr(message, "created_at", None) or datetime.now()
+    embed.timestamp = getattr(message, "created_at", None) or clock.now()
     return embed
 
 
@@ -198,7 +199,7 @@ class ListenersMixin:
                 mirror_message_id=str(sent.id),
                 author_id=str(message.author.id),
                 count=count,
-                created_at=datetime.now(),
+                created_at=clock.now(),
             )
         )
         logger.info(

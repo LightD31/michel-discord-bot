@@ -40,6 +40,7 @@ from interactions.api.events import MessageReactionAdd, MessageReactionRemove
 
 from features.giveaway import MAX_WINNERS, Giveaway, GiveawayRepository, pick_winners
 from features.polls import parse_duration  # reused: same DSL as /poll
+from src.core import clock
 from src.core.debounce import Coalescer
 from src.core.logging import log_failure
 from src.core.text import EMBED_DESCRIPTION_LIMIT, clip
@@ -318,7 +319,7 @@ class GiveawayExtension(Extension):
             await send_error(ctx, "Durée maximale : 30 jours.")
             return
 
-        ends_at = datetime.now() + timedelta(seconds=seconds)
+        ends_at = clock.now() + timedelta(seconds=seconds)
         emoji = guild_emoji(ctx.guild_id)
         effective_allow_host_win = (
             allow_host_win if allow_host_win is not None else guild_allow_host_win(ctx.guild_id)
@@ -607,7 +608,7 @@ class GiveawayExtension(Extension):
 
     @Task.create(IntervalTrigger(seconds=30))
     async def check_giveaways(self) -> None:
-        now = datetime.now()
+        now = clock.now()
         for gid in GIVEAWAY.guild_ids():
             try:
                 due = await self._repo(gid).list_due(now)

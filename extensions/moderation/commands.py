@@ -26,6 +26,7 @@ from features.moderation import (
     humanize_duration,
     parse_duration,
 )
+from src.core import clock
 from src.discord_ext.embeds import Colors, format_discord_timestamp
 from src.discord_ext.errors import failure_reply
 from src.discord_ext.messages import require_guild, send_error, send_success
@@ -80,7 +81,7 @@ class CommandsMixin:
             reason=reason,
             duration_seconds=duration_seconds,
             expires_at=expires_at,
-            created_at=datetime.now(),
+            created_at=clock.now(),
         )
         await repo.add(infraction)
         return infraction
@@ -199,7 +200,7 @@ class CommandsMixin:
             target_id=member.id,
             reason=reason,
             duration_seconds=secs,
-            expires_at=datetime.now() + timedelta(seconds=secs),
+            expires_at=clock.now() + timedelta(seconds=secs),
         )
         await self.dm_target(
             settings,

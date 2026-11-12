@@ -4,10 +4,9 @@ The repository returns raw aggregation rows; these helpers turn them into the
 chart-ready series the ``/api/servers/{id}/xp/stats`` route serves.
 """
 
-from datetime import date, datetime, time, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from typing import Any
-
-import pytz
+from zoneinfo import ZoneInfo
 
 from features.xp.leveling import calculate_level
 
@@ -23,10 +22,10 @@ def stats_window(days: int, tz_name: str, now: datetime) -> tuple[date, date, da
     (today included) and the UTC instant of ``first_day``'s local midnight,
     which is what the ``xp_events`` range queries match on.
     """
-    tz = pytz.timezone(tz_name)
+    tz = ZoneInfo(tz_name)
     today = now.astimezone(tz).date()
     first_day = today - timedelta(days=days - 1)
-    since = tz.localize(datetime.combine(first_day, time.min)).astimezone(pytz.utc)
+    since = datetime.combine(first_day, time.min, tzinfo=tz).astimezone(UTC)
     return first_day, today, since
 
 

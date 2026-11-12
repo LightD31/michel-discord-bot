@@ -7,6 +7,7 @@ from interactions import Embed, TimestampStyles, utils
 
 from features.zevent.models import Participant, Show
 from features.zevent.stats import is_live, upcoming_goals, upcoming_shows
+from src.core import clock
 from src.core import logging as logutil
 from src.core.logging import log_failure
 from src.core.text import take_within_budget
@@ -174,7 +175,7 @@ class EmbedsMixin:
                 f"Total récolté: {total_amount}\nViewers cumulés: {nombre_viewers or 'N/A'}"
             )
 
-        embed.timestamp = utils.timestamp_converter(datetime.now())
+        embed.timestamp = utils.timestamp_converter(clock.now())
         embed.set_thumbnail("attachment://Zevent_logo.png")
         embed.set_footer(
             source_footer(
@@ -274,7 +275,7 @@ class EmbedsMixin:
                 SOURCE_TWITCH,
             )
         )
-        embed.timestamp = utils.timestamp_converter(datetime.now())
+        embed.timestamp = utils.timestamp_converter(clock.now())
 
         for stream_status, names in groups:
             chunks = split_streamer_list(", ".join(names), max_length=1024)
@@ -300,7 +301,7 @@ class EmbedsMixin:
 
         embed = Embed(title="Prochains évènements", color=0x59AF37)
         embed.set_footer(source_footer(SOURCE_STATS))
-        embed.timestamp = utils.timestamp_converter(datetime.now())
+        embed.timestamp = utils.timestamp_converter(clock.now())
 
         pending = upcoming_shows(shows, datetime.now(UTC), limit=PLANNING_COUNT)
 
@@ -373,7 +374,7 @@ class EmbedsMixin:
         # The goals themselves come from the stats API; the pace that ranks
         # them is measured on the zevent.fr totals.
         embed.set_footer(source_footer(SOURCE_STATS, SOURCE_ZEVENT))
-        embed.timestamp = utils.timestamp_converter(datetime.now())
+        embed.timestamp = utils.timestamp_converter(clock.now())
 
         # Build up to the 1024-char field limit a whole entry at a time; a
         # blind slice would cut mid-line and leave dangling markdown.
@@ -437,7 +438,7 @@ class EmbedsMixin:
 
             embed = Embed(title="🏆 Top Donations par streamer", color=0xFFD700)
             embed.set_footer(source_footer(SOURCE_ZEVENT))
-            embed.timestamp = utils.timestamp_converter(datetime.now())
+            embed.timestamp = utils.timestamp_converter(clock.now())
 
             # Build up to the 1024-char field limit a whole line at a time, so
             # a generous configured count degrades by dropping tail entries
