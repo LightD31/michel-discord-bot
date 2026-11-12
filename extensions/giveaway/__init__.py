@@ -3,11 +3,15 @@
 Slash commands:
 - ``/giveaway start prize:<str> duration:<30m|2h|1d> winners:<int> [allow_host_win:<bool>]`` — post a
   giveaway embed with its "Participer" / "Se retirer" buttons.
-- ``/giveaway end message_id:<id>`` — end a giveaway early and draw winners now.
-- ``/giveaway reroll message_id:<id> [winners:<int>]`` — pick fresh winners
+- ``/giveaway end giveaway:<id>`` — end a giveaway early and draw winners now.
+- ``/giveaway reroll giveaway:<id> [winners:<int>]`` — pick fresh winners
   excluding any prior winners.
 - ``/giveaway list`` — list active giveaways on this guild.
-- ``/giveaway cancel message_id:<id>`` — cancel without drawing.
+- ``/giveaway cancel giveaway:<id>`` — cancel without drawing.
+
+The ``giveaway`` option autocompletes: the server's open giveaways for end and
+cancel, its recently drawn ones for reroll (the value is the announcement's
+message id, which can still be pasted).
 
 Button entry: each click adds or removes the member in the giveaway's
 ``entrants`` with one atomic update, and the announcement shows the exact
@@ -26,6 +30,7 @@ from typing import Literal
 import emoji as emoji_lib
 from interactions import (
     ActionRow,
+    AutocompleteContext,
     BaseChannel,
     Button,
     ButtonStyle,
@@ -52,6 +57,7 @@ from src.core import clock
 from src.core.debounce import Coalescer
 from src.core.logging import log_failure
 from src.core.text import EMBED_DESCRIPTION_LIMIT, clip
+from src.discord_ext.autocomplete import MAX_CHOICES, matching_choices
 from src.discord_ext.embeds import Colors, format_discord_timestamp
 from src.discord_ext.messages import (
     edit_message_if_changed,
@@ -386,10 +392,12 @@ class GiveawayExtension(Extension):
         sub_cmd_description="Tirer immédiatement les gagnants d'un giveaway en cours",
     )
     @slash_option(
-        "message_id",
-        "ID du message du giveaway",
+        "giveaway",
+        "Giveaway en cours (choisis-le dans la liste)",
         opt_type=OptionType.STRING,
         required=True,
+        autocomplete=True,
+        argument_name="message_id",
     )
     @slash_default_member_permission(Permissions.MANAGE_GUILD)
     async def giveaway_end(self, ctx: SlashContext, message_id: str) -> None:
@@ -419,10 +427,12 @@ class GiveawayExtension(Extension):
         sub_cmd_description="Annuler un giveaway en cours sans tirage",
     )
     @slash_option(
-        "message_id",
-        "ID du message du giveaway",
+        "giveaway",
+        "Giveaway en cours (choisis-le dans la liste)",
         opt_type=OptionType.STRING,
         required=True,
+        autocomplete=True,
+        argument_name="message_id",
     )
     @slash_default_member_permission(Permissions.MANAGE_GUILD)
     async def giveaway_cancel(self, ctx: SlashContext, message_id: str) -> None:
@@ -460,10 +470,12 @@ class GiveawayExtension(Extension):
         sub_cmd_description="Tirer de nouveaux gagnants pour un giveaway clos",
     )
     @slash_option(
-        "message_id",
-        "ID du message du giveaway",
+        "giveaway",
+        "Giveaway clos (choisis-le dans la liste)",
         opt_type=OptionType.STRING,
         required=True,
+        autocomplete=True,
+        argument_name="message_id",
     )
     @slash_option(
         "gagnants",
@@ -537,6 +549,32 @@ class GiveawayExtension(Extension):
             color=Colors.UTIL,
         )
         await ctx.send(embeds=[embed], ephemeral=True)
+
+    @giveaway_end.autocomplete("giveaway")
+    @giveaway_cancel.autocomplete("giveaway")
+    async def open_giveaway_choices(self, ctx: AutocompleteContext) -> None:
+        """The server's open giveaways, soonest end first."""
+        if ctx.guild_id is None or not GIVEAWAY.enabled(ctx.guild_id):
+            await ctx.send(choices=[])
+            return
+        active = await self._repo(ctx.guild_id).list_active()
+        items = [
+            (f"{g.prize} · fin le {clock.to_local(g.ends_at):%d/%m à %H:%M}", g.message_id)
+            for g in active
+        ]
+        await ctx.send(choices=matching_choices(items, ctx.input_text))
+
+    @giveaway_reroll.autocomplete("giveaway")
+    async def drawn_giveaway_choices(self, ctx: AutocompleteContext) -> None:
+        """The server's most recently drawn giveaways."""
+        if ctx.guild_id is None or not GIVEAWAY.enabled(ctx.guild_id):
+            await ctx.send(choices=[])
+            return
+        drawn = await self._repo(ctx.guild_id).list_drawn(MAX_CHOICES)
+        items = [
+            (f"{g.prize} · clos le {clock.to_local(g.ends_at):%d/%m}", g.message_id) for g in drawn
+        ]
+        await ctx.send(choices=matching_choices(items, ctx.input_text))
 
     # ------------------------------------------------------------------
     # Entry buttons

@@ -98,3 +98,13 @@ async def test_no_entry_after_the_end_or_a_cancellation(mongo):
     assert await repo.add_entrant("1", "7", NOW) is None
     assert await repo.add_entrant("2", "7", NOW) is None
     assert await repo.remove_entrant("2", "7", NOW) is None
+
+
+async def test_rerolls_offer_the_latest_drawn_giveaways(mongo):
+    repo = GiveawayRepository(mongo.guild_id)
+    for i, hours in enumerate((3, 1, 2)):
+        gid = await add(repo, message_id=str(i), ends_at=NOW - timedelta(hours=hours))
+        assert await repo.claim_draw(gid)
+    await add(repo, message_id="open", ends_at=NOW + timedelta(hours=1))
+    latest = await repo.list_drawn(2)
+    assert [g.message_id for g in latest] == ["1", "2"]

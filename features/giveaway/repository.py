@@ -64,6 +64,11 @@ class GiveawayRepository:
         docs = await cursor.to_list()
         return [self._doc_to_giveaway(d) for d in docs]
 
+    async def list_drawn(self, limit: int) -> list[Giveaway]:
+        """The *limit* most recently ended giveaways that were drawn (for a reroll)."""
+        cursor = self._col().find({"drawn": True}).sort("ends_at", -1).limit(limit)
+        return [self._doc_to_giveaway(d) for d in await cursor.to_list()]
+
     async def list_due(self, now: datetime) -> list[Giveaway]:
         cursor = self._col().find({"drawn": False, "cancelled": False, "ends_at": {"$lte": now}})
         docs = await cursor.to_list()

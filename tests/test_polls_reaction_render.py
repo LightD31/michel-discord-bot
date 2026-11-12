@@ -232,15 +232,10 @@ async def test_a_poll_missing_from_the_database_is_not_rewritten(ext):
 
 
 class EditCtx:
-    def __init__(self, user_id, msg):
+    def __init__(self, user_id):
         self.guild_id = 1
         self.user = SimpleNamespace(id=user_id)
         self.sent = []
-
-        async def fetch_message(message_id):
-            return msg
-
-        self.channel = SimpleNamespace(fetch_message=fetch_message)
 
     async def defer(self, **kwargs):
         pass
@@ -249,24 +244,77 @@ class EditCtx:
         self.sent.append(content)
 
 
+def poll_channel(ext, msg, *, channel_id=20, guild_id=1):
+    """Put *msg* in the channel the stored poll names (20), wherever /editpoll is typed."""
+
+    async def fetch_message(message_id):
+        return msg if str(message_id) == str(msg.id) else None
+
+    channel = SimpleNamespace(id=channel_id, _guild_id=guild_id, fetch_message=fetch_message)
+    fetched = []
+
+    async def fetch_channel(cid):
+        fetched.append(cid)
+        return channel if cid == channel_id else None
+
+    ext.bot.fetch_channel = fetch_channel
+    return fetched
+
+
 async def test_editpoll_refuses_a_message_the_bot_has_no_poll_for(ext):
     ext.polls.reaction_polls.clear()
-    ctx = EditCtx(7, message(poll_embed()))
+    poll_channel(ext, message(poll_embed()))
+    ctx = EditCtx(7)
     await PollsExtension.editpoll.callback(ext, ctx, "10", question="Demain ?")
     assert "pas un sondage" in ctx.sent[-1]
     assert ext.edits == []
 
 
 async def test_editpoll_refuses_someone_elses_poll(ext):
-    ctx = EditCtx(8, message(poll_embed()))  # the stored author is 7
+    poll_channel(ext, message(poll_embed()))
+    ctx = EditCtx(8)  # the stored author is 7
     await PollsExtension.editpoll.callback(ext, ctx, "10", question="Demain ?")
     assert "que vous avez créés" in ctx.sent[-1]
     assert ext.edits == []
 
 
 async def test_editpoll_lets_the_author_rename_their_poll(ext):
-    ctx = EditCtx(7, message(poll_embed()))
+    fetched = poll_channel(ext, message(poll_embed()))
+    ctx = EditCtx(7)
     await PollsExtension.editpoll.callback(ext, ctx, "10", question="Demain ?")
+    assert fetched == [20]  # where the poll was posted
     [(_, kwargs)] = ext.edits
     assert kwargs["embed"].title == "Demain ? (modifié)"
     assert ctx.sent[-1] == "Sondage modifié"
+
+
+async def test_editpoll_on_a_poll_whose_message_is_gone(ext):
+    poll_channel(ext, message(poll_embed()), channel_id=21)  # its channel was deleted
+    ctx = EditCtx(7)
+    await PollsExtension.editpoll.callback(ext, ctx, "10", question="Demain ?")
+    assert "introuvable" in ctx.sent[-1] and ext.edits == []
+
+
+class ChoicesCtx:
+    def __init__(self, user_id, typed=""):
+        self.guild_id = 1
+        self.author = SimpleNamespace(id=user_id)
+        self.input_text = typed
+        self.choices = None
+
+    async def send(self, choices):
+        self.choices = choices
+
+
+async def test_editpoll_offers_the_members_open_polls(ext):
+    async def list_open(author_id, limit):
+        assert (author_id, limit) == ("7", 25)
+        return [await ext.polls.get_by_message("10")]
+
+    ext.polls.list_open_reaction_polls = list_open
+    ctx = ChoicesCtx(7)
+    await PollsExtension.editpoll_choices(ext, ctx)
+    assert ctx.choices == [{"name": "Ce soir ?", "value": "10"}]
+    typed = ChoicesCtx(7, "pizza")
+    await PollsExtension.editpoll_choices(ext, typed)
+    assert typed.choices == []

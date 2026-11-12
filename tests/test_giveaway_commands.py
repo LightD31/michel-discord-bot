@@ -75,6 +75,10 @@ class MemoryGiveaways:
     async def list_active(self):
         return [g for g in self.items.values() if not g.drawn and not g.cancelled]
 
+    async def list_drawn(self, limit):
+        drawn = [g for g in self.items.values() if g.drawn]
+        return sorted(drawn, key=lambda g: g.ends_at, reverse=True)[:limit]
+
 
 @pytest.fixture
 def setup(monkeypatch, store_config):
@@ -327,3 +331,31 @@ async def test_cancel_removes_the_buttons(setup):
     _, message = posted(repo, channel)
     await run(GiveawayExtension.giveaway_cancel, ext, ctx, "500")
     assert message.edits[-1]["components"] == []
+
+
+def typing(ctx, text=""):
+    ctx.input_text = text
+    return ctx
+
+
+async def test_end_and_cancel_offer_the_open_giveaways(setup):
+    ext, ctx, repo, channel = setup
+    posted(repo, channel)
+    drawn, _ = posted(repo, channel, drawn=True)
+    drawn.message_id, drawn.prize = "501", "Un vieux jeu"
+    await run(GiveawayExtension.open_giveaway_choices, ext, typing(ctx))
+    (choice,) = ctx.replies[-1]["choices"]
+    assert choice["value"] == "500" and choice["name"].startswith("Un jeu · fin le ")
+
+    await run(GiveawayExtension.drawn_giveaway_choices, ext, typing(ctx, "vieux"))
+    assert [c["value"] for c in ctx.replies[-1]["choices"]] == ["501"]
+    await run(GiveawayExtension.drawn_giveaway_choices, ext, typing(ctx, "500"))
+    assert ctx.replies[-1]["choices"] == []
+
+
+async def test_no_choices_where_giveaways_are_off(setup, store_config):
+    ext, ctx, repo, channel = setup
+    posted(repo, channel)
+    store_config({"servers": {}})
+    await run(GiveawayExtension.open_giveaway_choices, ext, typing(ctx))
+    assert ctx.replies[-1]["choices"] == []

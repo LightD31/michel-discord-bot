@@ -5,6 +5,7 @@ Slash commands:
 - ``/poll-anonyme`` — button-based poll where voter identities aren't shown
 - ``/poll-classement`` — ranked-choice (instant-runoff) poll
 - ``/editpoll`` — edit the question, options, or reset reactions of a poll you created
+  (its ``sondage`` option autocompletes the member's open reaction polls)
 
 Listens to :class:`MessageReactionAdd` / :class:`MessageReactionRemove` to keep
 reaction-based poll embeds' vote counts fresh. Button-based polls persist their
@@ -22,6 +23,7 @@ import os
 from datetime import datetime, timedelta
 
 from interactions import (
+    AutocompleteContext,
     Client,
     Embed,
     Extension,
@@ -53,6 +55,8 @@ from src.core import logging as logutil
 from src.core.config import ModuleConfig
 from src.core.debounce import Coalescer
 from src.core.logging import log_failure
+from src.discord_ext.autocomplete import MAX_CHOICES, matching_choices
+from src.discord_ext.channels import fetch_guild_channel
 from src.discord_ext.embeds import Colors, format_discord_timestamp
 from src.discord_ext.messages import copy_embed, edit_message_if_changed, send_error
 from src.discord_ext.paginator import format_poll
@@ -492,10 +496,12 @@ class PollsExtension(Extension, PollButtonsMixin):
         scopes=guild_scopes(UTILS.guild_ids()),
     )
     @slash_option(
-        "message_id",
-        "ID du message à modifier",
+        "sondage",
+        "Sondage à modifier (choisis-le dans la liste)",
         opt_type=OptionType.STRING,
         required=True,
+        autocomplete=True,
+        argument_name="message_id",
     )
     @slash_option(
         "question",
@@ -524,20 +530,21 @@ class PollsExtension(Extension, PollButtonsMixin):
         reset_reactions=False,
     ):
         await ctx.defer(ephemeral=True)
-        try:
-            message = await ctx.channel.fetch_message(message_id)
-        except Exception:
-            await send_error(ctx, "Message introuvable ou inaccessible")
-            return
-
-        assert message is not None
-
-        stored = await self._stored_reaction_poll(ctx.guild_id, message.id)
-        if stored is None or not message.embeds:
+        stored = await self._stored_reaction_poll(ctx.guild_id, message_id)
+        if stored is None:
             await send_error(ctx, "Ce message n'est pas un sondage à réactions de ce serveur")
             return
         if stored.author_id != str(ctx.user.id):
             await send_error(ctx, "Vous ne pouvez modifier que les sondages que vous avez créés")
+            return
+        # The poll may sit in another channel than the command: it is fetched where it was posted.
+        channel = await fetch_guild_channel(self.bot, ctx.guild_id, stored.channel_id)
+        try:
+            message = await channel.fetch_message(stored.message_id) if channel else None
+        except Exception:
+            message = None
+        if message is None or not message.embeds:
+            await send_error(ctx, "Message introuvable ou inaccessible")
             return
         embed = copy_embed(message.embeds[0])
         if reset_reactions:
@@ -565,6 +572,22 @@ class PollsExtension(Extension, PollButtonsMixin):
         await edit_message_if_changed(message, embed=embed, logger=logger)
         logger.info("Poll edited")
         await ctx.send("Sondage modifié", ephemeral=True)
+
+    @editpoll.autocomplete("sondage")
+    async def editpoll_choices(self, ctx: AutocompleteContext) -> None:
+        """The member's open reaction polls on this server, newest first."""
+        if ctx.guild_id is None or not UTILS.enabled(ctx.guild_id):
+            await ctx.send(choices=[])
+            return
+        try:
+            polls = await self._poll_repo(ctx.guild_id).list_open_reaction_polls(
+                str(ctx.author.id), MAX_CHOICES
+            )
+        except Exception as e:
+            logger.warning("Could not list the polls of %s: %s", ctx.author.id, e)
+            polls = []
+        items = [(poll.question, poll.message_id) for poll in polls]
+        await ctx.send(choices=matching_choices(items, ctx.input_text))
 
     async def _stored_reaction_poll(self, guild_id, message_id) -> Poll | None:
         """The reaction poll stored for *message_id*, or None for any other message."""
