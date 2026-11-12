@@ -77,7 +77,7 @@ class MessageRefRepository:
 
     @translates_db_errors
     async def list(self) -> list[MessageRef]:
-        docs = await self._col().find({}).sort("_id", 1).to_list(length=None)
+        docs = await self._col().find({}).sort("_id", 1).to_list()
         return [MessageRef.from_mongo(doc) for doc in docs]
 
 

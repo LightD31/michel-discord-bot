@@ -153,7 +153,7 @@ class XpRepository:
             {"$project": {"rank": 1}},
         ]
         try:
-            result = await self._xp().aggregate(pipeline).to_list(length=None)
+            result = await (await self._xp().aggregate(pipeline)).to_list()
         except pymongo.errors.PyMongoError:
             return await self._get_user_rank_fallback(user_id)
         if result:
@@ -173,7 +173,7 @@ class XpRepository:
     @translates_db_errors
     async def list_all_sorted_by_xp(self) -> list[dict[str, Any]]:
         cursor = self._xp().find().sort("xp", -1)
-        return await cursor.to_list(length=None)
+        return await cursor.to_list()
 
     # --- Dashboard stats (aggregations over ``xp_events``) ----------------
     #
@@ -210,7 +210,7 @@ class XpRepository:
                 }
             },
         ]
-        return await self._events().aggregate(pipeline).to_list(length=None)
+        return await (await self._events().aggregate(pipeline)).to_list()
 
     @translates_db_errors
     async def totals_by_source(self) -> list[dict[str, Any]]:
@@ -228,7 +228,7 @@ class XpRepository:
             },
             {"$project": {"_id": 0, "source": "$_id", "xp": 1, "events": 1}},
         ]
-        return await self._events().aggregate(pipeline).to_list(length=None)
+        return await (await self._events().aggregate(pipeline)).to_list()
 
     @translates_db_errors
     async def daily_active_users(self, since: datetime, tz: str) -> list[dict[str, Any]]:
@@ -248,7 +248,7 @@ class XpRepository:
             {"$group": {"_id": "$_id.day", "users": {"$sum": 1}}},
             {"$project": {"_id": 0, "day": "$_id", "users": 1}},
         ]
-        return await self._events().aggregate(pipeline).to_list(length=None)
+        return await (await self._events().aggregate(pipeline)).to_list()
 
     @translates_db_errors
     async def count_active_users(self, since: datetime) -> int:
@@ -258,7 +258,7 @@ class XpRepository:
             {"$group": {"_id": "$user_id"}},
             {"$count": "users"},
         ]
-        result = await self._events().aggregate(pipeline).to_list(length=None)
+        result = await (await self._events().aggregate(pipeline)).to_list()
         return int(result[0]["users"]) if result else 0
 
     @translates_db_errors
@@ -281,7 +281,7 @@ class XpRepository:
             },
             {"$project": {"_id": 0, "dow": "$_id.dow", "hour": "$_id.hour", "xp": 1}},
         ]
-        return await self._events().aggregate(pipeline).to_list(length=None)
+        return await (await self._events().aggregate(pipeline)).to_list()
 
 
 __all__ = ["UserXpStats", "XpRepository"]

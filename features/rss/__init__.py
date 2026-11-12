@@ -6,7 +6,7 @@ deals with feed normalization and per-guild dedupe state.
 The async :func:`fetch_feed` helper lives in :mod:`features.rss.network` and
 ``RssRepository`` in :mod:`features.rss.repository` — both are exposed via
 ``__getattr__`` so the top-level import only pulls in the pure parser. Tests
-of the parsing logic don't need ``aiohttp`` or ``motor``.
+of the parsing logic don't need ``aiohttp`` or ``pymongo``.
 """
 
 from features.rss.models import RssEntry, RssFeedState

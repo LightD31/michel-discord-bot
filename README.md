@@ -118,7 +118,7 @@ features/               # Domain logic — pure Python, no Discord imports
 src/                    # Shared infrastructure
 ├── core/               # Framework-free essentials (strictly typed under mypy)
 │   ├── config.py       #   reactive ConfigStore with atomic writes
-│   ├── db.py           #   MongoManager singleton (motor, per-event-loop clients)
+│   ├── db.py           #   MongoManager singleton (PyMongo async, per-event-loop clients)
 │   ├── http.py         #   shared aiohttp session with retry/backoff + URL redaction
 │   ├── logging.py      #   colored ANSI logger factory
 │   ├── errors.py       #   exception hierarchy (BotError, HttpError, …)
@@ -159,7 +159,7 @@ scripts/                # generate_config_example.py — config skeleton from sc
 - **Auto-discovered extensions** — Extensions are loaded at startup unless disabled via the Web UI or `config["extensions"]`.
 - **Mixin-based extensions** — Larger extensions (xp, twitch, uptime, zevent, tricount…) are split into mixin classes by concern and composed in the package's `__init__.py`.
 - **Schema-driven dashboard** — Each module declares a Pydantic config schema; the Web UI renders typed forms, per-server toggles, and validation from it.
-- **Async everywhere** — Motor for MongoDB, aiohttp for HTTP, asyncssh for SFTP, native async RCON. The bot loop and the Web UI loop each get their own motor/aiohttp clients.
+- **Async everywhere** — PyMongo's async API for MongoDB, aiohttp for HTTP, asyncssh for SFTP, native async RCON. The bot loop and the Web UI loop each get their own MongoDB/aiohttp clients.
 - **Self-healing** — A heartbeat file plus a watchdog thread make the process exit when the gateway wedges, so Docker's restart policy brings it back.
 
 ---
@@ -326,7 +326,7 @@ scrape_configs:
 | Layer | Technology |
 |-------|-----------|
 | Bot framework | [interactions.py](https://github.com/interactions-py/interactions.py) (`discord-py-interactions`) |
-| Database | MongoDB via [Motor](https://motor.readthedocs.io/) (async) |
+| Database | MongoDB via [PyMongo](https://pymongo.readthedocs.io/)'s async API (`AsyncMongoClient`) |
 | Web UI | [FastAPI](https://fastapi.tiangolo.com/) + [Uvicorn](https://www.uvicorn.org/) + [sse-starlette](https://github.com/sysid/sse-starlette) |
 | Config validation | [Pydantic v2](https://docs.pydantic.dev/) |
 | Spotify | [Spotipy](https://spotipy.readthedocs.io/) |

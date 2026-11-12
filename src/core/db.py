@@ -1,5 +1,5 @@
 """
-Global MongoDB manager using motor (async driver).
+Global MongoDB manager using PyMongo's native async API (``AsyncMongoClient``).
 
 Moved from ``src/mongodb.py`` as part of the ``src/core/`` restructure. The old
 module path remains as a re-export shim.
@@ -35,11 +35,9 @@ from pathlib import Path
 from typing import Any, ClassVar, Optional
 
 import pymongo.errors
-from motor.motor_asyncio import (
-    AsyncIOMotorClient,
-    AsyncIOMotorCollection,
-    AsyncIOMotorDatabase,
-)
+from pymongo import AsyncMongoClient
+from pymongo.asynchronous.collection import AsyncCollection
+from pymongo.asynchronous.database import AsyncDatabase
 
 from src.core import backup_format, clock
 from src.core import config as _config
@@ -53,6 +51,13 @@ logger = _logging.init_logger(__name__)
 
 # MongoDB unreachable (down, network, timeout) is an outage, not a bug: logged on one line.
 register_expected_failure(lambda error: isinstance(error, pymongo.errors.ConnectionFailure))
+
+Client = AsyncMongoClient[dict[str, Any]]
+Database = AsyncDatabase[dict[str, Any]]
+Collection = AsyncCollection[dict[str, Any]]
+
+# How long close() waits for another loop's client to close.
+CLOSE_TIMEOUT_SECONDS = 2.0
 
 # Database naming conventions
 GLOBAL_DB_NAME = "global"
@@ -96,17 +101,17 @@ def translates_db_errors[**P, R](func: Callable[P, Awaitable[R]]) -> Callable[P,
 
 
 class MongoManager:
-    """Singleton-style global MongoDB connection manager using motor (async).
+    """Singleton-style global MongoDB connection manager (PyMongo async).
 
-    Keeps one motor client *per event loop*: motor pins each client to the
+    Keeps one client *per event loop*: an ``AsyncMongoClient`` belongs to the
     loop that first uses it, so sharing a single client between the bot loop
-    and the Web UI's uvicorn loop (daemon thread) raises ``got Future
-    attached to a different loop``. In practice there are at most two
-    clients (bot + webui).
+    and the Web UI's uvicorn loop (daemon thread) fails with ``attached to a
+    different loop`` errors. In practice there are at most two clients
+    (bot + webui).
     """
 
     _instance: Optional["MongoManager"] = None
-    _clients: ClassVar[dict[asyncio.AbstractEventLoop | None, AsyncIOMotorClient]] = {}
+    _clients: ClassVar[dict[asyncio.AbstractEventLoop | None, Client]] = {}
     _url: str | None = None
 
     def __new__(cls) -> "MongoManager":
@@ -121,8 +126,8 @@ class MongoManager:
         except RuntimeError:
             return None
 
-    def _ensure_client(self) -> AsyncIOMotorClient:
-        """Lazily create the motor client bound to the current event loop."""
+    def _ensure_client(self) -> Client:
+        """Lazily create the client bound to the current event loop."""
         loop = self._current_loop()
         client = self._clients.get(loop)
         if client is None:
@@ -138,7 +143,7 @@ class MongoManager:
                     "MongoDB URL is not configured. Set 'mongodb.url' in your configuration."
                 )
 
-            client = AsyncIOMotorClient(
+            client = AsyncMongoClient(
                 self._url,
                 # Dates come back as aware UTC datetimes (src/core/clock.py).
                 tz_aware=True,
@@ -151,7 +156,7 @@ class MongoManager:
                 maxIdleTimeMS=300000,
             )
             self._clients[loop] = client
-            logger.info("Motor async MongoDB client created (%d active).", len(self._clients))
+            logger.info("Async MongoDB client created (%d active).", len(self._clients))
         return client
 
     # ------------------------------------------------------------------
@@ -159,41 +164,39 @@ class MongoManager:
     # ------------------------------------------------------------------
 
     @property
-    def client(self) -> AsyncIOMotorClient:
-        """Return the underlying motor client (creates it if needed)."""
+    def client(self) -> Client:
+        """Return the underlying client (creates it if needed)."""
         return self._ensure_client()
 
     # --- Per-guild helpers -------------------------------------------
 
-    def get_guild_db(self, guild_id: str | int) -> AsyncIOMotorDatabase:
+    def get_guild_db(self, guild_id: str | int) -> Database:
         """Return the database for a specific guild."""
         return self.client[f"{GUILD_DB_PREFIX}{guild_id}"]
 
-    def get_guild_collection(
-        self, guild_id: str | int, collection_name: str
-    ) -> AsyncIOMotorCollection:
+    def get_guild_collection(self, guild_id: str | int, collection_name: str) -> Collection:
         """Return a collection inside a guild's database."""
         return self.client[f"{GUILD_DB_PREFIX}{guild_id}"][collection_name]
 
     # --- Global helpers ----------------------------------------------
 
     @property
-    def global_db(self) -> AsyncIOMotorDatabase:
+    def global_db(self) -> Database:
         """Return the global database (for non-guild-specific data)."""
         return self.client[GLOBAL_DB_NAME]
 
-    def get_global_collection(self, collection_name: str) -> AsyncIOMotorCollection:
+    def get_global_collection(self, collection_name: str) -> Collection:
         """Return a collection in the global database."""
         return self.client[GLOBAL_DB_NAME][collection_name]
 
     # --- Low-level / legacy helpers ----------------------------------
 
-    def get_database(self, name: str) -> AsyncIOMotorDatabase:
-        """Return a motor database by name."""
+    def get_database(self, name: str) -> Database:
+        """Return a database by name."""
         return self.client[name]
 
-    def get_collection(self, db_name: str, collection_name: str) -> AsyncIOMotorCollection:
-        """Return a motor collection."""
+    def get_collection(self, db_name: str, collection_name: str) -> Collection:
+        """Return a collection."""
         return self.client[db_name][collection_name]
 
     async def ping(self) -> bool:
@@ -207,12 +210,28 @@ class MongoManager:
             return False
 
     async def close(self) -> None:
-        """Close every motor client (one per event loop)."""
-        if self._clients:
-            for client in self._clients.values():
-                client.close()
-            self._clients.clear()
-            logger.info("MongoDB connection(s) closed.")
+        """Close every client (one per event loop).
+
+        A client is closed on its own loop: this one's is awaited, another
+        running loop's (the Web UI's) is closed there, within
+        :data:`CLOSE_TIMEOUT_SECONDS`. A client whose loop has stopped is only
+        dropped: its sockets went with the loop.
+        """
+        if not self._clients:
+            return
+        current = self._current_loop()
+        clients = list(self._clients.items())
+        self._clients.clear()
+        for loop, client in clients:
+            try:
+                if loop is current:
+                    await client.close()
+                elif loop is not None and loop.is_running():
+                    future = asyncio.run_coroutine_threadsafe(client.close(), loop)
+                    await asyncio.wait_for(asyncio.wrap_future(future), CLOSE_TIMEOUT_SECONDS)
+            except Exception as e:
+                log_failure(logger, "Could not close a MongoDB client: %s", e)
+        logger.info("MongoDB connection(s) closed.")
 
     # ------------------------------------------------------------------
     # Backup
@@ -329,7 +348,7 @@ class MongoManager:
     # dict-like access:  mongo_manager["dbname"]["collection"]
     # ------------------------------------------------------------------
 
-    def __getitem__(self, db_name: str) -> AsyncIOMotorDatabase:
+    def __getitem__(self, db_name: str) -> Database:
         return self.get_database(db_name)
 
 

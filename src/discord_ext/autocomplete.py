@@ -28,7 +28,7 @@ async def guild_group_autocomplete(
     if member_filter:
         query["members"] = ctx.author.id
 
-    groups = await col_func(ctx.guild.id).find(query).to_list(length=None)
+    groups = await col_func(ctx.guild.id).find(query).to_list()
     input_text = ctx.input_text.lower()
     filtered = [
         {"name": g["name"], "value": g["name"]} for g in groups if input_text in g["name"].lower()

@@ -67,7 +67,7 @@ class PollRepository:
     @translates_db_errors
     async def list_due(self, now: datetime) -> list[Poll]:
         cursor = self._col().find({"closed": False, "closes_at": {"$ne": None, "$lte": now}})
-        return [self._doc_to_poll(d) for d in await cursor.to_list(length=None)]
+        return [self._doc_to_poll(d) for d in await cursor.to_list()]
 
     @translates_db_errors
     async def set_options(self, poll_id: str, options: list[str], emojis: list[str]) -> None:

@@ -73,7 +73,7 @@ def test_days_are_utc():
     assert day_expiry(NOW) == datetime(2026, 11, 8, tzinfo=UTC)
 
 
-# ── Counters (in-memory stand-in for the motor collection) ──────────────
+# ── Counters (in-memory stand-in for the MongoDB collection) ──────────────
 
 
 class FakeUsageCollection:

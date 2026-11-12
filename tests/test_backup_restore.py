@@ -15,7 +15,7 @@ from scripts.restore_backup import plan, restore
 from src.core import backup_format
 from src.core.db import MongoManager
 
-# Documents as motor hands them over: dates are naive UTC and generic binary
+# Documents as a default pymongo client hands them over: dates are naive UTC and generic binary
 # data is ``bytes`` (pymongo's defaults), which is also what a restore yields.
 DOCS = {
     "global": {
@@ -65,7 +65,7 @@ class AsyncDb:
 
 
 class AsyncMotor:
-    """Just enough of motor for ``backup_all``."""
+    """Just enough of the driver for ``backup_all``."""
 
     def __init__(self, dbs):
         self.dbs = dbs

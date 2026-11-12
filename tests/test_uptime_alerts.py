@@ -180,7 +180,7 @@ def test_detailed_alert_omits_empty_fields():
 
 
 class _FakeCollection:
-    """Just enough of motor for the repository: one document, ``$set``/``$unset``/``$exists``."""
+    """Just enough of the driver for the repository: one document, ``$set``/``$unset``/``$exists``."""
 
     def __init__(self, doc=None):
         self.doc = copy.deepcopy(doc)

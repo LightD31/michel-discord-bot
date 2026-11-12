@@ -60,12 +60,12 @@ class GiveawayRepository:
 
     async def list_active(self) -> list[Giveaway]:
         cursor = self._col().find({"drawn": False, "cancelled": False}).sort("ends_at", 1)
-        docs = await cursor.to_list(length=None)
+        docs = await cursor.to_list()
         return [self._doc_to_giveaway(d) for d in docs]
 
     async def list_due(self, now: datetime) -> list[Giveaway]:
         cursor = self._col().find({"drawn": False, "cancelled": False, "ends_at": {"$lte": now}})
-        docs = await cursor.to_list(length=None)
+        docs = await cursor.to_list()
         return [self._doc_to_giveaway(d) for d in docs]
 
     async def claim_draw(self, giveaway_id: str) -> bool:

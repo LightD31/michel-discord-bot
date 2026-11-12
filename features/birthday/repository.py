@@ -32,7 +32,7 @@ class BirthdayRepository:
     @translates_db_errors
     async def find_all(self) -> list[BirthdayEntry]:
         entries = []
-        for doc in await self._col().find({}, {"_id": 0}).to_list(length=None):
+        for doc in await self._col().find({}, {"_id": 0}).to_list():
             try:
                 entries.append(BirthdayEntry(**doc))
             except Exception as e:
