@@ -28,6 +28,7 @@ from interactions import (
 from features.ai import AiComparisonRepository, Comparison, compute_model_stats
 from src.core.errors import DatabaseError
 from src.discord_ext.embeds import Colors
+from src.discord_ext.locale import en_fr_desc
 from src.discord_ext.messages import edit_message_if_changed
 
 from ._common import SCOPE_GLOBAL, SCOPE_GUILD, enabled_guild_ids, logger, repo_for, scope_for
@@ -157,7 +158,9 @@ class VotingMixin:
 
     @slash_command(
         name="ask-stats",
-        description="Classement des modèles d'IA selon vos votes",
+        description=en_fr_desc(
+            "AI model leaderboard from your votes", "Classement des modèles d'IA selon vos votes"
+        ),
         integration_types=[IntegrationType.GUILD_INSTALL, IntegrationType.USER_INSTALL],
     )
     @auto_defer()

@@ -32,6 +32,12 @@ def test_expected_errors_get_a_specific_message_and_are_not_failures():
     assert "permission" in user_message(check, "ref")
     assert "déjà en cours" in user_message(busy, "ref")
     assert all(is_expected(e) for e in (cooldown, check, busy))
+    english = [user_message(e, "ref", french=False) for e in (cooldown, check, busy)]
+    assert english == [
+        "⏳ Easy! Try again in 12 s.",
+        "🚫 You are not allowed to use this command.",
+        "⏳ This command is already running, try again in a moment.",
+    ]
 
 
 def test_an_unexpected_error_shows_its_reference():

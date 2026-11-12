@@ -16,6 +16,7 @@ from interactions.api.events import CommandError, ComponentError, ModalError
 
 from src.core import logging as logutil
 from src.discord_ext.errors import is_expected, new_reference, user_message
+from src.discord_ext.locale import is_french
 
 logger = logutil.init_logger("extensions.errors")
 
@@ -33,7 +34,7 @@ class ErrorsExtension(Extension):
         if not is_expected(error):
             logger.error("%s failed [ref %s]: %s", source, reference, error, exc_info=error)
         try:
-            await ctx.send(user_message(error, reference), ephemeral=True)
+            await ctx.send(user_message(error, reference, french=is_french(ctx)), ephemeral=True)
         except Exception as e:  # noqa: BLE001 — the interaction may have expired
             logger.debug("Could not tell the member about [ref %s]: %s", reference, e)
 

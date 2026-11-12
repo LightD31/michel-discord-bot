@@ -53,18 +53,33 @@ def install() -> None:
     register_expected_failure(is_discord_refusal_or_outage)
 
 
-def user_message(error: BaseException, reference: str) -> str:
-    """The ephemeral reply for *error*."""
+def user_message(error: BaseException, reference: str, *, french: bool = True) -> str:
+    """The ephemeral reply for *error*, in English for a member whose Discord isn't in French.
+
+    The commands anyone can install (src/discord_ext/locale.py) have cooldowns,
+    so their users may meet these replies.
+    """
     if isinstance(error, errors.CommandOnCooldown):
         seconds = max(int(error.cooldown.get_cooldown_time()), 1)
-        return f"⏳ Doucement ! Réessaie dans {seconds} s."
+        if french:
+            return f"⏳ Doucement ! Réessaie dans {seconds} s."
+        return f"⏳ Easy! Try again in {seconds} s."
     if isinstance(error, errors.MaxConcurrencyReached):
-        return "⏳ Cette commande est déjà en cours, réessaie dans un instant."
+        if french:
+            return "⏳ Cette commande est déjà en cours, réessaie dans un instant."
+        return "⏳ This command is already running, try again in a moment."
     if isinstance(error, errors.CommandCheckFailure):
-        return "🚫 Tu n'as pas la permission d'utiliser cette commande."
+        if french:
+            return "🚫 Tu n'as pas la permission d'utiliser cette commande."
+        return "🚫 You are not allowed to use this command."
+    if french:
+        return (
+            "❌ Une erreur inattendue est survenue. Réessaie plus tard ; si ça continue, "
+            f"donne cette référence à un admin : `{reference}`."
+        )
     return (
-        "❌ Une erreur inattendue est survenue. Réessaie plus tard ; si ça continue, "
-        f"donne cette référence à un admin : `{reference}`."
+        "❌ Something unexpected went wrong. Try again later; if it keeps happening, "
+        f"give this reference to an admin: `{reference}`."
     )
 
 

@@ -54,6 +54,7 @@ from features.ai import (
 from features.ai.quota import QUOTA_UNAVAILABLE, access_refusal, limit_message
 from src.core import clock
 from src.core.errors import DatabaseError
+from src.discord_ext.locale import en_fr_desc
 from src.discord_ext.mentions import NO_PINGS
 from src.discord_ext.messages import send_error
 from src.integrations import llm
@@ -284,20 +285,33 @@ class AskMixin:
 
     @slash_command(
         name="ask",
-        description="Pose une question à Michel (comparaison de modèles ou réponse rapide)",
+        # Anyone can install it: English by default, French for French clients
+        # (src/discord_ext/locale.py). The answer follows the question's language.
+        description=en_fr_desc(
+            "Ask Michel a question (model comparison or quick answer)",
+            "Pose une question à Michel (comparaison de modèles ou réponse rapide)",
+        ),
         integration_types=[IntegrationType.GUILD_INSTALL, IntegrationType.USER_INSTALL],
     )
     @cooldown(Buckets.USER, 1, 20)
     @auto_defer()
-    @slash_option("question", "Ta question", opt_type=OptionType.STRING, required=True)
+    @slash_option(
+        "question",
+        en_fr_desc("Your question", "Ta question"),
+        opt_type=OptionType.STRING,
+        required=True,
+    )
     @slash_option(
         "mode",
-        "Comparer plusieurs modèles (avec vote) ou une réponse rapide",
+        en_fr_desc(
+            "Compare several models (with a vote) or get a quick answer",
+            "Comparer plusieurs modèles (avec vote) ou une réponse rapide",
+        ),
         opt_type=OptionType.STRING,
         required=False,
         choices=[
-            SlashCommandChoice(name="Comparer", value=MODE_COMPARE),
-            SlashCommandChoice(name="Rapide", value=MODE_QUICK),
+            SlashCommandChoice(name=en_fr_desc("Compare", "Comparer"), value=MODE_COMPARE),
+            SlashCommandChoice(name=en_fr_desc("Quick", "Rapide"), value=MODE_QUICK),
         ],
     )
     async def ask_question(self, ctx: SlashContext, question: str, mode: str | None = None) -> None:

@@ -49,3 +49,11 @@ chooseList = [
     "Je vote pour",
     "Je vote",
 ]
+# /pick for a member whose Discord isn't in French (src/discord_ext/locale.py).
+chooseListEn = [
+    "I choose",
+    "My pick is",
+    "It's decided, it will be",
+    "I'll take",
+    "I vote for",
+]
