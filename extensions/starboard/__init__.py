@@ -26,15 +26,9 @@ class StarboardExtension(Extension, ListenersMixin):
     def __init__(self, bot: Client):
         self.bot = bot
         self.lock = asyncio.Lock()
-        self._repos: dict[str, StarboardRepository] = {}
 
     def repository(self, guild_id: str | int) -> StarboardRepository:
-        gid = str(guild_id)
-        repo = self._repos.get(gid)
-        if repo is None:
-            repo = StarboardRepository(gid)
-            self._repos[gid] = repo
-        return repo
+        return StarboardRepository(str(guild_id))
 
     @listen()
     async def on_startup(self):

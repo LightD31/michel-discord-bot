@@ -36,7 +36,6 @@ class LeaderboardMixin:
     bot: Client
     _db_connected: bool
     _user_cache: TTLCache
-    _repos: dict[str, XpRepository]
     _leaderboard_paginators: dict[str, CustomPaginator]
 
     def _repo(self, guild_id: str) -> XpRepository: ...  # provided by LevelingMixin

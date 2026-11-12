@@ -35,7 +35,6 @@ class XpExtension(Extension, LevelingMixin, VoiceMixin, CommandsMixin, Leaderboa
         self._db_connected = True
         self._user_cache = TTLCache(ttl=USER_CACHE_TTL)
         self._rank_cache = TTLCache(ttl=RANK_CACHE_TTL)
-        self._repos: dict[str, XpRepository] = {}
         self._xp_collections: set[str] = set()  # guilds whose xp collection exists
         self._voice_sessions: dict[tuple[str, str], float] = {}
         self._leaderboard_paginators: dict[str, CustomPaginator] = {}

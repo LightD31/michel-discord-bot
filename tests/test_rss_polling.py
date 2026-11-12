@@ -150,7 +150,6 @@ def cycle(monkeypatch):
     monkeypatch.setattr(rss_ext, "_with_short_link", no_shortening)
     ext = object.__new__(RssExtension)
     ext.bot = SimpleNamespace(fetch_channel=fetch_channel)
-    ext._repos = {}
     ext._poll_lock = asyncio.Lock()
 
     def configure(guilds: dict[str, dict]) -> None:

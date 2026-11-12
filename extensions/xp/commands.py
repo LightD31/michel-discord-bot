@@ -52,7 +52,6 @@ class CommandsMixin:
     bot: Client
     _db_connected: bool
     _rank_cache: TTLCache
-    _repos: dict[str, XpRepository]
 
     def _repo(self, guild_id: str) -> XpRepository: ...  # provided by LevelingMixin
 

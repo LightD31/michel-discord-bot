@@ -264,16 +264,10 @@ class RssExtension(Extension):
 
     def __init__(self, bot: Client):
         self.bot: Client = bot
-        self._repos: dict[str, RssRepository] = {}
         self._poll_lock = asyncio.Lock()
 
     def _repo(self, guild_id: str | int) -> RssRepository:
-        gid = str(guild_id)
-        repo = self._repos.get(gid)
-        if repo is None:
-            repo = RssRepository(gid)
-            self._repos[gid] = repo
-        return repo
+        return RssRepository(str(guild_id))
 
     @listen()
     async def on_startup(self):

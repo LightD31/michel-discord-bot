@@ -8,7 +8,7 @@ from interactions import Embed
 import extensions.polls as polls_module
 import src.discord_ext.paginator as paginator_module
 from extensions.polls import PollsExtension
-from features.polls import is_reaction_poll_text, render_reaction_poll
+from features.polls import Poll, is_reaction_poll_text, render_reaction_poll
 from features.polls.helpers import poll_option_label
 from src.discord_ext.embeds import Colors
 
@@ -118,6 +118,25 @@ class RecordingRefreshes:
         return len(self.requests)
 
 
+class FakePollRepo:
+    """The polls stored for the guild: the reaction polls the bot posted, by message id."""
+
+    def __init__(self):
+        self.reaction_polls = {"10"}
+
+    async def get_by_message(self, message_id):
+        if message_id not in self.reaction_polls:
+            return None
+        return Poll(
+            channel_id="20",
+            message_id=message_id,
+            author_id="7",
+            question="Ce soir ?",
+            options=["Pizza : 4 fromages", "Sushi"],
+            mode="reaction",
+        )
+
+
 @pytest.fixture
 def ext(monkeypatch, store_config):
     store_config({"servers": {"1": {"moduleUtils": {"enabled": True}}}})
@@ -131,6 +150,8 @@ def ext(monkeypatch, store_config):
     extension = object.__new__(PollsExtension)  # skip interactions' Extension wiring
     extension.bot = SimpleNamespace(user=SimpleNamespace(id=BOT_ID))
     extension._refreshes = RecordingRefreshes()
+    extension.polls = FakePollRepo()
+    extension._poll_repo = lambda guild_id: extension.polls
     extension.edits = edits
     return extension
 
@@ -197,3 +218,55 @@ async def test_a_vote_refreshes_the_poll(ext):
         "2️⃣ Sushi\n\n"
         "*Fermeture automatique : <t:1700000000:R>*"
     )
+
+
+async def test_a_poll_missing_from_the_database_is_not_rewritten(ext):
+    # Shaped like a poll, but the bot has no record of it: only stored polls are re-rendered.
+    ext.polls.reaction_polls.clear()
+    reactions = [FakeReaction("1️⃣", [user(BOT_ID, "Michel", bot=True), user(1, "Bob")])]
+    event = SimpleNamespace(message=message(poll_embed(), reactions=reactions), emoji="1️⃣")
+    ext._refresh_reaction_poll(event)
+    [(_, refresh)] = ext._refreshes.requests
+    await refresh()
+    assert ext.edits == []
+
+
+class EditCtx:
+    def __init__(self, user_id, msg):
+        self.guild_id = 1
+        self.user = SimpleNamespace(id=user_id)
+        self.sent = []
+
+        async def fetch_message(message_id):
+            return msg
+
+        self.channel = SimpleNamespace(fetch_message=fetch_message)
+
+    async def defer(self, **kwargs):
+        pass
+
+    async def send(self, content=None, **kwargs):
+        self.sent.append(content)
+
+
+async def test_editpoll_refuses_a_message_the_bot_has_no_poll_for(ext):
+    ext.polls.reaction_polls.clear()
+    ctx = EditCtx(7, message(poll_embed()))
+    await PollsExtension.editpoll.callback(ext, ctx, "10", question="Demain ?")
+    assert "pas un sondage" in ctx.sent[-1]
+    assert ext.edits == []
+
+
+async def test_editpoll_refuses_someone_elses_poll(ext):
+    ctx = EditCtx(8, message(poll_embed()))  # the stored author is 7
+    await PollsExtension.editpoll.callback(ext, ctx, "10", question="Demain ?")
+    assert "que vous avez créés" in ctx.sent[-1]
+    assert ext.edits == []
+
+
+async def test_editpoll_lets_the_author_rename_their_poll(ext):
+    ctx = EditCtx(7, message(poll_embed()))
+    await PollsExtension.editpoll.callback(ext, ctx, "10", question="Demain ?")
+    [(_, kwargs)] = ext.edits
+    assert kwargs["embed"].title == "Demain ? (modifié)"
+    assert ctx.sent[-1] == "Sondage modifié"

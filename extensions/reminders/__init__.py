@@ -90,7 +90,6 @@ class RemindersExtension(Extension):
 
     def __init__(self, bot: Client):
         self.bot: Client = bot
-        self._reminder_repos: dict[str, ReminderRepository] = {}
 
     @listen()
     async def on_startup(self):
@@ -99,12 +98,7 @@ class RemindersExtension(Extension):
         self.check_reminders.start()
 
     def _reminder_repo(self, guild_id: str | int) -> ReminderRepository:
-        gid = str(guild_id)
-        repo = self._reminder_repos.get(gid)
-        if repo is None:
-            repo = ReminderRepository(gid)
-            self._reminder_repos[gid] = repo
-        return repo
+        return ReminderRepository(str(guild_id))
 
     @slash_command(
         name="reminder",

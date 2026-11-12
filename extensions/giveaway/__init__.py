@@ -228,17 +228,11 @@ class GiveawayExtension(Extension):
 
     def __init__(self, bot: Client):
         self.bot: Client = bot
-        self._repos: dict[str, GiveawayRepository] = {}
         # A burst of reactions on a giveaway re-reads its entrants once.
         self._refreshes = Coalescer(REFRESH_DELAY_SECONDS, name="giveaway-refresh", log=logger)
 
     def _repo(self, guild_id: str | int) -> GiveawayRepository:
-        gid = str(guild_id)
-        repo = self._repos.get(gid)
-        if repo is None:
-            repo = GiveawayRepository(gid)
-            self._repos[gid] = repo
-        return repo
+        return GiveawayRepository(str(guild_id))
 
     @listen()
     async def on_startup(self) -> None:

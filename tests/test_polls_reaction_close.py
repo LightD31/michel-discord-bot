@@ -60,7 +60,6 @@ class FakeMessage:
 def make_extension(repo, bot=None):
     ext = object.__new__(PollsExtension)  # skip interactions' Extension wiring
     ext.bot = bot
-    ext._poll_repos = {}
     ext._poll_repo = lambda guild_id: repo
     return ext
 
@@ -83,7 +82,7 @@ def enabled(monkeypatch, store_config):
 
 def schedule(ext, guild_id, seconds=3600):
     async def main():
-        await ext._schedule_reaction_close(
+        await ext._record_reaction_poll(
             ctx(guild_id), FakeMessage(), seconds, "Pizza ?", ["Oui", "Non"], POLL_EMOJIS
         )
         tasks = dict(polls_module._reaction_close_tasks)
@@ -103,6 +102,20 @@ def test_poll_in_an_enabled_server_is_persisted(enabled):
     assert stored.mode == "reaction" and stored.options == ["Oui", "Non"]
     assert stored.emojis == POLL_EMOJIS[:2]
     assert stored.closes_at > datetime.now() + timedelta(minutes=59)
+
+
+def test_a_poll_without_a_deadline_is_stored_too(enabled):
+    # The reaction listener and /editpoll only act on stored polls.
+    repo = FakeRepo()
+    assert schedule(make_extension(repo), guild_id=1, seconds=None) == {}
+    (stored,) = repo.added
+    assert stored.mode == "reaction" and stored.closes_at is None
+
+
+def test_a_poll_without_a_deadline_elsewhere_needs_no_timer(enabled):
+    repo = FakeRepo()
+    assert schedule(make_extension(repo), guild_id=999, seconds=None) == {}
+    assert repo.added == []
 
 
 def test_falls_back_to_memory_outside_enabled_servers_or_on_db_error(enabled):
