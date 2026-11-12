@@ -14,6 +14,7 @@ from interactions import (
 from features.coloc.constants import ReminderType
 from features.coloc.models import HardcoreSeason, ZuniversEvent
 from features.coloc.utils import image_url_needs_download
+from src.core.logging import log_failure
 from src.discord_ext.errors import failure_reply
 from src.discord_ext.messages import send_error
 
@@ -66,12 +67,12 @@ class EventsMixin:
             try:
                 current_events[rule_set] = await self.api_client.get_current_events(rule_set)
             except Exception as e:
-                logger.error(f"Error checking {rule_set.value} events: {e}")
+                log_failure(logger, f"Error checking {rule_set.value} events: {e}")
         try:
             season_data = await self.api_client.get_current_hardcore_season()
             season_known = True
         except Exception as e:
-            logger.error(f"Error checking hardcore season: {e}")
+            log_failure(logger, f"Error checking hardcore season: {e}")
             season_data, season_known = None, False
 
         for state, settings in guilds:
@@ -128,7 +129,7 @@ class EventsMixin:
             state.event_state.events[rule_set.value] = current_state
 
         except Exception as e:
-            logger.error(f"Error checking {rule_set.value} events: {e}")
+            log_failure(logger, f"Error checking {rule_set.value} events: {e}")
 
     async def _send_event_notification(
         self,
@@ -194,4 +195,4 @@ class EventsMixin:
             state.event_state.hardcore_season = current_season
 
         except Exception as e:
-            logger.error(f"Error checking hardcore season: {e}")
+            log_failure(logger, f"Error checking hardcore season: {e}")

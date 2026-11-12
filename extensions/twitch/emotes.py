@@ -9,6 +9,7 @@ from features.twitch.emotes import diff_emotes, emote_image_url, emote_kind
 from src.core import logging as logutil
 from src.core.errors import DatabaseError
 from src.core.http import http_client
+from src.core.logging import log_failure
 from src.discord_ext.embeds import Colors
 
 from ._common import StreamerInfo
@@ -45,7 +46,7 @@ class EmotesMixin:
                 logger.error(f"Failed to download emote image {emote_id}: HTTP {response.status}")
                 return None
         except Exception as e:
-            logger.error(f"Error downloading emote image {emote_id}: {e}")
+            log_failure(logger, f"Error downloading emote image {emote_id}: {e}")
             return None
 
     def get_cached_emote_path(self, emote_id: str, streamer_id: str) -> str | None:
@@ -61,7 +62,7 @@ class EmotesMixin:
                 os.remove(file_path)
                 logger.debug(f"Deleted cached emote: {file_path}")
         except Exception as e:
-            logger.error(f"Error deleting cached emote {emote_id}: {e}")
+            log_failure(logger, f"Error deleting cached emote {emote_id}: {e}")
 
     @Task.create(OrTrigger(*[TimeTrigger(hour=i, utc=False) for i in range(24)]))
     async def check_new_emotes(self):
@@ -80,7 +81,7 @@ class EmotesMixin:
             try:
                 await self._check_streamer_emotes(streamer_id, guild_streamers)
             except Exception as e:  # noqa: BLE001 — one streamer must not stop the others
-                logger.error(f"Error checking emotes for {streamer_id}: {e}")
+                log_failure(logger, f"Error checking emotes for {streamer_id}: {e}")
 
     async def _check_streamer_emotes(
         self, streamer_id: str, guild_streamers: list[StreamerInfo]

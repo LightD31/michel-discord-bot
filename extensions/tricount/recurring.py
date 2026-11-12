@@ -19,6 +19,7 @@ from interactions import (
 
 from features.tricount import TricountRepository
 from src.core import logging as logutil
+from src.core.logging import log_failure
 from src.discord_ext.autocomplete import guild_group_autocomplete
 from src.discord_ext.embeds import Colors
 from src.discord_ext.messages import require_guild
@@ -232,7 +233,7 @@ class RecurringMixin:
             try:
                 due = await TricountRepository(guild_id).list_due_recurring(now)
             except Exception as e:
-                logger.error("Could not list due recurring expenses for %s: %s", guild_id, e)
+                log_failure(logger, "Could not list due recurring expenses for %s: %s", guild_id, e)
                 continue
             for doc in due:
                 await self._materialise_recurring(guild_id, doc)
@@ -270,4 +271,4 @@ class RecurringMixin:
             }
             await repo.add_expense(expense)
         except Exception as e:
-            logger.error("Failed to materialise recurring expense %s: %s", doc.get("_id"), e)
+            log_failure(logger, "Failed to materialise recurring expense %s: %s", doc.get("_id"), e)

@@ -14,6 +14,7 @@ from features.uptime import (
 )
 from src.core import logging as logutil
 from src.core.errors import DatabaseError
+from src.core.logging import log_failure
 from src.discord_ext.embeds import Colors
 from src.integrations.uptime_kuma import MonitorState
 
@@ -85,7 +86,8 @@ class NotificationsMixin:
         try:
             await channel.send(embed=_to_embed(message))
         except Exception as e:
-            logger.error(
+            log_failure(
+                logger,
                 "Guild %s: could not post the alert for monitor %s: %s",
                 change.guild_id,
                 alert.monitor_id,

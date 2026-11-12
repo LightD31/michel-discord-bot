@@ -41,6 +41,7 @@ from interactions.api.events import MessageReactionAdd, MessageReactionRemove
 from features.giveaway import MAX_WINNERS, Giveaway, GiveawayRepository, pick_winners
 from features.polls import parse_duration  # reused: same DSL as /poll
 from src.core.debounce import Coalescer
+from src.core.logging import log_failure
 from src.core.text import EMBED_DESCRIPTION_LIMIT, clip
 from src.discord_ext.embeds import Colors, format_discord_timestamp
 from src.discord_ext.messages import (
@@ -240,7 +241,7 @@ class GiveawayExtension(Extension):
             try:
                 await self._repo(gid).ensure_indexes()
             except Exception as e:
-                logger.error("Could not init giveaway indexes for %s: %s", gid, e)
+                log_failure(logger, "Could not init giveaway indexes for %s: %s", gid, e)
         self.check_giveaways.start()
         logger.info("Giveaway extension ready (%d guild(s))", len(GIVEAWAY.guild_ids()))
 
@@ -348,7 +349,7 @@ class GiveawayExtension(Extension):
         try:
             giveaway.id = await self._repo(ctx.guild_id).add(giveaway)
         except Exception as e:
-            logger.error("Could not persist giveaway: %s", e)
+            log_failure(logger, "Could not persist giveaway: %s", e)
             await send_error(ctx, "Le giveaway a été posté mais sa persistance a échoué.")
             return
         try:
@@ -611,7 +612,7 @@ class GiveawayExtension(Extension):
             try:
                 due = await self._repo(gid).list_due(now)
             except Exception as e:
-                logger.error("Could not fetch due giveaways for %s: %s", gid, e)
+                log_failure(logger, "Could not fetch due giveaways for %s: %s", gid, e)
                 continue
             for giveaway in due:
                 try:
@@ -658,7 +659,8 @@ class GiveawayExtension(Extension):
                 logger.warning("Could not read giveaway %s, retrying later: %s", giveaway.id, e)
                 await repo.release_draw(giveaway.id)
                 return "retry"
-            logger.error(
+            log_failure(
+                logger,
                 "Giveaway %s closed without winners: Discord didn't answer %d times (%s)",
                 giveaway.id,
                 MAX_DRAW_FAILURES,

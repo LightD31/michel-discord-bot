@@ -49,6 +49,7 @@ from features.reminders import (
 )
 from src.core import logging as logutil
 from src.core.config import ModuleConfig
+from src.core.logging import log_failure
 from src.core.text import EMBED_DESCRIPTION_LIMIT, clip
 from src.discord_ext.embeds import Colors, format_discord_timestamp
 from src.discord_ext.messages import fetch_user_safe, send_error
@@ -317,7 +318,7 @@ class RemindersExtension(Extension):
         try:
             await repo.add(snoozed)
         except Exception as e:
-            logger.error("Failed to snooze reminder %s: %s", reminder_id, e)
+            log_failure(logger, "Failed to snooze reminder %s: %s", reminder_id, e)
             await ctx.send("Impossible de reporter le rappel.", ephemeral=True)
             return
 
@@ -335,7 +336,7 @@ class RemindersExtension(Extension):
             try:
                 due = await repo.list_due(now)
             except Exception as e:
-                logger.error("Failed to fetch due reminders for guild %s: %s", gid, e)
+                log_failure(logger, "Failed to fetch due reminders for guild %s: %s", gid, e)
                 continue
 
             for reminder in due:
@@ -345,8 +346,8 @@ class RemindersExtension(Extension):
                 try:
                     claimed = await repo.claim_due(reminder, next_time)
                 except Exception as e:
-                    logger.error(
-                        "Failed to update reminder %s in guild %s: %s", reminder.id, gid, e
+                    log_failure(
+                        logger, "Failed to update reminder %s in guild %s: %s", reminder.id, gid, e
                     )
                     continue
                 if claimed:

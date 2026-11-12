@@ -17,6 +17,7 @@ from interactions import (
 from mcstatus import JavaServer
 
 from features.minecraft import MinecraftSettings
+from src.core.logging import log_failure
 from src.discord_ext.messages import edit_message_if_changed
 
 from ._common import MINECRAFT, build_stats_embed, logger
@@ -38,7 +39,9 @@ class StatusMixin:
             try:
                 await self._update_status(guild_id, config, settings)
             except Exception as e:  # noqa: BLE001 — one server down must not stop the others
-                logger.error("Guild %s: failed to update Minecraft server status: %s", guild_id, e)
+                log_failure(
+                    logger, "Guild %s: failed to update Minecraft server status: %s", guild_id, e
+                )
 
     async def _server(self, settings: MinecraftSettings) -> JavaServer:
         # mcstatus' lookup and status are blocking socket calls: off the loop.
@@ -95,7 +98,7 @@ class StatusMixin:
                     logger.info(f"Recovered existing Minecraft scheduled event: {event.name}")
                     break
         except Exception as e:
-            logger.error(f"Failed to recover scheduled event: {e}")
+            log_failure(logger, f"Failed to recover scheduled event: {e}")
 
     def _create_online_embed(self, coloc_status, settings: MinecraftSettings):
         """Create embed for online server status."""
@@ -240,5 +243,5 @@ class StatusMixin:
                     self.scheduled_events.pop(guild_id, None)
                     logger.info("Deleted Minecraft scheduled event (no players online)")
         except Exception as e:
-            logger.error(f"Failed to update scheduled event: {e}")
+            log_failure(logger, f"Failed to update scheduled event: {e}")
             self.scheduled_events.pop(guild_id, None)

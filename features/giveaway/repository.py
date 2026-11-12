@@ -8,7 +8,7 @@ from bson import ObjectId
 from features.giveaway.models import Giveaway
 from src.core.db import mongo_manager
 from src.core.errors import DatabaseError
-from src.core.logging import init_logger
+from src.core.logging import init_logger, log_failure
 
 logger = init_logger(__name__)
 
@@ -34,7 +34,9 @@ class GiveawayRepository:
                 name="ends_at_idx",
             )
         except Exception as e:
-            logger.error("Failed to create giveaway indexes for guild %s: %s", self._guild_id, e)
+            log_failure(
+                logger, "Failed to create giveaway indexes for guild %s: %s", self._guild_id, e
+            )
 
     @staticmethod
     def _doc_to_giveaway(doc: dict) -> Giveaway:
@@ -49,7 +51,7 @@ class GiveawayRepository:
             result = await self._col().insert_one(payload)
             return str(result.inserted_id)
         except Exception as e:
-            logger.error("DB insert_one failed: %s", e)
+            log_failure(logger, "DB insert_one failed: %s", e)
             raise DatabaseError(f"Failed to add giveaway: {e}") from e
 
     async def get_by_message(self, message_id: str) -> Giveaway | None:
@@ -78,7 +80,7 @@ class GiveawayRepository:
                 {"$set": {"drawn": True, "winners": []}},
             )
         except Exception as e:
-            logger.error("DB update_one failed: %s", e)
+            log_failure(logger, "DB update_one failed: %s", e)
             raise DatabaseError(f"Failed to claim giveaway draw: {e}") from e
         return result.modified_count == 1
 
@@ -90,7 +92,7 @@ class GiveawayRepository:
                 {"$set": {"drawn": False}, "$inc": {"draw_failures": 1}},
             )
         except Exception as e:
-            logger.error("DB update_one failed: %s", e)
+            log_failure(logger, "DB update_one failed: %s", e)
             raise DatabaseError(f"Failed to release giveaway draw: {e}") from e
 
     async def mark_cancelled(self, giveaway_id: str) -> bool:
@@ -101,7 +103,7 @@ class GiveawayRepository:
                 {"$set": {"cancelled": True}},
             )
         except Exception as e:
-            logger.error("DB update_one failed: %s", e)
+            log_failure(logger, "DB update_one failed: %s", e)
             raise DatabaseError(f"Failed to cancel giveaway: {e}") from e
         return result.modified_count == 1
 
@@ -112,5 +114,5 @@ class GiveawayRepository:
                 {"$set": {"winners": winners}},
             )
         except Exception as e:
-            logger.error("DB update_one failed: %s", e)
+            log_failure(logger, "DB update_one failed: %s", e)
             raise DatabaseError(f"Failed to update winners: {e}") from e

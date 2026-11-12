@@ -9,6 +9,7 @@ from features.confrerie import notion_props as np
 from features.confrerie.stats import COL_DEFI, ConfrerieStats, aggregate
 from features.links import shorten_keyed
 from src.core import logging as logutil
+from src.core.logging import log_failure
 from src.core.text import take_within_budget
 from src.discord_ext.embeds import Colors
 from src.discord_ext.messages import edit_message_if_changed
@@ -116,7 +117,7 @@ class StatsMixin:
                 await self._update_statistics_message(guild_id, settings, stats_by_db[db_id])
                 logger.debug("Statistiques de la confrérie mises à jour (serveur %s)", guild_id)
             except Exception as e:
-                logger.error(f"Erreur lors de la mise à jour des statistiques: {e}")
+                log_failure(logger, f"Erreur lors de la mise à jour des statistiques: {e}")
 
     async def _fetch_statistics(self, db_id: str) -> ConfrerieStats:
         """Query every œuvre (all pages) of *db_id* and aggregate them."""

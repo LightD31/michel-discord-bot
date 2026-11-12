@@ -9,6 +9,7 @@ from interactions import IntervalTrigger, Task
 
 from features.olympics import OlympicsStateRepository
 from src.core.errors import IntegrationError
+from src.core.logging import log_failure
 
 from ._common import (
     COUNTRY_CODE,
@@ -85,14 +86,14 @@ class TasksMixin:
             else:
                 logger.info("Aucun état Olympics trouvé, première exécution")
         except Exception as e:
-            logger.error(f"Erreur lors du chargement de l'état Olympics : {e}")
+            log_failure(logger, f"Erreur lors du chargement de l'état Olympics : {e}")
 
     async def _save_state(self) -> None:
         """Sauvegarde l'état des médailles notifiées dans MongoDB."""
         try:
             await self._state_repo.save_known_medals(self.known_medals)
         except Exception as e:
-            logger.error(f"Erreur lors de la sauvegarde de l'état Olympics : {e}")
+            log_failure(logger, f"Erreur lors de la sauvegarde de l'état Olympics : {e}")
 
     # ─── Initialisation silencieuse ───────────────────────────────────────────
 
@@ -108,7 +109,7 @@ class TasksMixin:
                 f"Initialisation : {len(self.known_medals)} médailles FRA existantes enregistrées"
             )
         except Exception as e:
-            logger.error(f"Erreur lors de l'initialisation des médailles : {e}")
+            log_failure(logger, f"Erreur lors de l'initialisation des médailles : {e}")
 
     # ─── Récupération de données supplémentaires ──────────────────────────────
 
@@ -150,7 +151,7 @@ class TasksMixin:
                 await channel.send(embeds=[embed])
                 await asyncio.sleep(1)  # Petite pause entre les messages
         except Exception as e:  # noqa: BLE001 — un serveur en échec n'arrête pas les autres
-            logger.error("Alertes Olympics impossibles pour le serveur %s : %s", guild_id, e)
+            log_failure(logger, "Alertes Olympics impossibles pour le serveur %s : %s", guild_id, e)
 
     # ─── Tâche planifiée ──────────────────────────────────────────────────────
 

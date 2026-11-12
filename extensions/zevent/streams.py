@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 
 from features.zevent.stats import LAN, ONLINE, resolve_location
 from src.core import logging as logutil
+from src.core.logging import log_failure
 
 from ._common import UPDATE_INTERVAL, StreamerInfo
 
@@ -102,7 +103,7 @@ class StreamsMixin:
                 categorized[ONLINE] = {s.display_name: s for s in ordered}
 
         except Exception as e:
-            logger.error(f"Error categorizing streams: {e}")
+            log_failure(logger, f"Error categorizing streams: {e}")
 
         return categorized
 
@@ -125,7 +126,7 @@ class StreamsMixin:
 
             return f"{total_viewers:,}".replace(",", " ")
         except Exception as e:
-            logger.error(f"Error getting total viewers from Twitch: {e}")
+            log_failure(logger, f"Error getting total viewers from Twitch: {e}")
             return "N/A"
 
     async def get_viewers_by_location(self, streams: list[dict]) -> dict[str, str]:
@@ -159,5 +160,5 @@ class StreamsMixin:
                 "Total": f"{total_viewers:,}".replace(",", " "),
             }
         except Exception as e:
-            logger.error(f"Error getting viewers by location: {e}")
+            log_failure(logger, f"Error getting viewers by location: {e}")
             return {"LAN": "N/A", "Online": "N/A", "Total": "N/A"}

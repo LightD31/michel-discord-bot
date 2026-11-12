@@ -32,6 +32,7 @@ from features.twitch import TwitchStateRepository
 from src.core import logging as logutil
 from src.core.config import ModuleConfig, config_store, global_config
 from src.core.errors import ConfigError
+from src.core.logging import log_failure
 from src.core.tasks import spawn
 from src.discord_ext.messages import send_error, send_success
 from src.discord_ext.scopes import guild_scopes
@@ -160,7 +161,7 @@ class TwitchExtension(
         try:
             states = await self._state_repo.load_all()
         except Exception as e:
-            logger.error("Failed to load Twitch streamer states: %s", e)
+            log_failure(logger, "Failed to load Twitch streamer states: %s", e)
             return
 
         for streamer in self.streamers.values():
@@ -197,7 +198,7 @@ class TwitchExtension(
         try:
             await self._state_repo.save(streamer_id, doc)
         except Exception as e:
-            logger.error("Failed to save Twitch state for %s: %s", streamer_id, e)
+            log_failure(logger, "Failed to save Twitch state for %s: %s", streamer_id, e)
 
     # ─── Lifecycle ────────────────────────────────────────────────────
 
@@ -234,7 +235,7 @@ class TwitchExtension(
                 guild = await self.bot.fetch_guild(guild_id)
                 events = await guild.list_scheduled_events()
             except Exception as e:
-                logger.error("Error fetching scheduled events for guild %s: %s", guild_id, e)
+                log_failure(logger, "Error fetching scheduled events for guild %s: %s", guild_id, e)
                 bot_events_by_guild[guild_id] = []
                 continue
             owned = []
@@ -256,7 +257,9 @@ class TwitchExtension(
             try:
                 await self._planning_message(streamer)
             except Exception as e:
-                logger.error("Error initializing planning message for %s: %s", streamer_key, e)
+                log_failure(
+                    logger, "Error initializing planning message for %s: %s", streamer_key, e
+                )
 
             try:
                 if streamer.notification_channel_id:
@@ -264,7 +267,9 @@ class TwitchExtension(
                         streamer.notification_channel_id
                     )
             except Exception as e:
-                logger.error("Error fetching notification channel for %s: %s", streamer_key, e)
+                log_failure(
+                    logger, "Error fetching notification channel for %s: %s", streamer_key, e
+                )
 
             try:
                 # Attach the bot-owned scheduled event whose external_location
@@ -273,7 +278,7 @@ class TwitchExtension(
                     streamer, bot_events_by_guild.get(streamer.guild_id, [])
                 )
             except Exception as e:
-                logger.error("Error matching scheduled event for %s: %s", streamer_key, e)
+                log_failure(logger, "Error matching scheduled event for %s: %s", streamer_key, e)
 
     @listen()
     async def on_ready(self):

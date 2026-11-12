@@ -37,6 +37,7 @@ from features.spotify.votes import (
     tally_daily_votes,
 )
 from src.core import logging as logutil
+from src.core.logging import log_failure
 from src.discord_ext.messages import (
     copy_embed,
     edit_message_if_changed,
@@ -80,7 +81,7 @@ class VotesMixin:
             try:
                 await self._randomvote_for_server(server)
             except Exception as e:
-                logger.error("Error in randomvote for server %s: %s", server.guild_id, e)
+                log_failure(logger, "Error in randomvote for server %s: %s", server.guild_id, e)
 
     async def _randomvote_for_server(self, server: ServerData):
         logger.info("Tache randomvote lancée pour le serveur %s", server.guild_id)
@@ -435,7 +436,7 @@ class VotesMixin:
             try:
                 await self._reminder_check_for_server(server)
             except Exception as e:
-                logger.error("Error in reminder_check for server %s: %s", server.guild_id, e)
+                log_failure(logger, "Error in reminder_check for server %s: %s", server.guild_id, e)
 
     async def _reminder_check_for_server(self, server: ServerData):
         logger.debug("reminder_check lancé pour le serveur %s", server.guild_id)
@@ -764,7 +765,7 @@ class VotesMixin:
             try:
                 data = await server.vote_manager.load_data()
             except Exception as e:
-                logger.error("Error in check_for_end for server %s: %s", server.guild_id, e)
+                log_failure(logger, "Error in check_for_end for server %s: %s", server.guild_id, e)
                 continue
             # One try per poll, so a failing poll doesn't keep the others open.
             for song_id in data:
@@ -774,7 +775,8 @@ class VotesMixin:
                     if await self.endvote(song_id, server):
                         await server.vote_manager.delete(song_id)
                 except Exception as e:
-                    logger.error(
+                    log_failure(
+                        logger,
                         "Error in check_for_end for server %s, song %s: %s",
                         server.guild_id,
                         song_id,

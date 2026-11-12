@@ -39,6 +39,7 @@ from features.birthday import (
 from src.core import logging as logutil
 from src.core.config import ModuleConfig
 from src.core.errors import DatabaseError, ValidationError
+from src.core.logging import log_failure
 from src.core.text import pick_weighted_message
 from src.discord_ext.embeds import Colors
 from src.discord_ext.mentions import everyone_if_written
@@ -140,7 +141,7 @@ class BirthdayExtension(Extension):
                 )
         except Exception as e:
             action = "giving" if add else "removing"
-            logger.error("Error %s birthday role: %s", action, e)
+            log_failure(logger, "Error %s birthday role: %s", action, e)
 
     @listen()
     async def on_startup(self) -> None:
@@ -148,7 +149,7 @@ class BirthdayExtension(Extension):
             try:
                 await self._repo(guild_id).ensure_indexes()
             except Exception as e:
-                logger.error("Failed to create indexes for guild %s: %s", guild_id, e)
+                log_failure(logger, "Failed to create indexes for guild %s: %s", guild_id, e)
         self.anniversaire_check.start()
 
     @slash_command(
@@ -216,7 +217,7 @@ class BirthdayExtension(Extension):
             logger.error("Database error for user %s: %s", ctx.author.display_name, e)
             await ctx.send("Erreur lors de l'enregistrement. Veuillez réessayer.", ephemeral=True)
         except Exception as e:
-            logger.error("Unexpected error in anniversaire command: %s", e)
+            log_failure(logger, "Unexpected error in anniversaire command: %s", e)
             await ctx.send("Une erreur inattendue s'est produite.", ephemeral=True)
 
     @anniversaire.autocomplete("timezone")
@@ -336,7 +337,7 @@ class BirthdayExtension(Extension):
                         )
                         lines = []
                 except Exception as e:
-                    logger.error("Error processing birthday for user %s: %s", entry.user, e)
+                    log_failure(logger, "Error processing birthday for user %s: %s", entry.user, e)
 
             if lines:
                 embeds.append(
@@ -353,7 +354,7 @@ class BirthdayExtension(Extension):
             await paginator.send(ctx)
 
         except Exception as e:
-            logger.error("Error in anniversaire_liste: %s", e)
+            log_failure(logger, "Error in anniversaire_liste: %s", e)
             await ctx.send("Erreur lors de la récupération des anniversaires.", ephemeral=True)
 
     @Task.create(OrTrigger(*[TimeTrigger(hour, 0) for hour in range(24)]))
@@ -370,11 +371,13 @@ class BirthdayExtension(Extension):
                         try:
                             await self._process_birthday(entry, int(guild_id))
                         except Exception as e:
-                            logger.error("Error processing birthday for user %s: %s", entry.user, e)
+                            log_failure(
+                                logger, "Error processing birthday for user %s: %s", entry.user, e
+                            )
                 except Exception as e:
-                    logger.error("Error loading birthdays for guild %s: %s", guild_id, e)
+                    log_failure(logger, "Error loading birthdays for guild %s: %s", guild_id, e)
         except Exception as e:
-            logger.error("Critical error in anniversaire_check task: %s", e)
+            log_failure(logger, "Critical error in anniversaire_check task: %s", e)
 
     async def _process_birthday(self, entry: BirthdayEntry, guild_id: int) -> None:
         now_tz = datetime.now(pytz.timezone(entry.timezone))
@@ -417,7 +420,7 @@ class BirthdayExtension(Extension):
                 age,
             )
         except Exception as e:
-            logger.error("Error handling birthday celebration: %s", e)
+            log_failure(logger, "Error handling birthday celebration: %s", e)
 
     async def _handle_birthday_end(self, entry: BirthdayEntry, guild_id: int) -> None:
         if not entry.isBirthday:
@@ -433,7 +436,7 @@ class BirthdayExtension(Extension):
             logger.info("Birthday ended for %s on server %s", member.display_name, server.name)
             await self._toggle_birthday_role(server, member, guild_id, add=False)
         except Exception as e:
-            logger.error("Error handling birthday end: %s", e)
+            log_failure(logger, "Error handling birthday end: %s", e)
 
     async def _send_birthday_message(self, channel, member, age: int, server_id: int) -> None:
         try:
@@ -449,4 +452,4 @@ class BirthdayExtension(Extension):
             await channel.send(text, allowed_mentions=everyone_if_written(text))
             logger.debug("Birthday message sent for %s", member.display_name)
         except Exception as e:
-            logger.error("Error sending birthday message: %s", e)
+            log_failure(logger, "Error sending birthday message: %s", e)

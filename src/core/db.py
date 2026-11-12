@@ -45,10 +45,14 @@ from src.core import backup_format
 from src.core import config as _config
 from src.core import logging as _logging
 from src.core.config import global_config
-from src.core.errors import DatabaseError
+from src.core.errors import DatabaseError, register_expected_failure
 from src.core.health import health
+from src.core.logging import log_failure
 
 logger = _logging.init_logger(__name__)
+
+# MongoDB unreachable (down, network, timeout) is an outage, not a bug: logged on one line.
+register_expected_failure(lambda error: isinstance(error, pymongo.errors.ConnectionFailure))
 
 # Database naming conventions
 GLOBAL_DB_NAME = "global"
@@ -126,7 +130,7 @@ class MongoManager:
                 try:
                     self._url = global_config().get("mongodb", {}).get("url", "")
                 except Exception as e:
-                    logger.error("Failed to load MongoDB URL from config: %s", e)
+                    log_failure(logger, "Failed to load MongoDB URL from config: %s", e)
                     self._url = ""
 
             if not self._url:
@@ -196,7 +200,7 @@ class MongoManager:
             logger.info("MongoDB ping successful.")
             return True
         except Exception as e:
-            logger.error("MongoDB ping failed: %s", e)
+            log_failure(logger, "MongoDB ping failed: %s", e)
             return False
 
     async def close(self) -> None:

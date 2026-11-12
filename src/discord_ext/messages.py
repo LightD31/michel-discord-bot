@@ -18,6 +18,7 @@ from interactions import Client, Embed, Message, SlashContext, ThreadChannel
 from interactions.models.discord.components import process_components
 
 from src.core.errors import DatabaseError
+from src.core.logging import log_failure
 from src.core.message_refs import MessageRefRepository
 from src.discord_ext.channels import fetch_guild_channel
 
@@ -365,7 +366,7 @@ async def _resolve(
         msg = await channel.send(initial_content)
     except Exception as e:  # noqa: BLE001 — log and return None
         if logger:
-            logger.error("Could not create persistent message in %s: %s", wanted, e)
+            log_failure(logger, "Could not create persistent message in %s: %s", wanted, e)
         return None
 
     if pin:

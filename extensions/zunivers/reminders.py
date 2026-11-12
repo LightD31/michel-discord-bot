@@ -42,6 +42,7 @@ from features.coloc.constants import (
     zunivers_link,
 )
 from features.zunivers_ninja import build_web_url
+from src.core.logging import log_failure
 from src.discord_ext.messages import fetch_user_safe
 
 from ._common import GuildState, logger, ninja_config, zunivers_cmd, zunivers_web_url
@@ -60,7 +61,7 @@ class RemindersMixin:
             try:
                 await self._journa_check(settings)
             except Exception as e:  # noqa: BLE001 — one guild's failure must not stop the others
-                logger.error("Daily journa check failed: %s", e)
+                log_failure(logger, "Daily journa check failed: %s", e)
 
     async def _journa_check(self, settings: dict) -> None:
         channel = await self._zunivers_channel(settings)
@@ -277,7 +278,7 @@ class RemindersMixin:
             try:
                 await self._send_due_reminders(state, settings, current_time)
             except Exception as e:  # noqa: BLE001 — one guild's failure must not stop the others
-                logger.error("Reminders of guild %s failed: %s", state.guild_id, e)
+                log_failure(logger, "Reminders of guild %s failed: %s", state.guild_id, e)
 
     async def _send_due_reminders(
         self, state: GuildState, settings: dict, current_time: datetime
@@ -360,7 +361,7 @@ class RemindersMixin:
 
         except Exception as e:
             if "404" not in str(e):
-                logger.error(f"Error processing reminder for user {user_id}: {e}")
+                log_failure(logger, f"Error processing reminder for user {user_id}: {e}")
 
     @staticmethod
     def _build_reminder_message(

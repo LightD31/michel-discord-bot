@@ -27,6 +27,7 @@ from features.confrerie.stats import COL_DEFI, COL_GENRE, COL_TYPE
 from src.core import logging as logutil
 from src.core.cache import ExpiringMap
 from src.core.errors import ValidationError
+from src.core.logging import log_failure
 from src.discord_ext.messages import send_error
 from src.discord_ext.scopes import guild_scopes
 
@@ -174,7 +175,7 @@ class RequestsMixin:
         try:
             sent = await self.submit_draft(draft)
         except Exception as e:  # noqa: BLE001 — surface a clean error to the member
-            logger.error("Demande de %s non enregistrée: %s", ctx.author, e)
+            log_failure(logger, "Demande de %s non enregistrée: %s", ctx.author, e)
             sent = False
         if not sent:
             await send_error(ctx, "Impossible de transmettre votre demande, réessayez plus tard.")

@@ -25,6 +25,7 @@ from features.confrerie.drafts import (
 )
 from features.confrerie.stats import COL_DEFI, COL_GENRE, COL_TYPE
 from src.core import logging as logutil
+from src.core.logging import log_failure
 
 from ._common import CONFRERIE
 
@@ -99,7 +100,7 @@ class ForumsMixin:
             )
             await self.submit_draft(draft)
         except Exception as e:  # noqa: BLE001 — a listener must never crash the gateway
-            logger.error("Fiche du fil %s non créée: %s", thread.id, e)
+            log_failure(logger, "Fiche du fil %s non créée: %s", thread.id, e)
 
     @listen(MessageCreate)
     async def on_defi_answer(self, event: MessageCreate):
@@ -149,4 +150,4 @@ class ForumsMixin:
             )
             await self.submit_draft(draft)
         except Exception as e:  # noqa: BLE001 — a listener must never crash the gateway
-            logger.error("Fiche de défi non créée pour le message %s: %s", message.id, e)
+            log_failure(logger, "Fiche de défi non créée pour le message %s: %s", message.id, e)

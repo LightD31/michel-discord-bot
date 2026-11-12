@@ -8,6 +8,7 @@ from interactions import Embed, TimestampStyles, utils
 from features.zevent.models import Participant, Show
 from features.zevent.stats import is_live, upcoming_goals, upcoming_shows
 from src.core import logging as logutil
+from src.core.logging import log_failure
 from src.core.text import take_within_budget
 
 from ._common import (
@@ -338,7 +339,7 @@ class EmbedsMixin:
 
                 embed.add_field(name=show.name, value=field_value, inline=True)
             except Exception as e:
-                logger.error(f"Error processing show '{show.name}': {e}")
+                log_failure(logger, f"Error processing show '{show.name}': {e}")
 
         if not embed.fields:
             embed.add_field(name="Status", value="Aucun évènement à venir", inline=False)
@@ -467,5 +468,5 @@ class EmbedsMixin:
 
             return embed
         except Exception as e:
-            logger.error(f"Error creating top donations embed: {e}")
+            log_failure(logger, f"Error creating top donations embed: {e}")
             return None

@@ -10,6 +10,7 @@ from features.zevent.history import compare_milestone, format_euros, record_mess
 from features.zevent.repository import ZeventStateRepository
 from src.core import logging as logutil
 from src.core.http import fetch
+from src.core.logging import log_failure
 from src.discord_ext.messages import edit_message_if_changed
 
 from ._common import (
@@ -108,7 +109,7 @@ class TasksMixin:
                     logger=logger,
                 )
             except Exception as e:  # noqa: BLE001 — a guild's message must not stop the others
-                logger.error("Guild %s: Zevent message not updated: %s", guild.guild_id, e)
+                log_failure(logger, "Guild %s: Zevent message not updated: %s", guild.guild_id, e)
 
     async def _announce(self, guilds: list[tuple[ZeventGuild, dict]], total: float) -> None:
         """Milestones and the record, announced in each guild's own channel."""
@@ -117,7 +118,7 @@ class TasksMixin:
                 await self.check_and_send_milestone(guild, total)
                 await self.check_and_send_record(guild, total)
             except Exception as e:  # noqa: BLE001 — same isolation as the message
-                logger.error("Guild %s: Zevent announcement failed: %s", guild.guild_id, e)
+                log_failure(logger, "Guild %s: Zevent announcement failed: %s", guild.guild_id, e)
 
     @Task.create(IntervalTrigger(seconds=UPDATE_INTERVAL))
     async def zevent(self):
@@ -156,7 +157,7 @@ class TasksMixin:
             else:
                 await self._refresh_main_event(guilds, data, streamlabs_data, planning_data)
         except Exception as e:
-            logger.error(f"Unexpected error in zevent task: {e}")
+            log_failure(logger, f"Unexpected error in zevent task: {e}")
             await self.send_simplified_update(guilds, "Données indisponibles")
 
     async def _fetch_payloads(self) -> tuple[dict | None, dict | None]:
@@ -174,9 +175,14 @@ class TasksMixin:
             return_exceptions=True,
         )
         if isinstance(data, Exception):
-            logger.error(f"Failed to fetch Zevent API: {data}")
+            log_failure(logger, "Failed to fetch Zevent API: %s", data, error=data)
         if isinstance(streamlabs_data, Exception):
-            logger.error(f"Failed to fetch Streamlabs API: {streamlabs_data}")
+            log_failure(
+                logger,
+                "Failed to fetch Streamlabs API: %s",
+                streamlabs_data,
+                error=streamlabs_data,
+            )
         valid_data = (
             data
             if not isinstance(data, Exception) and self._validate_api_data(data, "zevent")
@@ -263,7 +269,7 @@ class TasksMixin:
                 return None
             return compare_milestone(curve, milestone, datetime.now(UTC), self._main_event_start)
         except Exception as e:
-            logger.error(f"Comparaison de palier indisponible : {e}")
+            log_failure(logger, f"Comparaison de palier indisponible : {e}")
             return None
 
     def _edition_id(self) -> str | None:
@@ -284,7 +290,7 @@ class TasksMixin:
             # deployment with no `mongodb.url` at all raises RuntimeError before
             # the driver is ever reached. Neither is worth stalling the tracker
             # for — the first reading becomes the baseline, as before.
-            logger.error(f"Palier de dons illisible en base : {e}")
+            log_failure(logger, f"Palier de dons illisible en base : {e}")
             return
         if stored is not None:
             guild.last_milestone = stored
@@ -300,7 +306,7 @@ class TasksMixin:
             # Broad on purpose (see `load_milestone_marker`): persistence only
             # buys resilience across restarts, and must never cost an
             # announcement or break the refresh cycle that calls this.
-            logger.error(f"Palier de dons non enregistré : {e}")
+            log_failure(logger, f"Palier de dons non enregistré : {e}")
 
     async def check_and_send_milestone(self, guild: ZeventGuild, total_amount: float):
         """Announce a newly crossed donation milestone in this guild, once.
@@ -360,7 +366,7 @@ class TasksMixin:
             # As broad as the milestone marker's, and for the same reasons: an
             # unreachable (or unconfigured) database costs resilience across
             # restarts, never an announcement.
-            logger.error(f"Marqueur de record illisible en base : {e}")
+            log_failure(logger, f"Marqueur de record illisible en base : {e}")
             return
         if guild.record_state is not None:
             logger.info("Guild %s: record déjà annoncé : %s", guild.guild_id, guild.record_state)
@@ -370,7 +376,7 @@ class TasksMixin:
         try:
             await ZeventStateRepository(guild.guild_id).save_record(self._edition_id(), announced)
         except Exception as e:
-            logger.error(f"Marqueur de record non enregistré : {e}")
+            log_failure(logger, f"Marqueur de record non enregistré : {e}")
 
     async def check_and_send_record(self, guild: ZeventGuild, total_amount: float) -> None:
         """Announce this edition passing the series' best total in this guild, once.
@@ -447,4 +453,4 @@ class TasksMixin:
                         guild.message, embeds=[simple_embed], content="", logger=logger
                     )
         except Exception as e:
-            logger.error(f"Failed to send simplified update: {e}")
+            log_failure(logger, f"Failed to send simplified update: {e}")

@@ -30,6 +30,7 @@ from features.zevent.discord_event import (
 )
 from src.core import logging as logutil
 from src.core.http import http_client
+from src.core.logging import log_failure
 
 from ._common import (
     EVENT_COVER_URL,
@@ -168,8 +169,11 @@ class DiscordEventMixin:
         try:
             return await self.client.fetch_guild(guild.guild_id)
         except Exception as e:
-            logger.error(
-                "Zevent: serveur %s introuvable pour l'événement Discord : %s", guild.guild_id, e
+            log_failure(
+                logger,
+                "Zevent: serveur %s introuvable pour l'événement Discord : %s",
+                guild.guild_id,
+                e,
             )
             return None
 
@@ -203,8 +207,11 @@ class DiscordEventMixin:
         try:
             events = await discord_guild.list_scheduled_events()
         except Exception as e:
-            logger.error(
-                "Zevent: impossible de lister les événements du serveur %s : %s", guild.guild_id, e
+            log_failure(
+                logger,
+                "Zevent: impossible de lister les événements du serveur %s : %s",
+                guild.guild_id,
+                e,
             )
             return
 
@@ -288,7 +295,8 @@ class DiscordEventMixin:
             else:
                 await self._update_scheduled_event(guild, plan)
         except Exception as e:
-            logger.error(
+            log_failure(
+                logger,
                 "Zevent: mise à jour de l'événement Discord impossible sur %s : %s",
                 guild.guild_id,
                 e,

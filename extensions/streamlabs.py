@@ -23,6 +23,7 @@ from twitchAPI.type import AuthScope
 from src.core import logging as logutil
 from src.core.config import ModuleConfig, global_config
 from src.core.http import fetch, fetch_untrusted
+from src.core.logging import log_failure
 from src.core.tasks import spawn
 from src.core.text import escape_md
 from src.discord_ext.links import shorten_embeds
@@ -150,7 +151,7 @@ class StreamlabsCharityExtension(Extension):
             )
             await helper.bind()
         except Exception as e:
-            logger.error(f"Twitch init failed; live status disabled: {e}")
+            log_failure(logger, f"Twitch init failed; live status disabled: {e}")
             self.twitch = None
 
     @Task.create(IntervalTrigger(minutes=1))
@@ -178,7 +179,7 @@ class StreamlabsCharityExtension(Extension):
             except KeyError as e:
                 logger.error("Guild %s: unexpected Streamlabs data (%s)", guild_id, e)
             except Exception as e:  # noqa: BLE001 — one guild's failure must not stop the others
-                logger.error("Guild %s: Streamlabs update failed: %s", guild_id, e)
+                log_failure(logger, "Guild %s: Streamlabs update failed: %s", guild_id, e)
 
     async def fetch_team(self, url: str) -> tuple[dict, dict]:
         """The team's campaign and its members, with their live status."""

@@ -23,6 +23,7 @@ from features.mdi import (
     get_bracket_matches,
     list_brackets,
 )
+from src.core.logging import log_failure
 
 from ._common import GuildConfig, GuildState, logger, raiderio_api_url
 
@@ -62,7 +63,7 @@ class ApiMixin:
         try:
             brackets = await list_brackets(api_url, gc.event_slug)
         except Exception as e:
-            logger.error("Failed to list brackets for %s: %s", gc.event_slug, e)
+            log_failure(logger, "Failed to list brackets for %s: %s", gc.event_slug, e)
             return None, [], []
 
         if not brackets:

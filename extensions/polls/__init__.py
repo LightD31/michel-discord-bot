@@ -51,6 +51,7 @@ from features.polls import (
 from src.core import logging as logutil
 from src.core.config import ModuleConfig
 from src.core.debounce import Coalescer
+from src.core.logging import log_failure
 from src.discord_ext.embeds import Colors, format_discord_timestamp
 from src.discord_ext.messages import copy_embed, edit_message_if_changed, send_error
 from src.discord_ext.paginator import format_poll
@@ -132,7 +133,7 @@ class PollsExtension(Extension, PollButtonsMixin):
             try:
                 await self._poll_repo(guild_id).ensure_indexes()
             except Exception as e:
-                logger.error("Could not init poll indexes for %s: %s", guild_id, e)
+                log_failure(logger, "Could not init poll indexes for %s: %s", guild_id, e)
         self.check_closing_polls.start()
 
     @slash_command(
@@ -391,7 +392,7 @@ class PollsExtension(Extension, PollButtonsMixin):
             try:
                 due = await self._poll_repo(gid).list_due(now)
             except Exception as e:
-                logger.error("Failed to fetch due polls for guild %s: %s", gid, e)
+                log_failure(logger, "Failed to fetch due polls for guild %s: %s", gid, e)
                 continue
             for poll in due:
                 if poll.id is None:

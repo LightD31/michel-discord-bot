@@ -9,6 +9,7 @@ import socket
 import struct
 
 from src.core import logging as logutil
+from src.core.logging import log_failure
 
 logger = logutil.init_logger(__name__)
 
@@ -54,7 +55,7 @@ class MinecraftRCON:
 
             return True
         except Exception as e:
-            logger.error(f"Erreur de connexion RCON: {e}")
+            log_failure(logger, f"Erreur de connexion RCON: {e}")
             if self.socket:
                 self.socket.close()
                 self.socket = None
@@ -76,7 +77,7 @@ class MinecraftRCON:
             response = await self._receive_packet()
             return response[2]  # Retourner la réponse
         except Exception as e:
-            logger.error(f"Erreur RCON pour la commande '{command}': {e}")
+            log_failure(logger, f"Erreur RCON pour la commande '{command}': {e}")
             await self.disconnect()
             return None
 
@@ -138,7 +139,7 @@ async def get_online_players_rcon(rcon_client):
             return []
         return []
     except Exception as e:
-        logger.error(f"Erreur lors de la récupération des joueurs en ligne: {e}")
+        log_failure(logger, f"Erreur lors de la récupération des joueurs en ligne: {e}")
         return []
 
 
@@ -250,7 +251,7 @@ async def get_player_stats_rcon(rcon_client, player_name):
         }
 
     except Exception as e:
-        logger.error(f"Erreur lors de la récupération des stats pour {player_name}: {e}")
+        log_failure(logger, f"Erreur lors de la récupération des stats pour {player_name}: {e}")
         return {
             "Joueur": player_name,
             "Niveau": 0,
@@ -347,7 +348,7 @@ async def get_all_player_stats_rcon(rcon_host, rcon_port, rcon_password):
         return results
 
     except Exception as e:
-        logger.error(f"Erreur lors de la récupération des stats via RCON: {e}")
+        log_failure(logger, f"Erreur lors de la récupération des stats via RCON: {e}")
         return []
     finally:
         await rcon_client.disconnect()
@@ -381,7 +382,7 @@ async def get_server_info_rcon(rcon_host, rcon_port, rcon_password):
         return info
 
     except Exception as e:
-        logger.error(f"Erreur lors de la récupération des infos serveur: {e}")
+        log_failure(logger, f"Erreur lors de la récupération des infos serveur: {e}")
         return {}
     finally:
         await rcon_client.disconnect()

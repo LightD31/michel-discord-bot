@@ -8,6 +8,7 @@ from interactions import ComponentContext, Embed, component_callback
 
 from features.secretsanta import SecretSantaSession
 from src.core import logging as logutil
+from src.core.logging import log_failure
 from src.discord_ext.embeds import Colors
 from src.discord_ext.messages import edit_message_if_changed, fetch_user_safe
 
@@ -91,7 +92,7 @@ class ButtonsMixin:
                 await ctx.author.send(f"🎅 **Père Noël Secret**\n{message}")
                 await ctx.defer(edit_origin=True)
             except Exception as e:
-                logger.error(f"Failed to send DM to {ctx.author.id}: {e}")
+                log_failure(logger, f"Failed to send DM to {ctx.author.id}: {e}")
                 with contextlib.suppress(Exception):
                     await ctx.send(message, ephemeral=True)
 
@@ -138,4 +139,4 @@ class ButtonsMixin:
                 logger=logger,
             )
         except Exception as e:
-            logger.error(f"Failed to update session message: {e}")
+            log_failure(logger, f"Failed to update session message: {e}")

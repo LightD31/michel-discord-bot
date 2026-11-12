@@ -16,6 +16,7 @@ from interactions import Client, Extension, listen
 
 from features.spotify import reattribution_map, unmapped_contributors
 from src.core import logging as logutil
+from src.core.logging import log_failure
 
 from ._common import SERVERS, ServerData
 from .playlist import PlaylistMixin
@@ -77,8 +78,11 @@ class SpotifyExtension(Extension, PlaylistMixin, VotesMixin):
                     server.guild_id,
                 )
         except Exception as e:
-            logger.error(
-                "Réattribution des titres impossible pour le serveur %s : %s", server.guild_id, e
+            log_failure(
+                logger,
+                "Réattribution des titres impossible pour le serveur %s : %s",
+                server.guild_id,
+                e,
             )
 
     async def load_voteinfos(self, server: ServerData):

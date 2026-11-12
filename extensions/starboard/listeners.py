@@ -13,6 +13,7 @@ from features.starboard import (
     first_image_url,
     plan_mirror,
 )
+from src.core.logging import log_failure
 from src.discord_ext.embeds import Colors
 from src.discord_ext.messages import edit_message_if_changed
 
@@ -173,7 +174,7 @@ class ListenersMixin:
         try:
             channel = await self.bot.fetch_channel(int(starboard_channel_id))
         except Exception as e:
-            logger.error("Cannot fetch starboard channel %s: %s", starboard_channel_id, e)
+            log_failure(logger, "Cannot fetch starboard channel %s: %s", starboard_channel_id, e)
             return
         if channel is None or not hasattr(channel, "send"):
             return
@@ -186,7 +187,7 @@ class ListenersMixin:
         try:
             sent = await channel.send(embeds=[_build_embed(message, count, emoji)])  # type: ignore[union-attr]
         except Exception as e:
-            logger.error("Failed to publish to starboard: %s", e)
+            log_failure(logger, "Failed to publish to starboard: %s", e)
             return
         await self.repository(guild_id).upsert(
             StarEntry(

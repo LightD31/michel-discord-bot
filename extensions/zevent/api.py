@@ -27,6 +27,7 @@ from features.zevent.stats import (
 from features.zevent.velocity import DonationVelocity
 from src.core import logging as logutil
 from src.core.http import fetch
+from src.core.logging import log_failure
 
 from ._common import (
     COMPARE_EVENT_ID,
@@ -83,7 +84,7 @@ class ApiMixin:
             events = await fetch(f"{STATS_API_URL}/events", return_type="json")
         except Exception as e:
             self._event_gate.failed(now)
-            logger.error(f"Failed to fetch stats events ({self._event_gate.failures}x): {e}")
+            log_failure(logger, f"Failed to fetch stats events ({self._event_gate.failures}x): {e}")
             return self._stats_event
 
         if isinstance(events, list):
@@ -143,7 +144,9 @@ class ApiMixin:
             payload = await fetch(url, return_type="json")
         except Exception as e:
             self._participant_gate.failed(now)
-            logger.error(f"Failed to fetch participants ({self._participant_gate.failures}x): {e}")
+            log_failure(
+                logger, f"Failed to fetch participants ({self._participant_gate.failures}x): {e}"
+            )
             return self._participant_cache
 
         participants = parse_participants(payload)
@@ -179,7 +182,9 @@ class ApiMixin:
             shows = parse_shows(await fetch(url, return_type="json"))
         except Exception as e:
             self._planning_gate.failed(now)
-            logger.error(f"Failed to update planning cache ({self._planning_gate.failures}x): {e}")
+            log_failure(
+                logger, f"Failed to update planning cache ({self._planning_gate.failures}x): {e}"
+            )
             return self._planning_cache
 
         self._planning_cache = shows
@@ -335,7 +340,7 @@ class ApiMixin:
                 return True
             return False
         except Exception as e:
-            logger.error(f"Error checking if Zevent channel is live: {e}")
+            log_failure(logger, f"Error checking if Zevent channel is live: {e}")
             return False
 
     async def _is_concert_active(self) -> bool:
@@ -363,5 +368,5 @@ class ApiMixin:
 
             return total_amount, total_int
         except Exception as e:
-            logger.error(f"Error calculating total amount: {e}")
+            log_failure(logger, f"Error calculating total amount: {e}")
             return "Erreur de calcul", 0.0

@@ -9,6 +9,7 @@ import asyncssh
 import nbtlib
 
 from src.core import logging as logutil
+from src.core.logging import log_failure
 
 logger = logutil.init_logger(__name__)
 
@@ -136,7 +137,7 @@ async def get_all_player_stats_optimized(sftp: asyncssh.SFTPClient, cache: Minec
         return valid_results
 
     except Exception as e:
-        logger.error(f"Error in get_all_player_stats_optimized: {e}")
+        log_failure(logger, f"Error in get_all_player_stats_optimized: {e}")
         raise
 
 
@@ -322,7 +323,7 @@ async def get_minecraft_stats_with_retry(host, port, username, password, host_ke
         return results
 
     except Exception as e:
-        logger.error(f"Impossible de récupérer les statistiques: {e}")
+        log_failure(logger, f"Impossible de récupérer les statistiques: {e}")
         # Vider le cache en cas d'erreur pour forcer un reload au prochain essai
         cache.clear()
         raise

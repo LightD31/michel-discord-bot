@@ -16,6 +16,7 @@ from interactions import (
 from src.core import logging as logutil
 from src.core.config import ModuleConfig
 from src.core.http import fetch_untrusted
+from src.core.logging import log_failure
 from src.core.urls import redact_url
 from src.discord_ext.messages import GuildMessages, edit_message_if_changed
 from src.discord_ext.paginator import CustomPaginator
@@ -72,7 +73,7 @@ async def get_data(url):
         payload = await fetch_untrusted(url, return_type="json")
         return payload["data"]
     except Exception as e:
-        logger.error("Error fetching data from %s: %s", redact_url(url), e)
+        log_failure(logger, "Error fetching data from %s: %s", redact_url(url), e)
         return None
 
 
@@ -266,7 +267,7 @@ class SpeedonsExtension(Extension):
                 if rendered[key] is not None:
                     await self._publish(guild_id, settings, *rendered[key])
             except Exception as e:  # noqa: BLE001 — one guild's failure must not stop the others
-                logger.error("Guild %s: Speedons update failed: %s", guild_id, e)
+                log_failure(logger, "Guild %s: Speedons update failed: %s", guild_id, e)
 
     async def _publish(self, guild_id, settings, embeds, live_embed, page_index):
         schedule = await self.schedule_messages.get(guild_id, settings)

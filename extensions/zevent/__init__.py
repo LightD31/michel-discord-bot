@@ -17,6 +17,7 @@ from features.zevent.models import Participant, Show
 from features.zevent.velocity import DonationVelocity
 from src.core import logging as logutil
 from src.core.config import global_config
+from src.core.logging import log_failure
 from src.discord_ext.messages import GuildMessages
 
 from ._common import (
@@ -127,7 +128,7 @@ class Zevent(
                 self.zevent.start()
             await self.zevent()
         except Exception as e:
-            logger.error(f"Failed to initialize Zevent extension: {e}")
+            log_failure(logger, f"Failed to initialize Zevent extension: {e}")
 
     async def _guilds(self) -> list[tuple[ZeventGuild, dict]]:
         """``(state, settings)`` for each guild where the module is on, now.

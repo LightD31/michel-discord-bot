@@ -19,6 +19,7 @@ from features.secretsanta import (
 )
 from src.core import logging as logutil
 from src.core.config import load_discord2name
+from src.core.logging import log_failure
 from src.discord_ext.embeds import Colors
 from src.discord_ext.messages import edit_message_if_changed, fetch_user_safe, send_error
 from src.discord_ext.scopes import guild_scopes
@@ -188,7 +189,7 @@ class DrawsMixin:
 
                 await giver.send(embed=dm_embed)
             except Exception as e:
-                logger.error(f"Failed to send DM to {giver_id}: {e}")
+                log_failure(logger, f"Failed to send DM to {giver_id}: {e}")
                 failed_dms.append(giver_id)
 
         await self.repository.save_draw_results(context_id, assignments)
@@ -224,14 +225,14 @@ class DrawsMixin:
                             logger=logger,
                         )
                 except Exception as e:
-                    logger.error(f"Failed to update session message: {e}")
+                    log_failure(logger, f"Failed to update session message: {e}")
         else:
             try:
                 channel = self.bot.get_channel(session.channel_id)
                 if channel:
                     await channel.send(embed=draw_embed)
             except Exception as e:
-                logger.error(f"Failed to send draw announcement in DM group: {e}")
+                log_failure(logger, f"Failed to send draw announcement in DM group: {e}")
 
         response_msg = (
             f"🎉 Le tirage a été effectué pour {len(session.participants)} participants !"
@@ -353,7 +354,7 @@ class DrawsMixin:
                 ephemeral=True,
             )
         except Exception as e:
-            logger.error(f"Failed to send reminder DM: {e}")
+            log_failure(logger, f"Failed to send reminder DM: {e}")
             await send_error(
                 ctx,
                 "Impossible d'envoyer le message privé. Vérifiez que vos DMs sont ouverts.",

@@ -21,7 +21,8 @@ from src.core import logging as logutil
 from src.core.config import CONFIG_PATH, bind_host, config_store, global_config
 from src.core.db import mongo_manager
 from src.core.http import http_client
-from src.core.logging import DEBUG
+from src.core.logging import DEBUG, log_failure
+from src.discord_ext import errors as discord_errors
 from src.discord_ext import mentions, task_health
 from src.discord_ext.interaction_context import bind_interaction_context
 from src.discord_ext.lifecycle import GracefulShutdown
@@ -35,6 +36,8 @@ logutil.adopt_library_logger("interactions")
 task_health.install()
 # A message sent without allowed_mentions never pings @everyone / @here.
 mentions.install()
+# log_failure() logs Discord's refusals and outages without a traceback.
+discord_errors.install()
 
 config = global_config()
 if not config.get("discord", {}).get("botToken"):
@@ -159,7 +162,7 @@ async def on_startup():
 
             start_webui(bot=client, host=WEBUI_HOST, port=WEBUI_PORT)
         except Exception as e:
-            logger.error(f"Failed to start Web UI: {e}")
+            log_failure(logger, f"Failed to start Web UI: {e}")
 
 
 # Discover extensions: either single-file modules (extensions/<name>.py) or

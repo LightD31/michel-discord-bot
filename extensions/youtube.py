@@ -15,6 +15,7 @@ from features.youtube import (
 from src.core import logging as logutil
 from src.core.config import ModuleConfig, global_config
 from src.core.http import fetch
+from src.core.logging import log_failure
 from src.discord_ext.mentions import everyone_if_written
 from src.webui.schemas import SchemaBase, check_template, enabled_field, register_module, ui
 
@@ -113,7 +114,7 @@ class YoutubeExtension(Extension):
             try:
                 await self._check_server(str(server), youtube_data)
             except Exception as e:  # noqa: BLE001 — one guild's failure must not stop the others
-                logger.error("YouTube check failed for server %s: %s", server, e)
+                log_failure(logger, "YouTube check failed for server %s: %s", server, e)
 
     async def _check_server(self, server: str, youtube_data: dict) -> None:
         """Notify one guild of its channels' new videos and save what it has seen.

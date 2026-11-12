@@ -8,6 +8,7 @@ from interactions import Embed, EmbedFooter, OrTrigger, Task, TimeTrigger
 from features.confrerie.works import Work, parse_work
 from features.links import shorten_url
 from src.core import logging as logutil
+from src.core.logging import log_failure
 from src.discord_ext.embeds import Colors, format_discord_timestamp
 
 from ._common import CONFRERIE, ConfrerieError
@@ -141,6 +142,8 @@ class UpdatesMixin:
                     )
                     logger.debug(f"Page {page['id']} mise à jour avec succès")
                 except Exception as e:
-                    logger.error(f"Erreur lors de la mise à jour de la page {page['id']}: {e}")
+                    log_failure(
+                        logger, f"Erreur lors de la mise à jour de la page {page['id']}: {e}"
+                    )
         except Exception as e:
-            logger.error(f"Erreur lors de la tâche d'auto-update: {e}")
+            log_failure(logger, f"Erreur lors de la tâche d'auto-update: {e}")

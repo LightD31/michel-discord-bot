@@ -11,6 +11,7 @@ from twitchAPI.object.eventsub import ChannelUpdateEvent
 from twitchAPI.type import VideoType
 
 from src.core import logging as logutil
+from src.core.logging import log_failure
 from src.discord_ext.embeds import Colors
 
 logger = logutil.init_logger(__name__)
@@ -48,7 +49,7 @@ class NotificationsMixin:
                 footer=EmbedFooter(text=bot.display_name, icon_url=bot.avatar_url),
             )
         except Exception as e:
-            logger.error("Error creating notification embed for guild %s: %s", guild_id, e)
+            log_failure(logger, "Error creating notification embed for guild %s: %s", guild_id, e)
             return Embed(
                 title=title,
                 description=description,
@@ -155,7 +156,7 @@ class NotificationsMixin:
                 timestamp=datetime.now(pytz.UTC),
             )
         except Exception as e:
-            logger.error(f"Error creating embed for {user_login} in guild {guild_id}: {e}")
+            log_failure(logger, f"Error creating embed for {user_login} in guild {guild_id}: {e}")
             return Embed(
                 title=title,
                 description=description,
@@ -180,7 +181,7 @@ class NotificationsMixin:
 
             return embed
         except Exception as e:
-            logger.error(f"Error adding user {user_id} to embed: {e}")
+            log_failure(logger, f"Error adding user {user_id} to embed: {e}")
             return embed
 
     async def send_stream_start_notification(
@@ -231,7 +232,8 @@ class NotificationsMixin:
                 streamer.guild_id,
             )
         except Exception as e:
-            logger.error(
+            log_failure(
+                logger,
                 "Error sending stream start notification for %s: %s",
                 streamer.streamer_id,
                 e,
@@ -311,4 +313,6 @@ class NotificationsMixin:
             )
 
         except Exception as e:
-            logger.error(f"Error sending stream end notification for {streamer.streamer_id}: {e}")
+            log_failure(
+                logger, f"Error sending stream end notification for {streamer.streamer_id}: {e}"
+            )

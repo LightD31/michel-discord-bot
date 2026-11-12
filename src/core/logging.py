@@ -10,10 +10,12 @@ suffix on a text line. ``MICHEL_DEBUG=1`` lowers the level to DEBUG.
 import json
 import logging
 import os
+import sys
 from datetime import UTC, datetime
 from typing import Any
 
 from src.core import log_context
+from src.core.errors import is_expected_failure
 
 # DEBUG flag, sourced from the ``MICHEL_DEBUG`` environment variable.
 DEBUG = os.environ.get("MICHEL_DEBUG", "").lower() in ("1", "true", "yes", "on")
@@ -190,3 +192,20 @@ def get_logger(name: str) -> logging.Logger:
 def init_logger(name: str = "root") -> logging.Logger:
     """Create a designated logger for separate modules."""
     return _configure_logger(name)
+
+
+def log_failure(
+    logger: logging.Logger, msg: str, *args: object, error: BaseException | None = None
+) -> None:
+    """Log a failure the code caught, at ERROR, with its traceback unless it is expected.
+
+    Call it in an ``except`` block, where it takes the exception being handled,
+    or pass *error*. An expected failure (:func:`src.core.errors.is_expected_failure`:
+    a database or API outage, a refusal from Discord) stays one line; anything
+    else is a bug and carries its traceback, which error reporting forwards
+    (:mod:`src.core.error_reporting`). The record points at the caller.
+    """
+    if error is None:
+        error = sys.exception()
+    exc_info = error if error is not None and not is_expected_failure(error) else None
+    logger.error(msg, *args, exc_info=exc_info, stacklevel=2)

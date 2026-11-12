@@ -10,6 +10,7 @@ from pydantic import BaseModel
 from features.customcommands import MODULE_KEY as CUSTOM_COMMANDS_MODULE
 from src.core import logging as logutil
 from src.core.config import ModuleConfig
+from src.core.logging import log_failure
 from src.discord_ext.channels import fetch_guild_channel
 from src.discord_ext.embedmanager import MODULE_KEY as EMBED_MANAGER_MODULE
 from src.discord_ext.embedmanager import build_embeds, publish_embeds
@@ -167,7 +168,7 @@ async def _try_reload_extension_for_module(
         try:
             await run_extension_op(ctx, "reload", ext_path)
         except Exception as e:
-            logger.error(f"Auto-reload failed for {ext_path}: {e}")
+            log_failure(logger, f"Auto-reload failed for {ext_path}: {e}")
             failures.append(f"{ext_path} ({type(e).__name__})")
         else:
             logger.info(f"Auto-reloaded {ext_path} after config change for {module_name}")
@@ -213,7 +214,7 @@ async def _sync_guild_commands(ctx: WebUIContext, server_id: str) -> dict:
         logger.error("Command sync timed out for server %s", server_id)
         return {"synced": False, "error": "Synchronisation des commandes trop longue"}
     except Exception as e:
-        logger.error("Command sync failed for server %s: %s", server_id, e)
+        log_failure(logger, "Command sync failed for server %s: %s", server_id, e)
         return {
             "synced": False,
             "error": f"Échec de la synchronisation ({type(e).__name__}). Voir les logs.",

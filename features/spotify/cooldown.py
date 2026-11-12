@@ -10,7 +10,7 @@ from datetime import UTC, datetime, timedelta
 import pymongo
 
 from src.core.db import mongo_manager
-from src.core.logging import init_logger
+from src.core.logging import init_logger, log_failure
 
 logger = init_logger(__name__)
 
@@ -41,14 +41,14 @@ class VoteCooldown:
             )
             self._indexes_ready = True
         except Exception as e:
-            logger.error("Failed to create vote cooldown TTL index: %s", e)
+            log_failure(logger, "Failed to create vote cooldown TTL index: %s", e)
 
     async def is_on_cooldown(self, user_id: str) -> bool:
         await self._ensure_indexes()
         try:
             doc = await self._col().find_one({"_id": user_id})
         except Exception as e:
-            logger.error("Cooldown lookup failed for %s: %s", user_id, e)
+            log_failure(logger, "Cooldown lookup failed for %s: %s", user_id, e)
             return False
         if not doc:
             return False
@@ -69,4 +69,4 @@ class VoteCooldown:
                 upsert=True,
             )
         except Exception as e:
-            logger.error("Failed to record vote cooldown for %s: %s", user_id, e)
+            log_failure(logger, "Failed to record vote cooldown for %s: %s", user_id, e)

@@ -13,6 +13,7 @@ from interactions import (
 
 from features.secretsanta import SecretSantaSession
 from src.core import logging as logutil
+from src.core.logging import log_failure
 from src.discord_ext.embeds import Colors
 from src.discord_ext.messages import edit_message_if_changed, fetch_user_safe, send_error
 from src.discord_ext.scopes import guild_scopes
@@ -171,7 +172,7 @@ class SessionsMixin:
                         message, embed=embed, components=[], logger=logger
                     )
             except Exception as e:
-                logger.error(f"Failed to update cancelled session message: {e}")
+                log_failure(logger, f"Failed to update cancelled session message: {e}")
 
         await self.repository.delete_session(context_id)
 
