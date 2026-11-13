@@ -47,6 +47,8 @@ from src.discord_ext.embeds import Colors
 from src.discord_ext.mentions import everyone_if_written
 from src.discord_ext.messages import edit_message_if_changed, fetch_user_safe, require_guild
 from src.discord_ext.paginator import CustomPaginator
+from src.discord_ext.role_grants import auto_grant_refusal
+from src.discord_ext.rolemenus import role_info
 from src.discord_ext.scopes import guild_scopes
 from src.webui.schemas import SchemaBase, WeightedMessage, enabled_field, register_module, ui
 
@@ -68,6 +70,7 @@ class BirthdayConfig(SchemaBase):
         "Rôle anniversaire",
         "role",
         description="Rôle attribué au membre le jour de son anniversaire (optionnel).",
+        role_use="grant",
     )
     birthdayGuildLocale: str = ui(
         "Locale des dates",
@@ -123,6 +126,13 @@ class BirthdayExtension(Extension):
             if not role:
                 logger.warning(
                     "Could not fetch birthday role %s in server %s", role_id, server.name
+                )
+                return
+            # Re-checked at every grant: a role can gain permissions after the save.
+            refusal = auto_grant_refusal(role_info(role, server.id))
+            if add and refusal:
+                logger.warning(
+                    "Birthday role %s not given on server %s: %s", role.name, server.name, refusal
                 )
                 return
             if add:

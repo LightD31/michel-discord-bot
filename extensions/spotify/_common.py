@@ -70,6 +70,7 @@ class SpotifyConfig(SchemaBase):
         "Rôle à mentionner dans le rappel",
         "role",
         description="Rôle mentionné dans le rappel de vote. Vide = aucune mention de rôle.",
+        role_use="mention",
     )
     spotifyChannelId: str = ui(
         "Salon notifications",

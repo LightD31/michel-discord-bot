@@ -29,6 +29,8 @@ from features.zunivers_ninja import (
     NinjaStrategy,
     build_web_url,
 )
+from src.core.text import MESSAGE_LIMIT, clip
+from src.discord_ext.mentions import NO_PINGS
 
 from ._common import ninja_config, zunivers_cmd
 
@@ -87,11 +89,16 @@ class NinjaMixin:
                 ruleset="HARDCORE" if hardcore else "NORMAL",
                 strategy=strategie,
             )
+        # The error can carry the Ninja API's own text: echoed, never pinging.
         except NinjaNotFoundError as e:
-            await ctx.send(f"❌ {e}", ephemeral=ephemeral)
+            await ctx.send(
+                clip(f"❌ {e}", MESSAGE_LIMIT), ephemeral=ephemeral, allowed_mentions=NO_PINGS
+            )
             return
         except NinjaError as e:
-            await ctx.send(f"⚠️ {e}", ephemeral=ephemeral)
+            await ctx.send(
+                clip(f"⚠️ {e}", MESSAGE_LIMIT), ephemeral=ephemeral, allowed_mentions=NO_PINGS
+            )
             return
 
         components = _web_link(user.username, hardcore, strategie)

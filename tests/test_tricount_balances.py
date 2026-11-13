@@ -142,6 +142,9 @@ class FakeRepo:
     async def remove_group_member(self, group_id, user_id):
         self.group["members"].remove(user_id)
 
+    async def stop_member_recurring(self, group_id, user_id):
+        return 0
+
 
 def user(uid):
     return SimpleNamespace(id=uid, mention=f"<@{uid}>", display_name=f"user{uid}")

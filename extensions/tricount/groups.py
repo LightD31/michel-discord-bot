@@ -28,7 +28,7 @@ from src.discord_ext.embeds import Colors
 from src.discord_ext.messages import require_guild
 from src.discord_ext.scopes import guild_scopes
 
-from ._common import TRICOUNT, guild_currency
+from ._common import MAX_AMOUNT, TRICOUNT, guild_currency
 
 logger = logutil.init_logger(__name__)
 
@@ -172,8 +172,11 @@ class GroupsMixin:
             return
 
         await repo.remove_group_member(group["_id"], ctx.author.id)
+        stopped = await repo.stop_member_recurring(group["_id"], ctx.author.id)
 
         description = f"Vous avez quitté le groupe **{nom}**."
+        if stopped:
+            description += f"\n\n{stopped} dépense(s) récurrente(s) arrêtée(s)."
         balance = compute_balances(
             await repo.list_group_expenses(group["_id"]), group["members"]
         ).get(ctx.author.id, 0)
@@ -226,6 +229,7 @@ class GroupsMixin:
         opt_type=OptionType.NUMBER,
         required=True,
         min_value=0.01,
+        max_value=MAX_AMOUNT,
     )
     @slash_option(
         name="payeur",

@@ -8,6 +8,7 @@ from interactions import (
     Button,
     ButtonStyle,
     ComponentContext,
+    Permissions,
     SlashContext,
     spread_to_rows,
 )
@@ -42,6 +43,20 @@ def get_context_id(ctx: SlashContext | ComponentContext) -> str:
     if ctx.guild:
         return f"guild_{ctx.guild.id}"
     return f"channel_{ctx.channel.id}"
+
+
+def may_organise(ctx: SlashContext | ComponentContext, session) -> bool:
+    """Whether the author runs *session*: its creator, or an administrator.
+
+    With no session, only an administrator: exclusions outlive a session, and
+    nobody but the organiser may decide who can't draw whom.
+    """
+    if session is not None and ctx.author.id == session.created_by:
+        return True
+    return bool(ctx.guild) and ctx.author.has_permission(Permissions.ADMINISTRATOR)
+
+
+ORGANISER_ONLY = "Seul le créateur de la session ou un administrateur peut gérer les exclusions."
 
 
 def create_join_buttons(context_id: str, disabled: bool = False) -> list[ActionRow]:

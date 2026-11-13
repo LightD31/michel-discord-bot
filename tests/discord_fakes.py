@@ -55,12 +55,21 @@ class FakeUser:
 
 class FakeRole:
     def __init__(
-        self, rid: int | None = None, name: str = "rôle", *, position: int = 1, mentionable=False
+        self,
+        rid: int | None = None,
+        name: str = "rôle",
+        *,
+        position: int = 1,
+        mentionable=False,
+        permissions: Permissions = Permissions.NONE,
+        managed: bool = False,
     ):
         self.id = rid if rid is not None else next(_ids)
         self.name = name
         self.position = position
         self.mentionable = mentionable
+        self.permissions = permissions
+        self.managed = managed
         self.mention = f"<@&{self.id}>"
 
 
@@ -99,7 +108,7 @@ class FakeMember(FakeUser):
     async def add_role(self, role: Any, reason: str | None = None) -> None:
         rid = int(getattr(role, "id", role))
         if not self.has_role(rid):
-            self.roles.append(FakeRole(rid))
+            self.roles.append(role if isinstance(role, FakeRole) else FakeRole(rid))
 
     async def remove_role(self, role: Any, reason: str | None = None) -> None:
         rid = int(getattr(role, "id", role))
@@ -135,6 +144,7 @@ class FakeMessage:
         self.added_reactions: list[str] = []
         self.edits: list[dict[str, Any]] = []
         self.replies: list[str] = []
+        self.reply_kwargs: list[dict[str, Any]] = []
         self.deleted = False
 
     async def edit(self, **kwargs: Any) -> FakeMessage:
@@ -149,6 +159,7 @@ class FakeMessage:
 
     async def reply(self, content: str | None = None, **kwargs: Any) -> FakeMessage:
         self.replies.append(content or "")
+        self.reply_kwargs.append(kwargs)
         return FakeMessage(content=content, channel=self.channel)
 
     async def add_reaction(self, emoji: Any) -> None:
@@ -228,6 +239,16 @@ class FakeGuild:
 
     def get_role(self, rid: Any) -> FakeRole | None:
         return self.roles.get(int(rid))
+
+    def add_role(self, role: FakeRole) -> FakeRole:
+        self.roles[role.id] = role
+        return role
+
+    async def fetch_role(self, rid: Any) -> FakeRole | None:
+        return self.get_role(rid)
+
+    def is_owner(self, uid: Any) -> bool:
+        return int(uid) == getattr(self, "owner_id", -1)
 
     def get_channel(self, cid: Any) -> FakeChannel | None:
         return self.channels.get(int(cid))

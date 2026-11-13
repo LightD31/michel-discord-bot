@@ -108,6 +108,7 @@ async def test_group_membership_and_lookup(mongo):
     gid = await new_group(repo)
     await new_group(repo, "archive", members=(1,), active=False)
     await repo.add_group_member(gid, 3)
+    await repo.add_group_member(gid, 3)  # joining twice changes nothing
     await repo.remove_group_member(gid, 1)
     assert (await repo.find_active_group("coloc"))["members"] == [2, 3]
     assert await repo.find_active_group("archive") is None
@@ -178,9 +179,48 @@ async def test_recurring_expenses_are_due_stopped_and_rescheduled(mongo):
     assert not await repo.claim_recurring(due_doc, now + timedelta(days=30))  # claimed once
     assert await repo.list_due_recurring(now) == []
 
-    assert await repo.stop_recurring(str(later), user_id=2) == 0  # not theirs
-    assert await repo.stop_recurring("not-an-id", user_id=1) == 0
-    assert await repo.stop_recurring(str(later), user_id=1) == 1
-    assert await repo.stop_recurring(str(later), user_id=1) == 0  # already stopped
+    assert (await repo.find_active_recurring(str(later)))["_id"] == later
+    assert await repo.find_active_recurring("not-an-id") is None
+    assert await repo.stop_recurring(later) is True
+    assert await repo.stop_recurring(later) is False  # already stopped
+    assert await repo.find_active_recurring(str(later)) is None
     await repo.deactivate_recurring(due)
     assert await repo.list_active_recurring(1) == []
+
+
+async def test_a_member_leaving_stops_the_recurrences_they_pay_or_added(mongo):
+    repo = TricountRepository(mongo.guild_id)
+    gid, other = await new_group(repo), await new_group(repo, "autre")
+    now = datetime(2026, 3, 10)
+
+    def recurrence(group, payer, added_by):
+        return repo.add_recurring(
+            {
+                "group_id": group,
+                "payer": payer,
+                "added_by": added_by,
+                "active": True,
+                "next_run": now,
+            }
+        )
+
+    paid = await recurrence(gid, 1, 2)
+    added = await recurrence(gid, 2, 1)
+    others = await recurrence(gid, 2, 2)
+    elsewhere = await recurrence(other, 1, 1)
+    assert await repo.stop_member_recurring(gid, 1) == 2
+    assert await repo.find_active_recurring(paid) is None
+    assert await repo.find_active_recurring(added) is None
+    assert await repo.find_active_recurring(others) is not None
+    assert await repo.find_active_recurring(elsewhere) is not None
+
+
+async def test_an_expense_is_deleted_only_from_its_group(mongo):
+    repo = TricountRepository(mongo.guild_id)
+    gid, other = await new_group(repo), await new_group(repo, "autre")
+    await expense(repo, gid, 1)
+    (stored,) = await repo.list_group_expenses(gid)
+    assert await repo.delete_expense(str(stored["_id"]), other) is False
+    assert await repo.delete_expense("not-an-id", gid) is False
+    assert await repo.delete_expense(str(stored["_id"]), gid) is True
+    assert await repo.list_group_expenses(gid) == []

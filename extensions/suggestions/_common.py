@@ -28,6 +28,7 @@ class SuggestionsConfig(SchemaBase):
         "Rôle staff",
         "role",
         description="Rôle autorisé à approuver/refuser les suggestions (sinon admin uniquement).",
+        role_use="staff",
     )
     anonymous: bool = ui(
         "Suggestions anonymes",

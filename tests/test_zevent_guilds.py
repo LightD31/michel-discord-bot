@@ -200,6 +200,8 @@ class FakeCtx:
     def __init__(self, guild_id):
         self.guild_id = guild_id
         self.replies: list[str] = []
+        # An organiser: /zevent_finish needs « Gérer le serveur ».
+        self.author = SimpleNamespace(has_permission=lambda *perms: True)
 
     async def send(self, content, ephemeral=False):
         self.replies.append(content)

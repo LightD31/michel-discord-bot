@@ -2,6 +2,9 @@ from features.reactionroles.models import RoleMenu, RoleMenuEntry
 from features.reactionroles.permissions import (
     MenuAuthor,
     RoleInfo,
+    access_refusal,
+    grant_refusal,
+    mention_refusal,
     role_menu_refusal,
     self_assign_refusal,
 )
@@ -13,6 +16,9 @@ __all__ = [
     "RoleInfo",
     "RoleMenu",
     "RoleMenuEntry",
+    "access_refusal",
+    "grant_refusal",
+    "mention_refusal",
     "role_menu_refusal",
     "self_assign_refusal",
 ]

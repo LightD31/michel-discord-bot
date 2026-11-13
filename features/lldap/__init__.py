@@ -8,6 +8,7 @@ from features.lldap.accounts import (
     username_from_discord,
 )
 from features.lldap.sync import (
+    PROTECTED_GROUP_NAMES,
     GroupChange,
     GuildRoster,
     SyncReport,
@@ -15,9 +16,11 @@ from features.lldap.sync import (
     merge_rosters,
     parse_role_groups,
     plan_sync,
+    protected_group_ids,
 )
 
 __all__ = [
+    "PROTECTED_GROUP_NAMES",
     "USERNAME_MAX_LENGTH",
     "GroupChange",
     "GuildRoster",
@@ -29,5 +32,6 @@ __all__ = [
     "normalize_username",
     "parse_role_groups",
     "plan_sync",
+    "protected_group_ids",
     "username_from_discord",
 ]

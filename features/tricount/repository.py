@@ -78,9 +78,9 @@ class TricountRepository:
 
     @translates_db_errors
     async def add_group_member(self, group_id: ObjectId, user_id: int) -> None:
-        """Append a user to a group's member list."""
+        """Add a user to a group's member list (once: joining twice changes nothing)."""
         await self._col(GROUPS_COLLECTION).update_one(
-            {"_id": group_id}, {"$push": {"members": user_id}}
+            {"_id": group_id}, {"$addToSet": {"members": user_id}}
         )
 
     @translates_db_errors
@@ -124,6 +124,17 @@ class TricountRepository:
             return False
         result = await self._col(EXPENSES_COLLECTION).update_one({"_id": parsed}, {"$set": fields})
         return result.matched_count > 0
+
+    @translates_db_errors
+    async def delete_expense(self, expense_id: str | ObjectId, group_id: ObjectId) -> bool:
+        """Delete an expense of *group_id*; ``False`` if it matched nothing."""
+        parsed = _as_object_id(expense_id)
+        if parsed is None:
+            return False
+        result = await self._col(EXPENSES_COLLECTION).delete_one(
+            {"_id": parsed, "group_id": group_id}
+        )
+        return result.deleted_count > 0
 
     @translates_db_errors
     async def list_group_expenses(self, group_id: ObjectId) -> list[dict]:
@@ -203,17 +214,33 @@ class TricountRepository:
         )
 
     @translates_db_errors
-    async def stop_recurring(self, recurring_id: str | ObjectId, user_id: int) -> int:
-        """Deactivate the user's active recurrence; returns the modified count.
-
-        A malformed id counts as zero rows modified — the caller's "introuvable"
-        path already says the right thing.
-        """
+    async def find_active_recurring(self, recurring_id: str | ObjectId) -> dict | None:
+        """An active recurrence by ``_id``; ``None`` if gone, stopped or the id is malformed."""
         parsed = _as_object_id(recurring_id)
         if parsed is None:
-            return 0
+            return None
+        return await self._col(RECURRING_COLLECTION).find_one({"_id": parsed, "active": True})
+
+    @translates_db_errors
+    async def stop_recurring(self, recurring_id: ObjectId) -> bool:
+        """Deactivate an active recurrence; ``False`` if it was already stopped."""
         result = await self._col(RECURRING_COLLECTION).update_one(
-            {"_id": parsed, "added_by": user_id, "active": True},
+            {"_id": recurring_id, "active": True}, {"$set": {"active": False}}
+        )
+        return result.modified_count > 0
+
+    @translates_db_errors
+    async def stop_member_recurring(self, group_id: ObjectId, user_id: int) -> int:
+        """Deactivate the recurrences of *group_id* that *user_id* pays or added.
+
+        For a member leaving the group: nobody else could stop them.
+        """
+        result = await self._col(RECURRING_COLLECTION).update_many(
+            {
+                "group_id": group_id,
+                "active": True,
+                "$or": [{"payer": user_id}, {"added_by": user_id}],
+            },
             {"$set": {"active": False}},
         )
         return result.modified_count

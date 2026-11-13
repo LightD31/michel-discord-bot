@@ -5,7 +5,7 @@ from __future__ import annotations
 import time
 from typing import TYPE_CHECKING, Any
 
-from interactions import IntervalTrigger, Task
+from interactions import AllowedMentions, IntervalTrigger, Task
 
 from features.links import shorten_url
 from features.mdi import MatchSnapshot
@@ -216,10 +216,12 @@ class NotificationsMixin:
             try:
                 first_name = match.first_team.name if match.first_team else "TBD"
                 second_name = match.second_team.name if match.second_team else "TBD"
+                # Team names come from the tournament API: only the configured role pings.
                 await channel.send(
                     content=(
                         f"<@&{gc.ping_role_id}> 🔴 **{first_name} vs {second_name}** est en direct !"
-                    )
+                    ),
+                    allowed_mentions=AllowedMentions(roles=[int(gc.ping_role_id)]),
                 )
                 notified = True
             except Exception as e:

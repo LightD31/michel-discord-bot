@@ -307,3 +307,9 @@ def test_conflict_detection():
     assert LldapError("LLDAP a refusé la requête : UNIQUE constraint failed").conflict
     assert not LldapError("LLDAP injoignable").conflict
     assert lldap.DEFAULT_DISCORD_ATTRIBUTE == "discordid"
+
+
+def test_parse_groups_maps_ids_to_names():
+    parse_groups = lldap.parse_groups
+    data = {"groups": [{"id": 1, "displayName": "lldap_admin"}, {"id": "x"}, {"id": 5}]}
+    assert parse_groups(data) == {1: "lldap_admin", 5: ""}

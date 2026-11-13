@@ -57,6 +57,7 @@ class MDIConfig(SchemaBase):
         "Rôle à mentionner",
         "role",
         description="Rôle mentionné quand un nouveau match commence (optionnel).",
+        role_use="mention",
     )
     iconUrl: str | None = ui(
         "Icône des embeds",

@@ -8,6 +8,7 @@ from features.lldap import (
     merge_rosters,
     parse_role_groups,
     plan_sync,
+    protected_group_ids,
 )
 from src.integrations.lldap import LldapUser
 
@@ -100,3 +101,9 @@ def test_describe_report():
     assert "2 ajout(s), 1 retrait(s), 0 échec(s)" in text
     assert "3, 4" in text
     assert "⚠️ LLDAP injoignable" in text
+
+
+def test_protected_group_ids_finds_lldap_builtin_groups_by_name():
+    groups = {1: "lldap_admin", 2: "LLDAP_Password_Manager", 3: "lldap_strict_readonly", 4: "media"}
+    assert protected_group_ids(groups) == {1, 2, 3}
+    assert protected_group_ids({4: "media"}) == set()

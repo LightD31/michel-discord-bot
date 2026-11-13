@@ -18,7 +18,7 @@ from src.discord_ext.embeds import Colors
 from src.discord_ext.messages import edit_message_if_changed, fetch_user_safe, send_error
 from src.discord_ext.scopes import guild_scopes
 
-from ._common import SANTA, create_join_buttons, get_context_id
+from ._common import SANTA, create_join_buttons, get_context_id, may_organise
 
 logger = logutil.init_logger(__name__)
 
@@ -55,6 +55,14 @@ class SessionsMixin:
             await send_error(
                 ctx,
                 "Une session de Père Noël Secret est déjà en cours !\nUtilisez `/secretsanta cancel` pour l'annuler d'abord.",
+            )
+            return
+        if existing and not may_organise(ctx, existing):
+            # Re-creating drops the drawn session (and so /secretsanta reveal).
+            await send_error(
+                ctx,
+                "Seul le créateur de la dernière session ou un administrateur peut en créer "
+                "une nouvelle.",
             )
             return
 

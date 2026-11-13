@@ -47,6 +47,7 @@ from src.discord_ext.messages import (
 )
 from src.discord_ext.scopes import guild_scopes
 from src.integrations.spotify import spotifymongoformat
+from src.webui.auth import configured_developer_ids
 
 from ._common import (
     COOLDOWN_TIME,
@@ -783,7 +784,14 @@ class VotesMixin:
                     )
 
     async def _nextvote(self, ctx: SlashContext):
-        """Dev-only: force an immediate close+restart of the daily vote cycle."""
+        """Dev-only: force an immediate close+restart of the daily vote cycle.
+
+        It closes the vote of every guild, not only the dev guild's: being a
+        member there isn't enough, the author must be a bot developer.
+        """
+        if str(ctx.author.id) not in configured_developer_ids():
+            await ctx.send("Commande réservée aux développeurs du bot.", ephemeral=True)
+            return
         await self.randomvote()
         await ctx.send("Vote forcé", ephemeral=True)
 

@@ -32,6 +32,17 @@ from src.core.text import template_problem
 _UNSET = object()
 
 
+# What the bot does with a role a module's admins chose (``ui(role_use=…)``),
+# and so which rule of ``features/reactionroles/permissions.py`` applies when a
+# dashboard save adds it (``src/discord_ext/role_grants.py``):
+#   grant    the bot hands the role out (XP rewards, birthday): grant_refusal
+#   mention  the bot pings it: mention_refusal
+#   access   its holders get something outside Discord (LLDAP groups): access_refusal
+#   staff    its holders get a say in the bot's own features (approve
+#            suggestions, skip the automod): no check beyond the dashboard bar
+ROLE_USES = ("grant", "mention", "access", "staff")
+
+
 # ── DSL ──────────────────────────────────────────────────────────────
 
 
@@ -48,6 +59,8 @@ def ui(
     key_label: str = "",
     value_label: str = "",
     step: float | None = None,
+    role_use: str = "",
+    role_keys: bool = False,
 ) -> Any:
     """Build a Pydantic ``Field(...)`` carrying UI metadata in ``json_schema_extra['ui']``.
 
@@ -57,7 +70,13 @@ def ui(
     ``step`` applies to ``number`` fields: without it the browser assumes a
     step of 1 and marks a decimal entry invalid, so any field meant to accept
     fractions must declare one.
+
+    ``role_use`` says what the bot does with the role a ``role`` field (or a
+    ``keyvaluemap``'s values, its keys with ``role_keys=True``) names, which
+    decides who may choose it (see :data:`ROLE_USES`).
     """
+    if role_use and role_use not in ROLE_USES:
+        raise ValueError(f"role_use inconnu : {role_use}")
     meta: dict[str, Any] = {"label": label, "type": type, "required": required}
     if description:
         meta["description"] = description
@@ -75,6 +94,10 @@ def ui(
         meta["hidden"] = True
     if step is not None:
         meta["step"] = step
+    if role_use:
+        meta["roleUse"] = role_use
+    if role_keys:
+        meta["roleKeys"] = True
 
     field_default = default if default is not _UNSET else None
     return Field(default=field_default, json_schema_extra={"ui": meta})
@@ -235,6 +258,53 @@ def channel_ids(model: type[SchemaBase], value: Any) -> set[str]:
             for entry in _entries(value.get(name)):
                 if isinstance(entry, dict):
                     add(entry.get(key))
+    return found
+
+
+def role_refs(model: type[SchemaBase], value: Any) -> set[tuple[str, str]]:
+    """Every ``(use, role id)`` *value* (a module's config) names.
+
+    The ``role`` fields and the role side of ``keyvaluemap`` fields that
+    declare a ``role_use``. Empty values are skipped.
+    """
+    if not isinstance(value, dict):
+        return set()
+    found: set[tuple[str, str]] = set()
+    for name, meta in _fields_of(model).items():
+        use = meta.get("roleUse")
+        if not use:
+            continue
+        raw = value.get(name)
+        if meta.get("type") == "keyvaluemap":
+            items = raw if isinstance(raw, dict) else {}
+            candidates = list(items) if meta.get("roleKeys") else list(items.values())
+        else:
+            candidates = [raw]
+        for candidate in candidates:
+            if candidate is None or isinstance(candidate, (dict, list)):
+                continue
+            text = str(candidate).strip()
+            if text:
+                found.add((use, text))
+    return found
+
+
+MASS_MENTIONS = ("@everyone", "@here")
+
+
+def mass_mention_texts(value: Any) -> set[str]:
+    """Every string in *value*, at any depth, that contains @everyone or @here."""
+    found: set[str] = set()
+    stack = [value]
+    while stack:
+        item = stack.pop()
+        if isinstance(item, str):
+            if any(token in item for token in MASS_MENTIONS):
+                found.add(item)
+        elif isinstance(item, dict):
+            stack.extend(item.values())
+        elif isinstance(item, list):
+            stack.extend(item)
     return found
 
 

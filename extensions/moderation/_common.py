@@ -30,6 +30,7 @@ class ModerationConfig(SchemaBase):
         "Rôle staff",
         "role",
         description="Rôle exempté de l'automod (les administrateurs le sont toujours).",
+        role_use="staff",
     )
     dmOnAction: bool = ui(
         "Prévenir le membre en MP",
