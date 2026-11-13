@@ -35,10 +35,16 @@ from interactions import (
 
 from src.core import logging as logutil
 from src.core.config import ModuleConfig
-from src.discord_ext.channels import member_can
 from src.discord_ext.errors import failure_reply
 from src.discord_ext.mentions import mentions_member_could_send
-from src.discord_ext.messages import send_error, send_success
+from src.discord_ext.messages import (
+    CAN_MANAGE,
+    CAN_PURGE,
+    CAN_SEND,
+    author_can,
+    send_error,
+    send_success,
+)
 from src.discord_ext.scopes import guild_scopes
 from src.webui.schemas import SchemaBase, enabled_field, register_module, ui
 
@@ -85,22 +91,6 @@ PURGEABLE_CHANNEL_TYPES = [
     ChannelType.GUILD_PRIVATE_THREAD,
     ChannelType.GUILD_NEWS_THREAD,
 ]
-# What the author must hold in the channel a command acts on.
-CAN_PURGE = Permissions.VIEW_CHANNEL | Permissions.MANAGE_MESSAGES
-CAN_SEND = Permissions.VIEW_CHANNEL | Permissions.SEND_MESSAGES
-CAN_MANAGE = Permissions.VIEW_CHANNEL | Permissions.MANAGE_CHANNELS
-
-
-async def author_can(ctx: SlashContext, channel: BaseChannel, permission: Permissions) -> bool:
-    """Whether the author holds *permission* in *channel*, telling them when they don't.
-
-    Discord checks a command's ``default_member_permissions`` in the channel
-    it is run from; the bot then acts on the target with its own rights.
-    """
-    if member_can(ctx.author, channel, permission):
-        return True
-    await send_error(ctx, f"Tu n'as pas les droits nécessaires dans <#{channel.id}>.")
-    return False
 
 
 class AdminExtension(Extension):

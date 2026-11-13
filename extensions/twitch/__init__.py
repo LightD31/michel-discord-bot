@@ -34,7 +34,7 @@ from src.core.config import ModuleConfig, config_store, global_config
 from src.core.errors import ConfigError
 from src.core.logging import log_failure
 from src.core.tasks import spawn
-from src.discord_ext.messages import send_error, send_success
+from src.discord_ext.messages import CAN_PIN, CAN_SEND, author_can, send_error, send_success
 from src.discord_ext.scopes import guild_scopes
 
 from ._common import StreamerInfo, ensure_utc
@@ -345,6 +345,9 @@ class TwitchExtension(
         streamer_info = self.streamers.get(streamer_key)
         if streamer_info is None:
             await send_error(ctx, f"Streamer '{streamer}' non trouvé pour ce serveur.")
+            return
+        # The bot posts (and pins) with its own rights: the author must be able to.
+        if not await author_can(ctx, channel, (CAN_PIN | CAN_SEND) if pin else CAN_SEND):
             return
         _save_streamer_planning(str(ctx.guild.id), streamer, str(channel.id), pin)
         streamer_info.planning_channel_id = int(channel.id)

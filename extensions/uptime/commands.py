@@ -17,7 +17,7 @@ from features.uptime import AlertMode, MonitorAlert, UptimeRepository
 from src.core import logging as logutil
 from src.core.errors import DatabaseError
 from src.discord_ext.embeds import Colors
-from src.discord_ext.messages import require_guild, send_error, send_success
+from src.discord_ext.messages import CAN_SEND, author_can, require_guild, send_error, send_success
 from src.discord_ext.scopes import guild_scopes
 from src.integrations.uptime_kuma import MonitorStatus
 
@@ -107,6 +107,9 @@ class CommandsMixin:
         monitor = self.monitors.get(monitor_id) if monitor_id is not None else None
         if monitor is None:
             await send_error(ctx, "Capteur introuvable. Choisissez-le dans la liste proposée.")
+            return
+        # The bot posts the alerts with its own rights: the author must be able to post there.
+        if not await author_can(ctx, channel, CAN_SEND):
             return
 
         alert = MonitorAlert(

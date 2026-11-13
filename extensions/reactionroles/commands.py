@@ -19,6 +19,8 @@ from src.core import clock
 from src.discord_ext.embeds import Colors
 from src.discord_ext.errors import failure_reply
 from src.discord_ext.messages import (
+    CAN_SEND,
+    author_can,
     edit_message_if_changed,
     require_guild,
     send_error,
@@ -122,6 +124,9 @@ class CommandsMixin:
 
         if not hasattr(channel, "send"):
             await send_error(ctx, "Ce salon ne permet pas l'envoi de messages.")
+            return
+        # The bot posts with its own rights: the author must be able to post there.
+        if not await author_can(ctx, channel, CAN_SEND):
             return
 
         await ctx.defer(ephemeral=True)

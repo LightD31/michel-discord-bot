@@ -14,13 +14,13 @@ from collections.abc import Sequence
 from typing import Any
 from urllib.parse import urlsplit
 
-from interactions import Client, Embed, Message, SlashContext, ThreadChannel
+from interactions import Client, Embed, Message, Permissions, SlashContext, ThreadChannel
 from interactions.models.discord.components import process_components
 
 from src.core.errors import DatabaseError
 from src.core.logging import log_failure
 from src.core.message_refs import MessageRefRepository
-from src.discord_ext.channels import fetch_guild_channel
+from src.discord_ext.channels import fetch_guild_channel, member_can
 
 # ---------------------------------------------------------------------------
 # Ephemeral responses
@@ -30,6 +30,26 @@ from src.discord_ext.channels import fetch_guild_channel
 async def send_error(ctx: SlashContext, message: str) -> None:
     """Send an ephemeral error message prefixed with a cross emoji."""
     await ctx.send(f"❌ {message}", ephemeral=True)
+
+
+# What the author must hold in the channel a command makes the bot act on.
+CAN_PURGE = Permissions.VIEW_CHANNEL | Permissions.MANAGE_MESSAGES
+CAN_SEND = Permissions.VIEW_CHANNEL | Permissions.SEND_MESSAGES
+CAN_MANAGE = Permissions.VIEW_CHANNEL | Permissions.MANAGE_CHANNELS
+# Pinning: what Discord asks of a member pinning by hand.
+CAN_PIN = Permissions.VIEW_CHANNEL | Permissions.MANAGE_MESSAGES
+
+
+async def author_can(ctx: SlashContext, channel: Any, permission: Permissions) -> bool:
+    """Whether the author holds *permission* in *channel*, telling them when they don't.
+
+    Discord checks a command's ``default_member_permissions`` in the channel
+    it is run from; the bot then acts on the target with its own rights.
+    """
+    if member_can(ctx.author, channel, permission):
+        return True
+    await send_error(ctx, f"Tu n'as pas les droits nécessaires dans <#{channel.id}>.")
+    return False
 
 
 async def send_success(ctx: SlashContext, message: str) -> None:
