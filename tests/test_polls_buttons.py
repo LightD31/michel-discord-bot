@@ -24,11 +24,26 @@ class MemoryPolls:
     async def get_by_message(self, message_id):
         return next((p for p in self.items.values() if p.message_id == str(message_id)), None)
 
+    def _open(self, poll_id):
+        poll = self.items.get(poll_id)
+        return None if poll is None or poll.closed else poll
+
     async def set_vote(self, poll_id, user_id, ranking):
-        self.items[poll_id].votes[user_id] = list(ranking)
+        if poll := self._open(poll_id):
+            poll.votes[user_id] = list(ranking)
+        return poll
+
+    async def add_to_ranking(self, poll_id, user_id, option):
+        if poll := self._open(poll_id):
+            ranking = poll.votes.setdefault(user_id, [])
+            if option not in ranking:
+                ranking.append(option)
+        return poll
 
     async def clear_vote(self, poll_id, user_id):
-        self.items[poll_id].votes.pop(user_id, None)
+        if poll := self._open(poll_id):
+            poll.votes.pop(user_id, None)
+        return poll
 
     async def list_due(self, now):
         return [

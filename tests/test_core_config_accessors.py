@@ -41,7 +41,7 @@ def test_module_reads_follow_every_store_update(store_config):
     # What a dashboard save does: the store swaps in the new config.
     config = {**config, "servers": {**config["servers"], "20": {"moduleXp": {"enabled": True}}}}
     config["servers"]["10"] = {"moduleXp": {"enabled": True, "xpRate": 5}}
-    config_store._update_and_notify(config)
+    config_store._set_cache(config)
 
     assert XP.get("10")["xpRate"] == 5
     assert XP.guild_ids() == ["10", "20"]

@@ -40,7 +40,7 @@ def test_settings_follow_a_save(spotify, tmp_path):
     assert server.channel_id == "100"
     assert server.discord2name == {"7": "Alice"}
 
-    config_store._update_and_notify(
+    config_store._set_cache(
         _config(
             tmp_path,
             spotifyChannelId="200",
@@ -66,7 +66,7 @@ def test_turning_the_public_page_on_mints_its_token_on_first_use(spotify, tmp_pa
         return "tok"
 
     monkeypatch.setattr(spotify, "ensure_public_token", fake_ensure)
-    config_store._update_and_notify(_config(tmp_path, publicDashboard=True))
+    config_store._set_cache(_config(tmp_path, publicDashboard=True))
 
     assert "tok" in (server.links.dashboard or "")
     assert minted == [GUILD]

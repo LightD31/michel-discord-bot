@@ -1,5 +1,6 @@
 """YouTube and poll repositories against a real MongoDB (see tests/conftest.py)."""
 
+import asyncio
 from datetime import datetime, timedelta
 
 import pytest
@@ -98,3 +99,24 @@ async def test_editpoll_offers_the_authors_open_reaction_polls_newest_first(mong
     found = await repo.list_open_reaction_polls("7", 25)
     assert [p.message_id for p in found] == ["new", "old"]
     assert [p.message_id for p in await repo.list_open_reaction_polls("7", 1)] == ["new"]
+
+
+async def test_quick_clicks_on_a_ranked_poll_keep_every_rank(mongo):
+    repo = PollRepository(mongo.guild_id)
+    pid = await repo.add(poll(mode="ranked"))
+    await asyncio.gather(*(repo.add_to_ranking(pid, "10", option) for option in (2, 0, 1)))
+    ranking = (await repo.get_by_message("m1")).votes["10"]
+    assert sorted(ranking) == [0, 1, 2]
+    again = await repo.add_to_ranking(pid, "10", 0)
+    assert again.votes["10"] == ranking  # an option already ranked isn't added twice
+
+
+async def test_a_closed_poll_takes_no_vote(mongo):
+    repo = PollRepository(mongo.guild_id)
+    pid = await repo.add(poll(mode="ranked"))
+    await repo.set_vote(pid, "10", [1])
+    await repo.mark_closed(pid)
+    assert await repo.add_to_ranking(pid, "10", 0) is None
+    assert await repo.set_vote(pid, "11", [0]) is None
+    assert await repo.clear_vote(pid, "10") is None
+    assert (await repo.get_by_message("m1")).votes == {"10": [1]}

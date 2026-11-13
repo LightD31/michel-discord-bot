@@ -6,6 +6,8 @@ global database.
 
 from dataclasses import asdict
 
+from pymongo import ReturnDocument
+
 from src.core import clock
 from src.core.db import mongo_manager, translates_db_errors
 from src.core.logging import init_logger
@@ -31,22 +33,61 @@ class SecretSantaRepository:
             db["secret_santa_banned_pairs"],
         )
 
-    @translates_db_errors
-    async def get_session(self, context_id: str) -> SecretSantaSession | None:
-        sessions_col, _, _ = self._collections(context_id)
-        doc = await sessions_col.find_one({"_id": context_id})
+    @staticmethod
+    def _session(doc: dict | None) -> SecretSantaSession | None:
         if not doc:
             return None
         doc["context_id"] = doc.pop("_id")
         return SecretSantaSession(**doc)
 
     @translates_db_errors
-    async def save_session(self, session: SecretSantaSession) -> None:
+    async def get_session(self, context_id: str) -> SecretSantaSession | None:
+        sessions_col, _, _ = self._collections(context_id)
+        return self._session(await sessions_col.find_one({"_id": context_id}))
+
+    @translates_db_errors
+    async def create_session(self, session: SecretSantaSession) -> None:
+        """Store a new session, replacing the context's previous one whole.
+
+        Only for ``/secretsanta create``. Joins and leaves change the stored
+        document in place (:meth:`add_participant`, :meth:`remove_participant`):
+        rewriting the whole session from a copy read earlier lost a concurrent
+        join, and could set ``is_drawn`` back to false after a draw.
+        """
         sessions_col, _, _ = self._collections(session.context_id)
         data = asdict(session)
         data["_id"] = data.pop("context_id")
-        await sessions_col.update_one({"_id": data["_id"]}, {"$set": data}, upsert=True)
+        await sessions_col.replace_one({"_id": data["_id"]}, data, upsert=True)
         logger.info(f"Session saved for {session.context_id}")
+
+    @translates_db_errors
+    async def add_participant(self, context_id: str, user_id: int) -> SecretSantaSession | None:
+        """Add *user_id* to the session while it isn't drawn; the updated session.
+
+        ``None`` when nothing changed: the session is gone, drawn, or already
+        counts them (the caller re-reads it to say which).
+        """
+        sessions_col, _, _ = self._collections(context_id)
+        doc = await sessions_col.find_one_and_update(
+            {"_id": context_id, "is_drawn": {"$ne": True}, "participants": {"$ne": user_id}},
+            {"$push": {"participants": user_id}},
+            return_document=ReturnDocument.AFTER,
+        )
+        return self._session(doc)
+
+    @translates_db_errors
+    async def remove_participant(self, context_id: str, user_id: int) -> SecretSantaSession | None:
+        """Take *user_id* out of the session while it isn't drawn; the updated session.
+
+        ``None`` when nothing changed (gone, drawn, or not a participant).
+        """
+        sessions_col, _, _ = self._collections(context_id)
+        doc = await sessions_col.find_one_and_update(
+            {"_id": context_id, "is_drawn": {"$ne": True}, "participants": user_id},
+            {"$pull": {"participants": user_id}},
+            return_document=ReturnDocument.AFTER,
+        )
+        return self._session(doc)
 
     @translates_db_errors
     async def claim_draw(self, context_id: str) -> bool:

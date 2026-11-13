@@ -150,7 +150,8 @@ class ConfigStore:
         """Atomically persist *data* and notify subscribers."""
         with _write_lock:
             _atomic_write(data)
-        self._update_and_notify(data)
+            self._set_cache(data)
+        self._notify(data)
 
     def mutate(self, mutator: Callable[[dict[str, Any]], None]) -> dict[str, Any]:
         """Atomically read-modify-write the config under the write lock.
@@ -174,23 +175,29 @@ class ConfigStore:
                 )
             mutator(data)
             _atomic_write(data)
-        self._update_and_notify(data)
+            self._set_cache(data)
+        self._notify(data)
         return data
 
     def reload(self) -> dict[str, Any]:
         """Re-read ``config/config.json`` from disk and notify subscribers."""
-        data = _load_config_file()
-        self._update_and_notify(data)
+        with _write_lock:
+            data = _load_config_file()
+            self._set_cache(data)
+        self._notify(data)
         return data
 
-    def _update_and_notify(self, data: dict[str, Any]) -> None:
-        """Update the cache and fire subscribers.
+    def _set_cache(self, data: dict[str, Any]) -> None:
+        """Make *data* what readers get. Called while holding ``_write_lock``.
 
-        Internal — called after the file was written (or read) under the lock.
+        Under the same lock as the write it mirrors, so the cache follows the
+        disk in write order: set after the lock was released, two writes from
+        two threads (a dashboard save, ``/twitch-planning-setup`` on the bot
+        loop) could leave the cache on the older one until the next write.
+        Subscribers are notified after the lock is released.
         """
         with self._state_lock:
             self._data = data
-        self._notify(data)
 
     # --- Subscribers --------------------------------------------------
 
