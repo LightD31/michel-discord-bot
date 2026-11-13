@@ -66,6 +66,9 @@ def mixin(votes_module):
         async def save_reminders(self, server):
             saved.append(dict(server.reminders))
 
+        async def ensure_state(self, server):
+            return None
+
     ext = Ext()
     ext.saved = saved
     return ext

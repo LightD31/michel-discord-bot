@@ -87,6 +87,7 @@ class VotesMixin:
 
     async def _randomvote_for_server(self, server: ServerData):
         logger.info("Tache randomvote lancée pour le serveur %s", server.guild_id)
+        await self.ensure_state(server)
         message_id = server.vote_infos.get("message_id")
         track_id = server.vote_infos.get("track_id")
         if not message_id or not track_id:
@@ -341,6 +342,7 @@ class VotesMixin:
         if ctx.custom_id not in ["conserver", "supprimer", "menfou", "annuler"]:
             return
         server = self.get_server(ctx.guild_id)
+        await self.ensure_state(server)
         user_id = str(ctx.user.id)
         if await vote_cooldown.is_on_cooldown(user_id):
             await send_error(ctx, "Tu ne peux voter que toutes les 5 secondes.")
@@ -405,6 +407,7 @@ class VotesMixin:
     async def setreminder(self, ctx: SlashContext, heure, minute):
         """Schedule a recurring daily DM nudging the user to vote."""
         server = self.get_server(ctx.guild_id)
+        await self.ensure_state(server)
         if str(ctx.channel_id) == str(server.channel_id):
             logger.info("%s a ajouté un rappel à %s:%s", ctx.user.display_name, heure, minute)
             today = clock.local_now().date()
@@ -438,6 +441,7 @@ class VotesMixin:
 
     async def _reminder_check_for_server(self, server: ServerData):
         logger.debug("reminder_check lancé pour le serveur %s", server.guild_id)
+        await self.ensure_state(server)
         current_time = clock.now()
         reminders_to_remove = []
         try:
@@ -486,6 +490,7 @@ class VotesMixin:
     )
     async def deletereminder(self, ctx: SlashContext):
         server = self.get_server(ctx.guild_id)
+        await self.ensure_state(server)
         user_id = ctx.user.id
         reminders_list = sorted(
             remind_time for remind_time, user_ids in server.reminders.items() if user_id in user_ids

@@ -37,6 +37,7 @@ from interactions import (
     slash_option,
 )
 from interactions.api.events import MessageReactionAdd, MessageReactionRemove
+from interactions.client.errors import Forbidden, NotFound
 
 from features.polls import (
     DEFAULT_POLL_EMOJIS,
@@ -55,6 +56,7 @@ from src.core import logging as logutil
 from src.core.config import ModuleConfig
 from src.core.debounce import Coalescer
 from src.core.logging import log_failure
+from src.core.tasks import spawn
 from src.discord_ext.autocomplete import MAX_CHOICES, matching_choices
 from src.discord_ext.channels import fetch_guild_channel
 from src.discord_ext.embeds import Colors, format_discord_timestamp
@@ -121,11 +123,25 @@ async def _add_poll_reactions(message, options: list[str], use_default: bool = F
         await message.add_reaction(emojis[i])
 
 
+# How many sweeps in a row may fail to read a due poll's message (Discord
+# 5xx, timeout) before it is closed without its results: 10 minutes at one
+# sweep every 30 s.
+MAX_CLOSE_FAILURES = 20
+
+
+class _Retry:
+    """The poll's message couldn't be read this sweep: try again at the next one."""
+
+
+RETRY = _Retry()
+
+
 class PollsExtension(Extension, PollButtonsMixin):
     MODULE_KEYS = ("moduleUtils",)
 
     def __init__(self, bot: Client):
         self.bot = bot
+        self._close_failures: dict[str, int] = {}  # poll id → failed sweeps in a row
         # A burst of votes on a reaction poll re-reads its voters once.
         self._refreshes = Coalescer(REFRESH_DELAY_SECONDS, name="poll-refresh", log=logger)
 
@@ -139,7 +155,14 @@ class PollsExtension(Extension, PollButtonsMixin):
                 await self._poll_repo(guild_id).ensure_indexes()
             except Exception as e:
                 log_failure(logger, "Could not init poll indexes for %s: %s", guild_id, e)
-        self.check_closing_polls.start()
+        if not self.check_closing_polls.running:
+            self.check_closing_polls.start()
+
+    async def async_drop(self) -> None:
+        """Unload: cancel the in-memory close timers, which a reload would orphan."""
+        for task in list(_reaction_close_tasks.values()):
+            task.cancel()
+        _reaction_close_tasks.clear()
 
     @slash_command(
         name="poll",
@@ -260,8 +283,8 @@ class PollsExtension(Extension, PollButtonsMixin):
             finally:
                 _reaction_close_tasks.pop((str(guild_id), str(message.id)), None)
 
-        task = asyncio.create_task(_close())
-        _reaction_close_tasks[(str(guild_id), str(message.id))] = task
+        key = (str(guild_id), str(message.id))
+        _reaction_close_tasks[key] = spawn(_close(), name=f"poll-close:{key[1]}", log=logger)
 
     @slash_command(
         name="poll-anonyme",
@@ -402,17 +425,55 @@ class PollsExtension(Extension, PollButtonsMixin):
             for poll in due:
                 if poll.id is None:
                     continue
-                if poll.mode == "reaction":
-                    await self._close_reaction_poll(gid, poll)
-                else:
-                    await self._close_button_poll(gid, poll)
+                try:  # one poll failing to close doesn't hold back the others
+                    if poll.mode == "reaction":
+                        await self._close_reaction_poll(gid, poll)
+                    else:
+                        await self._close_button_poll(gid, poll)
+                except Exception as e:
+                    log_failure(logger, "Could not close poll %s: %s", poll.id, e)
 
-    async def _close_reaction_poll(self, guild_id: str, poll: Poll) -> None:
+    async def _fetch_due_poll(self, poll: Poll):
+        """The message of a poll due to close, ``None`` when it's gone, or :data:`RETRY`.
+
+        Only a deleted message or channel (or one the bot may no longer read)
+        closes the poll without its results. Discord not answering (5xx, a
+        timeout) used to do the same; now the poll stays due and the next sweep
+        tries again, up to :data:`MAX_CLOSE_FAILURES` times, as giveaways do.
+        """
+        key = str(poll.id)
         try:
             channel = await self.bot.fetch_channel(int(poll.channel_id))
-            message = await channel.fetch_message(int(poll.message_id))
+            message = None
+            if channel is not None and hasattr(channel, "fetch_message"):
+                message = await channel.fetch_message(int(poll.message_id))
+        except (NotFound, Forbidden) as e:
+            message = None
+            logger.warning("Poll %s can't be read any more: %s", poll.id, e)
         except Exception as e:
-            logger.warning("Could not fetch poll %s in channel %s: %s", poll.id, poll.channel_id, e)
+            failures = self._close_failures.get(key, 0) + 1
+            if failures < MAX_CLOSE_FAILURES:
+                self._close_failures[key] = failures
+                logger.warning("Could not read poll %s, retrying later: %s", poll.id, e)
+                return RETRY
+            log_failure(
+                logger,
+                "Poll %s closed without its results: Discord didn't answer %d times (%s)",
+                poll.id,
+                failures,
+                e,
+            )
+            message = None
+        self._close_failures.pop(key, None)
+        if message is None:
+            logger.warning("Poll %s is gone from channel %s, closing it", poll.id, poll.channel_id)
+        return message
+
+    async def _close_reaction_poll(self, guild_id: str, poll: Poll) -> None:
+        message = await self._fetch_due_poll(poll)
+        if message is RETRY:
+            return
+        if message is None:
             await self._poll_repo(guild_id).mark_closed(poll.id)
             return
         emojis = poll.emojis or (
@@ -425,11 +486,10 @@ class PollsExtension(Extension, PollButtonsMixin):
         await self._poll_repo(guild_id).mark_closed(poll.id)
 
     async def _close_button_poll(self, guild_id: str, poll: Poll) -> None:
-        try:
-            channel = await self.bot.fetch_channel(int(poll.channel_id))
-            message = await channel.fetch_message(int(poll.message_id))
-        except Exception as e:
-            logger.warning("Could not fetch poll %s in channel %s: %s", poll.id, poll.channel_id, e)
+        message = await self._fetch_due_poll(poll)
+        if message is RETRY:
+            return
+        if message is None:
             await self._poll_repo(guild_id).mark_closed(poll.id)
             return
 

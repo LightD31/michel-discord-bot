@@ -7,7 +7,6 @@ import pytest
 from features.birthday import BirthdayEntry, BirthdayRepository
 from features.reminders import Reminder, ReminderRepository
 from features.reminders.repository import COLLECTION as REMINDERS
-from features.reminders.repository import TTL_GRACE_SECONDS
 
 pytestmark = pytest.mark.mongo
 
@@ -65,12 +64,18 @@ async def test_a_reminder_is_rescheduled_then_deleted(mongo):
     assert await repo.list_for_user("1") == []
 
 
-async def test_fired_reminders_expire_through_a_ttl_index(mongo):
+async def test_late_reminders_are_never_expired_by_mongodb(mongo):
+    """A TTL on remind_time deleted every reminder still due after a day of downtime."""
     repo = ReminderRepository(mongo.guild_id)
     await repo.ensure_indexes()
     indexes = await mongo.guild_collection(REMINDERS).index_information()
-    assert indexes["remind_time_ttl"]["expireAfterSeconds"] == TTL_GRACE_SECONDS
+    assert "remind_time_ttl" not in indexes
+    assert not any("expireAfterSeconds" in index for index in indexes.values())
+    assert indexes["remind_time_idx"]["key"] == [("remind_time", 1)]
     await repo.ensure_indexes()  # idempotent on restart
+
+    rid = await repo.add(reminder(minutes=-60 * 24 * 3, frequency="daily"))
+    assert [r.id for r in await repo.list_due(NOW)] == [rid]  # three days late, still there
 
 
 def birthday(user=1, day="14/07/1990", **kw) -> BirthdayEntry:
@@ -108,3 +113,11 @@ async def test_a_birthday_is_deleted(mongo):
     await repo.upsert(birthday())
     assert await repo.delete(1) == 1
     assert await repo.delete(1) == 0
+
+
+async def test_a_birthday_is_marked_celebrated_once(mongo):
+    repo = BirthdayRepository(mongo.guild_id)
+    await repo.upsert(birthday())
+    assert await repo.mark_celebrated(1) is True
+    assert await repo.mark_celebrated(1) is False
+    assert (await repo.find_one(1)).isBirthday

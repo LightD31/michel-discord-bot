@@ -2,7 +2,7 @@
 
 import pytest
 
-from features.rss.repository import MAX_SEEN_IDS, RssRepository
+from features.rss.repository import MAX_SEEN_IDS, RssRepository, seen_capacity
 
 pytestmark = pytest.mark.mongo
 
@@ -44,6 +44,18 @@ async def test_seen_ids_stay_capped_newest_first(mongo):
     seen = (await repo.get("news")).seen_ids
     assert len(seen) == MAX_SEEN_IDS
     assert seen[:3] == ["new2", "new1", "old0"]
+
+
+async def test_a_long_feed_keeps_twice_its_length(mongo):
+    repo = RssRepository(mongo.guild_id)
+    await repo.initialize("pod", [f"ep{n}" for n in range(300)])
+    assert len((await repo.get("pod")).seen_ids) == 300
+
+    await repo.record_poll("pod", ["ep300"], feed_size=300)
+
+    seen = (await repo.get("pod")).seen_ids
+    assert len(seen) == 301
+    assert seen_capacity(300) == 600
 
 
 async def test_every_state_of_the_guild_is_read_at_once(mongo):

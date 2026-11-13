@@ -35,7 +35,6 @@ def create_leaderboard_embed(guild_name: str, is_continuation: bool = False) -> 
 
 class LeaderboardMixin:
     bot: Client
-    _db_connected: bool
     _user_cache: TTLCache
     _leaderboard_paginators: dict[str, CustomPaginator]
 
@@ -83,15 +82,6 @@ class LeaderboardMixin:
         return name, value
 
     async def _build_leaderboard_embeds(self, guild: Guild) -> list[Embed]:
-        if not self._db_connected:
-            return [
-                Embed(
-                    title="Erreur",
-                    description="La base de données n'est pas disponible.",
-                    color=Colors.ERROR,
-                )
-            ]
-
         try:
             rankings = await self._repo(str(guild.id)).list_all_sorted_by_xp()
         except DatabaseError as e:

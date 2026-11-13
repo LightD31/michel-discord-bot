@@ -53,7 +53,9 @@ def setup(monkeypatch, store_config):
     author = guild.add_member(FakeMember(3, "alice"))
     repo = MemoryPolls()
     ctx = FakeCtx(author, channel)
-    ext = bare_extension(PollsExtension, ctx.bot, _poll_repo=lambda guild_id: repo)
+    ext = bare_extension(
+        PollsExtension, ctx.bot, _poll_repo=lambda guild_id: repo, _close_failures={}
+    )
     return ext, ctx, repo, guild, channel
 
 

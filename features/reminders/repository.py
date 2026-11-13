@@ -1,4 +1,4 @@
-"""MongoDB I/O for the reminder feature — one document per reminder, TTL-expired."""
+"""MongoDB I/O for the reminder feature — one document per reminder."""
 
 from datetime import datetime
 
@@ -12,10 +12,11 @@ from src.core.logging import init_logger, log_failure
 logger = init_logger(__name__)
 
 COLLECTION = "task_reminders"
-# Grace period after a reminder fires before Mongo's TTL monitor deletes it.
-# The scheduled check task normally deletes fired reminders within a minute, so
-# this is a safety net for docs the task never processed (e.g. bot was offline).
-TTL_GRACE_SECONDS = 86_400
+# No TTL on this collection: a reminder leaves it when it is claimed (a one-off
+# one is deleted, a recurring one moves to its next time, see ``claim_due``).
+# A TTL on ``remind_time`` deleted the very reminders it was meant to keep:
+# every one still due after a day with the bot down (or the module off for the
+# guild), recurring ones included, instead of sending them late and moving on.
 
 
 class ReminderRepository:
@@ -30,9 +31,7 @@ class ReminderRepository:
     async def ensure_indexes(self) -> None:
         try:
             await self._col().create_index(
-                [("remind_time", pymongo.ASCENDING)],
-                expireAfterSeconds=TTL_GRACE_SECONDS,
-                name="remind_time_ttl",
+                [("remind_time", pymongo.ASCENDING)], name="remind_time_idx"
             )
             await self._col().create_index([("user_id", pymongo.ASCENDING)], name="user_id_idx")
         except Exception as e:

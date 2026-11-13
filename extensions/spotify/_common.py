@@ -272,6 +272,8 @@ class ServerData:
 
         self.repo = SpotifyRepository(guild_id)
 
+        # Loaded from MongoDB on first use (``SpotifyExtension.ensure_state``).
+        self.loaded = False
         self.vote_infos = {}
         self.snapshot = {}
         self.reminders = {}

@@ -270,7 +270,8 @@ class GiveawayExtension(Extension):
                 await self._repo(gid).ensure_indexes()
             except Exception as e:
                 log_failure(logger, "Could not init giveaway indexes for %s: %s", gid, e)
-        self.check_giveaways.start()
+        if not self.check_giveaways.running:
+            self.check_giveaways.start()
         logger.info("Giveaway extension ready (%d guild(s))", len(GIVEAWAY.guild_ids()))
 
     # ------------------------------------------------------------------

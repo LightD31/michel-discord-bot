@@ -79,7 +79,7 @@ async def test_satisfactory_refreshes_each_guild_from_its_own_server(store_confi
     async def fake_edit(message, **kwargs):
         edits.append((message, kwargs["embed"]))
 
-    monkeypatch.setattr(sat, "API", FakeAPI)
+    monkeypatch.setattr(sat, "_build_api", FakeAPI)
     monkeypatch.setattr(sat, "edit_message_if_changed", fake_edit)
     ext = object.__new__(sat.Satisfactory)
     ext.messages = FakeMessages()

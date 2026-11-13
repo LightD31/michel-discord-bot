@@ -253,6 +253,9 @@ class FakeGuild:
     def get_channel(self, cid: Any) -> FakeChannel | None:
         return self.channels.get(int(cid))
 
+    async def fetch_channel(self, cid: Any) -> FakeChannel | None:
+        return self.get_channel(cid)
+
     async def ban(self, user: Any, **kwargs: Any) -> None:
         self.bans.append((user, kwargs))
 

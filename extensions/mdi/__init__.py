@@ -53,8 +53,10 @@ class MdiExtension(ApiMixin, EmbedsMixin, NotificationsMixin, Extension):
             log_failure(logger, "MDI: initialisation failed: %s", e)
             return
         try:
-            self.schedule.start()
-            self.live_update.start()
+            if not self.schedule.running:
+                self.schedule.start()
+            if not self.live_update.running:
+                self.live_update.start()
         except Exception as e:
             log_failure(logger, "MDI: failed to start tasks: %s", e)
 
