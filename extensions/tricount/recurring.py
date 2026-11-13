@@ -65,7 +65,8 @@ class RecurringMixin:
                 await TricountRepository(guild_id).ensure_recurring_indexes()
             except Exception as e:
                 logger.debug("Could not init recurring indexes for %s: %s", guild_id, e)
-        self.recurring_tick.start()
+        if not self.recurring_tick.running:
+            self.recurring_tick.start()
 
     @slash_command(
         name="depense-recurrente",

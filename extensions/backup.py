@@ -87,7 +87,8 @@ class BackupExtension(Extension):
     @listen()
     async def on_startup(self) -> None:
         """Start the hourly check task once the bot is ready."""
-        self.daily_backup.start()
+        if not self.daily_backup.running:
+            self.daily_backup.start()
         if self.backup_enabled:
             logger.info(
                 "Backup extension loaded – daily backup scheduled at %02d:00",

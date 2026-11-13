@@ -5,7 +5,9 @@ from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
 import pytest
+from discord_fakes import discord_error, not_found
 from interactions import Embed
+from interactions.client.errors import HTTPException
 
 import extensions.polls as polls_module
 from extensions.polls import PollsExtension
@@ -61,6 +63,7 @@ def make_extension(repo, bot=None):
     ext = object.__new__(PollsExtension)  # skip interactions' Extension wiring
     ext.bot = bot
     ext._poll_repo = lambda guild_id: repo
+    ext._close_failures = {}
     return ext
 
 
@@ -162,22 +165,74 @@ def test_the_sweep_closes_a_due_reaction_poll(enabled):
     assert repo.closed == ["b" * 24]
 
 
+def due_poll(mode="reaction"):
+    return Poll(
+        _id="c" * 24,
+        channel_id="20",
+        message_id="10",
+        author_id="7",
+        question="q",
+        options=["a"],
+        mode=mode,
+    )
+
+
 def test_a_vanished_poll_is_marked_closed(enabled):
     async def fetch_channel(channel_id):
-        raise RuntimeError("Unknown Channel")
+        return None  # interactions.py answers a deleted channel with None
 
     repo = FakeRepo()
-    repo.due = [
-        Poll(
-            _id="c" * 24,
-            channel_id="20",
-            message_id="10",
-            author_id="7",
-            question="q",
-            options=["a"],
-            mode="reaction",
-        )
-    ]
+    repo.due = [due_poll()]
     ext = make_extension(repo, bot=SimpleNamespace(fetch_channel=fetch_channel))
     asyncio.run(PollsExtension.check_closing_polls.callback(ext))
     assert repo.closed == ["c" * 24] and enabled == []
+
+
+@pytest.mark.parametrize("mode", ["reaction", "anonymous"])
+def test_a_deleted_message_closes_the_poll(enabled, mode):
+    async def fetch_message(message_id):
+        raise not_found()
+
+    async def fetch_channel(channel_id):
+        return SimpleNamespace(fetch_message=fetch_message)
+
+    repo = FakeRepo()
+    repo.due = [due_poll(mode)]
+    ext = make_extension(repo, bot=SimpleNamespace(fetch_channel=fetch_channel))
+    asyncio.run(PollsExtension.check_closing_polls.callback(ext))
+    assert repo.closed == ["c" * 24]
+
+
+@pytest.mark.parametrize("mode", ["reaction", "anonymous"])
+def test_discord_not_answering_keeps_the_poll_open_for_a_while(enabled, mode, monkeypatch):
+    monkeypatch.setattr(polls_module, "MAX_CLOSE_FAILURES", 3)
+
+    async def fetch_channel(channel_id):
+        raise discord_error(HTTPException, 503)
+
+    repo = FakeRepo()
+    repo.due = [due_poll(mode)]
+    ext = make_extension(repo, bot=SimpleNamespace(fetch_channel=fetch_channel))
+    for _ in range(2):
+        asyncio.run(PollsExtension.check_closing_polls.callback(ext))
+    assert repo.closed == []  # still due: the next sweep tries again
+
+    asyncio.run(PollsExtension.check_closing_polls.callback(ext))
+    assert repo.closed == ["c" * 24]  # gave up after MAX_CLOSE_FAILURES
+    assert ext._close_failures == {}
+
+
+def test_an_unload_cancels_the_in_memory_timers(enabled):
+    async def main():
+        ext = make_extension(FakeRepo())
+        await ext._record_reaction_poll(
+            ctx(999), FakeMessage(), 3600, "Pizza ?", ["Oui", "Non"], POLL_EMOJIS
+        )
+        (task,) = polls_module._reaction_close_tasks.values()
+        await ext.async_drop()
+        await asyncio.sleep(0)
+        return task
+
+    task = asyncio.run(main())
+    assert task.cancelled()
+    assert polls_module._reaction_close_tasks == {}

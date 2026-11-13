@@ -25,7 +25,6 @@ from ._common import XP, logger
 class LevelingMixin:
     # Attributes assembled by XpExtension.__init__
     bot: Client
-    _db_connected: bool
     _rank_cache: TTLCache
     _xp_collections: set[str]
 
@@ -36,9 +35,6 @@ class LevelingMixin:
     async def on_message(self, event: MessageCreate):
         """Give XP to a user when they send a message."""
         message = event.message
-
-        if not self._db_connected:
-            return
 
         if not self._is_valid_xp_message(message):
             return

@@ -50,6 +50,14 @@ class BirthdayRepository:
         await self._col().update_one({"user": user_id}, {"$set": fields})
 
     @translates_db_errors
+    async def mark_celebrated(self, user_id: int) -> bool:
+        """Mark today's birthday celebrated; ``False`` when it already was."""
+        result = await self._col().update_one(
+            {"user": user_id, "isBirthday": {"$ne": True}}, {"$set": {"isBirthday": True}}
+        )
+        return bool(result.modified_count)
+
+    @translates_db_errors
     async def delete(self, user_id: int) -> int:
         result = await self._col().delete_one({"user": user_id})
         return result.deleted_count

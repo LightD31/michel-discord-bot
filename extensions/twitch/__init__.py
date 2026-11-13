@@ -215,7 +215,8 @@ class TwitchExtension(
             # EventSub, and a half-hydrated registry still beats never starting.
             self._hydrated.set()
 
-        self.check_new_emotes.start()
+        if not self.check_new_emotes.running:
+            self.check_new_emotes.start()
         logger.info("Starting TwitchExtension")
 
     async def _hydrate_streamers(self) -> None:

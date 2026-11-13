@@ -162,7 +162,8 @@ class BirthdayExtension(Extension):
                 await self._repo(guild_id).ensure_indexes()
             except Exception as e:
                 log_failure(logger, "Failed to create indexes for guild %s: %s", guild_id, e)
-        self.anniversaire_check.start()
+        if not self.anniversaire_check.running:
+            self.anniversaire_check.start()
 
     @slash_command(
         name="anniversaire",
@@ -401,38 +402,44 @@ class BirthdayExtension(Extension):
     async def _handle_birthday_celebration(
         self, entry: BirthdayEntry, guild_id: int, now_tz: datetime
     ) -> None:
+        """Wish *entry* a happy birthday, once.
+
+        The day is marked celebrated only once the message is sent (or can
+        never be: the server, the member or the channel is gone). It used to be
+        marked first, so a Discord outage at that hour lost the message for
+        good; now the error reaches the hourly loop and the next run retries.
+        """
         if entry.isBirthday:
             return
         repo = self._repo(guild_id)
-        await repo.update_fields(entry.user, {"isBirthday": True})
-        try:
-            server = await self.bot.fetch_guild(guild_id)
-            if not server:
-                logger.warning("Could not fetch server %s", guild_id)
-                return
-            member = await server.fetch_member(entry.user)
-            if not member:
-                logger.warning("Could not fetch member %s in server %s", entry.user, server.name)
-                return
-            srv_cfg = self._server_config(guild_id)
-            channel_id = srv_cfg.get("birthdayChannelId")
-            channel = (
-                await server.fetch_channel(channel_id) if channel_id else server.system_channel
-            )
-            if not channel:
-                logger.warning("No valid channel for birthday message in server %s", server.name)
-                return
-            age = age_on(entry.date, now_tz.date())
-            await self._send_birthday_message(channel, member, age, guild_id)
-            await self._toggle_birthday_role(server, member, guild_id, add=True)
-            logger.info(
-                "Birthday celebration completed for %s on server %s (%d years old)",
-                member.display_name,
-                server.name,
-                age,
-            )
-        except Exception as e:
-            log_failure(logger, "Error handling birthday celebration: %s", e)
+        server = await self.bot.fetch_guild(guild_id)
+        if not server:
+            logger.warning("Could not fetch server %s", guild_id)
+            await repo.mark_celebrated(entry.user)
+            return
+        member = await server.fetch_member(entry.user)
+        if not member:
+            logger.warning("Could not fetch member %s in server %s", entry.user, server.name)
+            await repo.mark_celebrated(entry.user)
+            return
+        srv_cfg = self._server_config(guild_id)
+        channel_id = srv_cfg.get("birthdayChannelId")
+        channel = await server.fetch_channel(channel_id) if channel_id else server.system_channel
+        if not channel:
+            logger.warning("No valid channel for birthday message in server %s", server.name)
+            await repo.mark_celebrated(entry.user)
+            return
+        age = age_on(entry.date, now_tz.date())
+        await self._send_birthday_message(channel, member, age, guild_id)
+        if not await repo.mark_celebrated(entry.user):
+            return  # another run celebrated it meanwhile
+        await self._toggle_birthday_role(server, member, guild_id, add=True)
+        logger.info(
+            "Birthday celebration completed for %s on server %s (%d years old)",
+            member.display_name,
+            server.name,
+            age,
+        )
 
     async def _handle_birthday_end(self, entry: BirthdayEntry, guild_id: int) -> None:
         if not entry.isBirthday:
@@ -451,17 +458,15 @@ class BirthdayExtension(Extension):
             log_failure(logger, "Error handling birthday end: %s", e)
 
     async def _send_birthday_message(self, channel, member, age: int, server_id: int) -> None:
-        try:
-            srv_cfg = self._server_config(server_id)
-            text = pick_weighted_message(
-                srv_cfg,
-                "birthdayMessageList",
-                "Joyeux anniversaire {mention} ! 🎉",
-                mention=member.mention,
-                age=age,
-            )
-            # The admins' template filled with a mention and an age.
-            await channel.send(text, allowed_mentions=everyone_if_written(text))
-            logger.debug("Birthday message sent for %s", member.display_name)
-        except Exception as e:
-            log_failure(logger, "Error sending birthday message: %s", e)
+        """Post the wish. Raises when Discord refuses it, so the day isn't marked."""
+        srv_cfg = self._server_config(server_id)
+        text = pick_weighted_message(
+            srv_cfg,
+            "birthdayMessageList",
+            "Joyeux anniversaire {mention} ! 🎉",
+            mention=member.mention,
+            age=age,
+        )
+        # The admins' template filled with a mention and an age.
+        await channel.send(text, allowed_mentions=everyone_if_written(text))
+        logger.debug("Birthday message sent for %s", member.display_name)

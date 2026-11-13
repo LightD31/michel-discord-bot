@@ -253,8 +253,8 @@ async def test_start_eventsub_subscribes_a_shared_streamer_once(monkeypatch):
         streamer.user_id = None
 
     socket = FakeEventSub()
-    socket.start = lambda: None
-    monkeypatch.setattr(eventsub_module, "EventSubWebsocket", lambda *a, **kw: socket)
+    socket.start_async = _noop
+    monkeypatch.setattr(eventsub_module, "BoundedEventSubWebsocket", lambda *a, **kw: socket)
     monkeypatch.setattr(eventsub_module, "Twitch", _fake_twitch_factory())
     monkeypatch.setattr(eventsub_module, "UserAuthenticationStorageHelper", _FakeAuthHelper)
     ext.update = _noop

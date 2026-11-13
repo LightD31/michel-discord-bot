@@ -5,7 +5,6 @@ import contextlib
 import os
 
 from interactions import IntervalTrigger, OrTrigger, Task, TimeTrigger
-from twitchAPI.eventsub.websocket import EventSubWebsocket
 from twitchAPI.helper import first
 from twitchAPI.oauth import UserAuthenticationStorageHelper
 from twitchAPI.object.eventsub import (
@@ -19,6 +18,7 @@ from twitchAPI.type import AuthScope, EventSubSubscriptionConflict
 from src.core import logging as logutil
 from src.core.logging import log_failure
 from src.core.tasks import spawn
+from src.integrations.twitch_eventsub import BoundedEventSubWebsocket
 
 from ._common import ensure_utc
 
@@ -68,9 +68,9 @@ class EventSubMixin:
         """Best-effort teardown of the current websocket and Twitch client."""
         if self.eventsub is not None:
             try:
-                await self.eventsub.stop()
+                await self.eventsub.stop_async()
             except Exception as e:
-                logger.debug("EventSub was not running: %s", e)
+                logger.debug("Error stopping EventSub: %s", e)
             self.eventsub = None
         if self.twitch is not None:
             try:
@@ -111,13 +111,15 @@ class EventSubMixin:
         )
         await helper.bind()
 
-        self.eventsub = EventSubWebsocket(
+        self.eventsub = BoundedEventSubWebsocket(
             self.twitch,
             callback_loop=asyncio.get_running_loop(),
             revocation_handler=self.on_revocation,
         )
         logger.info("Starting EventSub")
-        self.eventsub.start()
+        # Awaited with a deadline: the library's start() spins on time.sleep
+        # until Twitch answers, which froze the whole bot during an outage.
+        await self.eventsub.start_async()
 
         # Resolve every configured login, but subscribe once per broadcaster:
         # the same streamer can be followed by several guilds and Twitch

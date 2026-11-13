@@ -14,6 +14,7 @@ from interactions.client.errors import BadRequest
 import extensions.rss as rss_ext
 from extensions.rss import RssExtension
 from features.rss.models import RssEntry, RssFeedState
+from features.rss.repository import seen_capacity
 from features.rss.scheduling import BACKOFF_CAP, is_due, next_poll_at, poll_delay
 from src.core.errors import DatabaseError, IntegrationError
 
@@ -74,9 +75,16 @@ class FakeRepo:
 
     async def initialize(self, feed_id, seen_ids):
         FakeRepo.calls.append(("initialize", self.guild_id, feed_id, list(seen_ids)))
+        kept = list(seen_ids)[: seen_capacity(len(seen_ids))]
+        FakeRepo.docs[(self.guild_id, feed_id)] = RssFeedState(
+            _id=feed_id, initialized=True, seen_ids=kept
+        )
 
-    async def record_poll(self, feed_id, new_ids):
+    async def record_poll(self, feed_id, new_ids, *, feed_size=0):
         FakeRepo.calls.append(("poll", self.guild_id, feed_id, list(new_ids)))
+        state = FakeRepo.docs.get((self.guild_id, feed_id))
+        if state is not None and new_ids:
+            state.seen_ids = (list(new_ids) + state.seen_ids)[: seen_capacity(feed_size)]
 
     async def record_error(self, feed_id, message):
         FakeRepo.calls.append(("error", self.guild_id, feed_id, message))
@@ -336,3 +344,23 @@ async def test_an_entry_discord_refuses_is_not_retried_but_an_outage_is(cycle):
 
     # Titre 2 is marked seen (it can only fail again), Titre 3 stays unseen for the next poll.
     assert FakeRepo.calls == [("poll", "1", "news", ["e2"])]
+
+
+@pytest.mark.parametrize("newest_first", [True, False])
+async def test_a_feed_longer_than_the_seen_set_never_reposts(cycle, newest_first):
+    """A 300-entry feed posted 5 old entries every cycle, without end."""
+    url = "https://example.com/podcast"
+    cycle.configure({"1": guild(("pod", url))})
+    episodes = [entry(n) for n in range(300, 0, -1)]
+    cycle.network.feeds[url] = episodes if newest_first else episodes[::-1]
+
+    for _ in range(4):  # the seeding poll, then three cycles
+        await cycle.run()
+    assert cycle.channel.sent == []
+
+    # One new episode, the oldest one gone: posted once, and only once.
+    episodes = [entry(301), *episodes[:-1]]
+    cycle.network.feeds[url] = episodes if newest_first else episodes[::-1]
+    for _ in range(3):
+        await cycle.run()
+    assert [m.split("[")[1].split("]")[0] for m in cycle.channel.sent] == ["Titre 301"]

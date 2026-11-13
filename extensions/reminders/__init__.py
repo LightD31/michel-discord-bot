@@ -97,7 +97,8 @@ class RemindersExtension(Extension):
     async def on_startup(self):
         for guild_id in UTILS.guild_ids():
             await self._reminder_repo(guild_id).ensure_indexes()
-        self.check_reminders.start()
+        if not self.check_reminders.running:
+            self.check_reminders.start()
 
     def _reminder_repo(self, guild_id: str | int) -> ReminderRepository:
         return ReminderRepository(str(guild_id))

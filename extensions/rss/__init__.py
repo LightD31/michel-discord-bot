@@ -380,7 +380,7 @@ class RssExtension(Extension):
         # so the channel reads chronologically.
         new_entries = [e for e in entries if e.entry_id not in seen][:MAX_NEW_PER_POLL]
         if not new_entries:
-            await repo.record_poll(job.feed_id, [])
+            await repo.record_poll(job.feed_id, [], feed_size=len(entries))
             return
         new_entries.reverse()
 
@@ -431,7 +431,7 @@ class RssExtension(Extension):
         # for another reason (no permission, Discord down) stays unseen and is
         # tried again at the next poll.
         posted_ids.reverse()
-        await repo.record_poll(job.feed_id, posted_ids)
+        await repo.record_poll(job.feed_id, posted_ids, feed_size=len(entries))
 
     # ------------------------------------------------------------------
     # Slash commands

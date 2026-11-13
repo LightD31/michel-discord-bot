@@ -35,7 +35,6 @@ class VoiceMixin:
     """Award XP per minute for active voice-channel presence."""
 
     bot: Client
-    _db_connected: bool
     _rank_cache: TTLCache
     _voice_sessions: dict[tuple[str, str], float]  # (guild_id, user_id) -> last-award ts
 
@@ -70,10 +69,33 @@ class VoiceMixin:
             self._voice_sessions[key] = time.time()
         # Channel switches (move) keep the session running.
 
+    def _resume_voice_sessions(self) -> int:
+        """Track the members already in a voice channel; returns how many.
+
+        Sessions start on join events, and the joins that happened before a
+        restart or a reload are gone: whoever was in voice then earned nothing
+        until they left and came back. Called from ``on_startup``.
+        """
+        now = time.time()
+        resumed = 0
+        for guild_id in XP.guild_ids():
+            if not XP.get(guild_id).get("voiceXpEnabled", False):
+                continue
+            guild = self.bot.get_guild(int(guild_id))
+            if guild is None:
+                continue
+            for state in guild.voice_states:
+                member = state.member
+                if state.channel is None or member is None or member.bot:
+                    continue
+                key = (str(guild_id), str(member.id))
+                if key not in self._voice_sessions:
+                    self._voice_sessions[key] = now
+                    resumed += 1
+        return resumed
+
     @Task.create(IntervalTrigger(seconds=VOICE_TICK_SECONDS))
     async def _voice_xp_tick(self):
-        if not getattr(self, "_db_connected", False):
-            return
         now = time.time()
         for key in list(self._voice_sessions.keys()):
             await self._tick_voice_session(key, now)

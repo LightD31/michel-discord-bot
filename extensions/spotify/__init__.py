@@ -40,16 +40,39 @@ class SpotifyExtension(Extension, PlaylistMixin, VotesMixin):
 
     @listen()
     async def on_startup(self):
+        # A guild whose state can't be read (MongoDB down) neither stops the
+        # other guilds nor the tasks, which used to never start: Startup fires
+        # once per process. Its state is loaded on first use instead.
         for server in SERVERS.values():
-            await self.load_voteinfos(server)
-            await self.load_snapshot(server)
-            await self.load_reminders(server)
-            await self.fix_spotify_attributions(server)
-        self.check_playlist_changes.start()
-        self.randomvote.start()
-        self.reminder_check.start()
-        self.check_for_end.start()
-        self.new_titles_playlist.start()
+            try:
+                await self.ensure_state(server)
+            except Exception as e:
+                log_failure(logger, "Spotify state of guild %s not loaded: %s", server.guild_id, e)
+        for task in (
+            self.check_playlist_changes,
+            self.randomvote,
+            self.reminder_check,
+            self.check_for_end,
+            self.new_titles_playlist,
+        ):
+            if not task.running:
+                task.start()
+
+    async def ensure_state(self, server: ServerData) -> None:
+        """Load *server*'s daily vote, playlist snapshot and reminders once.
+
+        Called before anything reads or rewrites them. Raises ``DatabaseError``
+        while MongoDB can't be read, so a task skips the guild for this run
+        rather than act on empty state (and, say, save an empty reminder list
+        over the stored one).
+        """
+        if server.loaded:
+            return
+        await self.load_voteinfos(server)
+        await self.load_snapshot(server)
+        await self.load_reminders(server)
+        server.loaded = True
+        await self.fix_spotify_attributions(server)
 
     async def fix_spotify_attributions(self, server: ServerData):
         """Credit tracks stored under a now-mapped Spotify id to its Discord member.
@@ -107,6 +130,7 @@ class SpotifyExtension(Extension, PlaylistMixin, VotesMixin):
         await server.repo.save_snapshot(server.snapshot)
 
     async def load_reminders(self, server: ServerData):
+        server.reminders = {}
         for doc in await server.repo.list_reminders():
             # Stored as text on the community's wall clock.
             wall = datetime.strptime(doc["_id"], "%Y-%m-%d %H:%M:%S")

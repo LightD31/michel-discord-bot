@@ -97,7 +97,8 @@ class YoutubeExtension(Extension):
 
     @listen()
     async def on_startup(self):
-        self.check_youtube.start()
+        if not self.check_youtube.running:
+            self.check_youtube.start()
         # await self.check_youtube()
 
     @Task.create(IntervalTrigger(minutes=5))

@@ -15,7 +15,6 @@ guild, collections ``xp`` and ``xp_events``).
 from interactions import Client, Extension, Task, TimeTrigger, listen
 
 from features.xp import RANK_CACHE_TTL, USER_CACHE_TTL, TTLCache, XpRepository
-from src.core.db import mongo_manager
 from src.core.logging import log_failure
 from src.discord_ext.paginator import CustomPaginator
 
@@ -33,7 +32,6 @@ class XpExtension(Extension, LevelingMixin, VoiceMixin, CommandsMixin, Leaderboa
 
     def __init__(self, bot: Client):
         self.bot: Client = bot
-        self._db_connected = True
         self._user_cache = TTLCache(ttl=USER_CACHE_TTL)
         self._rank_cache = TTLCache(ttl=RANK_CACHE_TTL)
         self._xp_collections: set[str] = set()  # guilds whose xp collection exists
@@ -56,15 +54,10 @@ class XpExtension(Extension, LevelingMixin, VoiceMixin, CommandsMixin, Leaderboa
 
     @listen()
     async def on_startup(self):
-        try:
-            connected = await mongo_manager.ping()
-            if not connected:
-                logger.error("MongoDB connection failed at startup, XP module disabled.")
-                self._db_connected = False
-        except Exception as e:
-            log_failure(logger, "MongoDB ping failed: %s", e)
-            self._db_connected = False
-
+        # No "database down" flag here: a ping that failed at startup used to
+        # switch XP off until the next restart. Every repository call raises
+        # DatabaseError on its own, which each handler already turns into a
+        # skipped grant or an error message, and recovers with MongoDB.
         for guild_id in XP.guild_ids():
             try:
                 await self._repo(guild_id).ensure_indexes()
@@ -72,10 +65,16 @@ class XpExtension(Extension, LevelingMixin, VoiceMixin, CommandsMixin, Leaderboa
             except Exception as e:
                 log_failure(logger, "Failed to create indexes for guild %s: %s", guild_id, e)
 
-        self._cache_cleanup_task.start()
-        self._voice_xp_tick.start()
+        resumed = self._resume_voice_sessions()
+        if resumed:
+            logger.info("Voice XP resumed for %d member(s) already in voice", resumed)
+        if not self._cache_cleanup_task.running:
+            self._cache_cleanup_task.start()
+        if not self._voice_xp_tick.running:
+            self._voice_xp_tick.start()
 
-        self.leaderboardpermanent.start()
+        if not self.leaderboardpermanent.running:
+            self.leaderboardpermanent.start()
         await self.leaderboardpermanent()
 
     @Task.create(TimeTrigger(minute=30, utc=False))

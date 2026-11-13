@@ -46,6 +46,18 @@ class MemoryXp:
         self.users[user_id]["lvl"] = level
 
 
+class IdleTask:
+    """A Task that starts and runs without doing anything."""
+
+    running = False
+
+    def start(self):
+        self.running = True
+
+    async def __call__(self):
+        return None
+
+
 @pytest.fixture
 def setup(monkeypatch, store_config):
     config = store_config(
@@ -73,7 +85,6 @@ def setup(monkeypatch, store_config):
     ext = bare_extension(
         XpExtension,
         SimpleNamespace(user=guild.me),
-        _db_connected=True,
         _rank_cache=TTLCache(ttl=60),
         _xp_collections=set(),
         _repo=lambda guild_id: repo,
@@ -180,3 +191,42 @@ async def test_a_plain_template_never_pings_everyone(setup):
     await say(ext, member, channel, START)
     (announce,) = channel.sent
     assert "everyone" not in announce.sent_with["allowed_mentions"].parse
+
+
+async def test_xp_works_after_a_startup_with_mongodb_down(setup):
+    """A failed ping at startup used to switch XP off until the next restart (B04)."""
+    ext, repo, member, channel, _ = setup
+
+    async def mongo_down():
+        from src.core.errors import DatabaseError
+
+        raise DatabaseError("mongo down")
+
+    repo.ensure_indexes = mongo_down
+    for task in ("_cache_cleanup_task", "_voice_xp_tick", "leaderboardpermanent"):
+        setattr(ext, task, IdleTask())
+    await XpExtension.on_startup.callback(ext)
+
+    await say(ext, member, channel, START)
+    assert repo.users["7"]["xp"] == 20
+
+
+async def test_members_already_in_voice_earn_after_a_restart(setup, store_config):
+    """Sessions only started on join events: whoever was in voice earned nothing (B14)."""
+    ext, repo, member, channel, config = setup
+    config["servers"]["1"]["moduleXp"]["voiceXpEnabled"] = True
+    store_config(config)
+    guild = member.guild
+    bot_member = guild.me
+    voice = SimpleNamespace(id=30)
+    guild.voice_states = [
+        SimpleNamespace(member=member, channel=voice),
+        SimpleNamespace(member=bot_member, channel=voice),
+        SimpleNamespace(member=None, channel=voice),
+    ]
+    ext.bot = SimpleNamespace(user=guild.me, get_guild=lambda gid: guild)
+    ext._voice_sessions = {("1", "8"): 123.0}
+
+    assert ext._resume_voice_sessions() == 1
+    assert set(ext._voice_sessions) == {("1", "7"), ("1", "8")}
+    assert ext._voice_sessions[("1", "8")] == 123.0  # a running session keeps its clock

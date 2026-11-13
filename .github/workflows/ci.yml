@@ -120,7 +120,7 @@ jobs:
       - name: Coverage floor of src and features
         # The total floor counts the extensions too; this keeps the
         # unit-testable layers at their own floor (78%).
-        run: uv run coverage report --include='src/*,features/*' --fail-under=78 --format=total
+        run: uv run coverage report --include='src/*,features/*' --fail-under=79 --format=total
 
       - name: Coverage summary
         # Render the per-file table into the run's summary page so coverage is

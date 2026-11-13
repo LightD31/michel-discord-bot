@@ -1,6 +1,7 @@
 import asyncio
 from datetime import datetime
 
+import requests
 from interactions import (
     Client,
     Embed,
@@ -72,6 +73,45 @@ logger = logutil.init_logger(__name__)
 SATISFACTORY = ModuleConfig("moduleSatisfactory")
 
 
+# pyfactorybridge's requests carry no timeout: a server that accepts the
+# connection and then never answers held a worker thread for good, every later
+# refresh was skipped (the task was "still running") and the process couldn't
+# stop (the default executor is joined at exit). (connect, read) seconds:
+REQUEST_TIMEOUT = (5.0, 10.0)
+# Ceiling for one client call, which may make a few requests (the constructor
+# checks the server's health, then authenticates).
+CALL_TIMEOUT_SECONDS = 30.0
+
+
+class _TimeoutSession(requests.Session):
+    """A ``requests`` session whose requests give up after :data:`REQUEST_TIMEOUT`."""
+
+    def request(self, method, url, *args, **kwargs):  # type: ignore[override]
+        kwargs.setdefault("timeout", REQUEST_TIMEOUT)
+        return super().request(method, url, *args, **kwargs)
+
+
+def _build_api(address: str, token: str) -> API:
+    """``API(address=..., token=...)`` on a session with timeouts (blocking).
+
+    The constructor makes its requests before a session could be swapped in,
+    so this does its three steps itself: the endpoint URL, a health check
+    (which fails on an unreachable server) and the token.
+    """
+    api = API.__new__(API)
+    api.URL = f"https://{address}/api/v1/"
+    api.auth = None
+    api.session = _TimeoutSession()
+    api.get_server_health()
+    api.renew_auth(method="token", value=token)
+    return api
+
+
+async def _call(fn, *args):
+    """Run a blocking pyfactorybridge call off the loop, within :data:`CALL_TIMEOUT_SECONDS`."""
+    return await asyncio.wait_for(asyncio.to_thread(fn, *args), CALL_TIMEOUT_SECONDS)
+
+
 def _connection(settings: dict) -> tuple[str, str] | None:
     """``(address, token)`` of the guild's server, or None until both are configured."""
     ip = str(settings.get("satisfactoryServerIp") or "").strip()
@@ -138,9 +178,9 @@ class Satisfactory(Extension):
     async def _api(self, address: str, token: str) -> API:
         api = self._apis.get((address, token))
         if api is None:
-            # pyfactorybridge is synchronous (requests), and its constructor
+            # pyfactorybridge is synchronous (requests), and building a client
             # already checks the server and authenticates: off the loop.
-            api = await asyncio.to_thread(API, address=address, token=token)
+            api = await _call(_build_api, address, token)
             self._apis[(address, token)] = api
         return api
 
@@ -166,7 +206,7 @@ class Satisfactory(Extension):
             return
         try:
             api = await self._api(*connection)
-            data = await asyncio.to_thread(api.query_server_state)
+            data = await _call(api.query_server_state)
         except Exception:
             self._apis.pop(connection, None)  # reconnect at the next refresh
             raise

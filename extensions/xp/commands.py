@@ -50,15 +50,11 @@ async def _fetch_avatar_bytes(target_user) -> bytes | None:
 
 class CommandsMixin:
     bot: Client
-    _db_connected: bool
     _rank_cache: TTLCache
 
     def _repo(self, guild_id: str) -> XpRepository: ...  # provided by LevelingMixin
 
     async def _get_user_rank(self, guild_id: str, user_id: str) -> int | None:
-        if not self._db_connected:
-            return None
-
         cache_key = f"{guild_id}_{user_id}"
         cached_rank = self._rank_cache.get(cache_key)
         if cached_rank is not None:
@@ -87,10 +83,6 @@ class CommandsMixin:
     )
     @cooldown(Buckets.USER, 3, 30)
     async def rank(self, ctx: SlashContext, utilisateur: User = None):
-        if not self._db_connected:
-            await send_error(ctx, "La base de données n'est pas disponible.")
-            return
-
         target_user = utilisateur or ctx.author
         guild_id = str(ctx.guild.id)
 

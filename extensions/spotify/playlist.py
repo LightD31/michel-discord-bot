@@ -141,6 +141,7 @@ class PlaylistMixin:
 
     async def _check_playlist_changes_for_server(self, server: ServerData):
         logger.debug("check_playlist_changes lancé pour le serveur %s", server.guild_id)
+        await self.ensure_state(server)
 
         channel = await self.bot.fetch_channel(server.channel_id)
         logger.debug(
