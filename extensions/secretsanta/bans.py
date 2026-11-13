@@ -17,13 +17,31 @@ from src.discord_ext.embeds import Colors
 from src.discord_ext.messages import fetch_user_safe, send_error
 from src.discord_ext.scopes import guild_scopes
 
-from ._common import SANTA, get_context_id
+from ._common import ORGANISER_ONLY, SANTA, get_context_id, may_organise
 
 logger = logutil.init_logger(__name__)
 
 
 class BansMixin:
-    """Manage forbidden giver/receiver pairs per context."""
+    """Manage forbidden giver/receiver pairs per context (the organiser only)."""
+
+    async def _organiser_check(self, ctx: SlashContext, context_id: str) -> bool:
+        """Answer and return ``False`` unless the author may manage exclusions now.
+
+        A member who could ban pairs would steer the draw: excluding everyone
+        but one target leaves the draw a single choice.
+        """
+        session = await self.repository.get_session(context_id)
+        if not may_organise(ctx, session):
+            await send_error(ctx, ORGANISER_ONLY)
+            return False
+        if session is not None and session.is_drawn:
+            await send_error(
+                ctx,
+                "Le tirage a déjà eu lieu : créez une nouvelle session pour changer les exclusions.",
+            )
+            return False
+        return True
 
     @slash_command(
         name="secretsanta",
@@ -50,6 +68,8 @@ class BansMixin:
             return
 
         context_id = get_context_id(ctx)
+        if not await self._organiser_check(ctx, context_id):
+            return
         banned_pairs = await self.repository.read_banned_pairs(context_id)
 
         for p1, p2 in banned_pairs:
@@ -94,6 +114,8 @@ class BansMixin:
         self, ctx: SlashContext, user1: Member | User, user2: Member | User
     ) -> None:
         context_id = get_context_id(ctx)
+        if not await self._organiser_check(ctx, context_id):
+            return
         banned_pairs = await self.repository.read_banned_pairs(context_id)
 
         new_pairs = [
@@ -128,6 +150,9 @@ class BansMixin:
     )
     async def list_bans(self, ctx: SlashContext) -> None:
         context_id = get_context_id(ctx)
+        if not may_organise(ctx, await self.repository.get_session(context_id)):
+            await send_error(ctx, ORGANISER_ONLY)
+            return
         banned_pairs = await self.repository.read_banned_pairs(context_id)
 
         if not banned_pairs:

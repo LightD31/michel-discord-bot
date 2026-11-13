@@ -4,6 +4,7 @@ from datetime import timedelta
 
 import pytest
 from discord_fakes import FakeChannel, FakeCtx, FakeGuild, FakeMember, bare_extension, run
+from interactions import Permissions
 
 import extensions.tricount.recurring as recurring_module
 from extensions.tricount import TricountExtension
@@ -12,7 +13,9 @@ from src.core import clock
 
 class MemoryTricount:
     def __init__(self):
-        self.groups = {"G": {"_id": "G", "name": "Coloc", "members": [3, 4], "active": True}}
+        self.groups = {
+            "G": {"_id": "G", "name": "Coloc", "members": [3, 4], "creator": 4, "active": True}
+        }
         self.recurring: dict[str, dict] = {}
         self.expenses: list[dict] = []
 
@@ -50,12 +53,16 @@ class MemoryTricount:
     async def add_expense(self, data):
         self.expenses.append(data)
 
-    async def stop_recurring(self, recurring_id, user_id):
+    async def find_active_recurring(self, recurring_id):
         doc = self.recurring.get(str(recurring_id))
-        if not doc or not doc["active"] or doc["added_by"] != user_id:
-            return 0
+        return doc if doc and doc["active"] else None
+
+    async def stop_recurring(self, recurring_id):
+        doc = self.recurring.get(recurring_id)
+        if not doc or not doc["active"]:
+            return False
         doc["active"] = False
-        return 1
+        return True
 
     async def deactivate_recurring(self, recurring_id):
         self.recurring[recurring_id]["active"] = False
@@ -163,3 +170,35 @@ async def test_list_and_stop(setup):
     assert ctx.last == "✅ Récurrence arrêtée."
     await run(TricountExtension.depense_recurrente_arreter, ext, ctx, "r1")
     assert "déjà arrêtée" in ctx.last
+
+
+async def test_a_recurrence_whose_payer_left_stops_instead_of_booking(setup):
+    ext, ctx, repo = setup
+    await add(ext, ctx)
+    (doc,) = repo.recurring.values()
+    doc["next_run"] = clock.now() - timedelta(minutes=1)
+    repo.groups["G"]["members"] = [4]
+    await TricountExtension.recurring_tick.callback(ext)
+    assert not doc["active"] and repo.expenses == []
+
+
+async def test_another_member_cannot_stop_a_recurrence(setup):
+    ext, ctx, repo = setup
+    await add(ext, ctx)
+    other = FakeCtx(ctx.guild.add_member(FakeMember(5, "bob")), ctx.channel, bot=ctx.bot)
+    await run(TricountExtension.depense_recurrente_arreter, ext, other, "r1")
+    assert "Seuls son auteur" in other.last and repo.recurring["r1"]["active"]
+
+
+@pytest.mark.parametrize("who", ["creator", "manager"])
+async def test_the_group_creator_or_a_manager_stops_any_recurrence(setup, who):
+    ext, ctx, repo = setup
+    await add(ext, ctx)
+    member = (
+        ctx.guild.add_member(FakeMember(4, "créateur"))
+        if who == "creator"
+        else ctx.guild.add_member(FakeMember(6, "gestion", permissions=Permissions.MANAGE_GUILD))
+    )
+    other = FakeCtx(member, ctx.channel, bot=ctx.bot)
+    await run(TricountExtension.depense_recurrente_arreter, ext, other, "r1")
+    assert other.last == "✅ Récurrence arrêtée." and not repo.recurring["r1"]["active"]

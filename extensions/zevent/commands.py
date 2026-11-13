@@ -2,7 +2,7 @@
 
 import os
 
-from interactions import SlashContext, slash_command
+from interactions import Permissions, SlashContext, slash_command, slash_default_member_permission
 
 from src.core import logging as logutil
 from src.core.http import fetch
@@ -23,7 +23,13 @@ class CommandsMixin:
         description="Créée l'embed final après l'évènement",
         scopes=guild_scopes(ZEVENT.guild_ids()),
     )
+    @slash_default_member_permission(Permissions.MANAGE_GUILD)
     async def end(self, ctx: SlashContext):
+        # The default permission is only a default: a server can open the
+        # command to everyone, and it ends the tracking and the scheduled event.
+        if not ctx.author.has_permission(Permissions.MANAGE_GUILD):
+            await ctx.send("Il faut la permission « Gérer le serveur ».", ephemeral=True)
+            return
         settings = ZEVENT.get(ctx.guild_id)
         if not settings:
             await ctx.send("Le module Zevent n'est pas activé sur ce serveur.", ephemeral=True)

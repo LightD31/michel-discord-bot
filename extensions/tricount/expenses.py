@@ -1,4 +1,4 @@
-"""Expense add and modify commands."""
+"""Expense add, modify and delete commands."""
 
 import os
 
@@ -24,9 +24,11 @@ from src.discord_ext.scopes import guild_scopes
 
 from ._common import (
     DEFAULT_CATEGORY,
+    MAX_AMOUNT,
     TRICOUNT,
     guild_categories,
     guild_currency,
+    may_manage_group,
 )
 
 logger = logutil.init_logger(__name__)
@@ -52,6 +54,7 @@ class ExpensesMixin:
         description="Montant de la dépense (en euros)",
         opt_type=OptionType.NUMBER,
         required=True,
+        max_value=MAX_AMOUNT,
     )
     @slash_option(
         name="description",
@@ -200,6 +203,7 @@ class ExpensesMixin:
         description="Nouveau montant (laissez vide pour ne pas modifier)",
         opt_type=OptionType.NUMBER,
         required=False,
+        max_value=MAX_AMOUNT,
     )
     @slash_option(
         name="nouvelle_description",
@@ -235,22 +239,8 @@ class ExpensesMixin:
         if not group:
             await ctx.send(f"❌ Aucun groupe actif trouvé avec le nom '{groupe}'.", ephemeral=True)
             return
-        if ctx.author.id not in group["members"]:
-            await ctx.send(
-                "❌ Vous devez être membre du groupe pour modifier une dépense.", ephemeral=True
-            )
-            return
-
-        expense = await repo.find_expense_in_group(depense_id, group["_id"])
-        if not expense:
-            await ctx.send("❌ Dépense non trouvée dans ce groupe.", ephemeral=True)
-            return
-
-        if ctx.author.id != expense["added_by"] and ctx.author.id != expense["payer"]:
-            await ctx.send(
-                "❌ Vous ne pouvez modifier que les dépenses que vous avez ajoutées ou payées.",
-                ephemeral=True,
-            )
+        expense = await self._editable_expense(ctx, repo, group, depense_id, "modifier")
+        if expense is None:
             return
 
         if nouveau_payeur and nouveau_payeur.id not in group["members"]:
@@ -304,6 +294,94 @@ class ExpensesMixin:
             ", ".join(changes_description),
         )
         await ctx.send(embed=embed)
+
+    @staticmethod
+    async def _editable_expense(ctx, repo, group: dict, depense_id: str, verb: str) -> dict | None:
+        """The expense *ctx*'s author may *verb* (``"modifier"``…), or ``None`` once answered.
+
+        Its author or payer, if still in the group; the group's creator or a
+        server manager in any case, so an entry isn't stuck once its author left.
+        """
+        manager = may_manage_group(ctx, group)
+        if ctx.author.id not in group["members"] and not manager:
+            await ctx.send(
+                f"❌ Vous devez être membre du groupe pour {verb} une dépense.", ephemeral=True
+            )
+            return None
+        expense = await repo.find_expense_in_group(depense_id, group["_id"])
+        if not expense:
+            await ctx.send("❌ Dépense non trouvée dans ce groupe.", ephemeral=True)
+            return None
+        if not manager and ctx.author.id not in (expense["added_by"], expense["payer"]):
+            await ctx.send(
+                f"❌ Vous ne pouvez {verb} que les dépenses que vous avez ajoutées ou payées "
+                "(ou celles du groupe si vous l'avez créé).",
+                ephemeral=True,
+            )
+            return None
+        return expense
+
+    @slash_command(
+        name="supprimer-depense",
+        description="Supprimer une dépense ou un remboursement",
+        scopes=guild_scopes(TRICOUNT.guild_ids()),
+    )
+    @slash_option(
+        name="groupe",
+        description="Nom du groupe",
+        opt_type=OptionType.STRING,
+        required=True,
+        autocomplete=True,
+    )
+    @slash_option(
+        name="depense_id",
+        description="ID de la dépense à supprimer",
+        opt_type=OptionType.STRING,
+        required=True,
+        autocomplete=True,
+    )
+    async def supprimer_depense(self, ctx: SlashContext, groupe: str, depense_id: str):
+        if not await require_guild(ctx):
+            return
+        repo = TricountRepository(ctx.guild.id)
+        group = await repo.find_active_group(groupe)
+        if not group:
+            await ctx.send(f"❌ Aucun groupe actif trouvé avec le nom '{groupe}'.", ephemeral=True)
+            return
+        expense = await self._editable_expense(ctx, repo, group, depense_id, "supprimer")
+        if expense is None:
+            return
+        if not await repo.delete_expense(depense_id, group["_id"]):
+            await ctx.send("❌ Dépense non trouvée dans ce groupe.", ephemeral=True)
+            return
+        currency = guild_currency(ctx.guild.id)
+        logger.info(
+            "Dépense %s supprimée par %s dans le groupe '%s' (%s%s, %r)",
+            depense_id,
+            ctx.author.id,
+            groupe,
+            expense["amount"],
+            currency,
+            expense.get("description"),
+        )
+        await ctx.send(
+            embed=Embed(
+                title="🗑️ Dépense supprimée",
+                description=(
+                    f"**{expense.get('description', '')}** — {expense['amount']:.2f}{currency} "
+                    f"retirée du groupe **{groupe}**."
+                ),
+                color=Colors.WARNING,
+            )
+        )
+
+    @supprimer_depense.autocomplete("groupe")
+    async def supprimer_depense_groupe_autocomplete(self, ctx: AutocompleteContext):
+        await guild_group_autocomplete(ctx, TricountRepository.groups_collection)
+
+    @supprimer_depense.autocomplete("depense_id")
+    async def supprimer_depense_id_autocomplete(self, ctx: AutocompleteContext):
+        await self.modifier_depense_id_autocomplete(ctx)
 
     @modifier_depense.autocomplete("groupe")
     async def modifier_depense_groupe_autocomplete(self, ctx: AutocompleteContext):
