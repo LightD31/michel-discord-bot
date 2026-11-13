@@ -132,7 +132,7 @@ class BirthdayExtension(Extension):
             refusal = auto_grant_refusal(role_info(role, server.id))
             if add and refusal:
                 logger.warning(
-                    "Birthday role %s not given on server %s: %s", role_id, server.name, refusal
+                    "Birthday role %s not given on server %s: %s", role.name, server.name, refusal
                 )
                 return
             if add:
