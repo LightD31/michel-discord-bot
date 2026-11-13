@@ -17,6 +17,7 @@ from features.xp import (
 from src.core.errors import DatabaseError
 from src.core.text import pick_weighted_message
 from src.discord_ext.mentions import everyone_if_written
+from src.discord_ext.role_grants import grantable_role
 
 from ._common import XP, logger
 
@@ -197,9 +198,20 @@ class LevelingMixin:
         guild = getattr(member, "guild", None)
         if guild is None:
             return
+        # Re-checked at every grant: a role can gain permissions after the save.
+        role, refusal = grantable_role(guild, new_role_id)
+        if role is None:
+            logger.warning(
+                "Guild %s: level %s reward role %s not granted (%s)",
+                guild_id,
+                new_level,
+                new_role_id,
+                refusal,
+            )
+            return
 
         try:
-            await member.add_role(new_role_id, reason=f"Récompense XP niveau {new_level}")
+            await member.add_role(role, reason=f"Récompense XP niveau {new_level}")
         except Exception as e:
             logger.warning(
                 "Could not grant level reward role %s to %s: %s",

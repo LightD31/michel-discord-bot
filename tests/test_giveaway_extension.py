@@ -35,7 +35,7 @@ def announcement():
     embed.set_footer(text="Lancé par alice", icon_url="https://cdn/alice.png")
     replies = []
 
-    async def reply(text):
+    async def reply(text, **kwargs):
         replies.append(text)
 
     return SimpleNamespace(id=5, embeds=[embed], reply=reply, replies=replies)

@@ -61,6 +61,7 @@ class ZuniversConfig(SchemaBase):
         "Rôle rappel /journa",
         "role",
         description="Rôle mentionné quand le /journa quotidien n'a pas été posté à 22h.",
+        role_use="mention",
     )
     journaNormalLink: str | None = ui(
         "Lien du salon /journa",

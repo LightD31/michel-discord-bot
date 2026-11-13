@@ -60,6 +60,7 @@ class XpConfig(SchemaBase):
         description="Map niveau → ID de rôle attribué automatiquement à ce niveau.",
         key_label="Niveau",
         value_label="ID du rôle",
+        role_use="grant",
     )
     stackLevelRewards: bool = ui(
         "Cumuler les rôles de niveau",

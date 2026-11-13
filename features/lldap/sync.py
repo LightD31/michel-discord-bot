@@ -20,6 +20,18 @@ from typing import Any
 
 from src.integrations.lldap import LldapUser
 
+# LLDAP's built-in groups: membership administers the directory itself (and so
+# every service signing in through it), resets anyone's password, or reads
+# every account. The bot never adds anyone to them, whatever a guild maps.
+PROTECTED_GROUP_NAMES = frozenset(
+    {"lldap_admin", "lldap_password_manager", "lldap_strict_readonly"}
+)
+
+
+def protected_group_ids(groups: Mapping[int, str]) -> set[int]:
+    """Of *groups* (``{id: name}``), the ids of LLDAP's built-in privileged groups."""
+    return {gid for gid, name in groups.items() if name.strip().lower() in PROTECTED_GROUP_NAMES}
+
 
 @dataclass(frozen=True)
 class GroupChange:

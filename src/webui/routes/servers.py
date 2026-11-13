@@ -14,6 +14,7 @@ from src.core.logging import log_failure
 from src.discord_ext.channels import fetch_guild_channel
 from src.discord_ext.embedmanager import MODULE_KEY as EMBED_MANAGER_MODULE
 from src.discord_ext.embedmanager import build_embeds, publish_embeds
+from src.discord_ext.role_grants import settings_refusal
 from src.webui.botops import run_extension_op, sync_commands
 from src.webui.channels import list_channels
 from src.webui.context import WebUIContext
@@ -108,6 +109,42 @@ async def _require_own_channels(
             status_code=422,
             detail="Salon inconnu sur ce serveur : " + ", ".join(foreign[:10]),
         )
+
+
+async def _require_allowed_additions(
+    ctx: WebUIContext, server_id: str, module_name: str, incoming: dict, session
+) -> None:
+    """422 unless the editor could do by hand what the save makes the bot do.
+
+    The dashboard bar is ``MANAGE_GUILD``, but the bot hands out the roles a
+    module names, pings the ones it is told to and posts its templates with its
+    own permissions. So a role the save adds must pass the rule its use calls
+    for (``schemas.ROLE_USES``, ``src/discord_ext/role_grants.py``), and a text
+    the save adds with @everyone or @here needs ``MENTION_EVERYONE``. As for
+    channels, only what the stored config doesn't already hold is checked.
+    """
+    from src.webui import schemas
+
+    model = schemas.module_model(module_name)
+    if model is None or ctx.bot is None:
+        return
+    stored = ctx.get_full_config().get("servers", {}).get(server_id, {}).get(module_name)
+    roles = schemas.role_refs(model, incoming) - schemas.role_refs(model, stored)
+    mass_mentions = bool(schemas.mass_mention_texts(incoming) - schemas.mass_mention_texts(stored))
+    if not roles and not mass_mentions:
+        return
+    refusal = await ctx.call_bot(
+        settings_refusal,
+        ctx.bot,
+        server_id,
+        str(session.user_id),
+        roles=roles,
+        mass_mentions=mass_mentions,
+        is_developer=ctx.oauth.is_developer(session),
+        what=f"check the roles of {module_name} for guild {server_id}",
+    )
+    if refusal:
+        raise HTTPException(status_code=422, detail=refusal)
 
 
 def _require_reasonable_size(config: dict) -> None:
@@ -355,6 +392,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
         _require_known_module(module_name)
         _require_reasonable_size(body.config)
         await _require_own_channels(ctx, server_id, module_name, body.config)
+        await _require_allowed_additions(ctx, server_id, module_name, body.config, session)
         from src.webui import schemas
 
         schema = schemas.MODULE_SCHEMAS.get(module_name)

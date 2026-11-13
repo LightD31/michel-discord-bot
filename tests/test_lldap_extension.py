@@ -75,6 +75,7 @@ class _FakeLldap:
         self.linked: list[str] = []
         self.emails: list[str] = []
         self.fail_on: str | None = None
+        self.groups: dict[int, str] = {GROUP: "jellyfin_users"}
 
     def _maybe_fail(self, name: str) -> None:
         if self.fail_on == name:
@@ -84,6 +85,10 @@ class _FakeLldap:
         self.calls.append(("list_users", settings.instance_key))
         self._maybe_fail("list_users")
         return self.users
+
+    async def list_groups(self, settings):
+        self.calls.append(("list_groups", settings.instance_key))
+        return self.groups
 
     async def add_to_group(self, settings, user_id, group_id):
         self.calls.append(("add", user_id, group_id))
@@ -150,6 +155,19 @@ async def test_sync_adds_holders_and_removes_former_ones(guilds):
     assert ("remove", "bob", GROUP) in client.calls
     assert not any(c[0] in ("add", "remove") and c[1] == "admin" for c in client.calls)
     assert (report.added, report.removed, report.failed) == (1, 1, 0)
+
+
+async def test_sync_never_touches_lldap_builtin_admin_groups(guilds):
+    guilds({GUILD_A: _module()})
+    client = _FakeLldap(_users())
+    client.groups = {GROUP: "lldap_admin"}
+    bot = _Bot(_Guild(GUILD_A, [_Member(1, ROLE), _Member(2)]))
+
+    report = await _Harness(bot, client).run_sync()
+
+    assert not any(c[0] in ("add", "remove") for c in client.calls)
+    assert GROUP in report.blocked_groups
+    assert report.errors
 
 
 async def test_missing_role_blocks_its_group(guilds):
@@ -281,6 +299,18 @@ async def test_register_requires_a_mapped_role(guilds):
 
     assert f"<@&{ROLE}>" in ctx.sent[0]["content"]
     assert client.calls == []
+
+
+async def test_register_skips_lldap_builtin_admin_groups(guilds):
+    guilds({GUILD_A: _module()})
+    client = _FakeLldap()
+    client.groups = {GROUP: "LLDAP_admin"}
+    ctx = _Ctx(GUILD_A, _Member(42, ROLE))
+
+    await _register(_Harness(_Bot(), client), ctx, "a@example.com", "alice")
+
+    assert ctx.sent[0]["content"] == f"❌ {_common.PROTECTED_ONLY}"
+    assert not any(c[0] in ("create", "add") for c in client.calls)
 
 
 async def test_register_refuses_an_already_linked_member(guilds):

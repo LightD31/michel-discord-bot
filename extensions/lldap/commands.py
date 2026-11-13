@@ -16,6 +16,7 @@ from features.lldap import (
     generate_temp_password,
     normalize_email,
     normalize_username,
+    protected_group_ids,
     username_from_discord,
 )
 from src.core import logging as logutil
@@ -35,6 +36,7 @@ from ._common import (
     NO_MAPPING,
     NOT_CONFIGURED,
     NOT_ENABLED,
+    PROTECTED_ONLY,
     USERNAME_TAKEN,
     guild_role_groups,
     guild_settings,
@@ -123,6 +125,19 @@ class CommandsMixin:
             try:
                 if await self.lldap.find_user_ids(settings, settings.discord_attribute, discord_id):
                     await send_error(ctx, ALREADY_LINKED)
+                    return
+                # Never into LLDAP's built-in admin groups, whatever the mapping says.
+                protected = protected_group_ids(await self.lldap.list_groups(settings))
+                if protected & set(groups):
+                    logger.warning(
+                        "Guild %s: built-in LLDAP groups %s mapped to roles, skipped for %s",
+                        guild_id,
+                        sorted(protected & set(groups)),
+                        discord_id,
+                    )
+                    groups = [group for group in groups if group not in protected]
+                if not groups:
+                    await send_error(ctx, PROTECTED_ONLY)
                     return
                 if await self.lldap.find_user_ids(settings, "email", address):
                     await send_error(ctx, EMAIL_TAKEN)

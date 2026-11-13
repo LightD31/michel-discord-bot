@@ -5,7 +5,13 @@ from collections.abc import Iterable
 
 from interactions import IntervalTrigger, Task
 
-from features.lldap import GuildRoster, SyncReport, merge_rosters, plan_sync
+from features.lldap import (
+    GuildRoster,
+    SyncReport,
+    merge_rosters,
+    plan_sync,
+    protected_group_ids,
+)
 from src.core import logging as logutil
 from src.integrations.lldap import LldapError, LldapSettings
 
@@ -133,6 +139,7 @@ class SyncMixin:
         key = settings.instance_key
         try:
             users = await self.lldap.list_users(settings)
+            protected = protected_group_ids(await self.lldap.list_groups(settings)) & set(desired)
         except LldapError as e:
             if key not in self._failing:
                 logger.warning("LLDAP %s: %s; retrying quietly", key, e)
@@ -142,6 +149,20 @@ class SyncMixin:
         if key in self._failing:
             logger.info("LLDAP %s reachable again", key)
             self._failing.discard(key)
+        if protected:
+            # A role mapped to lldap_admin would hand the directory to its holders.
+            self._warn_once(
+                f"protected:{key}:{sorted(protected)}",
+                "LLDAP %s: built-in groups %s are mapped to roles; left alone",
+                key,
+                sorted(protected),
+            )
+            report.blocked_groups |= protected
+            report.errors.append(
+                "Groupes intégrés de LLDAP (lldap_admin…) ignorés : "
+                + ", ".join(str(group) for group in sorted(protected))
+            )
+            desired = {gid: ids for gid, ids in desired.items() if gid not in protected}
         for change in plan_sync(users, desired):
             try:
                 if change.add:

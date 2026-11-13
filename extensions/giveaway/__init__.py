@@ -30,6 +30,7 @@ from typing import Literal
 import emoji as emoji_lib
 from interactions import (
     ActionRow,
+    AllowedMentions,
     AutocompleteContext,
     BaseChannel,
     Button,
@@ -85,6 +86,13 @@ MAX_PARTICIPANTS_FIELD_CHARS = 900
 # A draw Discord doesn't answer for (5xx, timeout) is retried at the next runs
 # (every 30 s), then the giveaway closes without winners.
 MAX_DRAW_FAILURES = 10
+
+
+def _winners_only(winners: list[str]) -> AllowedMentions:
+    """Ping the winners and nothing else: the prize is whatever the host typed."""
+    return AllowedMentions(users=[int(w) for w in winners])
+
+
 # The title is "🏁 GIVEAWAY TERMINÉ — {prize}" and Discord caps titles at 256.
 MAX_PRIZE_LENGTH = 200
 # Clicks on a giveaway within this many seconds share one re-render of its participants.
@@ -518,7 +526,8 @@ class GiveawayExtension(Extension):
             message = await self._fetch_message(giveaway)
             if message is not None:
                 await message.reply(
-                    f"🎉 Reroll : nouveau(x) gagnant(s) du giveaway **{giveaway.prize}** : {mention}"
+                    f"🎉 Reroll : nouveau(x) gagnant(s) du giveaway **{giveaway.prize}** : {mention}",
+                    allowed_mentions=_winners_only(new_winners),
                 )
         except Exception as e:
             logger.warning("Could not post reroll reply: %s", e)
@@ -725,7 +734,8 @@ class GiveawayExtension(Extension):
         if mention:
             try:
                 await message.reply(
-                    f"🎉 Félicitations {mention}! Vous remportez **{giveaway.prize}**."
+                    f"🎉 Félicitations {mention}! Vous remportez **{giveaway.prize}**.",
+                    allowed_mentions=_winners_only(winners),
                 )
             except Exception as e:
                 logger.warning("Could not post winner reply for %s: %s", giveaway.id, e)

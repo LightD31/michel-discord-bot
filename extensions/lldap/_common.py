@@ -75,6 +75,8 @@ class LldapConfig(SchemaBase):
         ),
         key_label="ID du rôle",
         value_label="ID du groupe LLDAP",
+        role_use="access",
+        role_keys=True,
     )
     lldapServiceName: str | None = ui(
         "Nom du service",
@@ -129,6 +131,10 @@ BAD_DISCORD_USERNAME = (
 )
 BAD_EMAIL = "Cette adresse e-mail n'est pas valide."
 ALREADY_LINKED = "Ton compte Discord est déjà lié à un compte LLDAP."
+PROTECTED_ONLY = (
+    "Tes rôles ne mènent qu'à des groupes d'administration de LLDAP, que le bot n'attribue "
+    "pas : demande à un administrateur."
+)
 EMAIL_TAKEN = "Cette adresse e-mail est déjà utilisée par un compte."
 USERNAME_TAKEN = (
     "Ce nom d'utilisateur est déjà pris : choisis-en un autre avec l'option `username`."

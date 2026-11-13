@@ -5,6 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 from discord_fakes import FakeChannel, FakeGuild, FakeMember, FakeMessage, FakeRole, bare_extension
+from interactions import Permissions
 
 import extensions.xp.leveling as leveling_module
 from extensions.xp import XpExtension
@@ -64,6 +65,8 @@ def setup(monkeypatch, store_config):
     )
     monkeypatch.setattr(leveling_module.random, "randint", lambda low, high: 20)
     guild = FakeGuild(1)
+    guild.add_role(FakeRole(501, position=2))
+    guild.add_role(FakeRole(502, position=3))
     channel = guild.add_channel(FakeChannel(10))
     member = guild.add_member(FakeMember(7, "bob"))
     repo = MemoryXp()
@@ -115,6 +118,23 @@ async def test_a_level_up_is_announced_and_rewarded(setup):
     assert announce.content == "GG <@7>, niveau 1 !"
     assert repo.users["7"]["lvl"] == 1
     assert [r.id for r in member.roles] == [501]
+
+
+async def test_a_reward_that_became_a_staff_role_is_not_granted(setup):
+    ext, repo, member, channel, _ = setup
+    channel.guild.roles[501].permissions = Permissions.BAN_MEMBERS
+    repo.users["7"] = {"_id": "7", "xp": 95, "time": 0, "msg": 5, "lvl": 0}
+    await say(ext, member, channel, START)
+    assert repo.users["7"]["lvl"] == 1
+    assert member.roles == []
+
+
+async def test_a_reward_role_missing_from_the_guild_is_skipped(setup):
+    ext, repo, member, channel, _ = setup
+    del channel.guild.roles[501]
+    repo.users["7"] = {"_id": "7", "xp": 95, "time": 0, "msg": 5, "lvl": 0}
+    await say(ext, member, channel, START)
+    assert member.roles == []
 
 
 async def test_the_next_reward_replaces_the_previous_one(setup):

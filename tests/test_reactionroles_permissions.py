@@ -17,6 +17,8 @@ from features.reactionroles import (
     MenuAuthor,
     RoleInfo,
     RoleMenuEntry,
+    access_refusal,
+    mention_refusal,
     role_menu_refusal,
     self_assign_refusal,
 )
@@ -26,6 +28,7 @@ from src.core.permissions import (
     MANAGE_GUILD,
     MANAGE_MESSAGES,
     MANAGE_ROLES,
+    MENTION_EVERYONE,
 )
 from src.discord_ext.rolemenus import entries_refusal, menu_author
 from src.webui.auth import DiscordOAuth, Session
@@ -314,3 +317,22 @@ def test_click_refuses_a_role_that_became_privileged():
         buttons.send_error = original
     assert granted == []
     assert errors and "modération" in errors[0]
+
+
+def test_mention_refusal_follows_mentionable_and_mention_everyone():
+    member = MenuAuthor(permissions=MANAGE_GUILD, top_position=5)
+    assert mention_refusal(role(10, mentionable=True), author=member) is None
+    assert "Mentionner" in mention_refusal(role(10), author=member)
+    pinger = MenuAuthor(permissions=MANAGE_GUILD | MENTION_EVERYONE, top_position=5)
+    assert mention_refusal(role(10), author=pinger) is None
+    assert mention_refusal(role(0, is_default=True, mentionable=True), author=pinger)
+
+
+def test_access_refusal_is_the_hierarchy_rule_alone():
+    mod = MenuAuthor(permissions=MANAGE_ROLES, top_position=20)
+    assert access_refusal(role(10, ADMINISTRATOR), author=mod, purpose="x") is None
+    assert access_refusal(role(25), author=mod, purpose="x")
+    assert "Gérer les rôles" in access_refusal(
+        role(1), author=MenuAuthor(permissions=MANAGE_GUILD, top_position=20), purpose="x"
+    )
+    assert access_refusal(role(0, is_default=True), author=mod, purpose="x")

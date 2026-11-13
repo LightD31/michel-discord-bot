@@ -62,6 +62,7 @@ def role_info(role: Any, guild_id: Any) -> RoleInfo:
         permissions=int(getattr(role, "permissions", 0) or 0),
         managed=bool(getattr(role, "managed", False)),
         is_default=str(role.id) == str(guild_id),
+        mentionable=bool(getattr(role, "mentionable", False)),
     )
 
 

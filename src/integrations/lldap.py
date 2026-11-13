@@ -127,6 +127,15 @@ def parse_users(data: Mapping[str, Any], discord_attribute: str) -> list[LldapUs
     return users
 
 
+def parse_groups(data: Mapping[str, Any]) -> dict[int, str]:
+    """Turn a ``groups { id displayName }`` answer into ``{group id: name}``."""
+    return {
+        raw["id"]: str(raw.get("displayName") or "")
+        for raw in data.get("groups") or []
+        if isinstance(raw, Mapping) and isinstance(raw.get("id"), int)
+    }
+
+
 def _graphql_error(errors: Any) -> str:
     first = errors[0] if isinstance(errors, list) and errors else errors
     message = first.get("message") if isinstance(first, Mapping) else first
@@ -136,6 +145,12 @@ def _graphql_error(errors: Any) -> str:
 _LIST_USERS = """
 query ListUsers {
   users { id attributes { name value } groups { id } }
+}
+"""
+
+_LIST_GROUPS = """
+query ListGroups {
+  groups { id displayName }
 }
 """
 
@@ -290,6 +305,10 @@ class LldapClient:
         """Every user with its linked Discord id and group ids, in one request."""
         data = await self._graphql(settings, _LIST_USERS)
         return parse_users(data, settings.discord_attribute)
+
+    async def list_groups(self, settings: LldapSettings) -> dict[int, str]:
+        """Every group's id and name."""
+        return parse_groups(await self._graphql(settings, _LIST_GROUPS))
 
     async def find_user_ids(self, settings: LldapSettings, field: str, value: str) -> list[str]:
         """Ids of the users whose *field* (``email``, a custom attribute…) equals *value*."""

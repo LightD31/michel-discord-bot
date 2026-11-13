@@ -166,6 +166,9 @@ async def test_end_draws_now_and_announces_the_winner(setup):
     assert ctx.deferred is True
     assert giveaway.drawn and giveaway.winners == ["7"]
     assert "<@7>" in message.replies[0]
+    # The prize is the host's text: only the winners are pinged.
+    mentions = message.reply_kwargs[0]["allowed_mentions"]
+    assert mentions.users == [7] and not mentions.roles and not mentions.parse
     assert "Tirage effectué" in ctx.last
 
 
@@ -208,6 +211,7 @@ async def test_reroll_picks_someone_who_has_not_won(setup):
     await run(GiveawayExtension.giveaway_reroll, ext, ctx, "500", winners=1)
     assert giveaway.winners == ["7", "8"]
     assert "<@8>" in message.replies[0]
+    assert message.reply_kwargs[0]["allowed_mentions"].users == [8]
 
 
 async def test_reroll_with_nobody_left(setup):

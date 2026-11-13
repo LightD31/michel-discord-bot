@@ -128,6 +128,21 @@ def test_module_secrets_name_where_they_are_sent(probe):
     assert offenders == []
 
 
+def test_module_roles_say_what_the_bot_does_with_them(probe):
+    """Every role field declares ``ui(role_use=…)``: it picks the rule a save must pass.
+
+    Without it a dashboard save could name an administrator role the bot then
+    hands out, or a role it pings, with nothing checked (``schemas.ROLE_USES``).
+    """
+    offenders = [
+        f"{key}.{name}"
+        for key, schema in probe["module_schemas"].items()
+        for name, meta in schema["fields"].items()
+        if meta.get("type") == "role" and not meta.get("roleUse")
+    ]
+    assert offenders == []
+
+
 def test_every_extension_declares_its_modules_explicitly(probe):
     for name, classes in probe["extensions"].items():
         assert len(classes) == 1, f"{name} should define one Extension class: {sorted(classes)}"
