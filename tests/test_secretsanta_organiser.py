@@ -28,7 +28,7 @@ class MemorySanta:
     async def write_banned_pairs(self, context_id, pairs):
         self.banned = list(pairs)
 
-    async def save_session(self, session):
+    async def create_session(self, session):
         self.saved.append(session)
         self.session = session
 

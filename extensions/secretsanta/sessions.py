@@ -99,7 +99,7 @@ class SessionsMixin:
         msg = await ctx.send(embed=embed, components=create_join_buttons(context_id))
 
         session.message_id = msg.id
-        await self.repository.save_session(session)
+        await self.repository.create_session(session)
 
         logger.info(f"Secret Santa session created by {ctx.author.id} in {context_id}")
 

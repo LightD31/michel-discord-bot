@@ -198,11 +198,17 @@ class SpotifyRepository:
         return data
 
     @translates_db_errors
-    async def save_addwithvote_data(self, data: dict[str, dict[str, Any]]) -> None:
-        """Upsert every add-with-vote entry of ``data``."""
-        col = self._col(ADDWITHVOTES_COLLECTION)
-        for song_id, song_data in data.items():
-            await col.update_one({"_id": song_id}, {"$set": song_data}, upsert=True)
+    async def open_addwithvote(self, song_id: str, poll: dict[str, Any]) -> bool:
+        """Store a new add-with-vote poll; ``False`` when one is already open for *song_id*.
+
+        One insert for one poll: rewriting every open poll from a copy read
+        earlier lost the votes cast meanwhile, and resurrected a poll the
+        hourly sweep had just closed.
+        """
+        result = await self._col(ADDWITHVOTES_COLLECTION).update_one(
+            {"_id": song_id}, {"$setOnInsert": poll}, upsert=True
+        )
+        return result.upserted_id is not None
 
     @translates_db_errors
     async def get_addwithvote_doc(self, song_id: str) -> dict[str, Any] | None:
@@ -214,7 +220,18 @@ class SpotifyRepository:
         await self._col(ADDWITHVOTES_COLLECTION).delete_one({"_id": song_id})
 
     @translates_db_errors
-    async def save_addwithvote_vote(self, author_id: str, vote: str, song_id: str) -> None:
-        await self._col(ADDWITHVOTES_COLLECTION).update_one(
-            {"_id": song_id}, {"$set": {f"votes.{author_id}": vote}}
+    async def save_addwithvote_vote(
+        self, author_id: str, vote: str | None, song_id: str
+    ) -> dict[str, Any] | None:
+        """Set (or, with ``vote=None``, withdraw) *author_id*'s vote on one poll.
+
+        Returns the updated poll, ``None`` when it is closed. *author_id* is a
+        Discord id (digits only), so it is safe in a field path.
+        """
+        if not author_id.isdigit():
+            raise ValueError(f"not a Discord id: {author_id!r}")
+        field = f"votes.{author_id}"
+        update = {"$unset": {field: ""}} if vote is None else {"$set": {field: vote}}
+        return await self._col(ADDWITHVOTES_COLLECTION).find_one_and_update(
+            {"_id": song_id}, update, return_document=ReturnDocument.AFTER
         )

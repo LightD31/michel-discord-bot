@@ -39,8 +39,20 @@ class ButtonsMixin:
             await self._send_response(ctx, session, "Vous participez déjà ! 🎅")
             return
 
-        session.participants.append(ctx.author.id)
-        await self.repository.save_session(session)
+        # One conditional update: a concurrent join is kept, and a click that
+        # loses the race with the draw changes nothing.
+        updated = await self.repository.add_participant(context_id, ctx.author.id)
+        if updated is None:
+            current = await self.repository.get_session(context_id)
+            if current is None:
+                message = "Cette session n'existe plus."
+            elif current.is_drawn:
+                message = "Le tirage a déjà été effectué !"
+            else:
+                message = "Vous participez déjà ! 🎅"
+            await self._send_response(ctx, current, message)
+            return
+        session = updated
         logger.info(
             f"User {ctx.author.id} ({ctx.author.username}) joined Secret Santa in {context_id} (total: {len(session.participants)})"
         )
@@ -68,8 +80,18 @@ class ButtonsMixin:
             await self._send_response(ctx, session, "Vous ne participez pas à cette session.")
             return
 
-        session.participants.remove(ctx.author.id)
-        await self.repository.save_session(session)
+        updated = await self.repository.remove_participant(context_id, ctx.author.id)
+        if updated is None:
+            current = await self.repository.get_session(context_id)
+            if current is None:
+                message = "Cette session n'existe plus."
+            elif current.is_drawn:
+                message = "Le tirage a déjà été effectué, vous ne pouvez plus vous retirer."
+            else:
+                message = "Vous ne participez pas à cette session."
+            await self._send_response(ctx, current, message)
+            return
+        session = updated
         logger.info(
             f"User {ctx.author.id} ({ctx.author.username}) left Secret Santa in {context_id} (total: {len(session.participants)})"
         )

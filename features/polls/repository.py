@@ -52,17 +52,62 @@ class PollRepository:
         doc = await self._col().find_one({"message_id": str(message_id)})
         return self._doc_to_poll(doc) if doc else None
 
-    @translates_db_errors
-    async def set_vote(self, poll_id: str, user_id: str, ranking: list[int]) -> None:
-        await self._col().update_one(
-            {"_id": ObjectId(poll_id)}, {"$set": {f"votes.{user_id}": ranking}}
-        )
+    @staticmethod
+    def _vote_field(user_id: str) -> str:
+        # A Discord id (digits only), so safe to put in a field path.
+        if not str(user_id).isdigit():
+            raise ValueError(f"not a Discord id: {user_id!r}")
+        return f"votes.{user_id}"
 
     @translates_db_errors
-    async def clear_vote(self, poll_id: str, user_id: str) -> None:
-        await self._col().update_one(
-            {"_id": ObjectId(poll_id)}, {"$unset": {f"votes.{user_id}": ""}}
+    async def set_vote(self, poll_id: str, user_id: str, ranking: list[int]) -> Poll | None:
+        """Replace *user_id*'s vote while the poll is open; the updated poll, else ``None``."""
+        doc = await self._col().find_one_and_update(
+            {"_id": ObjectId(poll_id), "closed": False},
+            {"$set": {self._vote_field(user_id): ranking}},
+            return_document=pymongo.ReturnDocument.AFTER,
         )
+        return self._doc_to_poll(doc) if doc else None
+
+    @translates_db_errors
+    async def add_to_ranking(self, poll_id: str, user_id: str, option: int) -> Poll | None:
+        """Append *option* to *user_id*'s ranking unless it's in it already.
+
+        One pipeline update, only while the poll is open, returning the updated
+        poll (``None`` once it is closed). Reading the ranking, extending it and
+        writing it back lost a rank to two quick clicks, and accepted a vote
+        after the poll closed.
+        """
+        field = self._vote_field(user_id)
+        current = {"$ifNull": [f"${field}", []]}
+        doc = await self._col().find_one_and_update(
+            {"_id": ObjectId(poll_id), "closed": False},
+            [
+                {
+                    "$set": {
+                        field: {
+                            "$cond": [
+                                {"$in": [option, current]},
+                                current,
+                                {"$concatArrays": [current, [option]]},
+                            ]
+                        }
+                    }
+                }
+            ],
+            return_document=pymongo.ReturnDocument.AFTER,
+        )
+        return self._doc_to_poll(doc) if doc else None
+
+    @translates_db_errors
+    async def clear_vote(self, poll_id: str, user_id: str) -> Poll | None:
+        """Withdraw *user_id*'s vote while the poll is open; the updated poll, else ``None``."""
+        doc = await self._col().find_one_and_update(
+            {"_id": ObjectId(poll_id), "closed": False},
+            {"$unset": {self._vote_field(user_id): ""}},
+            return_document=pymongo.ReturnDocument.AFTER,
+        )
+        return self._doc_to_poll(doc) if doc else None
 
     @translates_db_errors
     async def list_open_reaction_polls(self, author_id: str, limit: int) -> list[Poll]:

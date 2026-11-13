@@ -112,3 +112,45 @@ def test_mutate_config_surfaces_permission_error(ctx, monkeypatch):
 def test_mutate_config_passes_through_result(ctx, monkeypatch, config_file):
     result = ctx.mutate_config(lambda d: d["servers"].update({"9": {}}))
     assert "9" in result["servers"]
+
+
+def test_the_cache_follows_the_disk_across_threads(config_file, monkeypatch):
+    """The cache was set after the write lock: two threads could leave it on the older write (B16)."""
+    import threading
+    import time
+
+    real_lock = config_store._state_lock
+    a_wrote = threading.Event()
+
+    class SlowForA:
+        """A pauses as it updates the cache, giving B the time to write."""
+
+        def __enter__(self):
+            if threading.current_thread().name == "A" and a_wrote.is_set():
+                time.sleep(0.2)
+            return real_lock.__enter__()
+
+        def __exit__(self, *exc):
+            return real_lock.__exit__(*exc)
+
+    monkeypatch.setattr(config_store, "_state_lock", SlowForA())
+
+    def set_to(value):
+        def mutator(data):
+            data["servers"]["who"] = {"v": value}
+            if value == "A":
+                a_wrote.set()
+
+        return mutator
+
+    a = threading.Thread(target=config_store.mutate, args=(set_to("A"),), name="A")
+    a.start()
+    a_wrote.wait(2)
+    time.sleep(0.05)  # A is now past its write
+    b = threading.Thread(target=config_store.mutate, args=(set_to("B"),), name="B")
+    b.start()
+    a.join()
+    b.join()
+
+    assert read_config(config_file)["servers"]["who"] == {"v": "B"}
+    assert config_store.get()["servers"]["who"] == {"v": "B"}

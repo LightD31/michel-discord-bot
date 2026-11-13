@@ -94,12 +94,8 @@ async def test_add_playlist_item_keeps_the_existing_track(cols):
 
 async def test_closed_poll_is_gone_after_delete(cols):
     repo = SpotifyRepository(GUILD)
-    await repo.save_addwithvote_data(
-        {
-            "t1": {"deadline": 1.0, "votes": {"1": "yes"}},
-            "t2": {"deadline": 2.0, "votes": {}},
-        }
-    )
+    assert await repo.open_addwithvote("t1", {"deadline": 1.0, "votes": {"1": "yes"}})
+    assert await repo.open_addwithvote("t2", {"deadline": 2.0, "votes": {}})
 
     await repo.delete_addwithvote("t1")
 

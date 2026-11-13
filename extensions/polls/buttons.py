@@ -143,22 +143,26 @@ class PollButtonsMixin:
                 feedback = f"Cette option est déjà à la position #{existing.index(option_idx) + 1}."
                 await ctx.send(feedback, ephemeral=True)
                 return
-            new_ranking = [*existing, option_idx]
-            await repo.set_vote(poll.id, user_id, new_ranking)
+            updated = await repo.add_to_ranking(poll.id, user_id, option_idx)
+        else:
+            updated = await repo.set_vote(poll.id, user_id, [option_idx])
+        if updated is None:  # closed between the read and the vote
+            await ctx.send("Ce sondage est fermé.", ephemeral=True)
+            return
+        poll = updated
+        new_ranking = poll.votes.get(user_id, [])
+        if poll.mode == "ranked":
             ranking_text = " → ".join(
                 f"#{pos + 1} {poll.options[idx]}" for pos, idx in enumerate(new_ranking)
             )
             feedback = f"Classement enregistré : {ranking_text}"
         else:
-            new_ranking = [option_idx]
-            await repo.set_vote(poll.id, user_id, new_ranking)
             anonymous_note = " (anonyme)" if poll.mode == "anonymous" else ""
             feedback = f"Vote pour **{poll.options[option_idx]}** enregistré{anonymous_note}."
 
         # Refresh the public embed for non-anonymous polls; anonymous polls keep
         # the same embed view (counts are still public — only voter identities
         # are hidden, since reactions aren't used).
-        poll.votes[user_id] = new_ranking
         await self._refresh_poll_embed(ctx, poll)
         await ctx.send(feedback, ephemeral=True)
 
@@ -190,7 +194,9 @@ class PollButtonsMixin:
         if user_id not in poll.votes:
             await ctx.send("Vous n'avez pas encore voté.", ephemeral=True)
             return
-        await repo.clear_vote(poll.id, user_id)
-        poll.votes.pop(user_id, None)
-        await self._refresh_poll_embed(ctx, poll)
+        updated = await repo.clear_vote(poll.id, user_id)
+        if updated is None:
+            await ctx.send("Sondage introuvable ou fermé.", ephemeral=True)
+            return
+        await self._refresh_poll_embed(ctx, updated)
         await ctx.send("Classement réinitialisé.", ephemeral=True)

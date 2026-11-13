@@ -4,10 +4,10 @@ from typing import Any
 
 import pymongo
 from bson import ObjectId
+from bson.errors import InvalidId
 
 from features.reactionroles.models import RoleMenu
-from src.core.db import mongo_manager
-from src.core.errors import DatabaseError
+from src.core.db import mongo_manager, translates_db_errors
 from src.core.logging import init_logger, log_failure
 
 logger = init_logger(__name__)
@@ -41,46 +41,49 @@ class ReactionRolesRepository:
             doc["_id"] = str(doc["_id"])
         return RoleMenu(**doc)
 
-    async def add(self, menu: RoleMenu) -> str:
+    @staticmethod
+    def _oid(menu_id: str) -> ObjectId | None:
+        """The menu's ``ObjectId``, ``None`` for an id that can't be one (a typo)."""
         try:
-            payload = menu.model_dump(exclude={"id"})
-            result = await self._col().insert_one(payload)
-            return str(result.inserted_id)
-        except Exception as e:
-            log_failure(logger, "DB insert_one failed: %s", e)
-            raise DatabaseError(f"Failed to add role menu: {e}") from e
-
-    async def get(self, menu_id: str) -> RoleMenu | None:
-        try:
-            doc = await self._col().find_one({"_id": ObjectId(menu_id)})
-        except Exception as e:
-            log_failure(logger, "DB find_one failed: %s", e)
+            return ObjectId(menu_id)
+        except (InvalidId, TypeError):
             return None
+
+    @translates_db_errors
+    async def add(self, menu: RoleMenu) -> str:
+        result = await self._col().insert_one(menu.model_dump(exclude={"id"}))
+        return str(result.inserted_id)
+
+    @translates_db_errors
+    async def get(self, menu_id: str) -> RoleMenu | None:
+        """The menu, ``None`` when there is none with that id.
+
+        A MongoDB outage raises ``DatabaseError``: it used to be swallowed into
+        ``None`` too, and the member was told the menu no longer existed.
+        """
+        oid = self._oid(menu_id)
+        if oid is None:
+            return None
+        doc = await self._col().find_one({"_id": oid})
         return self._doc_to_menu(doc) if doc else None
 
+    @translates_db_errors
     async def list(self) -> list[RoleMenu]:
-        try:
-            cursor = self._col().find().sort("created_at", pymongo.DESCENDING)
-            docs = await cursor.to_list()
-            return [self._doc_to_menu(d) for d in docs]
-        except Exception as e:
-            log_failure(logger, "DB find failed: %s", e)
-            raise DatabaseError(f"Failed to list role menus: {e}") from e
+        cursor = self._col().find().sort("created_at", pymongo.DESCENDING)
+        return [self._doc_to_menu(d) for d in await cursor.to_list()]
 
+    @translates_db_errors
     async def update(self, menu_id: str, **fields: Any) -> int:
-        if not fields:
+        oid = self._oid(menu_id)
+        if not fields or oid is None:
             return 0
-        try:
-            result = await self._col().update_one({"_id": ObjectId(menu_id)}, {"$set": fields})
-            return result.modified_count
-        except Exception as e:
-            log_failure(logger, "DB update_one failed: %s", e)
-            raise DatabaseError(f"Failed to update role menu: {e}") from e
+        result = await self._col().update_one({"_id": oid}, {"$set": fields})
+        return result.modified_count
 
+    @translates_db_errors
     async def delete(self, menu_id: str) -> int:
-        try:
-            result = await self._col().delete_one({"_id": ObjectId(menu_id)})
-            return result.deleted_count
-        except Exception as e:
-            log_failure(logger, "DB delete_one failed: %s", e)
-            raise DatabaseError(f"Failed to delete role menu: {e}") from e
+        oid = self._oid(menu_id)
+        if oid is None:
+            return 0
+        result = await self._col().delete_one({"_id": oid})
+        return result.deleted_count

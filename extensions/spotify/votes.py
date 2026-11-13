@@ -105,6 +105,17 @@ class VotesMixin:
         votes = await server.repo.get_votes_doc(track_id)
         song = await server.repo.get_playlist_item(track_id)
         logger.debug("song : %s\ntrack_id : %s", song, track_id)
+        if song is None or votes is None:
+            # The song left the playlist (or its vote record is gone) while the
+            # vote was open: nothing to close, open the next one.
+            logger.warning(
+                "Serveur %s : la chanson du vote en cours (%s) n'existe plus, nouveau vote",
+                server.guild_id,
+                track_id,
+            )
+            await self._forget_daily_vote(server)
+            await self._start_new_vote(server)
+            return
         track = await spotify_api.track(track_id, market="FR")
         tally = tally_daily_votes(votes["votes"], server.discord2name)
         outcome = daily_outcome(tally)
@@ -145,7 +156,17 @@ class VotesMixin:
         await message.unpin()
         await self._delete_low_vote_reminder(server, channel)
         await self._close_daily_vote(server, message, track_id, song, track, tally, outcome)
+        # Recorded before the next vote opens: if opening it fails, the next
+        # run opens one rather than read a closed vote whose song may be gone.
+        await self._forget_daily_vote(server)
         await self._start_new_vote(server)
+
+    async def _forget_daily_vote(self, server: ServerData) -> None:
+        """Record that no daily vote is open."""
+        server.vote_infos.update(
+            {"message_id": None, "track_id": None, "extensions": 0, "reminder_message_id": None}
+        )
+        await self.save_voteinfos(server)
 
     async def _close_daily_vote(
         self, server: ServerData, message, track_id: str, song: dict, track: dict, tally, outcome
@@ -259,10 +280,7 @@ class VotesMixin:
                 "Serveur %s : toutes les chansons de la playlist ont déjà été votées",
                 server.guild_id,
             )
-            server.vote_infos.update(
-                {"message_id": None, "track_id": None, "extensions": 0, "reminder_message_id": None}
-            )
-            await self.save_voteinfos(server)
+            await self._forget_daily_vote(server)
             return
         logger.info("Chanson tirée au sort : %s", track_id)
         song = await server.repo.get_playlist_item(track_id)
@@ -351,7 +369,7 @@ class VotesMixin:
         await vote_cooldown.record(user_id)
         message_id = server.vote_infos.get("message_id")
         track_id = server.vote_infos.get("track_id")
-        if ctx.message.id == int(message_id):
+        if message_id and ctx.message.id == int(message_id):
             embed_original = copy_embed(ctx.message.embeds[0])
             user_id = str(ctx.user.id)
             if ctx.custom_id == "annuler":
@@ -625,15 +643,16 @@ class VotesMixin:
                     files=[file] if file else None,
                     components=components,
                 )
-                data = await server.vote_manager.load_data()
-                data[song["_id"]] = {
-                    "channel_id": ctx.channel.id,
-                    "message_id": message.id,
-                    "author_id": ctx.author.id,
-                    "deadline": time_deadline.timestamp(),
-                    "votes": {str(ctx.author.id): "yes"},
-                }
-                await server.vote_manager.save_data(data)
+                await server.vote_manager.open_poll(
+                    song["_id"],
+                    {
+                        "channel_id": ctx.channel.id,
+                        "message_id": message.id,
+                        "author_id": ctx.author.id,
+                        "deadline": time_deadline.timestamp(),
+                        "votes": {str(ctx.author.id): "yes"},
+                    },
+                )
                 logger.info("%s ajouté au vote par %s", track["name"], ctx.author.display_name)
             else:
                 await send_error(ctx, "Cette chanson est déjà dans la playlist.")
@@ -658,14 +677,15 @@ class VotesMixin:
             logger.warning("%s a essayé de voter trop rapidement", event.ctx.user.username)
             return
         await vote_cooldown.record(user_id)
-        data = await server.vote_manager.load_data()
-        if vote == "annuler":
-            data[song_id]["votes"].pop(user_id, None)
-            await server.vote_manager.save_data(data)
-        else:
-            await server.vote_manager.save_vote(user_id, vote, song_id)
-        data = await server.vote_manager.load_data()
-        yes, no, users = server.vote_manager.count_votes(data, song_id)
+        # One update on this poll alone: a concurrent vote, on it or on another
+        # poll, is kept, and a poll the sweep closed stays closed.
+        poll = await server.vote_manager.save_vote(
+            user_id, None if vote == "annuler" else vote, song_id
+        )
+        if poll is None:
+            await send_error(event.ctx, "Ce vote est terminé.")
+            return
+        yes, no, users = server.vote_manager.count_votes({song_id: poll}, song_id)
         users = ", ".join(users)
         embed_original = copy_embed(event.ctx.message.embeds[0])
         embed_original.fields[4].value = f"{yes + no} vote{'s' if yes + no > 1 else ''} ({users})"

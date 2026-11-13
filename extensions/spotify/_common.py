@@ -207,8 +207,8 @@ class VoteManager:
     async def load_data(self):
         return await self.repo.load_addwithvote_data()
 
-    async def save_data(self, data):
-        await self.repo.save_addwithvote_data(data)
+    async def open_poll(self, song_id, poll) -> bool:
+        return await self.repo.open_addwithvote(song_id, poll)
 
     async def delete(self, song_id):
         await self.repo.delete_addwithvote(song_id)
@@ -224,8 +224,9 @@ class VoteManager:
         return float(doc["deadline"]) <= clock.now().timestamp()
 
     async def save_vote(self, author_id, vote, song):
+        """Record (``vote=None``: withdraw) a vote; the updated poll, ``None`` once closed."""
         logger.info("%s voted %s to add %s", author_id, vote, song)
-        await self.repo.save_addwithvote_vote(author_id, vote, song)
+        return await self.repo.save_addwithvote_vote(author_id, vote, song)
 
 
 @dataclass(frozen=True)

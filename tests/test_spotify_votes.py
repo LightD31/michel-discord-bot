@@ -103,6 +103,9 @@ async def test_no_poll_opens_once_every_track_was_voted_on(votes_mod):
         saved.append(dict(server.vote_infos))
 
     harness = SimpleNamespace(save_voteinfos=save_voteinfos)
+    harness._forget_daily_vote = lambda server: votes_mod.VotesMixin._forget_daily_vote(
+        harness, server
+    )
     server = SimpleNamespace(
         guild_id="1", repo=Repo(), vote_infos={"message_id": "9", "track_id": "a"}
     )
@@ -164,3 +167,86 @@ async def test_closing_the_daily_vote(votes_mod, monkeypatch, outcome, state):
     assert ("state", state) in calls
     removed = [c for c in calls if c[0] in ("spotify-remove", "delete", "check")]
     assert bool(removed) == (outcome == "remove")
+
+
+CLOSED = {"message_id": None, "track_id": None, "extensions": 0, "reminder_message_id": None}
+
+
+def daily_harness(votes_mod, *, song, start_fails=False):
+    """A VotesMixin stand-in around one guild whose daily vote is due (B07)."""
+    events: list = []
+
+    class Message:
+        id = 9
+        embeds = []
+
+        async def unpin(self):
+            events.append("unpin")
+
+    class Channel:
+        async def fetch_message(self, message_id):
+            return Message()
+
+    class Repo:
+        async def get_votes_doc(self, track_id):
+            return {"votes": {"1": "supprimer", "2": "supprimer", "3": "supprimer"}}
+
+        async def get_playlist_item(self, track_id):
+            return song
+
+    async def save_voteinfos(server):
+        events.append(("saved", dict(server.vote_infos)))
+
+    async def start_new_vote(server):
+        events.append("start")
+        if start_fails:
+            raise RuntimeError("Spotify didn't answer")
+
+    async def close(*args):
+        events.append("close")
+
+    async def nothing(*args):
+        return None
+
+    harness = SimpleNamespace(
+        bot=SimpleNamespace(get_channel=lambda cid: Channel()),
+        ensure_state=nothing,
+        save_voteinfos=save_voteinfos,
+        _start_new_vote=start_new_vote,
+        _close_daily_vote=close,
+        _delete_low_vote_reminder=nothing,
+    )
+    harness._forget_daily_vote = lambda server: votes_mod.VotesMixin._forget_daily_vote(
+        harness, server
+    )
+    server = SimpleNamespace(
+        guild_id="1",
+        channel_id="5",
+        repo=Repo(),
+        discord2name={},
+        vote_infos={"message_id": "9", "track_id": "t", "extensions": 2},
+    )
+    return harness, server, events
+
+
+async def test_a_failed_opening_leaves_no_closed_vote_behind(votes_mod, monkeypatch):
+    """The closed vote stayed recorded: every later day read a deleted song and stopped."""
+
+    async def track(track_id, market):
+        return {}
+
+    monkeypatch.setattr(votes_mod, "spotify_api", SimpleNamespace(track=track))
+    harness, server, events = daily_harness(votes_mod, song={"added_by": "1"}, start_fails=True)
+
+    with pytest.raises(RuntimeError):
+        await votes_mod.VotesMixin._randomvote_for_server(harness, server)
+
+    assert events == ["unpin", "close", ("saved", CLOSED), "start"]
+
+
+async def test_a_vote_whose_song_is_gone_opens_the_next_one(votes_mod):
+    harness, server, events = daily_harness(votes_mod, song=None)
+
+    await votes_mod.VotesMixin._randomvote_for_server(harness, server)
+
+    assert events == [("saved", CLOSED), "start"]
