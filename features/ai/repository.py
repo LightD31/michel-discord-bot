@@ -1,8 +1,7 @@
 """MongoDB persistence for AI answer comparisons and their votes.
 
-Comparisons posted in a guild where the AI module is enabled live in that
-guild's database; anything else (DMs, user-installed use in other servers)
-goes to the shared ``global`` database. Public methods raise
+Comparisons live in the database of the guild they were posted in (``/ask``
+only runs where the AI module is enabled). Public methods raise
 :class:`src.core.errors.DatabaseError`, never driver exceptions.
 """
 
@@ -34,12 +33,10 @@ def _object_id(comparison_id: str) -> ObjectId | None:
 class AiComparisonRepository:
     """Accessor for one guild's comparisons, or the global ones when ``guild_id`` is None."""
 
-    def __init__(self, guild_id: str | int | None) -> None:
-        self.guild_id = str(guild_id) if guild_id is not None else None
+    def __init__(self, guild_id: str | int) -> None:
+        self.guild_id = str(guild_id)
 
     def _col(self) -> Any:
-        if self.guild_id is None:
-            return mongo_manager.get_global_collection(COLLECTION)
         return mongo_manager.get_guild_collection(self.guild_id, COLLECTION)
 
     @translates_db_errors

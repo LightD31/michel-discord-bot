@@ -79,4 +79,33 @@ def member_can(member: Any, channel: Any, permission: Permissions) -> bool:
         return False
 
 
-__all__ = ["channel_guild_id", "channel_in_guild", "fetch_guild_channel", "member_can"]
+def everyone_can_view(channel: Any) -> bool:
+    """Whether every member of the guild (``@everyone``) can see *channel*.
+
+    A private thread is never public; any other thread is as public as its
+    parent. Fails closed: a channel whose permissions can't be read counts as
+    private.
+    """
+    parent = getattr(channel, "parent_channel", None)
+    if parent is not None:  # a thread
+        if getattr(channel, "is_private", False):
+            return False
+        channel = parent
+    guild = getattr(channel, "guild", None)
+    role = getattr(guild, "default_role", None)
+    if role is None or not hasattr(channel, "permissions_for"):
+        return False
+    try:
+        permissions = channel.permissions_for(role)
+    except (RuntimeError, ValueError):
+        return False
+    return Permissions.VIEW_CHANNEL in permissions or Permissions.ADMINISTRATOR in permissions
+
+
+__all__ = [
+    "channel_guild_id",
+    "channel_in_guild",
+    "everyone_can_view",
+    "fetch_guild_channel",
+    "member_can",
+]

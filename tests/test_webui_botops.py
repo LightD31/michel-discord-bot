@@ -131,7 +131,7 @@ class _DevCtx(WebUIContext):
     """Context that skips the OAuth handshake — the routes only need the hook."""
 
     def require_developer(self, request):  # noqa: ARG002 — signature parity
-        return object()
+        return SimpleNamespace(username="dev", user_id="1")
 
 
 async def test_reload_route_dispatches_and_syncs_once(bot_loop):

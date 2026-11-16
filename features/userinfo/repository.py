@@ -76,6 +76,12 @@ class UserInfoRepository:
         ]
 
     @translates_db_errors
+    async def delete_absent(self, member_ids: list[str]) -> int:
+        """Delete every stored member not in *member_ids* (the guild's whole list)."""
+        result = await self._col().delete_many({"_id": {"$nin": list(member_ids)}})
+        return int(result.deleted_count)
+
+    @translates_db_errors
     async def delete(self, user_id: str) -> None:
         try:
             await self._col().delete_one({"_id": user_id})

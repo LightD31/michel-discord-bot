@@ -42,17 +42,6 @@ class MinecraftConfig(SchemaBase):
     minecraftPort: str = ui(
         "Port du serveur", "string", default="25565", description="Port du serveur Minecraft."
     )
-    minecraftRconHost: str | None = ui(
-        "Hôte RCON", "string", description="Adresse IP pour la connexion RCON."
-    )
-    minecraftRconPort: int = ui(
-        "Port RCON", "number", default=25575, description="Port RCON du serveur."
-    )
-    minecraftRconPassword: str | None = secret_field(
-        "Mot de passe RCON",
-        description="Mot de passe RCON du serveur.",
-        sent_to=("minecraftRconHost", "minecraftIp", "minecraftRconPort"),
-    )
     minecraftSftpHost: str | None = ui(
         "Hôte SFTP",
         "string",

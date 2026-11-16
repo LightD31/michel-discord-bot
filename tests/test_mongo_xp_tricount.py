@@ -224,3 +224,70 @@ async def test_an_expense_is_deleted_only_from_its_group(mongo):
     assert await repo.delete_expense("not-an-id", gid) is False
     assert await repo.delete_expense(str(stored["_id"]), gid) is True
     assert await repo.list_group_expenses(gid) == []
+
+
+# ── Retention (P01) ──────────────────────────────────────────────────────
+
+NOW = datetime(2026, 11, 16, 12, tzinfo=UTC)
+
+
+async def test_totals_are_counted_as_events_are_logged(mongo):
+    repo = XpRepository(mongo.guild_id)
+    await asyncio.gather(
+        *(log(repo, "1", 2, NOW) for _ in range(10)), log(repo, "2", 7, NOW, "voice")
+    )
+    totals = {r["source"]: (r["xp"], r["events"]) for r in await repo.totals_by_source()}
+    assert totals == {"message": (20, 10), "voice": (7, 1)}
+
+
+async def test_the_member_list_carries_only_what_the_stats_read(mongo):
+    repo = XpRepository(mongo.guild_id)
+    await repo.insert_new_user("1", 10, 123.0)
+    (doc,) = await repo.list_all_sorted_by_xp()
+    assert set(doc) <= {"_id", "xp", "msg", "lvl"}
+
+
+async def test_old_months_are_summed_then_deleted(mongo):
+    repo = XpRepository(mongo.guild_id)
+    old = NOW - timedelta(days=500)  # early July 2025
+    await log(repo, "1", 5, old)
+    await log(repo, "1", 3, old + timedelta(hours=1), "voice")
+    await log(repo, "2", 4, old + timedelta(days=2))
+    await log(repo, "1", 9, old - timedelta(days=40))  # a month earlier
+    await log(repo, "1", 1, NOW - timedelta(days=10))  # recent: kept
+    border = NOW - timedelta(days=390)  # its month isn't wholly past the cutoff yet
+    await log(repo, "3", 6, border)
+
+    months = await repo.archive_old_events(NOW)
+
+    assert months == ["2025-05", "2025-07"]
+    monthly = {
+        (r["month"], r["user_id"], r["source"]): (r["xp"], r["events"])
+        for r in await repo.monthly_totals()
+    }
+    assert monthly == {
+        ("2025-05", "1", "message"): (9, 1),
+        ("2025-07", "1", "message"): (5, 1),
+        ("2025-07", "1", "voice"): (3, 1),
+        ("2025-07", "2", "message"): (4, 1),
+    }
+    remaining = await mongo.guild_collection("xp_events").count_documents({})
+    assert remaining == 2
+    assert await repo.archive_old_events(NOW) == []  # nothing left to do
+
+
+async def test_an_interrupted_archive_finishes_without_counting_twice(mongo):
+    repo = XpRepository(mongo.guild_id)
+    old = NOW - timedelta(days=500)
+    await log(repo, "1", 5, old)
+    await log(repo, "1", 5, old + timedelta(hours=1))
+    start = old.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    # A run that summed the month and marked it, then stopped mid-deletion.
+    await repo._sum_month("2025-07", start, start.replace(month=8))
+    await mongo.guild_collection("xp_rollups").insert_one({"_id": "2025-07"})
+    await mongo.guild_collection("xp_events").delete_one({})
+
+    assert await repo.archive_old_events(NOW) == ["2025-07"]
+    (row,) = await repo.monthly_totals("1")
+    assert (row["xp"], row["events"]) == (10, 2)
+    assert await mongo.guild_collection("xp_events").count_documents({}) == 0

@@ -53,6 +53,16 @@ class StarboardConfig(SchemaBase):
         default=False,
         description="Supprimer le message du starboard si le compteur passe sous le seuil.",
     )
+    allowPrivateSources: bool = ui(
+        "Accepter les salons privés",
+        "boolean",
+        default=False,
+        description=(
+            "Republier aussi les messages de salons que @everyone ne voit pas (staff, tickets, "
+            "fils privés) quand le starboard, lui, est visible de tous. Désactivé : ces messages "
+            "restent dans leur salon."
+        ),
+    )
     ignoredChannels: list[str] = ui(
         "Salons ignorés",
         "list",

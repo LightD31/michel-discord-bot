@@ -203,7 +203,12 @@ async def test_xp_works_after_a_startup_with_mongodb_down(setup):
         raise DatabaseError("mongo down")
 
     repo.ensure_indexes = mongo_down
-    for task in ("_cache_cleanup_task", "_voice_xp_tick", "leaderboardpermanent"):
+    for task in (
+        "_cache_cleanup_task",
+        "_voice_xp_tick",
+        "leaderboardpermanent",
+        "_archive_old_xp_events",
+    ):
         setattr(ext, task, IdleTask())
     await XpExtension.on_startup.callback(ext)
 

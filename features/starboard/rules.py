@@ -94,3 +94,14 @@ __all__ = [
     "first_image_url",
     "plan_mirror",
 ]
+
+
+def exposes_hidden_channel(*, source_public: bool, board_public: bool, allow_private: bool) -> bool:
+    """Whether mirroring a message would show a hidden channel to everyone.
+
+    A message from a staff channel, a ticket or a private thread used to reach
+    a starboard every member reads once it had enough stars. It is held back
+    unless the guild allowed it (``allowPrivateSources``), or the starboard is
+    no more public than its source.
+    """
+    return not allow_private and not source_public and board_public

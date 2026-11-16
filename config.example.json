@@ -13,9 +13,7 @@
             "appTitle": "Michel Discord Bot",
             "paused": false,
             "dailyCallLimit": 1000,
-            "userDailyCallLimit": 60,
-            "externalUse": true,
-            "externalUserIds": []
+            "userDailyCallLimit": 60
         },
         "NanoGPT": {
             "apiKey": "",
@@ -25,10 +23,6 @@
             "openrouterApiKey": "",
             "baseUrl": "",
             "appUrl": ""
-        },
-        "SecretSanta": {
-            "secretSantaFile": "data/secretsanta.json",
-            "secretSantaKey": ""
         },
         "backup": {
             "enabled": true,
@@ -249,9 +243,6 @@
                 "minecraftUrl": "",
                 "minecraftIp": "",
                 "minecraftPort": "25565",
-                "minecraftRconHost": "",
-                "minecraftRconPort": 25575,
-                "minecraftRconPassword": "",
                 "minecraftSftpHost": "",
                 "minecraftSftpPort": 2225,
                 "minecraftSftpUsername": "Discord",
@@ -297,6 +288,7 @@
                 "satisfactoryPinMessage": false,
                 "satisfactoryServerIp": "",
                 "satisfactoryServerPort": "7777",
+                "satisfactoryServerCertificateSha256": "",
                 "satisfactoryServerPassword": "",
                 "satisfactoryServerToken": ""
             },
@@ -335,6 +327,7 @@
                 "allowSelfStar": false,
                 "ignoreBots": true,
                 "removeBelowThreshold": false,
+                "allowPrivateSources": false,
                 "ignoredChannels": []
             },
             "moduleStreamlabsCharity": {

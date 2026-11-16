@@ -4,6 +4,7 @@ from features.starboard.rules import (
     MirrorAction,
     count_valid_reactors,
     emoji_matches,
+    exposes_hidden_channel,
     first_image_url,
     plan_mirror,
 )
@@ -14,6 +15,7 @@ __all__ = [
     "StarboardRepository",
     "count_valid_reactors",
     "emoji_matches",
+    "exposes_hidden_channel",
     "first_image_url",
     "plan_mirror",
 ]

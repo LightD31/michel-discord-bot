@@ -3,7 +3,9 @@
 Operating the bot in production: backups, restoring them, incidents and secret
 rotation. Commands assume the Docker Compose layout of the repository
 (`docker-compose.yml`, service and container `discord_bot`, run from the
-directory that holds `config/`, `data/` and `logs/`).
+directory that holds `config/` and `data/`). The bot logs to stdout only:
+`docker compose logs discord_bot`, rotated by Docker (5 files of 20 MB, see the
+compose file's `logging:`).
 
 ## Backups
 
@@ -16,7 +18,18 @@ uses: treat a backup folder as sensitive.
 at the hour set in the dashboard (global config → *Sauvegarde BDD*, 04:00 by
 default) and keeps the last `maxBackups` folders (7 by default). `/backup` on
 the dev server runs one on demand. It can keep more folders for that run, never
-fewer.
+fewer. A backup is written as `<timestamp>.partial` and renamed once complete: a
+failed one leaves nothing behind, and only complete backups (a timestamped
+folder with its `manifest.json`) count toward `maxBackups` or are ever deleted,
+so nothing else under `backupDir` is touched. Folders are `0700` and files
+`0600`: only the bot's user (uid 1000 in the image) can read them on the host.
+
+**Not in a backup.** The OAuth tokens the bot keeps on disk, `data/.cache`
+(Spotify) and `data/twitchcreds.json` (Twitch), are not in MongoDB. Copy them
+with the backups (the restic line below does), or re-authorize after a restore
+on a new host: Spotify from the dashboard (global config → Spotify →
+*Se connecter*), Twitch by deleting the file and following the link the bot
+logs at startup.
 
 **Format.** Each collection is `<database>/<collection>.jsonl.gz`: gzip-compressed
 JSON Lines in MongoDB Canonical Extended JSON, one document per line, with every
@@ -29,9 +42,13 @@ For example, with [restic](https://restic.net/), run from the host's crontab an
 hour after the backup:
 
 ```bash
-# /etc/cron.d/michel-backup: every day at 05:00
-0 5 * * * debian RESTIC_REPOSITORY=sftp:backup@storage:/michel RESTIC_PASSWORD_FILE=/home/debian/.restic-pass restic backup /home/debian/michel-discord-bot/data/backups --quiet
+# /etc/cron.d/michel-backup: every day at 05:00, then keep a week of snapshots
+0 5 * * * debian cd /home/debian/michel-discord-bot/data && RESTIC_REPOSITORY=sftp:backup@storage:/michel RESTIC_PASSWORD_FILE=/home/debian/.restic-pass restic backup backups .cache twitchcreds.json --quiet && RESTIC_REPOSITORY=sftp:backup@storage:/michel RESTIC_PASSWORD_FILE=/home/debian/.restic-pass restic forget --keep-daily 7 --prune --quiet
 ```
+
+The `forget --prune` matters: without it the off-site copy keeps every snapshot
+for good, and a member's request to delete their data (`Privacy.md`) never
+reaches it. With it, deleted data is gone from the copy a week later.
 
 `rclone copy` to an encrypted (`crypt`) remote works the same way. Keep the
 restic password somewhere other than this server.
@@ -125,9 +142,12 @@ out at once, empty `global.webui_sessions` in MongoDB and restart the bot.
 
 ## Rotating a secret
 
-Secrets live in `config/config.json` and are masked in the dashboard. A rotated
-secret is pasted into its field in the dashboard (global config), or edited in
-the file, then the bot is restarted so every extension picks it up.
+Secrets live in `config/config.json` and are masked in the dashboard. A global
+secret is pasted into its field in the dashboard (global config); a module's
+secret is per server, on that server's module page. A secret tied to an
+address (`sent_to`: LLDAP, Minecraft SFTP, Satisfactory) must be typed again
+whenever that address changes, or the save is refused. Editing the file works
+too, followed by a restart so every extension picks it up.
 
 | Secret | Where to regenerate it | Config location |
 |---|---|---|
@@ -136,8 +156,14 @@ the file, then the bot is restarted so every extension picks it up.
 | MongoDB credentials | Your MongoDB server | `mongodb.url` |
 | Spotify, Twitch, YouTube, Notion | Each provider's developer console | `spotify`, `twitch`, `youtube`, `notion` sections |
 | AI providers (OpenRouter, NanoGPT) | Provider dashboard | `OpenRouter.openrouterApiKey`, `NanoGPT.apiKey` |
-| Shlink, Uptime Kuma, Random.org | Each service's settings | their sections |
+| Shlink | Shlink server: `shlink api-key:generate` | `shlink.shlinkApiKey` |
+| Uptime Kuma | Uptime Kuma → Settings → API Keys | `uptimeKuma.uptimeKumaApiKey`, `uptimeKuma.uptimeKumaToken` |
+| Random.org | random.org → API → your keys | `random.randomOrgApiKey` |
 | Sentry / GlitchTip DSN | Project → Settings → Client Keys | `errorReporting.dsn` |
+| LLDAP admin password (per server) | LLDAP web UI → the admin user | `moduleLldap.lldapAdminPassword` |
+| Minecraft SFTP password (per server) | Your host's panel | `moduleMinecraft.minecraftSftpsPassword` |
+| Satisfactory password and API token (per server) | Server console: `server.GenerateAPIToken` | `moduleSatisfactory.satisfactoryServerPassword`, `…ServerToken` |
+| Spotify / Twitch OAuth tokens | Re-authorize (see *Not in a backup*) | `data/.cache`, `data/twitchcreds.json` |
 
 After a suspected leak, rotate the Discord bot token first: it gives full control
 of the bot. Then check the backups, which also contain the secrets (see

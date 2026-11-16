@@ -15,6 +15,8 @@ guild, collections ``xp`` and ``xp_events``).
 from interactions import Client, Extension, Task, TimeTrigger, listen
 
 from features.xp import RANK_CACHE_TTL, USER_CACHE_TTL, TTLCache, XpRepository
+from src.core import clock
+from src.core.errors import DatabaseError
 from src.core.logging import log_failure
 from src.discord_ext.paginator import CustomPaginator
 
@@ -70,12 +72,27 @@ class XpExtension(Extension, LevelingMixin, VoiceMixin, CommandsMixin, Leaderboa
             logger.info("Voice XP resumed for %d member(s) already in voice", resumed)
         if not self._cache_cleanup_task.running:
             self._cache_cleanup_task.start()
+        if not self._archive_old_xp_events.running:
+            self._archive_old_xp_events.start()
         if not self._voice_xp_tick.running:
             self._voice_xp_tick.start()
 
         if not self.leaderboardpermanent.running:
             self.leaderboardpermanent.start()
         await self.leaderboardpermanent()
+
+    @Task.create(TimeTrigger(hour=4, minute=17, utc=False))
+    async def _archive_old_xp_events(self):
+        """Daily: fold XP events older than the retention into monthly totals."""
+        now = clock.now()
+        for guild_id in XP.guild_ids():
+            try:
+                months = await self._repo(guild_id).archive_old_events(now)
+            except DatabaseError as e:
+                logger.warning("XP events of guild %s not archived: %s", guild_id, e)
+                continue
+            if months:
+                logger.info("XP events archived for guild %s: %s", guild_id, ", ".join(months))
 
     @Task.create(TimeTrigger(minute=30, utc=False))
     async def _cache_cleanup_task(self):

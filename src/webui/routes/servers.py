@@ -468,7 +468,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
     @router.post(f"/api/servers/{{server_id}}/modules/{EMBED_MANAGER_MODULE}/publish")
     async def api_embedmanager_publish(request: Request, server_id: str):
         """Publish configured embeds to the target Discord message."""
-        await ctx.require_guild_admin(request, server_id)
+        session = await ctx.require_guild_admin(request, server_id)
         ctx.require_bot_loop()
 
         guild_config = ModuleConfig(EMBED_MANAGER_MODULE).get(server_id)
@@ -492,6 +492,9 @@ def create_router(ctx: WebUIContext) -> APIRouter:
 
         await ctx.call_bot(
             _publish, what=f"publish EmbedManager embeds for guild {server_id}", timeout=60.0
+        )
+        logger.info(
+            "Embeds of guild %s published by %s (%s)", server_id, session.username, session.user_id
         )
 
         return JSONResponse({"status": "ok", "count": embed_count})
