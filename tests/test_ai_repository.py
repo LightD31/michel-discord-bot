@@ -142,14 +142,11 @@ async def test_create_get_and_message_ids(col):
 
 
 async def test_bad_ids_are_simply_not_found(col):
-    repo = AiComparisonRepository(None)
+    repo = AiComparisonRepository("123")
     assert await repo.get("not-an-object-id") is None
     assert await repo.set_vote("nope", "1", "a") is None
     assert await repo.close("nope") is None
     assert not col  # a malformed id never reaches the database
-
-    await repo.create(_comparison())
-    assert ("global", "ai_comparisons") in col  # no guild → shared global database
 
 
 async def test_votes_change_and_stop_once_closed(col):

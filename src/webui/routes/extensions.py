@@ -76,7 +76,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
     @router.post("/api/reload")
     async def api_reload_all(request: Request):
         """Reload all extensions to apply config changes."""
-        ctx.require_developer(request)
+        session = ctx.require_developer(request)
         if not ctx.bot:
             raise HTTPException(status_code=503, detail="Bot non disponible")
 
@@ -85,7 +85,9 @@ def create_router(ctx: WebUIContext) -> APIRouter:
             try:
                 await run_extension_op(ctx, "reload", ext_path)
                 results["reloaded"].append(ext_path)
-                logger.info(f"Reloaded extension: {ext_path}")
+                logger.info(
+                    "Reloaded extension %s for %s (%s)", ext_path, session.username, session.user_id
+                )
             except Exception as e:
                 results["failed"].append({"name": ext_path, "error": type(e).__name__})
                 log_failure(logger, f"Failed to reload {ext_path}: {e}")
@@ -107,13 +109,15 @@ def create_router(ctx: WebUIContext) -> APIRouter:
     @router.post("/api/reload/{ext_name:path}")
     async def api_reload_one(request: Request, ext_name: str):
         """Reload a single extension by module path (e.g. ``extensions.tricount``)."""
-        ctx.require_developer(request)
+        session = ctx.require_developer(request)
         if not ctx.bot:
             raise HTTPException(status_code=503, detail="Bot non disponible")
         _require_known_extension(ext_name)
         try:
             await run_extension_op(ctx, "reload", ext_name)
-            logger.info(f"Reloaded extension: {ext_name}")
+            logger.info(
+                "Reloaded extension %s for %s (%s)", ext_name, session.username, session.user_id
+            )
         except HTTPException:
             raise
         except Exception as e:

@@ -16,7 +16,6 @@ from interactions import (
     Client,
     ComponentContext,
     Embed,
-    IntegrationType,
     IntervalTrigger,
     SlashContext,
     Task,
@@ -26,15 +25,17 @@ from interactions import (
 )
 
 from features.ai import AiComparisonRepository, Comparison, compute_model_stats
+from features.ai.quota import MODULE_DISABLED
 from src.core.errors import DatabaseError
 from src.discord_ext.embeds import Colors
 from src.discord_ext.locale import en_fr_desc
 from src.discord_ext.messages import edit_message_if_changed
+from src.discord_ext.scopes import guild_scopes
 
-from ._common import SCOPE_GLOBAL, SCOPE_GUILD, enabled_guild_ids, logger, repo_for, scope_for
+from ._common import SCOPE_GUILD, enabled_guild_ids, logger, module_enabled, repo_for
 from .ask import VOTE_PREFIX, render_comparison
 
-_VOTE_RE = re.compile(rf"^{VOTE_PREFIX}:([{SCOPE_GUILD}{SCOPE_GLOBAL}]):([0-9a-f]{{24}}):(\d)$")
+_VOTE_RE = re.compile(rf"^{VOTE_PREFIX}:{SCOPE_GUILD}:([0-9a-f]{{24}}):(\d)$")
 STATS_TOP = 15
 
 
@@ -50,8 +51,10 @@ class VotingMixin:
         match = _VOTE_RE.match(ctx.custom_id)
         if not match:
             return
-        scope, comparison_id, index = match.group(1), match.group(2), int(match.group(3))
-        repo = repo_for(scope, ctx.guild_id)
+        if not ctx.guild_id:
+            return
+        comparison_id, index = match.group(1), int(match.group(2))
+        repo = repo_for(ctx.guild_id)
 
         try:
             comparison = await repo.get(comparison_id)
@@ -92,8 +95,8 @@ class VotingMixin:
     async def _show_final(self, ctx: ComponentContext, comparison: Comparison) -> None:
         """A click on a closed comparison: make sure it shows the results, then say so.
 
-        Covers comparisons the close task couldn't edit (e.g. a user-installed
-        /ask in a server the bot isn't a member of).
+        Covers comparisons the close task couldn't edit (their message was
+        out of reach when it ran, or the module was switched off meanwhile).
         """
         comparison.closed = True
         try:
@@ -113,9 +116,7 @@ class VotingMixin:
     # =========================================================================
 
     def _close_targets(self) -> list[AiComparisonRepository]:
-        repos = [repo_for(SCOPE_GUILD, gid) for gid in enabled_guild_ids()]
-        repos.append(repo_for(SCOPE_GLOBAL, None))
-        return repos
+        return [repo_for(gid) for gid in enabled_guild_ids()]
 
     @Task.create(IntervalTrigger(minutes=1))
     async def close_due_comparisons(self) -> None:
@@ -161,11 +162,14 @@ class VotingMixin:
         description=en_fr_desc(
             "AI model leaderboard from your votes", "Classement des modèles d'IA selon vos votes"
         ),
-        integration_types=[IntegrationType.GUILD_INSTALL, IntegrationType.USER_INSTALL],
+        scopes=guild_scopes(enabled_guild_ids()),
     )
     @auto_defer()
     async def ask_stats(self, ctx: SlashContext) -> None:
-        repo = repo_for(scope_for(ctx.guild_id), ctx.guild_id)
+        if not ctx.guild_id or not module_enabled(ctx.guild_id):
+            await ctx.send(MODULE_DISABLED, ephemeral=True)
+            return
+        repo = repo_for(ctx.guild_id)
         try:
             comparisons = await repo.list_for_stats()
         except DatabaseError as e:

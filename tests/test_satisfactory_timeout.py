@@ -23,7 +23,7 @@ def test_the_client_gives_up_on_a_silent_server(silent_server, monkeypatch):
     monkeypatch.setattr(satisfactory, "REQUEST_TIMEOUT", (0.5, 0.5))
     started = time.monotonic()
     with pytest.raises(ServerError):
-        satisfactory._build_api(silent_server, "token")
+        satisfactory._build_api(silent_server, "token", "ab" * 32)
     assert time.monotonic() - started < 5
 
 
@@ -59,7 +59,7 @@ async def test_the_client_is_built_with_the_token(monkeypatch):
         return Response()
 
     monkeypatch.setattr(satisfactory.requests.Session, "request", fake_request)
-    api = await satisfactory._call(satisfactory._build_api, "host:7777", "tok")
+    api = await satisfactory._call(satisfactory._build_api, "host:7777", "tok", "ab" * 32)
     assert api.URL == "https://host:7777/api/v1/"
     assert calls == ["HealthCheck"]
     assert api.auth is not None

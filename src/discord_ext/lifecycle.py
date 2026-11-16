@@ -12,6 +12,7 @@ import inspect
 import logging
 import os
 import signal
+import time
 from collections.abc import Awaitable, Callable
 from typing import Any
 
@@ -122,7 +123,33 @@ class GracefulShutdown:
         await self.client.stop()
 
 
+# The gateway counts as alive while it sends Discord a heartbeat at least this
+# many heartbeat intervals apart (about 41 s each).
+GATEWAY_STALE_INTERVALS = 2.5
+
+
+def gateway_alive(client: Any, now: float | None = None) -> bool:
+    """Whether the Discord gateway is still connected and heartbeating.
+
+    The heartbeat file used to prove only that the event loop ran: a gateway
+    stuck reconnecting kept it fresh, so the watchdog never restarted a bot
+    that received nothing. interactions.py sends a heartbeat every interval
+    while connected (``_last_heartbeat``, on ``time.perf_counter()``) and stops
+    while it reconnects. Unknown internals (another library version, no
+    connection yet) count as alive: the watchdog's grace covers startup.
+    """
+    state = getattr(client, "_connection_state", None)
+    gateway = getattr(state, "gateway", None)
+    interval = getattr(gateway, "heartbeat_interval", None)
+    last = getattr(gateway, "_last_heartbeat", None)
+    if not isinstance(interval, int | float) or not isinstance(last, int | float) or not last:
+        return True
+    now = time.perf_counter() if now is None else now
+    return now - last < GATEWAY_STALE_INTERVALS * interval
+
+
 __all__ = [
+    "gateway_alive",
     "ASYNC_DROP_TIMEOUT_SECONDS",
     "SHUTDOWN_TIMEOUT_SECONDS",
     "GracefulShutdown",

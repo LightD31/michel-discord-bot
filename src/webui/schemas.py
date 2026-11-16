@@ -564,19 +564,6 @@ class AISection(SchemaBase):
         default=60,
         description="Appels aux modèles par jour (UTC) pour une même personne. 0 : illimité.",
     )
-    externalUse: bool = ui(
-        "Autoriser /ask hors des serveurs configurés",
-        "boolean",
-        default=True,
-        description="Messages privés et serveurs où l'application est installée par un "
-        "utilisateur sans que le module IA y soit activé. Désactivé : /ask n'y répond plus.",
-    )
-    externalUserIds: list[str] = ui(
-        "Utilisateurs autorisés hors serveurs",
-        "list",
-        description="Identifiants Discord. Si la liste est renseignée, seules ces personnes "
-        "peuvent utiliser /ask hors des serveurs où le module IA est activé.",
-    )
 
 
 @register_section("OpenRouter")
@@ -737,22 +724,6 @@ class RandomSection(SchemaBase):
     __icon__ = "🎲"
 
     randomOrgApiKey: str = secret_field("Clé API", required=True, description="Clé API Random.org.")
-
-
-@register_section("SecretSanta")
-class SecretSantaSection(SchemaBase):
-    __label__ = "Secret Santa (global)"
-    __icon__ = "🎅"
-
-    secretSantaFile: str | None = ui(
-        "Fichier de données",
-        "string",
-        description="Chemin du fichier JSON des données Secret Santa.",
-        default="data/secretsanta.json",
-    )
-    secretSantaKey: str | None = secret_field(
-        "Clé de chiffrement", description="Clé utilisée pour le chiffrement des assignations."
-    )
 
 
 @register_section("backup")

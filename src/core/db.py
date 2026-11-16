@@ -26,7 +26,6 @@ Usage::
 """
 
 import asyncio
-import contextlib
 import functools
 import shutil
 from collections.abc import Awaitable, Callable
@@ -199,6 +198,15 @@ class MongoManager:
         """Return a collection."""
         return self.client[db_name][collection_name]
 
+    async def guild_ids_with_data(self) -> list[str]:
+        """The ids of the guilds that have a database (``guild_<id>``)."""
+        names = await self.client.list_database_names()
+        return [n.removeprefix(GUILD_DB_PREFIX) for n in names if n.startswith(GUILD_DB_PREFIX)]
+
+    async def drop_guild_database(self, guild_id: str | int) -> None:
+        """Delete everything the bot stored for *guild_id* (its whole database)."""
+        await self.client.drop_database(f"{GUILD_DB_PREFIX}{guild_id}")
+
     async def ping(self) -> bool:
         """Test the connection. Returns True on success."""
         try:
@@ -261,9 +269,35 @@ class MongoManager:
             The path to the newly created backup folder.
         """
         timestamp = clock.local_now().strftime(backup_format.BACKUP_TIMESTAMP_FORMAT)
-        dest = Path(backup_dir) / timestamp
-        dest.mkdir(parents=True, exist_ok=True)
+        root = Path(backup_dir)
+        dest = root / timestamp
+        # Written aside and renamed at the end: a backup that fails leaves no
+        # folder that the retention would count as one of the backups kept.
+        work = root / f"{timestamp}{backup_format.PARTIAL_SUFFIX}"
+        await asyncio.to_thread(root.mkdir, parents=True, exist_ok=True)
+        await asyncio.to_thread(backup_format.make_private_dir, work)
+        try:
+            counts = await self._write_backup(work, timestamp)
+            await asyncio.to_thread(work.rename, dest)
+        except BaseException:
+            await asyncio.to_thread(shutil.rmtree, work, True)
+            raise
+        health.record_backup()
 
+        logger.info(
+            "Backup complete: %d databases, %d total documents → %s",
+            len(counts),
+            sum(sum(c.values()) for c in counts.values()),
+            dest,
+        )
+
+        # Prune old backups (off the loop: a few thousand files to remove)
+        await asyncio.to_thread(self._prune_backups, backup_dir, max_backups)
+
+        return str(dest)
+
+    async def _write_backup(self, dest: Path, timestamp: str) -> dict[str, dict[str, int]]:
+        """Dump every relevant database into *dest*; the document counts."""
         db_names = await self.client.list_database_names()
         # Only back up our own databases
         relevant = [n for n in db_names if n.startswith(GUILD_DB_PREFIX) or n == GLOBAL_DB_NAME]
@@ -280,21 +314,10 @@ class MongoManager:
                 )
             logger.debug("Backed up database '%s' (%d collections)", db_name, len(counts[db_name]))
 
+        await asyncio.to_thread(self._copy_config, dest)
+        # The manifest last: it is what marks a backup as complete.
         await asyncio.to_thread(backup_format.write_manifest, dest, timestamp, counts)
-        self._copy_config(dest)
-        health.record_backup()
-
-        logger.info(
-            "Backup complete: %d databases, %d total documents → %s",
-            len(relevant),
-            sum(sum(c.values()) for c in counts.values()),
-            dest,
-        )
-
-        # Prune old backups
-        self._prune_backups(backup_dir, max_backups)
-
-        return str(dest)
+        return counts
 
     @staticmethod
     async def _dump_collection(collection: Any, path: Path) -> int:
@@ -322,25 +345,31 @@ class MongoManager:
             return
         target = dest / BACKUP_CONFIG_FILENAME
         try:
-            shutil.copyfile(source, target)
+            with source.open("rb") as src, backup_format.open_private(target) as out:
+                shutil.copyfileobj(src, out)
         except OSError as e:
             logger.error("Could not back up %s: %s", source, e)
-            return
-        with contextlib.suppress(OSError):
-            target.chmod(0o600)
 
     @staticmethod
     def _prune_backups(backup_dir: str, max_backups: int) -> None:
-        """Keep only the *max_backups* most recent backup folders."""
+        """Keep only the *max_backups* most recent backups (blocking: run it off the loop).
+
+        Only folders that are backups count and are deleted: a timestamped name
+        and a manifest. Anything else under ``backupDir`` is left alone, so a
+        setting pointing at ``data`` can't delete the bot's other files. Left
+        over ``<timestamp>.partial`` folders (a backup killed mid-way) go too.
+        """
         root = Path(backup_dir)
         if not root.is_dir():
             return
-        folders = sorted(
-            [f for f in root.iterdir() if f.is_dir()],
+        entries = list(root.iterdir())
+        backups = sorted(
+            (f for f in entries if backup_format.is_backup_folder(f)),
             key=lambda p: p.name,
             reverse=True,
         )
-        for old in folders[max_backups:]:
+        stale = [f for f in entries if backup_format.is_partial_folder(f)]
+        for old in [*backups[max_backups:], *stale]:
             shutil.rmtree(old, ignore_errors=True)
             logger.info("Pruned old backup: %s", old)
 

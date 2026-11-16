@@ -19,14 +19,7 @@ from features.ai import AiClient, AiUsageRepository, Cooldown, RecentAnswers
 from src.core.errors import DatabaseError
 from src.integrations import llm
 
-from ._common import (
-    SCOPE_GLOBAL,
-    SCOPE_GUILD,
-    enabled_guild_ids,
-    global_settings,
-    logger,
-    repo_for,
-)
+from ._common import enabled_guild_ids, global_settings, logger, repo_for
 from .ask import AskMixin
 from .mentions import MentionsMixin
 from .voting import VotingMixin
@@ -56,11 +49,11 @@ class CompareAIExtension(AskMixin, MentionsMixin, VotingMixin, Extension):
             if api is not None:
                 await api.load_prices()
 
-        for gid in [*enabled_guild_ids(), None]:
+        for gid in enabled_guild_ids():
             try:
-                await repo_for(SCOPE_GUILD if gid else SCOPE_GLOBAL, gid).ensure_indexes()
+                await repo_for(gid).ensure_indexes()
             except DatabaseError as e:
-                logger.error("Could not create AI indexes for %s: %s", gid or "global", e)
+                logger.error("Could not create AI indexes for %s: %s", gid, e)
         try:
             await AiUsageRepository().ensure_indexes()
         except DatabaseError as e:

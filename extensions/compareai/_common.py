@@ -93,9 +93,9 @@ class IAConfig(SchemaBase):
 
 logger = logutil.init_logger(__name__)
 
-# Custom-id scopes: where a comparison is stored.
+# The scope letter of a vote button's custom id. Comparisons live in the
+# guild's database, the only place /ask runs.
 SCOPE_GUILD = "g"
-SCOPE_GLOBAL = "x"
 
 
 def global_settings() -> AiGlobalSettings:
@@ -132,12 +132,6 @@ def enabled_guild_ids() -> list[str]:
     ]
 
 
-def scope_for(guild_id: str | int | None) -> str:
-    """Comparisons live in the guild's database only where the module is enabled."""
-    return SCOPE_GUILD if module_enabled(guild_id) else SCOPE_GLOBAL
-
-
-def repo_for(scope: str, guild_id: str | int | None) -> AiComparisonRepository:
-    if scope == SCOPE_GUILD and guild_id is not None:
-        return AiComparisonRepository(str(guild_id))
-    return AiComparisonRepository(None)
+def repo_for(guild_id: str | int) -> AiComparisonRepository:
+    """The comparisons of *guild_id* (its own database)."""
+    return AiComparisonRepository(str(guild_id))

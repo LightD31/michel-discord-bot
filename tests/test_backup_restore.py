@@ -158,3 +158,50 @@ def test_plan_rejects_unknown_databases_and_non_backups(backup, tmp_path):
         plan(backup, ["guild_9"])
     with pytest.raises(ValueError, match="manifest"):
         plan(tmp_path, None)
+
+
+# ── Permissions, failed runs and retention (O02, B12) ─────────────────────
+
+
+def test_a_backup_is_readable_by_its_owner_only(backup):
+    import stat
+
+    assert stat.S_IMODE(backup.stat().st_mode) == 0o700
+    for path in backup.rglob("*"):
+        expected = 0o700 if path.is_dir() else 0o600
+        assert stat.S_IMODE(path.stat().st_mode) == expected, path
+
+
+def test_a_failed_backup_leaves_no_folder(tmp_path, monkeypatch):
+    monkeypatch.setattr(core_config, "CONFIG_PATH", str(tmp_path / "missing.json"))
+    monkeypatch.setattr(MongoManager, "client", property(lambda self: AsyncMotor(DOCS)))
+
+    async def broken_dump(collection, path):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(MongoManager, "_dump_collection", staticmethod(broken_dump))
+    root = tmp_path / "b"
+    with pytest.raises(OSError):
+        asyncio.run(MongoManager().backup_all(str(root)))
+    assert list(root.iterdir()) == []
+
+
+def test_retention_counts_and_deletes_backups_only(tmp_path):
+    root = tmp_path / "data"
+    names = [f"2026-01-0{d}_05-00-00" for d in range(1, 6)]
+    for name in names:
+        (root / name).mkdir(parents=True)
+        (root / name / backup_format.MANIFEST_FILENAME).write_text("{}")
+    (root / "2026-01-06_05-00-00").mkdir()  # no manifest: not a backup, not counted
+    (root / "2026-01-07_05-00-00.partial").mkdir()  # a run that was killed
+    (root / "zunivers-ninja").mkdir()  # a folder that isn't a backup at all
+
+    MongoManager._prune_backups(str(root), 2)
+
+    left = sorted(p.name for p in root.iterdir())
+    assert left == [
+        "2026-01-04_05-00-00",
+        "2026-01-05_05-00-00",
+        "2026-01-06_05-00-00",
+        "zunivers-ninja",
+    ]

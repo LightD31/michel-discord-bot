@@ -11,10 +11,9 @@ import features.ai.usage as usage_module
 from extensions.compareai.ask import MODE_COMPARE, MODE_QUICK, AskMixin
 from features.ai import AiGlobalSettings, AiLimits, AiUsageRepository, access_refusal
 from features.ai.quota import (
-    EXTERNAL_DISABLED,
-    EXTERNAL_NOT_ALLOWED,
     GLOBAL,
     GLOBAL_LIMIT_REACHED,
+    MODULE_DISABLED,
     PAUSED,
     QUOTA_UNAVAILABLE,
     USER,
@@ -39,13 +38,10 @@ def test_limits_parse_with_safe_defaults():
             "paused": True,
             "dailyCallLimit": "200",
             "userDailyCallLimit": -5,  # clamped, i.e. unlimited
-            "externalUse": False,
-            "externalUserIds": [" 42 ", "", 7],
         }
     )
-    assert parsed.paused and not parsed.external_use
+    assert parsed.paused
     assert parsed.daily_calls == 200 and parsed.user_daily_calls == 0
-    assert parsed.external_user_ids == frozenset({"42", "7"})
 
 
 def test_global_settings_carry_the_limits():
@@ -54,18 +50,10 @@ def test_global_settings_carry_the_limits():
 
 
 def test_access_rules():
-    open_limits = AiLimits()
-    assert access_refusal(open_limits, user_id="1", in_enabled_guild=False) is None
-    assert access_refusal(AiLimits(paused=True), user_id="1", in_enabled_guild=True) == PAUSED
-
-    closed = AiLimits(external_use=False)
-    assert access_refusal(closed, user_id="1", in_enabled_guild=False) == EXTERNAL_DISABLED
-    assert access_refusal(closed, user_id="1", in_enabled_guild=True) is None
-
-    allowlist = AiLimits(external_user_ids=frozenset({"42"}))
-    assert access_refusal(allowlist, user_id="42", in_enabled_guild=False) is None
-    assert access_refusal(allowlist, user_id="7", in_enabled_guild=False) == EXTERNAL_NOT_ALLOWED
-    assert access_refusal(allowlist, user_id="7", in_enabled_guild=True) is None
+    """/ask answers only where the AI module is on: no external use any more (S07)."""
+    assert access_refusal(AiLimits(), in_enabled_guild=True) is None
+    assert access_refusal(AiLimits(), in_enabled_guild=False) == MODULE_DISABLED
+    assert access_refusal(AiLimits(paused=True), in_enabled_guild=True) == PAUSED
 
 
 def test_days_are_utc():
@@ -200,8 +188,7 @@ def wired(monkeypatch):
         "guild_settings",
         lambda gid: SimpleNamespace(compare_by_default=True, history_limit=0, default_model=""),
     )
-    monkeypatch.setattr(ask_module, "repo_for", lambda scope, gid: None)
-    monkeypatch.setattr(ask_module, "scope_for", lambda gid: "g")
+    monkeypatch.setattr(ask_module, "repo_for", lambda gid: None)
     return errors, state
 
 
@@ -241,7 +228,7 @@ def test_quota_refusal_stops_before_any_work(wired):
     assert not harness.history_read and harness.compare_count is None and not harness.quick
 
 
-def test_paused_and_external_rules_apply_before_counting(wired):
+def test_paused_and_disabled_module_refuse_before_counting(wired):
     errors, state = wired
     state["limits"] = AiLimits(paused=True)
     harness = Harness([model("a")])
@@ -249,10 +236,11 @@ def test_paused_and_external_rules_apply_before_counting(wired):
     assert errors == [PAUSED] and harness.reserved == []
 
     errors.clear()
-    state["limits"] = AiLimits(external_use=False)
-    state["enabled"] = False  # a server where the AI module is off (user install)
+    state["limits"] = AiLimits()
+    state["enabled"] = False  # the module was switched off, /ask not yet removed
     ask(harness)
-    assert errors == [EXTERNAL_DISABLED] and harness.reserved == []
+    assert errors == [MODULE_DISABLED] and harness.reserved == []
+    assert not harness.history_read
 
 
 def test_retry_on_another_model_needs_its_own_quota(monkeypatch):

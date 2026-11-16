@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import gzip
 import json
+import os
 from collections.abc import Iterable, Iterator, Mapping
 from datetime import datetime
 from pathlib import Path
@@ -34,21 +35,67 @@ FORMAT_VERSION = 1
 # A backup folder's name, and its manifest's ``created_at``: local time.
 BACKUP_TIMESTAMP_FORMAT = "%Y-%m-%d_%H-%M-%S"
 MANIFEST_FILENAME = "manifest.json"
+# A backup is written under this suffix and renamed once complete.
+PARTIAL_SUFFIX = ".partial"
 COLLECTION_SUFFIX = ".jsonl.gz"
+
+
+# A backup holds sanctions, birthdays, AI questions and Secret Santa draws:
+# readable by the bot's own user only, whatever the umask.
+PRIVATE_DIR_MODE = 0o700
+PRIVATE_FILE_MODE = 0o600
 
 
 def collection_path(backup: Path, db_name: str, col_name: str) -> Path:
     return backup / db_name / f"{col_name}{COLLECTION_SUFFIX}"
 
 
+def make_private_dir(path: Path) -> None:
+    """Create *path* (and its missing parents) readable by the owner only."""
+    path.mkdir(mode=PRIVATE_DIR_MODE, parents=True, exist_ok=True)
+    path.chmod(PRIVATE_DIR_MODE)  # mkdir's mode is filtered by the umask
+
+
+def open_private(path: Path, mode: str = "wb") -> IO[Any]:
+    """Open *path* for writing, created ``0600`` (never readable by others, even briefly)."""
+    flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
+    fd = os.open(path, flags, PRIVATE_FILE_MODE)
+    os.fchmod(fd, PRIVATE_FILE_MODE)  # an existing file keeps its mode through O_CREAT
+    if "b" in mode:
+        return os.fdopen(fd, mode)
+    return os.fdopen(fd, mode, encoding="utf-8")
+
+
+def is_backup_folder(path: Path) -> bool:
+    """Whether *path* is a finished backup: a timestamped folder with its manifest."""
+    try:
+        datetime.strptime(path.name, BACKUP_TIMESTAMP_FORMAT)
+    except ValueError:
+        return False
+    return path.is_dir() and (path / MANIFEST_FILENAME).is_file()
+
+
+def is_partial_folder(path: Path) -> bool:
+    """Whether *path* is a backup that never finished (``<timestamp>.partial``)."""
+    stem = path.name.removesuffix(PARTIAL_SUFFIX)
+    if stem == path.name:
+        return False
+    try:
+        datetime.strptime(stem, BACKUP_TIMESTAMP_FORMAT)
+    except ValueError:
+        return False
+    return path.is_dir()
+
+
 class CollectionWriter:
     """Appends documents to one collection file; use as a context manager."""
 
     def __init__(self, path: Path) -> None:
-        path.parent.mkdir(parents=True, exist_ok=True)
+        make_private_dir(path.parent)
         self.path = path
         self.count = 0
-        self._file: IO[str] = gzip.open(path, "wt", encoding="utf-8")  # noqa: SIM115 — closed in close()
+        self._raw = open_private(path)
+        self._file: IO[str] = gzip.open(self._raw, "wt", encoding="utf-8")  # noqa: SIM115 — closed in close()
 
     def write(self, docs: Iterable[Mapping[str, Any]]) -> None:
         for doc in docs:
@@ -58,6 +105,7 @@ class CollectionWriter:
 
     def close(self) -> None:
         self._file.close()
+        self._raw.close()
 
     def __enter__(self) -> CollectionWriter:
         return self
@@ -78,9 +126,8 @@ def read_collection(path: Path) -> Iterator[dict[str, Any]]:
 def write_manifest(backup: Path, created_at: str, counts: Mapping[str, Mapping[str, int]]) -> None:
     """``counts`` maps database → collection → number of documents written."""
     manifest = {"format": FORMAT_VERSION, "created_at": created_at, "databases": counts}
-    (backup / MANIFEST_FILENAME).write_text(
-        json.dumps(manifest, indent=2, sort_keys=True), encoding="utf-8"
-    )
+    with open_private(backup / MANIFEST_FILENAME, "w") as f:
+        f.write(json.dumps(manifest, indent=2, sort_keys=True))
 
 
 def read_manifest(backup: Path) -> dict[str, Any]:

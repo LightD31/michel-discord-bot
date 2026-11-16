@@ -68,7 +68,7 @@ A modular, multi-guild Discord bot built with **interactions.py**. Michel ships 
 | **YouTube** | Polls YouTube channels every 5 min and posts new video links in a configured channel. |
 | **Spotify** | Collaborative playlist management with song proposals, community voting, and playlist change tracking. OAuth re-authentication happens through the Web UI, whose Spotify module page also charts the playlist (additions per month, top contributors and artists, track lengths) and the vote history (open poll, outcomes, per-person split, turnout). |
 | **RSS** | Generic feed poller (RSS / Atom / Steam / Epic / subreddit) with per-feed channel and message-template overrides. |
-| **AI Compare** | `/ask`: compare anonymous answers from several LLMs (OpenRouter and/or NanoGPT) and let everyone vote, or get a quick single-model answer; `/ask-stats` ranks the models. Optional per-server replies when Michel is @mentioned. Cost guards in the global `AI` section: a kill switch, global and per-user daily model-call limits, and whether `/ask` answers outside configured servers (DMs, user installs) and for whom. |
+| **AI Compare** | `/ask`: compare anonymous answers from several LLMs (OpenRouter and/or NanoGPT) and let everyone vote, or get a quick single-model answer; `/ask-stats` ranks the models. Optional per-server replies when Michel is @mentioned. `/ask` exists only on the servers where the module is enabled. Cost guards in the global `AI` section: a kill switch, and global and per-user daily model-call limits. |
 | **Confrérie** | Literary guild features backed by the Notion API — hourly recap stats, forum posts and `/demande` turned into drafts the owner approves, `/texte` / `/auteur` / `/outil` lookups, publisher management. |
 | **Zunivers** | Everything lives under `/zunivers`. Daily reminders (`/zunivers journa set\|remove`), event tracking (`/zunivers check`), Hardcore season monitoring, corporation recaps (`/zunivers corpo [date]`), and Advent calendar for the Zunivers collectible game. Optional [ZUnivers Ninja](https://github.com/LightD31/ZUnivers-Ninja) plans: `/zunivers ninja [membre] [hardcore] [strategie] [public]` on demand (only visible to the caller unless `public`; the ZUnivers pseudo is the Discord username), with a button to the player's page on the Ninja web UI, and an opt-in link in the `/journa` reminders (`/zunivers journa set ninja:True`, with an optional `strategie` the link opens with). ZeratoR 24/7 `!request` reminders (for the card that asks for them): `/zunivers 247 set [debut] [fin]` DMs the member each time the requests window opens before a vote on the 24/7 channel telling them to type `!request random` (the 24/7 bot picks an archive VOD itself) or `!request <ID>` with the Twitch video ID of a VOD of their choice (optionally only between two hours, Paris time), `/zunivers 247 remove` stops them and `/zunivers 247 status` says when the next window opens. Needs `zerator247Url` set in the module config. |
 | **VLR.gg Tracker** | Valorant esports match tracking — schedules, live score updates, and post-match results from VLR.gg. |
@@ -76,7 +76,7 @@ A modular, multi-guild Discord bot built with **interactions.py**. Michel ships 
 | **Shlink** | Shortens the external links the bot posts (RSS entries, YouTube uploads, Embed manager links, MDI, Streamlabs, recap messages) through a self-hosted [Shlink](https://shlink.io) instance, and manages the short links from the dashboard. |
 | **Uptime** | Mirrors Uptime Kuma status changes (down, back up, maintenance) into channels by polling Kuma's `/metrics` with a read-only API key, and reports the bot's own liveness to a Kuma push monitor. |
 | **LLDAP** | Self-service [LLDAP](https://github.com/lldap/lldap) accounts for members holding a mapped role: `/register <email> [username]` creates the account with a temporary password, and group membership follows the Discord roles (synced every 10 min, or `/lldap sync` for admins). Each server configures its own LLDAP instance; needs a custom string user attribute (`discordid` by default) and an `lldap_admin` account. The bot never adds anyone to LLDAP's built-in groups (`lldap_admin`, `lldap_password_manager`, `lldap_strict_readonly`), whatever a role maps to. Ported from [LLDAP-Discord](https://github.com/JaidenW/LLDAP-Discord). |
-| **Minecraft** | Server status monitoring and player stats via SFTP/RCON. *(disabled by default)* |
+| **Minecraft** | Server status monitoring and player stats via SFTP. *(disabled by default)* |
 | **Satisfactory** | Game server status via pyfactorybridge. |
 
 ### Event trackers (time-bound)
@@ -134,8 +134,7 @@ src/                    # Shared infrastructure
 │   ├── spotify.py      #   Spotipy auth with lazy client, vote counting
 │   ├── notion.py       #   Notion API client
 │   ├── shlink.py       #   Shlink URL shortener (CRUD + shortening cache)
-│   ├── lldap.py        #   LLDAP GraphQL client + LDAP password reset
-│   └── minecraft_rcon.py
+│   └── lldap.py        #   LLDAP GraphQL client + LDAP password reset
 ├── webui/              # FastAPI dashboard
 │   ├── app.py          #   router assembly + session restore on startup
 │   ├── auth.py         #   Discord OAuth2, CSRF state, session persistence
@@ -160,8 +159,8 @@ scripts/                # generate_config_example.py — config skeleton from sc
 - **Auto-discovered extensions** — Extensions are loaded at startup unless disabled via the Web UI or `config["extensions"]`.
 - **Mixin-based extensions** — Larger extensions (xp, twitch, uptime, zevent, tricount…) are split into mixin classes by concern and composed in the package's `__init__.py`.
 - **Schema-driven dashboard** — Each module declares a Pydantic config schema; the Web UI renders typed forms, per-server toggles, and validation from it.
-- **Async everywhere** — PyMongo's async API for MongoDB, aiohttp for HTTP, asyncssh for SFTP, native async RCON. The bot loop and the Web UI loop each get their own MongoDB/aiohttp clients.
-- **Self-healing** — A heartbeat file plus a watchdog thread make the process exit when the gateway wedges, so Docker's restart policy brings it back.
+- **Async everywhere** — PyMongo's async API for MongoDB, aiohttp for HTTP, asyncssh for SFTP. The bot loop and the Web UI loop each get their own MongoDB/aiohttp clients.
+- **Self-healing** — The bot touches a heartbeat file while its loop runs and the Discord gateway still heartbeats; a watchdog thread exits the process when the file goes stale (a wedged loop, or a gateway stuck reconnecting), and Docker's restart policy (`restart: unless-stopped`) starts it again. Docker's own healthcheck only marks the container unhealthy: it restarts nothing.
 
 ---
 
@@ -194,7 +193,7 @@ Volumes:
 - `./data` → `/app/data` (persistent data, backups)
 - `./logs` → `/app/logs` (log files)
 
-The Web UI is published on `127.0.0.1:8080` — put a TLS-terminating reverse proxy in front of it, and list that proxy in `webui.trustedProxies`. With the compose file, requests reach the container from the gateway of the project's network, not from loopback: read it with `docker network inspect <project>_default --format '{{(index .IPAM.Config 0).Gateway}}'` (often `172.18.0.1`). Until it is listed, every visitor shares one login rate limit and the dashboard never sees HTTPS (no `Secure` cookie, no HSTS); the bot logs a warning naming the peer the first time it sees forwarding headers from an address it doesn't trust. Inside the container it listens on every interface (`MICHEL_BIND_HOST=0.0.0.0` in the image); run outside Docker, it and `/metrics` listen on `127.0.0.1` unless `webui.host` / `metrics.host` say otherwise. The container runs as a non-root user and has a healthcheck wired to the bot's heartbeat file, so a wedged gateway connection triggers an automatic restart (`restart: unless-stopped`).
+The Web UI is published on `127.0.0.1:8080` — put a TLS-terminating reverse proxy in front of it, and list that proxy in `webui.trustedProxies`. With the compose file, requests reach the container from the gateway of the project's network, not from loopback: read it with `docker network inspect <project>_default --format '{{(index .IPAM.Config 0).Gateway}}'` (often `172.18.0.1`). Until it is listed, every visitor shares one login rate limit and the dashboard never sees HTTPS (no `Secure` cookie, no HSTS); the bot logs a warning naming the peer the first time it sees forwarding headers from an address it doesn't trust. Inside the container it listens on every interface (`MICHEL_BIND_HOST=0.0.0.0` in the image); run outside Docker, it and `/metrics` listen on `127.0.0.1` unless `webui.host` / `metrics.host` say otherwise. The container runs as a non-root user and has a healthcheck that reads the bot's heartbeat file (it shows as unhealthy; the restart itself comes from the watchdog exiting the process, see *Self-healing*). Docker keeps at most 5 × 20 MB of logs (`logging:` in the compose file).
 
 ### Local Development
 
@@ -301,8 +300,14 @@ groups:
     rules:
       - alert: MichelTaskStalled          # a 5-minute task with no success for 15 minutes
         expr: time() - michel_task_last_success_timestamp_seconds{task="YoutubeExtension.check_youtube"} > 900
+      - alert: MichelDown                 # the exporter (and so the bot) doesn't answer
+        expr: up{job="michel"} == 0
+        for: 5m
       - alert: MichelBackupMissing        # the daily backup didn't run
         expr: time() - michel_backup_last_success_timestamp_seconds > 26 * 3600
+      - alert: MichelNeverBackedUp        # the series only exists after a first backup
+        expr: absent(michel_backup_last_success_timestamp_seconds)
+        for: 26h
       - alert: MichelApiFailing
         expr: sum by (host) (rate(michel_http_requests_total{outcome=~"5xx|error"}[15m])) > 0.1
       - alert: MichelLoopBlocked          # 1% of the loop samples a second late or worse
@@ -334,7 +339,7 @@ scrape_configs:
 | Twitch | [twitchAPI](https://pytwitchapi.dev/) (EventSub) |
 | Notion | [notion-client](https://github.com/ramnes/notion-sdk-py) |
 | AI | [OpenRouter](https://openrouter.ai/) and [NanoGPT](https://nano-gpt.com/) via the OpenAI SDK |
-| Minecraft | mcstatus, asyncssh, native RCON |
+| Minecraft | mcstatus, asyncssh |
 | Monitoring | Uptime Kuma (`/metrics` + push monitor), Prometheus exporter ([prometheus-client](https://github.com/prometheus/client_python)) |
 | Image gen | Pillow |
 

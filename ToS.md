@@ -18,7 +18,7 @@ Michel is a modular Discord bot. It offers, among other things:
 - notifications (RSS, YouTube, Twitch, events…);
 - AI-generated answers.
 
-Each server's administrators choose which modules are enabled and how they are configured. Some commands (such as `/ask`) can also be used outside servers, through Discord's user install.
+Each server's administrators choose which modules are enabled and how they are configured. A few commands (such as `/random`) can also be used outside servers, through Discord's user install; `/ask` cannot.
 
 The Bot is provided **free of charge**, as a hobby project. There is no subscription, no payment and no service-level commitment.
 

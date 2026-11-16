@@ -37,6 +37,9 @@ def _on_main_thread() -> bool:
 # ── Satisfactory ─────────────────────────────────────────────────────────
 
 
+PIN = "AB:" * 31 + "AB"  # as openssl prints it
+
+
 async def test_satisfactory_refreshes_each_guild_from_its_own_server(store_config, monkeypatch):
     import extensions.satisfactory as sat
 
@@ -49,11 +52,13 @@ async def test_satisfactory_refreshes_each_guild_from_its_own_server(store_confi
                     "satisfactoryServerIp": "a",
                     "satisfactoryServerPort": "1234",
                     "satisfactoryServerToken": "t1",
+                    "satisfactoryServerCertificateSha256": PIN,
                 },
                 "2": {
                     "enabled": True,
                     "satisfactoryServerIp": "b",
                     "satisfactoryServerToken": "t2",
+                    "satisfactoryServerCertificateSha256": PIN,
                 },
                 "3": {"enabled": True},  # no server yet
                 "4": {
@@ -67,7 +72,8 @@ async def test_satisfactory_refreshes_each_guild_from_its_own_server(store_confi
     clients: list[tuple] = []
 
     class FakeAPI:
-        def __init__(self, address, token):
+        def __init__(self, address, token, fingerprint):
+            assert fingerprint == "ab" * 32
             clients.append((address, token, _on_main_thread()))
 
         def query_server_state(self):
@@ -84,6 +90,7 @@ async def test_satisfactory_refreshes_each_guild_from_its_own_server(store_confi
     ext = object.__new__(sat.Satisfactory)
     ext.messages = FakeMessages()
     ext._apis = {}
+    ext._unpinned_warned = set()
 
     await sat.Satisfactory.update_message.callback(ext)
     await sat.Satisfactory.update_message.callback(ext)

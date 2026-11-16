@@ -161,3 +161,68 @@ async def test_nsfw_messages_reach_only_an_nsfw_starboard(source_nsfw, board_nsf
     ext, stored = _mixin(board)
     await ext._post_mirror(_starred(source_nsfw), "1", 3, "⭐", "50")
     assert bool(board.sent) is mirrored and bool(stored) is mirrored
+
+
+# ── Private sources (S06) ────────────────────────────────────────────────
+
+
+class _VisibleTo:
+    """A channel @everyone can (or can't) see."""
+
+    def __init__(self, public, *, cid=20, nsfw=False):
+        self.id = cid
+        self.name = "salon"
+        self.nsfw = nsfw
+        self.public = public
+        self.guild = SimpleNamespace(default_role="everyone")
+        self.sent = []
+
+    def permissions_for(self, role):
+        from interactions import Permissions
+
+        return Permissions.VIEW_CHANNEL if self.public else Permissions.NONE
+
+    async def send(self, embeds):
+        self.sent.append(embeds)
+        return SimpleNamespace(id=60)
+
+
+def _starred_in(channel):
+    message = _starred(False)
+    message.channel = channel
+    return message
+
+
+@pytest.mark.parametrize(
+    ("source_public", "board_public", "allow", "mirrored"),
+    [
+        (False, True, False, False),  # staff channel → public starboard: held back
+        (False, True, True, True),  # the guild allowed it
+        (False, False, False, True),  # a staff starboard
+        (True, True, False, True),
+    ],
+)
+async def test_private_channels_stay_private(source_public, board_public, allow, mirrored):
+    board = _VisibleTo(board_public, cid=50)
+    ext, stored = _mixin(board)
+    message = _starred_in(_VisibleTo(source_public))
+    await ext._post_mirror(message, "1", 3, "⭐", "50", allow_private=allow)
+    assert bool(board.sent) is mirrored and bool(stored) is mirrored
+
+
+def test_a_thread_is_as_public_as_its_parent_unless_private():
+    from src.discord_ext.channels import everyone_can_view
+
+    public_parent = _VisibleTo(True)
+    assert everyone_can_view(SimpleNamespace(parent_channel=public_parent, is_private=False))
+    assert not everyone_can_view(SimpleNamespace(parent_channel=public_parent, is_private=True))
+    assert not everyone_can_view(SimpleNamespace(parent_channel=_VisibleTo(False)))
+    assert not everyone_can_view(SimpleNamespace(id=1))  # unknown: counts as private
+
+
+def test_the_rule_itself():
+    from features.starboard import exposes_hidden_channel
+
+    assert exposes_hidden_channel(source_public=False, board_public=True, allow_private=False)
+    assert not exposes_hidden_channel(source_public=False, board_public=True, allow_private=True)
+    assert not exposes_hidden_channel(source_public=True, board_public=True, allow_private=False)

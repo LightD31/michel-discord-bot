@@ -10,11 +10,13 @@ from features.starboard import (
     StarEntry,
     count_valid_reactors,
     emoji_matches,
+    exposes_hidden_channel,
     first_image_url,
     plan_mirror,
 )
 from src.core import clock
 from src.core.logging import log_failure
+from src.discord_ext.channels import everyone_can_view
 from src.discord_ext.embeds import Colors
 from src.discord_ext.messages import edit_message_if_changed
 
@@ -123,6 +125,7 @@ class ListenersMixin:
                 ignore_bots=ignore_bots,
                 starboard_channel_id=str(starboard_channel_id),
                 remove_below_threshold=bool(settings.get("removeBelowThreshold", False)),
+                allow_private=bool(settings.get("allowPrivateSources", False)),
             )
 
     async def _sync_mirror(
@@ -136,6 +139,7 @@ class ListenersMixin:
         ignore_bots: bool,
         starboard_channel_id: str,
         remove_below_threshold: bool,
+        allow_private: bool = False,
     ) -> None:
         repo = self.repository(guild_id)
         existing = await repo.get_by_original(str(message.id))
@@ -150,7 +154,9 @@ class ListenersMixin:
         )
 
         if action is MirrorAction.POST:
-            await self._post_mirror(message, guild_id, count, emoji, starboard_channel_id)
+            await self._post_mirror(
+                message, guild_id, count, emoji, starboard_channel_id, allow_private=allow_private
+            )
         elif existing is None or action is MirrorAction.NOTHING:
             return
         elif action is MirrorAction.REMOVE:
@@ -170,7 +176,14 @@ class ListenersMixin:
             await repo.update_count(str(message.id), count)
 
     async def _post_mirror(
-        self, message, guild_id: str, count: int, emoji: str, starboard_channel_id: str
+        self,
+        message,
+        guild_id: str,
+        count: int,
+        emoji: str,
+        starboard_channel_id: str,
+        *,
+        allow_private: bool = False,
     ) -> None:
         try:
             channel = await self.bot.fetch_channel(int(starboard_channel_id))
@@ -184,6 +197,13 @@ class ListenersMixin:
         # reports its parent's setting).
         if getattr(message.channel, "nsfw", False) and not getattr(channel, "nsfw", False):
             logger.info("Starboard: message %s is in an NSFW channel, not mirrored", message.id)
+            return
+        if exposes_hidden_channel(
+            source_public=everyone_can_view(message.channel),
+            board_public=everyone_can_view(channel),
+            allow_private=allow_private,
+        ):
+            logger.info("Starboard: message %s is in a private channel, not mirrored", message.id)
             return
         try:
             sent = await channel.send(embeds=[_build_embed(message, count, emoji)])  # type: ignore[union-attr]

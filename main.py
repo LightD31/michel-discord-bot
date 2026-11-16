@@ -25,7 +25,7 @@ from src.core.logging import DEBUG, log_failure
 from src.discord_ext import errors as discord_errors
 from src.discord_ext import mentions, task_health
 from src.discord_ext.interaction_context import bind_interaction_context
-from src.discord_ext.lifecycle import GracefulShutdown
+from src.discord_ext.lifecycle import GracefulShutdown, gateway_alive
 from src.webui.schemas import config_problems
 
 # Configure logging for this main.py handler
@@ -113,7 +113,14 @@ MAX_CONFIG_PROBLEMS_LOGGED = 20
 
 @Task.create(IntervalTrigger(seconds=45))
 async def _heartbeat_task():
-    """Touch a file so the Docker healthcheck can verify the bot is alive (metadata-only, no disk write)."""
+    """Touch a file while the loop runs and the gateway is connected (metadata-only).
+
+    Skipped while the gateway has stopped heartbeating (stuck reconnecting),
+    so the watchdog restarts the process rather than leave it deaf.
+    """
+    if not gateway_alive(client):
+        logger.warning("Discord gateway not heartbeating: heartbeat file left to go stale")
+        return
     with contextlib.suppress(OSError):
         Path(HEALTH_FILE).touch()
 

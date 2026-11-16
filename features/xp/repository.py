@@ -5,7 +5,7 @@ exceptions, so callers in ``extensions/`` never need to import ``pymongo``.
 """
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pymongo
@@ -15,6 +15,22 @@ from src.core.db import mongo_manager, translates_db_errors
 
 # Legacy events predate the ``source`` field; they were all message awards.
 _SOURCE_EXPR = {"$ifNull": ["$source", "message"]}
+
+# How long one event per XP award is kept. The dashboard reads 365 days at
+# most; older events are folded into monthly totals (``xp_monthly``, per member
+# and source) and deleted, so the log stops growing and holds no more personal
+# detail than the charts need.
+EVENT_RETENTION_DAYS = 400
+
+
+def month_start(moment: datetime) -> datetime:
+    """The first instant (UTC) of *moment*'s month."""
+    moment = moment.astimezone(UTC)
+    return moment.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+
+def next_month(start: datetime) -> datetime:
+    return (start + timedelta(days=32)).replace(day=1)
 
 
 @dataclass
@@ -47,6 +63,18 @@ class XpRepository:
 
     def _events(self):
         return mongo_manager.get_guild_collection(self.guild_id, "xp_events")
+
+    def _totals(self):
+        """One counter per source (``_id``), kept by :meth:`log_event`."""
+        return mongo_manager.get_guild_collection(self.guild_id, "xp_totals")
+
+    def _monthly(self):
+        """Events past :data:`EVENT_RETENTION_DAYS`, summed per month, member and source."""
+        return mongo_manager.get_guild_collection(self.guild_id, "xp_monthly")
+
+    def _rollups(self):
+        """The months already summed into ``xp_monthly`` (``_id`` = ``YYYY-MM``)."""
+        return mongo_manager.get_guild_collection(self.guild_id, "xp_rollups")
 
     @translates_db_errors
     async def ensure_indexes(self) -> None:
@@ -143,6 +171,10 @@ class XpRepository:
                 "source": source,
             }
         )
+        # All-time totals, without an aggregation over the whole log each scrape.
+        await self._totals().update_one(
+            {"_id": source}, {"$inc": {"xp": xp_gained, "events": 1}}, upsert=True
+        )
 
     @translates_db_errors
     async def get_user_rank(self, user_id: str) -> int | None:
@@ -172,7 +204,8 @@ class XpRepository:
 
     @translates_db_errors
     async def list_all_sorted_by_xp(self) -> list[dict[str, Any]]:
-        cursor = self._xp().find().sort("xp", -1)
+        """Every member's ``_id``, ``xp``, ``msg`` and ``lvl``, XP descending."""
+        cursor = self._xp().find({}, {"xp": 1, "msg": 1, "lvl": 1}).sort("xp", -1)
         return await cursor.to_list()
 
     # --- Dashboard stats (aggregations over ``xp_events``) ----------------
@@ -214,21 +247,75 @@ class XpRepository:
 
     @translates_db_errors
     async def totals_by_source(self) -> list[dict[str, Any]]:
-        """All-time XP and event count per source.
+        """All-time XP and event count per source, from the ``xp_totals`` counters.
 
         Rows: ``{"source": "message"|"voice", "xp": int, "events": int}``.
         """
+        cursor = self._totals().find({})
+        return [
+            {"source": doc["_id"], "xp": doc.get("xp", 0), "events": doc.get("events", 0)}
+            async for doc in cursor
+        ]
+
+    # --- Retention -----------------------------------------------------------
+
+    @translates_db_errors
+    async def archive_old_events(self, now: datetime) -> list[str]:
+        """Fold every whole month older than :data:`EVENT_RETENTION_DAYS` into ``xp_monthly``.
+
+        Returns the months archived. Each month is summed in one aggregation
+        (``$merge`` replacing that month's rows), marked done in ``xp_rollups``,
+        then its events are deleted. A run cut short anywhere is safe to
+        repeat: before the mark the sum is recomputed from the same events,
+        after it only the deletion is left to finish.
+        """
+        cutoff = now - timedelta(days=EVENT_RETENTION_DAYS)
+        archived: list[str] = []
+        while True:
+            oldest = await self._events().find_one({}, {"ts": 1}, sort=[("ts", 1)])
+            if oldest is None:
+                break
+            start = month_start(oldest["ts"])
+            end = next_month(start)
+            if end > cutoff:
+                break
+            month = start.strftime("%Y-%m")
+            if await self._rollups().find_one({"_id": month}) is None:
+                await self._sum_month(month, start, end)
+                await self._rollups().update_one({"_id": month}, {"$set": {"at": now}}, upsert=True)
+            await self._events().delete_many({"ts": {"$gte": start, "$lt": end}})
+            archived.append(month)
+        return archived
+
+    async def _sum_month(self, month: str, start: datetime, end: datetime) -> None:
         pipeline: list[dict[str, Any]] = [
+            {"$match": {"ts": {"$gte": start, "$lt": end}}},
             {
                 "$group": {
-                    "_id": _SOURCE_EXPR,
+                    "_id": {"month": month, "user_id": "$user_id", "source": _SOURCE_EXPR},
                     "xp": {"$sum": "$xp_gained"},
                     "events": {"$sum": 1},
                 }
             },
-            {"$project": {"_id": 0, "source": "$_id", "xp": 1, "events": 1}},
+            {
+                "$merge": {
+                    "into": "xp_monthly",
+                    "on": "_id",
+                    "whenMatched": "replace",
+                    "whenNotMatched": "insert",
+                }
+            },
         ]
-        return await (await self._events().aggregate(pipeline)).to_list()
+        await (await self._events().aggregate(pipeline)).to_list()
+
+    @translates_db_errors
+    async def monthly_totals(self, user_id: str | None = None) -> list[dict[str, Any]]:
+        """Archived months: ``{"month", "user_id", "source", "xp", "events"}`` rows."""
+        query = {"_id.user_id": user_id} if user_id else {}
+        return [
+            {**doc["_id"], "xp": doc.get("xp", 0), "events": doc.get("events", 0)}
+            async for doc in self._monthly().find(query).sort("_id.month", 1)
+        ]
 
     @translates_db_errors
     async def daily_active_users(self, since: datetime, tz: str) -> list[dict[str, Any]]:
@@ -284,4 +371,4 @@ class XpRepository:
         return await (await self._events().aggregate(pipeline)).to_list()
 
 
-__all__ = ["UserXpStats", "XpRepository"]
+__all__ = ["EVENT_RETENTION_DAYS", "UserXpStats", "XpRepository"]

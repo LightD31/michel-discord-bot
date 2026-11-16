@@ -13,7 +13,6 @@ from interactions import (
     Button,
     ButtonStyle,
     Client,
-    IntegrationType,
     Message,
     OptionType,
     SlashCommandChoice,
@@ -57,18 +56,23 @@ from src.core.errors import DatabaseError
 from src.discord_ext.locale import en_fr_desc
 from src.discord_ext.mentions import NO_PINGS
 from src.discord_ext.messages import send_error
+from src.discord_ext.scopes import guild_scopes
 from src.integrations import llm
 
 from ._common import (
+    SCOPE_GUILD,
+    enabled_guild_ids,
     global_settings,
     guild_settings,
     logger,
     module_enabled,
     repo_for,
-    scope_for,
 )
 
 PROMPT_TIMEZONE = clock.LOCAL_TZ
+# What a member may type as a question (Discord allows 6000): it goes to the
+# model as is, on the bot's API key.
+MAX_QUESTION_LENGTH = 1500
 MODE_COMPARE = "comparer"
 MODE_QUICK = "rapide"
 VOTE_PREFIX = "aivote"
@@ -163,8 +167,8 @@ class AskMixin:
     ) -> list[HistoryMessage]:
         """Recent channel messages (oldest first), plus *extra* older ones prepended.
 
-        Fetch failures (no access — e.g. a user-installed command in a server
-        the bot isn't in) degrade to no context rather than no answer.
+        Fetch failures (a channel the bot may not read) degrade to no context
+        rather than no answer.
         """
         messages: list[Message] = []
         if channel is not None and limit > 0:
@@ -291,7 +295,9 @@ class AskMixin:
             "Ask Michel a question (model comparison or quick answer)",
             "Pose une question à Michel (comparaison de modèles ou réponse rapide)",
         ),
-        integration_types=[IntegrationType.GUILD_INSTALL, IntegrationType.USER_INSTALL],
+        # Only where the module is on: on others, /ask would spend the shared
+        # budget and send channel history to the provider unasked.
+        scopes=guild_scopes(enabled_guild_ids()),
     )
     @cooldown(Buckets.USER, 1, 20)
     @auto_defer()
@@ -300,6 +306,7 @@ class AskMixin:
         en_fr_desc("Your question", "Ta question"),
         opt_type=OptionType.STRING,
         required=True,
+        max_length=MAX_QUESTION_LENGTH,
     )
     @slash_option(
         "mode",
@@ -333,14 +340,14 @@ class AskMixin:
         user_id = str(ctx.author.id)
         global_cfg = global_settings()
         limits = global_cfg.limits
-        refusal = access_refusal(limits, user_id=user_id, in_enabled_guild=module_enabled(guild_id))
+        refusal = access_refusal(limits, in_enabled_guild=module_enabled(guild_id))
         if refusal:
             await send_error(ctx, refusal)
             return
 
         settings = guild_settings(guild_id)
-        scope = scope_for(guild_id)
-        repo = repo_for(scope, guild_id)
+        scope = SCOPE_GUILD
+        repo = repo_for(guild_id)
         compare = mode == MODE_COMPARE if mode else settings.compare_by_default
         compare = compare and len(candidates) >= 2
         calls = min(global_cfg.models_to_compare, len(candidates)) if compare else 1

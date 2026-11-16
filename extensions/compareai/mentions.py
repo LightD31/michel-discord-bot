@@ -26,7 +26,7 @@ from features.ai import (
 )
 from src.discord_ext.mentions import NO_PINGS
 
-from ._common import SCOPE_GUILD, global_settings, guild_settings, logger, repo_for
+from ._common import global_settings, guild_settings, logger, repo_for
 
 # How far up a reply chain Michel reads to follow a conversation.
 MAX_REPLY_CHAIN = 5
@@ -136,7 +136,7 @@ class MentionsMixin:
         with contextlib.suppress(Exception):
             await channel.trigger_typing()
 
-        repo = repo_for(SCOPE_GUILD, guild_id)
+        repo = repo_for(guild_id)
         history = await self._gather_history(
             channel,
             settings.history_limit,

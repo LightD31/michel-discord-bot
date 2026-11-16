@@ -15,8 +15,13 @@ services:
       # "json" writes one JSON object per log line (Loki, Elastic, jq…) instead of
       # colored text. Either way each line carries its guild, command and ref.
       MICHEL_LOG_FORMAT: "${MICHEL_LOG_FORMAT:-text}"
+    # The bot logs to stdout only (pseudonyms, ids): Docker keeps 5 × 20 MB of it.
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
     volumes:
-      - ./logs:/app/logs
       - ./data:/app/data
       - ./config:/app/config
       - "/etc/localtime:/etc/localtime:ro"
