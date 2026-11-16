@@ -20,8 +20,8 @@ call and nothing dispatched to the bot loop.
 """
 
 import html
+import re
 import secrets
-from urllib.parse import quote
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
@@ -39,6 +39,7 @@ from src.integrations.spotify import (
     sp,
 )
 from src.webui.context import WebUIContext
+from src.webui.ratelimit import request_is_https
 
 logger = logutil.init_logger("webui.routes.spotify")
 
@@ -113,8 +114,10 @@ def create_router(ctx: WebUIContext) -> APIRouter:
         try:
             oauth = build_oauth(redirect_uri=redirect_uri)
         except Exception as e:
+            log_failure(logger, "Spotify OAuth setup failed: %s", e)
             raise HTTPException(
-                status_code=500, detail=f"Configuration Spotify invalide : {e}"
+                status_code=500,
+                detail="Configuration Spotify invalide (détail dans les logs du bot).",
             ) from e
         if not oauth.client_id or not oauth.client_secret:
             raise HTTPException(
@@ -128,7 +131,14 @@ def create_router(ctx: WebUIContext) -> APIRouter:
         state = secrets.token_urlsafe(24)
         auth_url = oauth.get_authorize_url(state=state)
         response = RedirectResponse(url=auth_url)
-        response.set_cookie(STATE_COOKIE, state, httponly=True, max_age=600, samesite="lax")
+        response.set_cookie(
+            STATE_COOKIE,
+            state,
+            httponly=True,
+            max_age=600,
+            samesite="lax",
+            secure=request_is_https(request, ctx.trusted_proxies),
+        )
         return response
 
     @router.get("/spotify/auth/callback")
@@ -142,7 +152,10 @@ def create_router(ctx: WebUIContext) -> APIRouter:
         ctx.require_developer(request)
 
         if error:
-            return _result_page(ok=False, message=f"Spotify a refusé l'autorisation : {error}")
+            # Spotify's error codes are short snake_case words (access_denied);
+            # anything else in the query string isn't echoed onto our page.
+            code_word = error if re.fullmatch(r"[a-z_]{1,40}", error) else "inconnue"
+            return _result_page(ok=False, message=f"Spotify a refusé l'autorisation ({code_word}).")
 
         expected_state = request.cookies.get(STATE_COOKIE)
         if not expected_state or expected_state != state:
@@ -190,8 +203,8 @@ def _result_page(*, ok: bool, message: str) -> HTMLResponse:
     title = "Spotify connecté" if ok else "Échec de connexion Spotify"
     color = "#1ed760" if ok else "#e53e3e"
     safe_message_html = html.escape(message)
-    # URL-encode first, then HTML-escape for safe embedding inside an href attribute.
-    safe_message_url = html.escape(quote(message, safe=" .,:;()@/-_"), quote=True)
+    # Only the outcome goes back to the dashboard, never a text: a link carrying
+    # its own message would let anyone show any toast on the dashboard's origin.
     status = "ok" if ok else "error"
     body = f"""<!doctype html>
 <html lang="fr"><head>
@@ -219,6 +232,6 @@ body {{
 <body><div class="card">
 <h1>{title}</h1>
 <p>{safe_message_html}</p>
-<a href="/#/global?section=spotify&spotify_auth={status}&msg={safe_message_url}">Retour au dashboard</a>
+<a href="/#/global?section=spotify&spotify_auth={status}">Retour au dashboard</a>
 </div></body></html>"""
     return HTMLResponse(content=body, status_code=200 if ok else 400)

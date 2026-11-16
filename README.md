@@ -194,7 +194,7 @@ Volumes:
 - `./data` → `/app/data` (persistent data, backups)
 - `./logs` → `/app/logs` (log files)
 
-The Web UI is published on `127.0.0.1:8080` — put a TLS-terminating reverse proxy in front of it. Inside the container it listens on every interface (`MICHEL_BIND_HOST=0.0.0.0` in the image); run outside Docker, it and `/metrics` listen on `127.0.0.1` unless `webui.host` / `metrics.host` say otherwise. The container runs as a non-root user and has a healthcheck wired to the bot's heartbeat file, so a wedged gateway connection triggers an automatic restart (`restart: unless-stopped`).
+The Web UI is published on `127.0.0.1:8080` — put a TLS-terminating reverse proxy in front of it, and list that proxy in `webui.trustedProxies`. With the compose file, requests reach the container from the gateway of the project's network, not from loopback: read it with `docker network inspect <project>_default --format '{{(index .IPAM.Config 0).Gateway}}'` (often `172.18.0.1`). Until it is listed, every visitor shares one login rate limit and the dashboard never sees HTTPS (no `Secure` cookie, no HSTS); the bot logs a warning naming the peer the first time it sees forwarding headers from an address it doesn't trust. Inside the container it listens on every interface (`MICHEL_BIND_HOST=0.0.0.0` in the image); run outside Docker, it and `/metrics` listen on `127.0.0.1` unless `webui.host` / `metrics.host` say otherwise. The container runs as a non-root user and has a healthcheck wired to the bot's heartbeat file, so a wedged gateway connection triggers an automatic restart (`restart: unless-stopped`).
 
 ### Local Development
 

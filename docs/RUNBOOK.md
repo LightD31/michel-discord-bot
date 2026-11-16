@@ -69,6 +69,18 @@ collections. A backup that has never been restored is not a backup.
 
 ## Incidents
 
+**Nobody can log in to the dashboard** ("Trop de tentatives") **or the session
+cookie isn't `Secure`.** The reverse proxy probably isn't in
+`webui.trustedProxies`, so every visitor counts as the proxy's address in one
+rate-limit bucket, and `X-Forwarded-Proto` is ignored. The bot says so once in
+its logs ("Forwarding headers received from … not in webui.trustedProxies"):
+```bash
+docker compose logs discord_bot | grep trustedProxies
+docker network inspect "$(basename "$PWD")_default" --format '{{(index .IPAM.Config 0).Gateway}}'
+```
+Add the address it names (the compose network's gateway when the proxy runs on
+the host) to *Dashboard Web → Proxys de confiance*, then restart the bot.
+
 **A member reports an error with a reference** (`` `a1b2c3` ``). Every line the
 failed command, button or modal logged carries it:
 ```bash

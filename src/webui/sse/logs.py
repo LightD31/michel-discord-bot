@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import time
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
@@ -9,6 +10,12 @@ from sse_starlette.sse import EventSourceResponse
 
 from src.webui.context import WebUIContext
 from src.webui.log_handler import WebUILogHandler
+
+# How often an open stream re-checks that its viewer is still a developer with
+# a live session: the check at opening alone let a revoked id (or a logged-out
+# session) keep reading the logs for as long as the tab stayed open.
+RECHECK_SECONDS = 30.0
+PING_SECONDS = 30.0
 
 
 def create_router(ctx: WebUIContext) -> APIRouter:
@@ -45,13 +52,26 @@ def create_router(ctx: WebUIContext) -> APIRouter:
 
         queue = handler.subscribe()
 
+        def still_allowed() -> bool:
+            try:
+                ctx.require_developer(request)
+            except HTTPException:
+                return False
+            return True
+
         async def event_generator():
+            checked_at = time.monotonic()
             try:
                 while True:
                     if await request.is_disconnected():
                         break
+                    if time.monotonic() - checked_at >= RECHECK_SECONDS:
+                        if not still_allowed():
+                            yield {"event": "revoked", "data": ""}
+                            break
+                        checked_at = time.monotonic()
                     try:
-                        entry = await asyncio.wait_for(queue.get(), timeout=30.0)
+                        entry = await asyncio.wait_for(queue.get(), timeout=PING_SECONDS)
                         yield {
                             "event": "log",
                             "data": json.dumps(entry.to_dict()),

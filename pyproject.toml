@@ -73,6 +73,8 @@ dev = [
     "detect-secrets>=1.5",
     "pre-commit>=3.7",
     "pip-audit>=2.7",
+    # The dashboard's browser smoke test (tests/test_spa_smoke.py).
+    "playwright>=1.50",
 ]
 
 # An application, not a library: uv installs the dependencies only and never
@@ -162,7 +164,10 @@ pythonpath = ["."]
 asyncio_mode = "auto"
 # Repository tests against a real server: skipped unless MONGO_TEST_URL is set
 # (see tests/conftest.py). CI's test job provides one.
-markers = ["mongo: needs a MongoDB server (MONGO_TEST_URL)"]
+markers = [
+    "mongo: needs a MongoDB server (MONGO_TEST_URL)",
+    "browser: drives the dashboard in Chromium (skipped without one)",
+]
 filterwarnings = [
     "error",
     "ignore::DeprecationWarning",  # third-party libs

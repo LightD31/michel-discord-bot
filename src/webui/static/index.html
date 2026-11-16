@@ -2979,18 +2979,53 @@
         .public-tab:hover { color: var(--text-primary); }
         .public-tab.active { color: var(--text-primary); border-bottom-color: var(--accent); }
         .public-footer { text-align: center; color: var(--text-muted); font-size: 12px; margin-top: 24px; }
+        /* Unsaved edits and an expired session (see app.js) */
+        .unsaved-badge {
+            display: none;
+            align-self: center;
+            font-size: 12px;
+            color: var(--warning);
+            margin-right: 4px;
+        }
+        .has-unsaved .unsaved-badge { display: inline; }
+        .session-expired-banner {
+            position: sticky;
+            top: 0;
+            z-index: 1100;
+            padding: 10px 16px;
+            background: var(--warning);
+            color: #111;
+            font-size: 14px;
+            text-align: center;
+        }
+        .session-expired-banner a { color: inherit; font-weight: 600; }
+        /* Keyboard focus stays visible on the controls that were mouse-only */
+        .nav-item:focus-visible, .quick-action-btn:focus-visible, .module-card:focus-visible,
+        .btn:focus-visible, a:focus-visible, [role="button"]:focus-visible {
+            outline: 2px solid var(--accent);
+            outline-offset: 2px;
+        }
+        a.nav-item, a.module-name { color: inherit; text-decoration: none; }
+        .server-card:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
+        .visually-hidden {
+            position: absolute !important;
+            width: 1px; height: 1px;
+            overflow: hidden;
+            clip: rect(0 0 0 0);
+            white-space: nowrap;
+        }
     </style>
 </head>
 <body>
     <div id="app"></div>
-    <div class="toast-container" id="toasts"></div>
+    <div class="toast-container" id="toasts" role="status" aria-live="polite"></div>
 
     <!-- Editor Modal -->
     <div class="modal-overlay" id="modal-overlay">
-        <div class="modal">
+        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title" tabindex="-1">
             <div class="modal-header">
                 <h3 id="modal-title">Éditer la configuration</h3>
-                <button class="btn btn-ghost btn-sm" data-click="closeModal">✕</button>
+                <button class="btn btn-ghost btn-sm" data-click="closeModal" aria-label="Fermer" title="Fermer">✕</button>
             </div>
             <div class="modal-body">
                 <textarea class="json-editor" id="json-editor" spellcheck="false"></textarea>

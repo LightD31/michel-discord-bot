@@ -31,6 +31,11 @@ DISCORD_TOKEN_URL = "https://discord.com/api/oauth2/token"
 
 # Server-side session lifetime; the session cookie's max-age matches it.
 SESSION_TTL_SECONDS = 86400
+# Any Discord account can log in, and each login used to add a session for
+# 24 h with no limit: the oldest of a user's sessions goes past this many.
+MAX_SESSIONS_PER_USER = 5
+# What a session keeps of each of the user's guilds (Discord sends more).
+GUILD_FIELDS = ("id", "name", "icon", "owner", "permissions")
 
 
 def configured_developer_ids() -> list[str]:
@@ -77,6 +82,20 @@ def _session_to_doc(session: Session) -> dict[str, Any]:
     return doc
 
 
+def _kept_guilds(guilds: object, shared_guild_ids: set[str] | None) -> list[dict[str, Any]]:
+    """The user's guilds a session keeps (see ``DiscordOAuth._session_from_payload``)."""
+    if not isinstance(guilds, list):
+        return []
+    kept = []
+    for guild in guilds:
+        if not isinstance(guild, dict) or "id" not in guild:
+            continue
+        if shared_guild_ids is not None and str(guild["id"]) not in shared_guild_ids:
+            continue
+        kept.append({key: guild[key] for key in GUILD_FIELDS if key in guild})
+    return kept
+
+
 def _doc_to_session(doc: dict[str, Any]) -> Session:
     return Session(
         user_id=doc["user_id"],
@@ -98,6 +117,7 @@ class DiscordOAuth:
         client_secret: str,
         redirect_uri: str,
         developer_ids: Callable[[], Iterable[object]] = configured_developer_ids,
+        shared_guild_ids: Callable[[], Iterable[str]] | None = None,
     ):
         self.client_id = client_id
         self.client_secret = client_secret
@@ -105,6 +125,9 @@ class DiscordOAuth:
         # Read on every check, so removing someone from the list in the config
         # takes their developer rights away at once, without a restart.
         self._developer_ids = developer_ids
+        # The guilds the bot is in, read at each login: a session keeps only
+        # those of the user's guilds (up to 200 otherwise, kept 24 h).
+        self._shared_guild_ids = shared_guild_ids
         self.sessions: dict[str, Session] = {}
 
     def get_oauth_url(self, state: str) -> str:
@@ -160,10 +183,15 @@ class DiscordOAuth:
             logger.error("OAuth code exchange failed: %s", e)
             return None
 
-        session = self._session_from_payload(token_data, user_data, guilds)
+        # None (keep them all) until the bot has its guilds: a login while the
+        # gateway is still connecting mustn't leave the user with none.
+        shared = set(map(str, self._shared_guild_ids())) if self._shared_guild_ids else None
+        shared = shared or None
+        session = self._session_from_payload(token_data, user_data, guilds, shared)
         if session is None:
             return None
 
+        await self._evict_oldest_sessions(session.user_id, keep=MAX_SESSIONS_PER_USER - 1)
         self.sessions[session.token_hash] = session
         await self._persist(session)
         logger.info(f"User logged in: {session.username} ({session.user_id})")
@@ -174,11 +202,15 @@ class DiscordOAuth:
         token_data: dict[str, Any],
         user_data: dict[str, Any],
         guilds: list,
+        shared_guild_ids: set[str] | None = None,
     ) -> Session | None:
         """Build a Session from Discord's responses; None if a field is missing.
 
         The OAuth tokens are deliberately not kept: the session outlives them
         by design (see the module docstring) and never calls Discord again.
+        Of the user's guilds it keeps the ones the bot is in (all of them when
+        *shared_guild_ids* is ``None``: a dashboard without a bot), and of each
+        only :data:`GUILD_FIELDS`.
         """
         access_token = token_data.get("access_token")
         user_id = user_data.get("id")
@@ -189,9 +221,22 @@ class DiscordOAuth:
             user_id=str(user_id),
             username=user_data.get("global_name") or user_data.get("username") or str(user_id),
             avatar=user_data.get("avatar"),
-            guilds=guilds if isinstance(guilds, list) else [],
+            guilds=_kept_guilds(guilds, shared_guild_ids),
             expires_at=time.time() + SESSION_TTL_SECONDS,
         )
+
+    async def _evict_oldest_sessions(self, user_id: str, *, keep: int) -> None:
+        """Drop *user_id*'s oldest sessions so that at most *keep* remain."""
+        mine = sorted(
+            (s for s in self.sessions.values() if s.user_id == user_id),
+            key=lambda s: s.expires_at,
+        )
+        for old in mine[: max(0, len(mine) - keep)]:
+            self.sessions.pop(old.token_hash, None)
+            try:
+                await SessionRepository().delete(old.token_hash)
+            except Exception as e:
+                logger.warning("Could not delete an evicted session: %s", e)
 
     def is_developer(self, session: Session) -> bool:
         """Check if a session user is a developer (has access to extensions and logs)."""
