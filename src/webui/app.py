@@ -19,6 +19,7 @@ from src.webui.context import WebUIContext
 from src.webui.log_handler import WebUILogHandler, install_log_handler
 from src.webui.mutation_limit import MutationRateLimitMiddleware
 from src.webui.ratelimit import TrustedProxies
+from src.webui.request_guard import RequestGuardMiddleware
 from src.webui.routes import (
     ai as ai_routes,
 )
@@ -116,6 +117,7 @@ def create_app(bot=None, bot_loop=None) -> FastAPI:
         client_id=client_id,
         client_secret=client_secret,
         redirect_uri=redirect_uri,
+        shared_guild_ids=(lambda: [str(g.id) for g in bot.guilds]) if bot else None,
     )
 
     # Install WebUI log handler on first app creation.
@@ -154,7 +156,10 @@ def create_app(bot=None, bot_loop=None) -> FastAPI:
         oauth=oauth,
         trusted_proxies=TrustedProxies(webui_config.get("trustedProxies") or None),
     )
+    # The context, for what drives the app from outside (the browser smoke test).
+    app.state.webui = ctx
     app.add_middleware(MutationRateLimitMiddleware, trusted_proxies=ctx.trusted_proxies)
+    app.add_middleware(RequestGuardMiddleware, trusted_proxies=ctx.trusted_proxies)
     app.add_middleware(SecurityHeadersMiddleware, trusted_proxies=ctx.trusted_proxies)
 
     # Order: API routers first, frontend catch-all last.

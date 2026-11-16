@@ -575,3 +575,45 @@ def test_logout_is_a_post_that_ends_the_session(stub_repo):
     assert oauth.get_session(session.session_token) is None
     assert stub_repo.deleted == [session.token_hash]
     assert "michel_session=" in resp.headers["set-cookie"]
+
+
+# ── Session footprint (S12) ─────────────────────────────────────────────
+
+
+def test_a_session_keeps_only_the_shared_guilds_and_their_fields():
+    guilds = [
+        {"id": "1", "name": "A", "icon": "i", "owner": True, "permissions": "8", "features": ["X"]},
+        {"id": "2", "name": "B", "permissions": "0", "banner": "b"},
+        "junk",
+    ]
+    session = DiscordOAuth._session_from_payload({"access_token": "at"}, {"id": "9"}, guilds, {"1"})
+    assert session.guilds == [
+        {"id": "1", "name": "A", "icon": "i", "owner": True, "permissions": "8"}
+    ]
+    everything = DiscordOAuth._session_from_payload({"access_token": "at"}, {"id": "9"}, guilds)
+    assert [g["id"] for g in everything.guilds] == ["1", "2"]
+
+
+def test_a_sixth_login_evicts_the_oldest_session(monkeypatch):
+    deleted: list[str] = []
+
+    class Repo:
+        async def delete(self, token_hash):
+            deleted.append(token_hash)
+
+        async def upsert_doc(self, doc):
+            return None
+
+    monkeypatch.setattr(auth_module, "SessionRepository", Repo)
+    oauth = make_oauth()
+    old = [make_session(expires_in=100.0 + n) for n in range(5)]
+    other_user = make_session(user_id="7")
+    for s in [*old, other_user]:
+        oauth.sessions[s.token_hash] = s
+
+    asyncio.run(oauth._evict_oldest_sessions("42", keep=auth_module.MAX_SESSIONS_PER_USER - 1))
+
+    assert deleted == [old[0].token_hash]
+    assert old[0].token_hash not in oauth.sessions
+    assert len([s for s in oauth.sessions.values() if s.user_id == "42"]) == 4
+    assert other_user.token_hash in oauth.sessions

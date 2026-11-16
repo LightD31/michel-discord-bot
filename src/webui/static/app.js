@@ -40,30 +40,74 @@
     let logEventSource = null;
 
     // ── API helpers ───────────────────────────────────
+    // FastAPI answers a validation error with a list of {loc, msg}: turn any
+    // `detail` into one readable line ("[object Object]" otherwise).
+    function errorText(detail, status) {
+        if (Array.isArray(detail)) {
+            const parts = detail.map((d) => {
+                if (!d || typeof d !== 'object') return String(d);
+                const where = Array.isArray(d.loc) && d.loc.length ? `${d.loc[d.loc.length - 1]} : ` : '';
+                return `${where}${d.msg || ''}`.trim();
+            }).filter(Boolean);
+            if (parts.length) return parts.join(' · ');
+        }
+        if (typeof detail === 'string' && detail) return detail;
+        if (detail && typeof detail === 'object') return JSON.stringify(detail);
+        return `Erreur HTTP ${status}`;
+    }
+
+    class ApiError extends Error {
+        constructor(message, status) {
+            super(message);
+            this.status = status;
+        }
+    }
+
     async function api(url, options = {}) {
+        const method = (options.method || 'GET').toUpperCase();
+        let resp;
         try {
-            const resp = await fetch(url, {
+            resp = await fetch(url, {
                 headers: { 'Content-Type': 'application/json', ...options.headers },
                 ...options,
             });
-            if (resp.status === 401) {
-                state.user = null;
-                render();
-                return null;
-            }
-            if (resp.status === 403) {
-                // Silently return null for admin-only endpoints when user is not admin
-                return null;
-            }
-            if (!resp.ok) {
-                const err = await resp.json().catch(() => ({ detail: 'Erreur inconnue' }));
-                throw new Error(err.detail || `HTTP ${resp.status}`);
-            }
-            return await resp.json();
         } catch (e) {
-            toast(e.message, 'error');
+            toast('Le dashboard ne répond pas. Vérifie ta connexion.', 'error');
             throw e;
         }
+        if (resp.status === 401) {
+            if (!state.user) {
+                render();  // never logged in: the login page
+                return null;
+            }
+            // Expired while working: keep the page (and what was typed in it),
+            // say so, and fail the action rather than pretend it went through.
+            showSessionExpired();
+            throw new ApiError('Session expirée : reconnecte-toi pour enregistrer.', 401);
+        }
+        if (resp.status === 403 && method === 'GET') {
+            // A developer-only read asked by someone who isn't one: nothing to show.
+            return null;
+        }
+        if (!resp.ok) {
+            const err = await resp.json().catch(() => ({}));
+            const message = errorText(err.detail, resp.status);
+            toast(message, 'error');
+            throw new ApiError(message, resp.status);
+        }
+        return await resp.json();
+    }
+
+    // A banner over the page, not the login screen: unsaved edits stay visible.
+    function showSessionExpired() {
+        if (document.getElementById('session-expired')) return;
+        const banner = document.createElement('div');
+        banner.id = 'session-expired';
+        banner.className = 'session-expired-banner';
+        banner.setAttribute('role', 'alert');
+        banner.innerHTML = `Ta session a expiré. Tes modifications non enregistrées sont encore à l'écran :
+            <a href="/auth/login" target="_blank" rel="noopener">reconnecte-toi dans un nouvel onglet</a>, puis réessaie.`;
+        document.body.prepend(banner);
     }
 
     // ── Toast system ──────────────────────────────────
@@ -77,16 +121,58 @@
     }
 
     // ── Modal ─────────────────────────────────────────
+    // A dialog: focus moves into it and stays there (Tab cycles), Échap closes
+    // it, and focus goes back to the control that opened it.
+    let modalReturnFocus = null;
+    const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+    function showModal() {
+        const overlay = document.getElementById('modal-overlay');
+        if (!overlay.classList.contains('active')) {
+            modalReturnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+        }
+        overlay.classList.add('active');
+        const first = overlay.querySelector('.modal-body ' + FOCUSABLE) || overlay.querySelector('.modal');
+        first?.focus();
+    }
+
+    document.addEventListener('keydown', (event) => {
+        const overlay = document.getElementById('modal-overlay');
+        if (!overlay?.classList.contains('active')) return;
+        if (event.key === 'Escape') {
+            event.preventDefault();
+            closeModal();
+            return;
+        }
+        if (event.key !== 'Tab') return;
+        const items = [...overlay.querySelectorAll(FOCUSABLE)].filter((el) => el.offsetParent !== null);
+        if (!items.length) return;
+        const first = items[0];
+        const last = items[items.length - 1];
+        if (event.shiftKey && document.activeElement === first) {
+            event.preventDefault();
+            last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+            event.preventDefault();
+            first.focus();
+        } else if (!overlay.contains(document.activeElement)) {
+            event.preventDefault();
+            first.focus();
+        }
+    });
+
     function openModal(title, json, onSave) {
         document.getElementById('modal-title').textContent = title;
         document.getElementById('json-editor').value = JSON.stringify(json, null, 4);
         document.getElementById('json-error').textContent = '';
         modalSaveCallback = onSave;
-        document.getElementById('modal-overlay').classList.add('active');
+        showModal();
     }
 
     function closeModal() {
         document.getElementById('modal-overlay').classList.remove('active');
+        modalReturnFocus?.focus?.();
+        modalReturnFocus = null;
         document.getElementById('modal-save-btn').style.display = '';
         modalSaveCallback = null;
         const body = document.getElementById('modal-overlay').querySelector('.modal-body');
@@ -149,8 +235,81 @@
         if (overlay) overlay.classList.remove('active');
     }
 
+    // ── Unsaved edits ─────────────────────────────────
+    // A form page is "modified" from the first edit until it is saved: leaving
+    // it (another page, the back button, closing the tab, a module switch that
+    // rebuilds it) asks first, instead of silently dropping what was typed.
+    let formDirty = false;
+    const DIRTY_SCOPE = '.main .schema-form, #rolemenu-builder-card';
+
+    function setDirty(dirty) {
+        formDirty = dirty;
+        document.body.classList.toggle('has-unsaved', dirty);
+    }
+
+    for (const type of ['input', 'change']) {
+        document.addEventListener(type, (event) => {
+            if (event.target instanceof Element && event.target.closest(DIRTY_SCOPE)) setDirty(true);
+        }, true);
+    }
+
+    window.addEventListener('beforeunload', (event) => {
+        if (!formDirty) return;
+        event.preventDefault();
+        event.returnValue = '';
+    });
+
+    function confirmDiscard() {
+        if (!formDirty) return true;
+        if (!confirm('Des modifications ne sont pas enregistrées. Les abandonner ?')) return false;
+        setDirty(false);
+        return true;
+    }
+
+    // ── Routing ───────────────────────────────────────
+    // Each page has a hash URL (#/server/<id>, #/module/<id>/<module>, #/logs…),
+    // so a link opens it, a reload stays on it and the back button goes back.
+    const ROUTED_PAGES = ['global', 'extensions', 'logs', 'links'];
+
+    function routeHash(page, serverId = null, moduleName = null) {
+        if (page === 'server' && serverId) return `#/server/${encodeURIComponent(serverId)}`;
+        if (page === 'module' && serverId && moduleName) {
+            return `#/module/${encodeURIComponent(serverId)}/${encodeURIComponent(moduleName)}`;
+        }
+        if (ROUTED_PAGES.includes(page)) return `#/${page}`;
+        return '#/';
+    }
+
+    function parseHash(hash = location.hash) {
+        const path = hash.replace(/^#\/?/, '').split('?')[0];
+        let parts;
+        try {
+            parts = path.split('/').filter(Boolean).map(decodeURIComponent);
+        } catch (e) {
+            return { page: 'home' };
+        }
+        const [page = 'home', a = null, b = null] = parts;
+        if (page === 'server' && a) return { page, serverId: a };
+        if (page === 'module' && a && b) return { page, serverId: a, moduleName: b };
+        if (ROUTED_PAGES.includes(page)) return { page };
+        return { page: 'home' };
+    }
+
+    window.addEventListener('popstate', () => {
+        if (!state.user || state.publicView) return;
+        const route = parseHash();
+        navigate(route.page, route.serverId, route.moduleName, { fromHistory: true });
+    });
+
     // ── Navigation ────────────────────────────────────
-    function navigate(page, serverId = null, moduleName = null) {
+    function navigate(page, serverId = null, moduleName = null, { fromHistory = false } = {}) {
+        if (!confirmDiscard()) {
+            // Back/forward already moved the URL: put the current page's back.
+            if (fromHistory) {
+                history.pushState(null, '', routeHash(state.currentPage, state.currentServerId, state.currentModule));
+            }
+            return;
+        }
         // Restrict admin-only pages for non-admin users
         const adminPages = ['server', 'module'];
         const developerPages = ['global', 'extensions', 'logs', 'links'];
@@ -166,6 +325,12 @@
         state.currentPage = page;
         state.currentServerId = serverId;
         state.currentModule = moduleName;
+        const hash = routeHash(page, serverId, moduleName);
+        if (location.hash !== hash) {
+            // A first visit or a back/forward only fixes the URL; a click adds a step.
+            if (fromHistory) history.replaceState(null, '', hash);
+            else history.pushState(null, '', hash);
+        }
         closeSidebar();
 
         if (page === 'logs') {
@@ -274,10 +439,14 @@
 
     function formatLogLine(entry) {
         const time = new Date(entry.timestamp * 1000).toLocaleTimeString('fr-FR', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        // Highlight on the raw text, then escape each piece: matching inside
+        // the escaped HTML broke on a search for "amp" or "quot".
         let msg = escapeHtml(entry.message);
         if (state.logSearch) {
             const regex = new RegExp(`(${escapeRegExp(state.logSearch)})`, 'gi');
-            msg = msg.replace(regex, '<span class="log-search-highlight">$1</span>');
+            msg = String(entry.message).split(regex).map((piece, i) => (i % 2
+                ? `<span class="log-search-highlight">${escapeHtml(piece)}</span>`
+                : escapeHtml(piece))).join('');
         }
         const parts = [
             `<span class="log-time">${time}</span>`,
@@ -523,9 +692,13 @@
                 continue;
             }
 
+            // The label names its control (for=), so a click on it focuses the
+            // field and a screen reader reads it with the field.
+            const fieldStart = html.length;
+            const fieldId = `f-${formId}-${key}`.replace(/[^A-Za-z0-9_-]/g, '_');
             html += `<div class="form-field" data-key="${key}">`;
             html += `<div class="form-field-header">`;
-            html += `<label class="form-label">${field.label || key}`;
+            html += `<label class="form-label" for="${fieldId}">${field.label || key}`;
             if (isRequired) html += ' <span class="required-badge">requis</span>';
             html += `</label>`;
             if (RESETTABLE_TYPES.has(fieldType) && field.default !== undefined && field.default !== null) {
@@ -550,17 +723,17 @@
 
                 case 'number':
                     html += `<input type="number" class="form-input" data-field="${key}" data-type="number"
-                        value="${hasValue ? value : (field.default ?? '')}"
-                        ${field.step != null ? `step="${field.step}"` : ''}
+                        value="${escapeHtml(hasValue ? value : (field.default ?? ''))}"
+                        ${field.step != null ? `step="${escapeHtml(field.step)}"` : ''}
                         placeholder="${field.default != null ? 'Défaut: ' + field.default : ''}">`;
                     break;
 
                 case 'secret':
                     html += `<div style="position:relative;">
                         <input type="password" class="form-input" data-field="${key}" data-type="secret"
-                            value="${hasValue ? value : ''}"
+                            value="${hasValue ? escapeHtml(value) : ''}"
                             placeholder="${hasValue ? '••••••••' : 'Non défini'}">
-                        <button class="btn-reveal" data-click="togglePasswordVisibility" data-click-args="[{&quot;$&quot;:&quot;el&quot;}]" type="button" title="Afficher/masquer">👁</button>
+                        <button class="btn-reveal" data-click="togglePasswordVisibility" data-click-args="[{&quot;$&quot;:&quot;el&quot;}]" type="button" title="Afficher/masquer" aria-label="Afficher/masquer">👁</button>
                     </div>`;
                     break;
 
@@ -573,7 +746,7 @@
                         </select>
                         <input type="text" class="form-input channel-picker-manual" data-channel-manual="${key}"
                             value="${escapeHtml(currentVal)}" placeholder="ID du salon" style="display:none;">
-                        <button type="button" class="btn-channel-toggle" data-click="toggleChannelPickerMode" data-click-args="[{&quot;$&quot;:&quot;el&quot;}]" title="Saisie manuelle">✎</button>
+                        <button type="button" class="btn-channel-toggle" data-click="toggleChannelPickerMode" data-click-args="[{&quot;$&quot;:&quot;el&quot;}]" title="Saisie manuelle" aria-label="Saisie manuelle">✎</button>
                     </div>`;
                     break;
                 }
@@ -611,7 +784,7 @@
                 case 'models':
                     const models = Array.isArray(value) ? value : [];
                     html += `<div class="models-list" data-field="${key}" data-type="models">`;
-                    html += `<div class="models-header"><span>Clé</span><span>API</span><span>Model ID</span><span>Nom d'affichage</span><span></span></div>`;
+                    html += `<div class="models-header"><span>Clé</span><span>API</span><span>Identifiant du modèle</span><span>Nom d'affichage</span><span></span></div>`;
                     models.forEach((m, idx) => {
                         html += modelEntryHtml(m, idx);
                     });
@@ -655,7 +828,7 @@
                             <div class="namemap-entry">
                                 ${memberPickerHtml(discordId, 'data-namemap-field="discord_id"')}
                                 <input type="text" data-namemap-field="name" value="${escapeHtml(String(name))}" placeholder="ex: Jean">
-                                <button class="btn-remove-entry" data-click="removeNameMapEntry" data-click-args="[{&quot;$&quot;:&quot;el&quot;}]" title="Supprimer">✕</button>
+                                <button class="btn-remove-entry" data-click="removeNameMapEntry" data-click-args="[{&quot;$&quot;:&quot;el&quot;}]" title="Supprimer" aria-label="Supprimer">✕</button>
                             </div>`;
                     });
                     html += `</div>`;
@@ -673,7 +846,7 @@
                             <div class="keyvaluemap-entry">
                                 <input type="text" data-kvmap-field="key" value="${escapeHtml(mapKey)}" placeholder="ex: ${escapeHtml(keyLabel).toLowerCase()}">
                                 <input type="text" data-kvmap-field="value" value="${escapeHtml(String(mapValue))}" placeholder="ex: ${escapeHtml(valueLabel).toLowerCase()}">
-                                <button class="btn-remove-entry" data-click="remove-closest" data-click-args="[&quot;.keyvaluemap-entry&quot;,{&quot;$&quot;:&quot;el&quot;}]" title="Supprimer">✕</button>
+                                <button class="btn-remove-entry" data-click="remove-closest" data-click-args="[&quot;.keyvaluemap-entry&quot;,{&quot;$&quot;:&quot;el&quot;}]" title="Supprimer" aria-label="Supprimer">✕</button>
                             </div>`;
                     });
                     html += `</div>`;
@@ -749,7 +922,7 @@
                             <div class="spotifymap-entry" data-user-idx="${idx}">
                                 <input type="text" data-spotifymap-field="spotifyId" value="${escapeHtml(user.spotifyId || '')}" placeholder="ex: exemple123">
                                 ${memberPickerHtml(user.discordId, 'data-spotifymap-field="discordId"')}
-                                <button class="btn-remove-entry" data-click="removeSpotifyMapEntry" data-click-args="[{&quot;$&quot;:&quot;el&quot;}]" title="Supprimer">✕</button>
+                                <button class="btn-remove-entry" data-click="removeSpotifyMapEntry" data-click-args="[{&quot;$&quot;:&quot;el&quot;}]" title="Supprimer" aria-label="Supprimer">✕</button>
                             </div>`;
                     });
                     html += `</div>`;
@@ -767,7 +940,7 @@
                             <div class="messagelist-entry">
                                 <input type="text" data-msg-field="message" value="${escapeHtml(text)}" placeholder="Message…">
                                 <input type="number" data-msg-field="weight" value="${escapeHtml(String(w))}" min="0" placeholder="1">
-                                <button class="btn-remove-msg" data-click="remove-closest" data-click-args="[&quot;.messagelist-entry&quot;,{&quot;$&quot;:&quot;el&quot;}]" title="Supprimer">✕</button>
+                                <button class="btn-remove-msg" data-click="remove-closest" data-click-args="[&quot;.messagelist-entry&quot;,{&quot;$&quot;:&quot;el&quot;}]" title="Supprimer" aria-label="Supprimer">✕</button>
                             </div>`;
                     });
                     html += `</div>`;
@@ -791,7 +964,7 @@
                         html += `<div class="commandlist-entry">`;
                         html += `<div class="commandlist-entry-header">`;
                         html += `<div class="commandlist-entry-title">/${escapeHtml(cmdName) || 'nouvelle-commande'}</div>`;
-                        html += `<button type="button" class="btn-remove-embed" data-click="remove-closest" data-click-args="[&quot;.commandlist-entry&quot;,{&quot;$&quot;:&quot;el&quot;}]" title="Supprimer cette commande">✕</button>`;
+                        html += `<button type="button" class="btn-remove-embed" data-click="remove-closest" data-click-args="[&quot;.commandlist-entry&quot;,{&quot;$&quot;:&quot;el&quot;}]" title="Supprimer cette commande" aria-label="Supprimer cette commande">✕</button>`;
                         html += `</div>`;
                         html += `<div class="commandlist-entry-fields">`;
                         html += `<div><label class="commandlist-field-label">Nom</label>`;
@@ -806,7 +979,7 @@
                             html += `
                                 <div class="commandlist-response-entry">
                                     <input type="text" data-response-field="text" value="${escapeHtml(text)}" placeholder="https://exemple.com/gif.gif ou un texte" maxlength="2000">
-                                    <button type="button" class="btn-remove-response" data-click="remove-closest" data-click-args="[&quot;.commandlist-response-entry&quot;,{&quot;$&quot;:&quot;el&quot;}]" title="Supprimer">✕</button>
+                                    <button type="button" class="btn-remove-response" data-click="remove-closest" data-click-args="[&quot;.commandlist-response-entry&quot;,{&quot;$&quot;:&quot;el&quot;}]" title="Supprimer" aria-label="Supprimer">✕</button>
                                 </div>`;
                         });
                         html += `</div>`;
@@ -835,7 +1008,7 @@
                         html += `<div class="embedlist-entry-header">`;
                         html += `<div class="embedlist-entry-title" title="${escapeHtml(embedTitle)}">${escapeHtml(embedTitle)}</div>`;
                         html += `<div class="embedlist-entry-controls">`;
-                        html += `<button class="btn-remove-embed" data-click="remove-closest" data-click-args="[&quot;.embedlist-entry&quot;,{&quot;$&quot;:&quot;el&quot;}]" title="Supprimer cet embed">✕</button>`;
+                        html += `<button class="btn-remove-embed" data-click="remove-closest" data-click-args="[&quot;.embedlist-entry&quot;,{&quot;$&quot;:&quot;el&quot;}]" title="Supprimer cet embed" aria-label="Supprimer cet embed">✕</button>`;
                         html += `</div></div>`;
 
                         // Embed fields (title & color)
@@ -859,7 +1032,7 @@
                                 <div class="embedlist-link-entry" data-link-idx="${linkIdx}">
                                     <input type="text" data-link-field="title" value="${escapeHtml(linkTitle)}" placeholder="Titre du lien" maxlength="256">
                                     <input type="text" data-link-field="url" value="${escapeHtml(linkUrl)}" placeholder="https://exemple.com" maxlength="2048">
-                                    <button type="button" class="btn-remove-link" data-click="remove-closest" data-click-args="[&quot;.embedlist-link-entry&quot;,{&quot;$&quot;:&quot;el&quot;}]" title="Supprimer">✕</button>
+                                    <button type="button" class="btn-remove-link" data-click="remove-closest" data-click-args="[&quot;.embedlist-link-entry&quot;,{&quot;$&quot;:&quot;el&quot;}]" title="Supprimer" aria-label="Supprimer">✕</button>
                                 </div>`;
                         });
                         html += `</div>`;
@@ -874,10 +1047,20 @@
                 default: // string
                     html += `<input type="text" class="form-input" data-field="${key}" data-type="string"
                         value="${hasValue ? escapeHtml(String(value)) : ''}"
-                        placeholder="${field.default != null ? 'Défaut: ' + field.default : ''}">`;
+                        placeholder="${field.default != null ? 'Défaut: ' + escapeHtml(field.default) : ''}">`;
             }
 
             html += `</div>`;
+            // The field's first control (a widget without one, a list say, is
+            // named by aria-labelledby instead of the label's for=).
+            const fieldHtml = html.slice(fieldStart);
+            const marker = `data-field="${key}"`;
+            const labelled = fieldHtml.includes(marker)
+                ? fieldHtml.replace(marker, `id="${fieldId}" ${marker}`)
+                : fieldHtml.replace(`for="${fieldId}"`, `id="${fieldId}-label"`)
+                    .replace(`<div class="form-field" data-key="${key}">`,
+                        `<div class="form-field" data-key="${key}" role="group" aria-labelledby="${fieldId}-label">`);
+            html = html.slice(0, fieldStart) + labelled;
         }
         html += `</div>`;
         return html;
@@ -1310,7 +1493,7 @@
                 <select data-model-field="api">${apiOptions}</select>
                 <input type="text" data-model-field="model_id" value="${escapeHtml(m.model_id || '')}" placeholder="ex: openai/gpt-4.1">
                 <input type="text" data-model-field="display_name" value="${escapeHtml(m.display_name || '')}" placeholder="ex: OpenAI GPT-4.1" data-input="refresh-ai-models" data-input-args="[{&quot;$&quot;:&quot;el&quot;}]">
-                <button class="btn-remove-model" data-click="remove-model-entry" data-click-args="[{&quot;$&quot;:&quot;el&quot;}]" title="Supprimer">✕</button>
+                <button class="btn-remove-model" data-click="remove-model-entry" data-click-args="[{&quot;$&quot;:&quot;el&quot;}]" title="Supprimer" aria-label="Supprimer">✕</button>
             </div>`;
     }
 
@@ -1527,7 +1710,7 @@
         entry.innerHTML = `
             ${memberPickerHtml('', 'data-namemap-field="discord_id"')}
             <input type="text" data-namemap-field="name" value="" placeholder="ex: Jean">
-            <button class="btn-remove-entry" data-click="removeNameMapEntry" data-click-args="[{&quot;$&quot;:&quot;el&quot;}]" title="Supprimer">✕</button>
+            <button class="btn-remove-entry" data-click="removeNameMapEntry" data-click-args="[{&quot;$&quot;:&quot;el&quot;}]" title="Supprimer" aria-label="Supprimer">✕</button>
         `;
         list.appendChild(entry);
         // Populate (fetches if not cached) then refresh the whole list so the new
@@ -1546,7 +1729,7 @@
         entry.innerHTML = `
             <input type="text" data-kvmap-field="key" value="" placeholder="ex: ${escapeHtml(keyLabel).toLowerCase()}">
             <input type="text" data-kvmap-field="value" value="" placeholder="ex: ${escapeHtml(valueLabel).toLowerCase()}">
-            <button class="btn-remove-entry" data-click="remove-closest" data-click-args="[&quot;.keyvaluemap-entry&quot;,{&quot;$&quot;:&quot;el&quot;}]" title="Supprimer">✕</button>
+            <button class="btn-remove-entry" data-click="remove-closest" data-click-args="[&quot;.keyvaluemap-entry&quot;,{&quot;$&quot;:&quot;el&quot;}]" title="Supprimer" aria-label="Supprimer">✕</button>
         `;
         list.appendChild(entry);
         entry.querySelector('input').focus();
@@ -1574,7 +1757,7 @@
             <div class="streamer-entry${planningEnabled ? '' : ' planning-disabled'}">
                 <div class="streamer-entry-header">
                     <input type="text" data-streamer-field="login" value="${escapeHtml(login || '')}" placeholder="Login Twitch (ex: zerator)">
-                    <button class="btn-remove-streamer" data-click="remove-closest" data-click-args="[&quot;.streamer-entry&quot;,{&quot;$&quot;:&quot;el&quot;}]" title="Supprimer">✕</button>
+                    <button class="btn-remove-streamer" data-click="remove-closest" data-click-args="[&quot;.streamer-entry&quot;,{&quot;$&quot;:&quot;el&quot;}]" title="Supprimer" aria-label="Supprimer">✕</button>
                 </div>
                 <label class="streamer-planning-toggle">
                     <input type="checkbox" data-streamer-planning-enabled ${planningEnabled ? 'checked' : ''} data-change="toggleStreamerPlanning" data-change-args="[{&quot;$&quot;:&quot;el&quot;}]">
@@ -1589,7 +1772,7 @@
                                 ${planningChan ? `<option value="${escapeHtml(planningChan)}" selected>${escapeHtml(planningChan)}</option>` : ''}
                             </select>
                             <input type="text" class="form-input channel-picker-manual" value="${escapeHtml(planningChan)}" placeholder="ID du salon" style="display:none;">
-                            <button type="button" class="btn-channel-toggle" data-click="toggleChannelPickerMode" data-click-args="[{&quot;$&quot;:&quot;el&quot;}]" title="Saisie manuelle">✎</button>
+                            <button type="button" class="btn-channel-toggle" data-click="toggleChannelPickerMode" data-click-args="[{&quot;$&quot;:&quot;el&quot;}]" title="Saisie manuelle" aria-label="Saisie manuelle">✎</button>
                         </div>
                     </div>
                     <div class="streamer-field">
@@ -1600,7 +1783,7 @@
                                 ${notifChan ? `<option value="${escapeHtml(notifChan)}" selected>${escapeHtml(notifChan)}</option>` : ''}
                             </select>
                             <input type="text" class="form-input channel-picker-manual" value="${escapeHtml(notifChan)}" placeholder="ID du salon" style="display:none;">
-                            <button type="button" class="btn-channel-toggle" data-click="toggleChannelPickerMode" data-click-args="[{&quot;$&quot;:&quot;el&quot;}]" title="Saisie manuelle">✎</button>
+                            <button type="button" class="btn-channel-toggle" data-click="toggleChannelPickerMode" data-click-args="[{&quot;$&quot;:&quot;el&quot;}]" title="Saisie manuelle" aria-label="Saisie manuelle">✎</button>
                         </div>
                     </div>
                 </div>
@@ -1645,7 +1828,7 @@
                     <input type="checkbox" data-yt-field="vod" ${vod ? 'checked' : ''}>
                     <span>VOD</span>
                 </label>
-                <button class="btn-remove-entry" data-click="remove-closest" data-click-args="[&quot;.youtubechannel-entry&quot;,{&quot;$&quot;:&quot;el&quot;}]" title="Supprimer">✕</button>
+                <button class="btn-remove-entry" data-click="remove-closest" data-click-args="[&quot;.youtubechannel-entry&quot;,{&quot;$&quot;:&quot;el&quot;}]" title="Supprimer" aria-label="Supprimer">✕</button>
             </div>`;
     }
 
@@ -1693,14 +1876,14 @@
                             ${cfg.channel_id ? `<option value="${safeChannel}" selected>${safeChannel}</option>` : ''}
                         </select>
                         <input type="text" class="form-input channel-picker-manual" value="${safeChannel}" placeholder="ID de salon" style="display:none;">
-                        <button type="button" class="btn-channel-toggle" data-click="toggleChannelPickerMode" data-click-args="[{&quot;$&quot;:&quot;el&quot;}]" title="Saisie manuelle">✎</button>
+                        <button type="button" class="btn-channel-toggle" data-click="toggleChannelPickerMode" data-click-args="[{&quot;$&quot;:&quot;el&quot;}]" title="Saisie manuelle" aria-label="Saisie manuelle">✎</button>
                     </div>
                     <select class="rssfeed-identity" data-rss-field="mode" data-change="onRssModeChange" data-change-args="[{&quot;$&quot;:&quot;el&quot;}]">
                         <option value="text" ${mode === 'text' ? 'selected' : ''}>Texte</option>
                         <option value="embed" ${mode === 'embed' ? 'selected' : ''}>Embed</option>
                     </select>
                     <button type="button" class="btn-rss-advanced" data-click="toggleRssAdvanced" data-click-args="[{&quot;$&quot;:&quot;el&quot;}]" title="Afficher / masquer l'éditeur complet">${advancedLabel}</button>
-                    <button class="btn-remove-entry" data-click="remove-closest" data-click-args="[&quot;.rssfeed-entry&quot;,{&quot;$&quot;:&quot;el&quot;}]" title="Supprimer">✕</button>
+                    <button class="btn-remove-entry" data-click="remove-closest" data-click-args="[&quot;.rssfeed-entry&quot;,{&quot;$&quot;:&quot;el&quot;}]" title="Supprimer" aria-label="Supprimer">✕</button>
                 </div>
                 <div class="rssfeed-advanced">
                     <div class="rssfeed-template-row">
@@ -1898,7 +2081,7 @@
         entry.innerHTML = `
             <input type="text" data-spotifymap-field="spotifyId" value="" placeholder="ex: exemple123">
             ${memberPickerHtml('', 'data-spotifymap-field="discordId"')}
-            <button class="btn-remove-entry" data-click="removeSpotifyMapEntry" data-click-args="[{&quot;$&quot;:&quot;el&quot;}]" title="Supprimer">✕</button>
+            <button class="btn-remove-entry" data-click="removeSpotifyMapEntry" data-click-args="[{&quot;$&quot;:&quot;el&quot;}]" title="Supprimer" aria-label="Supprimer">✕</button>
         `;
         list.appendChild(entry);
         populateMemberPickers(entry).then(() => refreshSpotifyMapListOptions(list));
@@ -1940,7 +2123,7 @@
                                 ${chan ? `<option value="${escapeHtml(chan)}" selected>${escapeHtml(chan)}</option>` : ''}
                             </select>
                             <input type="text" class="form-input channel-picker-manual" value="${escapeHtml(chan)}" placeholder="ID du salon" style="display:none;">
-                            <button type="button" class="btn-channel-toggle" data-click="toggleChannelPickerMode" data-click-args="[{&quot;$&quot;:&quot;el&quot;}]" title="Saisie manuelle">✎</button>
+                            <button type="button" class="btn-channel-toggle" data-click="toggleChannelPickerMode" data-click-args="[{&quot;$&quot;:&quot;el&quot;}]" title="Saisie manuelle" aria-label="Saisie manuelle">✎</button>
                         </div>
                     </div>
                 </div>
@@ -1949,7 +2132,7 @@
                         <input type="checkbox" data-team-field="pin" ${pin ? 'checked' : ''}>
                         <span>Épingler le message</span>
                     </label>
-                    <button class="btn-remove-team" data-click="remove-closest" data-click-args="[&quot;.team-entry&quot;,{&quot;$&quot;:&quot;el&quot;}]" title="Supprimer">✕</button>
+                    <button class="btn-remove-team" data-click="remove-closest" data-click-args="[&quot;.team-entry&quot;,{&quot;$&quot;:&quot;el&quot;}]" title="Supprimer" aria-label="Supprimer">✕</button>
                 </div>
             </div>`;
     }
@@ -1989,7 +2172,7 @@
         entry.innerHTML = `
             <input type="text" data-msg-field="message" value="" placeholder="Message…">
             <input type="number" data-msg-field="weight" value="1" min="0" placeholder="1">
-            <button class="btn-remove-msg" data-click="remove-closest" data-click-args="[&quot;.messagelist-entry&quot;,{&quot;$&quot;:&quot;el&quot;}]" title="Supprimer">✕</button>
+            <button class="btn-remove-msg" data-click="remove-closest" data-click-args="[&quot;.messagelist-entry&quot;,{&quot;$&quot;:&quot;el&quot;}]" title="Supprimer" aria-label="Supprimer">✕</button>
         `;
         list.appendChild(entry);
         entry.querySelector('input').focus();
@@ -2003,7 +2186,7 @@
         entry.innerHTML = `
             <div class="commandlist-entry-header">
                 <div class="commandlist-entry-title">/nouvelle-commande</div>
-                <button type="button" class="btn-remove-embed" data-click="remove-closest" data-click-args="[&quot;.commandlist-entry&quot;,{&quot;$&quot;:&quot;el&quot;}]" title="Supprimer cette commande">✕</button>
+                <button type="button" class="btn-remove-embed" data-click="remove-closest" data-click-args="[&quot;.commandlist-entry&quot;,{&quot;$&quot;:&quot;el&quot;}]" title="Supprimer cette commande" aria-label="Supprimer cette commande">✕</button>
             </div>
             <div class="commandlist-entry-fields">
                 <div><label class="commandlist-field-label">Nom</label>
@@ -2030,7 +2213,7 @@
         responseEntry.className = 'commandlist-response-entry';
         responseEntry.innerHTML = `
             <input type="text" data-response-field="text" value="" placeholder="https://exemple.com/gif.gif ou un texte" maxlength="2000">
-            <button type="button" class="btn-remove-response" data-click="remove-closest" data-click-args="[&quot;.commandlist-response-entry&quot;,{&quot;$&quot;:&quot;el&quot;}]" title="Supprimer">✕</button>
+            <button type="button" class="btn-remove-response" data-click="remove-closest" data-click-args="[&quot;.commandlist-response-entry&quot;,{&quot;$&quot;:&quot;el&quot;}]" title="Supprimer" aria-label="Supprimer">✕</button>
         `;
         container.appendChild(responseEntry);
         responseEntry.querySelector('input').focus();
@@ -2056,7 +2239,7 @@
             <div class="embedlist-entry-header">
                 <div class="embedlist-entry-title">Nouvel embed</div>
                 <div class="embedlist-entry-controls">
-                    <button class="btn-remove-embed" data-click="remove-closest" data-click-args="[&quot;.embedlist-entry&quot;,{&quot;$&quot;:&quot;el&quot;}]" title="Supprimer cet embed">✕</button>
+                    <button class="btn-remove-embed" data-click="remove-closest" data-click-args="[&quot;.embedlist-entry&quot;,{&quot;$&quot;:&quot;el&quot;}]" title="Supprimer cet embed" aria-label="Supprimer cet embed">✕</button>
                 </div>
             </div>
             <div class="embedlist-entry-fields">
@@ -2094,7 +2277,7 @@
         linkEntry.innerHTML = `
             <input type="text" data-link-field="title" value="" placeholder="Titre du lien" maxlength="256">
             <input type="text" data-link-field="url" value="" placeholder="https://exemple.com" maxlength="2048">
-            <button type="button" class="btn-remove-link" data-click="remove-closest" data-click-args="[&quot;.embedlist-link-entry&quot;,{&quot;$&quot;:&quot;el&quot;}]" title="Supprimer">✕</button>
+            <button type="button" class="btn-remove-link" data-click="remove-closest" data-click-args="[&quot;.embedlist-link-entry&quot;,{&quot;$&quot;:&quot;el&quot;}]" title="Supprimer" aria-label="Supprimer">✕</button>
         `;
         linkContainer.appendChild(linkEntry);
         linkEntry.querySelector('input').focus();
@@ -2298,13 +2481,13 @@
         const safeId = escapeHtml(currentId || '');
         return `
             <div class="member-picker" data-current="${safeId}">
-                <input type="search" class="form-input member-picker-search" placeholder="🔍 Rechercher" data-input="onMemberPickerSearch" data-input-args="[{&quot;$&quot;:&quot;el&quot;}]" aria-label="Rechercher un membre">
+                <input type="search" class="form-input member-picker-search" placeholder="🔍 Rechercher" maxlength="100" data-input="onMemberPickerSearch" data-input-args="[{&quot;$&quot;:&quot;el&quot;}]" aria-label="Rechercher un membre">
                 <select class="form-input member-picker-select" data-change="onMemberPickerChange" data-change-args="[{&quot;$&quot;:&quot;el&quot;}]">
                     <option value="">— Chargement des membres… —</option>
                     ${currentId ? `<option value="${safeId}" selected>${safeId}</option>` : ''}
                 </select>
                 <input type="text" class="form-input member-picker-manual" ${fieldAttr} value="${safeId}" placeholder="ex: 123456789012345678" style="display:none;">
-                <button type="button" class="btn-member-toggle" data-click="toggleMemberPickerMode" data-click-args="[{&quot;$&quot;:&quot;el&quot;}]" title="Saisie manuelle">✎</button>
+                <button type="button" class="btn-member-toggle" data-click="toggleMemberPickerMode" data-click-args="[{&quot;$&quot;:&quot;el&quot;}]" title="Saisie manuelle" aria-label="Saisie manuelle">✎</button>
             </div>`;
     }
 
@@ -2592,15 +2775,16 @@
                     ? `https://cdn.discordapp.com/icons/${id}/${s.icon}.png?size=64`
                     : null;
                 return `
-                    <div class="nav-item ${isActive ? 'active' : ''}" data-click="navigate" data-click-args="${actionArgs("server", id)}">
+                    <a class="nav-item ${isActive ? 'active' : ''}" href="${routeHash('server', id)}" ${isActive ? 'aria-current="page"' : ''}
+                       data-click="navigate" data-click-args="${actionArgs("server", id)}" data-prevent>
                         <div class="server-icon">
                             ${iconUrl ? `<img src="${escapeHtml(iconUrl)}" alt="">` : escapeHtml(s.name?.charAt(0) || '?')}
                         </div>
                         <div class="nav-item-label">
                             <span class="nav-item-name">${escapeHtml(s.name || id)}</span>
-                            <span class="nav-item-sub">${id}</span>
+                            <span class="nav-item-sub">${escapeHtml(id)}</span>
                         </div>
-                    </div>
+                    </a>
                 `;
             }).join('')
             : '<div class="loading"><div class="spinner"></div> Chargement...</div>';
@@ -2614,22 +2798,22 @@
                 <div class="sidebar-nav">
                     <div class="nav-section">
                         <div class="nav-section-title">Général</div>
-                        <div class="nav-item ${state.currentPage === 'home' ? 'active' : ''}" data-click="navigate" data-click-args="[&quot;home&quot;]">
+                        <a class="nav-item ${state.currentPage === 'home' ? 'active' : ''}" href="${routeHash('home')}" ${state.currentPage === 'home' ? 'aria-current="page"' : ''} data-click="navigate" data-click-args="[&quot;home&quot;]" data-prevent>
                             <span class="icon">🏠</span> Accueil
-                        </div>
+                        </a>
                         ${isDeveloper() ? `
-                        <div class="nav-item ${state.currentPage === 'global' ? 'active' : ''}" data-click="navigate" data-click-args="[&quot;global&quot;]">
+                        <a class="nav-item ${state.currentPage === 'global' ? 'active' : ''}" href="${routeHash('global')}" ${state.currentPage === 'global' ? 'aria-current="page"' : ''} data-click="navigate" data-click-args="[&quot;global&quot;]" data-prevent>
                             <span class="icon">⚙️</span> Config globale
-                        </div>
-                        <div class="nav-item ${state.currentPage === 'extensions' ? 'active' : ''}" data-click="navigate" data-click-args="[&quot;extensions&quot;]">
+                        </a>
+                        <a class="nav-item ${state.currentPage === 'extensions' ? 'active' : ''}" href="${routeHash('extensions')}" ${state.currentPage === 'extensions' ? 'aria-current="page"' : ''} data-click="navigate" data-click-args="[&quot;extensions&quot;]" data-prevent>
                             <span class="icon">🧩</span> Extensions
-                        </div>
-                        <div class="nav-item ${state.currentPage === 'links' ? 'active' : ''}" data-click="navigate" data-click-args="[&quot;links&quot;]">
+                        </a>
+                        <a class="nav-item ${state.currentPage === 'links' ? 'active' : ''}" href="${routeHash('links')}" ${state.currentPage === 'links' ? 'aria-current="page"' : ''} data-click="navigate" data-click-args="[&quot;links&quot;]" data-prevent>
                             <span class="icon">🔗</span> Liens courts
-                        </div>
-                        <div class="nav-item ${state.currentPage === 'logs' ? 'active' : ''}" data-click="navigate" data-click-args="[&quot;logs&quot;]">
+                        </a>
+                        <a class="nav-item ${state.currentPage === 'logs' ? 'active' : ''}" href="${routeHash('logs')}" ${state.currentPage === 'logs' ? 'aria-current="page"' : ''} data-click="navigate" data-click-args="[&quot;logs&quot;]" data-prevent>
                             <span class="icon">📋</span> Logs
-                        </div>
+                        </a>
                         ` : ''}
                     </div>
                     ${isAdmin() ? `
@@ -2648,7 +2832,7 @@
                             }
                         </div>
                         <span class="user-name">${escapeHtml(state.user.username)}</span>
-                        <button class="logout-btn" data-click="logout" title="Déconnexion">🚪</button>
+                        <button class="logout-btn" data-click="logout" title="Déconnexion" aria-label="Déconnexion">🚪</button>
                     </div>
                 </div>
             </div>
@@ -2701,11 +2885,11 @@
                     <div><a href="${escapeHtml(item.short_url)}" target="_blank" rel="noopener">${escapeHtml(item.short_url)}</a></div>
                     <div>
                         <label class="form-label">URL de destination</label>
-                        <input type="url" class="form-input" id="shlink-edit-url" value="${escapeHtml(item.long_url)}">
+                        <input type="url" class="form-input" id="shlink-edit-url" value="${escapeHtml(item.long_url)}" maxlength="4096" aria-label="URL cible">
                     </div>
                     <div>
                         <label class="form-label">Titre</label>
-                        <input type="text" class="form-input" id="shlink-edit-title" value="${escapeHtml(item.title)}" placeholder="Optionnel">
+                        <input type="text" class="form-input" id="shlink-edit-title" value="${escapeHtml(item.title)}" placeholder="Optionnel" maxlength="512">
                     </div>
                     <div>
                         <label class="form-label">Tags (séparés par des virgules)</label>
@@ -2713,7 +2897,7 @@
                     </div>
                     <div style="display:flex; gap:6px; justify-content:flex-end;">
                         <button class="btn btn-ghost btn-sm" data-click="cancelEditShortLink">Annuler</button>
-                        <button class="btn btn-success btn-sm" data-click="saveShortLink" data-click-args="${actionArgs(code)}">💾 Enregistrer</button>
+                        <button class="btn btn-success btn-sm" data-click="saveShortLink" data-click-args="${actionArgs(item.short_code)}">💾 Enregistrer</button>
                     </div>
                 </div>
             `;
@@ -2730,9 +2914,9 @@
                     </div>
                     <div style="display:flex; gap:6px; align-items:center;">
                         <span style="color:var(--text-muted); font-size:12px;">${item.visits ?? 0} visite(s)</span>
-                        <button class="btn btn-ghost btn-sm" data-click="copyShortLink" data-click-args="${actionArgs(item.short_url)}" title="Copier">📋</button>
-                        <button class="btn btn-ghost btn-sm" data-click="startEditShortLink" data-click-args="${actionArgs(code)}">✏️ Modifier</button>
-                        <button class="btn btn-ghost btn-sm" style="color:var(--danger)" data-click="deleteShortLink" data-click-args="${actionArgs(code)}">🗑️</button>
+                        <button class="btn btn-ghost btn-sm" data-click="copyShortLink" data-click-args="${actionArgs(item.short_url)}" title="Copier" aria-label="Copier">📋</button>
+                        <button class="btn btn-ghost btn-sm" data-click="startEditShortLink" data-click-args="${actionArgs(item.short_code)}">✏️ Modifier</button>
+                        <button class="btn btn-ghost btn-sm" style="color:var(--danger)" data-click="deleteShortLink" data-click-args="${actionArgs(item.short_code)}" aria-label="Supprimer le lien ${code}" title="Supprimer">🗑️</button>
                     </div>
                 </div>
                 <div style="font-size:13px; color:var(--text-secondary); word-break:break-all;">↳ ${escapeHtml(item.long_url)}</div>
@@ -2754,7 +2938,7 @@
                     <div class="icon">🔗</div>
                     <h3>Shlink n'est pas configuré</h3>
                     <p>Renseignez l'URL de l'instance et la clé API dans la section « Shlink » de la
-                    <a href="#" data-click="navigate" data-click-args="[&quot;global&quot;]" data-prevent>config globale</a>.</p>
+                    <a href="#/global" data-click="navigate" data-click-args="[&quot;global&quot;]" data-prevent>config globale</a>.</p>
                 </div>
             `;
         }
@@ -2770,7 +2954,7 @@
                     ${st.enabled
                         ? '<span style="color:var(--success)">activé</span>'
                         : '<span style="color:var(--text-muted)">désactivé</span>'}
-                    (<a href="#" data-click="navigate" data-click-args="[&quot;global&quot;]" data-prevent>config globale</a>)
+                    (<a href="#/global" data-click="navigate" data-click-args="[&quot;global&quot;]" data-prevent>config globale</a>)
                 </p>
             </div>
 
@@ -2784,16 +2968,16 @@
                 <div style="display:flex; flex-direction:column; gap:12px;">
                     <div>
                         <label class="form-label">URL de destination</label>
-                        <input type="url" class="form-input" id="shlink-new-url" placeholder="https://exemple.com/une-page-tres-longue">
+                        <input type="url" class="form-input" id="shlink-new-url" placeholder="https://exemple.com/une-page-tres-longue" maxlength="4096">
                     </div>
                     <div style="display:flex; gap:12px; flex-wrap:wrap;">
                         <div style="flex:1; min-width:180px;">
                             <label class="form-label">Titre</label>
-                            <input type="text" class="form-input" id="shlink-new-title" placeholder="Optionnel">
+                            <input type="text" class="form-input" id="shlink-new-title" placeholder="Optionnel" maxlength="512">
                         </div>
                         <div style="flex:1; min-width:180px;">
                             <label class="form-label">Slug personnalisé</label>
-                            <input type="text" class="form-input" id="shlink-new-slug" placeholder="ma-page">
+                            <input type="text" class="form-input" id="shlink-new-slug" placeholder="ma-page" maxlength="128">
                         </div>
                         <div style="flex:1; min-width:180px;">
                             <label class="form-label">Tags (séparés par des virgules)</label>
@@ -3003,6 +3187,7 @@
                     const activeCount = Object.values(cfg).filter(m => m && m.enabled === true).length;
                     return `
                         <div class="server-card" data-click="navigate" data-click-args="${actionArgs("server", id)}">
+                            <a class="visually-hidden" href="${routeHash('server', id)}" data-click="navigate" data-click-args="${actionArgs("server", id)}" data-prevent>Ouvrir ${escapeHtml(s.name || id)}</a>
                             <div class="server-card-top">
                                 <div class="server-card-icon">
                                     ${iconUrl ? `<img src="${escapeHtml(iconUrl)}" alt="">` : `<span>${escapeHtml(s.name?.charAt(0) || '?')}</span>`}
@@ -3205,7 +3390,7 @@
                                         </span>
                                     </div>
                                     <label class="toggle" data-click="stop">
-                                        <input type="checkbox" ${ext.enabled ? 'checked' : ''}
+                                        <input type="checkbox" ${ext.enabled ? 'checked' : ''} aria-label="Activer l'extension ${escapeHtml(ext.name || ext.path)}"
                                             data-change="toggleExtension" data-change-args="${actionArgs(ext.path, CHECKED)}">
                                         <span class="toggle-slider"></span>
                                     </label>
@@ -3219,6 +3404,10 @@
     }
 
     async function toggleExtension(extPath, enabled) {
+        if (!confirm(`${enabled ? 'Activer' : 'Désactiver'} l'extension ${extPath} pour tout le bot ?`)) {
+            render();  // put the switch back
+            return;
+        }
         try {
             const result = await api(`/api/extensions/${extPath}/toggle`, {
                 method: 'POST',
@@ -3450,14 +3639,14 @@
         for (const [key, value] of Object.entries(obj)) {
             const fullKey = prefix ? `${prefix}.${key}` : key;
             if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
-                html += `<div class="kv-key" style="grid-column: 1 / -1; color: var(--accent); margin-top: 8px;">▸ ${key}</div>`;
+                html += `<div class="kv-key" style="grid-column: 1 / -1; color: var(--accent); margin-top: 8px;">▸ ${escapeHtml(key)}</div>`;
                 html += renderConfigPreview(value, fullKey);
             } else {
                 const displayValue = typeof value === 'string' && (key.toLowerCase().includes('token') || key.toLowerCase().includes('secret') || key.toLowerCase().includes('password'))
                     ? '••••••••'
                     : JSON.stringify(value);
                 html += `
-                    <div class="kv-key">${key}</div>
+                    <div class="kv-key">${escapeHtml(key)}</div>
                     <div class="kv-value"><input type="text" value="${escapeHtml(displayValue)}" readonly></div>
                 `;
             }
@@ -3491,7 +3680,7 @@
                 await loadConfig();
                 render();
             };
-            document.getElementById('modal-overlay').classList.add('active');
+            showModal();
         } else {
             editGlobalSectionJson(section);
         }
@@ -3599,7 +3788,7 @@
                             return `
                                 <div class="module-item" data-click="navigate" data-click-args="${actionArgs("module", sid, mod)}">
                                     <div class="module-info">
-                                        <span class="module-name">${icon} ${label}</span>
+                                        <a class="module-name" href="${routeHash('module', sid, mod)}" data-click="navigate" data-click-args="${actionArgs("module", sid, mod)}" data-prevent>${escapeHtml(icon)} ${escapeHtml(label)}</a>
                                         <span class="module-status">${
                                             noToggle
                                                 ? (isConfigured && Object.keys(modConfig).length > 0 ? '📝 Configuré' : '⚪ Non configuré')
@@ -3610,7 +3799,7 @@
                                     </div>
                                     ${noToggle ? '' : `
                                     <label class="toggle" data-click="stop">
-                                        <input type="checkbox" ${enabled ? 'checked' : ''}
+                                        <input type="checkbox" ${enabled ? 'checked' : ''} aria-label="Activer le module ${escapeHtml(label)}"
                                             data-change="toggleModule" data-change-args="${actionArgs(sid, mod, CHECKED)}">
                                         <span class="toggle-slider"></span>
                                     </label>
@@ -3676,6 +3865,12 @@
     }
 
     async function toggleModule(serverId, moduleName, enabled) {
+        const label = state.moduleSchemas[moduleName]?.label || moduleName;
+        if (!confirm(`${enabled ? 'Activer' : 'Désactiver'} le module ${label} sur ce serveur ?`)
+            || !confirmDiscard()) {
+            render();  // put the switch back
+            return;
+        }
         try {
             const result = await api(`/api/servers/${serverId}/modules/${moduleName}/toggle`, {
                 method: 'POST',
@@ -3714,7 +3909,7 @@
 
         return `
             <div class="breadcrumb">
-                <a data-click="navigate" data-click-args="${actionArgs("server", sid)}">${escapeHtml(server.name || sid)}</a>
+                <a href="${routeHash('server', sid)}" data-click="navigate" data-click-args="${actionArgs("server", sid)}" data-prevent>${escapeHtml(server.name || sid)}</a>
                 <span>›</span>
                 <span>${icon} ${label}</span>
             </div>
@@ -3727,7 +3922,7 @@
                     </div>
                     ${noToggle ? '' : `
                     <label class="toggle" style="transform: scale(1.2);">
-                        <input type="checkbox" ${enabled ? 'checked' : ''}
+                        <input type="checkbox" ${enabled ? 'checked' : ''} aria-label="Activer le module ${escapeHtml(label)}"
                             data-change="toggleModule" data-change-args="${actionArgs(sid, mod, CHECKED)}">
                         <span class="toggle-slider"></span>
                     </label>
@@ -3743,6 +3938,7 @@
                             { } JSON
                         </button>
                         ${schema ? `
+                            <span class="unsaved-badge" role="status">● Modifié</span>
                             <button class="btn btn-success btn-sm" data-click="saveModuleForm" data-click-args="${actionArgs(sid, mod, formId)}">
                                 💾 Sauvegarder
                             </button>
@@ -3926,7 +4122,7 @@
                     <div class="stat-label">Streaming</div>
                     <div class="stat-value">
                         <span class="log-stat-badge ${state.logStreaming ? 'live' : 'paused'}">
-                            ${state.logStreaming ? '● LIVE' : '○ Déconnecté'}
+                            ${state.logStreaming ? '● En direct' : '○ Déconnecté'}
                         </span>
                     </div>
                 </div>
@@ -3957,7 +4153,7 @@
                     <label class="verbose-toggle" title="Afficher le nom du logger et l'emplacement (fichier:ligne)">
                         <input type="checkbox" ${state.logVerbose ? 'checked' : ''}
                             data-change="onLogVerboseChange" data-change-args="[{&quot;$&quot;:&quot;checked&quot;}]">
-                        Verbose
+                        Détaillé
                     </label>
                 </div>
 
@@ -4042,6 +4238,7 @@
             } else {
                 toast(`Configuration sauvegardée, rechargement échoué : ${result.reload.error}`, 'warning');
             }
+            setDirty(false);
             await loadServers();
             if (isDeveloper()) await loadConfig();
             render();
@@ -4049,9 +4246,10 @@
     }
 
     async function publishEmbeds(serverId) {
+        if (!confirm('Publier (ou mettre à jour) les embeds de ce serveur dans leurs salons ?')) return;
         try {
             const result = await api(`/api/servers/${serverId}/modules/moduleEmbedManager/publish`, { method: 'POST' });
-            toast(`✓ ${result.count} embed(s) publié(s) avec succès`, 'success');
+            toast(`✓ ${result?.count ?? 0} embed(s) publié(s) avec succès`, 'success');
         } catch (e) { /* handled by api() */ }
     }
 
@@ -4129,7 +4327,7 @@
                 <select class="form-input" data-rrf="role_id">${_renderRoleSelect(roles, e.role_id)}</select>
                 <input type="text" class="form-input" data-rrf="emoji" value="${escapeHtml(e.emoji)}" placeholder="🎮" maxlength="64">
                 <input type="text" class="form-input" data-rrf="label" value="${escapeHtml(e.label)}" placeholder="Libellé du bouton" maxlength="80">
-                <button type="button" class="btn-remove-entry" data-click="remove-closest" data-click-args="[&quot;.rolemenu-entry&quot;,{&quot;$&quot;:&quot;el&quot;}]" title="Supprimer">✕</button>
+                <button type="button" class="btn-remove-entry" data-click="remove-closest" data-click-args="[&quot;.rolemenu-entry&quot;,{&quot;$&quot;:&quot;el&quot;}]" title="Supprimer" aria-label="Supprimer">✕</button>
             </div>
         `;
     }
@@ -4224,6 +4422,7 @@
     }
 
     function closeRoleMenuBuilder() {
+        if (!confirmDiscard()) return;
         const card = document.getElementById('rolemenu-builder-card');
         if (card) card.style.display = 'none';
         _rolemenuEditing = null;
@@ -4275,6 +4474,7 @@
                 });
                 toast('Menu créé.', 'success');
             }
+            setDirty(false);
             closeRoleMenuBuilder();
             loadRoleMenus(sid);
         } catch (e) { /* handled by api() */ }
@@ -5144,8 +5344,12 @@
 
     // ── Reload extensions ─────────────────────────────
     async function reloadAllExtensions() {
+        if (!confirm('Recharger toutes les extensions ? Les commandes en cours peuvent être interrompues.')) return;
         const btn = document.getElementById('reload-all-btn');
-        if (btn) { btn.disabled = true; btn.textContent = '⏳ Rechargement...'; }
+        const label = btn?.querySelector('.quick-action-label');
+        const original = label?.textContent;
+        if (btn) btn.disabled = true;
+        if (label) label.textContent = 'Rechargement…';
         try {
             const result = await api('/api/reload', { method: 'POST' });
             if (result) {
@@ -5160,7 +5364,8 @@
                 }
             }
         } catch (e) { /* handled by api() */ }
-        if (btn) { btn.disabled = false; btn.textContent = '🔄 Recharger tout'; }
+        if (btn) btn.disabled = false;
+        if (label && original) label.textContent = original;
     }
 
     async function reloadExtension(extName) {
@@ -5317,7 +5522,7 @@
                 { method: 'POST' });
         } catch (e) { return; /* handled by api() */ }
         if (!data) return;
-        const url = `${location.origin}/public/${data.token}/${kind}`;
+        const url = `${location.origin}/public/${encodeURIComponent(data.token)}/${encodeURIComponent(kind)}`;
         const overlay = document.getElementById('modal-overlay');
         document.getElementById('modal-title').textContent = `🌐 Page publique — ${PUBLIC_DASHBOARDS[kind].title}`;
         document.getElementById('modal-save-btn').style.display = 'none';
@@ -5336,7 +5541,7 @@
                 <button class="btn btn-ghost btn-sm" data-click="rotatePublicLink" data-click-args="${actionArgs(serverId, kind)}">🔄 Régénérer le lien</button>
             </div>
         `;
-        overlay.classList.add('active');
+        showModal();
         if (rotate) toast('Nouveau lien généré : l\'ancien ne fonctionne plus.', 'success');
     }
 
@@ -5369,7 +5574,7 @@
     function escapeHtml(str) {
         const div = document.createElement('div');
         div.textContent = String(str);
-        return div.innerHTML.replace(/"/g, '&quot;');
+        return div.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
     }
 
     async function cleanupConfig() {
@@ -5429,17 +5634,19 @@
 
         // Handle redirect back from Spotify OAuth callback (hash-routed link).
         const hashParams = new URLSearchParams((location.hash.split('?')[1]) || '');
-        if (hashParams.get('spotify_auth')) {
+        // Only the outcome comes back, never a text (a link could carry any),
+        // and only a developer, who started the flow, is told about it.
+        if (hashParams.get('spotify_auth') && isDeveloper()) {
             const ok = hashParams.get('spotify_auth') === 'ok';
-            toast(hashParams.get('msg') || (ok ? 'Spotify connecté' : 'Échec Spotify'), ok ? 'success' : 'error');
-            if (isDeveloper()) {
-                await loadSpotifyAuth();
-                navigate('global');
-            }
-            // Clear the hash without re-triggering navigation.
-            history.replaceState(null, '', location.pathname);
+            toast(ok ? 'Spotify connecté.' : 'Échec de la connexion Spotify : voir les logs du bot.',
+                ok ? 'success' : 'error');
         }
-        render();
+        if (state.user) {
+            const route = parseHash();
+            navigate(route.page, route.serverId, route.moduleName, { fromHistory: true });
+        } else {
+            render();
+        }
 
         // Periodically refresh bot info
         setInterval(async () => {

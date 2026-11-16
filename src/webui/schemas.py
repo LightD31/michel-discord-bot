@@ -908,7 +908,9 @@ class WebuiSection(SchemaBase):
             "Adresses ou plages CIDR des reverse proxys devant le dashboard. "
             "Les en-têtes X-Forwarded-For / X-Forwarded-Proto ne sont pris en compte "
             "que s'ils viennent de l'une d'elles. Vide = loopback uniquement : un proxy "
-            "dans un conteneur ou sur un autre hôte doit être listé (ex. 172.17.0.1, "
-            "la passerelle Docker par défaut)."
+            "dans un conteneur ou sur un autre hôte doit être listé. Avec le compose "
+            "fourni, c'est la passerelle du réseau du projet (souvent 172.18.0.1, à lire "
+            "avec docker network inspect), pas 172.17.0.1. Le bot écrit un avertissement "
+            "avec l'adresse à ajouter quand il reçoit ces en-têtes d'un pair inconnu."
         ),
     )
