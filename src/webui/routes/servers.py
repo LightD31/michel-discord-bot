@@ -15,6 +15,7 @@ from src.discord_ext.channels import fetch_guild_channel
 from src.discord_ext.embedmanager import MODULE_KEY as EMBED_MANAGER_MODULE
 from src.discord_ext.embedmanager import build_embeds, publish_embeds
 from src.discord_ext.role_grants import settings_refusal
+from src.webui import audit
 from src.webui.botops import run_extension_op, sync_commands
 from src.webui.channels import list_channels
 from src.webui.context import WebUIContext
@@ -398,6 +399,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
         schema = schemas.MODULE_SCHEMAS.get(module_name)
         model = schemas.module_model(module_name)
         enabled_change: dict[str, bool] = {}
+        changes: list[str] = []
 
         def mutator(data: dict) -> None:
             server = data.setdefault("servers", {}).setdefault(server_id, {})
@@ -410,6 +412,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
             if model is not None:
                 # Raising here leaves config.json untouched (mutate writes after).
                 _require_valid(schemas.validation_errors(model, restored, module=True))
+            changes[:] = audit.changed_fields(server.get(module_name), restored)
             server[module_name] = restored
             enabled_change["after"] = _module_enabled(server[module_name])
 
@@ -431,6 +434,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
             scopes_changed=scopes_changed,
             sync=scopes_changed or module_name == CUSTOM_COMMANDS_MODULE,
         )
+        await audit.record(server_id, session, "module.save", target=module_name, changes=changes)
         return JSONResponse({"status": "ok", **after})
 
     @router.post("/api/servers/{server_id}/modules/{module_name}/toggle")
@@ -462,6 +466,13 @@ def create_router(ctx: WebUIContext) -> APIRouter:
         # syncing this guild makes them appear or disappear without a restart.
         after = await _apply_module_change(
             ctx, server_id, module_name, scopes_changed=True, sync=True
+        )
+        await audit.record(
+            server_id,
+            session,
+            "module.toggle",
+            target=module_name,
+            details={"enabled": body.enabled},
         )
         return JSONResponse({"status": "ok", "enabled": body.enabled, **after})
 
@@ -495,6 +506,13 @@ def create_router(ctx: WebUIContext) -> APIRouter:
         )
         logger.info(
             "Embeds of guild %s published by %s (%s)", server_id, session.username, session.user_id
+        )
+        await audit.record(
+            server_id,
+            session,
+            "embeds.publish",
+            target=EMBED_MANAGER_MODULE,
+            details={"count": embed_count},
         )
 
         return JSONResponse({"status": "ok", "count": embed_count})

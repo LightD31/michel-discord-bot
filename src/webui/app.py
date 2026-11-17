@@ -24,6 +24,9 @@ from src.webui.routes import (
     ai as ai_routes,
 )
 from src.webui.routes import (
+    audit as audit_routes,
+)
+from src.webui.routes import (
     auth as auth_routes,
 )
 from src.webui.routes import (
@@ -40,6 +43,9 @@ from src.webui.routes import (
 )
 from src.webui.routes import (
     frontend as frontend_routes,
+)
+from src.webui.routes import (
+    health as health_routes,
 )
 from src.webui.routes import (
     members as members_routes,
@@ -61,6 +67,9 @@ from src.webui.routes import (
 )
 from src.webui.routes import (
     spotify as spotify_routes,
+)
+from src.webui.routes import (
+    template_tests as template_tests_routes,
 )
 from src.webui.routes import (
     xp as xp_routes,
@@ -169,6 +178,9 @@ def create_app(bot=None, bot_loop=None) -> FastAPI:
     app.include_router(members_routes.create_router(ctx))
     app.include_router(rolemenus_routes.create_router(ctx))
     app.include_router(moderation_routes.create_router(ctx))
+    app.include_router(audit_routes.create_router(ctx))
+    app.include_router(health_routes.create_router(ctx))
+    app.include_router(template_tests_routes.create_router(ctx))
     app.include_router(bot_messages_routes.create_router(ctx))
     app.include_router(xp_routes.create_router(ctx))
     app.include_router(extensions_routes.create_router(ctx))

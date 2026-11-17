@@ -597,6 +597,40 @@
             state.moduleSchemas = {};
             state.globalSchemas = {};
         }
+        try {
+            state.templateTests = (await api('/api/template-tests')) || {};
+        } catch (e) {
+            state.templateTests = {};
+        }
+    }
+
+    // ── Template test (F11) ───────────────────────────
+    // The texts currently in the field, saved or not, rendered by the bot and DMed to you.
+    function templateTexts(fieldEl) {
+        if (!fieldEl) return [];
+        const pick = sel => [...fieldEl.querySelectorAll(sel)].map(i => i.value.trim()).filter(Boolean);
+        const texts = pick('[data-msg-field="message"]')
+            .concat(pick('[data-response-field="text"]'));
+        if (texts.length) return texts;
+        return pick('input[data-type="string"], textarea[data-field]');
+    }
+
+    async function testTemplate(serverId, moduleName, field, btn) {
+        const texts = templateTexts(btn?.closest('.form-field'));
+        if (!texts.length) {
+            toast('Rien à tester : écris au moins un message.', 'info');
+            return;
+        }
+        if (btn) btn.disabled = true;
+        try {
+            const result = await api(`/api/servers/${encodeURIComponent(serverId)}/template-test`, {
+                method: 'POST',
+                body: JSON.stringify({ module: moduleName, field, texts }),
+            });
+            toast(`${result.sent} message(s) de test envoyé(s) en MP.`, 'success');
+            for (const warning of result.warnings || []) toast(warning, 'warning');
+        } catch (e) { /* handled by api() */ }
+        finally { if (btn) btn.disabled = false; }
     }
 
     async function loadConfig() {
@@ -1050,6 +1084,11 @@
                         placeholder="${field.default != null ? 'Défaut: ' + escapeHtml(field.default) : ''}">`;
             }
 
+            if (options.module && state.templateTests?.[options.module]?.[key]) {
+                html += `<button type="button" class="btn btn-ghost btn-sm template-test-btn" style="margin-top:6px;"
+                    data-click="testTemplate" data-click-args="${actionArgs(options.serverId, options.module, key, EL)}"
+                    title="Le bot t'envoie en MP ce que donnent les messages ci-dessus, avec toi à la place du membre">✉️ Tester en MP</button>`;
+            }
             html += `</div>`;
             // The field's first control (a widget without one, a list say, is
             // named by aria-labelledby instead of the label's for=).
@@ -2731,6 +2770,12 @@
         // Server page: the messages the bot keeps up to date there.
         if (state.currentPage === 'server' && state.currentServerId) {
             loadBotMessages(state.currentServerId);
+            loadHealth(state.currentServerId);
+            loadAudit(state.currentServerId);
+        }
+        // Global settings: the bot's own audit log (developers only).
+        if (state.currentPage === 'global') {
+            loadAudit(null);
         }
         // Reaction-roles builder: load existing menus when on its module page.
         if (state.currentPage === 'module' && state.currentModule === 'moduleReactionRoles' && state.currentServerId) {
@@ -3349,6 +3394,7 @@
                     </div>
                 `;
             }).join('')}
+            ${renderAuditCard()}
         `;
     }
 
@@ -3822,7 +3868,179 @@
                 </p>
                 <div id="bot-messages-list"><div class="loading"><div class="spinner"></div></div></div>
             </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title">Santé</div>
+                </div>
+                <p style="color:var(--text-muted); margin:0 0 12px;">
+                    Ce que le bot n'arrive pas à faire sur ce serveur : salons où il lui manque des
+                    droits, flux RSS en échec, tâches qui échouent.
+                </p>
+                <div id="health-report"><div class="loading"><div class="spinner"></div></div></div>
+            </div>
+
+            ${renderAuditCard()}
         `;
+    }
+
+    // ── Guild health (F08) ────────────────────────────
+    function moduleLabel(mod) {
+        return state.moduleSchemas[mod]?.label || mod;
+    }
+
+    function fmtEpoch(seconds) {
+        return seconds ? new Date(seconds * 1000).toLocaleString('fr-FR') : 'jamais';
+    }
+
+    function healthLine(ok, html) {
+        return `<div class="message-status ${ok ? 'configured' : 'pending'}" style="margin-bottom:6px;">
+            <span class="status-icon">${ok ? '✅' : '⚠️'}</span><span class="status-text">${html}</span></div>`;
+    }
+
+    function healthChannelsHtml(channels) {
+        if (channels === null) return '<p style="color:var(--text-muted)">Bot non connecté : salons non vérifiés.</p>';
+        if (!channels.length) return '<p style="color:var(--text-muted)">Aucun salon configuré.</p>';
+        return channels.map(c => {
+            const mods = c.modules.map(m => escapeHtml(moduleLabel(m))).join(', ');
+            const name = c.name ? `#${escapeHtml(c.name)}` : `<code>${escapeHtml(c.channelId)}</code>`;
+            if (!c.found) return healthLine(false, `${name} (${mods}) : salon introuvable — supprimé, ou le bot ne le voit pas.`);
+            if (c.missing.length) return healthLine(false, `${name} (${mods}) : il manque au bot ${c.missing.map(escapeHtml).join(', ')}.`);
+            return healthLine(true, `${name} (${mods})`);
+        }).join('');
+    }
+
+    function healthFeedsHtml(feeds) {
+        if (!feeds) return '';
+        if (!feeds.length) return '<p style="color:var(--text-muted)">Aucun flux RSS.</p>';
+        return feeds.map(f => {
+            const next = f.nextPollAt ? new Date(f.nextPollAt).toLocaleString('fr-FR') : 'au prochain cycle';
+            if (f.failures) {
+                return healthLine(false, `<strong>${escapeHtml(f.label)}</strong> : ${f.failures} échec(s) de suite
+                    (${escapeHtml(f.lastError || 'erreur inconnue')}). Prochain essai : ${escapeHtml(next)}.`);
+            }
+            const last = f.lastPollAt ? new Date(f.lastPollAt).toLocaleString('fr-FR') : 'jamais';
+            return healthLine(true, `<strong>${escapeHtml(f.label)}</strong> : relevé le ${escapeHtml(last)}.`);
+        }).join('');
+    }
+
+    function healthTasksHtml(tasks) {
+        if (!tasks.length) return '';
+        return tasks.map(t => {
+            const failing = t.lastFailure && (!t.lastSuccess || t.lastFailure > t.lastSuccess);
+            return healthLine(!failing, `<code>${escapeHtml(t.name)}</code> : dernier succès ${escapeHtml(fmtEpoch(t.lastSuccess))}
+                ${t.failures ? `, ${t.failures} échec(s) depuis le démarrage (dernier : ${escapeHtml(fmtEpoch(t.lastFailure))})` : ''}`);
+        }).join('');
+    }
+
+    async function loadHealth(serverId) {
+        const container = document.getElementById('health-report');
+        if (!container) return;
+        let data;
+        try {
+            data = await api(`/api/servers/${encodeURIComponent(serverId)}/health`);
+        } catch (e) {
+            container.innerHTML = `<p style="color:var(--text-muted)">Diagnostic indisponible.</p>`;
+            return;
+        }
+        const section = (title, body) => body ? `<h4 style="margin:12px 0 6px;">${title}</h4>${body}` : '';
+        container.innerHTML = section('Salons', healthChannelsHtml(data.channels))
+            + section('Flux RSS', healthFeedsHtml(data.feeds))
+            + section('Tâches (pour tous les serveurs)', healthTasksHtml(data.tasks || []));
+    }
+
+    // ── Audit log (F09) ───────────────────────────────
+    // Who changed what from the dashboard: field names only, never a value.
+    const AUDIT_ACTIONS = {
+        'module.save': 'a enregistré le module',
+        'module.toggle': 'a basculé le module',
+        'embeds.publish': 'a publié les embeds',
+        'bot_message.republish': 'a republié le message',
+        'public_dashboard.create': 'a créé le lien des pages publiques',
+        'public_dashboard.rotate': 'a renouvelé le lien des pages publiques',
+        'rolemenu.create': 'a créé le menu de rôles',
+        'rolemenu.update': 'a modifié le menu de rôles',
+        'rolemenu.delete': 'a supprimé le menu de rôles',
+        'infraction.revoke': 'a révoqué le cas',
+        'template.test': 's\'est envoyé un test du modèle',
+        'global_config.save': 'a enregistré la section',
+        'config.cleanup': 'a nettoyé la configuration',
+        'extensions.reload_all': 'a rechargé toutes les extensions',
+        'extensions.reload': 'a rechargé l\'extension',
+        'extensions.toggle': 'a basculé l\'extension',
+        'short_url.create': 'a créé le lien court',
+        'short_url.update': 'a modifié le lien court',
+        'short_url.delete': 'a supprimé le lien court',
+        'spotify.authorize': 'a reconnecté le compte Spotify',
+    };
+
+    function renderAuditCard() {
+        return `
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title">Journal des modifications</div>
+                </div>
+                <p style="color:var(--text-muted); margin:0 0 12px;">
+                    Ce qui a été fait depuis le dashboard, par qui et quand (un an d'historique).
+                    Seuls les noms des champs modifiés sont notés, jamais leurs valeurs.
+                </p>
+                <div id="audit-list"><div class="loading"><div class="spinner"></div></div></div>
+            </div>`;
+    }
+
+    function auditDetails(details) {
+        const parts = [];
+        if ('enabled' in details) parts.push(details.enabled ? 'activé' : 'désactivé');
+        if ('count' in details) parts.push(`${details.count} embed(s)`);
+        if ('reloaded' in details) parts.push(`${details.reloaded} rechargée(s), ${details.failed} en échec`);
+        if (details.error) parts.push('avec une erreur');
+        return parts.join(', ');
+    }
+
+    function auditEntryHtml(e) {
+        const when = e.at ? new Date(e.at).toLocaleString('fr-FR') : '';
+        const what = AUDIT_ACTIONS[e.action] || e.action;
+        const label = e.target ? (state.moduleSchemas[e.target]?.label || e.target) : '';
+        const extra = auditDetails(e.details || {});
+        const changes = (e.changes || []).length
+            ? `<div style="color:var(--text-muted); font-size:0.85em;">Champs : ${e.changes.map(c => `<code>${escapeHtml(c)}</code>`).join(', ')}</div>`
+            : '';
+        return `
+            <div class="audit-entry" style="padding:6px 0; border-bottom:1px solid var(--border);">
+                <div><span style="color:var(--text-muted)">${escapeHtml(when)}</span> ·
+                    <strong>${escapeHtml(e.username || e.user_id || '?')}</strong>
+                    ${escapeHtml(what)} ${label ? `<strong>${escapeHtml(label)}</strong>` : ''}
+                    ${extra ? `(${escapeHtml(extra)})` : ''}</div>
+                ${changes}
+            </div>`;
+    }
+
+    async function loadAudit(serverId, before) {
+        const container = document.getElementById('audit-list');
+        if (!container) return;
+        const base = serverId ? `/api/servers/${encodeURIComponent(serverId)}/audit` : '/api/audit';
+        const url = before ? `${base}?before=${encodeURIComponent(before)}` : base;
+        let entries = [];
+        try {
+            const data = await api(url);
+            entries = data?.entries || [];
+        } catch (e) {
+            container.innerHTML = `<p style="color:var(--text-muted)">Journal indisponible.</p>`;
+            return;
+        }
+        container.querySelector('.audit-more')?.remove();
+        if (!before) container.innerHTML = '';
+        if (!before && entries.length === 0) {
+            container.innerHTML = `<p style="color:var(--text-muted)">Aucune modification enregistrée.</p>`;
+            return;
+        }
+        container.insertAdjacentHTML('beforeend', entries.map(auditEntryHtml).join(''));
+        if (entries.length >= 100) {
+            const last = entries[entries.length - 1].id;
+            container.insertAdjacentHTML('beforeend', `
+                <button type="button" class="btn btn-ghost btn-sm audit-more" style="margin-top:8px;"
+                        data-click="loadAudit" data-click-args="${actionArgs(serverId || null, last)}">Plus ancien…</button>`);
+        }
     }
 
     async function loadBotMessages(serverId) {
@@ -3958,7 +4176,7 @@
                 ${schema
                     ? renderSchemaForm(formId, schema,
                         schema.directValue ? { [mod]: modConfig } : modConfig,
-                        { excludeEnabled: true })
+                        { excludeEnabled: true, module: mod, serverId: sid })
                     : (Object.keys(modConfig).length === 0
                         ? `<div class="empty-state">
                             <h3>Configuration vide</h3>
@@ -5702,7 +5920,7 @@
         onLogLevelChange, onLogSearchInput, onLogVerboseChange, onMemberPickerChange,
         onMemberPickerSearch, onRssModeChange, openModelCatalog, openRoleMenuBuilder,
         publishEmbeds, refreshLogs, reloadAllExtensions, removeNameMapEntry,
-        removeSpotifyMapEntry, republishBotMessage, resetFieldToDefault, revokeInfraction,
+        loadAudit, removeSpotifyMapEntry, republishBotMessage, testTemplate, resetFieldToDefault, revokeInfraction,
         rotatePublicLink, saveModal, saveModuleForm, saveRoleMenu, saveShortLink,
         scrollToBottom, searchShortLinks, setXpStatsRange, showPublicLink, startEditShortLink,
         startSpotifyAuth, toggleChannelPickerMode, toggleExtension, toggleMemberPickerMode,

@@ -8,6 +8,7 @@ from pydantic import BaseModel
 
 from src.core import logging as logutil
 from src.core.logging import log_failure
+from src.webui import audit
 from src.webui.botops import ExtensionAction, run_extension_op, sync_commands
 from src.webui.context import WebUIContext
 
@@ -102,6 +103,12 @@ def create_router(ctx: WebUIContext) -> APIRouter:
             logger.warning("Skipping command sync: %d extension(s) failed", len(results["failed"]))
         else:
             sync_error = await _sync_all_commands()
+        await audit.record(
+            None,
+            session,
+            "extensions.reload_all",
+            details={"reloaded": len(results["reloaded"]), "failed": len(results["failed"])},
+        )
         return JSONResponse(
             {**results, "commandSync": {"synced": not sync_error, "error": sync_error}}
         )
@@ -127,6 +134,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
                 detail=f"Échec du rechargement ({type(e).__name__}). Voir les logs.",
             ) from e
         sync_error = await _sync_all_commands()
+        await audit.record(None, session, "extensions.reload", target=ext_name)
         return JSONResponse(
             {
                 "status": "ok",
@@ -194,6 +202,13 @@ def create_router(ctx: WebUIContext) -> APIRouter:
                 sync_error = await _sync_all_commands()
                 command_sync = {"synced": not sync_error, "error": sync_error}
 
+        await audit.record(
+            None,
+            session,
+            "extensions.toggle",
+            target=ext_name,
+            details={"enabled": body.enabled, "error": bool(error)},
+        )
         return JSONResponse(
             {
                 "status": "ok",

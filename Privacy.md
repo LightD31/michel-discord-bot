@@ -1,6 +1,6 @@
 # Privacy Policy
 
-**Effective date: 2026-11-07**
+**Effective date: 2026-11-17**
 
 This policy explains what personal data **Michel** (the "Bot"), a Discord bot, processes, why, with whom it is shared, and how long it is kept. It also covers the Bot's web dashboard.
 
@@ -59,7 +59,7 @@ The dashboard lets server administrators configure the Bot.
 - **Session:** your session lasts 24 hours. It is stored under a hash of your session cookie, never the cookie itself. The tokens Discord issues at sign-in are discarded straight after.
 - **Cookies:** two cookies, both strictly necessary: `michel_session` (24 hours, your session) and `oauth_state` (5 minutes, protects the sign-in). There are no advertising or analytics cookies.
 - **IP addresses:** they are used in memory to rate-limit sign-in attempts, for about a minute, and are not stored.
-- **Changes are logged:** each configuration change and action made through the dashboard (publishing embeds, reloading the Bot's modules, revoking a sanction…) is recorded with the name and Discord ID of whoever made it.
+- **Changes are logged:** each configuration change and action made through the dashboard (publishing embeds, reloading the Bot's modules, revoking a sanction…) is recorded with the name and Discord ID of whoever made it, in the technical logs and in an audit log kept one year. A server's audit log is shown to every administrator of that server in the dashboard; it names the settings that changed, never their values.
 - **Third-party requests:** the dashboard loads images (avatars, server icons) from Discord's CDN, and the charting library from the jsDelivr CDN. These services therefore see your IP address when you use the dashboard.
 - **Public statistics pages:** server administrators can publish XP or Spotify statistics at a secret link. Anyone with that link can see the display names of the most active members, contributors and voters, but no Discord IDs. Votes on an open Spotify poll are only shown once it closes.
 
@@ -93,8 +93,10 @@ The Bot also fetches public information (RSS feeds, YouTube, Twitch, game server
 ## 7. How long data is kept
 
 - Member directory: as long as you are a member of the server; your entry is deleted when you leave it (at the Bot's next start if it was offline then).
+- Your other data on a server: 30 days after you leave it, unless you come back within that time, what is yours alone (XP, birthday, reminders…) is deleted and what you share with others is anonymised, as `/mes-donnees supprimer` does (section 9).
 - XP gain log: 400 days, then summed per month (see section 3).
 - Dashboard sessions: 24 hours.
+- Dashboard audit log: one year.
 - AI usage counters: about two days.
 - One-time reminders: deleted when they are sent.
 - Technical logs: a few weeks (see section 6).
@@ -108,7 +110,12 @@ The data is processed to provide the features that you, or the administrators of
 
 ## 9. Your rights
 
-You can ask the Operator, at the address in section 1, to:
+You can do two of these yourself, on every server at once:
+
+- `/mes-donnees exporter` sends you a file, visible to you alone, with everything the Bot stores about you.
+- `/mes-donnees supprimer` deletes what is yours alone (XP and its log, birthday, reminders, ZUnivers reminders, AI usage counters, member directory entry…) and anonymises what you share with others: your votes still count, but no longer under your name, and the polls, suggestions, playlist tracks, AI questions, giveaways, starboard posts, role menus and book club drafts you started no longer name you. It keeps your moderation records, the Secret Santa draws already made, and your Tricount groups while you still owe or are owed money there. Configuration written by a server's administrators (a first name, a linked Spotify account) and an LLDAP account made with `/register` are handled by that server's administrators.
+
+You can also ask the Operator, at the address in section 1, to:
 
 - access the data the Bot holds about you;
 - correct it;

@@ -16,6 +16,7 @@ from src.core.errors import DatabaseError
 from src.core.permissions import ADMINISTRATOR, MODERATE_MEMBERS, has_any
 from src.discord_ext.channels import fetch_guild_channel
 from src.discord_ext.mentions import NO_PINGS
+from src.webui import audit
 from src.webui.auth import Session
 from src.webui.context import WebUIContext
 
@@ -162,6 +163,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
             session.username,
             session.user_id,
         )
+        await audit.record(server_id, session, "infraction.revoke", target=str(case_id))
         return JSONResponse({"status": "ok"})
 
     return router

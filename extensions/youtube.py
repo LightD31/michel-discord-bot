@@ -81,6 +81,7 @@ class YoutubeConfig(SchemaBase):
         "Modèle de notification",
         "string",
         default="https://www.youtube.com/watch?v={video_id}",
+        variables="{video_id}, {handle}, {label}",
         description=(
             "Texte envoyé pour chaque nouvelle vidéo. Variables : "
             "`{video_id}`, `{handle}`, `{label}`."

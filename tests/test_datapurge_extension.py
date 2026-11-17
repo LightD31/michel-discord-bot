@@ -34,11 +34,21 @@ class Idle:
     running = True
 
 
+class Departures:
+    cancelled: list[str] = []
+
+    async def cancel_guild(self, guild_id):
+        Departures.cancelled.append(guild_id)
+        return 0
+
+
 @pytest.fixture
 def ext(monkeypatch, store_config):
     store_config({"servers": {"1": {"moduleXp": {}}, "2": {"moduleXp": {}}}})
     monkeypatch.setattr(datapurge.mongo_manager, "guild_ids_with_data", _stored(["1", "2", "3"]))
     monkeypatch.setattr(datapurge.config_store, "mutate", _mutate)
+    monkeypatch.setattr(datapurge, "DeparturesRepository", Departures)
+    Departures.cancelled = []
     ext = object.__new__(datapurge.DataPurgeExtension)
     ext.bot = SimpleNamespace(user=SimpleNamespace(_guild_ids={1}))
     ext.repo = Repo()
@@ -76,6 +86,7 @@ async def test_due_guilds_lose_their_data_and_settings(ext, monkeypatch):
     assert ext.repo.purged == ["2"]  # guild 1 is back: kept
     assert "2" not in config_store._data["servers"] and "1" in config_store._data["servers"]
     assert ext.repo.pending == {}
+    assert Departures.cancelled == ["2"]  # its departures go with its database
 
 
 async def test_leaving_and_rejoining(ext):
