@@ -29,7 +29,7 @@ env:
   # re-locking, so a stale lock fails whichever job runs first.
   UV_LOCKED: "1"
   # Keep in step with the uv stage in the Dockerfile (the pins job checks).
-  UV_TOOL_VERSION: "0.13.7"
+  UV_TOOL_VERSION: "0.13.9"
 
 jobs:
   pins:
