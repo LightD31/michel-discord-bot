@@ -2770,6 +2770,7 @@
         // Server page: the messages the bot keeps up to date there.
         if (state.currentPage === 'server' && state.currentServerId) {
             loadBotMessages(state.currentServerId);
+            loadHealth(state.currentServerId);
             loadAudit(state.currentServerId);
         }
         // Global settings: the bot's own audit log (developers only).
@@ -3868,8 +3869,84 @@
                 <div id="bot-messages-list"><div class="loading"><div class="spinner"></div></div></div>
             </div>
 
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title">Santé</div>
+                </div>
+                <p style="color:var(--text-muted); margin:0 0 12px;">
+                    Ce que le bot n'arrive pas à faire sur ce serveur : salons où il lui manque des
+                    droits, flux RSS en échec, tâches qui échouent.
+                </p>
+                <div id="health-report"><div class="loading"><div class="spinner"></div></div></div>
+            </div>
+
             ${renderAuditCard()}
         `;
+    }
+
+    // ── Guild health (F08) ────────────────────────────
+    function moduleLabel(mod) {
+        return state.moduleSchemas[mod]?.label || mod;
+    }
+
+    function fmtEpoch(seconds) {
+        return seconds ? new Date(seconds * 1000).toLocaleString('fr-FR') : 'jamais';
+    }
+
+    function healthLine(ok, html) {
+        return `<div class="message-status ${ok ? 'configured' : 'pending'}" style="margin-bottom:6px;">
+            <span class="status-icon">${ok ? '✅' : '⚠️'}</span><span class="status-text">${html}</span></div>`;
+    }
+
+    function healthChannelsHtml(channels) {
+        if (channels === null) return '<p style="color:var(--text-muted)">Bot non connecté : salons non vérifiés.</p>';
+        if (!channels.length) return '<p style="color:var(--text-muted)">Aucun salon configuré.</p>';
+        return channels.map(c => {
+            const mods = c.modules.map(m => escapeHtml(moduleLabel(m))).join(', ');
+            const name = c.name ? `#${escapeHtml(c.name)}` : `<code>${escapeHtml(c.channelId)}</code>`;
+            if (!c.found) return healthLine(false, `${name} (${mods}) : salon introuvable — supprimé, ou le bot ne le voit pas.`);
+            if (c.missing.length) return healthLine(false, `${name} (${mods}) : il manque au bot ${c.missing.map(escapeHtml).join(', ')}.`);
+            return healthLine(true, `${name} (${mods})`);
+        }).join('');
+    }
+
+    function healthFeedsHtml(feeds) {
+        if (!feeds) return '';
+        if (!feeds.length) return '<p style="color:var(--text-muted)">Aucun flux RSS.</p>';
+        return feeds.map(f => {
+            const next = f.nextPollAt ? new Date(f.nextPollAt).toLocaleString('fr-FR') : 'au prochain cycle';
+            if (f.failures) {
+                return healthLine(false, `<strong>${escapeHtml(f.label)}</strong> : ${f.failures} échec(s) de suite
+                    (${escapeHtml(f.lastError || 'erreur inconnue')}). Prochain essai : ${escapeHtml(next)}.`);
+            }
+            const last = f.lastPollAt ? new Date(f.lastPollAt).toLocaleString('fr-FR') : 'jamais';
+            return healthLine(true, `<strong>${escapeHtml(f.label)}</strong> : relevé le ${escapeHtml(last)}.`);
+        }).join('');
+    }
+
+    function healthTasksHtml(tasks) {
+        if (!tasks.length) return '';
+        return tasks.map(t => {
+            const failing = t.lastFailure && (!t.lastSuccess || t.lastFailure > t.lastSuccess);
+            return healthLine(!failing, `<code>${escapeHtml(t.name)}</code> : dernier succès ${escapeHtml(fmtEpoch(t.lastSuccess))}
+                ${t.failures ? `, ${t.failures} échec(s) depuis le démarrage (dernier : ${escapeHtml(fmtEpoch(t.lastFailure))})` : ''}`);
+        }).join('');
+    }
+
+    async function loadHealth(serverId) {
+        const container = document.getElementById('health-report');
+        if (!container) return;
+        let data;
+        try {
+            data = await api(`/api/servers/${encodeURIComponent(serverId)}/health`);
+        } catch (e) {
+            container.innerHTML = `<p style="color:var(--text-muted)">Diagnostic indisponible.</p>`;
+            return;
+        }
+        const section = (title, body) => body ? `<h4 style="margin:12px 0 6px;">${title}</h4>${body}` : '';
+        container.innerHTML = section('Salons', healthChannelsHtml(data.channels))
+            + section('Flux RSS', healthFeedsHtml(data.feeds))
+            + section('Tâches (pour tous les serveurs)', healthTasksHtml(data.tasks || []));
     }
 
     // ── Audit log (F09) ───────────────────────────────
