@@ -4556,7 +4556,10 @@
     }
 
     function _renderEntryRow(roles, entry) {
-        const e = entry || { role_id: '', emoji: '', label: '' };
+        // A new menu starts with an empty entry ({}), and a stored one may lack
+        // its emoji: each missing field is an empty input, never "undefined".
+        const e = { role_id: '', emoji: '', label: '', ...(entry || {}) };
+        for (const k of ['role_id', 'emoji', 'label']) e[k] = e[k] ?? '';
         return `
             <div class="rolemenu-entry" style="display:grid; grid-template-columns: 1fr 80px 1fr 36px; gap:8px; align-items:center; margin-bottom:6px;">
                 <select class="form-input" data-rrf="role_id">${_renderRoleSelect(roles, e.role_id)}</select>

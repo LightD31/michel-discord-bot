@@ -214,6 +214,35 @@ def test_a_number_shows_its_bounds_and_one_outside_them_is_refused(page, dashboa
     assert "rounds" not in stored["servers"][GUILD][MODULE]
 
 
+def test_a_new_role_menu_starts_with_empty_fields(page, dashboard, monkeypatch):
+    """Its first row used to read "undefined" in the emoji and label inputs (Q3)."""
+    import src.webui.routes.config as config_routes
+
+    class RoleMenus(SchemaBase):
+        __label__ = "Menus de rôles"
+        enabled: bool = enabled_field()
+
+    monkeypatch.setitem(schemas._MODULE_REGISTRY, "moduleReactionRoles", RoleMenus)
+    monkeypatch.setitem(
+        config_routes.MODULE_SCHEMAS,
+        "moduleReactionRoles",
+        schemas.MODULE_SCHEMAS["moduleReactionRoles"],
+    )
+    config_store.mutate(
+        lambda data: data["servers"][GUILD].update(moduleReactionRoles={"enabled": True})
+    )
+    page.goto(f"http://127.0.0.1:{dashboard['port']}/#/module/{GUILD}/moduleReactionRoles")
+    page.get_by_role("button", name="✨ Nouveau menu").click()
+    page.wait_for_selector('[data-rrf="emoji"]')
+    assert page.locator('[data-rrf="emoji"]').input_value() == ""
+    assert page.locator('[data-rrf="label"]').input_value() == ""
+    page.get_by_role("button", name="+ Ajouter une entrée").click()
+    assert page.locator('[data-rrf="label"]').evaluate_all("els => els.map(e => e.value)") == [
+        "",
+        "",
+    ]
+
+
 def test_an_expired_session_keeps_the_page_and_the_typing(page, dashboard):
     """A 401 used to swap the page for the login screen, edits and all (F02)."""
     page.get_by_label("Message d'accueil").fill("Pas perdu")
