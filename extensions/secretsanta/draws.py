@@ -21,6 +21,7 @@ from src.core import clock
 from src.core import logging as logutil
 from src.core.config import load_discord2name
 from src.core.logging import log_failure
+from src.discord_ext.channels import fetch_guild_channel
 from src.discord_ext.embeds import Colors
 from src.discord_ext.messages import edit_message_if_changed, fetch_user_safe, send_error
 from src.discord_ext.scopes import guild_scopes
@@ -216,7 +217,7 @@ class DrawsMixin:
         if ctx.guild:
             if session.message_id:
                 try:
-                    channel = self.bot.get_channel(session.channel_id)
+                    channel = await fetch_guild_channel(self.bot, ctx.guild.id, session.channel_id)
                     if channel:
                         message = await channel.fetch_message(session.message_id)
                         await edit_message_if_changed(
@@ -229,7 +230,8 @@ class DrawsMixin:
                     log_failure(logger, f"Failed to update session message: {e}")
         else:
             try:
-                channel = self.bot.get_channel(session.channel_id)
+                # A DM group's session is keyed by its channel: this one.
+                channel = ctx.channel
                 if channel:
                     await channel.send(embed=draw_embed)
             except Exception as e:

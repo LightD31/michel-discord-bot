@@ -184,6 +184,8 @@ def daily_harness(votes_mod, *, song, start_fails=False):
             events.append("unpin")
 
     class Channel:
+        _guild_id = "1"  # the server's
+
         async def fetch_message(self, message_id):
             return Message()
 
@@ -208,8 +210,11 @@ def daily_harness(votes_mod, *, song, start_fails=False):
     async def nothing(*args):
         return None
 
+    async def fetch_channel(cid):
+        return Channel()
+
     harness = SimpleNamespace(
-        bot=SimpleNamespace(get_channel=lambda cid: Channel()),
+        bot=SimpleNamespace(fetch_channel=fetch_channel),
         ensure_state=nothing,
         save_voteinfos=save_voteinfos,
         _start_new_vote=start_new_vote,

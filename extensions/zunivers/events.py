@@ -76,7 +76,7 @@ class EventsMixin:
             season_data, season_known = None, False
 
         for state, settings in guilds:
-            channel = await self._zunivers_channel(settings)
+            channel = await self._zunivers_channel(state.guild_id, settings)
             if not channel:
                 continue
             for rule_set, events in current_events.items():

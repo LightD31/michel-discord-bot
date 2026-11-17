@@ -84,6 +84,7 @@ class FakeUser:
 
 class FakeChannel:
     def __init__(self) -> None:
+        self._guild_id = "9"  # the drafts' guild
         self.sent: list[tuple] = []
 
     async def send(self, content=None, **kwargs):

@@ -36,8 +36,9 @@ class FakeStorage:
 
 
 class Channel:
-    def __init__(self, cid):
+    def __init__(self, cid, guild):
         self.id = cid
+        self._guild_id = guild
         self.sent: list = []
 
     async def send(self, *args, **kwargs):
@@ -54,7 +55,7 @@ def ext(store_config, monkeypatch):
     )
     FakeStorage.saved = []
     monkeypatch.setattr(zunivers, "StorageManager", FakeStorage)
-    channels = {"10": Channel("10"), "20": Channel("20")}
+    channels = {"10": Channel("10", "1"), "20": Channel("20", "2")}
     extension = object.__new__(zunivers.ZuniversExtension)
     extension._states = {}
     extension._states_lock = __import__("asyncio").Lock()

@@ -30,6 +30,7 @@ from src.core import clock
 from src.core import logging as logutil
 from src.core.logging import log_failure
 from src.core.text import milliseconds_to_string
+from src.discord_ext.channels import fetch_guild_channel
 from src.discord_ext.embeds import Colors
 from src.discord_ext.messages import (
     edit_message_if_changed,
@@ -143,7 +144,10 @@ class PlaylistMixin:
         logger.debug("check_playlist_changes lancé pour le serveur %s", server.guild_id)
         await self.ensure_state(server)
 
-        channel = await self.bot.fetch_channel(server.channel_id)
+        channel = await fetch_guild_channel(self.bot, server.guild_id, server.channel_id)
+        if channel is None:
+            logger.warning("Spotify: le salon du serveur %s est introuvable", server.guild_id)
+            return
         logger.debug(
             "old_snap : %s, duration : %s, length : %s",
             server.snapshot.get("snapshot"),
@@ -243,7 +247,6 @@ class PlaylistMixin:
                             time=Timestamp.utcnow(),
                             guild_id=server.guild_id,
                         )
-                        channel = await self.bot.fetch_channel(server.channel_id)
                         await channel.send(
                             track["external_urls"]["spotify"],
                             embeds=embed,

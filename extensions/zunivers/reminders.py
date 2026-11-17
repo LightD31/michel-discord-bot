@@ -58,14 +58,14 @@ class RemindersMixin:
     @Task.create(TimeTrigger(22, utc=False))
     async def daily_journa_check(self):
         """In each guild, remind the role if nobody posted in the channel today."""
-        for _state, settings in await self._guilds():
+        for state, settings in await self._guilds():
             try:
-                await self._journa_check(settings)
+                await self._journa_check(state.guild_id, settings)
             except Exception as e:  # noqa: BLE001 — one guild's failure must not stop the others
                 log_failure(logger, "Daily journa check failed: %s", e)
 
-    async def _journa_check(self, settings: dict) -> None:
-        channel = await self._zunivers_channel(settings)
+    async def _journa_check(self, guild_id: str, settings: dict) -> None:
+        channel = await self._zunivers_channel(guild_id, settings)
         if not channel:
             return
 

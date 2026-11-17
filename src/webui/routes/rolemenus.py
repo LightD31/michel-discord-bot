@@ -129,7 +129,7 @@ async def _menu_message(bot, menu: RoleMenu):
     """The Discord message of *menu*, ``None`` when it has none or it is gone."""
     if not menu.message_id:
         return None
-    channel = await bot.fetch_channel(int(menu.channel_id))
+    channel = await fetch_guild_channel(bot, menu.guild_id, menu.channel_id)
     if not channel or not hasattr(channel, "fetch_message"):
         return None
     return await channel.fetch_message(int(menu.message_id))

@@ -39,6 +39,7 @@ from features.spotify.votes import (
 from src.core import clock
 from src.core import logging as logutil
 from src.core.logging import log_failure
+from src.discord_ext.channels import fetch_guild_channel
 from src.discord_ext.messages import (
     copy_embed,
     edit_message_if_changed,
@@ -99,7 +100,9 @@ class VotesMixin:
             return
         logger.debug("message_id: %s", message_id)
         logger.debug("track_id: %s", track_id)
-        channel = self.bot.get_channel(server.channel_id)
+        channel = await fetch_guild_channel(self.bot, server.guild_id, server.channel_id)
+        if channel is None:
+            raise LookupError(f"salon {server.channel_id} introuvable")
         message = await channel.fetch_message(message_id)
         logger.debug("message : %s", str(message.id))
         votes = await server.repo.get_votes_doc(track_id)
@@ -285,7 +288,10 @@ class VotesMixin:
         logger.info("Chanson tirée au sort : %s", track_id)
         song = await server.repo.get_playlist_item(track_id)
         track = await spotify_api.track(song["_id"], market="FR")
-        channel = await self.bot.fetch_channel(server.channel_id)
+        channel = await fetch_guild_channel(self.bot, server.guild_id, server.channel_id)
+        if channel is None:
+            logger.warning("Spotify: le salon du serveur %s est introuvable", server.guild_id)
+            return
         embed, file = await embed_song(
             song=song,
             track=track,
@@ -711,7 +717,11 @@ class VotesMixin:
         """
         data = await server.vote_manager.load_data()
         yes_votes, no_votes, users = server.vote_manager.count_votes(data, song_id)
-        channel = await self.bot.fetch_channel(data[song_id]["channel_id"])
+        channel = await fetch_guild_channel(
+            self.bot, server.guild_id, data[song_id]["channel_id"], raise_outages=True
+        )
+        if channel is None:  # gone, or no longer readable: kept, and retried next sweep
+            raise LookupError(f"salon {data[song_id]['channel_id']} introuvable")
         message = await channel.fetch_message(data[song_id]["message_id"])
         if not message.components:
             # Posting the result removes the buttons, so this poll was closed before.

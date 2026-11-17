@@ -16,6 +16,7 @@ from interactions import (
 
 from features.reactionroles import RoleMenu, RoleMenuEntry
 from src.core import clock
+from src.discord_ext.channels import fetch_guild_channel
 from src.discord_ext.embeds import Colors
 from src.discord_ext.errors import failure_reply
 from src.discord_ext.messages import (
@@ -229,7 +230,7 @@ class CommandsMixin:
 
         if menu.message_id:
             try:
-                channel = await self.bot.fetch_channel(int(menu.channel_id))
+                channel = await fetch_guild_channel(self.bot, menu.guild_id, menu.channel_id)
                 if channel and hasattr(channel, "fetch_message"):
                     msg = await channel.fetch_message(int(menu.message_id))
                     if msg:
@@ -289,7 +290,7 @@ class CommandsMixin:
 
         if menu.message_id:
             try:
-                channel = await self.bot.fetch_channel(int(menu.channel_id))
+                channel = await fetch_guild_channel(self.bot, menu.guild_id, menu.channel_id)
                 if channel and hasattr(channel, "fetch_message"):
                     msg = await channel.fetch_message(int(menu.message_id))
                     if msg:

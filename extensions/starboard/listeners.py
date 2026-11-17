@@ -19,7 +19,7 @@ from features.starboard import (
 )
 from src.core import clock
 from src.core.logging import log_failure
-from src.discord_ext.channels import everyone_can_view
+from src.discord_ext.channels import everyone_can_view, fetch_guild_channel
 from src.discord_ext.embeds import Colors
 from src.discord_ext.messages import edit_message_if_changed
 
@@ -196,11 +196,7 @@ class ListenersMixin:
         *,
         allow_private: bool = False,
     ) -> None:
-        try:
-            channel = await self.bot.fetch_channel(int(starboard_channel_id))
-        except Exception as e:
-            log_failure(logger, "Cannot fetch starboard channel %s: %s", starboard_channel_id, e)
-            return
+        channel = await fetch_guild_channel(self.bot, guild_id, starboard_channel_id, logger=logger)
         if channel is None or not hasattr(channel, "send"):
             return
         # Starring copies the message into the starboard: content from an
@@ -240,7 +236,7 @@ class ListenersMixin:
     async def _fetch_mirror(self, entry: StarEntry):
         """The mirror message on the starboard, or ``None`` if it can't be fetched."""
         try:
-            channel = await self.bot.fetch_channel(int(entry.mirror_channel_id))
+            channel = await fetch_guild_channel(self.bot, entry.guild_id, entry.mirror_channel_id)
             if channel and hasattr(channel, "fetch_message"):
                 return await channel.fetch_message(int(entry.mirror_message_id))
         except Exception as e:

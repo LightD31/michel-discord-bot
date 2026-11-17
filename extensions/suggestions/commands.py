@@ -17,9 +17,11 @@ from interactions import (
 from features.suggestions import Suggestion
 from src.core import clock
 from src.core.logging import log_failure
+from src.discord_ext.channels import fetch_guild_channel
 from src.discord_ext.embeds import Colors
 from src.discord_ext.messages import (
     edit_message_if_changed,
+    guild_id_of,
     require_guild,
     send_error,
     send_success,
@@ -122,10 +124,7 @@ class CommandsMixin:
             await send_error(ctx, "Aucun salon de suggestions n'est configuré.")
             return
 
-        try:
-            channel = await self.bot.fetch_channel(int(channel_id))
-        except Exception:
-            channel = None
+        channel = await fetch_guild_channel(self.bot, guild_id_of(ctx), channel_id, logger=logger)
         if channel is None or not hasattr(channel, "send"):
             await send_error(ctx, "Salon de suggestions introuvable.")
             return
@@ -269,7 +268,9 @@ class CommandsMixin:
 
         if suggestion.message_id:
             try:
-                channel = await self.bot.fetch_channel(int(suggestion.channel_id))
+                channel = await fetch_guild_channel(
+                    self.bot, guild_id_of(ctx), suggestion.channel_id, logger=logger
+                )
                 if channel and hasattr(channel, "fetch_message"):
                     msg = await channel.fetch_message(int(suggestion.message_id))
                     if msg:

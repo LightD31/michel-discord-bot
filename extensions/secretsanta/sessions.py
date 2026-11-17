@@ -14,6 +14,7 @@ from interactions import (
 from features.secretsanta import SecretSantaSession
 from src.core import logging as logutil
 from src.core.logging import log_failure
+from src.discord_ext.channels import fetch_guild_channel
 from src.discord_ext.embeds import Colors
 from src.discord_ext.messages import edit_message_if_changed, fetch_user_safe, send_error
 from src.discord_ext.scopes import guild_scopes
@@ -168,7 +169,7 @@ class SessionsMixin:
 
         if session.message_id and ctx.guild:
             try:
-                channel = self.bot.get_channel(session.channel_id)
+                channel = await fetch_guild_channel(self.bot, ctx.guild.id, session.channel_id)
                 if channel:
                     message = await channel.fetch_message(session.message_id)
                     embed = Embed(

@@ -34,6 +34,7 @@ from src.core.config import ModuleConfig, config_store, global_config
 from src.core.errors import ConfigError
 from src.core.logging import log_failure
 from src.core.tasks import spawn
+from src.discord_ext.channels import fetch_guild_channel
 from src.discord_ext.messages import CAN_PIN, CAN_SEND, author_can, send_error, send_success
 from src.discord_ext.scopes import guild_scopes
 
@@ -262,14 +263,9 @@ class TwitchExtension(
                     logger, "Error initializing planning message for %s: %s", streamer_key, e
                 )
 
-            try:
-                if streamer.notification_channel_id:
-                    streamer.notif_channel = await self.bot.fetch_channel(
-                        streamer.notification_channel_id
-                    )
-            except Exception as e:
-                log_failure(
-                    logger, "Error fetching notification channel for %s: %s", streamer_key, e
+            if streamer.notification_channel_id:
+                streamer.notif_channel = await fetch_guild_channel(
+                    self.bot, streamer.guild_id, streamer.notification_channel_id, logger=logger
                 )
 
             try:

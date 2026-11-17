@@ -15,6 +15,7 @@ from features.uptime import (
 from src.core import logging as logutil
 from src.core.errors import DatabaseError
 from src.core.logging import log_failure
+from src.discord_ext.channels import fetch_guild_channel
 from src.discord_ext.embeds import Colors
 from src.integrations.uptime_kuma import MonitorState
 
@@ -62,7 +63,7 @@ class NotificationsMixin:
 
     async def _post_alert(self, change: StatusChange, state: MonitorState) -> None:
         alert = change.alert
-        channel = self.bot.get_channel(alert.channel_id)
+        channel = await fetch_guild_channel(self.bot, change.guild_id, alert.channel_id)
         if not isinstance(channel, MessageableMixin):
             logger.warning(
                 "Guild %s: uptime channel %s missing or not messageable, monitor %s alert dropped",

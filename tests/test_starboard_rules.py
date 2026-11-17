@@ -110,6 +110,7 @@ def test_embed_image_then_thumbnail():
 class _Channel:
     def __init__(self, nsfw):
         self.id = 50
+        self._guild_id = 1  # the starred message's guild
         self.nsfw = nsfw
         self.sent = []
 
@@ -174,7 +175,7 @@ class _VisibleTo:
         self.name = "salon"
         self.nsfw = nsfw
         self.public = public
-        self.guild = SimpleNamespace(default_role="everyone")
+        self.guild = SimpleNamespace(id=1, default_role="everyone")
         self.sent = []
 
     def permissions_for(self, role):

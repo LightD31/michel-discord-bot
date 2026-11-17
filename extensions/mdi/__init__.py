@@ -18,6 +18,7 @@ from __future__ import annotations
 from interactions import Client, Extension, listen
 
 from src.core.logging import log_failure
+from src.discord_ext.channels import fetch_guild_channel
 
 from ._common import (
     MDI,
@@ -71,17 +72,9 @@ class MdiExtension(ApiMixin, EmbedsMixin, NotificationsMixin, Extension):
             state = GuildState(server_id=server_id, guild_config=gc)
 
             # Load the notification channel
-            try:
-                state.notification_channel = await self.bot.fetch_channel(
-                    gc.notification_channel_id
-                )
-            except Exception as e:
-                logger.warning(
-                    "MDI: guild %s — could not load notification channel %s: %s",
-                    server_id,
-                    gc.notification_channel_id,
-                    e,
-                )
+            state.notification_channel = await fetch_guild_channel(
+                self.bot, server_id, gc.notification_channel_id, logger=logger
+            )
 
             await self._load_persisted_matches(state)
             self._servers[server_id] = state

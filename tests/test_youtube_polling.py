@@ -38,7 +38,8 @@ def youtube(store_config):
 
 
 class Channel:
-    def __init__(self):
+    def __init__(self, guild):
+        self._guild_id = guild
         self.sent: list[str] = []
 
     async def send(self, content, allowed_mentions=None):
@@ -51,9 +52,9 @@ class Bot:
         self.failing = set(failing)
 
     async def fetch_channel(self, channel_id):
-        if channel_id in self.failing:
+        if str(channel_id) in self.failing:
             raise RuntimeError("Unknown Channel")
-        return self.channels[channel_id]
+        return self.channels[str(channel_id)]
 
 
 class Repo:
@@ -119,7 +120,7 @@ def test_failures_stay_local_and_progress_is_saved(youtube, monkeypatch):
     calls: list = []
     latest = {"alpha": "a1", "broken": "boom", "bravo": "b1"}
     install_fakes(monkeypatch, youtube, latest=latest, calls=calls)
-    channels = {"100": Channel(), "200": Channel()}
+    channels = {"100": Channel("A"), "200": Channel("B")}
     # Both guilds already synced once, on older videos.
     Repo.stored = {"A": {"@alpha": "a0"}, "B": {"@broken": "x0", "@bravo": "b0"}}
     ext = make_extension(youtube, Bot(channels, failing={"100"}))  # guild A's channel is gone
@@ -146,7 +147,7 @@ def test_initial_sync_records_without_posting(youtube, monkeypatch):
     install_fakes(
         monkeypatch, youtube, latest={"alpha": "a1", "broken": "x1", "bravo": "b1"}, calls=calls
     )
-    channels = {"100": Channel(), "200": Channel()}
+    channels = {"100": Channel("A"), "200": Channel("B")}
     ext = make_extension(youtube, Bot(channels))
 
     tick(youtube, ext)
@@ -161,7 +162,7 @@ def test_api_key_never_appears_in_a_url(youtube, monkeypatch):
         monkeypatch, youtube, latest={"alpha": "a1", "broken": "x1", "bravo": "b1"}, calls=calls
     )
     Repo.stored = {"A": {"@alpha": "a0"}}
-    ext = make_extension(youtube, Bot({"100": Channel(), "200": Channel()}))
+    ext = make_extension(youtube, Bot({"100": Channel("A"), "200": Channel("B")}))
 
     tick(youtube, ext)
 
@@ -177,7 +178,7 @@ def test_no_api_url_means_no_check(youtube, monkeypatch, store_config):
     calls: list = []
     install_fakes(monkeypatch, youtube, latest={"alpha": "a1"}, calls=calls)
     store_config({"config": {"youtube": {"youtubeApiKey": "k"}}, "servers": {}})
-    ext = make_extension(youtube, Bot({"100": Channel(), "200": Channel()}))
+    ext = make_extension(youtube, Bot({"100": Channel("A"), "200": Channel("B")}))
 
     tick(youtube, ext)
 

@@ -22,6 +22,7 @@ from interactions import Client, Extension, GuildText, listen
 from features.coloc import StorageManager, ZuniversAPIClient
 from features.userdata import register_forget_hook, unregister_forget_hook
 from src.core.logging import log_failure
+from src.discord_ext.channels import fetch_guild_channel
 
 from ._common import ZUNIVERS, GuildState, ZuniversConfig, logger, zunivers_api_url
 from .corporation import CorporationMixin
@@ -101,19 +102,13 @@ class ZuniversExtension(
             del self._states[guild_id]
         return [(await self._state(guild_id), settings) for guild_id, settings in guilds]
 
-    async def _zunivers_channel(self, settings: dict) -> GuildText | None:
+    async def _zunivers_channel(self, guild_id: str, settings: dict) -> GuildText | None:
         """The guild's configured Zunivers channel."""
         channel_id = settings.get("colocZuniversChannelId")
         if not channel_id:
             return None
-        try:
-            channel = await self.bot.fetch_channel(channel_id)
-            if isinstance(channel, GuildText):
-                return channel
-            return None
-        except Exception as e:
-            log_failure(logger, f"Could not fetch Zunivers channel: {e}")
-            return None
+        channel = await fetch_guild_channel(self.bot, guild_id, channel_id, logger=logger)
+        return channel if isinstance(channel, GuildText) else None
 
 
 def setup(bot: Client) -> None:

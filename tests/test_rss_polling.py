@@ -147,8 +147,8 @@ def cycle(monkeypatch):
     network = Network()
     channel = Channel()
 
-    async def fetch_channel(cid):
-        return channel
+    async def fetch_guild_channel(bot, guild_id, channel_id, **_):
+        return channel  # every guild of these tests posts in the same channel
 
     async def no_shortening(e, feed_id):
         return e
@@ -156,8 +156,9 @@ def cycle(monkeypatch):
     monkeypatch.setattr(rss_ext, "RssRepository", FakeRepo)
     monkeypatch.setattr(rss_ext, "fetch_feed", network)
     monkeypatch.setattr(rss_ext, "_with_short_link", no_shortening)
+    monkeypatch.setattr(rss_ext, "fetch_guild_channel", fetch_guild_channel)
     ext = object.__new__(RssExtension)
-    ext.bot = SimpleNamespace(fetch_channel=fetch_channel)
+    ext.bot = SimpleNamespace()
     ext._poll_lock = asyncio.Lock()
 
     def configure(guilds: dict[str, dict]) -> None:

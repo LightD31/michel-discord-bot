@@ -441,7 +441,7 @@ async def republish_persistent_message(
     if ref is None:
         return False
     try:
-        channel = await bot.fetch_channel(int(ref.channel_id))
+        channel = await fetch_guild_channel(bot, guild_id, ref.channel_id)
         message = await channel.fetch_message(int(ref.message_id))  # type: ignore[union-attr]
         if message is not None:
             await message.delete()

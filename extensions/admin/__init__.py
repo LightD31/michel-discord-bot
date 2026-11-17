@@ -24,7 +24,6 @@ from interactions import (
     Extension,
     GuildChannel,
     GuildText,
-    IntegrationType,
     OptionType,
     Permissions,
     SlashContext,
@@ -106,7 +105,6 @@ class AdminExtension(Extension):
         name="ping",
         description="Vérifier la latence du bot",
         scopes=guild_scopes(UTILS.guild_ids()),
-        integration_types=[IntegrationType.GUILD_INSTALL, IntegrationType.USER_INSTALL],
     )
     @cooldown(Buckets.USER, 3, 30)
     async def ping(self, ctx: SlashContext):
