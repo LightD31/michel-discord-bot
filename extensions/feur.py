@@ -54,22 +54,20 @@ def _extract_words(content: str) -> list:
     return content.translate(translator).split()
 
 
-def _split_into_sentences(content: str) -> list:
-    return [s.strip() for s in re.split(r"[.!?\n]+|  +", content) if s.strip()]
+# Each question of a message: the text before a "?", back to the previous sentence end.
+_QUESTION = re.compile(r"([^.!?\n]*)\?")
 
 
 def _should_respond(content: str, keyword: str) -> bool:
+    """Whether *content* ends with *keyword*, or holds a question that does ("quoi ? …")."""
     if keyword not in content:
         return False
     words = _extract_words(content)
     if words and words[-1] == keyword:
         return True
-    for sentence in _split_into_sentences(content):
-        if (
-            keyword in sentence
-            and "?" in sentence
-            and sentence.find("?", sentence.find(keyword)) != -1
-        ):
+    for question in _QUESTION.finditer(content):
+        words = _extract_words(question.group(1))
+        if words and words[-1] == keyword:
             return True
     return False
 

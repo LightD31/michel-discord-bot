@@ -24,6 +24,7 @@ from features.xp import (
     render_rank_card,
 )
 from src.core.errors import DatabaseError
+from src.discord_ext.mentions import NO_PINGS
 from src.discord_ext.messages import send_error
 from src.discord_ext.paginator import CustomPaginator
 from src.discord_ext.scopes import guild_scopes
@@ -94,7 +95,10 @@ class CommandsMixin:
             return
 
         if stats is None:
-            await ctx.send(f"{target_user.mention} n'a pas encore de niveau.")
+            # A public reply: name the member without notifying them.
+            await ctx.send(
+                f"{target_user.mention} n'a pas encore de niveau.", allowed_mentions=NO_PINGS
+            )
             return
 
         await ctx.defer()

@@ -52,6 +52,9 @@ from src.discord_ext.rolemenus import role_info
 from src.discord_ext.scopes import guild_scopes
 from src.webui.schemas import SchemaBase, WeightedMessage, enabled_field, register_module, ui
 
+# How /anniversaire liste writes a date ("5 mars") unless the server picks another.
+DEFAULT_DATE_LOCALE = "fr_FR"
+
 
 @register_module("moduleBirthday")
 class BirthdayConfig(SchemaBase):
@@ -75,7 +78,7 @@ class BirthdayConfig(SchemaBase):
     birthdayGuildLocale: str = ui(
         "Locale des dates",
         "string",
-        default="en_US",
+        default=DEFAULT_DATE_LOCALE,
         description="Locale utilisée pour formater les dates de la liste (ex : fr_FR).",
     )
     birthdayMessageList: list[WeightedMessage] = ui(
@@ -321,7 +324,7 @@ class BirthdayExtension(Extension):
                 return
 
             srv_cfg = self._server_config(ctx.guild.id)
-            locale = srv_cfg.get("birthdayGuildLocale", "en_US")
+            locale = srv_cfg.get("birthdayGuildLocale") or DEFAULT_DATE_LOCALE
             raw_format = str(get_date_format("long", locale=locale))
             date_format = strip_year_from_format(raw_format)
 

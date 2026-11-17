@@ -106,7 +106,7 @@ class RemindersExtension(Extension):
     @slash_command(
         name="reminder",
         sub_cmd_name="set",
-        description="Gère les rappels pour voter",
+        description="Gère tes rappels",
         sub_cmd_description="Ajoute un rappel",
         scopes=guild_scopes(UTILS.guild_ids()),
     )
@@ -150,7 +150,7 @@ class RemindersExtension(Extension):
     )
     @slash_option(
         "date",
-        "JJ/MM/AAAA. Date de début du rappel (Défaut : aujoud'hui)",
+        "JJ/MM/AAAA. Date de début du rappel (Défaut : aujourd'hui)",
         OptionType.STRING,
         required=False,
     )
@@ -200,8 +200,7 @@ class RemindersExtension(Extension):
         await repo.add(reminder)
 
         await ctx.send(
-            f"Rappel {frequency or ''} créé à {clock.to_local(remind_time).strftime('%H:%M')}"
-            f" avec le message: {task}",
+            f"⏰ Rappel créé : **{schedule_label(reminder)}**\n{task}",
             ephemeral=True,
         )
         logger.info(

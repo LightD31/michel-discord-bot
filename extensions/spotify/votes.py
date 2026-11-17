@@ -565,7 +565,7 @@ class VotesMixin:
 
     @slash_command(
         name="addwithvote",
-        description="Si vous êtes pas sûr d'ajoouter une chanson, vous pouvez la mettre au vote",
+        description="Pas sûr d'ajouter une chanson ? Mettez-la au vote",
         scopes=guild_scopes(SPOTIFY.guild_ids()),
     )
     @slash_option(

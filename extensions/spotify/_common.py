@@ -156,7 +156,6 @@ SPOTIFY = ModuleConfig("moduleSpotify")
 # ExtensionLoadException in the log. ``None`` here means "no dev guild", and
 # the dev-only command is simply not registered.
 DEV_GUILD = str(global_config().get("discord", {}).get("devGuildId") or "").strip() or None
-DATA_FOLDER = global_config()["misc"]["dataFolder"]
 COOLDOWN_TIME = 1
 
 # ``spotify_api`` (``src.integrations.spotify``) runs every spotipy call on a

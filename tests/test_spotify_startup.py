@@ -49,10 +49,10 @@ class Repo:
 
 
 @pytest.fixture
-def spotify(store_config, tmp_path):
+def spotify(store_config):
     store_config(
         {
-            "config": {"misc": {"dataFolder": str(tmp_path)}},
+            "config": {},
             "servers": {"1": {"moduleSpotify": {"enabled": True}}},
         }
     )
@@ -62,6 +62,18 @@ def spotify(store_config, tmp_path):
     yield module
     for name in [m for m in sys.modules if m.startswith("extensions.spotify")]:
         del sys.modules[name]
+
+
+def test_the_extension_imports_with_no_global_config(store_config):
+    """It read ``config["misc"]["dataFolder"]`` at import, and nothing used it (Q8)."""
+    store_config({"config": {}, "servers": {}})
+    for name in [m for m in sys.modules if m.startswith("extensions.spotify")]:
+        del sys.modules[name]
+    try:
+        assert importlib.import_module("extensions.spotify").SpotifyExtension
+    finally:
+        for name in [m for m in sys.modules if m.startswith("extensions.spotify")]:
+            del sys.modules[name]
 
 
 def make_extension(module):

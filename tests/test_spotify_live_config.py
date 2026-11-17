@@ -10,10 +10,9 @@ from src.core.config import config_store
 GUILD = "42"
 
 
-def _config(tmp_path, **spotify) -> dict:
+def _config(**spotify) -> dict:
     return {
         "config": {
-            "misc": {"dataFolder": str(tmp_path)},
             "webui": {"enabled": True, "baseUrl": "https://bot.ex"},
         },
         "servers": {
@@ -23,8 +22,8 @@ def _config(tmp_path, **spotify) -> dict:
 
 
 @pytest.fixture
-def spotify(store_config, tmp_path, monkeypatch):
-    store_config(_config(tmp_path, spotifyChannelId="100"))
+def spotify(store_config, monkeypatch):
+    store_config(_config(spotifyChannelId="100"))
     sys.modules.pop("extensions.spotify._common", None)
     module = importlib.import_module("extensions.spotify._common")
     yield module
@@ -35,14 +34,13 @@ def test_the_guilds_enabled_at_load_get_their_state(spotify):
     assert list(spotify.SERVERS) == [GUILD]
 
 
-def test_settings_follow_a_save(spotify, tmp_path):
+def test_settings_follow_a_save(spotify):
     server = spotify.SERVERS[GUILD]
     assert server.channel_id == "100"
     assert server.discord2name == {"7": "Alice"}
 
     config_store._set_cache(
         _config(
-            tmp_path,
             spotifyChannelId="200",
             spotifyUsers=[{"spotifyId": "sp1", "discordId": "7"}],
             voteReminderEveryDays="3",
@@ -55,7 +53,7 @@ def test_settings_follow_a_save(spotify, tmp_path):
     assert server.vote_manager.discord2name == {"7": "Alice"}
 
 
-def test_turning_the_public_page_on_mints_its_token_on_first_use(spotify, tmp_path, monkeypatch):
+def test_turning_the_public_page_on_mints_its_token_on_first_use(spotify, monkeypatch):
     server = spotify.SERVERS[GUILD]
     assert server.links.dashboard in ("", None)
 
@@ -66,7 +64,7 @@ def test_turning_the_public_page_on_mints_its_token_on_first_use(spotify, tmp_pa
         return "tok"
 
     monkeypatch.setattr(spotify, "ensure_public_token", fake_ensure)
-    config_store._set_cache(_config(tmp_path, publicDashboard=True))
+    config_store._set_cache(_config(publicDashboard=True))
 
     assert "tok" in (server.links.dashboard or "")
     assert minted == [GUILD]

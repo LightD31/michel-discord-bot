@@ -77,9 +77,9 @@ def test_the_add_poll_closes_on_the_first_full_hour_a_day_later(now, deadline):
 
 
 @pytest.fixture
-def votes_mod(store_config, tmp_path):
+def votes_mod(store_config):
     """The extension's votes module, imported against a minimal config."""
-    store_config({"config": {"misc": {"dataFolder": str(tmp_path)}}, "servers": {}})
+    store_config({"config": {}, "servers": {}})
     for name in [m for m in sys.modules if m.startswith("extensions.spotify")]:
         sys.modules.pop(name)
     yield importlib.import_module("extensions.spotify.votes")

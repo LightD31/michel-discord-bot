@@ -75,3 +75,14 @@ def test_entries_reject_an_unknown_timezone():
 )
 def test_the_year_is_stripped_from_locale_formats(pattern, expected):
     assert strip_year_from_format(pattern) == expected
+
+
+def test_the_list_writes_dates_in_french_unless_told_otherwise():
+    """The default locale was en_US: French servers read "March 5" (Q10)."""
+    from babel.dates import format_date, get_date_format
+
+    from extensions.birthday import BirthdayConfig
+
+    locale = BirthdayConfig.model_fields["birthdayGuildLocale"].default
+    pattern = strip_year_from_format(str(get_date_format("long", locale=locale)))
+    assert format_date(date(1990, 3, 5), pattern, locale=locale) == "5 mars"

@@ -28,11 +28,8 @@ async def test_zevent_finish_refuses_a_member_without_manage_guild(store_config)
     assert ext.guilds == {}
 
 
-async def test_nextvote_is_for_bot_developers_only(store_config, tmp_path):
-    # The Spotify package reads its data folder at import.
-    store_config(
-        {"config": {"misc": {"dataFolder": str(tmp_path)}, "webui": {"developerUserIds": ["42"]}}}
-    )
+async def test_nextvote_is_for_bot_developers_only(store_config):
+    store_config({"config": {"webui": {"developerUserIds": ["42"]}}})
     for name in [m for m in sys.modules if m.startswith("extensions.spotify")]:
         sys.modules.pop(name)
     try:

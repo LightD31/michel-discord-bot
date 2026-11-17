@@ -688,19 +688,6 @@ class UptimeKumaSection(SchemaBase):
     )
 
 
-@register_section("misc")
-class MiscSection(SchemaBase):
-    __label__ = "Divers"
-    __icon__ = "⚙️"
-
-    dataFolder: str = ui(
-        "Dossier de données",
-        "string",
-        default="data",
-        description="Chemin du dossier de données local.",
-    )
-
-
 @register_section("shlink")
 class ShlinkSection(SchemaBase):
     __label__ = "Shlink"
