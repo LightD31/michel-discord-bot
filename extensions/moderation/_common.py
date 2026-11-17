@@ -3,6 +3,12 @@
 import os
 from typing import Any
 
+from features.moderation.spam import (
+    MAX_SPAM_THRESHOLD,
+    MAX_SPAM_WINDOW_SECONDS,
+    MIN_SPAM_THRESHOLD,
+    MIN_SPAM_WINDOW_SECONDS,
+)
 from src.core import logging as logutil
 from src.core.config import ModuleConfig
 from src.discord_ext.embeds import Colors
@@ -53,12 +59,16 @@ class ModerationConfig(SchemaBase):
     spamThreshold: int = ui(
         "Seuil anti-spam (messages)",
         "number",
+        ge=MIN_SPAM_THRESHOLD,
+        le=MAX_SPAM_THRESHOLD,
         default=5,
         description="Nombre de messages dans la fenêtre déclenchant l'anti-spam.",
     )
     spamWindowSeconds: int = ui(
         "Fenêtre anti-spam (secondes)",
         "number",
+        ge=MIN_SPAM_WINDOW_SECONDS,
+        le=MAX_SPAM_WINDOW_SECONDS,
         default=7,
         description="Intervalle de temps évalué pour l'anti-spam.",
     )

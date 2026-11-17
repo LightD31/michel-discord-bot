@@ -59,6 +59,8 @@ class SpotifyConfig(SchemaBase):
     voteReminderEveryDays: int = ui(
         "Rappel si pas assez de votes (jours)",
         "number",
+        ge=0,
+        le=365,
         default=0,
         description=(
             "Quand la chanson du jour n'a pas assez de votes et que le vote est "

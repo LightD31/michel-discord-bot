@@ -47,6 +47,27 @@ def test_message_list_weights_must_be_numbers():
     assert xp_errors({"levelUpMessageList": [{"text": "x", "weight": "2"}, {"text": "y"}]}) == []
 
 
+def test_a_number_out_of_its_bounds_is_refused_in_french():
+    """The dashboard saved a starboard threshold of -3 with a success toast (Q2)."""
+    import extensions.moderation._common  # noqa: F401 — registers moduleModeration
+    import extensions.starboard._common  # noqa: F401 — registers moduleStarboard
+
+    starboard = schemas.module_model("moduleStarboard")
+    (error,) = schemas.validation_errors(starboard, {"threshold": -3}, module=True)
+    assert error == "threshold: doit être supérieur ou égal à 1"
+    moderation = schemas.module_model("moduleModeration")
+    (error,) = schemas.validation_errors(moderation, {"spamThreshold": 1}, module=True)
+    assert error == "spamThreshold: doit être supérieur ou égal à 2"
+    (error,) = schemas.validation_errors(moderation, {"spamWindowSeconds": 10**6}, module=True)
+    assert error.startswith("spamWindowSeconds: doit être inférieur ou égal à ")
+    backup = schemas.section_model("backup")
+    assert schemas.validation_errors(backup, {"maxBackups": 0}, module=False) != []
+    assert schemas.validation_errors(backup, {"backupHour": 24}, module=False) != []
+    assert (
+        schemas.validation_errors(backup, {"maxBackups": 3, "backupHour": 23}, module=False) == []
+    )
+
+
 def test_enabled_is_always_allowed_on_a_module_but_must_be_a_boolean():
     model = schemas.module_model("discord2name")  # no ``enabled`` field, direct value
     assert schemas.validation_errors(model, {"1": "Alice"}, module=True) == []

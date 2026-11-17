@@ -48,7 +48,7 @@ class MinecraftConfig(SchemaBase):
         description="Adresse IP du serveur SFTP (par défaut, même que l'IP du serveur).",
     )
     minecraftSftpPort: int = ui(
-        "Port SFTP", "number", default=2225, description="Port du serveur SFTP."
+        "Port SFTP", "number", default=2225, ge=1, le=65535, description="Port du serveur SFTP."
     )
     minecraftSftpUsername: str = ui(
         "Utilisateur SFTP",

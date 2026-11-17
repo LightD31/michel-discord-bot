@@ -13,7 +13,13 @@ from typing import Any
 from interactions import listen
 from interactions.api.events import MessageCreate
 
-from features.moderation import Infraction, SpamTracker, contains_invite, match_banned_word
+from features.moderation import (
+    Infraction,
+    SpamTracker,
+    contains_invite,
+    match_banned_word,
+    spam_rule,
+)
 from src.core import clock
 
 from ._common import AUTOMOD_MODERATOR_ID, get_guild_settings, is_staff, logger
@@ -70,13 +76,11 @@ class AutomodMixin:
                 return
 
         if settings.get("antiSpam") and self._track_spam(msg, settings):
-            threshold = settings.get("spamThreshold", 5)
-            window = settings.get("spamWindowSeconds", 7)
+            threshold, window = spam_rule(settings)
             await self._punish(msg, settings, f"Spam ({threshold} messages / {window}s)")
 
     def _track_spam(self, msg: Any, settings: dict) -> bool:
-        threshold = int(settings.get("spamThreshold", 5) or 5)
-        window = float(settings.get("spamWindowSeconds", 7) or 7)
+        threshold, window = spam_rule(settings)
         key = (str(msg.guild.id), str(msg.author.id))
         return self._spam.hit(key, time.monotonic(), threshold=threshold, window=window)
 

@@ -71,6 +71,8 @@ class YoutubeConfig(SchemaBase):
     youtubeShortMaxSeconds: int = ui(
         "Seuil Short (secondes)",
         "number",
+        ge=1,
+        le=600,
         default=90,
         description=(
             "Durée maximale (en secondes) en deçà de laquelle une vidéo est "

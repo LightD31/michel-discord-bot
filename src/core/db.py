@@ -356,6 +356,7 @@ class MongoManager:
         and a manifest. Anything else under ``backupDir`` is left alone, so a
         setting pointing at ``data`` can't delete the bot's other files. Left
         over ``<timestamp>.partial`` folders (a backup killed mid-way) go too.
+        The newest backup is always kept, whatever *max_backups* says.
         """
         root = Path(backup_dir)
         if not root.is_dir():
@@ -367,7 +368,7 @@ class MongoManager:
             reverse=True,
         )
         stale = [f for f in entries if backup_format.is_partial_folder(f)]
-        for old in [*backups[max_backups:], *stale]:
+        for old in [*backups[max(max_backups, 1) :], *stale]:
             shutil.rmtree(old, ignore_errors=True)
             logger.info("Pruned old backup: %s", old)
 

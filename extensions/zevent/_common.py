@@ -173,12 +173,16 @@ class ZeventSection(SchemaBase):
     zeventUpdateInterval: int = ui(
         "Intervalle de mise à jour (secondes)",
         "number",
+        ge=10,
+        le=3600,
         description="Fréquence de mise à jour du message en secondes. Nécessite un redémarrage.",
         default=30,
     )
     zeventGoalsProgressWeight: float = ui(
         "Poids de la progression (donation goals)",
         "number",
+        ge=0,
+        le=10,
         default=1.0,
         step=0.1,
         description=(
@@ -190,6 +194,8 @@ class ZeventSection(SchemaBase):
     zeventGoalsOfflineFactor: float = ui(
         "Pénalité hors ligne (donation goals)",
         "number",
+        ge=0,
+        le=1,
         default=DEFAULT_OFFLINE_FACTOR,
         step=0.1,
         description=(
@@ -218,6 +224,8 @@ class ZeventSection(SchemaBase):
     zeventGoalsCount: int = ui(
         "Nombre de donation goals affichés",
         "number",
+        ge=0,
+        le=25,
         default=DEFAULT_GOALS_COUNT,
         description=(
             "Combien d'objectifs afficher dans « Prochains donation goals ». "
@@ -239,6 +247,8 @@ class ZeventSection(SchemaBase):
     zeventPlanningCount: int = ui(
         "Nombre d'évènements du planning affichés",
         "number",
+        ge=0,
+        le=25,
         default=DEFAULT_PLANNING_COUNT,
         description=(
             "Combien d'évènements afficher dans « Prochains évènements ». "
@@ -249,6 +259,8 @@ class ZeventSection(SchemaBase):
     zeventTopDonationsCount: int = ui(
         "Nombre de streamers dans le top donations",
         "number",
+        ge=0,
+        le=25,
         default=DEFAULT_TOP_DONATIONS_COUNT,
         description=(
             "Combien de streamers afficher dans « Top Donations par streamer ». "
@@ -259,6 +271,8 @@ class ZeventSection(SchemaBase):
     zeventGoalsVelocityWeight: float = ui(
         "Poids de la vitesse (donation goals)",
         "number",
+        ge=0,
+        le=10,
         default=DEFAULT_VELOCITY_WEIGHT,
         step=0.1,
         description=(
@@ -271,6 +285,8 @@ class ZeventSection(SchemaBase):
     zeventMilestoneInterval: int = ui(
         "Intervalle des paliers (dons)",
         "number",
+        ge=1000,
+        le=10_000_000,
         description="Montant entre chaque notification de palier de dons.",
         default=100000,
     )
@@ -321,8 +337,26 @@ STATS_SITE_URL = _cfg.get("zeventStatsSiteUrl") or ""
 # Uploaded once to the Discord event; unset simply means no cover image.
 EVENT_COVER_URL = _cfg.get("zeventEventCoverUrl") or ""
 
-UPDATE_INTERVAL = int(_cfg.get("zeventUpdateInterval", 30))
-MILESTONE_INTERVAL = int(_cfg.get("zeventMilestoneInterval", 100000))
+
+def _parse_at_least(value: object, default: int, name: str, minimum: int) -> int:
+    """Read a whole number the tracker divides or waits by, never below *minimum*."""
+    try:
+        number = int(float(value))  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return default
+    if number < minimum:
+        logger.warning(f"Zevent: {name} trop petit ({number}), {minimum} utilisé.")
+        return minimum
+    return number
+
+
+# A Task every 0 s would spin, and a milestone of 0 divides by zero.
+UPDATE_INTERVAL = _parse_at_least(
+    _cfg.get("zeventUpdateInterval", 30), 30, "intervalle de mise à jour", minimum=10
+)
+MILESTONE_INTERVAL = _parse_at_least(
+    _cfg.get("zeventMilestoneInterval", 100000), 100000, "intervalle des paliers", minimum=1000
+)
 
 
 def _parse_weight(value: object, default: float, name: str, maximum: float | None = None) -> float:

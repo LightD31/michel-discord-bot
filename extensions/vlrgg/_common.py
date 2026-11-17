@@ -50,6 +50,8 @@ class VlrggConfig(SchemaBase):
     reminderMinutes: int = ui(
         "Rappel avant match (minutes)",
         "number",
+        ge=0,
+        le=24 * 60,
         default=15,
         description=(
             "Délai avant le début d'un match pour poster un rappel dans le salon de "

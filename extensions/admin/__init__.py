@@ -34,6 +34,7 @@ from interactions import (
     slash_option,
 )
 
+from features.reminders.schedule import MAX_SNOOZE_MINUTES
 from src.core import logging as logutil
 from src.core.config import ModuleConfig
 from src.discord_ext.errors import failure_reply
@@ -61,6 +62,8 @@ class UtilsConfig(SchemaBase):
     reminderSnoozeMinutes: int = ui(
         "Durée du snooze (rappels)",
         "number",
+        ge=1,
+        le=MAX_SNOOZE_MINUTES,
         default=10,
         description=(
             "Délai en minutes appliqué quand un membre clique sur le bouton "
@@ -70,6 +73,8 @@ class UtilsConfig(SchemaBase):
     pollDefaultDurationMinutes: int = ui(
         "Durée par défaut des sondages",
         "number",
+        ge=0,
+        le=30 * 24 * 60,
         default=0,
         description=(
             "Si > 0, les commandes /poll, /poll-anonyme et /poll-classement "

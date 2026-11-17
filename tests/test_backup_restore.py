@@ -186,6 +186,20 @@ def test_a_failed_backup_leaves_no_folder(tmp_path, monkeypatch):
     assert list(root.iterdir()) == []
 
 
+@pytest.mark.parametrize("keep", [0, -1])
+def test_retention_always_keeps_the_newest_backup(tmp_path, keep):
+    """A retention of 0 deleted every backup, the one just made included."""
+    root = tmp_path / "data"
+    names = [f"2026-01-0{d}_05-00-00" for d in range(1, 4)]
+    for name in names:
+        (root / name).mkdir(parents=True)
+        (root / name / backup_format.MANIFEST_FILENAME).write_text("{}")
+
+    MongoManager._prune_backups(str(root), keep)
+
+    assert sorted(p.name for p in root.iterdir()) == ["2026-01-03_05-00-00"]
+
+
 def test_retention_counts_and_deletes_backups_only(tmp_path):
     root = tmp_path / "data"
     names = [f"2026-01-0{d}_05-00-00" for d in range(1, 6)]
