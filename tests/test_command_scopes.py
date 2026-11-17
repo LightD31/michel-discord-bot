@@ -84,6 +84,8 @@ GLOBAL_COMMANDS = {
     ("extensions/random_.py", "roll"),
     ("extensions/random_.py", "coin"),
     ("extensions/random_.py", "shuffle"),
+    # A member's own data, on every server at once (and in DMs): F10.
+    ("extensions/mydata.py", "mes-donnees"),
 }
 
 

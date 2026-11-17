@@ -104,6 +104,18 @@ class ReminderCollection:
                 return True
         return False
 
+    def forget(self, user_id: str) -> int:
+        """Remove every reminder and Ninja preference of *user_id*; how many entries went."""
+        removed = 0
+        for remind_time, reminder_type in self.get_user_reminders(user_id):
+            removed += self.remove_reminder(remind_time, user_id, reminder_type)
+        if user_id in self.ninja_users:
+            self.ninja_users.discard(user_id)
+            removed += 1
+        if self.ninja_strategies.pop(user_id, None) is not None:
+            removed += 1
+        return removed
+
     def get_user_reminders(self, user_id: str) -> list[tuple[datetime, ReminderType]]:
         """Get all reminders for a specific user."""
         result = []

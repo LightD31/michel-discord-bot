@@ -78,7 +78,7 @@ The Bot is provided **"as is" and "as available"**. It may be interrupted, slowe
 
 The Operator may, without notice, restrict or stop access to the Bot for a user or a server that breaks these terms, harms other users or puts the service at risk. This can mean blocking commands, removing the Bot from a server, or deleting the related data.
 
-You can stop using the Bot at any time. Server administrators can remove it from their server, and you can ask for your data to be deleted as described in the [Privacy Policy](Privacy.md).
+You can stop using the Bot at any time. Server administrators can remove it from their server, and you can delete your data yourself with `/mes-donnees supprimer`, or ask for it to be deleted, as described in the [Privacy Policy](Privacy.md).
 
 ## 11. Liability
 

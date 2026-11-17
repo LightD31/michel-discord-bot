@@ -20,6 +20,7 @@ import asyncio
 from interactions import Client, Extension, GuildText, listen
 
 from features.coloc import StorageManager, ZuniversAPIClient
+from features.userdata import register_forget_hook, unregister_forget_hook
 from src.core.logging import log_failure
 
 from ._common import ZUNIVERS, GuildState, ZuniversConfig, logger, zunivers_api_url
@@ -47,6 +48,8 @@ class ZuniversExtension(
     @listen()
     async def on_startup(self):
         """Start the tasks; each reads the enabled guilds and their settings when it runs."""
+        # Reminders live in memory between saves: /mes-donnees goes through them.
+        register_forget_hook("coloc_reminders", self.forget_member)
         for task in (
             self.daily_journa_check,
             self.reminder_checker,
@@ -58,9 +61,20 @@ class ZuniversExtension(
                 task.start()
         logger.info("Zunivers extension started successfully")
 
-    async def async_stop(self):
+    async def async_drop(self):
         """Clean up resources when the extension stops."""
+        unregister_forget_hook("coloc_reminders")
         await self.api_client.close()
+
+    async def forget_member(self, guild_id: str, user_id: str) -> int:
+        """Drop a member's reminders, Ninja settings and !request subscription (F10)."""
+        state = await self._state(guild_id)
+        removed = state.reminders.forget(user_id)
+        if state.request_subscriptions.pop(user_id, None) is not None:
+            removed += 1
+        if removed:
+            await state.storage.save_reminders(state.reminders)
+        return removed
 
     async def _state(self, guild_id) -> GuildState:
         """The guild's state, loaded from its database the first time it is needed."""

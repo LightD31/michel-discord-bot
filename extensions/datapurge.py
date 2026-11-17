@@ -19,6 +19,7 @@ from interactions import Client, Extension, Task, TimeTrigger, listen
 from interactions.api.events import GuildAvailable, GuildJoin, GuildLeft
 
 from features.datapurge import GuildPurgeRepository
+from features.userdata import DeparturesRepository
 from src.core import clock
 from src.core import logging as logutil
 from src.core.config import config_store
@@ -92,6 +93,7 @@ class DataPurgeExtension(Extension):
                 await self.repo.cancel([guild_id])
                 continue
             await self.repo.purge(guild_id)
+            await DeparturesRepository().cancel_guild(guild_id)  # nothing left to forget there
             drop_guild_settings(guild_id)
             logger.info("Guild %s: data and settings deleted, 30 days after leaving", guild_id)
 
