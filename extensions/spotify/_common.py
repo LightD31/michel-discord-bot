@@ -59,6 +59,8 @@ class SpotifyConfig(SchemaBase):
     voteReminderEveryDays: int = ui(
         "Rappel si pas assez de votes (jours)",
         "number",
+        ge=0,
+        le=365,
         default=0,
         description=(
             "Quand la chanson du jour n'a pas assez de votes et que le vote est "
@@ -154,7 +156,6 @@ SPOTIFY = ModuleConfig("moduleSpotify")
 # ExtensionLoadException in the log. ``None`` here means "no dev guild", and
 # the dev-only command is simply not registered.
 DEV_GUILD = str(global_config().get("discord", {}).get("devGuildId") or "").strip() or None
-DATA_FOLDER = global_config()["misc"]["dataFolder"]
 COOLDOWN_TIME = 1
 
 # ``spotify_api`` (``src.integrations.spotify``) runs every spotipy call on a

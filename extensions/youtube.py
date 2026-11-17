@@ -26,6 +26,7 @@ from src.core import logging as logutil
 from src.core.config import ModuleConfig, global_config
 from src.core.http import fetch
 from src.core.logging import log_failure
+from src.discord_ext.channels import fetch_guild_channel
 from src.discord_ext.mentions import everyone_if_written
 from src.webui.schemas import SchemaBase, check_template, enabled_field, register_module, ui
 
@@ -71,6 +72,8 @@ class YoutubeConfig(SchemaBase):
     youtubeShortMaxSeconds: int = ui(
         "Seuil Short (secondes)",
         "number",
+        ge=1,
+        le=600,
         default=90,
         description=(
             "Durée maximale (en secondes) en deçà de laquelle une vidéo est "
@@ -153,7 +156,11 @@ class YoutubeExtension(Extension):
         channel_id = srv_config.get("ChannelId")
         if not channel_id:
             return
-        channel = cast(MessageableMixin, await self.bot.fetch_channel(channel_id))
+        found = await fetch_guild_channel(self.bot, server, channel_id, logger=logger)
+        if found is None or not hasattr(found, "send"):
+            logger.warning("YouTube: server %s's channel %s is unavailable", server, channel_id)
+            return
+        channel = cast(MessageableMixin, found)
         is_initial_sync = server not in youtube_data
         if is_initial_sync:
             logger.warning(

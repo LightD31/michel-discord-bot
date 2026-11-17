@@ -7,6 +7,7 @@ from interactions import Embed
 
 from features.moderation import Infraction, humanize_duration
 from src.core.text import EMBED_FIELD_VALUE_LIMIT, clip
+from src.discord_ext.channels import fetch_guild_channel
 from src.discord_ext.embeds import Colors
 
 from ._common import AUTOMOD_MODERATOR_ID, TYPE_COLORS, TYPE_LABELS, logger
@@ -64,11 +65,9 @@ class ModLogMixin:
         channel_id = settings.get("modLogChannelId")
         if not channel_id:
             return
-        try:
-            channel = await self.bot.fetch_channel(int(channel_id))
-        except Exception as e:
-            logger.warning("Modlog channel %s unreachable: %s", channel_id, e)
-            return
+        channel = await fetch_guild_channel(
+            self.bot, infraction.guild_id, channel_id, logger=logger
+        )
         if channel is None or not hasattr(channel, "send"):
             logger.warning("Modlog channel %s is invalid", channel_id)
             return

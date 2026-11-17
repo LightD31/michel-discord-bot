@@ -10,6 +10,7 @@ from interactions import IntervalTrigger, Task
 from features.olympics import OlympicsStateRepository
 from src.core.errors import IntegrationError
 from src.core.logging import log_failure
+from src.discord_ext.channels import fetch_guild_channel
 
 from ._common import (
     COUNTRY_CODE,
@@ -144,7 +145,9 @@ class TasksMixin:
             logger.warning("olympicsChannelId non configuré pour le serveur %s", guild_id)
             return
         try:
-            channel = await self.bot.fetch_channel(channel_id)
+            channel = await fetch_guild_channel(self.bot, guild_id, channel_id, logger=logger)
+            if channel is None:
+                return
             logo_url = settings.get("olympicsLogoUrl") or ""
             for medal in medals:
                 embed = self._build_medal_alert_embed(medal, france_standing, logo_url)

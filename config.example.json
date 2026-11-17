@@ -48,9 +48,6 @@
             "refreshSeconds": 300,
             "topMembers": 25
         },
-        "misc": {
-            "dataFolder": "data"
-        },
         "mongodb": {
             "url": ""
         },
@@ -160,7 +157,7 @@
                 "enabled": false,
                 "birthdayChannelId": "",
                 "birthdayRoleId": "",
-                "birthdayGuildLocale": "en_US",
+                "birthdayGuildLocale": "fr_FR",
                 "birthdayMessageList": [
                     {
                         "text": "Joyeux anniversaire {mention} ! 🎉",

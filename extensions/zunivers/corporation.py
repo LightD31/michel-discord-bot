@@ -43,7 +43,7 @@ class CorporationMixin:
         for state, settings in await self._guilds():
             if only is not None and state.guild_id != only:
                 continue
-            channel = await self._zunivers_channel(settings)
+            channel = await self._zunivers_channel(state.guild_id, settings)
             if channel:
                 channels.append(channel)
         if not channels:

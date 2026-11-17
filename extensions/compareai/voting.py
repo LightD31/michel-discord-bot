@@ -27,6 +27,7 @@ from interactions import (
 from features.ai import AiComparisonRepository, Comparison, compute_model_stats
 from features.ai.quota import MODULE_DISABLED
 from src.core.errors import DatabaseError
+from src.discord_ext.channels import fetch_guild_channel
 from src.discord_ext.embeds import Colors
 from src.discord_ext.locale import en_fr_desc
 from src.discord_ext.messages import edit_message_if_changed
@@ -139,7 +140,7 @@ class VotingMixin:
         if final is None or not final.message_ids:
             return
         try:
-            channel = await self.bot.fetch_channel(int(final.channel_id))
+            channel = await fetch_guild_channel(self.bot, repo.guild_id, final.channel_id)
             message = await channel.fetch_message(int(final.message_ids[-1]))  # type: ignore[union-attr]
         except Exception as e:
             logger.info("Comparison %s closed, message not reachable: %s", final.id, e)

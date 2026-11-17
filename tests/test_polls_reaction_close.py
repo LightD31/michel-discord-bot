@@ -134,7 +134,7 @@ def test_the_sweep_closes_a_due_reaction_poll(enabled):
     async def fetch_message(message_id):
         return message
 
-    channel = SimpleNamespace(fetch_message=fetch_message)
+    channel = SimpleNamespace(fetch_message=fetch_message, _guild_id=1)
 
     async def fetch_channel(channel_id):
         return channel
@@ -194,7 +194,7 @@ def test_a_deleted_message_closes_the_poll(enabled, mode):
         raise not_found()
 
     async def fetch_channel(channel_id):
-        return SimpleNamespace(fetch_message=fetch_message)
+        return SimpleNamespace(fetch_message=fetch_message, _guild_id=1)
 
     repo = FakeRepo()
     repo.due = [due_poll(mode)]

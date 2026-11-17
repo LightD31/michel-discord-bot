@@ -124,6 +124,60 @@ def scope_offenders(tree: ast.AST, imports: Imports, where: str) -> list[str]:
     return offenders
 
 
+def user_install_offenders(tree: ast.AST, imports: Imports, where: str) -> list[str]:
+    """Guild-scoped commands that declare a user install, which Discord ignores there.
+
+    A user-installed command lives on the member's account, not on a server:
+    on a command with guild scopes the declaration does nothing, and code
+    written for it never runs (``/poll`` had an in-memory fallback for it).
+    """
+    offenders = []
+    for node in ast.walk(tree):
+        if not (isinstance(node, ast.Call) and _is_factory(node, imports)):
+            continue
+        kinds = keyword(node, "integration_types")
+        if keyword(node, "scopes") is not None and kinds is not None:
+            names = {(imports.resolve(n) or "") for n in ast.walk(kinds.value)}
+            if any(name.endswith("USER_INSTALL") for name in names):
+                offenders.append(f"{where}:{node.lineno}: user install on a guild command")
+    return offenders
+
+
+def test_no_guild_command_declares_a_user_install():
+    offenders = []
+    for path in python_files("extensions"):
+        tree, imports, _ = parse(path)
+        offenders += user_install_offenders(tree, imports, rel(path))
+    assert not offenders, "\n".join(offenders)
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "from interactions import IntegrationType, slash_command\n"
+        "@slash_command(name='x', scopes=guild_scopes([]),"
+        " integration_types=[IntegrationType.GUILD_INSTALL, IntegrationType.USER_INSTALL])\n"
+        "def f(): ...",
+        "import interactions as ipy\n"
+        "@ipy.slash_command(name='x', scopes=guild_scopes([]),"
+        " integration_types=[ipy.IntegrationType.USER_INSTALL])\ndef f(): ...",
+    ],
+)
+def test_the_user_install_scan_catches(source):
+    tree = ast.parse(source)
+    assert user_install_offenders(tree, Imports(tree), "x.py")
+
+
+def test_a_global_command_may_be_user_installed():
+    source = (
+        "from interactions import IntegrationType, slash_command\n"
+        "@slash_command(name='roll', integration_types=[IntegrationType.USER_INSTALL])\n"
+        "def f(): ...\n"
+    )
+    tree = ast.parse(source)
+    assert user_install_offenders(tree, Imports(tree), "x.py") == []
+
+
 def test_every_extension_command_is_scoped_to_its_guilds():
     offenders = []
     for path in python_files("extensions"):

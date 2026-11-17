@@ -77,9 +77,9 @@ def test_the_add_poll_closes_on_the_first_full_hour_a_day_later(now, deadline):
 
 
 @pytest.fixture
-def votes_mod(store_config, tmp_path):
+def votes_mod(store_config):
     """The extension's votes module, imported against a minimal config."""
-    store_config({"config": {"misc": {"dataFolder": str(tmp_path)}}, "servers": {}})
+    store_config({"config": {}, "servers": {}})
     for name in [m for m in sys.modules if m.startswith("extensions.spotify")]:
         sys.modules.pop(name)
     yield importlib.import_module("extensions.spotify.votes")
@@ -184,6 +184,8 @@ def daily_harness(votes_mod, *, song, start_fails=False):
             events.append("unpin")
 
     class Channel:
+        _guild_id = "1"  # the server's
+
         async def fetch_message(self, message_id):
             return Message()
 
@@ -208,8 +210,11 @@ def daily_harness(votes_mod, *, song, start_fails=False):
     async def nothing(*args):
         return None
 
+    async def fetch_channel(cid):
+        return Channel()
+
     harness = SimpleNamespace(
-        bot=SimpleNamespace(get_channel=lambda cid: Channel()),
+        bot=SimpleNamespace(fetch_channel=fetch_channel),
         ensure_state=nothing,
         save_voteinfos=save_voteinfos,
         _start_new_vote=start_new_vote,

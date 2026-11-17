@@ -173,12 +173,13 @@ async def test_olympics_alerts_reach_every_enabled_guild_with_its_logo(store_con
     class Channel:
         def __init__(self, cid):
             self.cid = cid
+            self._guild_id = {"10": "1", "20": "2"}[cid]
 
         async def send(self, embeds):
             sent[self.cid].extend(embeds)
 
     async def fetch_channel(cid):
-        return Channel(cid)
+        return Channel(str(cid))
 
     async def no_sleep(_):
         return None

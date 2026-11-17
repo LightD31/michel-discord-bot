@@ -45,6 +45,7 @@ from src.core import logging as logutil
 from src.core.config import global_config
 from src.core.errors import BotError
 from src.core.logging import log_failure
+from src.discord_ext.channels import fetch_guild_channel
 from src.discord_ext.embeds import Colors
 from src.discord_ext.messages import fetch_user_safe
 
@@ -221,7 +222,7 @@ class ReviewMixin:
         staff_id = settings.get("confrerieStaffChannelId")
         if staff_id:
             try:
-                channel = await self.bot.fetch_channel(staff_id)
+                channel = await fetch_guild_channel(self.bot, draft.guild_id, staff_id)
                 if channel and hasattr(channel, "send"):
                     return await channel.send(embed=embed, components=components)
             except Exception as e:  # noqa: BLE001
@@ -397,7 +398,7 @@ class ReviewMixin:
         if not (draft.review_channel_id and draft.review_message_id):
             return
         try:
-            channel = await self.bot.fetch_channel(draft.review_channel_id)
+            channel = await fetch_guild_channel(self.bot, draft.guild_id, draft.review_channel_id)
             message = await channel.fetch_message(draft.review_message_id)
             await message.edit(
                 embed=review_embed(draft, status_line),
@@ -424,7 +425,7 @@ class ReviewMixin:
                     text = f"Votre demande « {draft.title} » n'a pas été retenue."
                 await user.send(text)
             elif draft.status == STATUS_APPROVED and draft.channel_id:
-                channel = await self.bot.fetch_channel(draft.channel_id)
+                channel = await fetch_guild_channel(self.bot, draft.guild_id, draft.channel_id)
                 if channel and hasattr(channel, "send"):
                     link = f" : {draft.notion_url}" if draft.notion_url else "."
                     await channel.send(

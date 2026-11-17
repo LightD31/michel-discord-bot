@@ -59,6 +59,8 @@ def ui(
     key_label: str = "",
     value_label: str = "",
     step: float | None = None,
+    ge: float | None = None,
+    le: float | None = None,
     role_use: str = "",
     role_keys: bool = False,
 ) -> Any:
@@ -70,6 +72,10 @@ def ui(
     ``step`` applies to ``number`` fields: without it the browser assumes a
     step of 1 and marks a decimal entry invalid, so any field meant to accept
     fractions must declare one.
+
+    ``ge`` / ``le`` bound a ``number`` field, and every one declares both
+    (``tests/test_module_registry.py``): a save outside them is refused, and the
+    dashboard's input carries them as ``min`` / ``max``.
 
     ``role_use`` says what the bot does with the role a ``role`` field (or a
     ``keyvaluemap``'s values, its keys with ``role_keys=True``) names, which
@@ -94,13 +100,17 @@ def ui(
         meta["hidden"] = True
     if step is not None:
         meta["step"] = step
+    if ge is not None:
+        meta["min"] = ge
+    if le is not None:
+        meta["max"] = le
     if role_use:
         meta["roleUse"] = role_use
     if role_keys:
         meta["roleKeys"] = True
 
     field_default = default if default is not _UNSET else None
-    return Field(default=field_default, json_schema_extra={"ui": meta})
+    return Field(default=field_default, ge=ge, le=le, json_schema_extra={"ui": meta})
 
 
 class SchemaBase(BaseModel):
@@ -123,6 +133,10 @@ class SchemaBase(BaseModel):
     __direct_value__: ClassVar[bool] = False
 
 
+# A message's draw weight is relative to the others': 1000 to 1 is already "never".
+MAX_MESSAGE_WEIGHT = 1000
+
+
 class WeightedMessage(BaseModel):
     """One entry of a ``messagelist`` field: a text and its draw weight.
 
@@ -133,7 +147,7 @@ class WeightedMessage(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     text: str
-    weight: float = Field(default=1, ge=0)
+    weight: float = Field(default=1, ge=0, le=MAX_MESSAGE_WEIGHT)
 
     @field_validator("text")
     @classmethod
@@ -330,8 +344,32 @@ def validation_errors(model: type[SchemaBase], value: Any, *, module: bool) -> l
     except ValidationError as e:
         for err in e.errors():
             where = ".".join(str(part) for part in err["loc"]) or "(racine)"
-            errors.append(f"{where}: {err['msg']}")
+            errors.append(f"{where}: {_message(err)}")
     return errors
+
+
+# Pydantic's messages are English; the dashboard shows these to guild admins.
+_BOUND_MESSAGES = {
+    "greater_than_equal": ("ge", "doit être supérieur ou égal à {}"),
+    "greater_than": ("gt", "doit être supérieur à {}"),
+    "less_than_equal": ("le", "doit être inférieur ou égal à {}"),
+    "less_than": ("lt", "doit être inférieur à {}"),
+}
+
+
+def _message(err: Any) -> str:
+    bound = _BOUND_MESSAGES.get(err.get("type", ""))
+    limit = (err.get("ctx") or {}).get(bound[0]) if bound else None
+    if bound is None or limit is None:
+        return str(err["msg"])
+    return bound[1].format(_number(limit))
+
+
+def _number(value: Any) -> str:
+    """``5.0`` as ``5`` and ``0.5`` as ``0,5``."""
+    if isinstance(value, float) and value.is_integer():
+        value = int(value)
+    return str(value).replace(".", ",")
 
 
 def config_problems(data: dict[str, Any]) -> list[str]:
@@ -537,6 +575,8 @@ class AISection(SchemaBase):
     modelsToCompare: int = ui(
         "Modèles à comparer",
         "number",
+        ge=2,
+        le=5,
         default=3,
         description="Nombre de modèles tirés au sort par question en mode comparaison (2 à 5).",
     )
@@ -549,6 +589,8 @@ class AISection(SchemaBase):
     requestTimeoutSeconds: int = ui(
         "Délai max par requête (s)",
         "number",
+        ge=5,
+        le=300,
         default=30,
         description="Au-delà, le modèle est abandonné et les autres réponses sont affichées.",
     )
@@ -568,6 +610,8 @@ class AISection(SchemaBase):
     dailyCallLimit: int = ui(
         "Plafond quotidien global (appels)",
         "number",
+        ge=0,
+        le=1_000_000,
         default=1000,
         description="Appels aux modèles par jour (UTC), tous utilisateurs et serveurs confondus. "
         "Une comparaison de 3 modèles compte pour 3. 0 : illimité.",
@@ -575,6 +619,8 @@ class AISection(SchemaBase):
     userDailyCallLimit: int = ui(
         "Plafond quotidien par utilisateur (appels)",
         "number",
+        ge=0,
+        le=1_000_000,
         default=60,
         description="Appels aux modèles par jour (UTC) pour une même personne. 0 : illimité.",
     )
@@ -639,19 +685,6 @@ class UptimeKumaSection(SchemaBase):
     )
     uptimeKumaToken: str | None = secret_field(
         "Token push", description="Token push pour le statut du bot."
-    )
-
-
-@register_section("misc")
-class MiscSection(SchemaBase):
-    __label__ = "Divers"
-    __icon__ = "⚙️"
-
-    dataFolder: str = ui(
-        "Dossier de données",
-        "string",
-        default="data",
-        description="Chemin du dossier de données local.",
     )
 
 
@@ -722,6 +755,8 @@ class VlrggSection(SchemaBase):
     vlrggRateLimitPerMinute: int = ui(
         "Requêtes par minute (/team, /match/details)",
         "number",
+        ge=0,
+        le=600,
         default=18,
         description=(
             "Plafond que le bot s'impose sur les routes /team et /match/details, que "
@@ -760,12 +795,16 @@ class BackupSection(SchemaBase):
     maxBackups: int = ui(
         "Nombre de sauvegardes",
         "number",
+        ge=1,
+        le=365,
         default=7,
         description="Nombre de sauvegardes à conserver (les plus anciennes sont supprimées).",
     )
     backupHour: int = ui(
         "Heure de sauvegarde",
         "number",
+        ge=0,
+        le=23,
         default=4,
         description="Heure locale à laquelle la sauvegarde quotidienne est effectuée (0-23).",
     )
@@ -818,18 +857,24 @@ class MetricsSection(SchemaBase):
     port: int = ui(
         "Port",
         "number",
+        ge=1,
+        le=65535,
         default=9108,
         description="Port de l'endpoint /metrics (distinct de celui du dashboard).",
     )
     refreshSeconds: int = ui(
         "Intervalle de rafraîchissement (s)",
         "number",
+        ge=60,
+        le=24 * 3600,
         default=300,
         description="Fréquence de recalcul des statistiques XP et Spotify depuis MongoDB.",
     )
     topMembers: int = ui(
         "Membres détaillés",
         "number",
+        ge=1,
+        le=100,
         default=25,
         description="Nombre de membres (classement XP, contributeurs, votants) exportés individuellement.",
     )
@@ -870,7 +915,7 @@ class WebuiSection(SchemaBase):
             "l'image Docker (variable MICHEL_BIND_HOST). Pris en compte au redémarrage."
         ),
     )
-    port: int = ui("Port", "number", default=8080)
+    port: int = ui("Port", "number", default=8080, ge=1, le=65535)
     baseUrl: str = ui(
         "URL de base",
         "url",

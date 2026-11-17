@@ -41,6 +41,56 @@ from interactions import Extension
 
 from src.webui import schemas
 
+
+def numbers_without_bounds(schemas):
+    # Every number of a module or section (nested entries too) missing a bound.
+    import types, typing
+
+    import annotated_types as at
+    from pydantic import BaseModel
+
+    def numeric(annotation):
+        if annotation in (int, float):
+            return True
+        if typing.get_origin(annotation) in (typing.Union, types.UnionType):
+            return any(numeric(a) for a in typing.get_args(annotation))
+        return False
+
+    def models(annotation):
+        if isinstance(annotation, type) and issubclass(annotation, BaseModel):
+            yield annotation
+        for arg in typing.get_args(annotation):
+            yield from models(arg)
+
+    found, seen = [], set()
+
+    def walk(cls, where, top):
+        for name, info in cls.model_fields.items():
+            here = f"{where}.{name}"
+            if numeric(info.annotation):
+                low = [m for m in info.metadata if isinstance(m, (at.Ge, at.Gt))]
+                high = [m for m in info.metadata if isinstance(m, (at.Le, at.Lt))]
+                if not low or not high:
+                    found.append(f"{here}: no {'minimum' if not low else 'maximum'}")
+                elif isinstance(info.default, (int, float)) and not (
+                    getattr(low[0], "ge", getattr(low[0], "gt", None)) <= info.default
+                    <= getattr(high[0], "le", getattr(high[0], "lt", None))
+                ):
+                    found.append(f"{here}: default {info.default} out of bounds")
+                meta = (info.json_schema_extra or {}).get("ui", {}) if top else {}
+                if top and low and high and ("min" not in meta or "max" not in meta):
+                    found.append(f"{here}: bounds not passed to the dashboard (use ui(ge=, le=))")
+            for model in models(info.annotation):
+                if model not in seen:
+                    seen.add(model)
+                    walk(model, here, False)
+
+    for kind, registry in (("module", schemas._MODULE_REGISTRY), ("section", schemas._SECTION_REGISTRY)):
+        for key, cls in registry.items():
+            walk(cls, f"{kind} {key}", True)
+    return sorted(found)
+
+
 out = {"extensions": {}, "failures": []}
 for entry in sorted(os.listdir("extensions")):
     if entry.startswith("__"):
@@ -71,6 +121,7 @@ for entry in sorted(os.listdir("extensions")):
             }
     out["extensions"][name] = classes
 out["schemas"] = sorted(schemas.MODULE_SCHEMAS)
+out["numbers"] = numbers_without_bounds(schemas)
 out["fields"] = {key: list(cls.model_fields) for key, cls in schemas._MODULE_REGISTRY.items()}
 out["module_schemas"] = schemas.MODULE_SCHEMAS
 with open(sys.argv[1], "w", encoding="utf-8") as f:
@@ -142,6 +193,17 @@ def test_module_roles_say_what_the_bot_does_with_them(probe):
         if meta.get("type") == "role" and not meta.get("roleUse")
     ]
     assert offenders == []
+
+
+def test_every_number_has_bounds_the_dashboard_shows(probe):
+    """Each number field declares a minimum and a maximum: ``ui(…, ge=…, le=…)``.
+
+    The save route refuses a value outside them, and the dashboard's input
+    carries them as ``min`` / ``max``. An unbounded anti-spam threshold of 1
+    deleted every message (Q1); a retention of 0 backups deleted them all. The
+    bot still clamps what it reads, for a config edited by hand.
+    """
+    assert probe["numbers"] == []
 
 
 def test_every_extension_declares_its_modules_explicitly(probe):

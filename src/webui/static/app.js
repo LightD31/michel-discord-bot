@@ -704,6 +704,15 @@
 
     // ── Schema-based form rendering ───────────────────
 
+    // "Entre 2 et 50", from a number field's schema bounds.
+    function numberRange(field) {
+        const fmt = (n) => Number(n).toLocaleString('fr-FR');
+        if (field.min != null && field.max != null) return `Entre ${fmt(field.min)} et ${fmt(field.max)}`;
+        if (field.min != null) return `Au moins ${fmt(field.min)}`;
+        if (field.max != null) return `Au plus ${fmt(field.max)}`;
+        return '';
+    }
+
     function renderSchemaForm(formId, schema, values, options = {}) {
         const fields = schema.fields || {};
         const entries = Object.entries(fields);
@@ -755,12 +764,20 @@
                         </label>`;
                     break;
 
-                case 'number':
+                case 'number': {
+                    // The schema's bounds: the browser flags a value outside
+                    // them, and the save route refuses it.
+                    const range = numberRange(field);
                     html += `<input type="number" class="form-input" data-field="${key}" data-type="number"
                         value="${escapeHtml(hasValue ? value : (field.default ?? ''))}"
                         ${field.step != null ? `step="${escapeHtml(field.step)}"` : ''}
-                        placeholder="${field.default != null ? 'Défaut: ' + field.default : ''}">`;
+                        ${field.min != null ? `min="${escapeHtml(field.min)}"` : ''}
+                        ${field.max != null ? `max="${escapeHtml(field.max)}"` : ''}
+                        ${range ? `aria-describedby="${fieldId}-range"` : ''}
+                        placeholder="${field.default != null ? 'Défaut: ' + escapeHtml(field.default) : ''}">`;
+                    if (range) html += `<div class="form-range" id="${fieldId}-range">${escapeHtml(range)}</div>`;
                     break;
+                }
 
                 case 'secret':
                     html += `<div style="position:relative;">
@@ -973,7 +990,7 @@
                         html += `
                             <div class="messagelist-entry">
                                 <input type="text" data-msg-field="message" value="${escapeHtml(text)}" placeholder="Message…">
-                                <input type="number" data-msg-field="weight" value="${escapeHtml(String(w))}" min="0" placeholder="1">
+                                <input type="number" data-msg-field="weight" value="${escapeHtml(String(w))}" min="0" max="1000" placeholder="1">
                                 <button class="btn-remove-msg" data-click="remove-closest" data-click-args="[&quot;.messagelist-entry&quot;,{&quot;$&quot;:&quot;el&quot;}]" title="Supprimer" aria-label="Supprimer">✕</button>
                             </div>`;
                     });
@@ -2210,7 +2227,7 @@
         entry.className = 'messagelist-entry';
         entry.innerHTML = `
             <input type="text" data-msg-field="message" value="" placeholder="Message…">
-            <input type="number" data-msg-field="weight" value="1" min="0" placeholder="1">
+            <input type="number" data-msg-field="weight" value="1" min="0" max="1000" placeholder="1">
             <button class="btn-remove-msg" data-click="remove-closest" data-click-args="[&quot;.messagelist-entry&quot;,{&quot;$&quot;:&quot;el&quot;}]" title="Supprimer" aria-label="Supprimer">✕</button>
         `;
         list.appendChild(entry);
@@ -4539,7 +4556,10 @@
     }
 
     function _renderEntryRow(roles, entry) {
-        const e = entry || { role_id: '', emoji: '', label: '' };
+        // A new menu starts with an empty entry ({}), and a stored one may lack
+        // its emoji: each missing field is an empty input, never "undefined".
+        const e = { role_id: '', emoji: '', label: '', ...(entry || {}) };
+        for (const k of ['role_id', 'emoji', 'label']) e[k] = e[k] ?? '';
         return `
             <div class="rolemenu-entry" style="display:grid; grid-template-columns: 1fr 80px 1fr 36px; gap:8px; align-items:center; margin-bottom:6px;">
                 <select class="form-input" data-rrf="role_id">${_renderRoleSelect(roles, e.role_id)}</select>

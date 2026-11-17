@@ -22,6 +22,7 @@ NOTIF_CHANNEL_ID = "809134370510209054"
 
 class FakeChannel:
     def __init__(self) -> None:
+        self._guild_id = GUILD_ID  # the streamer's guild
         self.sent: list = []
 
     async def send(self, *args, **kwargs):

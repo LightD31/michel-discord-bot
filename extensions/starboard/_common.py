@@ -32,6 +32,8 @@ class StarboardConfig(SchemaBase):
     threshold: int = ui(
         "Seuil",
         "number",
+        ge=1,
+        le=100,
         default=3,
         description="Nombre minimum de réactions pour publier le message.",
     )

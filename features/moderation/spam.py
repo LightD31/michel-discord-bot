@@ -8,10 +8,46 @@ have gone quiet are swept away, at most once a minute.
 from __future__ import annotations
 
 from collections import deque
-from collections.abc import Hashable
+from collections.abc import Hashable, Mapping
+from typing import Any
 
 # How often quiet windows are dropped, in seconds.
 SWEEP_INTERVAL_SECONDS = 60.0
+
+# The anti-spam settings' bounds. The dashboard refuses a value outside them
+# (``moduleModeration``'s schema) and :func:`spam_rule` clamps a hand edit into
+# them: a threshold of 1 would make every message spam.
+DEFAULT_SPAM_THRESHOLD = 5
+MIN_SPAM_THRESHOLD = 2
+MAX_SPAM_THRESHOLD = 50
+DEFAULT_SPAM_WINDOW_SECONDS = 7
+MIN_SPAM_WINDOW_SECONDS = 1
+MAX_SPAM_WINDOW_SECONDS = 600
+
+
+def _bounded(raw: Any, default: int, low: int, high: int) -> int:
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        return default
+    return min(max(value, low), high)
+
+
+def spam_rule(settings: Mapping[str, Any]) -> tuple[int, int]:
+    """The guild's ``(threshold, window in seconds)``, each within its bounds."""
+    threshold = _bounded(
+        settings.get("spamThreshold"),
+        DEFAULT_SPAM_THRESHOLD,
+        MIN_SPAM_THRESHOLD,
+        MAX_SPAM_THRESHOLD,
+    )
+    window = _bounded(
+        settings.get("spamWindowSeconds"),
+        DEFAULT_SPAM_WINDOW_SECONDS,
+        MIN_SPAM_WINDOW_SECONDS,
+        MAX_SPAM_WINDOW_SECONDS,
+    )
+    return threshold, window
 
 
 class SpamTracker:

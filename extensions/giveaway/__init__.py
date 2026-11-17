@@ -59,6 +59,7 @@ from src.core.debounce import Coalescer
 from src.core.logging import log_failure
 from src.core.text import EMBED_DESCRIPTION_LIMIT, clip, format_discord_timestamp
 from src.discord_ext.autocomplete import MAX_CHOICES, matching_choices
+from src.discord_ext.channels import fetch_guild_channel
 from src.discord_ext.embeds import Colors
 from src.discord_ext.messages import (
     edit_message_if_changed,
@@ -673,7 +674,9 @@ class GiveawayExtension(Extension):
         Raises when Discord doesn't answer (5xx, timeout), which is not the
         same thing: the giveaway must not close for a passing outage.
         """
-        channel: BaseChannel | None = await self.bot.fetch_channel(int(giveaway.channel_id))
+        channel: BaseChannel | None = await fetch_guild_channel(
+            self.bot, giveaway.guild_id, giveaway.channel_id, raise_outages=True
+        )
         if channel is None or not hasattr(channel, "fetch_message"):
             return None
         return await channel.fetch_message(int(giveaway.message_id))  # type: ignore[union-attr]

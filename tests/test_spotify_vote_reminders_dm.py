@@ -28,9 +28,8 @@ class FakeRepo:
 
 
 @pytest.fixture
-def votes_module(store_config, tmp_path):
-    # The package reads its data folder from the config when it is imported.
-    store_config({"config": {"misc": {"dataFolder": str(tmp_path)}}, "servers": {}})
+def votes_module(store_config):
+    store_config({"config": {}, "servers": {}})
     for name in [m for m in sys.modules if m.startswith("extensions.spotify")]:
         sys.modules.pop(name)
     return importlib.import_module("extensions.spotify.votes")

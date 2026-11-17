@@ -100,6 +100,8 @@ class RssConfig(SchemaBase):
     rssPollMinutes: int = ui(
         "Intervalle de relève (minutes)",
         "number",
+        ge=5,
+        le=24 * 60,
         default=15,
         description="Fréquence à laquelle chaque flux est interrogé. Minimum 5.",
     )

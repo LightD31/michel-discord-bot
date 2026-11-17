@@ -20,7 +20,7 @@ class CommandsMixin:
 
     @slash_command(
         name="zevent_finish",
-        description="Créée l'embed final après l'évènement",
+        description="Publie le récapitulatif final après l'évènement",
         scopes=guild_scopes(ZEVENT.guild_ids()),
     )
     @slash_default_member_permission(Permissions.MANAGE_GUILD)

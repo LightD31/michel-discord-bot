@@ -230,3 +230,13 @@ def test_an_unconfigured_database_still_announces(store) -> None:
     run(tracker.check_and_send_milestone(tracker.guild, 100_501))
 
     assert tracker.channel.sent == ["🎉 Nouveau palier atteint : 100 000 € récoltés ! 🎉"]
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"), [(0, 1000), (-5, 1000), ("x", 100000), (250000, 250000)]
+)
+def test_the_milestone_interval_never_reaches_zero(raw, expected):
+    """A milestone of 0 divided by zero on every update."""
+    from extensions.zevent._common import _parse_at_least
+
+    assert _parse_at_least(raw, 100000, "intervalle des paliers", minimum=1000) == expected

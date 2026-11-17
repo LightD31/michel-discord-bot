@@ -11,6 +11,7 @@ from src.core import clock
 from src.core import logging as logutil
 from src.core.logging import log_failure
 from src.core.text import format_discord_timestamp
+from src.discord_ext.channels import fetch_guild_channel
 from src.discord_ext.embeds import Colors
 
 from ._common import CONFRERIE, ConfrerieError
@@ -89,7 +90,7 @@ class UpdatesMixin:
         if not channel_id:
             raise ConfrerieError("Salon d'annonce non configuré pour cette page")
 
-        channel = await self.bot.fetch_channel(channel_id)
+        channel = await fetch_guild_channel(self.bot, guild_id, channel_id, logger=logger)
         if not channel or not hasattr(channel, "send"):
             raise ConfrerieError(f"Canal introuvable ou invalide: {channel_id}")
 

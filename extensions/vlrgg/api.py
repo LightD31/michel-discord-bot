@@ -9,6 +9,7 @@ from features.vlrgg import (
     fetch_all_team_data as vlrgg_fetch_all,
 )
 from src.core.logging import log_failure
+from src.discord_ext.channels import fetch_guild_channel
 
 from ._common import TeamConfig, logger
 
@@ -125,7 +126,7 @@ class ApiMixin:
                 continue
 
             try:
-                channel = await self.bot.fetch_channel(channel_id)
+                channel = await fetch_guild_channel(self.bot, server_id, channel_id)
                 if not channel or not hasattr(channel, "fetch_message"):
                     raise ValueError(f"Canal {channel_id} invalide ou sans fetch_message")
                 message = await channel.fetch_message(message_id)

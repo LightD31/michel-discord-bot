@@ -81,6 +81,9 @@ def channel_with(message=None, error=None):
 
 
 def bot_with(channel):
+    if channel is not None:
+        channel._guild_id = "1"  # the giveaway's guild
+
     async def fetch_channel(channel_id):
         return channel
 

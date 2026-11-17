@@ -55,18 +55,24 @@ class IAConfig(SchemaBase):
     voteDurationMinutes: int = ui(
         "Durée du vote (min)",
         "number",
+        ge=1,
+        le=24 * 60,
         default=DEFAULT_VOTE_MINUTES,
         description="Après ce délai, les modèles sont dévoilés et le gagnant affiché.",
     )
     historyLimit: int = ui(
         "Messages de contexte",
         "number",
+        ge=0,
+        le=50,
         default=DEFAULT_HISTORY_LIMIT,
         description="Nombre de messages récents du salon envoyés comme contexte (0 à 50).",
     )
     maxResponseTokens: int = ui(
         "Longueur max des réponses (tokens)",
         "number",
+        ge=50,
+        le=4000,
         default=DEFAULT_MAX_TOKENS,
     )
     defaultModel: str | None = ui(
@@ -86,6 +92,8 @@ class IAConfig(SchemaBase):
     mentionCooldownSeconds: int = ui(
         "Délai entre deux mentions (s)",
         "number",
+        ge=0,
+        le=3600,
         default=DEFAULT_MENTION_COOLDOWN,
         description="Par utilisateur. Une mention pendant le délai reçoit la réaction ⏳.",
     )

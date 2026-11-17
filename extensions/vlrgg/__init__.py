@@ -21,6 +21,7 @@ Shared data classes, constants, and helpers are in :mod:`._common`.
 from interactions import Client, Extension, listen
 
 from src.core.logging import log_failure
+from src.discord_ext.channels import fetch_guild_channel
 
 from ._common import (
     DEFAULT_REMINDER_MINUTES,
@@ -88,14 +89,9 @@ class VlrggExtension(
 
             # Charger le canal de notification du serveur
             if server_state.notification_channel_id:
-                try:
-                    server_state.notification_channel = await self.bot.fetch_channel(
-                        server_state.notification_channel_id
-                    )
-                except Exception as e:
-                    logger.warning(
-                        f"Serveur {server_id}: impossible de charger le canal de notification: {e}"
-                    )
+                server_state.notification_channel = await fetch_guild_channel(
+                    self.bot, server_id, server_state.notification_channel_id, logger=logger
+                )
 
             # Initialiser chaque équipe
             for team_raw in teams_raw:

@@ -9,6 +9,7 @@ from interactions import AllowedMentions, IntervalTrigger, Task
 
 from features.links import shorten_url
 from features.mdi import MatchSnapshot
+from src.discord_ext.channels import fetch_guild_channel
 from src.discord_ext.messages import (
     edit_message_if_changed,
     fetch_or_create_persistent_message,
@@ -187,7 +188,7 @@ class NotificationsMixin:
         # Edit the existing message in place
         message_id = doc.get("message_id")
         channel_id = doc.get("channel_id") or str(channel.id)
-        msg = await self._fetch_message_safe(channel_id, message_id)
+        msg = await self._fetch_message_safe(state.server_id, channel_id, message_id)
         if msg is None:
             # Stale — repost
             try:
@@ -329,15 +330,13 @@ class NotificationsMixin:
 
     # ── Helpers ──────────────────────────────────────────────────────────────
 
-    async def _fetch_message_safe(self, channel_id: str | None, message_id: Any) -> Any:
-        """Fetch a message by (channel_id, message_id). Returns ``None`` on failure."""
+    async def _fetch_message_safe(
+        self, guild_id: str, channel_id: str | None, message_id: Any
+    ) -> Any:
+        """Fetch a message of guild *guild_id* by (channel_id, message_id); ``None`` on failure."""
         if not channel_id or not message_id:
             return None
-        try:
-            channel = await self.bot.fetch_channel(channel_id)
-        except Exception as e:
-            logger.debug("MDI: fetch_channel(%s) failed: %s", channel_id, e)
-            return None
+        channel = await fetch_guild_channel(self.bot, guild_id, channel_id)
         if channel is None or not hasattr(channel, "fetch_message"):
             return None
         try:

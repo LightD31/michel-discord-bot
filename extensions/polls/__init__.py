@@ -12,9 +12,9 @@ reaction-based poll embeds' vote counts fresh. Button-based polls persist their
 state in MongoDB (``polls`` collection) and close automatically once their
 ``closes_at`` deadline elapses. Reaction polls are stored there too
 (``mode="reaction"``): the reaction listener re-renders and ``/editpoll`` edits
-only a stored poll, and its auto-close survives a restart. A poll posted outside
-the enabled servers (user install) is not stored, and closes on an in-memory
-timer. Enabled per-guild via ``moduleUtils``.
+only a stored poll, and its auto-close survives a restart. A poll the database
+refuses to store closes on an in-memory timer instead. Enabled per-guild via
+``moduleUtils``.
 """
 
 import asyncio
@@ -27,7 +27,6 @@ from interactions import (
     Client,
     Embed,
     Extension,
-    IntegrationType,
     IntervalTrigger,
     OptionType,
     SlashContext,
@@ -87,9 +86,9 @@ def _default_poll_seconds(guild_id: str | int | None) -> int | None:
 
 
 # In-memory map of (guild_id, message_id) → asyncio.Task that auto-closes a
-# reaction poll posted outside the enabled servers (user install), where there
-# is no guild database to persist it in. Everything else is swept by
-# check_closing_polls.
+# reaction poll the database refused to store, or one posted between the module
+# being switched off and the reload that removes /poll. Everything else is
+# swept by check_closing_polls.
 _reaction_close_tasks: dict[tuple[str, str], asyncio.Task] = {}
 
 
@@ -169,7 +168,6 @@ class PollsExtension(Extension, PollButtonsMixin):
         name="poll",
         description="Créer un sondage",
         scopes=guild_scopes(UTILS.guild_ids()),
-        integration_types=[IntegrationType.GUILD_INSTALL, IntegrationType.USER_INSTALL],
     )  # type: ignore
     @slash_option(
         "question",
@@ -251,8 +249,9 @@ class PollsExtension(Extension, PollButtonsMixin):
 
         A stored poll is what the reaction listener re-renders and /editpoll
         edits, and check_closing_polls closes it, even across restarts.
-        Elsewhere (user install), or if the database refuses the write, a poll
-        with a deadline closes on an in-memory timer instead.
+        If the database refuses the write (or the module was switched off since
+        the command was registered), a poll with a deadline closes on an
+        in-memory timer instead.
         """
         guild_id = str(ctx.guild_id) if ctx.guild_id else None
         if UTILS.enabled(guild_id):
@@ -434,7 +433,7 @@ class PollsExtension(Extension, PollButtonsMixin):
                 except Exception as e:
                     log_failure(logger, "Could not close poll %s: %s", poll.id, e)
 
-    async def _fetch_due_poll(self, poll: Poll):
+    async def _fetch_due_poll(self, guild_id: str, poll: Poll):
         """The message of a poll due to close, ``None`` when it's gone, or :data:`RETRY`.
 
         Only a deleted message or channel (or one the bot may no longer read)
@@ -444,7 +443,9 @@ class PollsExtension(Extension, PollButtonsMixin):
         """
         key = str(poll.id)
         try:
-            channel = await self.bot.fetch_channel(int(poll.channel_id))
+            channel = await fetch_guild_channel(
+                self.bot, guild_id, poll.channel_id, raise_outages=True
+            )
             message = None
             if channel is not None and hasattr(channel, "fetch_message"):
                 message = await channel.fetch_message(int(poll.message_id))
@@ -471,7 +472,7 @@ class PollsExtension(Extension, PollButtonsMixin):
         return message
 
     async def _close_reaction_poll(self, guild_id: str, poll: Poll) -> None:
-        message = await self._fetch_due_poll(poll)
+        message = await self._fetch_due_poll(guild_id, poll)
         if message is RETRY:
             return
         if message is None:
@@ -487,7 +488,7 @@ class PollsExtension(Extension, PollButtonsMixin):
         await self._poll_repo(guild_id).mark_closed(poll.id)
 
     async def _close_button_poll(self, guild_id: str, poll: Poll) -> None:
-        message = await self._fetch_due_poll(poll)
+        message = await self._fetch_due_poll(guild_id, poll)
         if message is RETRY:
             return
         if message is None:

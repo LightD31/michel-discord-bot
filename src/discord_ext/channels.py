@@ -3,8 +3,9 @@
 A channel id in a guild's config, or one sent by the dashboard, is chosen by
 that guild's admins. ``bot.fetch_channel`` answers for any channel the bot can
 see, in any guild, so an id copied from another server would make the bot
-post there with its own permissions. Resolve such ids through
-:func:`fetch_guild_channel` instead.
+post there with its own permissions. Every channel the bot looks up for a
+guild, from its settings or from what the bot stored there, goes through
+:func:`fetch_guild_channel` instead (``tests/test_channel_lookups.py``).
 """
 
 from __future__ import annotations
@@ -13,6 +14,7 @@ import logging
 from typing import Any
 
 from interactions import Client, Permissions
+from interactions.client.errors import Forbidden, NotFound
 
 
 def channel_guild_id(channel: Any) -> str | None:
@@ -34,16 +36,28 @@ async def fetch_guild_channel(
     channel_id: int | str,
     *,
     logger: logging.Logger | None = None,
+    raise_outages: bool = False,
 ) -> Any | None:
     """Channel *channel_id* if it exists and belongs to guild *guild_id*, else ``None``.
 
     Run it on the bot loop. A malformed id, an unknown channel and another
     guild's channel all give ``None``; the last one is logged as a warning,
     since only a hand-edited config or a crafted request produces it.
+
+    With *raise_outages*, Discord not answering (a 5xx, a timeout) raises
+    instead of giving ``None``: for a caller that must not take a passing
+    outage for a deleted channel, such as a poll or a giveaway that would
+    close without its results.
     """
     try:
         channel = await bot.fetch_channel(int(channel_id))
-    except Exception as e:  # noqa: BLE001 — unknown, deleted or inaccessible: same answer
+    except (NotFound, Forbidden, TypeError, ValueError) as e:
+        if logger:
+            logger.warning("Guild %s: channel %s unavailable: %s", guild_id, channel_id, e)
+        return None
+    except Exception as e:
+        if raise_outages:
+            raise
         if logger:
             logger.warning("Guild %s: channel %s unavailable: %s", guild_id, channel_id, e)
         return None

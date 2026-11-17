@@ -42,6 +42,7 @@ class SmokeConfig(SchemaBase):
     greeting: Annotated[str, StringConstraints(max_length=20)] | None = ui(
         "Message d'accueil", "string"
     )
+    rounds: int = ui("Nombre de tours", "number", default=3, ge=1, le=10)
 
 
 def free_port() -> int:
@@ -194,6 +195,52 @@ def test_a_validation_error_is_readable(page):
     texts = " ".join(toasts(page))
     assert "[object Object]" not in texts
     assert "greeting" in texts
+
+
+def test_a_number_shows_its_bounds_and_one_outside_them_is_refused(page, dashboard):
+    """A starboard threshold of -3 used to be saved with a success toast (Q2)."""
+    rounds = page.get_by_label("Nombre de tours")
+    assert rounds.get_attribute("min") == "1"
+    assert rounds.get_attribute("max") == "10"
+    assert page.locator(".form-range", has_text="Entre 1 et 10").is_visible()
+    rounds.fill("-3")
+    assert rounds.evaluate("el => el.matches(':invalid')")
+    save(page)
+    page.locator("#toasts .toast.error").first.wait_for()
+    texts = " ".join(toasts(page))
+    assert "rounds: doit être supérieur ou égal à 1" in texts, texts
+    assert not any("sauvegardée" in t for t in toasts(page))
+    stored = json.loads(dashboard["config"].read_text(encoding="utf-8"))
+    assert "rounds" not in stored["servers"][GUILD][MODULE]
+
+
+def test_a_new_role_menu_starts_with_empty_fields(page, dashboard, monkeypatch):
+    """Its first row used to read "undefined" in the emoji and label inputs (Q3)."""
+    import src.webui.routes.config as config_routes
+
+    class RoleMenus(SchemaBase):
+        __label__ = "Menus de rôles"
+        enabled: bool = enabled_field()
+
+    monkeypatch.setitem(schemas._MODULE_REGISTRY, "moduleReactionRoles", RoleMenus)
+    monkeypatch.setitem(
+        config_routes.MODULE_SCHEMAS,
+        "moduleReactionRoles",
+        schemas.MODULE_SCHEMAS["moduleReactionRoles"],
+    )
+    config_store.mutate(
+        lambda data: data["servers"][GUILD].update(moduleReactionRoles={"enabled": True})
+    )
+    page.goto(f"http://127.0.0.1:{dashboard['port']}/#/module/{GUILD}/moduleReactionRoles")
+    page.get_by_role("button", name="✨ Nouveau menu").click()
+    page.wait_for_selector('[data-rrf="emoji"]')
+    assert page.locator('[data-rrf="emoji"]').input_value() == ""
+    assert page.locator('[data-rrf="label"]').input_value() == ""
+    page.get_by_role("button", name="+ Ajouter une entrée").click()
+    assert page.locator('[data-rrf="label"]').evaluate_all("els => els.map(e => e.value)") == [
+        "",
+        "",
+    ]
 
 
 def test_an_expired_session_keeps_the_page_and_the_typing(page, dashboard):

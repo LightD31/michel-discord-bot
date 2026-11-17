@@ -63,6 +63,7 @@ from src.core.text import (
     format_template,
 )
 from src.core.urls import redact_url
+from src.discord_ext.channels import fetch_guild_channel
 from src.discord_ext.embeds import Colors
 from src.discord_ext.mentions import mentions_written_in
 from src.discord_ext.messages import guild_id_of, require_guild, send_error, send_success
@@ -389,10 +390,8 @@ class RssExtension(Extension):
         new_entries.reverse()
 
         channel_id = job.feed_cfg.get("channel_id") or job.default_channel_id
-        try:
-            channel = await self.bot.fetch_channel(int(channel_id))
-        except Exception as e:
-            log_failure(logger, "Could not fetch RSS channel %s: %s", channel_id, e)
+        channel = await fetch_guild_channel(self.bot, job.guild_id, channel_id, logger=logger)
+        if channel is None:
             await repo.record_error(job.feed_id, f"Salon {channel_id} introuvable")
             return
         if not hasattr(channel, "send"):
