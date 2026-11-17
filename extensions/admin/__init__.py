@@ -144,7 +144,7 @@ class AdminExtension(Extension):
         opt_type=OptionType.STRING,
         required=False,
     )
-    @slash_default_member_permission(Permissions.ADMINISTRATOR | Permissions.MANAGE_MESSAGES)
+    @slash_default_member_permission(Permissions.MANAGE_MESSAGES)
     async def delete(
         self,
         ctx: SlashContext,
@@ -209,7 +209,7 @@ class AdminExtension(Extension):
             ChannelType.GUILD_NEWS,
         ],
     )
-    @slash_default_member_permission(Permissions.ADMINISTRATOR | Permissions.MANAGE_MESSAGES)
+    @slash_default_member_permission(Permissions.MANAGE_MESSAGES)
     async def send(
         self,
         ctx: SlashContext,

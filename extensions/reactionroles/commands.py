@@ -58,6 +58,20 @@ def _parse_entries(raw: str) -> list[RoleMenuEntry] | str:
     return entries
 
 
+async def _can_manage_menus(ctx: SlashContext) -> bool:
+    """Whether the author may delete or edit a menu, else tell them.
+
+    The default permission is only a default: a server can open the commands
+    to everyone. Creating a menu checks each role against its author
+    (``entries_refusal``); deleting or editing one hands out nothing, so
+    « Gérer les rôles » is enough, as in Discord.
+    """
+    if ctx.author.has_permission(Permissions.MANAGE_ROLES):
+        return True
+    await send_error(ctx, "Il faut la permission « Gérer les rôles ».")
+    return False
+
+
 class CommandsMixin:
     """Admin slash commands to create / list / edit / delete role menus."""
 
@@ -93,7 +107,7 @@ class CommandsMixin:
         opt_type=OptionType.STRING,
         required=False,
     )
-    @slash_default_member_permission(Permissions.ADMINISTRATOR | Permissions.MANAGE_ROLES)
+    @slash_default_member_permission(Permissions.MANAGE_ROLES)
     async def rolemenu_create(
         self,
         ctx: SlashContext,
@@ -165,7 +179,7 @@ class CommandsMixin:
         sub_cmd_name="list",
         sub_cmd_description="Lister les menus de rôles de ce serveur",
     )
-    @slash_default_member_permission(Permissions.ADMINISTRATOR | Permissions.MANAGE_ROLES)
+    @slash_default_member_permission(Permissions.MANAGE_ROLES)
     async def rolemenu_list(self, ctx: SlashContext) -> None:
         if not await require_guild(ctx):
             return
@@ -202,9 +216,9 @@ class CommandsMixin:
         opt_type=OptionType.STRING,
         required=True,
     )
-    @slash_default_member_permission(Permissions.ADMINISTRATOR | Permissions.MANAGE_ROLES)
+    @slash_default_member_permission(Permissions.MANAGE_ROLES)
     async def rolemenu_delete(self, ctx: SlashContext, menu_id: str) -> None:
-        if not await require_guild(ctx):
+        if not await require_guild(ctx) or not await _can_manage_menus(ctx):
             return
         menu = await self.repository(ctx.guild_id).get(menu_id)
         if not menu:
@@ -248,7 +262,7 @@ class CommandsMixin:
         opt_type=OptionType.STRING,
         required=False,
     )
-    @slash_default_member_permission(Permissions.ADMINISTRATOR | Permissions.MANAGE_ROLES)
+    @slash_default_member_permission(Permissions.MANAGE_ROLES)
     async def rolemenu_edit(
         self,
         ctx: SlashContext,
@@ -256,7 +270,7 @@ class CommandsMixin:
         title: str | None = None,
         description: str | None = None,
     ) -> None:
-        if not await require_guild(ctx):
+        if not await require_guild(ctx) or not await _can_manage_menus(ctx):
             return
         if title is None and description is None:
             await send_error(ctx, "Indiquez au moins un titre ou une description à modifier.")
