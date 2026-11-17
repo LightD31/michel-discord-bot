@@ -40,7 +40,7 @@ Data is stored in the Bot's own database, separately for each server. Data from 
 | Starboard | Which messages were reposted to the starboard and their reaction counts. The repost itself is a message in the server, so a copy of the original text and images is kept by Discord. A message from a channel not every member can see is not reposted to a starboard they all can, unless the server's administrators allow it. |
 | Reaction roles | The role menus (roles, labels and who created them). |
 | Tricount (shared expenses) | Groups and their members, expenses (amount, description, category, payer and who shares it) and reimbursements between members. A member who leaves a group still appears in its balance until they have settled up. |
-| Secret Santa | Participants, the draw results (who gives to whom) and the pairs that must not be drawn together. The draw results are stored unencrypted, readable by the Operator. |
+| Secret Santa | Participants, the draw results (who gives to whom) and the pairs that must not be drawn together. The draw results are stored unencrypted, readable by the Operator. Your wish list if you write one, and, for a session whose gifts are posted, when you marked your gift sent and the one you were given received. Anonymous messages between a Santa and their recipient are passed on by direct message and not stored; a message you report is sent to the session's organiser, with who sent it. |
 | Spotify playlist | The tracks added through the Bot, with who added them; votes on tracks, by member. Server administrators may also link members to their Spotify account and to a first name shown instead of their Discord name. |
 | AI answers (`/ask`, mentions) | Comparisons of answers: the question, the answers, the asker's and each voter's IDs, and the votes. Daily usage counters per member, used to enforce limits. See section 5. |
 | Book club ("Confrérie") | Submitted drafts and their authors. |
@@ -99,6 +99,7 @@ The Bot also fetches public information (RSS feeds, YouTube, Twitch, game server
 - Dashboard audit log: one year.
 - AI usage counters: about two days.
 - One-time reminders: deleted when they are sent.
+- Secret Santa wish lists and gift marks: 30 days after the exchange date (90 days after the session was created when it has no date), or sooner when the session is cancelled or replaced.
 - Technical logs: a few weeks (see section 6).
 - Backups: about a week by default (see section 6).
 - Everything stored for a server: deleted, with that server's settings, 30 days after the Bot leaves the server (kicked, or the server deleted), unless it is added back within that time.
@@ -113,7 +114,7 @@ The data is processed to provide the features that you, or the administrators of
 You can do two of these yourself, on every server at once:
 
 - `/mes-donnees exporter` sends you a file, visible to you alone, with everything the Bot stores about you.
-- `/mes-donnees supprimer` deletes what is yours alone (XP and its log, birthday, reminders, ZUnivers reminders, AI usage counters, member directory entry…) and anonymises what you share with others: your votes still count, but no longer under your name, and the polls, suggestions, playlist tracks, AI questions, giveaways, starboard posts, role menus and book club drafts you started no longer name you. It keeps your moderation records, the Secret Santa draws already made, and your Tricount groups while you still owe or are owed money there. Configuration written by a server's administrators (a first name, a linked Spotify account) and an LLDAP account made with `/register` are handled by that server's administrators.
+- `/mes-donnees supprimer` deletes what is yours alone (XP and its log, birthday, reminders, ZUnivers reminders, AI usage counters, Secret Santa wish lists and gift marks, member directory entry…) and anonymises what you share with others: your votes still count, but no longer under your name, and the polls, suggestions, playlist tracks, AI questions, giveaways, starboard posts, role menus and book club drafts you started no longer name you. It keeps your moderation records, the Secret Santa draws already made, and your Tricount groups while you still owe or are owed money there. Configuration written by a server's administrators (a first name, a linked Spotify account) and an LLDAP account made with `/register` are handled by that server's administrators.
 
 You can also ask the Operator, at the address in section 1, to:
 

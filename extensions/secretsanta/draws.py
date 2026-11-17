@@ -1,32 +1,30 @@
 """Draw, reveal, and remind subcommands."""
 
-import os
-from datetime import datetime
-
 from interactions import (
+    Client,
     Embed,
     OptionType,
-    Permissions,
     SlashContext,
     slash_command,
     slash_option,
 )
 
-from features.secretsanta import (
-    SecretSantaSession,
-    generate_assignments_with_subgroups,
-    generate_valid_assignments,
-)
-from src.core import clock
+from features.secretsanta import SecretSantaRepository
 from src.core import logging as logutil
-from src.core.config import load_discord2name
 from src.core.logging import log_failure
-from src.discord_ext.channels import fetch_guild_channel
 from src.discord_ext.embeds import Colors
-from src.discord_ext.messages import edit_message_if_changed, fetch_user_safe, send_error
+from src.discord_ext.messages import fetch_user_safe, send_error
 from src.discord_ext.scopes import guild_scopes
+from src.discord_ext.secretsanta import (
+    IMPOSSIBLE,
+    context_guild_id,
+    draw_dm_embed,
+    gift_buttons,
+    receiver_display_name,
+    run_draw,
+)
 
-from ._common import DATA_DIR, SANTA, create_join_buttons, get_context_id
+from ._common import SANTA, get_context_id, is_guild_admin, relay_enabled
 
 logger = logutil.init_logger(__name__)
 
@@ -34,61 +32,8 @@ logger = logutil.init_logger(__name__)
 class DrawsMixin:
     """Run the draw, reveal results, and let participants remind themselves."""
 
-    async def _save_human_readable_draw(
-        self,
-        context_id: str,
-        assignments: list[tuple[int, int]],
-        session: SecretSantaSession,
-        context_name: str,
-    ) -> None:
-        draw_file = (
-            DATA_DIR
-            / f"draw_{context_id.replace(':', '_')}_{clock.local_now().strftime('%Y%m%d_%H%M%S')}.txt"
-        )
-
-        lines = [
-            "=" * 50,
-            "🎅 PÈRE NOËL SECRET - RÉSULTATS DU TIRAGE 🎅",
-            "=" * 50,
-            "",
-            f"📅 Date du tirage : {clock.local_now().strftime('%d/%m/%Y à %H:%M')}",
-            f"📍 Contexte : {context_name}",
-            f"👥 Nombre de participants : {len(assignments)}",
-        ]
-
-        if session.budget:
-            lines.append(f"💰 Budget suggéré : {session.budget}")
-        if session.deadline:
-            lines.append(f"📆 Date limite : {session.deadline}")
-
-        lines.extend(["", "-" * 50, "ATTRIBUTIONS :", "-" * 50, ""])
-
-        for giver_id, receiver_id in assignments:
-            _, giver = await fetch_user_safe(self.bot, giver_id)
-            giver_name = (
-                f"{giver.display_name} (@{giver.username})" if giver else f"Utilisateur #{giver_id}"
-            )
-
-            _, receiver = await fetch_user_safe(self.bot, receiver_id)
-            receiver_name = (
-                f"{receiver.display_name} (@{receiver.username})"
-                if receiver
-                else f"Utilisateur #{receiver_id}"
-            )
-
-            lines.append(f"  🎁 {giver_name}  →  {receiver_name}")
-
-        lines.extend(
-            [
-                "",
-                "=" * 50,
-                "Fichier généré automatiquement par Michel Bot",
-                "=" * 50,
-            ]
-        )
-
-        draw_file.write_text("\n".join(lines), encoding="utf-8")
-        logger.info(f"Human-readable draw results saved to {draw_file}")
+    bot: Client
+    repository: SecretSantaRepository
 
     @slash_command(
         name="secretsanta",
@@ -112,139 +57,55 @@ class DrawsMixin:
         if not session:
             await send_error(
                 ctx,
-                "Il n'y a pas de session de Père Noël Secret en cours.\nCréez-en une avec `/secretsanta create`",
+                "Il n'y a pas de session de Père Noël Secret en cours.\n"
+                "Créez-en une avec `/secretsanta create`",
             )
             return
 
         # Same rule as /secretsanta cancel: drawing closes the session for
         # everyone and DMs every participant.
         is_creator = ctx.author.id == session.created_by
-        is_admin = ctx.author.has_permission(Permissions.ADMINISTRATOR) if ctx.guild else False
+        is_admin = is_guild_admin(ctx)
         if not is_creator and not is_admin:
             await send_error(
                 ctx, "Seul le créateur de la session ou un administrateur peut lancer le tirage."
             )
             return
 
-        if session.is_drawn:
-            await send_error(ctx, "Le tirage au sort a déjà été effectué pour cette session !")
+        outcome = await run_draw(
+            self.bot,
+            self.repository,
+            session,
+            allow_subgroups=allow_subgroups,
+            relay=relay_enabled(context_id),
+            context_name=ctx.guild.name if ctx.guild else f"DM Group {ctx.channel.id}",
+            announce_channel=None if ctx.guild else ctx.channel,
+        )
+        if outcome.error:
+            message = outcome.error
+            if outcome.error == IMPOSSIBLE:
+                if not allow_subgroups:
+                    message += (
+                        "\n\n💡 **Astuce :** Essayez avec l'option `allow_subgroups: True` "
+                        "pour autoriser plusieurs sous-groupes."
+                    )
+                message += "\nVérifiez les paires interdites avec `/secretsanta listbans`"
+            await send_error(ctx, message)
             return
 
-        if len(session.participants) < 2:
-            await send_error(
-                ctx,
-                f"Il faut au moins 2 participants pour le tirage.\nParticipants actuels : {len(session.participants)}",
+        response_msg = f"🎉 Le tirage a été effectué pour {outcome.count} participants !"
+        if outcome.subgroups > 1:
+            response_msg += (
+                f"\n\n🔄 **{outcome.subgroups} sous-groupes** ont été formés "
+                "(les contraintes empêchaient une boucle unique)."
             )
-            return
-
-        banned_pairs = await self.repository.read_banned_pairs(context_id)
-
-        num_subgroups = 1
-        assignments = generate_valid_assignments(session.participants, banned_pairs)
-
-        if not assignments and allow_subgroups:
-            result = generate_assignments_with_subgroups(session.participants, banned_pairs)
-            if result:
-                assignments, num_subgroups = result
-                logger.info(f"Draw completed with {num_subgroups} subgroup(s) for {context_id}")
-
-        if not assignments:
-            error_msg = "Impossible de générer un tirage valide avec les restrictions actuelles.\n"
-            if not allow_subgroups:
-                error_msg += "\n💡 **Astuce :** Essayez avec l'option `allow_subgroups: True` pour autoriser plusieurs sous-groupes."
-            error_msg += "\nVérifiez les paires interdites avec `/secretsanta listbans`"
-
-            await send_error(ctx, error_msg)
-            return
-
-        if not await self.repository.claim_draw(context_id):
-            await send_error(ctx, "Le tirage au sort a déjà été effectué pour cette session !")
-            return
-        session.is_drawn = True
-
-        server = str(ctx.guild.id) if ctx.guild else None
-        discord2name_data = load_discord2name(server) if server else {}
-
-        failed_dms = []
-        for giver_id, receiver_id in assignments:
-            try:
-                _, giver = await fetch_user_safe(self.bot, giver_id)
-                _, receiver = await fetch_user_safe(self.bot, receiver_id)
-
-                receiver_name = discord2name_data.get(
-                    str(receiver_id),
-                    receiver.mention if receiver else f"<@{receiver_id}>",
-                )
-
-                dm_embed = Embed(
-                    title="🎅 Père Noël Secret",
-                    description=(
-                        f"🎄 Ho, ho, ho ! C'est le Père Noël ! 🎄\n\n"
-                        f"Cette année, tu dois offrir un cadeau à **{receiver_name}** !\n"
-                        f"À toi de voir s'il/elle a été sage... 😉\n\n"
-                        + (f"💰 **Budget suggéré :** {session.budget}\n" if session.budget else "")
-                        + (f"📅 **Date limite :** {session.deadline}\n" if session.deadline else "")
-                        + "\n*Signé : Le vrai Père Noël* 🎅"
-                    ),
-                    color=Colors.SECRET_SANTA,
-                )
-
-                await giver.send(embed=dm_embed)
-            except Exception as e:
-                log_failure(logger, f"Failed to send DM to {giver_id}: {e}")
-                failed_dms.append(giver_id)
-
-        await self.repository.save_draw_results(context_id, assignments)
-
-        context_name = ctx.guild.name if ctx.guild else f"DM Group {ctx.channel.id}"
-        await self._save_human_readable_draw(context_id, assignments, session, context_name)
-
-        participant_mentions = []
-        for uid in session.participants:
-            _, user = await fetch_user_safe(self.bot, uid)
-            participant_mentions.append(user.mention if user else f"<@{uid}>")
-
-        draw_embed = Embed(
-            title="🎅 Tirage effectué ! 🎉",
-            description=(
-                f"Le tirage au sort a été effectué pour **{len(session.participants)}** participants !\n\n"
-                f"**Participants :**\n" + "\n".join(f"• {m}" for m in participant_mentions) + "\n\n"
-                "Vérifiez vos messages privés pour découvrir qui vous devez gâter ! 🎁"
-            ),
-            color=Colors.SECRET_SANTA,
-        )
-
-        if ctx.guild:
-            if session.message_id:
-                try:
-                    channel = await fetch_guild_channel(self.bot, ctx.guild.id, session.channel_id)
-                    if channel:
-                        message = await channel.fetch_message(session.message_id)
-                        await edit_message_if_changed(
-                            message,
-                            embed=draw_embed,
-                            components=create_join_buttons(context_id, disabled=True),
-                            logger=logger,
-                        )
-                except Exception as e:
-                    log_failure(logger, f"Failed to update session message: {e}")
-        else:
-            try:
-                # A DM group's session is keyed by its channel: this one.
-                channel = ctx.channel
-                if channel:
-                    await channel.send(embed=draw_embed)
-            except Exception as e:
-                log_failure(logger, f"Failed to send draw announcement in DM group: {e}")
-
-        response_msg = (
-            f"🎉 Le tirage a été effectué pour {len(session.participants)} participants !"
-        )
-        if num_subgroups > 1:
-            response_msg += f"\n\n🔄 **{num_subgroups} sous-groupes** ont été formés (les contraintes empêchaient une boucle unique)."
-        if failed_dms:
-            failed_mentions = [f"<@{uid}>" for uid in failed_dms]
-            response_msg += f"\n\n⚠️ Impossible d'envoyer un DM à : {', '.join(failed_mentions)}"
+        if outcome.failed_dms:
+            failed_mentions = [f"<@{uid}>" for uid in outcome.failed_dms]
+            response_msg += (
+                f"\n\n⚠️ Impossible d'envoyer un DM à : {', '.join(failed_mentions)}\n"
+                "Une fois leurs messages privés ouverts, `/secretsanta remind` leur renvoie "
+                "leur attribution."
+            )
 
         await ctx.send(
             embed=Embed(
@@ -265,7 +126,7 @@ class DrawsMixin:
     async def reveal_assignments(self, ctx: SlashContext) -> None:
         context_id = get_context_id(ctx)
 
-        is_admin = ctx.author.has_permission(Permissions.ADMINISTRATOR) if ctx.guild else False
+        is_admin = is_guild_admin(ctx)
         if not is_admin and ctx.guild:
             await send_error(ctx, "Seul un administrateur peut révéler les attributions.")
             return
@@ -298,7 +159,7 @@ class DrawsMixin:
         description="Commandes du Père Noël Secret",
         scopes=guild_scopes(SANTA.guild_ids()),
         sub_cmd_name="remind",
-        sub_cmd_description="Renvoie votre attribution par DM",
+        sub_cmd_description="Renvoie ton attribution, ta liste et tes boutons par MP",
     )
     async def remind_assignment(self, ctx: SlashContext) -> None:
         context_id = get_context_id(ctx)
@@ -308,50 +169,35 @@ class DrawsMixin:
             await send_error(ctx, "Aucun tirage n'a été effectué pour cette session.")
             return
 
-        user_assignment = None
-        for giver_id, receiver_id in results:
-            if giver_id == ctx.author.id:
-                user_assignment = receiver_id
-                break
-
-        if not user_assignment:
-            await send_error(ctx, "Vous n'avez pas participé à ce tirage.")
+        receiver_id = next((r for g, r in results if g == ctx.author.id), None)
+        if not receiver_id:
+            await send_error(ctx, "Tu n'as pas participé à ce tirage.")
             return
 
         session = await self.repository.get_session(context_id)
-        server = str(ctx.guild.id) if ctx.guild else None
-        discord2name_data = load_discord2name(server) if server else {}
-
+        if session is None:
+            await send_error(ctx, "Cette session n'existe plus.")
+            return
+        relay = relay_enabled(context_id)
         try:
-            _, receiver = await fetch_user_safe(self.bot, user_assignment)
-            receiver_name = discord2name_data.get(
-                str(user_assignment),
-                receiver.mention if receiver else f"<@{user_assignment}>",
-            )
-
-            dm_embed = Embed(
+            _, receiver = await fetch_user_safe(self.bot, receiver_id)
+            receiver_entry = await self.repository.get_participant(context_id, receiver_id)
+            embed = draw_dm_embed(
+                session,
+                receiver_display_name(context_guild_id(context_id), receiver_id, receiver),
+                receiver_entry.wishlist if receiver_entry else None,
+                relay=relay,
                 title="🎅 Rappel - Père Noël Secret",
-                description=(
-                    f"🎄 Rappel : Tu dois offrir un cadeau à **{receiver_name}** ! 🎁\n\n"
-                    + (
-                        f"💰 **Budget suggéré :** {session.budget}\n"
-                        if session and session.budget
-                        else ""
-                    )
-                    + (
-                        f"📅 **Date limite :** {session.deadline}\n"
-                        if session and session.deadline
-                        else ""
-                    )
-                ),
-                color=Colors.SECRET_SANTA,
+                footer=ctx.guild.name if ctx.guild else None,
             )
-
-            await ctx.author.send(embed=dm_embed)
+            await ctx.author.send(
+                embed=embed,
+                components=gift_buttons(context_id, relay=relay, shipping=session.shipping),
+            )
             await ctx.send(
                 embed=Embed(
                     title="🎅 Rappel envoyé",
-                    description="Vérifiez vos messages privés ! 📬",
+                    description="Regarde tes messages privés ! 📬",
                     color=Colors.SECRET_SANTA,
                 ),
                 ephemeral=True,
@@ -360,5 +206,5 @@ class DrawsMixin:
             log_failure(logger, f"Failed to send reminder DM: {e}")
             await send_error(
                 ctx,
-                "Impossible d'envoyer le message privé. Vérifiez que vos DMs sont ouverts.",
+                "Impossible de t'envoyer le message privé. Vérifie que tes MP sont ouverts.",
             )

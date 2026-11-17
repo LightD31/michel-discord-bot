@@ -48,6 +48,20 @@ async def seed(mongo):
         {"_id": "drawn", "results": [[int(ME), int(OTHER)], [int(OTHER), int(ME)]]}
     )
     await g("secret_santa_banned_pairs").insert_one({"_id": "open", "pairs": [[int(ME), 3]]})
+    await g("secret_santa_participants").insert_many(
+        [
+            {"_id": f"drawn:{ME}", "context_id": "drawn", "user_id": int(ME), "wishlist": "thé"},
+            {
+                "_id": f"drawn:{OTHER}",
+                "context_id": "drawn",
+                "user_id": int(OTHER),
+                "wishlist": "x",
+            },
+        ]
+    )
+    await db.mongo_manager.get_global_collection("secret_santa_participants").insert_one(
+        {"_id": f"channel_9:{ME}", "context_id": "channel_9", "user_id": int(ME), "wishlist": "dm"}
+    )
     await db.mongo_manager.get_global_collection("ai_usage").insert_many(
         [{"_id": f"2026-11-17:user:{ME}", "calls": 3}, {"_id": "2026-11-17:all", "calls": 9}]
     )
@@ -65,6 +79,9 @@ async def test_the_export_holds_the_member_and_nobody_else(mongo):
     (draw,) = mine["secret_santa_draw_results"]
     assert all(int(ME) in pair for pair in draw["results"])
     assert data["global"]["ai_usage"][0]["calls"] == 3
+    # Their own wish list, never another participant's.
+    assert [d["wishlist"] for d in mine["secret_santa_participants"]] == ["thé"]
+    assert [d["wishlist"] for d in data["global"]["secret_santa_participants"]] == ["dm"]
     exported = json.loads(export_json(data))
     assert exported["user_id"] == ME
 
@@ -98,6 +115,10 @@ async def test_forgetting_deletes_anonymises_and_keeps(mongo):
     assert (await g("secret_santa_banned_pairs").find_one())["pairs"] == []
     kept = {where.rsplit(".", 1)[1] for where in report.kept}
     assert kept == {"infractions", "secret_santa_draw_results"}
+    entries = await g("secret_santa_participants").find().to_list()
+    assert [e["user_id"] for e in entries] == [int(OTHER)]
+    global_entries = db.mongo_manager.get_global_collection("secret_santa_participants")
+    assert await global_entries.count_documents({}) == 0
 
     usage = await db.mongo_manager.get_global_collection("ai_usage").find().to_list()
     assert [u["_id"] for u in usage] == ["2026-11-17:all"]

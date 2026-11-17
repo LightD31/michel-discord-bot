@@ -2,31 +2,45 @@
 
 Guild contexts use per-guild databases; DM / group-DM contexts fall back to the
 global database.
+
+A participant's own entries (wish list, gift marks) are one document each in
+``secret_santa_participants`` (``_id`` ``<context>:<member>``, ``user_id``
+an int), so ``/mes-donnees`` exports and deletes them by member, and a TTL
+index on ``expires_at`` deletes them 30 days after the exchange
+(:func:`features.secretsanta.dates.participant_expiry`).
 """
 
 from dataclasses import asdict
+from datetime import datetime
 
+import pymongo
 from pymongo import ReturnDocument
 
 from src.core import clock
 from src.core.db import mongo_manager, translates_db_errors
-from src.core.logging import init_logger
+from src.core.logging import init_logger, log_failure
 
-from .models import SecretSantaSession
+from .models import SantaParticipant, SecretSantaSession
 
 logger = init_logger(__name__)
+
+PARTICIPANTS = "secret_santa_participants"
+# Databases whose participants collection has its TTL index (per process).
+_indexed: set[str] = set()
 
 
 class SecretSantaRepository:
     """All persistence for sessions, banned pairs and draw results."""
 
+    @staticmethod
+    def _db(context_id: str):
+        if context_id.startswith("guild_"):
+            return mongo_manager.get_guild_db(context_id.removeprefix("guild_"))
+        return mongo_manager.global_db
+
     def _collections(self, context_id: str):
         """Return ``(sessions, draw_results, banned_pairs)`` collections for ``context_id``."""
-        if context_id.startswith("guild_"):
-            guild_id = context_id.removeprefix("guild_")
-            db = mongo_manager.get_guild_db(guild_id)
-        else:
-            db = mongo_manager.global_db
+        db = self._db(context_id)
         return (
             db["secret_santa_sessions"],
             db["secret_santa_draw_results"],
@@ -58,6 +72,8 @@ class SecretSantaRepository:
         data = asdict(session)
         data["_id"] = data.pop("context_id")
         await sessions_col.replace_one({"_id": data["_id"]}, data, upsert=True)
+        # The previous session's wish lists and gift marks go with it.
+        await self._participants(session.context_id).delete_many({"context_id": session.context_id})
         logger.info(f"Session saved for {session.context_id}")
 
     @translates_db_errors
@@ -103,12 +119,145 @@ class SecretSantaRepository:
 
     @translates_db_errors
     async def delete_session(self, context_id: str) -> bool:
+        """Delete the session and what its participants left (wish lists, gift marks)."""
         sessions_col, _, _ = self._collections(context_id)
+        await self._participants(context_id).delete_many({"context_id": context_id})
         result = await sessions_col.delete_one({"_id": context_id})
         if result.deleted_count > 0:
             logger.info(f"Session deleted for {context_id}")
             return True
         return False
+
+    @translates_db_errors
+    async def update_settings(
+        self, context_id: str, changes: dict, expires_at: datetime
+    ) -> SecretSantaSession | None:
+        """Change the budget, date or parcel option; the updated session.
+
+        Moving the date moves when the participants' entries expire. A new date
+        may need a new reminder, so ``reminded`` is cleared with it.
+        """
+        sessions_col, _, _ = self._collections(context_id)
+        update = dict(changes)
+        if "exchange_date" in update:
+            update["reminded"] = False
+        doc = await sessions_col.find_one_and_update(
+            {"_id": context_id}, {"$set": update}, return_document=ReturnDocument.AFTER
+        )
+        if doc is not None:
+            await self._participants(context_id).update_many(
+                {"context_id": context_id}, {"$set": {"expires_at": expires_at}}
+            )
+        return self._session(doc)
+
+    @translates_db_errors
+    async def claim_reminder(self, context_id: str) -> bool:
+        """Mark the parcel reminder sent; False when it already was (one sender wins)."""
+        sessions_col, _, _ = self._collections(context_id)
+        result = await sessions_col.update_one(
+            {"_id": context_id, "is_drawn": True, "shipping": True, "reminded": {"$ne": True}},
+            {"$set": {"reminded": True}},
+        )
+        return bool(result.modified_count)
+
+    # --- Participants' own entries ---------------------------------------------
+
+    def _participants(self, context_id: str):
+        return self._db(context_id)[PARTICIPANTS]
+
+    async def _ensure_ttl(self, context_id: str) -> None:
+        db = self._db(context_id)
+        if db.name in _indexed:
+            return
+        try:
+            await db[PARTICIPANTS].create_index(
+                [("expires_at", pymongo.ASCENDING)], expireAfterSeconds=0, name="expires_ttl"
+            )
+            await db[PARTICIPANTS].create_index(
+                [("user_id", pymongo.ASCENDING)], name="user_id_idx"
+            )
+            _indexed.add(db.name)
+        except Exception as e:
+            log_failure(logger, "Secret Santa participants indexes in %s: %s", db.name, e)
+
+    @staticmethod
+    def _participant(doc: dict) -> SantaParticipant:
+        return SantaParticipant(
+            context_id=doc["context_id"],
+            user_id=doc["user_id"],
+            wishlist=doc.get("wishlist"),
+            sent_at=doc.get("sent_at"),
+            received_at=doc.get("received_at"),
+        )
+
+    async def _upsert(self, context_id: str, user_id: int, expires_at: datetime) -> None:
+        await self._ensure_ttl(context_id)
+        await self._participants(context_id).update_one(
+            {"_id": f"{context_id}:{user_id}"},
+            {
+                "$setOnInsert": {"context_id": context_id, "user_id": user_id},
+                "$set": {"expires_at": expires_at},
+            },
+            upsert=True,
+        )
+
+    @translates_db_errors
+    async def set_wishlist(
+        self, context_id: str, user_id: int, text: str | None, expires_at: datetime
+    ) -> None:
+        """Store (or with an empty *text*, clear) *user_id*'s wish list."""
+        await self._upsert(context_id, user_id, expires_at)
+        update = {"$set": {"wishlist": text}} if text else {"$unset": {"wishlist": ""}}
+        await self._participants(context_id).update_one({"_id": f"{context_id}:{user_id}"}, update)
+
+    @translates_db_errors
+    async def clear_wishlist(self, context_id: str, user_id: int) -> None:
+        """Drop *user_id*'s wish list (they left before the draw)."""
+        await self._participants(context_id).update_one(
+            {"_id": f"{context_id}:{user_id}"}, {"$unset": {"wishlist": ""}}
+        )
+
+    @translates_db_errors
+    async def get_participant(self, context_id: str, user_id: int) -> SantaParticipant | None:
+        doc = await self._participants(context_id).find_one({"_id": f"{context_id}:{user_id}"})
+        return self._participant(doc) if doc else None
+
+    @translates_db_errors
+    async def wishlists(self, context_id: str) -> dict[int, str]:
+        """Every participant's wish list in the session, by member."""
+        cursor = self._participants(context_id).find(
+            {"context_id": context_id, "wishlist": {"$type": "string"}},
+            {"user_id": 1, "wishlist": 1},
+        )
+        return {doc["user_id"]: doc["wishlist"] async for doc in cursor}
+
+    @translates_db_errors
+    async def mark_gift(
+        self, context_id: str, user_id: int, mark: str, expires_at: datetime
+    ) -> bool:
+        """Set ``sent_at`` or ``received_at`` (*mark*) once; False when it already was."""
+        if mark not in ("sent_at", "received_at"):
+            raise ValueError(mark)
+        await self._upsert(context_id, user_id, expires_at)
+        result = await self._participants(context_id).update_one(
+            {"_id": f"{context_id}:{user_id}", mark: None}, {"$set": {mark: clock.now()}}
+        )
+        return bool(result.modified_count)
+
+    @translates_db_errors
+    async def gift_marks(self, context_id: str) -> tuple[set[int], set[int]]:
+        """``(who marked their gift sent, who marked theirs received)``."""
+        sent: set[int] = set()
+        received: set[int] = set()
+        cursor = self._participants(context_id).find(
+            {"context_id": context_id}, {"user_id": 1, "sent_at": 1, "received_at": 1}
+        )
+        async for doc in cursor:
+            if doc.get("sent_at"):
+                sent.add(doc["user_id"])
+            if doc.get("received_at"):
+                received.add(doc["user_id"])
+        return sent, received
 
     @translates_db_errors
     async def read_banned_pairs(self, context_id: str) -> list[tuple[int, int]]:

@@ -290,7 +290,9 @@
                 "satisfactoryServerToken": ""
             },
             "moduleSecretSanta": {
-                "enabled": false
+                "enabled": false,
+                "anonymousMessages": true,
+                "reminderDaysBefore": 3
             },
             "moduleSpeedons": {
                 "enabled": false,

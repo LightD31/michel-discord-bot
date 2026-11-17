@@ -1,106 +1,219 @@
-"""Join / leave button component callbacks."""
+"""The announcement's buttons: Participer (with a wish list), Ma liste, Se retirer."""
 
 import contextlib
-import os
 import re
+from typing import TYPE_CHECKING
 
-from interactions import ComponentContext, Embed, component_callback
+from interactions import (
+    Client,
+    ComponentContext,
+    Modal,
+    ModalContext,
+    ParagraphText,
+    component_callback,
+    modal_callback,
+)
 
-from features.secretsanta import SecretSantaSession
+from features.secretsanta import SecretSantaRepository, SecretSantaSession
+from features.secretsanta.dates import participant_expiry
 from src.core import logging as logutil
 from src.core.logging import log_failure
-from src.discord_ext.embeds import Colors
-from src.discord_ext.messages import edit_message_if_changed, fetch_user_safe
-
-from ._common import create_join_buttons
+from src.discord_ext.secretsanta import JOIN, LEAVE, WISHLIST, WISHLIST_LIMIT
 
 logger = logutil.init_logger(__name__)
 
+JOIN_MODAL = "secretsanta_join_modal"
+WISHLIST_MODAL = "secretsanta_wishlist_modal"
+WISHLIST_FIELD = "envies"
+
+GONE = "Cette session n'existe plus."
+DRAWN = "Le tirage a déjà été effectué !"
+ALREADY_IN = "Tu participes déjà ! 🎅 Tu peux modifier ta liste avec **📝 Ma liste**."
+NOT_IN = "Tu ne participes pas à cette session : clique sur **Participer** d'abord."
+OPEN_YOUR_DMS = (
+    "Pense à accepter les messages privés de ce serveur : c'est là que tu recevras "
+    "le nom de ton destinataire."
+)
+
+
+def wishlist_modal(custom_id: str, title: str, current: str | None = None) -> Modal:
+    return Modal(
+        ParagraphText(
+            label="Ta liste d'envies (facultatif)",
+            custom_id=WISHLIST_FIELD,
+            placeholder="Idées, tailles, goûts, ce que tu as déjà, ce que tu n'aimes pas…",
+            value=current or None,
+            required=False,
+            max_length=WISHLIST_LIMIT,
+        ),
+        title=title,
+        custom_id=custom_id,
+    )
+
+
+def _wishlist_text(responses: dict[str, str]) -> str | None:
+    return (responses.get(WISHLIST_FIELD) or "").strip() or None
+
 
 class ButtonsMixin:
-    """Handle the ``Participer`` / ``Se retirer`` buttons on the session embed."""
+    """Handle the ``Participer`` / ``📝 Ma liste`` / ``Se retirer`` buttons."""
 
-    @component_callback(re.compile(r"secretsanta_join:(.+)"))
+    bot: Client
+    repository: SecretSantaRepository
+
+    if TYPE_CHECKING:
+
+        async def _refresh_announcement(self, session: SecretSantaSession) -> None: ...
+
+    async def _open_session(
+        self, ctx: ComponentContext | ModalContext, context_id: str
+    ) -> SecretSantaSession | None:
+        """The session while it takes sign-ups; answers and gives ``None`` otherwise."""
+        session = await self.repository.get_session(context_id)
+        if not session:
+            await self._send_response(ctx, session, GONE)
+            return None
+        if session.is_drawn:
+            await self._send_response(ctx, session, DRAWN)
+            return None
+        return session
+
+    @component_callback(re.compile(rf"{JOIN}:(.+)"))
     async def on_join_button(self, ctx: ComponentContext) -> None:
         context_id = ctx.custom_id.split(":", 1)[1]
-        logger.debug(f"Join button clicked by {ctx.author.id} for session {context_id}")
-        session = await self.repository.get_session(context_id)
-
-        if not session:
-            logger.warning(f"Session not found for {context_id}")
-            await self._send_response(ctx, session, "Cette session n'existe plus.")
+        session = await self._open_session(ctx, context_id)
+        if session is None:
             return
-
-        if session.is_drawn:
-            await self._send_response(ctx, session, "Le tirage a déjà été effectué !")
-            return
-
         if ctx.author.id in session.participants:
-            await self._send_response(ctx, session, "Vous participez déjà ! 🎅")
+            await self._send_response(ctx, session, ALREADY_IN)
             return
-
-        # One conditional update: a concurrent join is kept, and a click that
-        # loses the race with the draw changes nothing.
-        updated = await self.repository.add_participant(context_id, ctx.author.id)
-        if updated is None:
-            current = await self.repository.get_session(context_id)
-            if current is None:
-                message = "Cette session n'existe plus."
-            elif current.is_drawn:
-                message = "Le tirage a déjà été effectué !"
-            else:
-                message = "Vous participez déjà ! 🎅"
-            await self._send_response(ctx, current, message)
-            return
-        session = updated
-        logger.info(
-            f"User {ctx.author.id} ({ctx.author.username}) joined Secret Santa in {context_id} (total: {len(session.participants)})"
+        await ctx.send_modal(
+            wishlist_modal(f"{JOIN_MODAL}:{context_id}", "Participer au Père Noël Secret")
         )
 
-        await self._update_session_message(ctx, session)
-        await self._send_response(ctx, session, "Vous êtes inscrit au Père Noël Secret ! 🎁")
+    @modal_callback(re.compile(rf"{JOIN_MODAL}:(.+)"))
+    async def on_join_modal(self, ctx: ModalContext, **responses: str) -> None:
+        context_id = ctx.custom_id.split(":", 1)[1]
+        # One conditional update: a concurrent join is kept, and a form sent
+        # after the draw changes nothing.
+        session = await self.repository.add_participant(context_id, ctx.author.id)
+        if session is None:
+            current = await self.repository.get_session(context_id)
+            if current is None:
+                message = GONE
+            elif current.is_drawn:
+                message = DRAWN
+            else:
+                message = ALREADY_IN
+            await self._send_response(ctx, current, message)
+            return
+        wishlist = _wishlist_text(responses)
+        if wishlist:
+            await self.repository.set_wishlist(
+                context_id,
+                ctx.author.id,
+                wishlist,
+                participant_expiry(session.exchange_day, session.created),
+            )
+        logger.info(
+            "User %s joined Secret Santa in %s (total: %s)",
+            ctx.author.id,
+            context_id,
+            len(session.participants),
+        )
+        await self._refresh_announcement(session)
+        listed = " avec ta liste d'envies" if wishlist else ""
+        await self._send_response(
+            ctx, session, f"Tu es inscrit·e au Père Noël Secret{listed} ! 🎁\n{OPEN_YOUR_DMS}"
+        )
 
-    @component_callback(re.compile(r"secretsanta_leave:(.+)"))
+    @component_callback(re.compile(rf"{WISHLIST}:(.+)"))
+    async def on_wishlist_button(self, ctx: ComponentContext) -> None:
+        context_id = ctx.custom_id.split(":", 1)[1]
+        session = await self._open_session(ctx, context_id)
+        if session is None:
+            return
+        if ctx.author.id not in session.participants:
+            await self._send_response(ctx, session, NOT_IN)
+            return
+        mine = await self.repository.get_participant(context_id, ctx.author.id)
+        await ctx.send_modal(
+            wishlist_modal(
+                f"{WISHLIST_MODAL}:{context_id}",
+                "Ma liste d'envies",
+                mine.wishlist if mine else None,
+            )
+        )
+
+    @modal_callback(re.compile(rf"{WISHLIST_MODAL}:(.+)"))
+    async def on_wishlist_modal(self, ctx: ModalContext, **responses: str) -> None:
+        context_id = ctx.custom_id.split(":", 1)[1]
+        session = await self._open_session(ctx, context_id)
+        if session is None:
+            return
+        if ctx.author.id not in session.participants:
+            await self._send_response(ctx, session, NOT_IN)
+            return
+        wishlist = _wishlist_text(responses)
+        await self.repository.set_wishlist(
+            context_id,
+            ctx.author.id,
+            wishlist,
+            participant_expiry(session.exchange_day, session.created),
+        )
+        await self._send_response(
+            ctx,
+            session,
+            "📝 Ta liste d'envies est enregistrée : ton Père Noël la recevra au tirage."
+            if wishlist
+            else "📝 Ta liste d'envies est vide.",
+        )
+
+    @component_callback(re.compile(rf"{LEAVE}:(.+)"))
     async def on_leave_button(self, ctx: ComponentContext) -> None:
         context_id = ctx.custom_id.split(":", 1)[1]
-        logger.debug(f"Leave button clicked by {ctx.author.id} for session {context_id}")
         session = await self.repository.get_session(context_id)
 
         if not session:
-            await self._send_response(ctx, session, "Cette session n'existe plus.")
+            await self._send_response(ctx, session, GONE)
             return
 
         if session.is_drawn:
             await self._send_response(
-                ctx, session, "Le tirage a déjà été effectué, vous ne pouvez plus vous retirer."
+                ctx, session, "Le tirage a déjà été effectué, tu ne peux plus te retirer."
             )
             return
 
         if ctx.author.id not in session.participants:
-            await self._send_response(ctx, session, "Vous ne participez pas à cette session.")
+            await self._send_response(ctx, session, "Tu ne participes pas à cette session.")
             return
 
         updated = await self.repository.remove_participant(context_id, ctx.author.id)
         if updated is None:
             current = await self.repository.get_session(context_id)
             if current is None:
-                message = "Cette session n'existe plus."
+                message = GONE
             elif current.is_drawn:
-                message = "Le tirage a déjà été effectué, vous ne pouvez plus vous retirer."
+                message = "Le tirage a déjà été effectué, tu ne peux plus te retirer."
             else:
-                message = "Vous ne participez pas à cette session."
+                message = "Tu ne participes pas à cette session."
             await self._send_response(ctx, current, message)
             return
-        session = updated
+        await self.repository.clear_wishlist(context_id, ctx.author.id)
         logger.info(
-            f"User {ctx.author.id} ({ctx.author.username}) left Secret Santa in {context_id} (total: {len(session.participants)})"
+            "User %s left Secret Santa in %s (total: %s)",
+            ctx.author.id,
+            context_id,
+            len(updated.participants),
         )
-
-        await self._update_session_message(ctx, session)
-        await self._send_response(ctx, session, "Vous avez été retiré du Père Noël Secret.")
+        await self._refresh_announcement(updated)
+        await self._send_response(ctx, updated, "Tu as été retiré·e du Père Noël Secret.")
 
     async def _send_response(
-        self, ctx: ComponentContext, session: SecretSantaSession | None, message: str
+        self,
+        ctx: ComponentContext | ModalContext,
+        session: SecretSantaSession | None,
+        message: str,
     ) -> None:
         """Ephemeral in guilds; DM fallback in group DMs where ephemerals are creator-only."""
         if ctx.guild:
@@ -117,48 +230,3 @@ class ButtonsMixin:
                 log_failure(logger, f"Failed to send DM to {ctx.author.id}: {e}")
                 with contextlib.suppress(Exception):
                     await ctx.send(message, ephemeral=True)
-
-    async def _update_session_message(
-        self, ctx: ComponentContext, session: SecretSantaSession
-    ) -> None:
-        """Refresh the session embed with the current participant list (guild only)."""
-        if not ctx.guild:
-            return
-
-        try:
-            if not session.participants:
-                participant_text = "*Aucun participant pour le moment*"
-            else:
-                mentions = []
-                for user_id in session.participants:
-                    _, user = await fetch_user_safe(self.bot, user_id)
-                    mentions.append(user.mention if user else f"<@{user_id}>")
-                participant_text = "\n".join(f"• {m}" for m in mentions)
-
-            description = (
-                "🎄 **Une session de Père Noël Secret est en cours !** 🎄\n\n"
-                "Cliquez sur **Participer** pour rejoindre le tirage au sort.\n"
-                "Vous pouvez vous retirer à tout moment avant le tirage.\n\n"
-            )
-
-            if session.budget:
-                description += f"💰 **Budget suggéré :** {session.budget}\n"
-            if session.deadline:
-                description += f"📅 **Date limite :** {session.deadline}\n"
-
-            description += f"\n**Participants ({len(session.participants)}) :**\n{participant_text}"
-
-            embed = Embed(
-                title="🎅 Père Noël Secret",
-                description=description,
-                color=Colors.SECRET_SANTA_SUCCESS,
-            )
-
-            await edit_message_if_changed(
-                ctx.message,
-                embed=embed,
-                components=create_join_buttons(session.context_id),
-                logger=logger,
-            )
-        except Exception as e:
-            log_failure(logger, f"Failed to update session message: {e}")
