@@ -131,7 +131,7 @@ async def test_entries_are_kept_a_year_and_read_newest_first(mongo):
     entries = await repo.list()
     assert [e["action"] for e in entries] == ["embeds.publish", "module.toggle", "module.save"]
     assert entries[0]["username"] == "alice" and entries[0]["changes"] == ["x"]
-    older = await repo.list(before=entries[0]["at"])
+    older = await repo.list(before=entries[0]["_id"])
     assert [e["action"] for e in older] == ["module.toggle", "module.save"]
     assert [e["action"] for e in await audit.AuditRepository(None).list()] == ["extensions.reload"]
 
@@ -147,3 +147,17 @@ async def test_the_route_returns_json_entries(mongo):
     body = json.loads((await get(None, mongo.guild_id, limit=10, before=None)).body)
     (entry,) = body["entries"]
     assert entry["action"] == "module.save" and entry["at"] <= clock.now().isoformat()
+
+
+@pytest.mark.mongo
+async def test_entries_of_the_same_millisecond_are_all_paged_through(mongo):
+    """Paging by ``at`` skipped entries sharing a timestamp (seen on CI)."""
+    repo = audit.AuditRepository(mongo.guild_id)
+    at = clock.now()
+    for n in range(3):
+        await repo.add({"at": at, "action": f"a{n}", "user_id": "7"})
+    seen, before = [], None
+    while page := await repo.list(limit=1, before=before):
+        seen.append(page[0]["action"])
+        before = page[0]["_id"]
+    assert seen == ["a2", "a1", "a0"]

@@ -20,6 +20,7 @@ from datetime import datetime, timedelta
 from typing import Any
 
 import pymongo
+from bson import ObjectId
 
 from src.core import clock
 from src.core import logging as logutil
@@ -79,10 +80,14 @@ class AuditRepository:
         await self._col().insert_one(entry)
 
     @translates_db_errors
-    async def list(self, *, limit: int = PAGE_SIZE, before: datetime | None = None) -> list[dict]:
-        """The newest entries first; *before* pages back from an entry's ``at``."""
-        query: dict[str, Any] = {} if before is None else {"at": {"$lt": before}}
-        cursor = self._col().find(query, {"_id": 0}).sort("at", pymongo.DESCENDING)
+    async def list(self, *, limit: int = PAGE_SIZE, before: ObjectId | None = None) -> list[dict]:
+        """The newest entries first; *before* pages back from an entry's id.
+
+        By id rather than ``at``: entries written in the same millisecond share
+        their ``at``, and a page boundary between them would skip some.
+        """
+        query: dict[str, Any] = {} if before is None else {"_id": {"$lt": before}}
+        cursor = self._col().find(query).sort("_id", pymongo.DESCENDING)
         return list(await cursor.limit(max(1, min(limit, PAGE_SIZE))).to_list())
 
 
@@ -114,6 +119,7 @@ async def record(
 def entry_to_json(entry: dict[str, Any]) -> dict[str, Any]:
     at = entry.get("at")
     return {
+        "id": str(entry.get("_id", "")),
         "at": at.isoformat() if isinstance(at, datetime) else None,
         "user_id": entry.get("user_id"),
         "username": entry.get("username"),

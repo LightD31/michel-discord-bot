@@ -5,8 +5,7 @@ other's changes; the bot's own log (global sections, extensions, short links)
 to developers only. See :mod:`src.webui.audit`.
 """
 
-from datetime import datetime
-
+from bson import ObjectId
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 
@@ -18,13 +17,12 @@ from src.webui.context import WebUIContext
 logger = logutil.init_logger("webui.routes.audit")
 
 
-def _before(value: str | None) -> datetime | None:
+def _before(value: str | None) -> ObjectId | None:
     if not value:
         return None
-    try:
-        return datetime.fromisoformat(value)
-    except ValueError as e:
-        raise HTTPException(status_code=422, detail="Paramètre « before » invalide") from e
+    if not ObjectId.is_valid(value):
+        raise HTTPException(status_code=422, detail="Paramètre « before » invalide")
+    return ObjectId(value)
 
 
 async def _page(guild_id: str | None, limit: int, before: str | None) -> JSONResponse:

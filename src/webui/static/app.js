@@ -4036,7 +4036,7 @@
         }
         container.insertAdjacentHTML('beforeend', entries.map(auditEntryHtml).join(''));
         if (entries.length >= 100) {
-            const last = entries[entries.length - 1].at;
+            const last = entries[entries.length - 1].id;
             container.insertAdjacentHTML('beforeend', `
                 <button type="button" class="btn btn-ghost btn-sm audit-more" style="margin-top:8px;"
                         data-click="loadAudit" data-click-args="${actionArgs(serverId || null, last)}">Plus ancien…</button>`);
