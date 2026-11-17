@@ -6,6 +6,7 @@ from pydantic import BaseModel
 
 from src.core import logging as logutil
 from src.core.config import global_config
+from src.webui import audit
 from src.webui.context import WebUIContext
 from src.webui.schemas import (
     GLOBAL_CONFIG_SCHEMAS,
@@ -92,6 +93,8 @@ def create_router(ctx: WebUIContext) -> APIRouter:
             raise HTTPException(status_code=404, detail=f"Section inconnue : {section}")
         schema = GLOBAL_CONFIG_SCHEMAS.get(section)
 
+        changes: list[str] = []
+
         def mutator(data: dict) -> None:
             current = data.get("config", {}).get(section)
             try:
@@ -104,6 +107,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
                 raise HTTPException(
                     status_code=422, detail="Configuration invalide : " + " ; ".join(errors[:10])
                 )
+            changes[:] = audit.changed_fields(current, restored)
             data.setdefault("config", {})[section] = restored
 
         ctx.mutate_config(mutator)
@@ -113,6 +117,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
             session.username,
             session.user_id,
         )
+        await audit.record(None, session, "global_config.save", target=section, changes=changes)
         return JSONResponse({"status": "ok"})
 
     def _strip_unknown_keys(data: dict, removed: list[dict], apply: bool) -> None:
@@ -187,6 +192,12 @@ def create_router(ctx: WebUIContext) -> APIRouter:
                 len(removed),
                 session.username,
                 session.user_id,
+            )
+            await audit.record(
+                None,
+                session,
+                "config.cleanup",
+                changes=sorted({f"{entry['location']}.{entry['key']}" for entry in removed}),
             )
 
         # Sanitise values for JSON response (avoid huge blobs)

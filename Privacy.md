@@ -59,7 +59,7 @@ The dashboard lets server administrators configure the Bot.
 - **Session:** your session lasts 24 hours. It is stored under a hash of your session cookie, never the cookie itself. The tokens Discord issues at sign-in are discarded straight after.
 - **Cookies:** two cookies, both strictly necessary: `michel_session` (24 hours, your session) and `oauth_state` (5 minutes, protects the sign-in). There are no advertising or analytics cookies.
 - **IP addresses:** they are used in memory to rate-limit sign-in attempts, for about a minute, and are not stored.
-- **Changes are logged:** each configuration change and action made through the dashboard (publishing embeds, reloading the Bot's modules, revoking a sanction…) is recorded with the name and Discord ID of whoever made it.
+- **Changes are logged:** each configuration change and action made through the dashboard (publishing embeds, reloading the Bot's modules, revoking a sanction…) is recorded with the name and Discord ID of whoever made it, in the technical logs and in an audit log kept one year. A server's audit log is shown to every administrator of that server in the dashboard; it names the settings that changed, never their values.
 - **Third-party requests:** the dashboard loads images (avatars, server icons) from Discord's CDN, and the charting library from the jsDelivr CDN. These services therefore see your IP address when you use the dashboard.
 - **Public statistics pages:** server administrators can publish XP or Spotify statistics at a secret link. Anyone with that link can see the display names of the most active members, contributors and voters, but no Discord IDs. Votes on an open Spotify poll are only shown once it closes.
 
@@ -95,6 +95,7 @@ The Bot also fetches public information (RSS feeds, YouTube, Twitch, game server
 - Member directory: as long as you are a member of the server; your entry is deleted when you leave it (at the Bot's next start if it was offline then).
 - XP gain log: 400 days, then summed per month (see section 3).
 - Dashboard sessions: 24 hours.
+- Dashboard audit log: one year.
 - AI usage counters: about two days.
 - One-time reminders: deleted when they are sent.
 - Technical logs: a few weeks (see section 6).

@@ -18,6 +18,7 @@ from pydantic import BaseModel, Field
 
 from src.core import logging as logutil
 from src.integrations.shlink import ShlinkError, get_settings, shlink_client
+from src.webui import audit
 from src.webui.context import WebUIContext
 
 logger = logutil.init_logger("webui.routes.shlink")
@@ -154,7 +155,9 @@ def create_router(ctx: WebUIContext) -> APIRouter:
             session.username,
             session.user_id,
         )
-        return JSONResponse(_short_url_to_dict(created))
+        result = _short_url_to_dict(created)
+        await audit.record(None, session, "short_url.create", target=str(result["short_code"]))
+        return JSONResponse(result)
 
     @router.patch("/api/shlink/short-urls/{short_code}")
     async def api_update_short_url(request: Request, short_code: str, payload: ShortUrlUpdate):
@@ -172,6 +175,13 @@ def create_router(ctx: WebUIContext) -> APIRouter:
         logger.info(
             "Short URL %s updated by %s (%s)", short_code, session.username, session.user_id
         )
+        await audit.record(
+            None,
+            session,
+            "short_url.update",
+            target=short_code,
+            changes=sorted(payload.model_dump(exclude_unset=True)),
+        )
         return JSONResponse(_short_url_to_dict(updated))
 
     @router.delete("/api/shlink/short-urls/{short_code}")
@@ -184,6 +194,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
         logger.info(
             "Short URL %s deleted by %s (%s)", short_code, session.username, session.user_id
         )
+        await audit.record(None, session, "short_url.delete", target=short_code)
         return JSONResponse({"success": True})
 
     return router

@@ -32,6 +32,7 @@ from src.discord_ext.rolemenus import (
     menu_author,
     role_info,
 )
+from src.webui import audit
 from src.webui.auth import Session
 from src.webui.context import WebUIContext
 
@@ -331,7 +332,9 @@ def create_router(ctx: WebUIContext) -> APIRouter:
             session.username,
             session.user_id,
         )
-        return JSONResponse({"status": "ok", "menu": _menu_to_dict(menu)})
+        payload = _menu_to_dict(menu)
+        await audit.record(server_id, session, "rolemenu.create", target=str(payload.get("id")))
+        return JSONResponse({"status": "ok", "menu": payload})
 
     @router.put("/api/servers/{server_id}/rolemenus/{menu_id}")
     async def api_update_rolemenu(
@@ -354,6 +357,13 @@ def create_router(ctx: WebUIContext) -> APIRouter:
             session.username,
             session.user_id,
         )
+        await audit.record(
+            server_id,
+            session,
+            "rolemenu.update",
+            target=menu_id,
+            changes=sorted(body.model_dump(exclude_unset=True)),
+        )
         return JSONResponse({"status": "ok", "menu": _menu_to_dict(menu) if menu else None})
 
     @router.delete("/api/servers/{server_id}/rolemenus/{menu_id}")
@@ -373,6 +383,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
             session.username,
             session.user_id,
         )
+        await audit.record(server_id, session, "rolemenu.delete", target=menu_id)
         return JSONResponse({"status": "ok"})
 
     return router

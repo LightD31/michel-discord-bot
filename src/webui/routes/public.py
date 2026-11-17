@@ -36,6 +36,7 @@ from features.xp.cache import TTLCache
 from src.core import logging as logutil
 from src.core.config import config_store
 from src.core.errors import DatabaseError
+from src.webui import audit
 from src.webui.context import WebUIContext
 from src.webui.public_links import (
     enabled_public_dashboards,
@@ -165,6 +166,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
                 session.username,
                 session.user_id,
             )
+            await audit.record(server_id, session, "public_dashboard.create")
         return _link_payload(server_id, token)
 
     @router.post("/api/servers/{server_id}/public-dashboard/rotate")
@@ -178,6 +180,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
             session.username,
             session.user_id,
         )
+        await audit.record(server_id, session, "public_dashboard.rotate")
         return _link_payload(server_id, token)
 
     # --- Public pages ------------------------------------------------------

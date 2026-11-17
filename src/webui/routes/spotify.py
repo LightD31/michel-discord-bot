@@ -38,6 +38,7 @@ from src.integrations.spotify import (
     reset_client,
     run_spotify,
 )
+from src.webui import audit
 from src.webui.context import WebUIContext
 from src.webui.ratelimit import request_is_https
 
@@ -149,7 +150,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
         error: str = "",
     ):
         """Receive Spotify's redirect and exchange the code for a token."""
-        ctx.require_developer(request)
+        session = ctx.require_developer(request)
 
         if error:
             # Spotify's error codes are short snake_case words (access_denied);
@@ -180,9 +181,12 @@ def create_router(ctx: WebUIContext) -> APIRouter:
         reset_client()
         account = await fetch_account_summary()
         logger.info(
-            "Spotify re-authorized via WebUI (account=%s)",
+            "Spotify re-authorized via WebUI (account=%s, by %s/%s)",
             account.get("id") if account else "?",
+            session.username,
+            session.user_id,
         )
+        await audit.record(None, session, "spotify.authorize")
 
         response = _result_page(
             ok=True,

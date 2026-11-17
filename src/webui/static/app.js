@@ -2731,6 +2731,11 @@
         // Server page: the messages the bot keeps up to date there.
         if (state.currentPage === 'server' && state.currentServerId) {
             loadBotMessages(state.currentServerId);
+            loadAudit(state.currentServerId);
+        }
+        // Global settings: the bot's own audit log (developers only).
+        if (state.currentPage === 'global') {
+            loadAudit(null);
         }
         // Reaction-roles builder: load existing menus when on its module page.
         if (state.currentPage === 'module' && state.currentModule === 'moduleReactionRoles' && state.currentServerId) {
@@ -3349,6 +3354,7 @@
                     </div>
                 `;
             }).join('')}
+            ${renderAuditCard()}
         `;
     }
 
@@ -3822,7 +3828,103 @@
                 </p>
                 <div id="bot-messages-list"><div class="loading"><div class="spinner"></div></div></div>
             </div>
+
+            ${renderAuditCard()}
         `;
+    }
+
+    // ── Audit log (F09) ───────────────────────────────
+    // Who changed what from the dashboard: field names only, never a value.
+    const AUDIT_ACTIONS = {
+        'module.save': 'a enregistré le module',
+        'module.toggle': 'a basculé le module',
+        'embeds.publish': 'a publié les embeds',
+        'bot_message.republish': 'a republié le message',
+        'public_dashboard.create': 'a créé le lien des pages publiques',
+        'public_dashboard.rotate': 'a renouvelé le lien des pages publiques',
+        'rolemenu.create': 'a créé le menu de rôles',
+        'rolemenu.update': 'a modifié le menu de rôles',
+        'rolemenu.delete': 'a supprimé le menu de rôles',
+        'infraction.revoke': 'a révoqué le cas',
+        'template.test': 's\'est envoyé un test du modèle',
+        'global_config.save': 'a enregistré la section',
+        'config.cleanup': 'a nettoyé la configuration',
+        'extensions.reload_all': 'a rechargé toutes les extensions',
+        'extensions.reload': 'a rechargé l\'extension',
+        'extensions.toggle': 'a basculé l\'extension',
+        'short_url.create': 'a créé le lien court',
+        'short_url.update': 'a modifié le lien court',
+        'short_url.delete': 'a supprimé le lien court',
+        'spotify.authorize': 'a reconnecté le compte Spotify',
+    };
+
+    function renderAuditCard() {
+        return `
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title">Journal des modifications</div>
+                </div>
+                <p style="color:var(--text-muted); margin:0 0 12px;">
+                    Ce qui a été fait depuis le dashboard, par qui et quand (un an d'historique).
+                    Seuls les noms des champs modifiés sont notés, jamais leurs valeurs.
+                </p>
+                <div id="audit-list"><div class="loading"><div class="spinner"></div></div></div>
+            </div>`;
+    }
+
+    function auditDetails(details) {
+        const parts = [];
+        if ('enabled' in details) parts.push(details.enabled ? 'activé' : 'désactivé');
+        if ('count' in details) parts.push(`${details.count} embed(s)`);
+        if ('reloaded' in details) parts.push(`${details.reloaded} rechargée(s), ${details.failed} en échec`);
+        if (details.error) parts.push('avec une erreur');
+        return parts.join(', ');
+    }
+
+    function auditEntryHtml(e) {
+        const when = e.at ? new Date(e.at).toLocaleString('fr-FR') : '';
+        const what = AUDIT_ACTIONS[e.action] || e.action;
+        const label = e.target ? (state.moduleSchemas[e.target]?.label || e.target) : '';
+        const extra = auditDetails(e.details || {});
+        const changes = (e.changes || []).length
+            ? `<div style="color:var(--text-muted); font-size:0.85em;">Champs : ${e.changes.map(c => `<code>${escapeHtml(c)}</code>`).join(', ')}</div>`
+            : '';
+        return `
+            <div class="audit-entry" style="padding:6px 0; border-bottom:1px solid var(--border);">
+                <div><span style="color:var(--text-muted)">${escapeHtml(when)}</span> ·
+                    <strong>${escapeHtml(e.username || e.user_id || '?')}</strong>
+                    ${escapeHtml(what)} ${label ? `<strong>${escapeHtml(label)}</strong>` : ''}
+                    ${extra ? `(${escapeHtml(extra)})` : ''}</div>
+                ${changes}
+            </div>`;
+    }
+
+    async function loadAudit(serverId, before) {
+        const container = document.getElementById('audit-list');
+        if (!container) return;
+        const base = serverId ? `/api/servers/${encodeURIComponent(serverId)}/audit` : '/api/audit';
+        const url = before ? `${base}?before=${encodeURIComponent(before)}` : base;
+        let entries = [];
+        try {
+            const data = await api(url);
+            entries = data?.entries || [];
+        } catch (e) {
+            container.innerHTML = `<p style="color:var(--text-muted)">Journal indisponible.</p>`;
+            return;
+        }
+        container.querySelector('.audit-more')?.remove();
+        if (!before) container.innerHTML = '';
+        if (!before && entries.length === 0) {
+            container.innerHTML = `<p style="color:var(--text-muted)">Aucune modification enregistrée.</p>`;
+            return;
+        }
+        container.insertAdjacentHTML('beforeend', entries.map(auditEntryHtml).join(''));
+        if (entries.length >= 100) {
+            const last = entries[entries.length - 1].at;
+            container.insertAdjacentHTML('beforeend', `
+                <button type="button" class="btn btn-ghost btn-sm audit-more" style="margin-top:8px;"
+                        data-click="loadAudit" data-click-args="${actionArgs(serverId || null, last)}">Plus ancien…</button>`);
+        }
     }
 
     async function loadBotMessages(serverId) {
@@ -5702,7 +5804,7 @@
         onLogLevelChange, onLogSearchInput, onLogVerboseChange, onMemberPickerChange,
         onMemberPickerSearch, onRssModeChange, openModelCatalog, openRoleMenuBuilder,
         publishEmbeds, refreshLogs, reloadAllExtensions, removeNameMapEntry,
-        removeSpotifyMapEntry, republishBotMessage, resetFieldToDefault, revokeInfraction,
+        loadAudit, removeSpotifyMapEntry, republishBotMessage, resetFieldToDefault, revokeInfraction,
         rotatePublicLink, saveModal, saveModuleForm, saveRoleMenu, saveShortLink,
         scrollToBottom, searchShortLinks, setXpStatsRange, showPublicLink, startEditShortLink,
         startSpotifyAuth, toggleChannelPickerMode, toggleExtension, toggleMemberPickerMode,

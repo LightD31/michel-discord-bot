@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field
 from src.core import logging as logutil
 from src.core.message_refs import MessageRef, MessageRefRepository
 from src.discord_ext.messages import republish_persistent_message
+from src.webui import audit
 from src.webui.context import WebUIContext
 
 logger = logutil.init_logger("webui.routes.bot_messages")
@@ -69,6 +70,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
             session.username,
             session.user_id,
         )
+        await audit.record(server_id, session, "bot_message.republish", target=body.slot)
         return JSONResponse({"republished": True})
 
     return router
