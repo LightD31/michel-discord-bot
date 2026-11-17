@@ -155,22 +155,46 @@ def test_autocomplete_survives_spotify_errors(spotify_common, monkeypatch):
     assert choices == [{"name": UNAVAILABLE, "value": NO_TRACK}]
 
 
-def test_no_extension_calls_the_blocking_client():
-    """Extensions run on the event loop: they go through spotify_api, never sp."""
-    import ast
-    from pathlib import Path
+BLOCKING_CLIENT = "src.integrations.spotify.sp"
 
-    offenders = []
-    for path in Path("extensions").rglob("*.py"):
-        tree = ast.parse(path.read_text(encoding="utf-8"))
-        for node in ast.walk(tree):
-            if isinstance(node, ast.ImportFrom) and node.module == "src.integrations.spotify":
-                offenders += [f"{path}: imports sp" for a in node.names if a.name == "sp"]
-            if (
-                isinstance(node, ast.Call)
-                and isinstance(node.func, ast.Attribute)
-                and isinstance(node.func.value, ast.Name)
-                and node.func.value.id == "sp"
-            ):
-                offenders.append(f"{path}:{node.lineno} sp.{node.func.attr}()")
+
+def blocking_client_uses(source: str) -> list[int]:
+    """Lines that import or use the synchronous ``sp``, under any alias."""
+    import ast
+
+    from source_scan import Imports
+
+    tree = ast.parse(source)
+    imports = Imports(tree)
+    lines = [line for line, module in imports.modules if module == BLOCKING_CLIENT]
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Attribute) and (imports.resolve(node) or "").startswith(
+            BLOCKING_CLIENT + "."
+        ):
+            lines.append(node.lineno)
+    return sorted(set(lines))
+
+
+def test_nothing_on_an_event_loop_calls_the_blocking_client():
+    """Extensions, features and the dashboard go through spotify_api, never sp."""
+    from source_scan import python_files, rel
+
+    offenders = [
+        f"{rel(path)}:{line}"
+        for path in python_files("extensions", "features", "src/webui", "src/discord_ext")
+        for line in blocking_client_uses(path.read_text(encoding="utf-8"))
+    ]
     assert offenders == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "from src.integrations.spotify import sp",
+        "from src.integrations.spotify import sp as client",
+        "import src.integrations.spotify as s\ns.sp.track('x')",
+        "from src.integrations import spotify\nspotify.sp.track('x')",
+    ],
+)
+def test_the_scan_sees_the_client_under_any_name(source):
+    assert blocking_client_uses(source)

@@ -73,7 +73,18 @@ def test_the_system_channel_is_used_when_none_is_configured(welcome):
 
 def test_no_channel_at_all_is_skipped_without_error(welcome):
     module, _ = welcome
-    run(module, "on_member_add", event({}))  # the configured channel isn't cached
+    looked_up = []
+    elsewhere = Channel()
+
+    def get_channel(channel_id):
+        looked_up.append(str(channel_id))
+        return None  # the configured channel isn't cached
+
+    ev = event({"8": elsewhere})
+    ev.guild.get_channel = get_channel
+    run(module, "on_member_add", ev)
+    assert looked_up == ["7"]
+    assert elsewhere.sent == []  # no other channel picked instead
 
 
 def avatar_png(color=(200, 30, 30)) -> bytes:

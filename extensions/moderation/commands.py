@@ -27,7 +27,8 @@ from features.moderation import (
     parse_duration,
 )
 from src.core import clock
-from src.discord_ext.embeds import Colors, format_discord_timestamp
+from src.core.text import format_discord_timestamp
+from src.discord_ext.embeds import Colors
 from src.discord_ext.errors import failure_reply
 from src.discord_ext.messages import require_guild, send_error, send_success
 from src.discord_ext.scopes import guild_scopes

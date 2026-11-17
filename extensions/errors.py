@@ -40,7 +40,8 @@ class ErrorsExtension(Extension):
 
     @listen(CommandError, disable_default_listeners=True)
     async def on_command_error(self, event: CommandError) -> None:
-        await self._answer(event.ctx, event.error, f"/{event.ctx.invoke_target}")
+        target = getattr(event.ctx, "invoke_target", None) or "?"
+        await self._answer(event.ctx, event.error, f"/{target}")
 
     @listen(ComponentError, disable_default_listeners=True)
     async def on_component_error(self, event: ComponentError) -> None:

@@ -76,6 +76,19 @@ async def require_guild(ctx: SlashContext) -> bool:
     return True
 
 
+def guild_id_of(ctx: Any) -> str:
+    """The guild a guild command ran in, as a string.
+
+    For commands whose scopes keep them out of DMs, where ``ctx.guild_id`` is
+    typed ``Snowflake | None`` but never ``None``: one that is anyway is a bug,
+    raised (and reported with a reference by the errors extension).
+    """
+    guild_id = getattr(ctx, "guild_id", None)
+    if guild_id is None:
+        raise RuntimeError("a guild command ran outside a guild")
+    return str(guild_id)
+
+
 # ---------------------------------------------------------------------------
 # Safe user fetch (cache → API fallback)
 # ---------------------------------------------------------------------------
@@ -507,6 +520,7 @@ class GuildMessages:
 
 
 __all__ = [
+    "guild_id_of",
     "GuildMessages",
     "copy_embed",
     "edit_message_if_changed",

@@ -10,7 +10,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from features.vlrgg.matching import match_id_of, same_team_name, team_side
-from src.discord_ext.embeds import format_discord_timestamp
+from src.core.text import format_discord_timestamp
 
 
 def parse_vlrgg_timestamp(timestamp_str: str) -> datetime | None:

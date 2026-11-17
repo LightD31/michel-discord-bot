@@ -1,7 +1,17 @@
 """Extension YouTube — notifications automatiques de nouvelles vidéos."""
 
-from interactions import BaseChannel, Client, Extension, IntervalTrigger, Task, listen
-from pydantic import field_validator
+from typing import Any, cast
+
+from interactions import (
+    BaseChannel,
+    Client,
+    Extension,
+    IntervalTrigger,
+    MessageableMixin,
+    Task,
+    listen,
+)
+from pydantic import BaseModel, ConfigDict, field_validator
 
 from features.links import shorten_text
 from features.youtube import (
@@ -20,6 +30,20 @@ from src.discord_ext.mentions import everyone_if_written
 from src.webui.schemas import SchemaBase, check_template, enabled_field, register_module, ui
 
 
+class YoutubeChannelEntry(BaseModel):
+    """One followed channel of the ``youtubechannelmap`` widget (keyed by handle).
+
+    The defaults are those ``features.youtube`` applies to a missing toggle.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    shorts: bool = False
+    live: bool = False
+    vod: bool = True
+    label: str | None = None
+
+
 @register_module("moduleYoutube")
 class YoutubeConfig(SchemaBase):
     __label__ = "YouTube"
@@ -34,7 +58,7 @@ class YoutubeConfig(SchemaBase):
         required=True,
         description="Salon où sont publiées les notifications de nouvelles vidéos.",
     )
-    youtubeChannelList: dict[str, dict] = ui(
+    youtubeChannelList: dict[str, YoutubeChannelEntry] = ui(
         "Chaînes YouTube suivies",
         "youtubechannelmap",
         required=True,
@@ -93,7 +117,7 @@ class YoutubeExtension(Extension):
 
     def __init__(self, bot: Client):
         self.bot: Client = bot
-        self.playlist_cache = {}  # Add a cache for playlists
+        self.playlist_cache: dict[str, Any] = {}  # Add a cache for playlists
 
     @listen()
     async def on_startup(self):
@@ -128,7 +152,7 @@ class YoutubeExtension(Extension):
         channel_id = srv_config.get("ChannelId")
         if not channel_id:
             return
-        channel: BaseChannel = await self.bot.fetch_channel(channel_id)
+        channel = cast(MessageableMixin, await self.bot.fetch_channel(channel_id))
         is_initial_sync = server not in youtube_data
         if is_initial_sync:
             logger.warning(

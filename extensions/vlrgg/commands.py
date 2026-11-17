@@ -32,7 +32,7 @@ from features.vlrgg import (
     search_teams,
     upcoming_from_schedule,
 )
-from src.discord_ext.embeds import format_discord_timestamp
+from src.core.text import format_discord_timestamp
 from src.discord_ext.links import shorten_embed
 from src.discord_ext.messages import send_error
 from src.discord_ext.scopes import guild_scopes

@@ -51,7 +51,14 @@ RUN useradd --system --create-home --uid 1000 michel
 WORKDIR /app
 
 COPY --from=builder /opt/venv /opt/venv
-COPY --chown=michel:michel ./ /app/
+# The code belongs to root and is read-only for the bot: a compromised process
+# can't rewrite what runs at the next restart. What the bot writes lives in the
+# data/ and config/ volumes (created here, owned by the bot, for a run without
+# them). Bytecode is compiled now, since the bot can't write it later.
+COPY ./ /app/
+RUN python -m compileall -q -j 0 /app/main.py /app/src /app/features /app/extensions /app/scripts \
+    && mkdir -p /app/data /app/config \
+    && chown michel:michel /app/data /app/config
 
 USER michel
 

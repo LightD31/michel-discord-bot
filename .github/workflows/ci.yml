@@ -4,6 +4,8 @@ on:
   pull_request:
   push:
     branches: [master, main]
+    # A version tag runs every check too: its image is published only then.
+    tags: ["v*"]
   # Weekly run so pip-audit keeps catching new CVEs against the lockfile even
   # when nothing is pushed (scheduled runs execute on the default branch).
   # Only the audit job runs on it: everything else is pinned and can't change.
@@ -26,10 +28,41 @@ env:
   # Every uv command asserts uv.lock matches pyproject.toml instead of quietly
   # re-locking, so a stale lock fails whichever job runs first.
   UV_LOCKED: "1"
-  # Keep in step with the uv stage in the Dockerfile.
-  UV_TOOL_VERSION: "0.13.6"
+  # Keep in step with the uv stage in the Dockerfile (the pins job checks).
+  UV_TOOL_VERSION: "0.13.7"
 
 jobs:
+  pins:
+    # Versions written in two places must agree, and the test job's MongoDB
+    # comes from a Dockerfile that Dependabot keeps current (tag and digest).
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      mongo-image: ${{ steps.mongo.outputs.image }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: uv version in CI matches the Dockerfile
+        run: |
+          image_uv=$(sed -nE 's|^FROM ghcr\.io/astral-sh/uv:([0-9.]+)@.*|\1|p' Dockerfile)
+          if [ "$image_uv" != "$UV_TOOL_VERSION" ]; then
+            echo "::error::uv $image_uv in the Dockerfile, $UV_TOOL_VERSION in ci.yml (UV_TOOL_VERSION): set both to the same release"
+            exit 1
+          fi
+
+      - name: MongoDB image of the test job
+        id: mongo
+        run: |
+          image=$(sed -nE 's|^FROM (mongo:[^ ]+@sha256:[0-9a-f]{64})$|\1|p' .github/mongo-test/Dockerfile)
+          if [ -z "$image" ]; then
+            echo "::error::.github/mongo-test/Dockerfile must have one FROM mongo:<tag>@sha256:<digest> line"
+            exit 1
+          fi
+          echo "image=$image" >> "$GITHUB_OUTPUT"
+
   lint:
     if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
@@ -71,20 +104,22 @@ jobs:
       - name: Install locked runtime deps + dev tools
         run: uv sync
 
-      - name: Mypy (src/core strict; rest lenient)
-        # features/ is the framework-free layer the architecture sets aside for
-        # testable domain logic — exactly where annotations pay off most.
-        run: uv run mypy src features
+      - name: Mypy (src/core strict; bodies checked in src and features)
+        # extensions/ too, except the modules pyproject.toml still lists as
+        # skipped (a list that only shrinks).
+        run: uv run mypy src features extensions
 
   test:
     if: github.event_name != 'schedule'
+    needs: pins
     runs-on: ubuntu-latest
     timeout-minutes: 15
     # Repository tests marked `mongo` run against this server (tests/conftest.py);
-    # every other job skips them.
+    # every other job skips them. The image is pinned by digest in
+    # .github/mongo-test/Dockerfile.
     services:
       mongo:
-        image: mongo:8
+        image: ${{ needs.pins.outputs.mongo-image }}
         env:
           # The image disables glibc's rseq so TCMalloc can register its own, and
           # MongoDB 8 refuses to start that way on Linux 6.19+ (SERVER-121912),
@@ -114,12 +149,12 @@ jobs:
         run: uv sync
 
       - name: Pytest with coverage
-        # Measures src, features and extensions ([tool.coverage.run] in pyproject.toml).
+        # Measures src, features, extensions and scripts ([tool.coverage.run] in pyproject.toml).
         run: uv run pytest --cov --cov-report=term --cov-report=xml
 
       - name: Coverage floor of src and features
         # The total floor counts the extensions too; this keeps the
-        # unit-testable layers at their own floor (78%).
+        # unit-testable layers at their own floor (81%).
         run: uv run coverage report --include='src/*,features/*' --fail-under=81 --format=total
 
       - name: Coverage summary
@@ -251,6 +286,12 @@ jobs:
             exit 1
           fi
 
+      - name: Check config.example.json validates against the schemas
+        # The script the runbook gives operators (scripts/check_config.py): the
+        # example must pass it, so a schema default that fails its own field
+        # shows up here.
+        run: uv run --no-dev python scripts/check_config.py config.example.json
+
   audit:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -324,3 +365,39 @@ jobs:
           # Covered by the lint and secrets jobs.
           SKIP: ruff-check,ruff-format,detect-secrets
         run: uv run --only-dev pre-commit run --all-files --show-diff-on-failure
+
+  image:
+    # Pull requests: the image is built and scanned, nothing is pushed, and the
+    # token can only read the repository.
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+    uses: ./.github/workflows/docker.yml
+    with:
+      publish: false
+
+  publish-image:
+    # A push to master or a version tag: published once every check has passed
+    # (the compose file deploys `:latest`, set on version tags).
+    if: github.event_name == 'push'
+    needs:
+      - pins
+      - lint
+      - typecheck
+      - test
+      - spa-smoke
+      - test-py312
+      - lockfile
+      - config-example
+      - audit
+      - secrets
+      - hygiene
+    permissions:
+      contents: read
+      packages: write
+      # Required for build-push-action to attach provenance + SBOM attestations.
+      id-token: write
+      attestations: write
+    uses: ./.github/workflows/docker.yml
+    with:
+      publish: true

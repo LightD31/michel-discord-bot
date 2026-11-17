@@ -59,8 +59,15 @@ def test_check_untrusted_url_refuses(url):
         check_untrusted_url(url)
 
 
-def test_check_untrusted_url_leaves_names_to_the_resolver():
-    check_untrusted_url("https://example.com/feed.xml")  # no exception, no DNS here
+def test_check_untrusted_url_leaves_names_to_the_resolver(monkeypatch):
+    import socket
+
+    def no_dns(*args, **kwargs):
+        raise AssertionError("check_untrusted_url must not resolve names")
+
+    monkeypatch.setattr(socket, "getaddrinfo", no_dns)
+    assert check_untrusted_url("https://example.com/feed.xml") is None
+    assert check_untrusted_url("http://93.184.215.14/") is None  # a public IP literal
 
 
 def test_names_resolving_to_loopback_are_refused():

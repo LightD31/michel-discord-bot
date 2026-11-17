@@ -15,6 +15,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from source_scan import Imports, parse, python_files, rel
 
 from src.webui.context import WebUIContext, declared_modules, extension_path
 
@@ -255,38 +256,72 @@ def test_extension_helpers_fall_back_to_the_class():
 SNAPSHOT_READS = {"get", "items", "enabled"}
 
 
-def _import_time_reads(path: Path) -> list[str]:
+def _is_module_config(call: ast.AST, imports: Imports) -> bool:
+    return (
+        isinstance(call, ast.Call)
+        and (imports.resolve(call.func) or "").rpartition(".")[2] == "ModuleConfig"
+    )
+
+
+def _accessor_names() -> set[str]:
+    """Every name an extension binds a ``ModuleConfig`` to (``MODULE``, ``SANTA``…)."""
+    names = set()
+    for path in python_files("extensions"):
+        tree, imports, _ = parse(path)
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Assign) and _is_module_config(node.value, imports):
+                names |= {t.id for t in node.targets if isinstance(t, ast.Name)}
+    return names
+
+
+def _receiver(node: ast.expr) -> str | None:
+    """``MODULE`` in ``MODULE.get``, and in ``_common.MODULE.get`` too."""
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        return node.attr
+    return None
+
+
+def _import_time_reads(path: Path, accessors: set[str] | None = None) -> list[str]:
     """``<ModuleConfig>.get/items/enabled(...)`` calls run when *path* is imported.
 
-    Anything inside a function runs later and reads the live config;
+    Anything inside a function body runs later and reads the live config, but
+    its decorators and default values run at import (T02).
     ``guild_ids()`` is allowed at import (command scopes, per-guild state),
     since a change of the enabled guilds reloads the extension anyway.
     """
-    tree = ast.parse(path.read_text(encoding="utf-8"))
-    accessors = {
+    tree, imports, _ = parse(path)
+    accessors = set(accessors or ()) | {
         target.id
         for node in ast.walk(tree)
-        if isinstance(node, ast.Assign)
-        and isinstance(node.value, ast.Call)
-        and isinstance(node.value.func, ast.Name)
-        and node.value.func.id == "ModuleConfig"
+        if isinstance(node, ast.Assign) and _is_module_config(node.value, imports)
         for target in node.targets
         if isinstance(target, ast.Name)
     }
     found: list[str] = []
 
     def visit(node: ast.AST) -> None:
-        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda):
-            return  # runs later, against the live config
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
+            # The body runs later; what's evaluated to define the function doesn't.
+            for part in [*node.decorator_list, *node.args.defaults, *node.args.kw_defaults]:
+                if part is not None:
+                    visit(part)
+            return
+        if isinstance(node, ast.Lambda):
+            for part in [*node.args.defaults, *node.args.kw_defaults]:
+                if part is not None:
+                    visit(part)
+            return
         if (
             isinstance(node, ast.Call)
             and isinstance(node.func, ast.Attribute)
             and node.func.attr in SNAPSHOT_READS
-            and isinstance(node.func.value, ast.Name)
-            and (node.func.value.id in accessors or node.func.value.id.isupper())
         ):
-            where = path.relative_to(ROOT) if path.is_relative_to(ROOT) else path.name
-            found.append(f"{where}:{node.lineno}: {ast.unparse(node)}")
+            owner = _receiver(node.func.value)
+            if owner is not None and (owner in accessors or owner.isupper()):
+                where = path.relative_to(ROOT) if path.is_relative_to(ROOT) else path.name
+                found.append(f"{where}:{node.lineno}: {ast.unparse(node)}")
         for child in ast.iter_child_nodes(node):
             visit(child)
 
@@ -299,12 +334,13 @@ def test_extensions_read_their_settings_live_unless_they_reload_on_save(probe):
     # dashboard save, now that a save no longer reloads it: either read them
     # through ModuleConfig at use time, or declare RELOAD_ON_SAVE.
     snapshotting = _reloads_on_save(probe)
+    accessors = _accessor_names()
     offenders = [
         line
         for name in _declared(probe)
         if name not in snapshotting
         for path in _source_files(name)
-        for line in _import_time_reads(path)
+        for line in _import_time_reads(path, accessors)
     ]
     assert not offenders, "\n".join(offenders)
 
@@ -312,17 +348,41 @@ def test_extensions_read_their_settings_live_unless_they_reload_on_save(probe):
 def test_import_time_reads_are_found(tmp_path):
     source = tmp_path / "ext.py"
     source.write_text(
-        "XP = ModuleConfig('moduleXp')\n"
+        "from src.core.config import ModuleConfig as MC\n"
+        "from . import _common\n"
+        "XP = MC('moduleXp')\n"
         "SETTINGS = XP.get('1')\n"
         "SCOPES = guild_scopes(XP.guild_ids())\n"
+        "OTHER = _common.MODULE.get('1')\n"
         "class Ext:\n"
         "    LIMIT = XP.items()\n"
-        "    def run(self):\n"
-        "        return XP.get('1')\n",
+        "    @Task.create(IntervalTrigger(minutes=XP.get('1')['every']))\n"
+        "    def run(self, limit=XP.enabled('1')):\n"
+        "        return XP.get('1')\n"
+        "    later = lambda self: XP.get('1')\n",
         encoding="utf-8",
     )
     found = _import_time_reads(source.resolve())
-    assert [line.rsplit(": ", 1)[1] for line in found] == ["XP.get('1')", "XP.items()"]
+    assert [line.rsplit(": ", 1)[1] for line in found] == [
+        "XP.get('1')",
+        "_common.MODULE.get('1')",
+        "XP.items()",
+        "XP.get('1')",
+        "XP.enabled('1')",
+    ]
+
+
+def test_module_accessors_name_their_module_plainly():
+    """``ModuleConfig(f"module{x}")`` would hide the module from the declaration check."""
+    offenders = []
+    for path in python_files("extensions", "src", "features"):
+        tree, imports, _ = parse(path)
+        for node in ast.walk(tree):
+            if _is_module_config(node, imports) and not (
+                node.args and isinstance(node.args[0], ast.Constant | ast.Name | ast.Attribute)
+            ):
+                offenders.append(f"{rel(path)}:{node.lineno}: {ast.unparse(node)}")
+    assert not offenders, "\n".join(offenders)
 
 
 # CodeQL's clear-text logging query treats a value as sensitive when the name

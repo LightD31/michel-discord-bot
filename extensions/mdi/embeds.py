@@ -12,7 +12,7 @@ from typing import Any
 from interactions import Embed, Timestamp
 
 from features.mdi import GameSnapshot, MatchSnapshot, TeamRef
-from src.discord_ext.embeds import format_discord_timestamp
+from src.core.text import format_discord_timestamp
 
 from ._common import (
     EMBED_COLOR_DEFAULT,

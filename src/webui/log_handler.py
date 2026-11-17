@@ -10,6 +10,8 @@ from collections import deque
 from dataclasses import dataclass
 from typing import Optional
 
+from src.core import logging as logutil
+
 
 @dataclass
 class LogEntry:
@@ -186,17 +188,11 @@ class WebUILogHandler(logging.Handler):
 
 
 def install_log_handler(max_entries: int = 2000) -> WebUILogHandler:
-    """
-    Install the WebUI log handler on every logger configured by logutil.
+    """Install the WebUI log handler on every logger configured by logutil.
 
-    Since logutil loggers have propagate=False, the handler must be attached to each
-    one directly. New loggers created later via logutil.init_logger/get_logger will
-    auto-attach because _configure_logger calls _attach_webui_handler.
+    Their loggers don't propagate, so the handler is attached to each one,
+    those created later included (``src.core.logging.add_shared_handler``).
     """
     handler = WebUILogHandler(max_entries=max_entries)
-
-    for logger_ref in logging.Logger.manager.loggerDict.values():
-        if isinstance(logger_ref, logging.Logger) and handler not in logger_ref.handlers:
-            logger_ref.addHandler(handler)
-
+    logutil.add_shared_handler(handler)
     return handler

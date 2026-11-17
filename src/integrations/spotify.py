@@ -89,6 +89,16 @@ class _LazySpotifyClient:
 
 sp: _LazySpotifyClient = _LazySpotifyClient()
 
+
+def reset_client() -> None:
+    """Rebuild the client on its next call, from the token just saved (after a re-auth).
+
+    Only drops a reference under a lock, so callers on an event loop can use it
+    without importing the blocking ``sp``.
+    """
+    sp.reset()
+
+
 # One worker: Spotify calls stay in order and never race each other on the
 # token refresh or its cache file (spotipy isn't thread-safe there), and none
 # of them runs on an event loop. Loop-agnostic, so the bot loop and the Web

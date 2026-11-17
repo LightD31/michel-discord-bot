@@ -9,21 +9,45 @@ can't check. Their modules carry ``pytestmark = pytest.mark.mongo``. Set
     MONGO_TEST_URL=mongodb://localhost:27017 uv run pytest -m mongo
 
 CI's ``test`` job runs them against a ``mongo`` service container.
+
+Every test runs away from the developer's own setup (T03): the config store
+reads a ``config.json`` in a temporary directory that doesn't exist (an empty
+config, as in CI) instead of ``config/config.json``, and MongoDB has no URL,
+so a test that forgets ``store_config`` or ``mongo`` can neither read the real
+settings nor reach the real database.
 """
 
 from __future__ import annotations
 
 import os
 import random
+import tempfile
 import uuid
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 
 import pytest
 
+from src.core import config as core_config
 from src.core import db
 
 MONGO_TEST_URL = os.environ.get("MONGO_TEST_URL", "")
+
+ISOLATED_CONFIG_PATH = os.path.join(tempfile.mkdtemp(prefix="michel-tests-"), "config.json")
+core_config.CONFIG_PATH = ISOLATED_CONFIG_PATH
+core_config.config_store._data = None
+db.mongo_manager._url = ""  # not None: None would read mongodb.url from the config
+
+
+@pytest.fixture(autouse=True)
+def _isolated_from_the_real_setup(monkeypatch):
+    """Put the isolation back for each test, whatever the previous one left."""
+    monkeypatch.setattr(core_config, "CONFIG_PATH", ISOLATED_CONFIG_PATH)
+    monkeypatch.setattr(db.mongo_manager, "_url", "")
+    yield
+    if os.path.exists(ISOLATED_CONFIG_PATH):  # a test saved without its own path
+        os.remove(ISOLATED_CONFIG_PATH)
+        core_config.config_store._data = None
 
 
 @dataclass

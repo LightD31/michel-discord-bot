@@ -1,18 +1,22 @@
-data
-del
-logs
-**/__pycache__/**
-.vscode
-discordbot
-.dockerignore
-config
+# An allowlist: the image gets the code and the lockfile, nothing else. A file
+# that isn't named here (a .env, coverage output, tool caches, a local
+# config.json or data/) never reaches the build context.
+*
+!main.py
+!pyproject.toml
+!uv.lock
+!LICENSE
+!src/
+!features/
+!extensions/
+# restore_backup.py and check_config.py run in the container (docs/RUNBOOK.md).
+!scripts/
 
-# Never ship repository history or development-only trees in the runtime image.
-.git
-.github
-.venv
-.venv-*
-tests
-
-# Tool caches (CI writes some under the workspace) never belong in the image.
-.cache
+# Ignored again inside the allowed trees.
+**/__pycache__
+**/*.py[cod]
+**/.mypy_cache
+**/.ruff_cache
+**/.pytest_cache
+# Work-in-progress extensions (main.py skips them, ruff and mypy too).
+extensions/_*

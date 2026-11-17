@@ -74,10 +74,15 @@ def test_an_unexpected_command_error_is_logged_with_the_reference_shown(caplog):
     assert "/bilan" in record.getMessage() and record.exc_info
 
 
-def test_an_expired_interaction_does_not_raise():
+def test_an_expired_interaction_does_not_raise(caplog):
     ext = object.__new__(ErrorsExtension)
-    event = SimpleNamespace(ctx=Ctx(fail=True), error=bare(errors.CommandCheckFailure))
-    asyncio.run(ErrorsExtension.on_component_error.callback(ext, event))  # no exception
+    ctx = Ctx(fail=True)
+    event = SimpleNamespace(ctx=ctx, error=bare(errors.CommandCheckFailure))
+    with caplog.at_level(logging.DEBUG, logger="extensions.errors"):
+        asyncio.run(ErrorsExtension.on_component_error.callback(ext, event))
+    assert ctx.sent == []
+    (record,) = [r for r in caplog.records if "Could not tell the member" in r.getMessage()]
+    assert record.levelno == logging.DEBUG and "Unknown interaction" in record.getMessage()
 
 
 # ── Graceful shutdown ───────────────────────────────────────────────────

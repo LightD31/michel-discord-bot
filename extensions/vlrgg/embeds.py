@@ -15,7 +15,8 @@ from features.vlrgg import (
     top_players,
     veto_line,
 )
-from src.discord_ext.embeds import SPACER_FIELD, Colors, format_discord_timestamp
+from src.core.text import format_discord_timestamp
+from src.discord_ext.embeds import SPACER_FIELD, Colors
 
 from ._common import (
     DEFAULT_EMBED_COLOR,

@@ -23,7 +23,7 @@ Recognised widget types (``type=`` on ``ui()``):
     discord2name, models, text (multi-line string), aimodel (configured AI model key).
 """
 
-from typing import Any, ClassVar
+from typing import Any, ClassVar, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
@@ -507,12 +507,26 @@ class NotionSection(SchemaBase):
     )
 
 
+class AiModelEntry(BaseModel):
+    """One entry of the ``models`` widget (``AI.models``), as the SPA writes it.
+
+    ``api`` names one of ``src.integrations.llm.SUPPORTED_APIS``.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    provider: str | None = None
+    api: Literal["openrouter", "nanogpt"] = "openrouter"
+    model_id: str = Field(min_length=1)
+    display_name: str | None = None
+
+
 @register_section("AI")
 class AISection(SchemaBase):
     __label__ = "Intelligence Artificielle"
     __icon__ = "🧠"
 
-    models: list[Any] = ui(
+    models: list[AiModelEntry] = ui(
         "Modèles IA",
         "models",
         description="Modèles utilisés par /ask et les réponses aux mentions. Chaque modèle a une "

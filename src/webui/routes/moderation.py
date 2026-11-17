@@ -12,6 +12,7 @@ from fastapi.responses import JSONResponse
 
 from features.moderation import Infraction, InfractionType, ModerationRepository
 from src.core import logging as logutil
+from src.core.errors import DatabaseError
 from src.core.permissions import ADMINISTRATOR, MODERATE_MEMBERS, has_any
 from src.discord_ext.channels import fetch_guild_channel
 from src.discord_ext.mentions import NO_PINGS
@@ -19,6 +20,8 @@ from src.webui.auth import Session
 from src.webui.context import WebUIContext
 
 logger = logutil.init_logger("webui.routes.moderation")
+
+DB_UNAVAILABLE = "Base de données injoignable, réessaie dans un instant."
 
 
 def _infraction_to_dict(inf: Infraction) -> dict:
@@ -87,6 +90,9 @@ def create_router(ctx: WebUIContext) -> APIRouter:
                 active=active_filter,
                 limit=500,
             )
+        except DatabaseError as e:
+            logger.warning("List infractions failed for %s: %s", server_id, e)
+            raise HTTPException(status_code=503, detail=DB_UNAVAILABLE) from e
         except Exception as e:
             logger.exception("List infractions failed for %s: %s", server_id, e)
             raise HTTPException(
@@ -112,6 +118,9 @@ def create_router(ctx: WebUIContext) -> APIRouter:
             await repo.set_active(case_id, False)
         except HTTPException:
             raise
+        except DatabaseError as e:
+            logger.warning("Revoke infraction failed for %s/%s: %s", server_id, case_id, e)
+            raise HTTPException(status_code=503, detail=DB_UNAVAILABLE) from e
         except Exception as e:
             logger.exception("Revoke infraction failed for %s/%s: %s", server_id, case_id, e)
             raise HTTPException(

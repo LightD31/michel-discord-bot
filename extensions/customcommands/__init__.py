@@ -24,6 +24,7 @@ from features.customcommands import MODULE_KEY, CustomCommand, parse_commands, p
 from features.links import shorten_text
 from src.core.config import ModuleConfig
 from src.discord_ext.mentions import everyone_if_written
+from src.discord_ext.scopes import guild_scopes
 
 CUSTOM_COMMANDS = ModuleConfig(MODULE_KEY)
 
@@ -80,7 +81,7 @@ class CustomCommandsExtension(Extension):
         slash = SlashCommand(
             name=command.name,
             description=command.description,
-            scopes=[guild_id],
+            scopes=guild_scopes([guild_id]),
             callback=_build_callback(command),
         )
         slash.extension = self

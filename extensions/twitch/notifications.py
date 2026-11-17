@@ -85,7 +85,7 @@ class NotificationsMixin:
     ) -> tuple:
         if data:
             return self.get_stream_info_from_data(data, offline, stream)
-        if offline:
+        if offline or stream is None:  # no live data to read: ask the channel instead
             return await self.get_offline_stream_info(user_id)
         return self.get_online_stream_info(stream)
 
@@ -100,11 +100,12 @@ class NotificationsMixin:
         user_login = data.event.broadcaster_user_name
         title = data.event.title
         game = data.event.category_name
-        description = (
-            f"Ne joue pas à **{game}**"
-            if offline
-            else f"Joue à **{data.event.category_name}** pour **{stream.viewer_count}** viewers"
-        )
+        if offline:
+            description = f"Ne joue pas à **{game}**"
+        elif stream is None:  # the update came before the live's data
+            description = f"Joue à **{game}**"
+        else:
+            description = f"Joue à **{game}** pour **{stream.viewer_count}** viewers"
         return user_id, title, description, user_login
 
     async def get_offline_stream_info(self, user_id: str) -> tuple:
@@ -168,7 +169,9 @@ class NotificationsMixin:
     async def add_user(self, embed: Embed, user_id: str, offline: bool = False) -> Embed:
         """Attach the broadcaster's author/avatar (and offline image) to the embed."""
         try:
-            user: TwitchUser = await first(self.twitch.get_users(user_ids=[user_id]))
+            user: TwitchUser | None = await first(self.twitch.get_users(user_ids=[user_id]))
+            if user is None:  # renamed or banned since: no author line
+                return embed
             status = "n'est pas en live" if offline else "est en live !"
             embed.set_author(
                 name=f"{user.display_name} {status}",
@@ -219,7 +222,9 @@ class NotificationsMixin:
                 )
 
             try:
-                user: TwitchUser = await first(self.twitch.get_users(user_ids=[streamer.user_id]))
+                user: TwitchUser | None = await first(
+                    self.twitch.get_users(user_ids=[streamer.user_id])
+                )
                 if user:
                     embed.set_thumbnail(url=user.profile_image_url)
             except Exception as e:
@@ -301,7 +306,9 @@ class NotificationsMixin:
                 embed.add_field(name="VOD", value=f"[Regarder le replay]({vod_url})", inline=False)
 
             try:
-                user: TwitchUser = await first(self.twitch.get_users(user_ids=[streamer.user_id]))
+                user: TwitchUser | None = await first(
+                    self.twitch.get_users(user_ids=[streamer.user_id])
+                )
                 if user:
                     embed.set_thumbnail(url=user.profile_image_url)
             except Exception as e:

@@ -51,9 +51,9 @@ from src.core import clock
 from src.core import logging as logutil
 from src.core.config import ModuleConfig
 from src.core.logging import log_failure
-from src.core.text import EMBED_DESCRIPTION_LIMIT, clip
-from src.discord_ext.embeds import Colors, format_discord_timestamp
-from src.discord_ext.messages import fetch_user_safe, send_error
+from src.core.text import EMBED_DESCRIPTION_LIMIT, clip, format_discord_timestamp
+from src.discord_ext.embeds import Colors
+from src.discord_ext.messages import fetch_user_safe, guild_id_of, send_error
 from src.discord_ext.scopes import guild_scopes
 
 SNOOZE_PREFIX = "reminder_snooze"
@@ -217,7 +217,7 @@ class RemindersExtension(Extension):
         sub_cmd_description="Affiche tes rappels sur ce serveur",
     )
     async def list_reminders(self, ctx: SlashContext):
-        reminders = await self._reminder_repo(ctx.guild_id).list_for_user(str(ctx.author.id))
+        reminders = await self._reminder_repo(guild_id_of(ctx)).list_for_user(str(ctx.author.id))
         if not reminders:
             await ctx.send("Tu n'as aucun rappel sur ce serveur.", ephemeral=True)
             return

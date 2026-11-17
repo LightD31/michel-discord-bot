@@ -147,11 +147,88 @@ disallow_incomplete_defs = true
 disallow_untyped_calls = true
 warn_return_any = true
 
-# The framework-free domain layer: function bodies are checked even where
-# they aren't annotated yet.
+# The framework-free domain layer and the shared infrastructure: function
+# bodies are checked even where they aren't annotated yet.
 [[tool.mypy.overrides]]
-module = "features.*"
+module = ["features.*", "src.*"]
 check_untyped_defs = true
+
+# extensions/ is checked too (CI: `mypy src features extensions`), except the
+# modules below, which still have errors: mostly mixins using attributes their
+# extension class sets (`self.bot`, `self.repository`), declared nowhere. This
+# list only shrinks: to take a module off it, declare what its mixins use
+# (class-level annotations, `if TYPE_CHECKING:` stubs, as in
+# extensions/starboard/listeners.py), fix the rest, and delete its line. Never
+# add a module here; tests/test_mypy_exclusions.py fails on one that no longer
+# exists.
+[[tool.mypy.overrides]]
+module = [
+    "extensions.confrerie.browse",
+    "extensions.confrerie.editors",
+    "extensions.confrerie.forums",
+    "extensions.confrerie.requests",
+    "extensions.confrerie.review",
+    "extensions.confrerie.stats",
+    "extensions.confrerie.updates",
+    "extensions.giveaway",
+    "extensions.lldap.commands",
+    "extensions.lldap.sync",
+    "extensions.mdi.notifications",
+    "extensions.minecraft.stats",
+    "extensions.minecraft.status",
+    "extensions.moderation.automod",
+    "extensions.moderation.commands",
+    "extensions.moderation.logging_",
+    "extensions.olympics.medals",
+    "extensions.olympics.tasks",
+    "extensions.polls",
+    "extensions.polls.buttons",
+    "extensions.reactionroles.buttons",
+    "extensions.reactionroles.commands",
+    "extensions.secretsanta._common",
+    "extensions.secretsanta.bans",
+    "extensions.secretsanta.buttons",
+    "extensions.secretsanta.draws",
+    "extensions.secretsanta.sessions",
+    "extensions.spotify._common",
+    "extensions.spotify.playlist",
+    "extensions.spotify.votes",
+    "extensions.suggestions.buttons",
+    "extensions.suggestions.commands",
+    "extensions.tricount.expenses",
+    "extensions.tricount.groups",
+    "extensions.tricount.recurring",
+    "extensions.tricount.reports",
+    "extensions.twitch",
+    "extensions.twitch.emotes",
+    "extensions.twitch.eventsub",
+    "extensions.twitch.notifications",
+    "extensions.twitch.schedule",
+    "extensions.uptime.commands",
+    "extensions.uptime.notifications",
+    "extensions.vlrgg.api",
+    "extensions.vlrgg.commands",
+    "extensions.vlrgg.embeds",
+    "extensions.vlrgg.notifications",
+    "extensions.xp.commands",
+    "extensions.xp.leaderboard",
+    "extensions.xp.voice",
+    "extensions.zevent",
+    "extensions.zevent._common",
+    "extensions.zevent.api",
+    "extensions.zevent.commands",
+    "extensions.zevent.discord_event",
+    "extensions.zevent.embeds",
+    "extensions.zevent.streams",
+    "extensions.zevent.tasks",
+    "extensions.zunivers.corporation",
+    "extensions.zunivers.embeds",
+    "extensions.zunivers.events",
+    "extensions.zunivers.ninja",
+    "extensions.zunivers.reminders",
+    "extensions.zunivers.zerator247",
+]
+ignore_errors = true
 
 # ─── pytest ────────────────────────────────────────────────────────────
 [tool.pytest.ini_options]
@@ -176,19 +253,20 @@ filterwarnings = [
 # ─── coverage ──────────────────────────────────────────────────────────
 [tool.coverage.run]
 # features/ is the deliberately unit-testable layer; extensions/ is tested
-# through tests/discord_fakes.py. `pytest --cov` measures all three.
-source = ["src", "features", "extensions"]
+# through tests/discord_fakes.py; scripts/ holds the restore the runbook relies
+# on. `pytest --cov` measures all four.
+source = ["src", "features", "extensions", "scripts"]
 branch = true
 
 [tool.coverage.report]
 show_missing = true
 skip_covered = true
-# Floor for `pytest --cov` over src, features and extensions: 61.6% without
-# MongoDB and 62.6% with it (CI) when this was last raised. CI's test job also
-# holds src + features alone at 78% (79.1% / 81.2%), so tests added for the
+# Floor for `pytest --cov` over src, features, extensions and scripts: 65.3%
+# without MongoDB and 67% with it (CI) when this was last raised. CI's test job
+# also holds src + features alone at 81% (81.5% / 85%), so tests added for the
 # extensions can't hide a drop there. Keep both below the figures without
 # MongoDB so a local run passes too, and raise them as tests are added.
-fail_under = 64
+fail_under = 65
 
 # ─── detect-secrets ────────────────────────────────────────────────────
 # Baseline lives at .secrets.baseline; configured via .pre-commit-config.yaml.

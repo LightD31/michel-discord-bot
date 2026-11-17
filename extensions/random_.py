@@ -24,7 +24,7 @@ from features.messages import chooseList, chooseListEn
 from features.random import validate_choices, validate_die_faces
 from src.core import logging as logutil
 from src.core.text import clip
-from src.discord_ext.locale import en_fr_desc, en_fr_name, is_french, say
+from src.discord_ext.locale import en_fr_desc, is_french, option_desc, option_name, say
 from src.discord_ext.mentions import NO_PINGS
 
 logger = logutil.init_logger(__name__)
@@ -52,16 +52,16 @@ class RandomExtension(Extension):
         integration_types=[IntegrationType.GUILD_INSTALL, IntegrationType.USER_INSTALL],
     )
     @slash_option(
-        en_fr_name("choices", "choix"),
-        en_fr_desc("Choices, separated by semicolons", "Choix, séparés par des point-virgules"),
+        option_name("choices", "choix"),
+        option_desc("Choices, separated by semicolons", "Choix, séparés par des point-virgules"),
         opt_type=OptionType.STRING,
         required=True,
         max_length=MAX_INPUT_LENGTH,
         argument_name="choix",
     )
     @slash_option(
-        en_fr_name("separator", "séparateur"),
-        en_fr_desc("Separator between choices (default: ;)", "Séparateur des choix (Défaut: ;)"),
+        option_name("separator", "séparateur"),
+        option_desc("Separator between choices (default: ;)", "Séparateur des choix (Défaut: ;)"),
         opt_type=OptionType.STRING,
         required=False,
         max_length=10,
@@ -86,7 +86,7 @@ class RandomExtension(Extension):
     )
     @slash_option(
         name="faces",
-        description=en_fr_desc("Number of faces of the die", "Nombre de faces du dé"),
+        description=option_desc("Number of faces of the die", "Nombre de faces du dé"),
         opt_type=OptionType.INTEGER,
         required=True,
     )
@@ -118,8 +118,8 @@ class RandomExtension(Extension):
         integration_types=[IntegrationType.GUILD_INSTALL, IntegrationType.USER_INSTALL],
     )
     @slash_option(
-        en_fr_name("list", "liste"),
-        en_fr_desc(
+        option_name("list", "liste"),
+        option_desc(
             "Items to shuffle, separated by semicolons",
             "Éléments à mélanger, séparés par des point-virgules",
         ),
@@ -129,8 +129,8 @@ class RandomExtension(Extension):
         argument_name="liste",
     )
     @slash_option(
-        en_fr_name("separator", "séparateur"),
-        en_fr_desc("Separator between items (default: ;)", "Séparateur des éléments (Défaut: ;)"),
+        option_name("separator", "séparateur"),
+        option_desc("Separator between items (default: ;)", "Séparateur des éléments (Défaut: ;)"),
         opt_type=OptionType.STRING,
         required=False,
         max_length=10,

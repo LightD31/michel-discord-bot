@@ -19,7 +19,7 @@ from features.vlrgg import (
     team_side,
 )
 from src.core.errors import DatabaseError
-from src.discord_ext.embeds import format_discord_timestamp
+from src.core.text import format_discord_timestamp
 
 from ._common import DEFAULT_EMBED_COLOR, MAP_POOL_DAYS, TeamState, logger
 

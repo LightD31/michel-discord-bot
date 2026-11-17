@@ -53,9 +53,9 @@ from features.ai import (
 from features.ai.quota import QUOTA_UNAVAILABLE, access_refusal, limit_message
 from src.core import clock
 from src.core.errors import DatabaseError
-from src.discord_ext.locale import en_fr_desc
+from src.discord_ext.locale import en_fr_desc, option_desc
 from src.discord_ext.mentions import NO_PINGS
-from src.discord_ext.messages import send_error
+from src.discord_ext.messages import guild_id_of, send_error
 from src.discord_ext.scopes import guild_scopes
 from src.integrations import llm
 
@@ -303,14 +303,14 @@ class AskMixin:
     @auto_defer()
     @slash_option(
         "question",
-        en_fr_desc("Your question", "Ta question"),
+        option_desc("Your question", "Ta question"),
         opt_type=OptionType.STRING,
         required=True,
         max_length=MAX_QUESTION_LENGTH,
     )
     @slash_option(
         "mode",
-        en_fr_desc(
+        option_desc(
             "Compare several models (with a vote) or get a quick answer",
             "Comparer plusieurs modèles (avec vote) ou une réponse rapide",
         ),
@@ -336,7 +336,7 @@ class AskMixin:
             )
             return
 
-        guild_id = ctx.guild_id
+        guild_id = guild_id_of(ctx)
         user_id = str(ctx.author.id)
         global_cfg = global_settings()
         limits = global_cfg.limits
