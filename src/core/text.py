@@ -278,10 +278,29 @@ def pick_weighted_message(
         # random.choices raises when every weight is 0 — treat as all-equal.
         weights = [1.0] * len(texts)
     chosen: str = random.choices(texts, weights=weights)[0]
+    return fill_message(chosen, **format_kwargs)
+
+
+def fill_message(text: str, **values: Any) -> str:
+    """Fill one admin-written message as :func:`pick_weighted_message` does.
+
+    An unknown ``{placeholder}`` stays as written, and a text that isn't a
+    valid format string is returned unformatted. The dashboard's template test
+    renders with this very function.
+    """
     try:
-        return format_template(chosen, keep_unknown=True, **format_kwargs)
+        return format_template(text, keep_unknown=True, **values)
     except (ValueError, KeyError):
-        return chosen
+        return text
+
+
+def template_names(text: str) -> list[str]:
+    """The ``{names}`` a template uses, in order, once each (none for a malformed one)."""
+    try:
+        parsed = [name for _, name, _, _ in string.Formatter().parse(text) if name]
+    except ValueError:
+        return []
+    return list(dict.fromkeys(parsed))
 
 
 def format_discord_timestamp(dt: datetime, style: str = "f") -> str:
@@ -298,6 +317,8 @@ def format_discord_timestamp(dt: datetime, style: str = "f") -> str:
 
 
 __all__ = [
+    "fill_message",
+    "template_names",
     "format_discord_timestamp",
     "EMBED_AUTHOR_LIMIT",
     "EMBED_DESCRIPTION_LIMIT",

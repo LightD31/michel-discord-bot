@@ -597,6 +597,40 @@
             state.moduleSchemas = {};
             state.globalSchemas = {};
         }
+        try {
+            state.templateTests = (await api('/api/template-tests')) || {};
+        } catch (e) {
+            state.templateTests = {};
+        }
+    }
+
+    // ── Template test (F11) ───────────────────────────
+    // The texts currently in the field, saved or not, rendered by the bot and DMed to you.
+    function templateTexts(fieldEl) {
+        if (!fieldEl) return [];
+        const pick = sel => [...fieldEl.querySelectorAll(sel)].map(i => i.value.trim()).filter(Boolean);
+        const texts = pick('[data-msg-field="message"]')
+            .concat(pick('[data-response-field="text"]'));
+        if (texts.length) return texts;
+        return pick('input[data-type="string"], textarea[data-field]');
+    }
+
+    async function testTemplate(serverId, moduleName, field, btn) {
+        const texts = templateTexts(btn?.closest('.form-field'));
+        if (!texts.length) {
+            toast('Rien à tester : écris au moins un message.', 'info');
+            return;
+        }
+        if (btn) btn.disabled = true;
+        try {
+            const result = await api(`/api/servers/${encodeURIComponent(serverId)}/template-test`, {
+                method: 'POST',
+                body: JSON.stringify({ module: moduleName, field, texts }),
+            });
+            toast(`${result.sent} message(s) de test envoyé(s) en MP.`, 'success');
+            for (const warning of result.warnings || []) toast(warning, 'warning');
+        } catch (e) { /* handled by api() */ }
+        finally { if (btn) btn.disabled = false; }
     }
 
     async function loadConfig() {
@@ -1050,6 +1084,11 @@
                         placeholder="${field.default != null ? 'Défaut: ' + escapeHtml(field.default) : ''}">`;
             }
 
+            if (options.module && state.templateTests?.[options.module]?.[key]) {
+                html += `<button type="button" class="btn btn-ghost btn-sm template-test-btn" style="margin-top:6px;"
+                    data-click="testTemplate" data-click-args="${actionArgs(options.serverId, options.module, key, EL)}"
+                    title="Le bot t'envoie en MP ce que donnent les messages ci-dessus, avec toi à la place du membre">✉️ Tester en MP</button>`;
+            }
             html += `</div>`;
             // The field's first control (a widget without one, a list say, is
             // named by aria-labelledby instead of the label's for=).
@@ -4060,7 +4099,7 @@
                 ${schema
                     ? renderSchemaForm(formId, schema,
                         schema.directValue ? { [mod]: modConfig } : modConfig,
-                        { excludeEnabled: true })
+                        { excludeEnabled: true, module: mod, serverId: sid })
                     : (Object.keys(modConfig).length === 0
                         ? `<div class="empty-state">
                             <h3>Configuration vide</h3>
@@ -5804,7 +5843,7 @@
         onLogLevelChange, onLogSearchInput, onLogVerboseChange, onMemberPickerChange,
         onMemberPickerSearch, onRssModeChange, openModelCatalog, openRoleMenuBuilder,
         publishEmbeds, refreshLogs, reloadAllExtensions, removeNameMapEntry,
-        loadAudit, removeSpotifyMapEntry, republishBotMessage, resetFieldToDefault, revokeInfraction,
+        loadAudit, removeSpotifyMapEntry, republishBotMessage, testTemplate, resetFieldToDefault, revokeInfraction,
         rotatePublicLink, saveModal, saveModuleForm, saveRoleMenu, saveShortLink,
         scrollToBottom, searchShortLinks, setXpStatsRange, showPublicLink, startEditShortLink,
         startSpotifyAuth, toggleChannelPickerMode, toggleExtension, toggleMemberPickerMode,

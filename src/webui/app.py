@@ -66,6 +66,9 @@ from src.webui.routes import (
     spotify as spotify_routes,
 )
 from src.webui.routes import (
+    template_tests as template_tests_routes,
+)
+from src.webui.routes import (
     xp as xp_routes,
 )
 from src.webui.security_headers import SecurityHeadersMiddleware
@@ -173,6 +176,7 @@ def create_app(bot=None, bot_loop=None) -> FastAPI:
     app.include_router(rolemenus_routes.create_router(ctx))
     app.include_router(moderation_routes.create_router(ctx))
     app.include_router(audit_routes.create_router(ctx))
+    app.include_router(template_tests_routes.create_router(ctx))
     app.include_router(bot_messages_routes.create_router(ctx))
     app.include_router(xp_routes.create_router(ctx))
     app.include_router(extensions_routes.create_router(ctx))
