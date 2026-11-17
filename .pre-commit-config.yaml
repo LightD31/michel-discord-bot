@@ -52,7 +52,7 @@ repos:
     hooks:
       - id: mypy
         name: mypy (manual stage)
-        entry: uv run mypy src features
+        entry: uv run mypy src features extensions
         language: system
         types: [python]
         pass_filenames: false

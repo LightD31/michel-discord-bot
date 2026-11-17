@@ -34,7 +34,7 @@ from interactions import (
 from src.core import logging as logutil
 from src.core.text import EMBED_FIELD_VALUE_LIMIT, clip
 from src.discord_ext.embeds import Colors
-from src.discord_ext.messages import require_guild
+from src.discord_ext.messages import guild_id_of, require_guild
 from src.discord_ext.paginator import CustomPaginator
 from src.webui.schemas import module_model
 
@@ -73,7 +73,7 @@ def group_label(command: SlashCommand) -> str:
 
 
 def _mention(command: SlashCommand, scope: int) -> str:
-    cmd_id = command.cmd_id.get(scope)
+    cmd_id = command.cmd_id.get(scope)  # type: ignore[call-overload]  # keyed by int scope at runtime
     name = str(command.resolved_name)
     return f"</{name}:{cmd_id}>" if cmd_id else f"`/{name}`"
 
@@ -142,7 +142,7 @@ def _fields(entries: list[HelpEntry]) -> list[tuple[str, str]]:
         groups.setdefault(entry.group, []).append(entry)
     fields: list[tuple[str, str]] = []
     for label in sorted(groups, key=_sort_key):
-        heading, lines = label, []
+        heading, lines = label, list[str]()
         for entry in sorted(groups[label], key=lambda e: e.name):
             line = clip(f"{entry.mention} — {entry.description}", EMBED_FIELD_VALUE_LIMIT)
             if lines and len("\n".join([*lines, line])) > EMBED_FIELD_VALUE_LIMIT:
@@ -213,7 +213,7 @@ class HelpExtension(Extension):
             return
         entries = matching(
             collect_entries(
-                self.bot.interactions_by_scope, int(ctx.guild_id), _member_can_use(ctx.author)
+                self.bot.interactions_by_scope, int(guild_id_of(ctx)), _member_can_use(ctx.author)
             ),
             search,
         )

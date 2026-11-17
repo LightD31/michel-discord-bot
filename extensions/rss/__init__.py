@@ -21,6 +21,7 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from typing import cast
 
 from interactions import (
     ActionRow,
@@ -31,10 +32,12 @@ from interactions import (
     Embed,
     Extension,
     IntervalTrigger,
+    MessageableMixin,
     OptionType,
     Permissions,
     SlashContext,
     Task,
+    Timestamp,
     listen,
     slash_command,
     slash_default_member_permission,
@@ -62,7 +65,7 @@ from src.core.text import (
 from src.core.urls import redact_url
 from src.discord_ext.embeds import Colors
 from src.discord_ext.mentions import mentions_written_in
-from src.discord_ext.messages import require_guild, send_error, send_success
+from src.discord_ext.messages import guild_id_of, require_guild, send_error, send_success
 from src.discord_ext.scopes import guild_scopes
 
 from ._common import (
@@ -143,7 +146,7 @@ def _format_template(template: str, *, label: str, entry: RssEntry, fallback: st
             author=entry.author,
             label=label,
             image=entry.image_url,
-            **_published_tokens(entry),
+            **_published_tokens(entry),  # type: ignore[arg-type]  # only str values, never keep_unknown
         )
     except (KeyError, ValueError):
         return fallback
@@ -228,7 +231,7 @@ def _render_embed(feed_id: str, feed_cfg: dict, entry: RssEntry) -> Embed:
     if entry.author:
         embed.set_author(name=clip(entry.author, EMBED_AUTHOR_LIMIT))
     if entry.published:
-        embed.timestamp = entry.published
+        embed.timestamp = Timestamp.fromdatetime(entry.published)
     embed.set_footer(text=clip(label, EMBED_FOOTER_LIMIT))
     return embed
 
@@ -387,7 +390,7 @@ class RssExtension(Extension):
 
         channel_id = job.feed_cfg.get("channel_id") or job.default_channel_id
         try:
-            channel: BaseChannel = await self.bot.fetch_channel(int(channel_id))
+            channel = await self.bot.fetch_channel(int(channel_id))
         except Exception as e:
             log_failure(logger, "Could not fetch RSS channel %s: %s", channel_id, e)
             await repo.record_error(job.feed_id, f"Salon {channel_id} introuvable")
@@ -396,6 +399,7 @@ class RssExtension(Extension):
             logger.error("Channel %s does not accept sends", channel_id)
             await repo.record_error(job.feed_id, f"Le salon {channel_id} n'accepte pas de messages")
             return
+        sendable = cast(MessageableMixin, channel)
 
         mode = (job.feed_cfg.get("mode") or "text").strip().lower()
         posted_ids: list[str] = []
@@ -408,15 +412,15 @@ class RssExtension(Extension):
                     send_kwargs["components"] = components
                 if mode == "embed":
                     embed = _render_embed(job.feed_id, job.feed_cfg, entry)
-                    await channel.send(embeds=[embed], **send_kwargs)  # type: ignore[union-attr]
+                    await sendable.send(embeds=[embed], **send_kwargs)
                 else:
                     # Only what the admin wrote in the template pings: a feed
                     # title saying "@everyone" must not.
                     template = job.feed_cfg.get("template") or DEFAULT_TEMPLATE
-                    await channel.send(
+                    await sendable.send(
                         _render_text(job.feed_id, job.feed_cfg, entry),
                         allowed_mentions=mentions_written_in(template),
-                        **send_kwargs,  # type: ignore[union-attr]
+                        **send_kwargs,
                     )
                 posted_ids.append(entry.entry_id)
             except BadRequest as e:
@@ -507,7 +511,7 @@ class RssExtension(Extension):
         if not feeds:
             await ctx.send("Aucun flux configuré.", ephemeral=True)
             return
-        states = await self._repo(ctx.guild_id).states()
+        states = await self._repo(guild_id_of(ctx)).states()
         interval = timedelta(minutes=_poll_minutes(srv_cfg))
         lines: list[str] = []
         for feed_id, feed_cfg in feeds:
@@ -548,7 +552,7 @@ class RssExtension(Extension):
     async def rss_reset(self, ctx: SlashContext, feed_id: str) -> None:
         if not await require_guild(ctx):
             return
-        deleted = await self._repo(ctx.guild_id).delete(feed_id)
+        deleted = await self._repo(guild_id_of(ctx)).delete(feed_id)
         if deleted == 0:
             await send_error(ctx, "Aucun état trouvé pour ce flux.")
             return

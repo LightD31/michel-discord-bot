@@ -10,7 +10,7 @@ bot serves French communities and stays in French.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 from interactions import LocalisedDesc, LocalisedName
 
@@ -23,6 +23,16 @@ def en_fr_name(en: str, fr: str) -> LocalisedName:
 def en_fr_desc(en: str, fr: str) -> LocalisedDesc:
     """A description or choice label: *en* by default, *fr* for French clients."""
     return LocalisedDesc(english_us=en, french=fr)
+
+
+def option_name(en: str, fr: str) -> str:
+    """:func:`en_fr_name` for ``slash_option``, which takes one but is annotated ``str``."""
+    return cast(str, en_fr_name(en, fr))
+
+
+def option_desc(en: str, fr: str) -> str:
+    """:func:`en_fr_desc` for ``slash_option``, which takes one but is annotated ``str``."""
+    return cast(str, en_fr_desc(en, fr))
 
 
 def is_french(ctx: Any) -> bool:

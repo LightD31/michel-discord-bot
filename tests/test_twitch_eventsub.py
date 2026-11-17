@@ -363,3 +363,34 @@ async def test_stream_end_notification_needs_a_channel():
 
     assert former.sent == []
     assert streamer.notif_channel is None
+
+
+# --------------------------------------------------------------------------
+# Stream info without live data (mypy, Q01)
+# --------------------------------------------------------------------------
+
+
+async def test_stream_info_without_live_data_asks_the_channel():
+    ext = make_extension()
+
+    async def channel_information(user_id):
+        return [
+            SimpleNamespace(game_name="Just Chatting", title="Titre", broadcaster_login="zerator")
+        ]
+
+    ext.twitch.get_channel_information = channel_information
+    # Not offline, but Twitch had no stream to hand over: used to raise AttributeError.
+    info = await ext.get_stream_info(None, "41719107", offline=False)
+    assert info == ("41719107", "Titre", "Ne joue pas à **Just Chatting**", "zerator")
+
+
+def test_a_channel_update_before_the_live_data_has_no_viewer_count():
+    ext = make_extension()
+    event = SimpleNamespace(
+        broadcaster_user_id="1",
+        broadcaster_user_name="zerator",
+        title="Titre",
+        category_name="Valorant",
+    )
+    info = ext.get_stream_info_from_data(SimpleNamespace(event=event), False, None)
+    assert info == ("1", "Titre", "Joue à **Valorant**", "zerator")

@@ -200,7 +200,7 @@ class BirthdayExtension(Extension):
         timezone: str,
         hideyear: bool | None = False,
     ) -> None:
-        if not await require_guild(ctx):
+        if not await require_guild(ctx) or ctx.guild is None:
             return
         try:
             parsed_date = _validate_and_parse_date(date)
@@ -249,7 +249,7 @@ class BirthdayExtension(Extension):
         sub_cmd_description="Supprime ton anniversaire sur ce serveur",
     )
     async def anniversaire_supprimer(self, ctx: SlashContext) -> None:
-        if not await require_guild(ctx):
+        if not await require_guild(ctx) or ctx.guild is None:
             return
         try:
             deleted = await self._repo(ctx.guild.id).delete(ctx.author.id)
@@ -282,15 +282,17 @@ class BirthdayExtension(Extension):
             ephemeral=True,
         )
         try:
-            button_ctx: ComponentContext = await self.bot.wait_for_component(
+            pressed = await self.bot.wait_for_component(
                 components=[confirm_button, cancel_button],
                 messages=msg,
                 timeout=30,
             )
+            button_ctx = pressed.ctx  # the event, not the context, used to be read here
             if button_ctx.custom_id == "birthday_purge_confirm":
-                total_deleted = sum(
-                    await self._repo(gid).delete(ctx.author.id) for gid in MODULE.guild_ids()
-                )
+                # A loop: `sum(await … for …)` is an async generator, which sum() can't read.
+                total_deleted = 0
+                for gid in MODULE.guild_ids():
+                    total_deleted += await self._repo(gid).delete(ctx.author.id)
                 await button_ctx.edit_origin(
                     content=f"Anniversaire supprimé sur {total_deleted} serveur(s) ✅",
                     components=[],
@@ -310,7 +312,7 @@ class BirthdayExtension(Extension):
         sub_cmd_description="Liste des anniversaires",
     )
     async def anniversaire_liste(self, ctx: SlashContext) -> None:
-        if not await require_guild(ctx):
+        if not await require_guild(ctx) or ctx.guild is None:
             return
         try:
             birthdays = await self._repo(ctx.guild.id).find_all()

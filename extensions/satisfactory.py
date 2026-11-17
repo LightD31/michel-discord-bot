@@ -125,7 +125,7 @@ class _PinnedAdapter(HTTPAdapter):
         self._fingerprint = fingerprint
         super().__init__()
 
-    def init_poolmanager(self, *args, **kwargs):  # type: ignore[override]
+    def init_poolmanager(self, *args, **kwargs):
         kwargs["assert_fingerprint"] = self._fingerprint
         return super().init_poolmanager(*args, **kwargs)
 
@@ -133,7 +133,7 @@ class _PinnedAdapter(HTTPAdapter):
 class _TimeoutSession(requests.Session):
     """A ``requests`` session whose requests give up after :data:`REQUEST_TIMEOUT`."""
 
-    def request(self, method, url, *args, **kwargs):  # type: ignore[override]
+    def request(self, method, url, *args, **kwargs):
         kwargs.setdefault("timeout", REQUEST_TIMEOUT)
         return super().request(method, url, *args, **kwargs)
 

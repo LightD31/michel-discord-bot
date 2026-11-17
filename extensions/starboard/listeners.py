@@ -1,12 +1,15 @@
 """Reaction listeners that mirror popular messages to the configured starboard."""
 
+import asyncio
 from datetime import datetime
+from typing import TYPE_CHECKING
 
-from interactions import Embed, listen
+from interactions import Client, Embed, Timestamp, listen
 from interactions.api.events import MessageReactionAdd, MessageReactionRemove
 
 from features.starboard import (
     MirrorAction,
+    StarboardRepository,
     StarEntry,
     count_valid_reactors,
     emoji_matches,
@@ -29,7 +32,7 @@ def _jump_url(guild_id: str | int, channel_id: str | int, message_id: str | int)
 
 def _build_embed(message, count: int, emoji: str) -> Embed:
     author = message.author
-    author_name = getattr(author, "display_name", None) or getattr(author, "username", "?")
+    author_name = str(getattr(author, "display_name", None) or getattr(author, "username", "?"))
     avatar_url = None
     avatar = getattr(author, "avatar_url", None)
     if avatar:
@@ -51,7 +54,7 @@ def _build_embed(message, count: int, emoji: str) -> Embed:
     embed.set_footer(
         text=f"{emoji} {count} • #{getattr(message.channel, 'name', message.channel.id)}"
     )
-    embed.timestamp = getattr(message, "created_at", None) or clock.now()
+    embed.timestamp = Timestamp.fromdatetime(getattr(message, "created_at", None) or clock.now())
     return embed
 
 
@@ -79,6 +82,14 @@ async def _count_valid_reactions(
 
 class ListenersMixin:
     """React to ⭐ adds/removes and keep the starboard mirror in sync."""
+
+    # Provided by StarboardExtension (declared for the type checker only).
+    bot: Client
+    lock: asyncio.Lock
+
+    if TYPE_CHECKING:
+
+        def repository(self, guild_id: str | int) -> StarboardRepository: ...
 
     @listen(MessageReactionAdd)
     async def on_reaction_add(self, event: MessageReactionAdd) -> None:
@@ -206,7 +217,7 @@ class ListenersMixin:
             logger.info("Starboard: message %s is in a private channel, not mirrored", message.id)
             return
         try:
-            sent = await channel.send(embeds=[_build_embed(message, count, emoji)])  # type: ignore[union-attr]
+            sent = await channel.send(embeds=[_build_embed(message, count, emoji)])
         except Exception as e:
             log_failure(logger, "Failed to publish to starboard: %s", e)
             return

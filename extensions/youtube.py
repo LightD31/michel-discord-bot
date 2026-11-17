@@ -1,6 +1,16 @@
 """Extension YouTube — notifications automatiques de nouvelles vidéos."""
 
-from interactions import BaseChannel, Client, Extension, IntervalTrigger, Task, listen
+from typing import Any, cast
+
+from interactions import (
+    BaseChannel,
+    Client,
+    Extension,
+    IntervalTrigger,
+    MessageableMixin,
+    Task,
+    listen,
+)
 from pydantic import BaseModel, ConfigDict, field_validator
 
 from features.links import shorten_text
@@ -107,7 +117,7 @@ class YoutubeExtension(Extension):
 
     def __init__(self, bot: Client):
         self.bot: Client = bot
-        self.playlist_cache = {}  # Add a cache for playlists
+        self.playlist_cache: dict[str, Any] = {}  # Add a cache for playlists
 
     @listen()
     async def on_startup(self):
@@ -142,7 +152,7 @@ class YoutubeExtension(Extension):
         channel_id = srv_config.get("ChannelId")
         if not channel_id:
             return
-        channel: BaseChannel = await self.bot.fetch_channel(channel_id)
+        channel = cast(MessageableMixin, await self.bot.fetch_channel(channel_id))
         is_initial_sync = server not in youtube_data
         if is_initial_sync:
             logger.warning(

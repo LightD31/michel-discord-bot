@@ -22,6 +22,7 @@ from interactions import (
     ChannelType,
     Client,
     Extension,
+    GuildChannel,
     GuildText,
     IntegrationType,
     OptionType,
@@ -84,7 +85,7 @@ UTILS = ModuleConfig("moduleUtils")
 # One /delete purges this many messages at most.
 MAX_PURGE = 1000
 # Channels a purge can run in: text, announcements and their threads.
-PURGEABLE_CHANNEL_TYPES = [
+PURGEABLE_CHANNEL_TYPES: list[ChannelType | int] = [
     ChannelType.GUILD_TEXT,
     ChannelType.GUILD_NEWS,
     ChannelType.GUILD_PUBLIC_THREAD,
@@ -100,7 +101,7 @@ class AdminExtension(Extension):
         name="ping",
         description="Vérifier la latence du bot",
         scopes=guild_scopes(UTILS.guild_ids()),
-        integration_types=[IntegrationType.GUILD_INSTALL, IntegrationType.USER_INSTALL],  # type: ignore
+        integration_types=[IntegrationType.GUILD_INSTALL, IntegrationType.USER_INSTALL],
     )
     @cooldown(Buckets.USER, 3, 30)
     async def ping(self, ctx: SlashContext):
@@ -326,7 +327,7 @@ class AdminExtension(Extension):
             return
         everyone = ctx.guild.default_role
         try:
-            await target.add_permission(
+            await cast(GuildChannel, target).add_permission(
                 everyone,
                 deny=Permissions.SEND_MESSAGES
                 | Permissions.SEND_MESSAGES_IN_THREADS
@@ -375,7 +376,7 @@ class AdminExtension(Extension):
         everyone = ctx.guild.default_role
         try:
             # Clear the deny mask we set in /lock by passing an empty Permissions flag.
-            await target.add_permission(
+            await cast(GuildChannel, target).add_permission(
                 everyone,
                 deny=Permissions(0),
                 reason=f"Déverrouillé par {ctx.user.username} (ID: {ctx.user.id})",

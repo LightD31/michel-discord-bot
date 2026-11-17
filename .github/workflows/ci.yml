@@ -104,10 +104,10 @@ jobs:
       - name: Install locked runtime deps + dev tools
         run: uv sync
 
-      - name: Mypy (src/core strict; rest lenient)
-        # features/ is the framework-free layer the architecture sets aside for
-        # testable domain logic — exactly where annotations pay off most.
-        run: uv run mypy src features
+      - name: Mypy (src/core strict; bodies checked in src and features)
+        # extensions/ too, except the modules pyproject.toml still lists as
+        # skipped (a list that only shrinks).
+        run: uv run mypy src features extensions
 
   test:
     if: github.event_name != 'schedule'
