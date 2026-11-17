@@ -1,8 +1,9 @@
 """Config schema, logger, and shared constants for the RSS extension."""
 
 import os
+from typing import Literal
 
-from pydantic import field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from src.core import logging as logutil
 from src.core.config import ModuleConfig
@@ -29,6 +30,27 @@ MAX_CONCURRENT_FETCHES = 8
 DEFAULT_TEMPLATE = "**{label}** — [{title}]({link})"
 
 
+class RssFeedEntry(BaseModel):
+    """One feed of the ``rssfeedmap`` widget (keyed by feed id), as the SPA writes it.
+
+    The embed color is written back into a color input: six hex digits.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    url: str = Field(min_length=1)
+    label: str | None = None
+    channel_id: str | None = None
+    template: str | None = None
+    mode: Literal["text", "embed"] = "text"
+    embed_color: str | None = Field(default=None, pattern=r"^#?[0-9A-Fa-f]{6}$")
+    embed_title: str | None = None
+    embed_description: str | None = None
+    embed_show_image: bool = True
+    embed_show_link_button: bool = False
+    embed_link_button_label: str | None = None
+
+
 @register_module(MODULE_KEY)
 class RssConfig(SchemaBase):
     __label__ = "Flux RSS"
@@ -46,7 +68,7 @@ class RssConfig(SchemaBase):
         required=True,
         description="Salon où sont publiées les notifications quand un flux n'a pas de salon dédié.",
     )
-    rssFeeds: dict[str, dict] = ui(
+    rssFeeds: dict[str, RssFeedEntry] = ui(
         "Flux suivis",
         "rssfeedmap",
         required=True,
@@ -67,10 +89,10 @@ class RssConfig(SchemaBase):
 
     @field_validator("rssFeeds")
     @classmethod
-    def _plain_placeholders(cls, feeds: dict[str, dict]) -> dict[str, dict]:
+    def _plain_placeholders(cls, feeds: dict[str, RssFeedEntry]) -> dict[str, RssFeedEntry]:
         """Every text of a feed is a template (text, embed title, description…)."""
         for feed in feeds.values():
-            for value in feed.values() if isinstance(feed, dict) else ():
+            for value in feed.model_dump().values():
                 if isinstance(value, str):
                     check_template(value)
         return feeds

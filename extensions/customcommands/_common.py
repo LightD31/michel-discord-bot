@@ -3,11 +3,26 @@
 Config key ``moduleCustomCommands``.
 """
 
-from typing import Any
+from pydantic import BaseModel, ConfigDict, Field
 
 from features.customcommands import MAX_COMMANDS_PER_GUILD
 from src.core import logging as logutil
 from src.webui.schemas import SchemaBase, enabled_field, register_module, ui
+
+
+class CustomCommandEntry(BaseModel):
+    """One entry of the ``commandlist`` widget, as the SPA writes it.
+
+    Shape only: the name rules and the length limits are checked by
+    ``features.customcommands.parse_commands``, which tells the admin which
+    command it skipped and why.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1)
+    description: str = ""
+    responses: list[str] = Field(default_factory=list)
 
 
 @register_module("moduleCustomCommands")
@@ -18,7 +33,7 @@ class CustomCommandsConfig(SchemaBase):
     __category__ = "Communauté"
 
     enabled: bool = enabled_field()
-    commands: list[Any] = ui(
+    commands: list[CustomCommandEntry] = ui(
         "Commandes",
         "commandlist",
         default=[],
@@ -32,4 +47,4 @@ class CustomCommandsConfig(SchemaBase):
 
 logger = logutil.init_logger("extensions.customcommands")
 
-__all__ = ["CustomCommandsConfig", "logger"]
+__all__ = ["CustomCommandEntry", "CustomCommandsConfig", "logger"]

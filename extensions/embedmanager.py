@@ -6,9 +6,8 @@ only owns the schema; rendering and publishing live in
 :mod:`src.discord_ext.embedmanager`, which the dashboard route calls.
 """
 
-from typing import Any
-
 from interactions import Client, Extension
+from pydantic import BaseModel, ConfigDict, Field
 
 from src.discord_ext.embedmanager import MODULE_KEY
 from src.webui.schemas import (
@@ -17,6 +16,29 @@ from src.webui.schemas import (
     register_module,
     ui,
 )
+
+
+class EmbedLink(BaseModel):
+    """A link of an embed: a field title and the URL it points to."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    title: str
+    url: str
+
+
+class EmbedEntry(BaseModel):
+    """One entry of the ``embedlist`` widget, as the SPA writes it.
+
+    The color is written back into a color input: six hex digits, with or
+    without the ``#`` the SPA strips.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    title: str = "Embed"
+    color: str = Field(default="3498db", pattern=r"^#?[0-9A-Fa-f]{6}$")
+    links: list[EmbedLink] = Field(default_factory=list)
 
 
 @register_module(MODULE_KEY)
@@ -39,7 +61,7 @@ class EmbedManagerConfig(SchemaBase):
         default=False,
         description="Épingler automatiquement le message publié.",
     )
-    embeds: list[Any] = ui(
+    embeds: list[EmbedEntry] = ui(
         "Embeds",
         "embedlist",
         description="Créez des embeds avec un titre, couleur et liens.",

@@ -4,11 +4,25 @@ import os
 from dataclasses import dataclass, field
 from typing import Any
 
+from pydantic import BaseModel, ConfigDict, Field
+
 from features.vlrgg import _clean_vlr_text, expand_round_name
 from src.core import logging as logutil
 from src.core.config import ModuleConfig
 from src.discord_ext.embeds import Colors
 from src.webui.schemas import SchemaBase, enabled_field, register_module, ui
+
+
+class TeamEntry(BaseModel):
+    """One team of the ``teams`` widget, as the SPA writes it (see :class:`TeamConfig`)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1)
+    vlrTeamId: str | None = None
+    channelId: str | None = None
+    pin: bool = False
+
 
 # ── Module config ────────────────────────────────────────────────────────────
 
@@ -26,7 +40,7 @@ class VlrggConfig(SchemaBase):
         "channel",
         description="Salon pour les notifications de matchs en direct et résultats.",
     )
-    teams: list[Any] = ui(
+    teams: list[TeamEntry] = ui(
         "Équipes suivies",
         "teams",
         description=(

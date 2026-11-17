@@ -8,7 +8,27 @@ the package root.
 from datetime import UTC, datetime
 from typing import Any
 
+from pydantic import BaseModel, ConfigDict
+
 from src.webui.schemas import SchemaBase, enabled_field, register_module, ui
+
+
+class StreamerEntry(BaseModel):
+    """One streamer of the ``streamermap`` widget (keyed by Twitch login).
+
+    Written by the SPA, and by ``/twitch-planning-setup`` for the planning keys.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    twitchPlanningChannelId: str | None = None
+    twitchPlanningPinMessage: bool = False
+    twitchNotificationChannelId: str | None = None
+    notifyStreamStart: bool = False
+    notifyStreamUpdate: bool = False
+    notifyStreamEnd: bool = False
+    notifyEmoteChanges: bool = False
+    manageDiscordEvents: bool = False
 
 
 @register_module("moduleTwitch")
@@ -19,7 +39,7 @@ class TwitchConfig(SchemaBase):
     __category__ = "Médias & Streaming"
 
     enabled: bool = enabled_field()
-    twitchStreamerList: dict[str, Any] = ui(
+    twitchStreamerList: dict[str, StreamerEntry] = ui(
         "Streamers suivis",
         "streamermap",
         required=True,
