@@ -5,6 +5,7 @@ one), as a dashboard reload does.
 """
 
 import asyncio
+import socket
 import urllib.request
 from datetime import UTC, datetime
 from types import SimpleNamespace
@@ -122,7 +123,11 @@ def test_a_disabled_exporter_opens_no_port(store_config):
 
 
 def test_the_exporter_serves_metrics_then_frees_its_port(store_config):
-    store_config({"config": {"metrics": {"enabled": True, "host": "127.0.0.1", "port": 0}}})
+    # A real free port: 0 isn't one here (the port setting is floored at 1).
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        free = probe.getsockname()[1]
+    store_config({"config": {"metrics": {"enabled": True, "host": "127.0.0.1", "port": free}}})
     ext = make()
     ext.refresh_tick = FakeTask()
 
@@ -130,6 +135,7 @@ def test_the_exporter_serves_metrics_then_frees_its_port(store_config):
         await MetricsExtension.on_startup.callback(ext)
         await MetricsExtension.on_startup.callback(ext)  # a second Startup changes nothing
         port = ext._server.server_port
+        assert port == free
         body = await asyncio.to_thread(
             lambda: urllib.request.urlopen(f"http://127.0.0.1:{port}/metrics", timeout=5).read()
         )
