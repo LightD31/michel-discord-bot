@@ -43,10 +43,12 @@ CANCEL_ID = "mydata_delete_cancel"
 # Discord's attachment limit for a bot without boosts.
 MAX_EXPORT_BYTES = 8 * 1024 * 1024
 
+# A collection name, not a secret (detect-secrets reads the keyword in it).
+SANTA_DRAWS = "secret_santa_draw_results"  # pragma: allowlist secret
 # Why something is kept, in the member's words.
 KEPT_REASONS = {
     "infractions": "les sanctions de modération (elles protègent les serveurs)",
-    "secret_santa_draw_results": "les tirages Secret Santa déjà faits (les cadeaux des autres en dépendent)",
+    SANTA_DRAWS: "les tirages Secret Santa déjà faits (les cadeaux des autres en dépendent)",
     "tricount": "tes comptes Tricount, tant qu'il te reste un solde à régler",
 }
 NOT_COVERED = (
