@@ -7,18 +7,17 @@ which would drop the traceback and hide the bug from error reporting.
 
 import ast
 import logging
-from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 from interactions.client.errors import HTTPException
+from source_scan import BOT_SOURCES, keyword, python_files, rel
 
+from src.core import errors as core_errors
 from src.core.errors import DatabaseError, HttpError, is_expected_failure
 from src.core.logging import log_failure
 from src.discord_ext import errors as discord_errors
 
-ROOT = Path(__file__).resolve().parent.parent
-SOURCES = ["extensions", "features", "src", "main.py"]
 BROAD = {"Exception", "BaseException"}
 
 
@@ -33,8 +32,11 @@ def records(caplog):
 
 
 @pytest.fixture(autouse=True)
-def _discord_classifier():
-    discord_errors.install()  # as main.py does
+def _discord_classifier(monkeypatch):
+    # As main.py does, on a copy of the registry: a check added for good would
+    # make every later test see Discord's 403/404 as expected (T03).
+    monkeypatch.setattr(core_errors, "_expected_checks", list(core_errors._expected_checks))
+    discord_errors.install()
 
 
 def failing(error):
@@ -88,7 +90,11 @@ def test_the_record_points_at_the_caller(records):
 
 def broad(handler):
     names = handler.type.elts if isinstance(handler.type, ast.Tuple) else [handler.type]
-    return handler.type is None or any(isinstance(n, ast.Name) and n.id in BROAD for n in names)
+    return handler.type is None or any(
+        isinstance(n, ast.Name | ast.Attribute)
+        and (n.id if isinstance(n, ast.Name) else n.attr) in BROAD
+        for n in names
+    )
 
 
 def calls_directly_in(handler):
@@ -104,25 +110,66 @@ def calls_directly_in(handler):
         stack.extend(ast.iter_child_nodes(node))
 
 
+def keeps_traceback(call: ast.Call) -> bool:
+    """``exc_info=`` anything but a literal ``False`` / ``None`` / ``0``."""
+    passed = keyword(call, "exc_info")
+    return passed is not None and not (
+        isinstance(passed.value, ast.Constant) and not passed.value.value
+    )
+
+
+def bare_error_lines(source: str) -> list[int]:
+    """``<anything>.error(...)`` / ``.critical(...)`` in a broad except, without a traceback.
+
+    Any receiver counts (``self._log``, ``LOG``, ``logging``): nothing in the bot
+    has an ``error`` method that isn't a logger's.
+    """
+    lines = []
+    for handler in ast.walk(ast.parse(source)):
+        if not (isinstance(handler, ast.ExceptHandler) and broad(handler)):
+            continue
+        for call in calls_directly_in(handler):
+            func = call.func
+            if not (isinstance(func, ast.Attribute) and func.attr in ("error", "critical")):
+                continue
+            if not keeps_traceback(call):
+                lines.append(call.lineno)
+    return sorted(lines)
+
+
 def test_no_bare_error_line_in_a_broad_except():
-    offenders = []
-    for name in SOURCES:
-        path = ROOT / name
-        for file in [path] if path.is_file() else sorted(path.rglob("*.py")):
-            source = file.read_text(encoding="utf-8")
-            for handler in ast.walk(ast.parse(source)):
-                if not (isinstance(handler, ast.ExceptHandler) and broad(handler)):
-                    continue
-                for call in calls_directly_in(handler):
-                    func = call.func
-                    if not (isinstance(func, ast.Attribute) and func.attr == "error"):
-                        continue
-                    if "log" not in (ast.get_source_segment(source, func.value) or "").lower():
-                        continue
-                    if any(keyword.arg == "exc_info" for keyword in call.keywords):
-                        continue
-                    offenders.append(f"{file.relative_to(ROOT)}:{call.lineno}")
+    offenders = [
+        f"{rel(file)}:{line}"
+        for file in python_files(*BOT_SOURCES)
+        for line in bare_error_lines(file.read_text(encoding="utf-8"))
+    ]
     assert offenders == [], (
         "logger.error in an `except Exception` drops the traceback: use "
         "log_failure(logger, ...) (src/core/logging.py) or logger.exception(...)"
     )
+
+
+@pytest.mark.parametrize(
+    "call",
+    [
+        "logger.error('x')",
+        "self._l.error('x')",  # the receiver needn't say "log"
+        "logger.critical('x')",
+        "logger.error('x', exc_info=False)",
+        "logger.error('x', exc_info=None)",
+    ],
+)
+def test_the_scan_catches(call):
+    for clause in ("except Exception:", "except (ValueError, Exception):", "except:"):
+        assert bare_error_lines(f"try:\n    pass\n{clause}\n    {call}\n") == [4]
+
+
+@pytest.mark.parametrize(
+    "call", ["logger.exception('x')", "logger.error('x', exc_info=True)", "logger.warning('x')"]
+)
+def test_the_scan_lets_a_traceback_or_a_lower_level_through(call):
+    assert bare_error_lines(f"try:\n    pass\nexcept Exception as e:\n    {call}\n") == []
+
+
+def test_a_narrow_except_may_log_one_line():
+    assert bare_error_lines("try:\n    pass\nexcept KeyError:\n    logger.error('x')\n") == []

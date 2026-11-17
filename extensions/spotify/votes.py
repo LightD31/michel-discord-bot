@@ -826,5 +826,5 @@ class VotesMixin:
         nextvote = slash_command(
             name="nextvote",
             description="Force le prochain vote PAS TOUCHE",
-            scopes=[DEV_GUILD],
+            scopes=guild_scopes([DEV_GUILD]),
         )(_nextvote)

@@ -57,9 +57,9 @@ from features.polls import parse_duration  # reused: same DSL as /poll
 from src.core import clock
 from src.core.debounce import Coalescer
 from src.core.logging import log_failure
-from src.core.text import EMBED_DESCRIPTION_LIMIT, clip
+from src.core.text import EMBED_DESCRIPTION_LIMIT, clip, format_discord_timestamp
 from src.discord_ext.autocomplete import MAX_CHOICES, matching_choices
-from src.discord_ext.embeds import Colors, format_discord_timestamp
+from src.discord_ext.embeds import Colors
 from src.discord_ext.messages import (
     edit_message_if_changed,
     require_guild,

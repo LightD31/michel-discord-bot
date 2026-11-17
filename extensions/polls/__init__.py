@@ -57,9 +57,10 @@ from src.core.config import ModuleConfig
 from src.core.debounce import Coalescer
 from src.core.logging import log_failure
 from src.core.tasks import spawn
+from src.core.text import format_discord_timestamp
 from src.discord_ext.autocomplete import MAX_CHOICES, matching_choices
 from src.discord_ext.channels import fetch_guild_channel
-from src.discord_ext.embeds import Colors, format_discord_timestamp
+from src.discord_ext.embeds import Colors
 from src.discord_ext.messages import copy_embed, edit_message_if_changed, send_error
 from src.discord_ext.paginator import format_poll
 from src.discord_ext.scopes import guild_scopes

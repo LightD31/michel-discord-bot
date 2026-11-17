@@ -130,19 +130,29 @@ def make_formatter() -> logging.Formatter:
 _CONFIGURED_ATTR = "_michel_configured"
 
 
-def _attach_webui_handler(lgr: logging.Logger) -> None:
-    """Attach the WebUI log handler to a logger if it exists and isn't already attached."""
-    try:
-        from src.webui.log_handler import WebUILogHandler
-    except ImportError:
-        return
-    webui = WebUILogHandler.get_instance()
-    if webui is not None and webui not in lgr.handlers:
-        lgr.addHandler(webui)
+# Handlers every bot logger also writes to (the dashboard's log stream). The
+# layer that owns one registers it here (src/webui/log_handler.py), so core
+# never imports it.
+_shared_handlers: list[logging.Handler] = []
+
+
+def add_shared_handler(handler: logging.Handler) -> None:
+    """Attach *handler* to every existing logger, and to those configured here later."""
+    if handler not in _shared_handlers:
+        _shared_handlers.append(handler)
+    for logger_ref in logging.Logger.manager.loggerDict.values():
+        if isinstance(logger_ref, logging.Logger) and handler not in logger_ref.handlers:
+            logger_ref.addHandler(handler)
+
+
+def _attach_shared_handlers(lgr: logging.Logger) -> None:
+    for handler in _shared_handlers:
+        if handler not in lgr.handlers:
+            lgr.addHandler(handler)
 
 
 def _configure_logger(name: str) -> logging.Logger:
-    """Configure (or return) a logger with a StreamHandler plus the WebUI handler.
+    """Configure (or return) a logger with a StreamHandler plus the shared handlers.
 
     Uses ``logging.getLogger`` so every logger is part of the standard hierarchy —
     that lets the WebUI handler find and attach to all of them.
@@ -160,7 +170,7 @@ def _configure_logger(name: str) -> logging.Logger:
         ch.setFormatter(make_formatter())
         lgr.addHandler(ch)
         setattr(lgr, _CONFIGURED_ATTR, True)
-    _attach_webui_handler(lgr)
+    _attach_shared_handlers(lgr)
     return lgr
 
 

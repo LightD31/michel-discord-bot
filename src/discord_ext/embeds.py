@@ -1,14 +1,13 @@
-"""Embed primitives: color palette, spacer field, Discord timestamp formatter.
+"""Embed primitives: color palette and spacer field.
+
+The Discord timestamp formatter is ``src.core.text.format_discord_timestamp``
+(pure, so ``features/`` can use it too).
 
 Extensions should import from here instead of hard-coding hex literals — the
 palette is the source of truth. A few constants (e.g. ``Colors.SPOTIFY``) match
 the corresponding brand; the rest mirror the status-indicator conventions
 already used across the codebase (green success / red error / blue info / …).
 """
-
-from datetime import datetime
-
-from src.core.clock import LOCAL_TZ
 
 
 class Colors:
@@ -39,17 +38,4 @@ class Colors:
 SPACER_FIELD = {"name": "\u200b", "value": "\u200b", "inline": True}
 
 
-def format_discord_timestamp(dt: datetime, style: str = "f") -> str:
-    """Format a ``datetime`` as a Discord dynamic timestamp.
-
-    Common styles: ``f`` (full), ``F`` (full + weekday), ``R`` (relative),
-    ``t`` (short time), ``d`` (short date). A naive *dt* is a wall time on the
-    community's clock (:data:`src.core.clock.LOCAL_TZ`), as a date parsed
-    from text is.
-    """
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=LOCAL_TZ)
-    return f"<t:{int(dt.timestamp())}:{style}>"
-
-
-__all__ = ["Colors", "SPACER_FIELD", "format_discord_timestamp"]
+__all__ = ["Colors", "SPACER_FIELD"]

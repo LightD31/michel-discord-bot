@@ -10,9 +10,12 @@ from __future__ import annotations
 import random
 import re
 import string
+from datetime import datetime
 from typing import Any
 
 import emoji
+
+from src.core.clock import LOCAL_TZ
 
 # ---------------------------------------------------------------------------
 # Duration & number formatting
@@ -281,7 +284,21 @@ def pick_weighted_message(
         return chosen
 
 
+def format_discord_timestamp(dt: datetime, style: str = "f") -> str:
+    """Format a ``datetime`` as a Discord dynamic timestamp.
+
+    Common styles: ``f`` (full), ``F`` (full + weekday), ``R`` (relative),
+    ``t`` (short time), ``d`` (short date). A naive *dt* is a wall time on the
+    community's clock (:data:`src.core.clock.LOCAL_TZ`), as a date parsed
+    from text is.
+    """
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=LOCAL_TZ)
+    return f"<t:{int(dt.timestamp())}:{style}>"
+
+
 __all__ = [
+    "format_discord_timestamp",
     "EMBED_AUTHOR_LIMIT",
     "EMBED_DESCRIPTION_LIMIT",
     "EMBED_FIELD_NAME_LIMIT",

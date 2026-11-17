@@ -16,7 +16,8 @@ from features.coloc.constants import (
     zunivers_link,
 )
 from features.coloc.utils import format_event_items, parse_zunivers_date
-from src.discord_ext.embeds import SPACER_FIELD, Colors, format_discord_timestamp
+from src.core.text import format_discord_timestamp
+from src.discord_ext.embeds import SPACER_FIELD, Colors
 
 
 def create_event_embed(

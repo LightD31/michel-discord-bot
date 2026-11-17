@@ -10,7 +10,8 @@ from features.links import shorten_url
 from src.core import clock
 from src.core import logging as logutil
 from src.core.logging import log_failure
-from src.discord_ext.embeds import Colors, format_discord_timestamp
+from src.core.text import format_discord_timestamp
+from src.discord_ext.embeds import Colors
 
 from ._common import CONFRERIE, ConfrerieError
 

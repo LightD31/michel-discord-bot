@@ -7,53 +7,58 @@ MongoDB returns it raises ``TypeError``; stored, it is off by one or two hours.
 
 import ast
 from datetime import UTC, date, datetime, timedelta
-from pathlib import Path
 
 import pytest
+from source_scan import BOT_SOURCES, Imports, is_none, keyword, python_files, rel
 
 from src.core import clock
-from src.discord_ext.embeds import format_discord_timestamp
+from src.core.text import format_discord_timestamp
 
-ROOT = Path(__file__).resolve().parent.parent
-SOURCES = ["extensions", "features", "src", "main.py"]
+# Read without a zone, each gives the host's wall clock (or a naive UTC one).
+ALWAYS_NAIVE = {
+    "datetime.datetime.utcnow",
+    "datetime.datetime.utcfromtimestamp",
+    "datetime.datetime.today",
+    "datetime.date.today",
+    "datetime.date.fromtimestamp",
+}
+# Naive unless a zone is passed: (positional index of the zone, keyword name).
+ZONE_ARGUMENT = {
+    "datetime.datetime.now": (0, "tz"),
+    "datetime.datetime.fromtimestamp": (1, "tz"),
+}
+
+
+def _has_zone(call: ast.Call, index: int, name: str) -> bool:
+    passed = keyword(call, name)
+    if passed is not None:
+        return not is_none(passed.value)
+    return len(call.args) > index and not is_none(call.args[index])
 
 
 def naive_clock_reads(source: str) -> list[int]:
-    lines = []
-    for node in ast.walk(ast.parse(source)):
-        if isinstance(node, ast.Import | ast.ImportFrom):
-            names = [node.module or ""] if isinstance(node, ast.ImportFrom) else []
-            names += [alias.name for alias in node.names]
-            if any(name.split(".")[0] == "pytz" for name in names):
-                lines.append(node.lineno)
+    tree = ast.parse(source)
+    imports = Imports(tree)
+    lines = [line for line, module in imports.modules if module.split(".")[0] == "pytz"]
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
             continue
-        if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)):
-            continue
-        owner = node.func.value
-        if not (isinstance(owner, ast.Name) and owner.id in ("datetime", "date")):
-            continue
-        method = node.func.attr
-        no_zone = not node.keywords
+        name = imports.resolve(node.func)
         if (
-            method in ("utcnow", "utcfromtimestamp", "today")
-            or method == "now"
-            and not node.args
-            and no_zone
-            or method == "fromtimestamp"
-            and len(node.args) < 2
-            and no_zone
+            name in ALWAYS_NAIVE
+            or name in ZONE_ARGUMENT
+            and not _has_zone(node, *ZONE_ARGUMENT[name])
         ):
             lines.append(node.lineno)
-    return lines
+    return sorted(set(lines))
 
 
 def test_no_naive_clock_reads():
-    offenders = []
-    for name in SOURCES:
-        path = ROOT / name
-        for file in [path] if path.is_file() else sorted(path.rglob("*.py")):
-            for line in naive_clock_reads(file.read_text(encoding="utf-8")):
-                offenders.append(f"{file.relative_to(ROOT)}:{line}")
+    offenders = [
+        f"{rel(file)}:{line}"
+        for file in python_files(*BOT_SOURCES)
+        for line in naive_clock_reads(file.read_text(encoding="utf-8"))
+    ]
     assert offenders == [], (
         "use clock.now() (UTC) or clock.local_now() (wall clock) from src/core/clock.py, "
         "and zoneinfo rather than pytz"
@@ -63,19 +68,36 @@ def test_no_naive_clock_reads():
 @pytest.mark.parametrize(
     "source",
     [
-        "datetime.now()",
-        "datetime.utcnow()",
-        "date.today()",
-        "datetime.fromtimestamp(0)",
-        "import pytz",
+        "from datetime import datetime\ndatetime.now()",
+        "from datetime import datetime\ndatetime.utcnow()",
+        "from datetime import date\ndate.today()",
+        "from datetime import datetime\ndatetime.fromtimestamp(0)",
+        "x = 1\nimport pytz",
+        # Spelled some other way (T02).
+        "import datetime\ndatetime.datetime.now()",
+        "import datetime as dt\ndt.datetime.now()",
+        "from datetime import datetime as dt\ndt.now()",
+        "from datetime import datetime\ndatetime.now(tz=None)",
+        "from datetime import datetime\ndatetime.now(None)",
+        "from datetime import datetime\ndatetime.fromtimestamp(0, tz=None)",
+        "from datetime import datetime\ndatetime.today()",
+        "x = 1\nfrom pytz import timezone",
     ],
 )
 def test_the_scan_catches(source):
-    assert naive_clock_reads(source) == [1]
+    assert naive_clock_reads(source) == [2]
 
 
 @pytest.mark.parametrize(
-    "source", ["datetime.now(UTC)", "datetime.fromtimestamp(0, UTC)", "clock.now()"]
+    "source",
+    [
+        "from datetime import UTC, datetime\ndatetime.now(UTC)",
+        "from datetime import UTC, datetime\ndatetime.now(tz=UTC)",
+        "import datetime as dt\ndt.datetime.fromtimestamp(0, dt.UTC)",
+        "clock.now()",
+        # Not the standard library's datetime.
+        "from interactions import Timestamp\nTimestamp.now()",
+    ],
 )
 def test_the_scan_lets_aware_reads_through(source):
     assert naive_clock_reads(source) == []

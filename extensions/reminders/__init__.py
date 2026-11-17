@@ -51,8 +51,8 @@ from src.core import clock
 from src.core import logging as logutil
 from src.core.config import ModuleConfig
 from src.core.logging import log_failure
-from src.core.text import EMBED_DESCRIPTION_LIMIT, clip
-from src.discord_ext.embeds import Colors, format_discord_timestamp
+from src.core.text import EMBED_DESCRIPTION_LIMIT, clip, format_discord_timestamp
+from src.discord_ext.embeds import Colors
 from src.discord_ext.messages import fetch_user_safe, send_error
 from src.discord_ext.scopes import guild_scopes
 

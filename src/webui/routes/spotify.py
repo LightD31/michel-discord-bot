@@ -35,8 +35,8 @@ from src.integrations.spotify import (
     build_oauth,
     fetch_account_summary,
     get_token_status,
+    reset_client,
     run_spotify,
-    sp,
 )
 from src.webui.context import WebUIContext
 from src.webui.ratelimit import request_is_https
@@ -177,7 +177,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
                 message="Échec de l'échange du code. Voir les logs du bot pour le détail.",
             )
 
-        sp.reset()
+        reset_client()
         account = await fetch_account_summary()
         logger.info(
             "Spotify re-authorized via WebUI (account=%s)",

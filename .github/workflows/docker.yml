@@ -1,29 +1,22 @@
-name: Docker
+name: Docker image
 
+# Called by ci.yml, never run on its own (S17): on a pull request the image is
+# built and scanned with a read-only token; on a push to master or a version tag
+# it is published only once every CI job has passed, so a red build never
+# reaches `:latest` or `:master`. The caller job grants the token's scopes:
+# this workflow declares none, so a pull request never gets `packages: write`.
 on:
-  pull_request:
-  push:
-    branches: [master, main]
-    tags: ["v*"]
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-
-# Default to read-only; the build job opts into the extra scopes it needs.
-permissions:
-  contents: read
+  workflow_call:
+    inputs:
+      publish:
+        description: Push the image to GHCR (with provenance and SBOM)
+        type: boolean
+        required: true
 
 jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    permissions:
-      contents: read
-      packages: write
-      # Required for build-push-action to attach provenance + SBOM attestations.
-      id-token: write
-      attestations: write
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -33,7 +26,7 @@ jobs:
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       - name: Log in to GHCR
-        if: github.event_name != 'pull_request'
+        if: inputs.publish
         uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
         with:
           registry: ghcr.io
@@ -111,7 +104,7 @@ jobs:
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
-          push: ${{ github.event_name != 'pull_request' }}
+          push: ${{ inputs.publish }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha

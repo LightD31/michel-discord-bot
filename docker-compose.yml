@@ -25,6 +25,16 @@ services:
       - ./data:/app/data
       - ./config:/app/config
       - "/etc/localtime:/etc/localtime:ro"
+    # The container can write only to its volumes and a small /tmp (the
+    # heartbeat file), holds no Linux capability and can't gain privileges
+    # (setuid binaries). The bot needs none of them: it only opens outbound
+    # connections and listens on unprivileged ports.
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
     restart:
       unless-stopped
 
