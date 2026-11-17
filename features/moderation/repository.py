@@ -8,8 +8,7 @@ import pymongo
 from pymongo import ReturnDocument
 
 from features.moderation.models import Infraction, InfractionType
-from src.core.db import mongo_manager
-from src.core.errors import DatabaseError
+from src.core.db import mongo_manager, translates_db_errors
 from src.core.logging import init_logger, log_failure
 
 logger = init_logger(__name__)
@@ -40,18 +39,15 @@ class ModerationRepository:
         except Exception as e:
             log_failure(logger, "Failed to create infraction indexes for %s: %s", self._guild_id, e)
 
+    @translates_db_errors
     async def next_case_id(self) -> int:
-        try:
-            doc = await self._meta_col().find_one_and_update(
-                {"_id": COUNTER_ID},
-                {"$inc": {"value": 1}},
-                upsert=True,
-                return_document=ReturnDocument.AFTER,
-            )
-            return int(doc["value"])
-        except Exception as e:
-            log_failure(logger, "Counter increment failed: %s", e)
-            raise DatabaseError(f"Failed to mint case id: {e}") from e
+        doc = await self._meta_col().find_one_and_update(
+            {"_id": COUNTER_ID},
+            {"$inc": {"value": 1}},
+            upsert=True,
+            return_document=ReturnDocument.AFTER,
+        )
+        return int(doc["value"])
 
     @staticmethod
     def _doc_to_infraction(doc: dict) -> Infraction:
@@ -60,35 +56,25 @@ class ModerationRepository:
             doc["_id"] = str(doc["_id"])
         return Infraction(**doc)
 
+    @translates_db_errors
     async def add(self, infraction: Infraction) -> Infraction:
-        try:
-            payload = infraction.model_dump(exclude={"object_id"})
-            result = await self._col().insert_one(payload)
-            infraction.object_id = str(result.inserted_id)
-            return infraction
-        except Exception as e:
-            log_failure(logger, "DB insert_one failed: %s", e)
-            raise DatabaseError(f"Failed to add infraction: {e}") from e
+        payload = infraction.model_dump(exclude={"object_id"})
+        result = await self._col().insert_one(payload)
+        infraction.object_id = str(result.inserted_id)
+        return infraction
 
+    @translates_db_errors
     async def get(self, case_id: int) -> Infraction | None:
-        try:
-            doc = await self._col().find_one({"id": case_id})
-        except Exception as e:
-            log_failure(logger, "DB find_one failed: %s", e)
-            return None
+        """The case, or ``None`` when there is none (an outage raises, it isn't "not found")."""
+        doc = await self._col().find_one({"id": case_id})
         return self._doc_to_infraction(doc) if doc else None
 
+    @translates_db_errors
     async def list_for_user(self, user_id: str) -> list[Infraction]:
-        try:
-            cursor = (
-                self._col().find({"user_id": str(user_id)}).sort("created_at", pymongo.DESCENDING)
-            )
-            docs = await cursor.to_list()
-            return [self._doc_to_infraction(d) for d in docs]
-        except Exception as e:
-            log_failure(logger, "DB find failed: %s", e)
-            raise DatabaseError(f"Failed to list infractions: {e}") from e
+        cursor = self._col().find({"user_id": str(user_id)}).sort("created_at", pymongo.DESCENDING)
+        return [self._doc_to_infraction(d) for d in await cursor.to_list()]
 
+    @translates_db_errors
     async def list(
         self,
         *,
@@ -97,37 +83,26 @@ class ModerationRepository:
         active: bool | None = None,
         limit: int | None = None,
     ) -> list[Infraction]:
-        try:
-            query: dict = {}
-            if type is not None:
-                query["type"] = type
-            if user_id is not None:
-                query["user_id"] = str(user_id)
-            if active is not None:
-                query["active"] = active
-            cursor = self._col().find(query).sort("created_at", pymongo.DESCENDING)
-            if limit:
-                cursor = cursor.limit(limit)
-            docs = await cursor.to_list(length=limit)
-            return [self._doc_to_infraction(d) for d in docs]
-        except Exception as e:
-            log_failure(logger, "DB find failed: %s", e)
-            raise DatabaseError(f"Failed to list infractions: {e}") from e
+        query: dict = {}
+        if type is not None:
+            query["type"] = type
+        if user_id is not None:
+            query["user_id"] = str(user_id)
+        if active is not None:
+            query["active"] = active
+        cursor = self._col().find(query).sort("created_at", pymongo.DESCENDING)
+        if limit:
+            cursor = cursor.limit(limit)
+        return [self._doc_to_infraction(d) for d in await cursor.to_list(length=limit)]
 
+    @translates_db_errors
     async def set_active(self, case_id: int, active: bool) -> bool:
-        """Flip a case's active flag. Returns True if a document was modified."""
-        try:
-            result = await self._col().update_one({"id": case_id}, {"$set": {"active": active}})
-            return result.matched_count > 0
-        except Exception as e:
-            log_failure(logger, "DB update_one failed: %s", e)
-            raise DatabaseError(f"Failed to update infraction: {e}") from e
+        """Set a case's active flag. True when the case exists."""
+        result = await self._col().update_one({"id": case_id}, {"$set": {"active": active}})
+        return result.matched_count > 0
 
+    @translates_db_errors
     async def count_active_warnings(self, user_id: str) -> int:
-        try:
-            return await self._col().count_documents(
-                {"user_id": str(user_id), "type": "warn", "active": True}
-            )
-        except Exception as e:
-            log_failure(logger, "DB count failed: %s", e)
-            return 0
+        return await self._col().count_documents(
+            {"user_id": str(user_id), "type": "warn", "active": True}
+        )

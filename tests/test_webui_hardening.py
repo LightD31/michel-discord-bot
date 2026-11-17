@@ -12,7 +12,7 @@ from fastapi.testclient import TestClient
 import src.core.config as core_config
 import src.webui.routes.servers as servers_routes
 from src.core import backup_format
-from src.core.db import BACKUP_CONFIG_FILENAME, BACKUP_EXCLUDED_COLLECTIONS, MongoManager
+from src.core.db import BACKUP_CONFIG_FILENAME, BACKUP_EXCLUDED_GLOBAL_COLLECTIONS, MongoManager
 from src.webui import sessions
 from src.webui.ratelimit import TrustedProxies
 from src.webui.security_headers import CHARTJS_URL, SecurityHeadersMiddleware
@@ -177,7 +177,7 @@ class FakeClient:
 
 
 def test_sessions_collection_is_the_excluded_one():
-    assert sessions.BACKUP_KEY in BACKUP_EXCLUDED_COLLECTIONS
+    assert sessions.COLLECTION in BACKUP_EXCLUDED_GLOBAL_COLLECTIONS
 
 
 def test_backup_skips_sessions_and_copies_config(tmp_path, monkeypatch):

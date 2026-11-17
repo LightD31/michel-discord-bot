@@ -28,8 +28,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from scripts.generate_config_example import _import_extensions  # noqa: E402
 
 
-def main() -> None:
-    path = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("config/config.json")
+def main(argv: list[str] | None = None) -> None:
+    args = sys.argv[1:] if argv is None else argv
+    path = Path(args[0]) if args else Path("config/config.json")
     data = json.loads(path.read_text(encoding="utf-8"))
     failures = _import_extensions()
     for failure in failures:

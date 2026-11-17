@@ -356,6 +356,10 @@ async def test_stream_end_notification_respects_the_toggle():
 async def test_stream_end_notification_needs_a_channel():
     ext = make_extension()
     streamer = next(iter(ext.streamers.values()))
+    former = streamer.notif_channel
     streamer.notif_channel = None
 
-    await ext.send_stream_end_notification(streamer, "ZeratoR")  # must not raise
+    await ext.send_stream_end_notification(streamer, "ZeratoR")
+
+    assert former.sent == []
+    assert streamer.notif_channel is None

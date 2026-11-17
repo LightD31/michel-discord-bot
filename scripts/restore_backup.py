@@ -103,14 +103,14 @@ def _mongo_url(args: argparse.Namespace) -> str:
     return str(url)
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="Restaure une sauvegarde MongoDB du bot.")
     parser.add_argument("backup", type=Path, help="dossier de la sauvegarde")
     parser.add_argument("--db", action="append", dest="databases", help="base à restaurer")
     parser.add_argument("--drop", action="store_true", help="remplacer les collections non vides")
     parser.add_argument("--dry-run", action="store_true", help="afficher sans rien écrire")
     parser.add_argument("--mongo-url", help="URL MongoDB (défaut : config/config.json)")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     try:
         todo = plan(args.backup, args.databases)

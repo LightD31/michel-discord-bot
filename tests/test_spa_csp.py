@@ -23,9 +23,7 @@ SET_HANDLER = re.compile(r"""setAttribute\(\s*["'`]on""", re.IGNORECASE)
 # A <script> without a src attribute (data-src="…" isn't one).
 INLINE_SCRIPT = re.compile(r"<script(?![^>]*(?<![\w-])src\s*=)[^>]*>", re.IGNORECASE)
 # Code from a string: eval, Function (with or without new), a string timer.
-STRING_CODE = re.compile(
-    r"""\beval\s*\(|\bFunction\s*\(|\bset(Timeout|Interval)\s*\(\s*["'`]"""
-)
+STRING_CODE = re.compile(r"""\beval\s*\(|\bFunction\s*\(|\bset(Timeout|Interval)\s*\(\s*["'`]""")
 ACTION_ATTR = re.compile(r'data-(click|change|input|mousedown|keydown)="([\w-]+)"')
 
 

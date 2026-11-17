@@ -62,11 +62,9 @@ CLOSE_TIMEOUT_SECONDS = 2.0
 GLOBAL_DB_NAME = "global"
 GUILD_DB_PREFIX = "guild_"
 
-# (database, collection) pairs never written to a backup. Dashboard sessions are
-# bearer credentials: restoring one is useless, leaking one is not.
-BACKUP_EXCLUDED_COLLECTIONS: frozenset[tuple[str, str]] = frozenset(
-    {(GLOBAL_DB_NAME, "webui_sessions")}
-)
+# Collections of the global database never written to a backup. Dashboard
+# sessions are bearer credentials: restoring one is useless, leaking one is not.
+BACKUP_EXCLUDED_GLOBAL_COLLECTIONS: frozenset[str] = frozenset({"webui_sessions"})
 # Name of the copy of ``config/config.json`` stored next to each backup.
 BACKUP_CONFIG_FILENAME = "config.json"
 # Documents handed to the writer thread at a time: bounds memory per collection.
@@ -255,7 +253,7 @@ class MongoManager:
         Each collection becomes a gzip-compressed Extended JSON Lines file (see
         :mod:`src.core.backup_format`), written in batches on a worker thread so
         neither the whole collection nor the file I/O sits on the event loop.
-        Collections in :data:`BACKUP_EXCLUDED_COLLECTIONS` are skipped. A copy of
+        Collections in :data:`BACKUP_EXCLUDED_GLOBAL_COLLECTIONS` are skipped. A copy of
         ``config/config.json`` (every guild's configuration, which lives outside
         MongoDB) is saved alongside, readable by its owner only, and a manifest
         records how many documents each collection holds.
@@ -307,7 +305,7 @@ class MongoManager:
             db = self.client[db_name]
             counts[db_name] = {}
             for col_name in await db.list_collection_names():
-                if (db_name, col_name) in BACKUP_EXCLUDED_COLLECTIONS:
+                if db_name == GLOBAL_DB_NAME and col_name in BACKUP_EXCLUDED_GLOBAL_COLLECTIONS:
                     continue
                 counts[db_name][col_name] = await self._dump_collection(
                     db[col_name], backup_format.collection_path(dest, db_name, col_name)

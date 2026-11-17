@@ -149,12 +149,12 @@ jobs:
         run: uv sync
 
       - name: Pytest with coverage
-        # Measures src, features and extensions ([tool.coverage.run] in pyproject.toml).
+        # Measures src, features, extensions and scripts ([tool.coverage.run] in pyproject.toml).
         run: uv run pytest --cov --cov-report=term --cov-report=xml
 
       - name: Coverage floor of src and features
         # The total floor counts the extensions too; this keeps the
-        # unit-testable layers at their own floor (78%).
+        # unit-testable layers at their own floor (81%).
         run: uv run coverage report --include='src/*,features/*' --fail-under=81 --format=total
 
       - name: Coverage summary
@@ -285,6 +285,12 @@ jobs:
             echo "::error::config.example.json is out of date — regenerate with: python scripts/generate_config_example.py"
             exit 1
           fi
+
+      - name: Check config.example.json validates against the schemas
+        # The script the runbook gives operators (scripts/check_config.py): the
+        # example must pass it, so a schema default that fails its own field
+        # shows up here.
+        run: uv run --no-dev python scripts/check_config.py config.example.json
 
   audit:
     runs-on: ubuntu-latest

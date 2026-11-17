@@ -16,11 +16,11 @@ this module free of webui imports.
 from datetime import UTC, datetime
 from typing import Any
 
-from src.core.db import GLOBAL_DB_NAME, mongo_manager
+from src.core.db import mongo_manager
 
+# Holds bearer credentials: src.core.db keeps it out of backups
+# (BACKUP_EXCLUDED_GLOBAL_COLLECTIONS).
 COLLECTION = "webui_sessions"
-# Holds bearer credentials: src.core.db keeps it out of backups.
-BACKUP_KEY = (GLOBAL_DB_NAME, COLLECTION)
 
 
 class SessionRepository:
