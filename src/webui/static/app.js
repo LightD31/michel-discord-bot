@@ -756,10 +756,11 @@
 
             switch (fieldType) {
                 case 'boolean':
+                    // Unset: the schema's default, which a save then writes as is.
                     html += `
                         <label class="toggle" style="margin-top:4px;">
                             <input type="checkbox" data-field="${key}" data-type="boolean"
-                                ${value === true ? 'checked' : ''}>
+                                ${(hasValue ? value === true : field.default === true) ? 'checked' : ''}>
                             <span class="toggle-slider"></span>
                         </label>`;
                     break;
@@ -2798,6 +2799,10 @@
         if (state.currentPage === 'module' && state.currentModule === 'moduleReactionRoles' && state.currentServerId) {
             loadRoleMenus(state.currentServerId);
         }
+        // Secret Santa: the session and its draw button.
+        if (state.currentPage === 'module' && state.currentModule === 'moduleSecretSanta' && state.currentServerId) {
+            loadSecretSanta(state.currentServerId);
+        }
         // Moderation: load infraction history when on its module page.
         if (state.currentPage === 'module' && state.currentModule === 'moduleModeration' && state.currentServerId) {
             loadInfractions(state.currentServerId);
@@ -3970,6 +3975,7 @@
     // Who changed what from the dashboard: field names only, never a value.
     const AUDIT_ACTIONS = {
         'module.save': 'a enregistré le module',
+        'secretsanta.draw': 'a lancé le tirage du Père Noël Secret',
         'module.toggle': 'a basculé le module',
         'embeds.publish': 'a publié les embeds',
         'bot_message.republish': 'a republié le message',
@@ -4009,6 +4015,7 @@
         const parts = [];
         if ('enabled' in details) parts.push(details.enabled ? 'activé' : 'désactivé');
         if ('count' in details) parts.push(`${details.count} embed(s)`);
+        if ('participants' in details) parts.push(`${details.participants} participant(s)`);
         if ('reloaded' in details) parts.push(`${details.reloaded} rechargée(s), ${details.failed} en échec`);
         if (details.error) parts.push('avec une erreur');
         return parts.join(', ');
@@ -4228,6 +4235,23 @@
                     </div>
                 </div>
                 <div id="rolemenu-builder-body"></div>
+            </div>
+            ` : ''}
+
+            ${mod === 'moduleSecretSanta' ? `
+            <div class="card" style="margin-top:16px;">
+                <div class="card-header">
+                    <div>
+                        <div class="card-title">🎅 Session en cours</div>
+                        <div class="card-subtitle">Le Père Noël Secret du serveur. Qui offre à qui reste secret : seuls des totaux sont affichés.</div>
+                    </div>
+                    <div class="card-actions">
+                        <button class="btn btn-ghost btn-sm" data-click="loadSecretSanta" data-click-args="${actionArgs(sid)}">↻ Actualiser</button>
+                    </div>
+                </div>
+                <div id="secretsanta-session" data-server-id="${sid}">
+                    <div class="loading"><div class="spinner"></div></div>
+                </div>
             </div>
             ` : ''}
 
@@ -4787,6 +4811,81 @@
             toast(`Cas #${caseId} révoqué.`, 'success');
             loadInfractions(serverId);
         } catch (e) { /* handled by api() */ }
+    }
+
+    // ── Secret Santa: the session and its draw (P2) ─────────────────────
+    // Counts only once drawn: who sent or received a parcel would hint at pairs.
+    function santaProgress(label, done, total) {
+        const pct = total ? Math.round(100 * done / total) : 0;
+        return `
+            <div class="santa-progress">
+                <div class="santa-progress-label"><span>${label}</span><strong>${done}/${total}</strong></div>
+                <div class="santa-progress-bar" role="progressbar" aria-label="${escapeHtml(label)}" aria-valuemin="0" aria-valuemax="${total}" aria-valuenow="${done}"><span style="width:${pct}%"></span></div>
+            </div>`;
+    }
+
+    function secretSantaHtml(serverId, s) {
+        if (!s) {
+            return `<div class="empty-state"><h3>Aucune session</h3><p>Créez-en une sur Discord avec <code>/secretsanta create</code>, en présentiel ou par colis (option <code>colis</code>).</p></div>`;
+        }
+        const withList = s.participants.filter(p => p.has_wishlist).length;
+        const facts = [
+            ['Statut', s.is_drawn ? '✅ Tirage effectué' : '⏳ Inscriptions ouvertes'],
+            ['Échange', s.exchange_label ? escapeHtml(s.exchange_label) : '<span style="color:var(--text-muted)">Pas de date</span>'],
+            ['Budget', s.budget ? escapeHtml(s.budget) : '<span style="color:var(--text-muted)">Non précisé</span>'],
+            ['Remise', s.shipping ? '📦 Par colis (suivi et rappel)' : '🤝 En main propre'],
+            ['Organisé par', escapeHtml(s.created_by)],
+        ];
+        const people = s.participants.length
+            ? `<ul class="santa-people">${s.participants.map(p => `
+                <li><span>${escapeHtml(p.name)}</span>${p.has_wishlist ? '<span class="santa-list" title="A laissé une liste d\'envies">📝 liste</span>' : ''}</li>`).join('')}</ul>`
+            : '<p style="color:var(--text-muted)">Personne n\'est encore inscrit.</p>';
+        const progress = s.is_drawn && s.shipping
+            ? santaProgress('📦 Colis envoyés', s.sent || 0, s.total) + santaProgress('🎁 Colis reçus', s.received || 0, s.total)
+            : (!s.is_drawn ? santaProgress('📝 Listes d\'envies', withList, s.total) : '');
+        const draw = s.is_drawn ? '' : `
+            <div class="santa-draw">
+                <label class="santa-check"><input type="checkbox" id="santa-subgroups"> Autoriser plusieurs sous-groupes si les exclusions empêchent une boucle unique</label>
+                <button class="btn btn-primary" data-click="drawSecretSanta" data-click-args="${actionArgs(serverId, EL)}" ${s.total < 2 ? 'disabled title="Il faut au moins 2 participants"' : ''}>🎲 Lancer le tirage</button>
+            </div>`;
+        return `
+            <dl class="santa-facts">${facts.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join('')}</dl>
+            ${progress}
+            <h4 style="margin:16px 0 8px;">Participants (${s.total})</h4>
+            ${people}
+            ${draw}`;
+    }
+
+    async function loadSecretSanta(serverId) {
+        const container = document.getElementById('secretsanta-session');
+        if (!container) return;
+        try {
+            const data = await api(`/api/servers/${encodeURIComponent(serverId)}/secretsanta`);
+            container.innerHTML = secretSantaHtml(serverId, data?.session || null);
+        } catch (e) {
+            container.innerHTML = `<div class="empty-state"><h3>Erreur</h3><p>${escapeHtml(String(e.message || e))}</p></div>`;
+        }
+    }
+
+    async function drawSecretSanta(serverId, btn) {
+        if (!confirm('Lancer le tirage ? Chaque participant reçoit son destinataire par MP, et les inscriptions sont closes.')) return;
+        const allow = !!document.getElementById('santa-subgroups')?.checked;
+        if (btn) btn.disabled = true;
+        try {
+            const result = await api(`/api/servers/${encodeURIComponent(serverId)}/secretsanta/draw`, {
+                method: 'POST',
+                body: JSON.stringify({ allow_subgroups: allow }),
+            });
+            toast(`Tirage effectué pour ${result.count} participants.`, 'success');
+            if (result.subgroups > 1) toast(`${result.subgroups} sous-groupes ont été formés.`, 'info');
+            if ((result.failed_dms || []).length) {
+                toast(`MP impossible pour : ${result.failed_dms.join(', ')}. Ils peuvent utiliser /secretsanta remind une fois leurs MP ouverts.`, 'warning');
+            }
+        } catch (e) { /* handled by api() */ }
+        finally {
+            if (btn) btn.disabled = false;
+            loadSecretSanta(serverId);
+        }
     }
 
     // ── Spotify: playlist & vote statistics ─────────────────────────────
@@ -5936,7 +6035,7 @@
         closeRoleMenuBuilder, closeSidebar, copyPublicLink, copyShortLink, createShortLink,
         deleteRoleMenu, deleteShortLink, downloadConfig, downloadLogs, editGlobalSection,
         editGlobalSectionJson, editModuleConfigJson, gotoShortLinkPage, insertVariable,
-        loadInfractions, loadSpotifyStats, loadXpStats, logout, navigate, navigatePublic,
+        drawSecretSanta, loadInfractions, loadSecretSanta, loadSpotifyStats, loadXpStats, logout, navigate, navigatePublic,
         onLogLevelChange, onLogSearchInput, onLogVerboseChange, onMemberPickerChange,
         onMemberPickerSearch, onRssModeChange, openModelCatalog, openRoleMenuBuilder,
         publishEmbeds, refreshLogs, reloadAllExtensions, removeNameMapEntry,

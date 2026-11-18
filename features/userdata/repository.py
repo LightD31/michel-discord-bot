@@ -6,7 +6,8 @@ the same deletion runs for one server 30 days after they leave it
 (:mod:`features.userdata.departures`). What happens to each store:
 
 * **deleted** — what is the member's alone: XP and its log, birthday,
-  reminders, ``!request`` reminders, "feur" counter, directory entry, AI quotas;
+  reminders, ``!request`` reminders, "feur" counter, directory entry, AI quotas,
+  Secret Santa wish lists and gift marks;
 * **anonymised** — what other members share: their votes stay counted under a
   key that names nobody, and where they are the author, creator, asker or
   winner, the id becomes :data:`NOBODY` (polls, suggestions, Spotify, AI
@@ -85,6 +86,8 @@ def _personal_filters(uid: str) -> list[tuple[str, dict[str, Any]]]:
         ("zerator247_reminders", {"_id": uid}),
         ("feur_stats", {"_id": f"user_{uid}"}),
         ("users", {"_id": uid}),
+        # Secret Santa wish lists and gift marks: the member's own entries.
+        ("secret_santa_participants", {"user_id": int(uid)}),
     ]
 
 
@@ -189,6 +192,11 @@ class UserDataRepository:
         )
         if dm_sessions:
             global_found["secret_santa_sessions"] = dm_sessions
+        dm_entries = (
+            await global_db["secret_santa_participants"].find({"user_id": int(uid)}).to_list()
+        )
+        if dm_entries:
+            global_found["secret_santa_participants"] = dm_entries
         return {"user_id": uid, "guilds": guilds, "global": global_found}
 
     async def _own_draws(self, db: Any) -> list[dict]:
@@ -292,6 +300,10 @@ class UserDataRepository:
         db = self._db(None)
         result = await db["ai_usage"].delete_many({"_id": {"$regex": f":user:{self.uid}$"}})
         report.add(report.deleted, f"{GLOBAL_DB_NAME}.ai_usage", result.deleted_count)
+        result = await db["secret_santa_participants"].delete_many({"user_id": int(self.uid)})
+        report.add(
+            report.deleted, f"{GLOBAL_DB_NAME}.secret_santa_participants", result.deleted_count
+        )
         await self._forget_secret_santa(db, GLOBAL_DB_NAME, report)
 
 

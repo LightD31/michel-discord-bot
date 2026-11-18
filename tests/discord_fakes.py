@@ -38,13 +38,18 @@ class FakeUser:
         self.bot = bot
         self.avatar_url = f"https://cdn.example/{self.id}.png"
         self.dms: list[str] = []
+        self.dm_messages: list[FakeMessage] = []  # the same DMs, embeds and buttons included
+        self.dm_kwargs: list[dict[str, Any]] = []
         self.dms_closed = False
 
     async def send(self, content: str | None = None, **kwargs: Any) -> FakeMessage:
         if self.dms_closed:
             raise discord_error()
         self.dms.append(content or "")
-        return FakeMessage(content=content, **kwargs)
+        message = FakeMessage(content=content, **kwargs)
+        self.dm_messages.append(message)
+        self.dm_kwargs.append(kwargs)
+        return message
 
     def __eq__(self, other: object) -> bool:
         return getattr(other, "id", None) == self.id
@@ -322,6 +327,7 @@ class FakeCtx:
         self.replies: list[dict[str, Any]] = []
         self.deferred: bool | None = None
         self.origin_edits: list[dict[str, Any]] = []
+        self.modals: list[Any] = []
 
     async def send(self, content: str | None = None, **kwargs: Any) -> FakeMessage:
         self.replies.append({"content": content, **kwargs})
@@ -331,6 +337,9 @@ class FakeCtx:
         return message
 
     respond = send
+
+    async def send_modal(self, modal: Any) -> None:
+        self.modals.append(modal)
 
     async def defer(self, ephemeral: bool = False, **_: Any) -> None:
         self.deferred = ephemeral

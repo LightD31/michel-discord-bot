@@ -7,30 +7,12 @@ themselves; one who could re-create a drawn session would wipe its results.
 import pytest
 from discord_fakes import FakeChannel, FakeCtx, FakeGuild, FakeMember, bare_extension, run
 from interactions import Permissions
+from santa_fakes import MemorySanta
 
 from extensions.secretsanta import SecretSantaExtension
 from extensions.secretsanta._common import ORGANISER_ONLY
 from features.secretsanta import SecretSantaSession
-
-
-class MemorySanta:
-    def __init__(self, session=None):
-        self.session = session
-        self.banned: list[tuple[int, int]] = []
-        self.saved = []
-
-    async def get_session(self, context_id):
-        return self.session
-
-    async def read_banned_pairs(self, context_id):
-        return list(self.banned)
-
-    async def write_banned_pairs(self, context_id, pairs):
-        self.banned = list(pairs)
-
-    async def create_session(self, session):
-        self.saved.append(session)
-        self.session = session
+from features.secretsanta.relay import RelayLimiter
 
 
 @pytest.fixture
@@ -48,7 +30,12 @@ def setup(store_config):
 
     def ctx_for(author):
         ctx = FakeCtx(author, channel)
-        return bare_extension(SecretSantaExtension, ctx.bot, repository=repo), ctx
+        return (
+            bare_extension(
+                SecretSantaExtension, ctx.bot, repository=repo, relay_limiter=RelayLimiter()
+            ),
+            ctx,
+        )
 
     return ctx_for, repo, creator, member, admin, target
 

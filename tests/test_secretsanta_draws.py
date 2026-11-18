@@ -1,4 +1,4 @@
-"""/secretsanta draw: who may run it, one draw per session, and the DMs (T04)."""
+"""/secretsanta draw: who may run it, one draw per session, and the DMs (T04, P2)."""
 
 import pytest
 from discord_fakes import (
@@ -11,43 +11,22 @@ from discord_fakes import (
     run,
 )
 from interactions import Embed, Permissions
+from santa_fakes import MemorySanta
 
-import extensions.secretsanta.draws as draws_module
+import src.discord_ext.secretsanta as draw_module
 from extensions.secretsanta import SecretSantaExtension
 from features.secretsanta import SecretSantaSession
-
-
-class MemorySanta:
-    def __init__(self, session=None, banned=()):
-        self.session = session
-        self.banned = list(banned)
-        self.results = None
-
-    async def get_session(self, context_id):
-        return self.session
-
-    async def read_banned_pairs(self, context_id):
-        return self.banned
-
-    async def claim_draw(self, context_id):
-        if self.session is None or self.session.is_drawn:
-            return False
-        self.session.is_drawn = True
-        return True
-
-    async def save_draw_results(self, context_id, draw_results):
-        self.results = list(draw_results)
 
 
 @pytest.fixture
 def setup(monkeypatch, tmp_path, store_config):
     store_config({"servers": {"1": {"moduleSecretSanta": {"enabled": True}}}})
-    monkeypatch.setattr(draws_module, "DATA_DIR", tmp_path)
+    monkeypatch.setattr(draw_module, "DATA_DIR", tmp_path)
 
     async def edit(message, **kwargs):
         await message.edit(**kwargs)
 
-    monkeypatch.setattr(draws_module, "edit_message_if_changed", edit)
+    monkeypatch.setattr(draw_module, "edit_message_if_changed", edit)
     guild = FakeGuild(1)
     channel = guild.add_channel(FakeChannel(10))
     members = [guild.add_member(FakeMember(uid, f"m{uid}")) for uid in (3, 4, 5, 6)]
@@ -138,3 +117,75 @@ async def test_impossible_constraints_are_explained(setup):
     await run(SecretSantaExtension.draw, ext, ctx)
     assert "Impossible de générer" in ctx.last and "allow_subgroups" in ctx.last
     assert not repo.session.is_drawn
+
+
+# ── The draw DM (P2) ───────────────────────────────────────────────────────
+
+
+def _labels(message):
+    return [b.label for row in message.components or [] for b in row.components]
+
+
+def _dm_for(members, repo, receiver_id):
+    giver_id = next(g for g, r in repo.results if r == receiver_id)
+    return next(m for m in members if m.id == giver_id).dm_messages[0]
+
+
+async def test_the_dm_carries_the_wish_list_budget_and_date(setup):
+    ext, ctx, repo, members, _ = setup
+    repo.session.budget, repo.session.exchange_date = "20 €", "2026-12-24"
+    await repo.set_wishlist("guild_1", 4, "Un bonnet rouge", None)
+    await run(SecretSantaExtension.draw, ext, ctx)
+
+    text = _dm_for(members, repo, 4).embeds[0].description
+    assert "<@4>" in text and "Un bonnet rouge" in text
+    assert "20 €" in text and "jeudi 24 décembre 2026" in text
+    without = _dm_for(members, repo, 5).embeds[0].description
+    assert "Pas de liste d'envies" in without and "Écris-lui anonymement" in without
+
+
+async def test_an_in_person_exchange_has_no_parcel_buttons(setup):
+    ext, ctx, repo, members, _ = setup
+    await run(SecretSantaExtension.draw, ext, ctx)
+    for member in members:
+        assert _labels(member.dm_messages[0]) == ["✉️ Écrire anonymement"]
+        assert "colis" not in member.dm_messages[0].embeds[0].description
+
+
+async def test_a_parcel_exchange_gets_the_sent_and_received_buttons(setup):
+    ext, ctx, repo, members, _ = setup
+    repo.session.shipping = True
+    await run(SecretSantaExtension.draw, ext, ctx)
+    message = members[0].dm_messages[0]
+    assert _labels(message) == ["✉️ Écrire anonymement", "📦 Cadeau envoyé", "🎁 Cadeau reçu"]
+    assert "📦 Cadeau envoyé" in message.embeds[0].description
+    ids = [b.custom_id for row in message.components for b in row.components]
+    assert ids == [
+        "secretsanta_write:guild_1",
+        "secretsanta_sent:guild_1",
+        "secretsanta_received:guild_1",
+    ]
+
+
+async def test_without_anonymous_messages_there_is_no_write_button(setup, store_config):
+    store_config(
+        {"servers": {"1": {"moduleSecretSanta": {"enabled": True, "anonymousMessages": False}}}}
+    )
+    ext, ctx, repo, members, _ = setup
+    await run(SecretSantaExtension.draw, ext, ctx)
+    assert members[0].dm_messages[0].components == []
+    assert "Écris-lui" not in members[0].dm_messages[0].embeds[0].description
+
+
+async def test_remind_sends_the_dm_again_with_its_buttons(setup):
+    ext, ctx, repo, members, _ = setup
+    repo.session.shipping = True
+    await run(SecretSantaExtension.draw, ext, ctx)
+    receiver = next(r for g, r in repo.results if g == 3)
+    await repo.set_wishlist("guild_1", receiver, "Du thé", None)
+
+    await run(SecretSantaExtension.remind_assignment, ext, FakeCtx(members[0], ctx.channel))
+    again = members[0].dm_messages[-1]
+    assert again.embeds[0].title == "🎅 Rappel - Père Noël Secret"
+    assert "Du thé" in again.embeds[0].description
+    assert "📦 Cadeau envoyé" in _labels(again)

@@ -809,6 +809,51 @@
         .empty-state .icon { font-size: 48px; margin-bottom: 12px; }
         .empty-state h3 { margin-bottom: 8px; color: var(--text-secondary); }
 
+        /* ── Secret Santa session card ─────────────── */
+        .santa-facts {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+            gap: 12px;
+            margin: 0 0 16px;
+        }
+        .santa-facts dt { font-size: 12px; color: var(--text-muted); margin-bottom: 2px; }
+        .santa-facts dd { margin: 0; font-weight: 500; }
+        .santa-progress { margin: 8px 0; }
+        .santa-progress-label { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 4px; }
+        .santa-progress-bar { height: 8px; border-radius: 4px; background: var(--bg-tertiary); overflow: hidden; }
+        .santa-progress-bar span { display: block; height: 100%; background: var(--success); }
+        .santa-people {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+        .santa-people li {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 10px;
+            border: 1px solid var(--border);
+            border-radius: 999px;
+            font-size: 13px;
+            max-width: 100%;
+        }
+        .santa-people li > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .santa-list { font-size: 11px; color: var(--text-muted); white-space: nowrap; }
+        .santa-draw {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            margin-top: 16px;
+            padding-top: 16px;
+            border-top: 1px solid var(--border);
+        }
+        .santa-check { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-secondary); }
+
         /* ── Schema form ───────────────────────────── */
         .schema-form {
             display: flex;

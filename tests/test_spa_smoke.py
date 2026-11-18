@@ -43,6 +43,7 @@ class SmokeConfig(SchemaBase):
         "Message d'accueil", "string"
     )
     rounds: int = ui("Nombre de tours", "number", default=3, ge=1, le=10)
+    notify: bool = ui("Prévenir les membres", "boolean", default=True)
 
 
 def free_port() -> int:
@@ -214,6 +215,17 @@ def test_a_number_shows_its_bounds_and_one_outside_them_is_refused(page, dashboa
     assert "rounds" not in stored["servers"][GUILD][MODULE]
 
 
+def test_an_unset_switch_shows_its_default_and_keeps_it_on_save(page, dashboard):
+    """An unset "yes" by default showed "no", and a save stored no (P2's anonymous messages)."""
+    switch = page.get_by_label("Prévenir les membres")
+    assert switch.is_checked()
+    page.get_by_label("Message d'accueil").fill("Bonjour")
+    save(page)
+    page.locator("#toasts .toast", has_text="Configuration sauvegardée").first.wait_for()
+    stored = json.loads(dashboard["config"].read_text(encoding="utf-8"))
+    assert stored["servers"][GUILD][MODULE]["notify"] is True
+
+
 def test_a_new_role_menu_starts_with_empty_fields(page, dashboard, monkeypatch):
     """Its first row used to read "undefined" in the emoji and label inputs (Q3)."""
     import src.webui.routes.config as config_routes
@@ -288,3 +300,108 @@ def test_the_spa_logs_out_but_another_site_cannot(page, browser, dashboard, capl
     status = page.evaluate("() => fetch('/auth/logout', {method: 'POST'}).then(r => r.status)")
     assert status < 400
     assert dashboard["session"].token_hash not in dashboard["oauth"].sessions
+
+
+def test_the_secret_santa_card_shows_the_session_and_draws(page, dashboard, monkeypatch):
+    """P2: the session on its module page, counts only, and a draw that confirms first."""
+    import src.webui.routes.config as config_routes
+
+    class Santa(SchemaBase):
+        __label__ = "Secret Santa"
+        enabled: bool = enabled_field()
+
+    monkeypatch.setitem(schemas._MODULE_REGISTRY, "moduleSecretSanta", Santa)
+    monkeypatch.setitem(
+        config_routes.MODULE_SCHEMAS,
+        "moduleSecretSanta",
+        schemas.MODULE_SCHEMAS["moduleSecretSanta"],
+    )
+    config_store.mutate(
+        lambda data: data["servers"][GUILD].update(moduleSecretSanta={"enabled": True})
+    )
+    summary = {
+        "is_drawn": False,
+        "budget": "20 €",
+        "exchange_date": "2026-12-24",
+        "exchange_label": "jeudi 24 décembre 2026",
+        "shipping": True,
+        "created_by": "Alice",
+        "participants": [
+            {"id": "3", "name": "Alice", "has_wishlist": True},
+            {"id": "4", "name": "<img src=x onerror=alert(1)>", "has_wishlist": False},
+        ],
+        "total": 2,
+    }
+    draws = []
+
+    def answer(route):
+        if route.request.method == "POST":
+            draws.append(json.loads(route.request.post_data))
+            summary["is_drawn"], summary["sent"], summary["received"] = True, 1, 0
+            route.fulfill(json={"count": 2, "subgroups": 1, "failed_dms": []})
+        else:
+            route.fulfill(json={"session": summary})
+
+    page.route(f"**/api/servers/{GUILD}/secretsanta**", answer)
+    page.goto(f"http://127.0.0.1:{dashboard['port']}/#/module/{GUILD}/moduleSecretSanta")
+    card = page.locator("#secretsanta-session")
+    card.get_by_text("jeudi 24 décembre 2026").wait_for()
+    assert "📦 Par colis" in card.inner_text()
+    assert card.locator("img").count() == 0  # a member's name is text, never markup
+    assert "<img src=x onerror=alert(1)>" in card.inner_text()
+    assert "📝 Listes d'envies" in card.inner_text() and "1/2" in card.inner_text()
+
+    page.once("dialog", lambda dialog: dialog.accept())
+    card.get_by_label("Autoriser plusieurs sous-groupes").check()
+    card.get_by_role("button", name="🎲 Lancer le tirage").click()
+    page.locator("#toasts .toast", has_text="Tirage effectué pour 2 participants").wait_for()
+    assert draws == [{"allow_subgroups": True}]
+    card.get_by_text("✅ Tirage effectué").wait_for()
+    assert "📦 Colis envoyés" in card.inner_text()
+    assert card.get_by_role("button", name="🎲 Lancer le tirage").count() == 0
+
+
+def test_a_cancelled_draw_sends_nothing(page, dashboard, monkeypatch):
+    import src.webui.routes.config as config_routes
+
+    class Santa(SchemaBase):
+        __label__ = "Secret Santa"
+        enabled: bool = enabled_field()
+
+    monkeypatch.setitem(schemas._MODULE_REGISTRY, "moduleSecretSanta", Santa)
+    monkeypatch.setitem(
+        config_routes.MODULE_SCHEMAS,
+        "moduleSecretSanta",
+        schemas.MODULE_SCHEMAS["moduleSecretSanta"],
+    )
+    config_store.mutate(
+        lambda data: data["servers"][GUILD].update(moduleSecretSanta={"enabled": True})
+    )
+    posts = []
+    session = {
+        "is_drawn": False,
+        "budget": None,
+        "exchange_date": None,
+        "exchange_label": None,
+        "shipping": False,
+        "created_by": "Alice",
+        "total": 2,
+        "participants": [
+            {"id": "3", "name": "Alice", "has_wishlist": False},
+            {"id": "4", "name": "Bob", "has_wishlist": False},
+        ],
+    }
+
+    def answer(route):
+        if route.request.method == "POST":
+            posts.append(route.request.post_data)
+        route.fulfill(json={"session": session})
+
+    page.route(f"**/api/servers/{GUILD}/secretsanta**", answer)
+    page.goto(f"http://127.0.0.1:{dashboard['port']}/#/module/{GUILD}/moduleSecretSanta")
+    card = page.locator("#secretsanta-session")
+    card.get_by_text("🤝 En main propre").wait_for()
+    page.once("dialog", lambda dialog: dialog.dismiss())
+    card.get_by_role("button", name="🎲 Lancer le tirage").click()
+    page.wait_for_timeout(300)
+    assert posts == []
