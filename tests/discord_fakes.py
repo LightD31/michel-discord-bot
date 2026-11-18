@@ -216,7 +216,7 @@ class FakeChannel:
 
 
 class RoleList(dict):
-    """``guild.roles`` as Discord gives it (a list of roles), still keyed for ``get_role``."""
+    """``guild.roles`` / ``guild.members`` as Discord gives them (lists), still keyed by id."""
 
     def __iter__(self):
         return iter(list(self.values()))
@@ -226,7 +226,7 @@ class FakeGuild:
     def __init__(self, gid: int = 1, name: str = "Serveur"):
         self.id = gid
         self.name = name
-        self.members: dict[int, FakeMember] = {}
+        self.members: RoleList = RoleList()
         self.roles: RoleList = RoleList()
         self.channels: dict[int, FakeChannel] = {}
         self.bans: list[tuple[Any, dict[str, Any]]] = []

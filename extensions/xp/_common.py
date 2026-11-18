@@ -7,6 +7,7 @@ through the package root.
 
 import os
 
+from features.xp.seasons import MAX_MONTHS, MIN_MONTHS
 from src.core import clock
 from src.core import logging as logutil
 from src.core.config import ModuleConfig
@@ -70,6 +71,36 @@ class XpConfig(SchemaBase):
             "Si désactivé, le rôle de niveau précédent est retiré quand un palier "
             "supérieur est franchi."
         ),
+    )
+    seasonsEnabled: bool = ui(
+        "Saisons",
+        "boolean",
+        default=False,
+        description=(
+            "Un classement qui repart à zéro chaque saison : `/leaderboard` montre la saison en "
+            "cours (le classement de toujours reste disponible), et le podium est publié à la fin."
+        ),
+    )
+    seasonMonths: int = ui(
+        "Durée d'une saison (mois)",
+        "number",
+        ge=MIN_MONTHS,
+        le=MAX_MONTHS,
+        default=1,
+        description="1 : chaque mois, 3 : chaque trimestre, 12 : chaque année (depuis janvier).",
+    )
+    seasonChannelId: str | None = ui(
+        "Salon du podium",
+        "channel",
+        description="Où publier le podium de fin de saison (sinon le salon du leaderboard).",
+    )
+    seasonChampionRoleId: str | None = ui(
+        "Rôle du champion",
+        "role",
+        description=(
+            "Rôle donné au premier de la saison qui se termine, et retiré au champion précédent."
+        ),
+        role_use="grant",
     )
     levelUpMessageList: list[WeightedMessage] = ui(
         "Messages de level-up",

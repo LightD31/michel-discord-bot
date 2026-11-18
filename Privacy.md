@@ -30,7 +30,7 @@ Data is stored in the Bot's own database, separately for each server. Data from 
 | Feature | What is stored |
 |---|---|
 | Member directory | Discord ID, username and display name of each member of each server, kept up to date. Used to show names on leaderboards and in the dashboard. |
-| XP & levels | Per member: XP, level, message count and last activity time. A log of each XP gain (time, amount, and whether it came from a message or voice activity), kept 400 days; older gains are summed per member, month and source, and the log entries deleted. No message text. |
+| XP & levels | Per member: XP, level, message count and last activity time. A log of each XP gain (time, amount, and whether it came from a message or voice activity), kept 400 days; older gains are summed per member, month and source, and the log entries deleted. No message text. Where the server uses seasons, the top 10 of each finished season (member and XP), posted as a podium. |
 | Birthdays | The date you register, whether to hide the year, and your time zone. |
 | Reminders | The reminder text, its time and recurrence, and who should receive it. For a reminder made from a message ("⏰ Me le rappeler"), a link to that message; not its text. |
 | Polls | The poll, its options and each participant's vote (anonymous polls also store votes, but do not display who voted for what). |
@@ -45,6 +45,7 @@ Data is stored in the Bot's own database, separately for each server. Data from 
 | AI answers (`/ask`, mentions) | Comparisons of answers: the question, the answers, the asker's and each voter's IDs, and the votes. Daily usage counters per member, used to enforce limits. See section 5. |
 | Book club ("Confrérie") | Submitted drafts and their authors. |
 | "Feur" replies | Per member: how many times the Bot answered them. |
+| Profile (`/profil`) and weekly Gazette | Nothing new: they show what the modules above already keep and the server already shows (level, season XP, starboard posts, playlist tracks, suggestions, giveaways won, the day and month of a birthday, never the year). The Gazette also names the members who joined the server that week, from Discord. The Bot keeps only the date and message of each Gazette it posted. |
 | ZUnivers | The ZUnivers username you provide and your reminder settings. |
 | Account registration (`/register`, where enabled) | On the server's own account directory (LLDAP), managed by that server's administrators: an account with your email, a username derived from your Discord name, your display name and your Discord ID. Your roles are kept in sync with your directory groups. The temporary password is shown only to you and is not stored by the Bot. |
 | Other modules | Notifications (RSS, YouTube, Twitch, game servers, esports, events…) store only their own state, such as the last item posted. This is not personal data. |
@@ -115,7 +116,7 @@ The data is processed to provide the features that you, or the administrators of
 You can do two of these yourself, on every server at once:
 
 - `/mes-donnees exporter` sends you a file, visible to you alone, with everything the Bot stores about you.
-- `/mes-donnees supprimer` deletes what is yours alone (XP and its log, birthday, reminders, ZUnivers reminders, AI usage counters, Secret Santa wish lists and gift marks, member directory entry…) and anonymises what you share with others: your votes still count, but no longer under your name, and the polls, suggestions, playlist tracks, AI questions, giveaways, starboard posts, role menus and book club drafts you started no longer name you. It keeps your moderation records (including the reports of your messages; if you reported a message, the report no longer names you, but your reason stays), the Secret Santa draws already made, and your Tricount groups while you still owe or are owed money there. Configuration written by a server's administrators (a first name, a linked Spotify account) and an LLDAP account made with `/register` are handled by that server's administrators.
+- `/mes-donnees supprimer` deletes what is yours alone (XP and its log, birthday, reminders, ZUnivers reminders, AI usage counters, Secret Santa wish lists and gift marks, member directory entry…) and anonymises what you share with others: your votes still count, but no longer under your name, and the polls, suggestions, playlist tracks, AI questions, giveaways, starboard posts, role menus, book club drafts and season podiums you are in no longer name you. It keeps your moderation records (including the reports of your messages; if you reported a message, the report no longer names you, but your reason stays), the Secret Santa draws already made, and your Tricount groups while you still owe or are owed money there. Configuration written by a server's administrators (a first name, a linked Spotify account) and an LLDAP account made with `/register` are handled by that server's administrators.
 
 You can also ask the Operator, at the address in section 1, to:
 

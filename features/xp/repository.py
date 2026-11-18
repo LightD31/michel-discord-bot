@@ -72,6 +72,10 @@ class XpRepository:
         """Events past :data:`EVENT_RETENTION_DAYS`, summed per month, member and source."""
         return mongo_manager.get_guild_collection(self.guild_id, "xp_monthly")
 
+    def _seasons(self):
+        """Each finished season's top 10 (``_id`` = the season's key)."""
+        return mongo_manager.get_guild_collection(self.guild_id, "xp_seasons")
+
     def _rollups(self):
         """The months already summed into ``xp_monthly`` (``_id`` = ``YYYY-MM``)."""
         return mongo_manager.get_guild_collection(self.guild_id, "xp_rollups")
@@ -369,6 +373,56 @@ class XpRepository:
             {"$project": {"_id": 0, "dow": "$_id.dow", "hour": "$_id.hour", "xp": 1}},
         ]
         return await (await self._events().aggregate(pipeline)).to_list()
+
+    # --- Seasons (P5, A4) ------------------------------------------------------
+
+    @translates_db_errors
+    async def season_ranking(
+        self, start: datetime, end: datetime, limit: int | None = None
+    ) -> list[tuple[str, int]]:
+        """``(member, XP)`` earned in ``[start, end)``, most first (ties: lowest id)."""
+        pipeline: list[dict[str, Any]] = [
+            {"$match": {"ts": {"$gte": start, "$lt": end}}},
+            {"$group": {"_id": "$user_id", "xp": {"$sum": "$xp_gained"}}},
+            {"$match": {"xp": {"$gt": 0}}},
+            {"$sort": {"xp": -1, "_id": 1}},
+        ]
+        if limit:
+            pipeline.append({"$limit": limit})
+        docs = await (await self._events().aggregate(pipeline)).to_list()
+        return [(str(d["_id"]), int(d["xp"])) for d in docs]
+
+    @translates_db_errors
+    async def season_xp(self, user_id: str, start: datetime, end: datetime) -> int:
+        """What *user_id* earned in ``[start, end)``."""
+        pipeline: list[dict[str, Any]] = [
+            {"$match": {"user_id": user_id, "ts": {"$gte": start, "$lt": end}}},
+            {"$group": {"_id": None, "xp": {"$sum": "$xp_gained"}}},
+        ]
+        docs = await (await self._events().aggregate(pipeline)).to_list()
+        return int(docs[0]["xp"]) if docs else 0
+
+    @translates_db_errors
+    async def record_season(
+        self, key: str, label: str, top: list[tuple[str, int]], now: datetime
+    ) -> bool:
+        """Keep a finished season's top; ``False`` when it was already kept (posted once)."""
+        try:
+            await self._seasons().insert_one(
+                {
+                    "_id": key,
+                    "label": label,
+                    "top": [{"user_id": uid, "xp": xp} for uid, xp in top],
+                    "closed_at": now,
+                }
+            )
+        except pymongo.errors.DuplicateKeyError:
+            return False
+        return True
+
+    @translates_db_errors
+    async def get_season(self, key: str) -> dict[str, Any] | None:
+        return await self._seasons().find_one({"_id": key})
 
 
 __all__ = ["EVENT_RETENTION_DAYS", "UserXpStats", "XpRepository"]

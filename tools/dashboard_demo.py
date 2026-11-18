@@ -38,7 +38,7 @@ import sys
 import tempfile
 import threading
 import time
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -128,6 +128,8 @@ def demo_config(data_dir: str, port: int, mongo_url: str) -> dict[str, Any]:
                     "xpPinMessage": True,
                     "publicDashboard": True,
                     "voiceXpEnabled": True,
+                    "seasonsEnabled": True,
+                    "seasonMonths": 1,
                     "levelRewards": {
                         "5": role["Niveau 5"],
                         "10": role["Niveau 10"],
@@ -178,6 +180,12 @@ def demo_config(data_dir: str, port: int, mongo_url: str) -> dict[str, Any]:
                     "ignoredRoleIds": [role["Modérateur"]],
                 },
                 "moduleGiveaway": {"enabled": True, "giveawayEmoji": "🎉"},
+                "moduleGazette": {
+                    "enabled": True,
+                    "gazetteChannelId": CH["général"],
+                    "gazetteWeekday": 7,
+                    "gazetteHour": 18,
+                },
                 "moduleUtils": {"enabled": True, "pollDefaultDurationMinutes": 1440},
                 "moduleFeur": {"enabled": True},
                 "moduleRss": {
@@ -570,6 +578,53 @@ async def seed(bot: FakeBot, *, days: int = 60) -> None:
                 "expires_at": now + timedelta(days=60),
             }
         )
+
+    # A week the Gazette can tell: a starred message, a birthday, a suggestion, a giveaway.
+    await db["starboard"].insert_one(
+        {
+            "_id": "1300000000000000001",
+            "guild_id": GA,
+            "channel_id": CH["général"],
+            "original_message_id": "1300000000000000001",
+            "mirror_channel_id": CH["starboard"],
+            "mirror_message_id": "1300000000000000002",
+            "author_id": str(humans[2].id),
+            "count": 6,
+            "created_at": now - timedelta(days=2),
+        }
+    )
+    soon = (now + timedelta(days=3)).date()
+    await db["birthday"].insert_one(
+        {
+            "user": int(humans[4].id),
+            "date": datetime(1996, soon.month, soon.day, tzinfo=UTC),
+            "timezone": "Europe/Paris",
+        }
+    )
+    await db["suggestions"].insert_one(
+        {
+            "id": 4,
+            "guild_id": GA,
+            "channel_id": CH["suggestions"],
+            "author_id": str(humans[3].id),
+            "text": "Un salon pour les photos de vacances",
+            "status": "implemented",
+            "decided_at": now - timedelta(days=1),
+            "created_at": now - timedelta(days=9),
+        }
+    )
+    await db["giveaways"].insert_one(
+        {
+            "guild_id": GA,
+            "channel_id": CH["général"],
+            "message_id": "1300000000000000003",
+            "host_id": ADMIN,
+            "prize": "Une clé Steam",
+            "ends_at": now - timedelta(days=3),
+            "drawn": True,
+            "winners": [str(humans[6].id)],
+        }
+    )
 
     class Admin:
         user_id = ADMIN
