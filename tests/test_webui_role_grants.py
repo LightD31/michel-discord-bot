@@ -8,6 +8,7 @@ held to the Discord rule its use calls for (``schemas.ROLE_USES``).
 
 import asyncio
 import copy
+import json
 from types import SimpleNamespace
 
 import pytest
@@ -72,6 +73,9 @@ class Ctx:
         self.data = data
         self.writes += 1
         return data
+
+    def require_bot_loop(self):
+        return None
 
     def bot_loop_alive(self):
         return False
@@ -209,3 +213,43 @@ def test_role_refs_and_mass_mentions_read_the_schema():
     assert schemas.role_refs(lldap, {"lldapRoleGroups": {"101": "3"}}) == {("access", "101")}
     assert schemas.role_refs(xp, None) == set()
     assert schemas.mass_mention_texts({"a": ["x @here", {"b": "y"}], "c": 3}) == {"x @here"}
+
+
+# ── the role pickers (P3): the same rules, before the save ─────────────
+
+
+def choices(ctx: Ctx) -> dict[str, dict]:
+    router = servers_routes.create_router(ctx)
+    get = next(r.endpoint for r in router.routes if r.path.endswith("/role-choices"))
+    data = json.loads(asyncio.run(get(None, GUILD)).body)
+    return {role["id"]: role for role in data["roles"]}
+
+
+def test_the_pickers_list_every_role_but_everyone_highest_first():
+    roles = choices(Ctx(ROLE_MANAGER))
+    assert GUILD not in roles
+    positions = [r["position"] for r in roles.values()]
+    assert positions == sorted(positions, reverse=True)
+    assert roles["102"]["name"] == "VIP"
+
+
+@pytest.mark.parametrize(
+    "permissions", [MANAGER, ROLE_MANAGER, MANAGER | Permissions.MENTION_EVERYONE]
+)
+@pytest.mark.parametrize(
+    ("use", "module", "config"),
+    [
+        ("grant", "moduleXp", lambda rid: {"levelRewards": {"5": rid}}),
+        ("access", "moduleLldap", lambda rid: {"lldapRoleGroups": {rid: "3"}}),
+        ("mention", "moduleZunivers", lambda rid: {"journaReminderRoleId": rid}),
+    ],
+)
+def test_a_role_the_picker_offers_is_one_the_save_accepts(permissions, use, module, config):
+    for rid, role in choices(Ctx(permissions)).items():
+        refusal = role["refusals"][use]
+        ctx = Ctx(permissions)
+        if refusal is None:
+            save(ctx, module, config(rid))
+            assert ctx.writes == 1, (use, role["name"])
+        else:
+            assert refused(ctx, module, config(rid)) == refusal, (use, role["name"])

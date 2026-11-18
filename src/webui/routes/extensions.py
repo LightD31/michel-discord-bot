@@ -1,6 +1,9 @@
 """Extension management routes: list, toggle, reload."""
 
+import ast
 import os
+from functools import lru_cache
+from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
@@ -41,6 +44,98 @@ def available_extensions(ext_dir: str = EXTENSIONS_DIR) -> list[tuple[str, str]]
         elif os.path.isdir(full_path) and os.path.isfile(os.path.join(full_path, "__init__.py")):
             found.append((f"extensions.{fname}", fname))
     return found
+
+
+# The extensions that own no module of the dashboard: what the Extensions page
+# calls them. Each other one is named after the module it registers.
+WITHOUT_MODULE: dict[str, tuple[str, str, str]] = {
+    "extensions.backup": ("💾", "Sauvegardes", "Sauvegarde MongoDB planifiée et /backup."),
+    "extensions.datapurge": (
+        "🧹",
+        "Purge des données",
+        "Efface les données d'un serveur 30 jours après le départ du bot.",
+    ),
+    "extensions.errors": (
+        "🚨",
+        "Erreurs",
+        "Répond aux membres quand une commande, un bouton ou un formulaire échoue.",
+    ),
+    "extensions.help": ("❓", "Aide", "/aide : les commandes disponibles sur chaque serveur."),
+    "extensions.metrics": ("📈", "Métriques", "Exporte les métriques Prometheus du bot."),
+    "extensions.mydata": (
+        "🔐",
+        "Mes données",
+        "/mes-donnees : un membre exporte ou supprime ses données.",
+    ),
+    "extensions.polls": ("📊", "Sondages", "/poll : sondages à boutons (module Utilitaires)."),
+    "extensions.random_": (
+        "🎲",
+        "Hasard",
+        "Tirage au sort, dés, pile ou face et mélange de listes.",
+    ),
+    "extensions.reminders": ("⏰", "Rappels", "/reminder : rappels par MP (module Utilitaires)."),
+    "extensions.userinfo": (
+        "👤",
+        "Membres",
+        "Garde les noms des membres à jour pour le dashboard et les classements.",
+    ),
+}
+
+
+def _source_files(ext_path: str) -> list[Path]:
+    base = Path(EXTENSIONS_DIR) / ext_path.removeprefix("extensions.")
+    if base.is_dir():
+        return sorted(base.glob("*.py"))
+    file = base.with_suffix(".py")
+    return [file] if file.is_file() else []
+
+
+def _registered_module(tree: ast.AST) -> dict[str, str] | None:
+    """The ``__icon__`` / ``__label__`` / ``__description__`` of a ``@register_module`` class."""
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.ClassDef):
+            continue
+        decorators = [d.func for d in node.decorator_list if isinstance(d, ast.Call)]
+        if not any(getattr(d, "id", None) == "register_module" for d in decorators):
+            continue
+        found = {}
+        for stmt in node.body:
+            if (
+                isinstance(stmt, (ast.Assign, ast.AnnAssign))
+                and isinstance(stmt.value, ast.Constant)
+                and isinstance(stmt.value.value, str)
+            ):
+                targets = stmt.targets if isinstance(stmt, ast.Assign) else [stmt.target]
+                for target in targets:
+                    if isinstance(target, ast.Name):
+                        found[target.id] = stmt.value.value
+        return found
+    return None
+
+
+@lru_cache(maxsize=128)
+def extension_card(ext_path: str) -> dict[str, str]:
+    """How the Extensions page names *ext_path*: an icon, a label, a description.
+
+    Read from the sources, without importing anything: the module the
+    extension registers for the dashboard, else :data:`WITHOUT_MODULE`, else
+    its file name.
+    """
+    if ext_path in WITHOUT_MODULE:
+        icon, label, description = WITHOUT_MODULE[ext_path]
+        return {"icon": icon, "label": label, "description": description}
+    for file in _source_files(ext_path):
+        try:
+            module = _registered_module(ast.parse(file.read_text(encoding="utf-8")))
+        except (OSError, SyntaxError, ValueError):
+            continue
+        if module and module.get("__label__"):
+            return {
+                "icon": module.get("__icon__", "📦"),
+                "label": module["__label__"],
+                "description": module.get("__description__", ""),
+            }
+    return {"icon": "📦", "label": ext_path.removeprefix("extensions."), "description": ""}
 
 
 def create_router(ctx: WebUIContext) -> APIRouter:
@@ -158,6 +253,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
             {
                 "path": ext_path,
                 "filename": fname,
+                **extension_card(ext_path),
                 "enabled": ext_config.get(ext_path, True),
                 "loaded": ext_path in loaded_exts,
             }

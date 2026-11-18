@@ -67,8 +67,8 @@ class StarboardConfig(SchemaBase):
     )
     ignoredChannels: list[str] = ui(
         "Salons ignorés",
-        "list",
-        description="IDs de salons à exclure du starboard.",
+        "channellist",
+        description="Les messages de ces salons n'entrent jamais au starboard.",
     )
 
 

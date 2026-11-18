@@ -79,13 +79,14 @@ class ModerationConfig(SchemaBase):
     )
     ignoredChannelIds: list[str] = ui(
         "Salons ignorés (automod)",
-        "list",
-        description="IDs des salons exemptés de l'automod.",
+        "channellist",
+        description="Salons où l'automod ne supprime rien.",
     )
     ignoredRoleIds: list[str] = ui(
         "Rôles ignorés (automod)",
-        "list",
-        description="IDs des rôles exemptés de l'automod.",
+        "rolelist",
+        description="Les membres qui ont l'un de ces rôles échappent à l'automod.",
+        role_use="staff",
     )
 
 

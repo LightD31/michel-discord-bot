@@ -15,6 +15,7 @@ import pytest
 from fastapi import HTTPException
 
 import extensions.lldap._common  # noqa: F401 — registers moduleLldap
+import extensions.moderation._common  # noqa: F401 — registers moduleModeration
 import extensions.rss._common  # noqa: F401 — registers moduleRss
 import extensions.xp._common  # noqa: F401 — registers moduleXp
 import src.webui.routes.rolemenus as rolemenu_routes
@@ -119,6 +120,16 @@ def test_nested_channels_are_checked_too():
     assert ctx.writes == 0
 
 
+def test_a_channel_list_is_checked_entry_by_entry():
+    ctx = FakeCtx()
+    with pytest.raises(HTTPException) as exc:
+        save(ctx, "moduleModeration", {"enabled": True, "ignoredChannelIds": ["11", "21"]})
+    assert exc.value.status_code == 422 and "21" in exc.value.detail
+    assert ctx.writes == 0
+    save(ctx, "moduleModeration", {"enabled": True, "ignoredChannelIds": ["11", "12"]})
+    assert ctx.writes == 1
+
+
 def test_only_channels_the_save_adds_are_checked():
     # A channel deleted since the last save doesn't block an unrelated edit.
     ctx = FakeCtx({"moduleXp": {"enabled": True, "xpChannelId": "99"}})
@@ -135,6 +146,16 @@ def test_channel_ids_reads_top_level_and_nested_fields():
     }
     assert schemas.channel_ids(rss, config) == {"11", "12"}
     assert schemas.channel_ids(rss, None) == set()
+
+
+def test_channel_and_role_lists_are_read_entry_by_entry():
+    moderation = schemas.module_model("moduleModeration")
+    config = {"modLogChannelId": "10", "ignoredChannelIds": [" 11 ", "", 12, {"x": 1}]}
+    assert schemas.channel_ids(moderation, config) == {"10", "11", "12"}
+    # The health card checks only where the bot posts.
+    assert schemas.channel_ids(moderation, config, lists=False) == {"10"}
+    roles = {"staffRoleId": "5", "ignoredRoleIds": ["6", " ", "7"]}
+    assert schemas.role_refs(moderation, roles) == {("staff", "5"), ("staff", "6"), ("staff", "7")}
 
 
 def test_a_role_menu_is_only_posted_in_the_guilds_own_channels():

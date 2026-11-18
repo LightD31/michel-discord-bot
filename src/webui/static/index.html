@@ -16,7 +16,13 @@
             --accent: #5865f2;
             --accent-hover: #4752c4;
             --success: #23a55a;
-            --danger: #f23f43;
+            /* Text and outlines in red; --*-strong are the fills white text
+               sits on. Each pair passes WCAG AA (4.5:1) on this theme. */
+            --danger: #fa7377;
+            --success-strong: #1a7f45;
+            --danger-strong: #d1292d;
+            /* Links: --accent on the page background is 3.7:1. */
+            --link: #949cf7;
             --warning: #f0b232;
             --border: #3f4147;
             --shadow: rgba(0,0,0,0.3);
@@ -32,6 +38,10 @@
         }
 
         * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        /* A link with no class of its own (in a paragraph, a hint). */
+        a:not([class]) { color: var(--link); }
+        a:not([class]):hover { text-decoration: underline; }
 
         body {
             font-family: 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
@@ -399,6 +409,15 @@
             white-space: nowrap;
         }
 
+        .extension-item .module-info { flex-direction: column; align-items: flex-start; gap: 3px; }
+        .extension-item .module-name { white-space: normal; }
+
+        .module-description {
+            font-size: 13px;
+            color: var(--text-secondary);
+            line-height: 1.4;
+        }
+
         .module-category-header {
             font-size: 11px;
             font-weight: 700;
@@ -520,13 +539,13 @@
         .btn-primary:hover { background: var(--accent-hover); }
 
         .btn-success {
-            background: var(--success);
+            background: var(--success-strong);
             color: white;
         }
         .btn-success:hover { opacity: 0.9; }
 
         .btn-danger {
-            background: var(--danger);
+            background: var(--danger-strong);
             color: white;
         }
         .btn-danger:hover { opacity: 0.9; }
@@ -569,8 +588,8 @@
             word-break: break-word;
         }
 
-        .toast.success { background: var(--success); color: white; }
-        .toast.error { background: var(--danger); color: white; }
+        .toast.success { background: var(--success-strong); color: white; }
+        .toast.error { background: var(--danger-strong); color: white; }
         .toast.info { background: var(--accent); color: white; }
         .toast.warning { background: var(--warning); color: #1e1f22; }
 
@@ -626,6 +645,15 @@
         }
 
         .login-btn:hover { background: var(--accent-hover); }
+
+        .login-card { max-width: 480px; }
+        .login-card .login-lead { margin-bottom: 16px; line-height: 1.5; }
+        .login-points {
+            list-style: none; text-align: left; margin: 0 0 24px; padding: 0;
+            display: flex; flex-direction: column; gap: 8px;
+            color: var(--text-secondary); font-size: 14px; line-height: 1.45;
+        }
+        .login-card .login-foot { margin: 20px 0 0; font-size: 13px; color: var(--text-muted); }
 
         .login-btn svg { width: 24px; height: 24px; }
 
@@ -739,7 +767,7 @@
         }
 
         .breadcrumb a {
-            color: var(--accent);
+            color: var(--link);
             text-decoration: none;
             cursor: pointer;
         }
@@ -900,7 +928,7 @@
             font-size: 10px;
             font-weight: 600;
             text-transform: uppercase;
-            background: var(--danger);
+            background: var(--danger-strong);
             color: #fff;
             padding: 1px 5px;
             border-radius: 4px;
@@ -979,7 +1007,7 @@
         .btn-channel-toggle {
             background: var(--bg-primary);
             color: var(--text-secondary);
-            border: 1px solid var(--border-color);
+            border: 1px solid var(--border);
             border-radius: var(--radius);
             padding: 6px 10px;
             cursor: pointer;
@@ -990,6 +1018,75 @@
             color: var(--accent);
             border-color: var(--accent);
         }
+
+        /* The section index of a long page: sticky, scrolls sideways. */
+        .page-index {
+            position: sticky; top: 0; z-index: 50;
+            display: flex; gap: 6px; overflow-x: auto; scrollbar-width: thin;
+            margin: -8px -8px 16px; padding: 8px;
+            background: var(--bg-primary);
+            border-bottom: 1px solid var(--border);
+        }
+        .page-index-link {
+            flex: 0 0 auto; white-space: nowrap; cursor: pointer;
+            padding: 5px 10px; border-radius: 999px; font-size: 12px;
+            background: var(--bg-secondary); color: var(--text-secondary);
+            border: 1px solid var(--border);
+        }
+        .page-index-link:hover, .page-index-link:focus-visible { color: var(--text-primary); border-color: var(--link); }
+        .main .card { scroll-margin-top: 64px; }
+        @media (max-width: 768px) {
+            .page-index { top: 56px; }  /* under the mobile header */
+            .main .card { scroll-margin-top: 120px; }
+        }
+        .module-no-settings { color: var(--text-muted); margin: 0 0 16px; }
+        .btn-ghost-danger { color: var(--danger); }
+        .btn-ghost-danger:hover { border-color: var(--danger); }
+
+        /* The confirmation dialog: short, above the JSON modal. */
+        #confirm-overlay { z-index: 1100; }
+        .modal-confirm { max-width: 480px; }
+        .confirm-message { white-space: pre-line; line-height: 1.5; color: var(--text-secondary); }
+
+        /* The infraction filters: a member search, the type, the state. */
+        .inf-filters { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 12px; }
+        .inf-filter-member { flex: 1 1 340px; min-width: 0; }
+        .inf-filters > select.form-input { width: auto; flex: 0 0 auto; }
+        .inf-member { color: var(--link); font-weight: 600; text-decoration: none; }
+        .inf-member:hover, .inf-member:focus-visible { text-decoration: underline; }
+
+        /* Role picker, channel and role lists (P3) */
+        .role-picker { min-width: 0; }
+        .role-picker-row { display: flex; gap: 6px; align-items: center; }
+        .role-picker-row .form-input { flex: 1; min-width: 0; font-family: inherit; }
+        .role-picker-select { appearance: auto; padding-right: 28px; }
+        .role-dot {
+            width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0;
+            background: var(--text-muted); display: inline-block;
+        }
+        .picker-warning { color: var(--warning); font-size: 12px; margin-top: 4px; }
+        .picker-warning:empty { display: none; }
+        .multi-picker { display: flex; flex-direction: column; gap: 8px; }
+        .multi-picker-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+        .multi-picker-chips:empty { display: none; }
+        .multi-picker .form-input { font-family: inherit; }
+        .multi-picker-add { appearance: auto; padding-right: 28px; }
+        .chip {
+            display: inline-flex; align-items: center; gap: 6px; max-width: 100%;
+            padding: 3px 4px 3px 10px; border-radius: 999px;
+            background: var(--bg-tertiary); border: 1px solid var(--border);
+            font-size: 13px; color: var(--text-primary);
+        }
+        .chip-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .chip-warning { border-color: var(--warning); }
+        .chip-unknown { border-color: var(--danger); border-style: dashed; color: var(--text-secondary); }
+        .chip-remove {
+            background: none; border: none; color: var(--text-muted); cursor: pointer;
+            width: 22px; height: 22px; border-radius: 50%; line-height: 1; font-size: 12px;
+        }
+        .chip-remove:hover, .chip-remove:focus-visible { background: var(--bg-secondary); color: var(--danger); }
+        .keyvaluemap-entry .role-picker-row .form-input,
+        .keyvaluemap-entry .member-picker .form-input { padding: 6px 8px; font-size: 13px; }
 
         .member-picker {
             display: flex;
@@ -1015,7 +1112,7 @@
         .btn-member-toggle {
             background: var(--bg-primary);
             color: var(--text-secondary);
-            border: 1px solid var(--border-color);
+            border: 1px solid var(--border);
             border-radius: var(--radius);
             padding: 6px 10px;
             cursor: pointer;
@@ -1035,7 +1132,7 @@
             padding: 8px 12px;
             border-radius: var(--radius);
             font-size: 13px;
-            border: 1px solid var(--border-color);
+            border: 1px solid var(--border);
             background: var(--bg-primary);
         }
         .message-status.configured {
@@ -1065,7 +1162,7 @@
         .btn-status-reset {
             background: transparent;
             color: var(--text-secondary);
-            border: 1px solid var(--border-color);
+            border: 1px solid var(--border);
             border-radius: var(--radius);
             padding: 3px 8px;
             cursor: pointer;
@@ -2099,12 +2196,30 @@
             grid-template-columns: 1fr auto auto;
         }
 
+        .rssfeed-entry .btn-remove-entry {
+            padding: 6px 10px;
+            background: transparent;
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            color: var(--danger);
+            cursor: pointer;
+            line-height: 1;
+        }
+
+        .rssfeed-entry .btn-remove-entry:hover,
+        .rssfeed-entry .btn-remove-entry:focus-visible {
+            border-color: var(--danger);
+            background: rgba(250, 115, 119, 0.1);
+        }
+
         @media (max-width: 900px) {
             .rssfeed-row,
             .rssfeed-template-row,
             .rssfeed-embed-panel {
                 grid-template-columns: 1fr;
             }
+            /* One column: the ✕ stays a small button at the end, not a bar. */
+            .rssfeed-entry .btn-remove-entry { justify-self: end; }
         }
 
         .youtubechannel-entry .btn-remove-entry {
@@ -2117,8 +2232,8 @@
         }
 
         .youtubechannel-entry .btn-remove-entry:hover {
-            color: var(--error);
-            border-color: var(--error);
+            color: var(--danger);
+            border-color: var(--danger);
         }
 
         @media (max-width: 720px) {
@@ -3090,6 +3205,22 @@
             <div class="modal-footer">
                 <button class="btn btn-ghost" data-click="closeModal">Annuler</button>
                 <button class="btn btn-success" id="modal-save-btn" data-click="saveModal">💾 Sauvegarder</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- The app's own confirmation: askConfirm() in app.js, never the browser's confirm(). -->
+    <div class="modal-overlay" id="confirm-overlay">
+        <div class="modal modal-confirm" role="alertdialog" aria-modal="true" aria-labelledby="confirm-title" aria-describedby="confirm-message" tabindex="-1">
+            <div class="modal-header">
+                <h3 id="confirm-title">Confirmer</h3>
+            </div>
+            <div class="modal-body">
+                <p id="confirm-message" class="confirm-message"></p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-ghost" id="confirm-cancel" data-click="settleConfirm" data-click-args="[false]">Annuler</button>
+                <button class="btn btn-primary" id="confirm-ok" data-click="settleConfirm" data-click-args="[true]">Confirmer</button>
             </div>
         </div>
     </div>

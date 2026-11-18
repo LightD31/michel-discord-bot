@@ -57,9 +57,9 @@ class XpConfig(SchemaBase):
     levelRewards: dict[str, str] = ui(
         "Récompenses par niveau",
         "keyvaluemap",
-        description="Map niveau → ID de rôle attribué automatiquement à ce niveau.",
+        description="Rôle attribué automatiquement quand un membre atteint ce niveau.",
         key_label="Niveau",
-        value_label="ID du rôle",
+        value_label="Rôle",
         role_use="grant",
     )
     stackLevelRewards: bool = ui(

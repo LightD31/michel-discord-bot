@@ -22,13 +22,6 @@ def _setup(store_config, module: str):
     return guild, role, author, here, locked
 
 
-class RoleList(dict):
-    """``guild.roles`` as Discord gives it (a list of roles), still keyed for ``get_role``."""
-
-    def __iter__(self):
-        return iter(list(self.values()))
-
-
 class Repo:
     def __init__(self):
         self.added = []
@@ -43,7 +36,6 @@ class Repo:
 
 async def test_rolemenu_create_refuses_a_channel_the_author_cannot_post_in(store_config):
     guild, role, author, here, locked = _setup(store_config, "moduleReactionRoles")
-    guild.roles = RoleList(guild.roles)
     repo = Repo()
     ctx = FakeCtx(author, here)
     ext = bare_extension(ReactionRolesExtension, ctx.bot, repository=lambda guild_id: repo)
@@ -54,7 +46,6 @@ async def test_rolemenu_create_refuses_a_channel_the_author_cannot_post_in(store
 
 async def test_rolemenu_create_posts_where_the_author_can_post(store_config):
     guild, role, author, here, _ = _setup(store_config, "moduleReactionRoles")
-    guild.roles = RoleList(guild.roles)
     repo = Repo()
     ctx = FakeCtx(author, here)
     ext = bare_extension(ReactionRolesExtension, ctx.bot, repository=lambda guild_id: repo)

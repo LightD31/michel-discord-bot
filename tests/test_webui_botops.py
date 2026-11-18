@@ -391,3 +391,29 @@ async def test_toggle_refuses_a_module_no_loaded_extension_registers(bot_loop, m
     assert response.status_code == 404
     assert config["servers"]["42"] == {}
     assert bot.calls == []
+
+
+def test_every_extension_is_listed_by_name_not_file():
+    """The Extensions page names each one by its module, or by WITHOUT_MODULE (P3)."""
+    from src.webui.routes.extensions import WITHOUT_MODULE, extension_card
+
+    paths = [path for path, _ in available_extensions()]
+    unnamed = [p for p in paths if extension_card(p)["label"] == p.removeprefix("extensions.")]
+    assert unnamed == []
+    assert sorted(set(WITHOUT_MODULE) - set(paths)) == []  # no stale entry
+    assert extension_card("extensions.moderation") == {
+        "icon": "🛡️",
+        "label": "Modération",
+        "description": "Avertissements, exclusions, bannissements, historique et automod.",
+    }
+    # An entry never hides the label of a module the extension registers.
+    from src.webui.routes.extensions import extension_card as card
+
+    card.cache_clear()
+    for path in list(WITHOUT_MODULE):
+        saved = WITHOUT_MODULE.pop(path)
+        try:
+            assert card(path)["label"] == path.removeprefix("extensions."), path
+        finally:
+            WITHOUT_MODULE[path] = saved
+            card.cache_clear()

@@ -20,7 +20,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from typing import Any
 
-from interactions import Permissions, Task, ThreadChannel
+from interactions import IntervalTrigger, OrTrigger, Permissions, Task, ThreadChannel, TimeTrigger
 
 from features.rss import RssFeedState
 from features.rss.scheduling import next_poll_at
@@ -125,9 +125,90 @@ def _iso(moment: datetime | None) -> str | None:
     return moment.isoformat() if moment else None
 
 
-def guild_task_names(bot: Any, enabled_modules: set[str]) -> list[str]:
+# What each periodic task does, as the "Santé" card shows it to a guild's admins
+# (the name, ``Class.method``, means nothing to them). Keyed by
+# ``task_name()``; ``tests/test_webui_guild_health.py`` fails on a task without one.
+TASK_LABELS: dict[str, str] = {
+    "BackupExtension.daily_backup": "Sauvegarde de la base",
+    "BirthdayExtension.anniversaire_check": "Vœux d'anniversaire",
+    "VotingMixin.close_due_comparisons": "Clôture des votes de /ask",
+    "StatsMixin.confrerie": "Statistiques de la Confrérie",
+    "UpdatesMixin.autoupdate": "Mise à jour des fiches Notion",
+    "DataPurgeExtension.purge_left_guilds": "Purge des serveurs quittés",
+    "GiveawayExtension.check_giveaways": "Tirage des giveaways",
+    "SyncMixin.sync_roles": "Synchronisation des groupes LLDAP",
+    "NotificationsMixin.schedule": "Programme des matchs",
+    "NotificationsMixin.live_update": "Matchs en direct",
+    "MetricsExtension.refresh_tick": "Métriques",
+    "StatusMixin.status": "Statut du serveur Minecraft",
+    "StatsMixin.stats": "Statistiques Minecraft",
+    "MyDataExtension.forget_departed_members": "Purge des données des membres partis",
+    "TasksMixin.check_medals": "Médailles olympiques",
+    "PollsExtension.check_closing_polls": "Clôture des sondages",
+    "RemindersExtension.check_reminders": "Envoi des rappels",
+    "RssExtension.check_feeds": "Relevé des flux RSS",
+    "Satisfactory.update_message": "Statut du serveur Satisfactory",
+    "ExchangeMixin.parcel_reminders": "Rappels des colis du Père Noël Secret",
+    "SpeedonsExtension.get_speedons_schedule": "Planning Speedons",
+    "PlaylistMixin.check_playlist_changes": "Suivi de la playlist",
+    "PlaylistMixin.new_titles_playlist": "Playlist des nouveautés",
+    "VotesMixin.randomvote": "Vote du jour",
+    "VotesMixin.reminder_check": "Rappels de vote",
+    "VotesMixin.check_for_end": "Clôture des votes Spotify",
+    "StreamlabsCharityExtension.streamlabscharity": "Suivi de la cagnotte",
+    "RecurringMixin.recurring_tick": "Dépenses récurrentes",
+    "EventSubMixin.eventsub_watchdog": "Connexion aux alertes Twitch",
+    "ScheduleMixin.update": "Planning des streamers",
+    "EmotesMixin.check_new_emotes": "Nouvelles emotes",
+    "TasksMixin.poll_kuma": "Statut Uptime Kuma",
+    "TasksMixin.push_status": "Signal de vie vers Uptime Kuma",
+    "XpExtension._archive_old_xp_events": "Archivage de l'historique d'XP",
+    "XpExtension._cache_cleanup_task": "Nettoyage du cache d'XP",
+    "VoiceMixin._voice_xp_tick": "XP vocale",
+    "LeaderboardMixin.leaderboardpermanent": "Classement XP",
+    "YoutubeExtension.check_youtube": "Nouvelles vidéos YouTube",
+    "TasksMixin.zevent": "Suivi du Zevent",
+    "RemindersMixin.daily_journa_check": "Rappel /journa",
+    "RemindersMixin.reminder_checker": "Rappels ZUnivers",
+    "EventsMixin.events_checker": "Événements ZUnivers",
+    "CorporationMixin.corporation_recap": "Récap de la corporation",
+    "Zerator247Mixin.zerator247_checker": "ZeratoR 24/7",
+}
+
+
+def _every(seconds: int) -> str:
+    if seconds % 3600 == 0:
+        hours = seconds // 3600
+        return "toutes les heures" if hours == 1 else f"toutes les {hours} h"
+    if seconds % 60 == 0:
+        minutes = seconds // 60
+        return "toutes les minutes" if minutes == 1 else f"toutes les {minutes} min"
+    return f"toutes les {seconds} s"
+
+
+def task_schedule(task: Any) -> str:
+    """When *task* runs, in words ("toutes les 5 min", "chaque jour à 03:00"), or ``""``."""
+    trigger = getattr(task, "trigger", None)
+    if isinstance(trigger, IntervalTrigger):
+        return _every(int(trigger.delta.total_seconds()))
+    times = []
+    for part in trigger.triggers if isinstance(trigger, OrTrigger) else [trigger]:
+        if not isinstance(part, TimeTrigger):
+            return ""
+        hour, minute, _ = part.target_time
+        times.append(f"{hour:02d}:{minute:02d}{' UTC' if part.tz is not None else ''}")
+    if not times:
+        return ""
+    if len(times) >= 24:
+        return "toutes les heures"
+    if len(times) > 4:
+        return f"{len(times)} fois par jour"
+    return "chaque jour à " + ", ".join(sorted(times))
+
+
+def guild_tasks(bot: Any, enabled_modules: set[str]) -> dict[str, Any]:
     """The periodic tasks of the loaded extensions that read one of *enabled_modules*."""
-    names: set[str] = set()
+    tasks: dict[str, Any] = {}
     for ext in list(getattr(bot, "ext", {}).values()):
         if not set(declared_modules(ext)) & enabled_modules:
             continue
@@ -135,17 +216,25 @@ def guild_task_names(bot: Any, enabled_modules: set[str]) -> list[str]:
         for klass in type(ext).__mro__:
             for value in vars(klass).values():
                 if isinstance(value, Task):
-                    names.add(task_name(value))
-    return sorted(names)
+                    tasks.setdefault(task_name(value), value)
+    return dict(sorted(tasks.items()))
 
 
-def task_report(names: list[str], snapshot: HealthSnapshot) -> list[dict]:
+def guild_task_names(bot: Any, enabled_modules: set[str]) -> list[str]:
+    return list(guild_tasks(bot, enabled_modules))
+
+
+def task_report(tasks: dict[str, Any] | list[str], snapshot: HealthSnapshot) -> list[dict]:
+    """Each task's runs, with what it does and when it runs, for the "Santé" card."""
+    items = tasks.items() if isinstance(tasks, dict) else ((name, None) for name in tasks)
     report = []
-    for name in names:
+    for name, task in items:
         record = snapshot.tasks.get(name)
         report.append(
             {
                 "name": name,
+                "label": TASK_LABELS.get(name, name),
+                "schedule": task_schedule(task) if task is not None else "",
                 "successes": record.successes if record else 0,
                 "failures": record.failures if record else 0,
                 "skipped": record.skipped if record else 0,
@@ -160,8 +249,11 @@ __all__ = [
     "REQUIRED_PERMISSIONS",
     "channel_report",
     "configured_channels",
+    "TASK_LABELS",
     "guild_task_names",
+    "guild_tasks",
     "missing_permissions",
     "rss_report",
+    "task_schedule",
     "task_report",
 ]

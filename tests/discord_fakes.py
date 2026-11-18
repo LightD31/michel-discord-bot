@@ -215,12 +215,19 @@ class FakeChannel:
         return getattr(member, "guild_permissions", Permissions.NONE)
 
 
+class RoleList(dict):
+    """``guild.roles`` as Discord gives it (a list of roles), still keyed for ``get_role``."""
+
+    def __iter__(self):
+        return iter(list(self.values()))
+
+
 class FakeGuild:
     def __init__(self, gid: int = 1, name: str = "Serveur"):
         self.id = gid
         self.name = name
         self.members: dict[int, FakeMember] = {}
-        self.roles: dict[int, FakeRole] = {}
+        self.roles: RoleList = RoleList()
         self.channels: dict[int, FakeChannel] = {}
         self.bans: list[tuple[Any, dict[str, Any]]] = []
         self.kicks: list[tuple[Any, dict[str, Any]]] = []
