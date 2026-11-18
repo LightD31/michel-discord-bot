@@ -59,27 +59,34 @@ class PlaylistMixin:
     """Slash commands + periodic tasks for playlist adds, info, and sync."""
 
     @slash_command(
-        "addsong",
-        description="Ajoute une chanson à la playlist.",
+        name="musique",
+        description="La playlist du serveur",
+        sub_cmd_name="ajouter",
+        sub_cmd_description="Ajoute une chanson à la playlist",
         scopes=guild_scopes(SPOTIFY.guild_ids()),
     )
     @slash_option(
-        name="song",
+        name="titre",
         description="Nom de la chanson à ajouter",
         opt_type=OptionType.STRING,
         required=True,
         autocomplete=True,
+        argument_name="song",
     )
     @cooldown(Buckets.USER, 1, 10)
     async def addsong(self, ctx: SlashContext, song):
         server = self.get_server(ctx.guild_id)
         if str(ctx.channel_id) != str(server.channel_id):
-            await send_error(ctx, f"/addsong se lance dans <#{server.channel_id}>.", icon="🎵")
-            logger.info("Commande /addsong utilisée dans un mauvais salon(%s)", ctx.channel.name)
+            await send_error(
+                ctx, f"/musique ajouter se lance dans <#{server.channel_id}>.", icon="🎵"
+            )
+            logger.info(
+                "Commande /musique ajouter utilisée dans un mauvais salon(%s)", ctx.channel.name
+            )
             return
 
         logger.info(
-            "/addsong '%s' utilisé par %s(id:%s)",
+            "/musique ajouter '%s' utilisé par %s(id:%s)",
             song,
             ctx.author.username,
             ctx.author_id,
@@ -94,7 +101,7 @@ class PlaylistMixin:
             )
         except spotipy.exceptions.SpotifyException:
             await send_error(ctx, "Cette chanson n'existe pas.")
-            logger.info("Commande /addsong utilisée avec une chanson inexistante")
+            logger.info("Commande /musique ajouter utilisée avec une chanson inexistante")
             return
 
         existing_ids = await server.repo.playlist_track_ids()
@@ -120,9 +127,9 @@ class PlaylistMixin:
             logger.info("%s ajouté par %s", track["name"], ctx.author.display_name)
         else:
             await send_error(ctx, "Cette chanson a déjà été ajoutée à la playlist.")
-            logger.info("Commande /addsong utilisée avec une chanson déjà présente")
+            logger.info("Commande /musique ajouter utilisée avec une chanson déjà présente")
 
-    @addsong.autocomplete("song")
+    @addsong.autocomplete("titre")
     async def autocomplete_from_spotify(self, ctx: AutocompleteContext):
         await ctx.send(choices=await autocomplete_track_choices(ctx.input_text))
 
@@ -176,7 +183,7 @@ class PlaylistMixin:
                 tracks.extend(results["items"])
 
             # Spotify keeps a second copy of a track added both from the app and
-            # through /addsong; the mirror is keyed by id and would never see it.
+            # through /musique ajouter; the mirror is keyed by id and would never see it.
             # ``new_snap`` deliberately stays the pre-cleanup snapshot, so the
             # next run re-fetches and catches anything added meanwhile.
             tracks = await self._remove_duplicate_tracks(server, tracks)
@@ -261,7 +268,7 @@ class PlaylistMixin:
 
         if server.recap_channel_id:
             recap_content = (
-                f"`/addsong Titre et artiste de la chanson` pour ajouter une chanson\n"
+                f"`/musique ajouter Titre et artiste de la chanson` pour ajouter une chanson\n"
                 f"Il y a actuellement **{server.snapshot.get('length', 0)}** chansons dans la "
                 f"playlist, pour un total de "
                 f"**{milliseconds_to_string(server.snapshot.get('duration', 0))}**"
@@ -317,12 +324,14 @@ class PlaylistMixin:
         return unique
 
     @slash_command(
-        name="songinfo",
-        description="Affiche les informations d'une chanson",
+        name="musique",
+        description="La playlist du serveur",
+        sub_cmd_name="info",
+        sub_cmd_description="Affiche les informations d'une chanson",
         scopes=guild_scopes(SPOTIFY.guild_ids()),
     )
     @slash_option(
-        name="song",
+        name="titre",
         description="Nom de la chanson",
         opt_type=OptionType.STRING,
         required=True,
@@ -403,7 +412,7 @@ class PlaylistMixin:
         if not song and not votes:
             await send_error(ctx, "Cette chanson n'existe pas.")
 
-    @songinfo.autocomplete("song")
+    @songinfo.autocomplete("titre")
     async def autocomplete_from_db(self, ctx: AutocompleteContext):
         """Match name/artist against the local MongoDB playlist + vote archives."""
         server = self.get_server(ctx.guild_id)

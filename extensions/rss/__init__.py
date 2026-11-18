@@ -5,10 +5,10 @@ infrastructure powers Steam / Epic free-game alerts, subreddit ``.rss`` feeds,
 news sites, and any other syndication source.
 
 Slash commands (admin-only):
-- ``/rss test url:<url>`` — preview the latest entries from a URL without
+- ``/rss tester url:<url>`` — preview the latest entries from a URL without
   registering it.
-- ``/rss list`` — list configured feeds and their last-seen state.
-- ``/rss reset feed_id:<id>`` — clear the dedupe state so the next poll
+- ``/rss liste`` — list configured feeds and their last-seen state.
+- ``/rss reinitialiser feed_id:<id>`` — clear the dedupe state so the next poll
   re-initializes from scratch (useful if a feed swapped its guid scheme).
 
 Per-guild config: ``moduleRss``. The polling task respects per-feed channel
@@ -446,7 +446,7 @@ class RssExtension(Extension):
     @slash_command(
         name="rss",
         description="Outils RSS",
-        sub_cmd_name="test",
+        sub_cmd_name="tester",
         sub_cmd_description="Aperçu des dernières entrées d'un flux sans le configurer",
         scopes=guild_scopes(RSS.guild_ids()),
     )
@@ -500,7 +500,7 @@ class RssExtension(Extension):
         await ctx.send(embeds=[embed], ephemeral=True)
 
     @rss_test.subcommand(
-        sub_cmd_name="list",
+        sub_cmd_name="liste",
         sub_cmd_description="Lister les flux RSS configurés",
     )
     @slash_default_member_permission(Permissions.MANAGE_GUILD)
@@ -540,14 +540,15 @@ class RssExtension(Extension):
         await ctx.send(embeds=[embed], ephemeral=True)
 
     @rss_test.subcommand(
-        sub_cmd_name="reset",
+        sub_cmd_name="reinitialiser",
         sub_cmd_description="Réinitialiser l'historique d'un flux (re-seed sans poster)",
     )
     @slash_option(
-        "feed_id",
-        "Identifiant interne du flux (visible via /rss list)",
+        "flux",
+        "Identifiant interne du flux (visible via /rss liste)",
         opt_type=OptionType.STRING,
         required=True,
+        argument_name="feed_id",
     )
     @slash_default_member_permission(Permissions.MANAGE_GUILD)
     async def rss_reset(self, ctx: SlashContext, feed_id: str) -> None:

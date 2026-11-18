@@ -1,4 +1,4 @@
-"""/reminder set and remove, and the minute check that sends them (T04)."""
+"""/rappel creer and supprimer, and the minute check that sends them (T04)."""
 
 from datetime import date, datetime, timedelta
 from types import SimpleNamespace
@@ -102,7 +102,7 @@ async def test_set_stops_at_the_quota(setup):
         await run(RemindersExtension.reminder_set, ext, ctx, 9, 0, "x", frequency="daily")
     await run(RemindersExtension.reminder_set, ext, ctx, 9, 0, "one too many", frequency="daily")
     assert len(repo.items) == MAX_REMINDERS_PER_MEMBER
-    assert "/reminder remove" in ctx.last
+    assert "/rappel supprimer" in ctx.last
 
 
 def due(repo, *, frequency=None, minutes_late=1, text="Rappel"):

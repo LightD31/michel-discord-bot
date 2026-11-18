@@ -16,7 +16,7 @@ uses: treat a backup folder as sensitive.
 
 **Where and when.** The daily task writes `data/backups/<YYYY-mm-dd_HH-MM-SS>/`
 at the hour set in the dashboard (global config → *Sauvegarde BDD*, 04:00 by
-default) and keeps the last `maxBackups` folders (7 by default). `/backup` on
+default) and keeps the last `maxBackups` folders (7 by default). `/sauvegarde` on
 the dev server runs one on demand. It can keep more folders for that run, never
 fewer. A backup is written as `<timestamp>.partial` and renamed once complete: a
 failed one leaves nothing behind, and only complete backups (a timestamped

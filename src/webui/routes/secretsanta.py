@@ -6,7 +6,7 @@ drawn, how many parcels were marked sent and received. Never who gives to
 whom, nor who sent or received: counts alone, as ``/secretsanta participants``
 shows them.
 
-``POST …/secretsanta/draw`` runs the same draw as ``/secretsanta draw``
+``POST …/secretsanta/draw`` runs the same draw as ``/secretsanta tirage``
 (:func:`src.discord_ext.secretsanta.run_draw`) on the bot loop, for the same
 people: the session's creator or an administrator of the server, read live.
 The dashboard bar (``MANAGE_GUILD``) is not enough, as in Discord.

@@ -404,9 +404,11 @@ class VotesMixin:
                 )
 
     @slash_command(
-        name="rappelvote",
-        sub_cmd_name="set",
-        description="Gère les rappels pour voter",
+        name="musique",
+        description="La playlist du serveur",
+        group_name="rappel",
+        group_description="Le rappel pour voter pour la chanson du jour",
+        sub_cmd_name="activer",
         sub_cmd_description="Ajoute un rappel pour voter pour la chanson du jour",
         scopes=guild_scopes(SPOTIFY.guild_ids()),
     )
@@ -507,7 +509,9 @@ class VotesMixin:
             logger.warning("Vote reminder for %s not sent: %s", user_id, e)
 
     @setreminder.subcommand(
-        sub_cmd_name="remove",
+        group_name="rappel",
+        group_description="Le rappel pour voter pour la chanson du jour",
+        sub_cmd_name="retirer",
         sub_cmd_description="Enlève un rappel de vote pour la chanson du jour",
     )
     async def deletereminder(self, ctx: SlashContext):
@@ -568,16 +572,19 @@ class VotesMixin:
         )
 
     @slash_command(
-        name="addwithvote",
-        description="Pas sûr d'ajouter une chanson ? Mets-la au vote",
+        name="musique",
+        description="La playlist du serveur",
+        sub_cmd_name="proposer",
+        sub_cmd_description="Pas sûr d'ajouter une chanson ? Mets-la au vote",
         scopes=guild_scopes(SPOTIFY.guild_ids()),
     )
     @slash_option(
-        name="song",
+        name="titre",
         description="Nom de la chanson",
         opt_type=OptionType.STRING,
         required=True,
         autocomplete=True,
+        argument_name="song",
     )
     @cooldown(Buckets.USER, 1, 10)
     async def addwithvote(self, ctx: SlashContext, song):
@@ -587,7 +594,7 @@ class VotesMixin:
             await ctx.defer()
             last_track_ids = await server.repo.playlist_track_ids()
             logger.info(
-                "/addwithvote '%s' utilisé par %s(id:%s)",
+                "/musique proposer '%s' utilisé par %s(id:%s)",
                 song,
                 ctx.author.username,
                 ctx.author_id,
@@ -599,7 +606,7 @@ class VotesMixin:
                 )
             except spotipy.exceptions.SpotifyException:
                 await send_error(ctx, "Cette chanson n'existe pas.")
-                logger.info("Commande /addwithvote utilisée avec une chanson inexistante")
+                logger.info("Commande /musique proposer utilisée avec une chanson inexistante")
                 return
             data = await server.vote_manager.load_data()
             song_ids = list(data.keys())
@@ -660,11 +667,13 @@ class VotesMixin:
                 logger.info("%s ajouté au vote par %s", track["name"], ctx.author.display_name)
             else:
                 await send_error(ctx, "Cette chanson est déjà dans la playlist.")
-                logger.info("Commande /addwithvote utilisée avec une chanson déjà présente")
+                logger.info("Commande /musique proposer utilisée avec une chanson déjà présente")
         else:
-            await send_error(ctx, f"/addwithvote se lance dans <#{server.channel_id}>.", icon="🎵")
+            await send_error(
+                ctx, f"/musique proposer se lance dans <#{server.channel_id}>.", icon="🎵"
+            )
             logger.info(
-                "Commande /addwithvote utilisée dans un mauvais salon(%s)",
+                "Commande /musique proposer utilisée dans un mauvais salon(%s)",
                 ctx.channel.name,
             )
 
@@ -703,7 +712,7 @@ class VotesMixin:
             )
         logger.info("User %s voted %s", event.ctx.user.username, vote)
 
-    @addwithvote.autocomplete("song")
+    @addwithvote.autocomplete("titre")
     async def autocomplete_from_spotify_addwithvote(self, ctx: AutocompleteContext):
         await ctx.send(choices=await autocomplete_track_choices(ctx.input_text))
 
@@ -731,7 +740,7 @@ class VotesMixin:
                 track, data[song_id]["author_id"], spotify2discord=server.spotify2discord
             )
         except spotipy.exceptions.SpotifyException as e:
-            logger.error("Spotify API Error while using /addwithvote: %s", e)
+            logger.error("Spotify API Error while using /musique proposer: %s", e)
             return False
         if add_vote_passes(yes_votes, no_votes):
             logger.debug("song : %s", song)
@@ -744,7 +753,7 @@ class VotesMixin:
                     raise
                 content = "La chanson a été ajoutée à la playlist."
             else:
-                # Added through /addsong or straight in Spotify while the vote was open.
+                # Added through /musique ajouter or straight in Spotify while the vote was open.
                 content = "La chanson était déjà dans la playlist."
             embed, file = await embed_song(
                 song=song,

@@ -1,4 +1,4 @@
-"""/delete answers before a long purge, reports what it deleted and checks its message ids."""
+"""/effacer answers before a long purge, reports what it deleted and checks its message ids."""
 
 from types import SimpleNamespace
 

@@ -53,7 +53,7 @@ from features.ai import (
 from features.ai.quota import QUOTA_UNAVAILABLE, access_refusal, limit_message
 from src.core import clock
 from src.core.errors import DatabaseError
-from src.discord_ext.locale import en_fr_desc, option_desc
+from src.discord_ext.locale import en_fr_desc, en_fr_name, option_desc
 from src.discord_ext.mentions import NO_PINGS
 from src.discord_ext.messages import guild_id_of, send_error
 from src.discord_ext.scopes import guild_scopes
@@ -288,7 +288,7 @@ class AskMixin:
     # =========================================================================
 
     @slash_command(
-        name="ask",
+        name=en_fr_name("ask", "demander"),
         # Anyone can install it: English by default, French for French clients
         # (src/discord_ext/locale.py). The answer follows the question's language.
         description=en_fr_desc(

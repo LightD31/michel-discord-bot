@@ -1,6 +1,6 @@
 """Who added a playlist track: Discord ids, and Spotify ids that slipped through.
 
-``added_by`` is meant to hold a Discord user id. ``/addsong`` stores the
+``added_by`` is meant to hold a Discord user id. ``/musique ajouter`` stores the
 author's Discord id, but a track added from the Spotify app is attributed
 through the guild's Spotify → Discord mapping, and an account missing from
 the mapping at the time stores the raw Spotify user id instead. Such a track

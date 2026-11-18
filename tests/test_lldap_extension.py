@@ -1,4 +1,4 @@
-"""LLDAP extension: the role sync over the guild cache and the /register flow."""
+"""LLDAP extension: the role sync over the guild cache and the /inscription flow."""
 
 import asyncio
 from typing import Any
@@ -241,7 +241,7 @@ async def test_unconfigured_guild_is_skipped(guilds):
     assert client.calls == []
 
 
-# ── /register ────────────────────────────────────────────────────────
+# ── /inscription ────────────────────────────────────────────────────────
 
 
 class _Ctx:

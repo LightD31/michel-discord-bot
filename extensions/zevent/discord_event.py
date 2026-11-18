@@ -251,7 +251,7 @@ class DiscordEventMixin:
         # A failed fetch must not walk the announced total back: the figure
         # only ever grows, so the last one known stays truthful.
         total = self._last_event_total
-        # ``/zevent_finish`` sticks: the refresh loop keeps running afterwards,
+        # ``/zevent-fin`` sticks: the refresh loop keeps running afterwards,
         # and it must not resurrect the event it just closed.
         guild.event_finished = guild.event_finished or finished
         return plan_scheduled_event(

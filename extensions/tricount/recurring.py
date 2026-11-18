@@ -69,8 +69,10 @@ class RecurringMixin:
             self.recurring_tick.start()
 
     @slash_command(
-        name="depense-recurrente",
-        description="Programmer une dépense récurrente",
+        name="tricount",
+        description="Gestion des dépenses partagées",
+        group_name="recurrente",
+        group_description="Les dépenses récurrentes",
         sub_cmd_name="ajouter",
         sub_cmd_description="Créer une dépense récurrente",
         scopes=guild_scopes(TRICOUNT.guild_ids()),
@@ -177,7 +179,9 @@ class RecurringMixin:
         await ctx.send(choices=choices[:25])
 
     @depense_recurrente_ajouter.subcommand(
-        sub_cmd_name="lister",
+        group_name="recurrente",
+        group_description="Les dépenses récurrentes",
+        sub_cmd_name="liste",
         sub_cmd_description="Voir tes dépenses récurrentes actives",
     )
     @slash_option(
@@ -217,6 +221,8 @@ class RecurringMixin:
         await guild_group_autocomplete(ctx, TricountRepository.groups_collection)
 
     @depense_recurrente_ajouter.subcommand(
+        group_name="recurrente",
+        group_description="Les dépenses récurrentes",
         sub_cmd_name="arreter",
         sub_cmd_description="Désactiver une dépense récurrente",
     )

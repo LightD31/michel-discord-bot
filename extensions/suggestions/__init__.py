@@ -1,8 +1,8 @@
 """Suggestions Discord extension — community suggestion box with up/down voting.
 
 Slash commands:
-- ``/suggest`` — anyone can submit a suggestion (published in the configured channel)
-- ``/suggestion approve|deny|implement`` — staff-only status updates
+- ``/suggerer`` — anyone can submit a suggestion (published in the configured channel)
+- ``/suggestion approuver|deny|implement`` — staff-only status updates
 
 Buttons (👍 / 👎) are persistent: callbacks rebind on extension load. Per-guild
 config: ``moduleSuggestions`` (channel, staff role, optional anonymity).

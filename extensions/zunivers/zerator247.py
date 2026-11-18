@@ -3,7 +3,7 @@
 A ZUnivers card asks players to ``!request`` a VOD on the ZeratoR 24/7 channel a
 number of times. Requests are only accepted in a short window before each vote
 (about ten minutes, near the end of the VOD airing), so members opt in with
-``/zunivers 247 set`` and get a DM each time that window opens, reminding them
+``/zunivers 247 activer`` and get a DM each time that window opens, reminding them
 to type ``!request random`` (the 24/7 bot picks an archive VOD itself) or to
 propose the VOD of their choice.
 """
@@ -102,7 +102,7 @@ class Zerator247Mixin:
     @zunivers_cmd.subcommand(
         group_name=_REQUEST_GROUP,
         group_description=_REQUEST_GROUP_DESCRIPTION,
-        sub_cmd_name="set",
+        sub_cmd_name="activer",
         sub_cmd_description="Reçois un MP quand les !request s'ouvrent sur ZeratoR 24/7",
     )
     @slash_option(
@@ -156,7 +156,7 @@ class Zerator247Mixin:
     @zunivers_cmd.subcommand(
         group_name=_REQUEST_GROUP,
         group_description=_REQUEST_GROUP_DESCRIPTION,
-        sub_cmd_name="remove",
+        sub_cmd_name="retirer",
         sub_cmd_description="Arrête les rappels !request ZeratoR 24/7",
     )
     async def request_remove(self, ctx: SlashContext):
@@ -177,7 +177,7 @@ class Zerator247Mixin:
     @zunivers_cmd.subcommand(
         group_name=_REQUEST_GROUP,
         group_description=_REQUEST_GROUP_DESCRIPTION,
-        sub_cmd_name="status",
+        sub_cmd_name="statut",
         sub_cmd_description="Indique quand s'ouvrent les prochaines !request sur ZeratoR 24/7",
     )
     async def request_status(self, ctx: SlashContext):
@@ -195,7 +195,7 @@ class Zerator247Mixin:
         mine = (
             f"Tu es abonné aux rappels, {subscription.describe_hours()}."
             if subscription
-            else "Tu n'es pas abonné : `/zunivers 247 set` pour recevoir un MP."
+            else "Tu n'es pas abonné : `/zunivers 247 activer` pour recevoir un MP."
         )
         await ctx.send(
             f"{describe_cycle(cycle)}\n"

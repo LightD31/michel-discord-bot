@@ -5292,7 +5292,7 @@
 
     function secretSantaHtml(serverId, s) {
         if (!s) {
-            return `<div class="empty-state"><h3>Aucune session</h3><p>Créez-en une sur Discord avec <code>/secretsanta create</code>, en présentiel ou par colis (option <code>colis</code>).</p></div>`;
+            return `<div class="empty-state"><h3>Aucune session</h3><p>Crées-en une sur Discord avec <code>/secretsanta creer</code>, en présentiel ou par colis (option <code>colis</code>).</p></div>`;
         }
         const withList = s.participants.filter(p => p.has_wishlist).length;
         const facts = [
@@ -5390,7 +5390,7 @@
             toast(`Tirage effectué pour ${result.count} participants.`, 'success');
             if (result.subgroups > 1) toast(`${result.subgroups} sous-groupes ont été formés.`, 'info');
             if ((result.failed_dms || []).length) {
-                toast(`MP impossible pour : ${result.failed_dms.join(', ')}. Ils peuvent utiliser /secretsanta remind une fois leurs MP ouverts.`, 'warning');
+                toast(`MP impossible pour : ${result.failed_dms.join(', ')}. Ils peuvent utiliser /secretsanta relancer une fois leurs MP ouverts.`, 'warning');
             }
         } catch (e) { /* handled by api() */ }
         finally {

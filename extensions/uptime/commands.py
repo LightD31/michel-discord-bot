@@ -1,4 +1,4 @@
-"""`/uptime setup|remove|list` admin commands for managing monitor alerts."""
+"""`/uptime configurer|remove|list` admin commands for managing monitor alerts."""
 
 from interactions import (
     AutocompleteContext,
@@ -70,22 +70,24 @@ class CommandsMixin:
         pass
 
     @uptime_command.subcommand(
-        sub_cmd_name="setup",
+        sub_cmd_name="configurer",
         sub_cmd_description="Configure les alertes de maintenance pour un capteur spécifique",
     )
     @slash_option(
-        name="sensor",
+        name="capteur",
         description="Nom du capteur à surveiller",
         opt_type=OptionType.STRING,
         required=True,
         autocomplete=True,
+        argument_name="sensor",
     )
     @slash_option(
-        name="channel",
+        name="salon",
         description="Canal où envoyer les notifications",
         opt_type=OptionType.CHANNEL,
         required=True,
         channel_types=[ChannelType.GUILD_TEXT, ChannelType.GUILD_NEWS],
+        argument_name="channel",
     )
     @slash_option(
         name="mode",
@@ -150,7 +152,7 @@ class CommandsMixin:
             f"{channel.mention} (mode : {alert.mode.label.lower()}).",
         )
 
-    @setup_maintenance_alert.autocomplete("sensor")
+    @setup_maintenance_alert.autocomplete("capteur")
     async def setup_sensor_autocomplete(self, ctx: AutocompleteContext):
         """Every Kuma monitor whose name (with its group) matches the input."""
         query = (ctx.input_text or "").lower()
@@ -163,15 +165,16 @@ class CommandsMixin:
         await ctx.send(choices=choices[:MAX_CHOICES])
 
     @uptime_command.subcommand(
-        sub_cmd_name="remove",
+        sub_cmd_name="supprimer",
         sub_cmd_description="Supprime les alertes de maintenance pour un capteur",
     )
     @slash_option(
-        name="sensor",
+        name="capteur",
         description="Nom du capteur à ne plus surveiller",
         opt_type=OptionType.STRING,
         required=True,
         autocomplete=True,
+        argument_name="sensor",
     )
     async def remove_maintenance_alert(self, ctx: SlashContext, sensor: str):
         guild_id = await self._check_guild(ctx)
@@ -201,7 +204,7 @@ class CommandsMixin:
             ctx, f"Alerte supprimée pour le capteur **{self.monitor_name(monitor_id)}**."
         )
 
-    @remove_maintenance_alert.autocomplete("sensor")
+    @remove_maintenance_alert.autocomplete("capteur")
     async def remove_sensor_autocomplete(self, ctx: AutocompleteContext):
         """This guild's alerts, including monitors since deleted from Kuma."""
         if not ctx.guild:
@@ -220,7 +223,7 @@ class CommandsMixin:
         await ctx.send(choices=choices[:MAX_CHOICES])
 
     @uptime_command.subcommand(
-        sub_cmd_name="list",
+        sub_cmd_name="liste",
         sub_cmd_description="Liste toutes les alertes de maintenance configurées",
     )
     async def list_maintenance_alerts(self, ctx: SlashContext):

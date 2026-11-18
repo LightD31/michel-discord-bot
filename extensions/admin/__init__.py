@@ -2,11 +2,11 @@
 
 Slash commands:
 - ``/ping`` — bot latency probe
-- ``/delete`` — bulk-delete messages in a channel
-- ``/send`` — send a message to a channel as the bot
-- ``/slowmode`` — set or clear a channel's slowmode delay
-- ``/lock`` — deny @everyone send permissions on a channel
-- ``/unlock`` — restore @everyone send permissions on a channel
+- ``/effacer`` — bulk-delete messages in a channel
+- ``/envoyer`` — send a message to a channel as the bot
+- ``/mode-lent`` — set or clear a channel's slowmode delay
+- ``/verrouiller`` — deny @everyone send permissions on a channel
+- ``/deverrouiller`` — restore @everyone send permissions on a channel
 
 Enablement is shared with :mod:`extensions.polls` and
 :mod:`extensions.reminders` via the ``moduleUtils`` config key. This package
@@ -76,7 +76,7 @@ class UtilsConfig(SchemaBase):
         le=30 * 24 * 60,
         default=0,
         description=(
-            "Si > 0, les commandes /poll, /poll-anonyme et /poll-classement "
+            "Si > 0, les commandes /sondage, /sondage-anonyme et /sondage-classement "
             "appliquent cette fermeture automatique quand l'option `duree` "
             "n'est pas fournie."
         ),
@@ -86,7 +86,7 @@ class UtilsConfig(SchemaBase):
 logger = logutil.init_logger(__name__)
 UTILS = ModuleConfig("moduleUtils")
 
-# One /delete purges this many messages at most.
+# One /effacer purges this many messages at most.
 MAX_PURGE = 1000
 # Channels a purge can run in: text, announcements and their threads.
 PURGEABLE_CHANNEL_TYPES: list[ChannelType | int] = [
@@ -111,7 +111,7 @@ class AdminExtension(Extension):
         await ctx.send(f"Pong ! Latence : {round(ctx.bot.latency * 1000)}ms")
 
     @slash_command(
-        name="delete",
+        name="effacer",
         description="Supprimer des messages",
         scopes=guild_scopes(UTILS.guild_ids()),
     )
@@ -124,23 +124,26 @@ class AdminExtension(Extension):
         max_value=MAX_PURGE,
     )
     @slash_option(
-        "channel",
-        "Channel dans lequel supprimer les messages",
+        "salon",
+        "Salon où supprimer les messages",
         opt_type=OptionType.CHANNEL,
         required=False,
         channel_types=PURGEABLE_CHANNEL_TYPES,
+        argument_name="channel",
     )
     @slash_option(
-        "before",
+        "avant",
         "Supprimer les messages avant le message avec cet ID",
         opt_type=OptionType.STRING,
         required=False,
+        argument_name="before",
     )
     @slash_option(
-        "after",
+        "apres",
         "Supprimer les messages après le message avec cet ID",
         opt_type=OptionType.STRING,
         required=False,
+        argument_name="after",
     )
     @slash_default_member_permission(Permissions.MANAGE_MESSAGES)
     async def delete(
@@ -171,7 +174,7 @@ class AdminExtension(Extension):
         await ctx.defer(ephemeral=True)
         deleted = await channel.purge(
             deletion_limit=nombre,
-            reason=f"Suppression de {nombre} message(s) par {ctx.user.username} (ID: {ctx.user.id}) via la commande /delete",
+            reason=f"Suppression de {nombre} message(s) par {ctx.user.username} (ID: {ctx.user.id}) via la commande /effacer",
             **bounds,
         )
         await ctx.send(
@@ -179,15 +182,15 @@ class AdminExtension(Extension):
             ephemeral=True,
         )
         logger.info(
-            "Suppression de %s message(s) par %s (ID: %s) via la commande /delete",
+            "Suppression de %s message(s) par %s (ID: %s) via la commande /effacer",
             deleted,
             ctx.user.username,
             ctx.user.id,
         )
 
     @slash_command(
-        name="send",
-        description="Envoyer un message dans un channel",
+        name="envoyer",
+        description="Envoyer un message dans un salon",
         scopes=guild_scopes(UTILS.guild_ids()),
     )
     @slash_option(
@@ -198,14 +201,15 @@ class AdminExtension(Extension):
         max_length=2000,
     )
     @slash_option(
-        "channel",
-        "Channel dans lequel envoyer le message",
+        "salon",
+        "Salon où envoyer le message",
         opt_type=OptionType.CHANNEL,
         required=False,
         channel_types=[
             ChannelType.GUILD_TEXT,
             ChannelType.GUILD_NEWS,
         ],
+        argument_name="channel",
     )
     @slash_default_member_permission(Permissions.MANAGE_MESSAGES)
     async def send(
@@ -221,7 +225,9 @@ class AdminExtension(Extension):
             return
 
         if not hasattr(channel, "send"):
-            await send_error(ctx, "Ce type de channel ne supporte pas l'envoi de messages")
+            await send_error(
+                ctx, "Ce type de salon ne reçoit pas de messages : choisis un salon textuel."
+            )
             return
         if not await author_can(ctx, channel, CAN_SEND):
             return
@@ -241,7 +247,7 @@ class AdminExtension(Extension):
         await ctx.send("Message envoyé !", ephemeral=True)
 
     @slash_command(
-        name="slowmode",
+        name="mode-lent",
         description="Définir le mode lent d'un salon (0 = désactivé)",
         scopes=guild_scopes(UTILS.guild_ids()),
     )
@@ -254,7 +260,7 @@ class AdminExtension(Extension):
         max_value=21600,
     )
     @slash_option(
-        "channel",
+        "salon",
         "Salon ciblé (par défaut : salon courant)",
         opt_type=OptionType.CHANNEL,
         required=False,
@@ -265,6 +271,7 @@ class AdminExtension(Extension):
             ChannelType.GUILD_PRIVATE_THREAD,
             ChannelType.GUILD_NEWS_THREAD,
         ],
+        argument_name="channel",
     )
     @slash_default_member_permission(Permissions.MANAGE_CHANNELS)
     async def slowmode(
@@ -298,16 +305,17 @@ class AdminExtension(Extension):
         )
 
     @slash_command(
-        name="lock",
+        name="verrouiller",
         description="Verrouiller un salon (empêcher @everyone d'écrire)",
         scopes=guild_scopes(UTILS.guild_ids()),
     )
     @slash_option(
-        "channel",
+        "salon",
         "Salon à verrouiller (par défaut : salon courant)",
         opt_type=OptionType.CHANNEL,
         required=False,
         channel_types=[ChannelType.GUILD_TEXT, ChannelType.GUILD_NEWS],
+        argument_name="channel",
     )
     @slash_option(
         "raison",
@@ -353,16 +361,17 @@ class AdminExtension(Extension):
         )
 
     @slash_command(
-        name="unlock",
+        name="deverrouiller",
         description="Déverrouiller un salon précédemment verrouillé",
         scopes=guild_scopes(UTILS.guild_ids()),
     )
     @slash_option(
-        "channel",
+        "salon",
         "Salon à déverrouiller (par défaut : salon courant)",
         opt_type=OptionType.CHANNEL,
         required=False,
         channel_types=[ChannelType.GUILD_TEXT, ChannelType.GUILD_NEWS],
+        argument_name="channel",
     )
     @slash_default_member_permission(Permissions.MANAGE_CHANNELS)
     async def unlock(
@@ -378,7 +387,7 @@ class AdminExtension(Extension):
             return
         everyone = ctx.guild.default_role
         try:
-            # Clear the deny mask we set in /lock by passing an empty Permissions flag.
+            # Clear the deny mask we set in /verrouiller by passing an empty Permissions flag.
             await cast(GuildChannel, target).add_permission(
                 everyone,
                 deny=Permissions(0),

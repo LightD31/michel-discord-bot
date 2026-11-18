@@ -92,6 +92,8 @@ GLOBAL_COMMANDS = {
 def _command_name(call: ast.Call) -> str | None:
     named = keyword(call, "name")
     value = named.value if named is not None else (call.args[0] if call.args else None)
+    if isinstance(value, ast.Call) and value.args:  # en_fr_name("pick", "choisir")
+        value = value.args[0]
     return value.value if isinstance(value, ast.Constant) else None
 
 
@@ -129,7 +131,7 @@ def user_install_offenders(tree: ast.AST, imports: Imports, where: str) -> list[
 
     A user-installed command lives on the member's account, not on a server:
     on a command with guild scopes the declaration does nothing, and code
-    written for it never runs (``/poll`` had an in-memory fallback for it).
+    written for it never runs (``/sondage`` had an in-memory fallback for it).
     """
     offenders = []
     for node in ast.walk(tree):

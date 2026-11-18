@@ -152,7 +152,7 @@ def build_request_reminder(
 
 
 def describe_cycle(cycle: Cycle | None) -> str:
-    """One-line status of the cycle, for ``/zunivers 247 status``."""
+    """One-line status of the cycle, for ``/zunivers 247 statut``."""
     if cycle is None or cycle.ends_at is None:
         return "Aucune VOD en cours de diffusion sur ZeratoR 24/7."
     if cycle.phase == PHASE_REQUESTS and cycle.ballot_opens_at is not None:

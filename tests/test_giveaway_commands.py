@@ -1,4 +1,4 @@
-"""/giveaway start, end, cancel, reroll and list, and its entry buttons, as Discord calls them."""
+"""/concours lancer, tirer, annuler, nouveau-tirage and liste, and its entry buttons."""
 
 from datetime import timedelta
 
@@ -206,7 +206,7 @@ async def test_reroll_needs_a_drawn_giveaway(setup):
     ext, ctx, repo, channel = setup
     posted(repo, channel, entrants=["7", "8"])
     await run(GiveawayExtension.giveaway_reroll, ext, ctx, "500")
-    assert "/giveaway end" in ctx.last
+    assert "/concours tirer" in ctx.last
 
 
 async def test_reroll_picks_someone_who_has_not_won(setup):

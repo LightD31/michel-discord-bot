@@ -336,7 +336,8 @@ class StreamlabsCharityExtension(Extension):
             embed.add_field(name="\u200b", value=members_str, inline=False)
 
     @slash_command(
-        "endcharitycount",
+        "fin-collecte",
+        description="Termine le compteur de la collecte",
         default_member_permissions=Permissions.ADMINISTRATOR,
         scopes=guild_scopes(STREAMLABS.guild_ids()),
     )

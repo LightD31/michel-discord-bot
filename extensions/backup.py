@@ -2,7 +2,7 @@
 Backup Extension
 
 Automatically backs up all MongoDB databases (global + per-guild) to local
-JSON files once a day.  Also exposes a ``/backup`` slash command so an
+JSON files once a day.  Also exposes a ``/sauvegarde`` slash command so an
 admin can trigger a backup manually; it backs up every guild, so it is only
 registered on the dev server (``discord.devGuildId``).
 
@@ -45,7 +45,7 @@ DEFAULT_BACKUP_DIR = "data/backups"
 DEFAULT_MAX_BACKUPS = 7
 DEFAULT_BACKUP_HOUR = 4  # 04:00 local time
 
-# With no dev guild configured ``/backup`` is registered nowhere; the daily
+# With no dev guild configured ``/sauvegarde`` is registered nowhere; the daily
 # backup still runs.
 _DEV_GUILD = global_config().get("discord", {}).get("devGuildId")
 
@@ -53,7 +53,7 @@ _DEV_GUILD = global_config().get("discord", {}).get("devGuildId")
 def effective_retention(requested: int | None, configured: int) -> int:
     """How many backups a manual run keeps: the configured count, or more if asked.
 
-    ``/backup`` may raise retention for one run but never lower it: the run
+    ``/sauvegarde`` may raise retention for one run but never lower it: the run
     prunes the oldest folders, so a ``max_backups:1`` would otherwise wipe the
     whole history in one command.
     """
@@ -120,18 +120,19 @@ class BackupExtension(Extension):
             logger.error("Scheduled backup failed: %s", e, exc_info=True)
 
     @slash_command(
-        name="backup",
+        name="sauvegarde",
         description="Créer une sauvegarde manuelle de la base de données",
         default_member_permissions=Permissions.ADMINISTRATOR,
         scopes=guild_scopes([_DEV_GUILD]),
     )
     @slash_option(
-        name="max_backups",
+        name="garder",
         description="Nombre de sauvegardes à conserver (jamais moins que la config)",
         opt_type=OptionType.INTEGER,
         required=False,
         min_value=1,
         max_value=30,
+        argument_name="max_backups",
     )
     async def backup_command(self, ctx: SlashContext, max_backups: int | None = None) -> None:
         """Slash command to trigger a backup manually (admin only)."""

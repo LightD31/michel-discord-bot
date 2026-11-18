@@ -47,20 +47,22 @@ class BansMixin:
         name="secretsanta",
         description="Commandes du Père Noël Secret",
         scopes=guild_scopes(SANTA.guild_ids()),
-        sub_cmd_name="banpair",
+        sub_cmd_name="exclure-paire",
         sub_cmd_description="Interdit deux utilisateurs de se tirer mutuellement",
     )
     @slash_option(
-        name="user1",
+        name="membre1",
         description="Premier utilisateur",
         required=True,
         opt_type=OptionType.USER,
+        argument_name="user1",
     )
     @slash_option(
-        name="user2",
+        name="membre2",
         description="Deuxième utilisateur",
         required=True,
         opt_type=OptionType.USER,
+        argument_name="user2",
     )
     async def ban_pair(self, ctx: SlashContext, user1: Member | User, user2: Member | User) -> None:
         if user1.id == user2.id:
@@ -95,20 +97,22 @@ class BansMixin:
         name="secretsanta",
         description="Commandes du Père Noël Secret",
         scopes=guild_scopes(SANTA.guild_ids()),
-        sub_cmd_name="unbanpair",
+        sub_cmd_name="autoriser-paire",
         sub_cmd_description="Autorise à nouveau deux utilisateurs à se tirer mutuellement",
     )
     @slash_option(
-        name="user1",
+        name="membre1",
         description="Premier utilisateur",
         required=True,
         opt_type=OptionType.USER,
+        argument_name="user1",
     )
     @slash_option(
-        name="user2",
+        name="membre2",
         description="Deuxième utilisateur",
         required=True,
         opt_type=OptionType.USER,
+        argument_name="user2",
     )
     async def unban_pair(
         self, ctx: SlashContext, user1: Member | User, user2: Member | User
@@ -145,7 +149,7 @@ class BansMixin:
         name="secretsanta",
         description="Commandes du Père Noël Secret",
         scopes=guild_scopes(SANTA.guild_ids()),
-        sub_cmd_name="listbans",
+        sub_cmd_name="paires-exclues",
         sub_cmd_description="Liste les paires d'utilisateurs interdites",
     )
     async def list_bans(self, ctx: SlashContext) -> None:

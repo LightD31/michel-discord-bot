@@ -1,7 +1,7 @@
 """Moderation Discord extension — member actions, infraction history, automod.
 
-Slash commands: ``/warn``, ``/timeout``, ``/untimeout``, ``/kick``, ``/ban``,
-``/unban`` and ``/infraction list|view|remove``. Right-click menus: "🚩 Signaler"
+Slash commands: ``/avertir``, ``/exclure``, ``/lever-exclusion``, ``/expulser``, ``/bannir``,
+``/debannir`` and ``/infraction liste|view|remove``. Right-click menus: "🚩 Signaler"
 on a message (any member, ``reports.py``), "🛡️ Historique" and "⚠️ Avertir…" on
 a member (moderators, ``menus.py``). Automod (anti-invite, anti-spam,
 banned-words) runs via a ``MessageCreate`` listener. Per-guild config:

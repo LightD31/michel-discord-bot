@@ -31,7 +31,7 @@ class EventsMixin:
         await self._check_zunivers_events()
 
     @zunivers_cmd.subcommand(
-        sub_cmd_name="check",
+        sub_cmd_name="verifier",
         sub_cmd_description="Vérifie manuellement les événements Zunivers",
     )
     async def zunivers_check(self, ctx: SlashContext):

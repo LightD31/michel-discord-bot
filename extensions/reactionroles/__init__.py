@@ -1,10 +1,10 @@
 """Reaction Roles Discord extension — self-assignable roles via persistent buttons.
 
 Slash commands (admin-only):
-- ``/rolemenu create`` — create a menu in a channel with up to 25 (role, emoji, label) entries
-- ``/rolemenu list`` — list role menus on this server
-- ``/rolemenu delete`` — remove a menu (deletes the message + Mongo doc)
-- ``/rolemenu edit`` — change title/description of an existing menu
+- ``/menu-roles creer`` — create a menu in a channel with up to 25 (role, emoji, label) entries
+- ``/menu-roles liste`` — list role menus on this server
+- ``/menu-roles supprimer`` — remove a menu (deletes the message + Mongo doc)
+- ``/menu-roles modifier`` — change title/description of an existing menu
 
 Buttons are persistent: their callbacks rebind on extension load, so menus
 keep working across restarts. Per-guild config: ``moduleReactionRoles``.

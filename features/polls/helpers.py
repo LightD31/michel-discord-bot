@@ -55,7 +55,7 @@ def poll_option_label(block: str) -> str:
 
 
 def is_reaction_poll_text(footer_text: str | None, description: str | None) -> bool:
-    """Whether an embed's footer and body are those ``/poll`` writes.
+    """Whether an embed's footer and body are those ``/sondage`` writes.
 
     The footer is Michel's with the author (``… · Sondage de <name>``) and the
     first paragraph starts with an option emoji. Other embeds (RSS posts, role

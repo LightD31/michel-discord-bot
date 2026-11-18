@@ -10,8 +10,8 @@ from src.webui.schemas import SchemaBase, enabled_field, register_module, secret
 class LldapConfig(SchemaBase):
     __label__ = "LLDAP"
     __description__ = (
-        "Comptes LLDAP pour les membres selon leurs rôles Discord : /register crée le compte "
-        "et l'appartenance aux groupes suit les rôles (toutes les 10 minutes, ou /lldap sync). "
+        "Comptes LLDAP pour les membres selon leurs rôles Discord : /inscription crée le compte "
+        "et l'appartenance aux groupes suit les rôles (toutes les 10 minutes, ou /lldap synchroniser). "
         "Côté LLDAP, crée un attribut utilisateur personnalisé de type chaîne pour l'ID "
         "Discord et utilise un compte membre de lldap_admin."
     )
@@ -71,7 +71,7 @@ class LldapConfig(SchemaBase):
         description=(
             "Chaque rôle Discord donne accès à un groupe LLDAP (son ID numérique, visible dans "
             "l'URL de la page du groupe). Un membre ayant l'un de ces rôles peut créer son "
-            "compte avec /register ; perdre le rôle le retire du groupe."
+            "compte avec /inscription ; perdre le rôle le retire du groupe."
         ),
         key_label="Rôle",
         value_label="ID du groupe LLDAP",
@@ -81,7 +81,7 @@ class LldapConfig(SchemaBase):
     lldapServiceName: str | None = ui(
         "Nom du service",
         "string",
-        description="Nom affiché aux membres dans la réponse de /register (par défaut LLDAP).",
+        description="Nom affiché aux membres dans la réponse de /inscription (par défaut LLDAP).",
     )
     lldapPublicUrl: str | None = ui(
         "Lien de connexion",

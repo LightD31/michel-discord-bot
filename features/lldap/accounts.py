@@ -1,4 +1,4 @@
-"""Account fields for ``/register``: email, username, temporary password."""
+"""Account fields for ``/inscription``: email, username, temporary password."""
 
 from __future__ import annotations
 

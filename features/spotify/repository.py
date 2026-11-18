@@ -86,7 +86,7 @@ class SpotifyRepository:
     async def add_playlist_item(self, song: dict[str, Any]) -> bool:
         """Mirror *song* unless its ``_id`` is already there; return whether it was added.
 
-        A track can reach the mirror by several paths (``/addsong``, a won
+        A track can reach the mirror by several paths (``/musique ajouter``, a won
         add-with-vote poll, the playlist sync), so a second add is a no-op
         rather than a duplicate-key error.
         """

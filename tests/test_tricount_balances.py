@@ -72,7 +72,7 @@ def test_each_expense_is_split_among_its_own_participants():
 
 
 def test_a_member_who_left_keeps_their_balance():
-    """The reported bug: B left, and their share vanished from /bilan."""
+    """The reported bug: B left, and their share vanished from /tricount bilan."""
     expenses = [expense(100, A, [A, B])]
     balances = compute_balances(expenses, current_members=[A])  # B has left
     assert balances == {A: 5000, B: -5000}

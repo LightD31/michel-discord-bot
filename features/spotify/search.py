@@ -1,4 +1,4 @@
-"""Autocomplete choices for the Spotify song pickers (``/addsong``, ``/addwithvote``).
+"""Autocomplete choices for the Spotify song pickers (``/musique ajouter``, ``/musique proposer``).
 
 Pure formatting: the extension runs the search and hands the raw items here.
 """

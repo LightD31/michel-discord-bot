@@ -49,7 +49,7 @@ def available_extensions(ext_dir: str = EXTENSIONS_DIR) -> list[tuple[str, str]]
 # The extensions that own no module of the dashboard: what the Extensions page
 # calls them. Each other one is named after the module it registers.
 WITHOUT_MODULE: dict[str, tuple[str, str, str]] = {
-    "extensions.backup": ("💾", "Sauvegardes", "Sauvegarde MongoDB planifiée et /backup."),
+    "extensions.backup": ("💾", "Sauvegardes", "Sauvegarde MongoDB planifiée et /sauvegarde."),
     "extensions.datapurge": (
         "🧹",
         "Purge des données",
@@ -67,7 +67,7 @@ WITHOUT_MODULE: dict[str, tuple[str, str, str]] = {
         "Mes données",
         "/mes-donnees : un membre exporte ou supprime ses données.",
     ),
-    "extensions.polls": ("📊", "Sondages", "/poll : sondages à boutons (module Utilitaires)."),
+    "extensions.polls": ("📊", "Sondages", "/sondage : sondages à boutons (module Utilitaires)."),
     "extensions.profile": (
         "🪪",
         "Profil",
@@ -78,7 +78,7 @@ WITHOUT_MODULE: dict[str, tuple[str, str, str]] = {
         "Hasard",
         "Tirage au sort, dés, pile ou face et mélange de listes.",
     ),
-    "extensions.reminders": ("⏰", "Rappels", "/reminder : rappels par MP (module Utilitaires)."),
+    "extensions.reminders": ("⏰", "Rappels", "/rappel : rappels par MP (module Utilitaires)."),
     "extensions.userinfo": (
         "👤",
         "Membres",

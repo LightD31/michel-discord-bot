@@ -108,7 +108,7 @@ def test_poll_in_an_enabled_server_is_persisted(enabled):
 
 
 def test_a_poll_without_a_deadline_is_stored_too(enabled):
-    # The reaction listener and /editpoll only act on stored polls.
+    # The reaction listener and /modifier-sondage only act on stored polls.
     repo = FakeRepo()
     assert schedule(make_extension(repo), guild_id=1, seconds=None) == {}
     (stored,) = repo.added

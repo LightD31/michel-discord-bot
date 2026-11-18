@@ -1,4 +1,4 @@
-"""Restore a backup written by ``/backup`` or the daily backup task.
+"""Restore a backup written by ``/sauvegarde`` or the daily backup task.
 
 Stop the bot first, so nothing writes to the databases while they are being
 restored. With Docker Compose::

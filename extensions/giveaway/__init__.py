@@ -1,13 +1,13 @@
-"""Giveaway Discord extension — ``/giveaway`` slash command + draw scheduler.
+"""Giveaway Discord extension — ``/concours`` slash command + draw scheduler.
 
 Slash commands:
-- ``/giveaway start prize:<str> duration:<30m|2h|1d> winners:<int> [allow_host_win:<bool>]`` — post a
+- ``/concours lancer prize:<str> duration:<30m|2h|1d> winners:<int> [allow_host_win:<bool>]`` — post a
   giveaway embed with its "Participer" / "Se retirer" buttons.
-- ``/giveaway end giveaway:<id>`` — end a giveaway early and draw winners now.
-- ``/giveaway reroll giveaway:<id> [winners:<int>]`` — pick fresh winners
+- ``/concours tirer giveaway:<id>`` — end a giveaway early and draw winners now.
+- ``/concours nouveau-tirage giveaway:<id> [winners:<int>]`` — pick fresh winners
   excluding any prior winners.
-- ``/giveaway list`` — list active giveaways on this guild.
-- ``/giveaway cancel giveaway:<id>`` — cancel without drawing.
+- ``/concours liste`` — list active giveaways on this guild.
+- ``/concours annuler giveaway:<id>`` — cancel without drawing.
 
 The ``giveaway`` option autocompletes: the server's open giveaways for end and
 cancel, its recently drawn ones for reroll (the value is the announcement's
@@ -53,7 +53,7 @@ from interactions import (
 )
 
 from features.giveaway import MAX_WINNERS, Giveaway, GiveawayRepository, pick_winners
-from features.polls import parse_duration  # reused: same DSL as /poll
+from features.polls import parse_duration  # reused: same DSL as /sondage
 from src.core import clock
 from src.core.debounce import Coalescer
 from src.core.logging import log_failure
@@ -289,14 +289,14 @@ class GiveawayExtension(Extension):
     # ------------------------------------------------------------------
 
     @slash_command(
-        name="giveaway",
+        name="concours",
         description="Gérer les giveaways",
-        sub_cmd_name="start",
+        sub_cmd_name="lancer",
         sub_cmd_description="Lancer un giveaway avec bouton de participation",
         scopes=guild_scopes(GIVEAWAY.guild_ids()),
     )
     @slash_option(
-        "prize",
+        "lot",
         "Lot mis en jeu",
         opt_type=OptionType.STRING,
         required=True,
@@ -411,11 +411,11 @@ class GiveawayExtension(Extension):
         )
 
     @giveaway_start.subcommand(
-        sub_cmd_name="end",
+        sub_cmd_name="tirer",
         sub_cmd_description="Tirer immédiatement les gagnants d'un giveaway en cours",
     )
     @slash_option(
-        "giveaway",
+        "concours",
         "Giveaway en cours (choisis-le dans la liste)",
         opt_type=OptionType.STRING,
         required=True,
@@ -446,11 +446,11 @@ class GiveawayExtension(Extension):
             await send_error(ctx, "Discord n'a pas répondu, réessaie dans un instant.")
 
     @giveaway_start.subcommand(
-        sub_cmd_name="cancel",
+        sub_cmd_name="annuler",
         sub_cmd_description="Annuler un giveaway en cours sans tirage",
     )
     @slash_option(
-        "giveaway",
+        "concours",
         "Giveaway en cours (choisis-le dans la liste)",
         opt_type=OptionType.STRING,
         required=True,
@@ -489,11 +489,11 @@ class GiveawayExtension(Extension):
         await send_success(ctx, "Giveaway annulé.")
 
     @giveaway_start.subcommand(
-        sub_cmd_name="reroll",
+        sub_cmd_name="nouveau-tirage",
         sub_cmd_description="Tirer de nouveaux gagnants pour un giveaway clos",
     )
     @slash_option(
-        "giveaway",
+        "concours",
         "Giveaway clos (choisis-le dans la liste)",
         opt_type=OptionType.STRING,
         required=True,
@@ -524,7 +524,7 @@ class GiveawayExtension(Extension):
             await send_error(ctx, "Aucun giveaway trouvé pour ce message.")
             return
         if not giveaway.drawn:
-            await send_error(ctx, "Tire d'abord les gagnants avec /giveaway end.")
+            await send_error(ctx, "Tire d'abord les gagnants avec /concours tirer.")
             return
 
         count = winners if winners is not None else giveaway.winners_count
@@ -549,7 +549,7 @@ class GiveawayExtension(Extension):
         await send_success(ctx, f"Nouveau tirage : {mention}")
 
     @giveaway_start.subcommand(
-        sub_cmd_name="list",
+        sub_cmd_name="liste",
         sub_cmd_description="Lister les giveaways en cours",
     )
     async def giveaway_list(self, ctx: SlashContext) -> None:
@@ -574,8 +574,8 @@ class GiveawayExtension(Extension):
         )
         await ctx.send(embeds=[embed], ephemeral=True)
 
-    @giveaway_end.autocomplete("giveaway")
-    @giveaway_cancel.autocomplete("giveaway")
+    @giveaway_end.autocomplete("concours")
+    @giveaway_cancel.autocomplete("concours")
     async def open_giveaway_choices(self, ctx: AutocompleteContext) -> None:
         """The server's open giveaways, soonest end first."""
         if ctx.guild_id is None or not GIVEAWAY.enabled(ctx.guild_id):
@@ -588,7 +588,7 @@ class GiveawayExtension(Extension):
         ]
         await ctx.send(choices=matching_choices(items, ctx.input_text))
 
-    @giveaway_reroll.autocomplete("giveaway")
+    @giveaway_reroll.autocomplete("concours")
     async def drawn_giveaway_choices(self, ctx: AutocompleteContext) -> None:
         """The server's most recently drawn giveaways."""
         if ctx.guild_id is None or not GIVEAWAY.enabled(ctx.guild_id):
@@ -698,7 +698,7 @@ class GiveawayExtension(Extension):
         """Pick winners, edit the announcement, and persist the result.
 
         The giveaway is claimed first (open → drawn, in one update), so of two
-        draws racing (the scheduler and ``/giveaway end`` at the deadline) one
+        draws racing (the scheduler and ``/concours tirer`` at the deadline) one
         returns ``"taken"`` without touching anything. When Discord doesn't
         answer, the claim is given back and the next run retries (``"retry"``),
         up to :data:`MAX_DRAW_FAILURES` times.

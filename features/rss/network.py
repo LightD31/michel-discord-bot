@@ -17,7 +17,7 @@ from src.core.http import fetch_untrusted
 async def fetch_feed(url: str) -> list[RssEntry]:
     """Download *url* and parse it. Raises :class:`src.core.errors.IntegrationError` on failure.
 
-    Feed URLs come from guild admins (dashboard) and ``/rss test``, so they go
+    Feed URLs come from guild admins (dashboard) and ``/rss tester``, so they go
     through :func:`~src.core.http.fetch_untrusted`: public addresses only, body
     size capped — never the bot's own network. The XML is parsed on a worker
     thread: a feed can weigh up to the 5 MB cap, and several are fetched at once.

@@ -1,4 +1,4 @@
-"""Account fields validated by /register."""
+"""Account fields validated by /inscription."""
 
 import string
 

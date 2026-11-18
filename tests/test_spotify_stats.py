@@ -40,7 +40,7 @@ def poll(tid, *, date="2026-01-05", state="conservée", votes=None, by="1"):
 
 def test_parse_timestamp_accepts_strings_and_datetimes():
     assert parse_timestamp("2026-01-10T10:00:00Z") == datetime(2026, 1, 10, 10, tzinfo=UTC)
-    # /addsong stores a BSON date, which Motor hands back naive (UTC).
+    # /musique ajouter stores a BSON date, which Motor hands back naive (UTC).
     assert parse_timestamp(datetime(2026, 1, 10, 10)) == datetime(2026, 1, 10, 10, tzinfo=UTC)
     assert parse_timestamp("not a date") is None
     assert parse_timestamp(None) is None

@@ -1,17 +1,17 @@
 """Polls Discord extension — poll creation, editing, and reaction tracking.
 
 Slash commands:
-- ``/poll`` — reaction-based poll, up to 10 options, optional auto-close
-- ``/poll-anonyme`` — button-based poll where voter identities aren't shown
-- ``/poll-classement`` — ranked-choice (instant-runoff) poll
-- ``/editpoll`` — edit the question, options, or reset reactions of a poll you created
+- ``/sondage`` — reaction-based poll, up to 10 options, optional auto-close
+- ``/sondage-anonyme`` — button-based poll where voter identities aren't shown
+- ``/sondage-classement`` — ranked-choice (instant-runoff) poll
+- ``/modifier-sondage`` — edit the question, options, or reset reactions of a poll you created
   (its ``sondage`` option autocompletes the member's open reaction polls)
 
 Listens to :class:`MessageReactionAdd` / :class:`MessageReactionRemove` to keep
 reaction-based poll embeds' vote counts fresh. Button-based polls persist their
 state in MongoDB (``polls`` collection) and close automatically once their
 ``closes_at`` deadline elapses. Reaction polls are stored there too
-(``mode="reaction"``): the reaction listener re-renders and ``/editpoll`` edits
+(``mode="reaction"``): the reaction listener re-renders and ``/modifier-sondage`` edits
 only a stored poll, and its auto-close survives a restart. A poll the database
 refuses to store closes on an in-memory timer instead. Enabled per-guild via
 ``moduleUtils``.
@@ -88,7 +88,7 @@ def _default_poll_seconds(guild_id: str | int | None) -> int | None:
 
 # In-memory map of (guild_id, message_id) → asyncio.Task that auto-closes a
 # reaction poll the database refused to store, or one posted between the module
-# being switched off and the reload that removes /poll. Everything else is
+# being switched off and the reload that removes /sondage. Everything else is
 # swept by check_closing_polls.
 _reaction_close_tasks: dict[tuple[str, str], asyncio.Task] = {}
 
@@ -171,7 +171,7 @@ class PollsExtension(Extension, PollButtonsMixin):
         _reaction_close_tasks.clear()
 
     @slash_command(
-        name="poll",
+        name="sondage",
         description="Créer un sondage",
         scopes=guild_scopes(UTILS.guild_ids()),
     )  # type: ignore
@@ -257,7 +257,7 @@ class PollsExtension(Extension, PollButtonsMixin):
     ) -> None:
         """Store the poll where polls are on, and arrange its close after *seconds*.
 
-        A stored poll is what the reaction listener re-renders and /editpoll
+        A stored poll is what the reaction listener re-renders and /modifier-sondage
         edits, and check_closing_polls closes it, even across restarts.
         If the database refuses the write (or the module was switched off since
         the command was registered), a poll with a deadline closes on an
@@ -297,7 +297,7 @@ class PollsExtension(Extension, PollButtonsMixin):
         _reaction_close_tasks[key] = spawn(_close(), name=f"poll-close:{key[1]}", log=logger)
 
     @slash_command(
-        name="poll-anonyme",
+        name="sondage-anonyme",
         description="Créer un sondage à vote anonyme (boutons)",
         scopes=guild_scopes(UTILS.guild_ids()),
     )
@@ -330,7 +330,7 @@ class PollsExtension(Extension, PollButtonsMixin):
         await self._create_button_poll(ctx, question, options, duration, mode="anonymous")
 
     @slash_command(
-        name="poll-classement",
+        name="sondage-classement",
         description="Créer un sondage à vote alternatif (ranked-choice)",
         scopes=guild_scopes(UTILS.guild_ids()),
     )
@@ -568,7 +568,7 @@ class PollsExtension(Extension, PollButtonsMixin):
         self._refresh_reaction_poll(event)
 
     @slash_command(
-        name="editpoll",
+        name="modifier-sondage",
         description="Modifier un sondage",
         scopes=guild_scopes(UTILS.guild_ids()),
     )
@@ -593,10 +593,11 @@ class PollsExtension(Extension, PollButtonsMixin):
         required=False,
     )
     @slash_option(
-        "reset_reactions",
+        "reinitialiser_reactions",
         "Réinitialiser les réactions du sondage",
         opt_type=OptionType.BOOLEAN,
         required=False,
+        argument_name="reset_reactions",
     )
     async def editpoll(
         self,
@@ -676,7 +677,7 @@ class PollsExtension(Extension, PollButtonsMixin):
         return stored if stored is not None and stored.mode == "reaction" else None
 
     async def _update_stored_options(self, guild_id, stored: Poll, options: list[str]) -> None:
-        """Keep a stored reaction poll's options in step with /editpoll, for its close."""
+        """Keep a stored reaction poll's options in step with /modifier-sondage, for its close."""
         if stored.id is None or stored.closed:
             return
         try:

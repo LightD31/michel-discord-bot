@@ -148,7 +148,7 @@ def plan_scheduled_event(
 ) -> ScheduledEventPlan:
     """Describe the scheduled event for the current instant.
 
-    ``finished`` forces the completed status (``/zevent_finish``); otherwise the
+    ``finished`` forces the completed status (``/zevent-fin``); otherwise the
     phase follows the clock. The returned ``start`` is the edition's own start:
     a caller creating the event mid-edition has to move it forward itself,
     since Discord refuses a start in the past.

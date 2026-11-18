@@ -2,7 +2,7 @@
 
 Discord reads ``default_member_permissions`` as "every one of these": an
 administrator has them all anyway, so ``ADMINISTRATOR | MANAGE_MESSAGES`` hid
-``/delete`` and ``/send`` from every moderator (and ``/aide`` with them), when
+``/effacer`` and ``/envoyer`` from every moderator (and ``/aide`` with them), when
 ``MANAGE_MESSAGES`` alone was meant (Q4). Name the one permission the command
 needs; administrators pass every check.
 """

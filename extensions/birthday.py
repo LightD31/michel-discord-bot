@@ -184,17 +184,19 @@ class BirthdayExtension(Extension):
         max_length=10,
     )
     @slash_option(
-        name="timezone",
+        name="fuseau",
         description="Fuseau horaire ex : Europe/Paris",
         opt_type=OptionType.STRING,
         required=True,
         autocomplete=True,
+        argument_name="timezone",
     )
     @slash_option(
-        name="hideyear",
+        name="masquer_annee",
         description="Masquer l'année",
         opt_type=OptionType.BOOLEAN,
         required=False,
+        argument_name="hideyear",
     )
     async def anniversaire(
         self,
@@ -236,7 +238,7 @@ class BirthdayExtension(Extension):
             log_failure(logger, "Unexpected error in anniversaire command: %s", e)
             await ctx.send("Une erreur inattendue s'est produite.", ephemeral=True)
 
-    @anniversaire.autocomplete("timezone")
+    @anniversaire.autocomplete("fuseau")
     async def anniversaire_timezone(self, ctx: AutocompleteContext) -> None:
         timezone_input = ctx.input_text.lower()
         all_tz = sorted(TIMEZONES)
@@ -267,7 +269,7 @@ class BirthdayExtension(Extension):
             await ctx.send("Erreur lors de la suppression.", ephemeral=True)
 
     @anniversaire.subcommand(
-        sub_cmd_name="purge",
+        sub_cmd_name="purger",
         sub_cmd_description="Supprime ton anniversaire sur tous les serveurs",
     )
     async def anniversaire_purge(self, ctx: SlashContext) -> None:

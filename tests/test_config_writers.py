@@ -3,7 +3,7 @@
 Writers used to rewrite ``config.json`` by hand: outside the write lock (a
 dashboard save at the same moment could be lost), and behind the store's back,
 so the live reads (``ModuleConfig``) kept the old value. Message ids are no
-longer config at all (``bot_messages``); ``/twitch-planning-setup`` still records
+longer config at all (``bot_messages``); ``/twitch-planning`` still records
 where a streamer's planning goes.
 """
 

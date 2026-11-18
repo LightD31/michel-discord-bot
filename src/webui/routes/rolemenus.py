@@ -3,7 +3,7 @@
 The WebUI builder calls these to create / edit / delete role menus on a guild.
 Each mutation persists in MongoDB **and** posts/edits/deletes the actual
 Discord message via the bot client, so the menu stays in sync with what
-``/rolemenu`` would produce.
+``/menu-roles`` would produce.
 """
 
 from typing import Any

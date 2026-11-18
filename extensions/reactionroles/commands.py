@@ -77,30 +77,33 @@ class CommandsMixin:
     """Admin slash commands to create / list / edit / delete role menus."""
 
     @slash_command(
-        name="rolemenu",
+        name="menu-roles",
         description="Gérer les menus de rôles",
-        sub_cmd_name="create",
+        sub_cmd_name="creer",
         sub_cmd_description="Créer un menu de rôles dans un salon",
         scopes=guild_scopes(REACTION_ROLES.guild_ids()),
     )
     @slash_option(
-        "channel",
+        "salon",
         "Salon où publier le menu",
         opt_type=OptionType.CHANNEL,
         required=True,
         channel_types=[ChannelType.GUILD_TEXT, ChannelType.GUILD_NEWS],
+        argument_name="channel",
     )
     @slash_option(
-        "title",
+        "titre",
         "Titre du menu",
         opt_type=OptionType.STRING,
         required=True,
+        argument_name="title",
     )
     @slash_option(
-        "entries",
+        "entrees",
         "Entrées séparées par « ; ». Format : roleId,emoji,libellé",
         opt_type=OptionType.STRING,
         required=True,
+        argument_name="entries",
     )
     @slash_option(
         "description",
@@ -177,7 +180,7 @@ class CommandsMixin:
         await send_success(ctx, f"Menu créé (id `{menu_id}`).")
 
     @rolemenu_create.subcommand(
-        sub_cmd_name="list",
+        sub_cmd_name="liste",
         sub_cmd_description="Lister les menus de rôles de ce serveur",
     )
     @slash_default_member_permission(Permissions.MANAGE_ROLES)
@@ -204,14 +207,15 @@ class CommandsMixin:
         await ctx.send(embeds=[embed], ephemeral=True)
 
     @rolemenu_create.subcommand(
-        sub_cmd_name="delete",
+        sub_cmd_name="supprimer",
         sub_cmd_description="Supprimer un menu de rôles",
     )
     @slash_option(
-        "menu_id",
-        "ID du menu (visible via /rolemenu list)",
+        "menu",
+        "ID du menu (visible via /menu-roles liste)",
         opt_type=OptionType.STRING,
         required=True,
+        argument_name="menu_id",
     )
     @slash_default_member_permission(Permissions.MANAGE_ROLES)
     async def rolemenu_delete(self, ctx: SlashContext, menu_id: str) -> None:
@@ -238,20 +242,22 @@ class CommandsMixin:
         await send_success(ctx, "Menu supprimé.")
 
     @rolemenu_create.subcommand(
-        sub_cmd_name="edit",
+        sub_cmd_name="modifier",
         sub_cmd_description="Modifier le titre ou la description d'un menu existant",
     )
     @slash_option(
-        "menu_id",
-        "ID du menu (visible via /rolemenu list)",
+        "menu",
+        "ID du menu (visible via /menu-roles liste)",
         opt_type=OptionType.STRING,
         required=True,
+        argument_name="menu_id",
     )
     @slash_option(
-        "title",
+        "titre",
         "Nouveau titre (optionnel)",
         opt_type=OptionType.STRING,
         required=False,
+        argument_name="title",
     )
     @slash_option(
         "description",

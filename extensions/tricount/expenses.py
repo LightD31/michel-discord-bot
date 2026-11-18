@@ -38,8 +38,10 @@ class ExpensesMixin:
     """Add and modify individual expenses within a group."""
 
     @slash_command(
-        name="depense",
-        description="Ajouter une dépense",
+        name="tricount",
+        description="Gestion des dépenses partagées",
+        sub_cmd_name="depense",
+        sub_cmd_description="Ajouter une dépense",
         scopes=guild_scopes(TRICOUNT.guild_ids()),
     )
     @slash_option(
@@ -181,8 +183,10 @@ class ExpensesMixin:
         await guild_group_autocomplete(ctx, TricountRepository.groups_collection)
 
     @slash_command(
-        name="modifier-depense",
-        description="Modifier une dépense existante",
+        name="tricount",
+        description="Gestion des dépenses partagées",
+        sub_cmd_name="modifier-depense",
+        sub_cmd_description="Modifier une dépense existante",
         scopes=guild_scopes(TRICOUNT.guild_ids()),
     )
     @slash_option(
@@ -324,8 +328,10 @@ class ExpensesMixin:
         return expense
 
     @slash_command(
-        name="supprimer-depense",
-        description="Supprimer une dépense ou un remboursement",
+        name="tricount",
+        description="Gestion des dépenses partagées",
+        sub_cmd_name="supprimer-depense",
+        sub_cmd_description="Supprimer une dépense ou un remboursement",
         scopes=guild_scopes(TRICOUNT.guild_ids()),
     )
     @slash_option(

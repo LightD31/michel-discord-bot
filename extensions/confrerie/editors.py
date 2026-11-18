@@ -58,11 +58,12 @@ class EditorsMixin:
         scopes=guild_scopes(CONFRERIE.guild_ids()),
     )
     @slash_option(
-        name="name",
+        name="nom",
         description="Nom de l'éditeur",
         required=True,
         opt_type=OptionType.STRING,
         max_length=200,
+        argument_name="name",
     )
     @slash_option(
         name="genre_1",

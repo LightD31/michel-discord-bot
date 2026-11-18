@@ -16,7 +16,7 @@ from src.webui.schemas import SchemaBase, enabled_field, register_module, ui
 class StreamerEntry(BaseModel):
     """One streamer of the ``streamermap`` widget (keyed by Twitch login).
 
-    Written by the SPA, and by ``/twitch-planning-setup`` for the planning keys.
+    Written by the SPA, and by ``/twitch-planning`` for the planning keys.
     """
 
     model_config = ConfigDict(extra="forbid")
