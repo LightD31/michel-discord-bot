@@ -190,7 +190,22 @@ def test_module_roles_say_what_the_bot_does_with_them(probe):
         f"{key}.{name}"
         for key, schema in probe["module_schemas"].items()
         for name, meta in schema["fields"].items()
-        if meta.get("type") == "role" and not meta.get("roleUse")
+        if meta.get("type") in {"role", "rolelist"} and not meta.get("roleUse")
+    ]
+    assert offenders == []
+
+
+def test_ids_are_picked_by_name_not_typed(probe):
+    """A list of channels or roles is a ``channellist`` / ``rolelist``, not a ``list`` of ids.
+
+    The dashboard shows those by name, with a picker; a plain ``list`` is a
+    textarea where an admin types ids they can't read back (P3).
+    """
+    offenders = [
+        f"{key}.{name}"
+        for key, schema in probe["module_schemas"].items()
+        for name, meta in schema["fields"].items()
+        if meta.get("type") in {"list", "list:number"} and re.search(r"(Channel|Role)(Id)?s$", name)
     ]
     assert offenders == []
 

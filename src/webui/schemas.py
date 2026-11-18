@@ -18,6 +18,8 @@ import the DSL without triggering a circular import.
 
 Recognised widget types (``type=`` on ``ui()``):
     string, number, boolean, channel, role, message, secret, url,
+    member (a member, picked by name), channellist, rolelist (several
+    channels / roles, picked by name),
     list, list:number, dict, messagelist, embedlist, commandlist, keyvaluemap,
     spotifymap, streamermap, youtubechannelmap, rssfeedmap, teams,
     discord2name, models, text (multi-line string), aimodel (configured AI model key).
@@ -63,6 +65,7 @@ def ui(
     le: float | None = None,
     role_use: str = "",
     role_keys: bool = False,
+    member_keys: bool = False,
 ) -> Any:
     """Build a Pydantic ``Field(...)`` carrying UI metadata in ``json_schema_extra['ui']``.
 
@@ -80,6 +83,9 @@ def ui(
     ``role_use`` says what the bot does with the role a ``role`` field (or a
     ``keyvaluemap``'s values, its keys with ``role_keys=True``) names, which
     decides who may choose it (see :data:`ROLE_USES`).
+
+    ``member_keys`` marks a ``keyvaluemap`` whose keys are members, picked by
+    name in the dashboard.
     """
     if role_use and role_use not in ROLE_USES:
         raise ValueError(f"role_use inconnu : {role_use}")
@@ -108,6 +114,8 @@ def ui(
         meta["roleUse"] = role_use
     if role_keys:
         meta["roleKeys"] = True
+    if member_keys:
+        meta["memberKeys"] = True
 
     field_default = default if default is not _UNSET else None
     return Field(default=field_default, ge=ge, le=le, json_schema_extra={"ui": meta})
@@ -249,11 +257,14 @@ def _entries(value: Any) -> list[Any]:
     return []
 
 
-def channel_ids(model: type[SchemaBase], value: Any) -> set[str]:
+def channel_ids(model: type[SchemaBase], value: Any, *, lists: bool = True) -> set[str]:
     """Every channel id *value* (a module's config) names, top level and nested.
 
     The fields of type ``channel``, plus the per-entry channel keys of the
-    widget types in :data:`NESTED_CHANNEL_KEYS`. Empty values are skipped.
+    widget types in :data:`NESTED_CHANNEL_KEYS`, plus each entry of a
+    ``channellist`` unless *lists* is false: those name channels the bot
+    leaves alone (the automod's ignored channels), which the health card
+    doesn't check for the rights to post. Empty values are skipped.
     """
     if not isinstance(value, dict):
         return set()
@@ -268,6 +279,10 @@ def channel_ids(model: type[SchemaBase], value: Any) -> set[str]:
         kind = meta.get("type")
         if kind == "channel":
             add(value.get(name))
+        elif kind == "channellist" and lists:
+            raw = value.get(name)
+            for entry in raw if isinstance(raw, list) else []:
+                add(entry)
         for key in NESTED_CHANNEL_KEYS.get(kind or "", ()):
             for entry in _entries(value.get(name)):
                 if isinstance(entry, dict):
@@ -278,8 +293,8 @@ def channel_ids(model: type[SchemaBase], value: Any) -> set[str]:
 def role_refs(model: type[SchemaBase], value: Any) -> set[tuple[str, str]]:
     """Every ``(use, role id)`` *value* (a module's config) names.
 
-    The ``role`` fields and the role side of ``keyvaluemap`` fields that
-    declare a ``role_use``. Empty values are skipped.
+    The ``role`` fields, each entry of a ``rolelist`` and the role side of
+    ``keyvaluemap`` fields that declare a ``role_use``. Empty values are skipped.
     """
     if not isinstance(value, dict):
         return set()
@@ -292,6 +307,8 @@ def role_refs(model: type[SchemaBase], value: Any) -> set[tuple[str, str]]:
         if meta.get("type") == "keyvaluemap":
             items = raw if isinstance(raw, dict) else {}
             candidates = list(items) if meta.get("roleKeys") else list(items.values())
+        elif meta.get("type") == "rolelist":
+            candidates = list(raw) if isinstance(raw, list) else []
         else:
             candidates = [raw]
         for candidate in candidates:

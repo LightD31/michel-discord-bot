@@ -144,6 +144,8 @@ def page(browser, dashboard):
     page = context.new_page()
     errors: list[str] = []
     page.on("pageerror", lambda e: errors.append(str(e)))
+    # The app asks with its own dialog: the browser's confirm() is never used.
+    page.on("dialog", lambda d: errors.append(f"boîte native : {d.message}") or d.dismiss())
     page.goto(f"http://127.0.0.1:{dashboard['port']}/#/module/{GUILD}/{MODULE}")
     page.wait_for_selector('[data-field="greeting"]')
     yield page
@@ -265,19 +267,27 @@ def test_an_expired_session_keeps_the_page_and_the_typing(page, dashboard):
     assert not any("sauvegardée" in t for t in toasts(page))
 
 
+def confirm_dialog(page):
+    """The app's confirmation dialog, once it is open."""
+    dialog = page.get_by_role("alertdialog")
+    dialog.wait_for()
+    return dialog
+
+
 def test_leaving_an_edited_form_asks_first(page):
     page.get_by_label("Message d'accueil").fill("Pas encore enregistré")
-    asked: list[str] = []
-
-    def dismiss(dialog):
-        asked.append(dialog.message)
-        dialog.dismiss()
-
-    page.on("dialog", dismiss)
     page.get_by_role("link", name="Accueil").click()
-    assert asked and "pas enregistrées" in asked[0]
+    dialog = confirm_dialog(page)
+    assert "pas enregistrées" in dialog.inner_text()
+    # Leaving is the destructive choice: Entrée must not take it.
+    assert page.evaluate("document.activeElement.textContent.trim()") == "Annuler"
+    page.keyboard.press("Escape")
+    dialog.wait_for(state="hidden")
     assert "/module/" in page.url  # still on the form
     assert page.get_by_label("Message d'accueil").input_value() == "Pas encore enregistré"
+    page.get_by_role("link", name="Accueil").click()
+    confirm_dialog(page).get_by_role("button", name="Abandonner").click()
+    page.wait_for_function("() => !location.hash.includes('/module/')")
 
 
 def test_the_spa_logs_out_but_another_site_cannot(page, browser, dashboard, caplog):
@@ -351,9 +361,9 @@ def test_the_secret_santa_card_shows_the_session_and_draws(page, dashboard, monk
     assert "<img src=x onerror=alert(1)>" in card.inner_text()
     assert "📝 Listes d'envies" in card.inner_text() and "1/2" in card.inner_text()
 
-    page.once("dialog", lambda dialog: dialog.accept())
     card.get_by_label("Autoriser plusieurs sous-groupes").check()
     card.get_by_role("button", name="🎲 Lancer le tirage").click()
+    confirm_dialog(page).get_by_role("button", name="🎲 Lancer le tirage").click()
     page.locator("#toasts .toast", has_text="Tirage effectué pour 2 participants").wait_for()
     assert draws == [{"allow_subgroups": True}]
     card.get_by_text("✅ Tirage effectué").wait_for()
@@ -401,7 +411,17 @@ def test_a_cancelled_draw_sends_nothing(page, dashboard, monkeypatch):
     page.goto(f"http://127.0.0.1:{dashboard['port']}/#/module/{GUILD}/moduleSecretSanta")
     card = page.locator("#secretsanta-session")
     card.get_by_text("🤝 En main propre").wait_for()
-    page.once("dialog", lambda dialog: dialog.dismiss())
     card.get_by_role("button", name="🎲 Lancer le tirage").click()
+    confirm_dialog(page).get_by_role("button", name="Annuler").click()
     page.wait_for_timeout(300)
     assert posts == []
+
+
+def test_a_field_emptied_in_the_form_is_emptied_in_the_config(page, dashboard):
+    """The save merged the form into the stored module: a cleared field stayed (P3)."""
+    page.get_by_label("Message d'accueil").fill("")
+    save(page)
+    page.locator("#toasts .toast", has_text="Configuration sauvegardée").first.wait_for()
+    stored = json.loads(dashboard["config"].read_text(encoding="utf-8"))
+    assert "greeting" not in stored["servers"][GUILD][MODULE]
+    assert stored["servers"][GUILD][MODULE]["enabled"] is True  # not a field of the form

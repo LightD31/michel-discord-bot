@@ -1,5 +1,7 @@
 """A guild's "Santé" card: channels the bot can't use, failing feeds, task runs (F08)."""
 
+from functools import partial
+
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
 
@@ -12,7 +14,7 @@ from src.webui.context import WebUIContext
 from src.webui.guild_health import (
     channel_report,
     configured_channels,
-    guild_task_names,
+    guild_tasks,
     rss_report,
     task_report,
 )
@@ -47,11 +49,14 @@ def create_router(ctx: WebUIContext) -> APIRouter:
         channels = None  # None: no bot to ask (a dashboard run on its own)
         tasks: list = []
         if ctx.bot is not None:
-            wanted = configured_channels(server, _models(), schemas.channel_ids)
+            # Where the bot posts: the channels a list names are ones it leaves alone.
+            wanted = configured_channels(
+                server, _models(), partial(schemas.channel_ids, lists=False)
+            )
             channels = await ctx.call_bot(
                 channel_report, ctx.bot, server_id, wanted, what=f"check channels of {server_id}"
             )
-            tasks = task_report(guild_task_names(ctx.bot, enabled), health.snapshot())
+            tasks = task_report(guild_tasks(ctx.bot, enabled), health.snapshot())
 
         feeds = None
         if RSS_MODULE in enabled:

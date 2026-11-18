@@ -1,11 +1,14 @@
 """A guild's "Santé" card: channels, feeds and tasks (F08)."""
 
+import ast
 import asyncio
 import json
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
-from interactions import IntervalTrigger, Permissions, Task
+import pytest
+from interactions import IntervalTrigger, OrTrigger, Permissions, Task, TimeTrigger
+from source_scan import python_files, rel
 
 import extensions.rss._common  # noqa: F401 — registers moduleRss
 import extensions.xp._common  # noqa: F401 — registers moduleXp
@@ -114,6 +117,68 @@ def test_only_the_tasks_serving_the_guild_are_listed():
     )
     (entry,) = guild_health.task_report(names, snapshot)
     assert entry["successes"] == 3 and entry["failures"] == 1 and entry["lastFailure"] == 5.0
+
+
+def test_a_task_is_shown_by_what_it_does_and_when():
+    bot = SimpleNamespace(ext={"Rss": Other()})
+    tasks = guild_health.guild_tasks(bot, {"moduleRss"})
+    (entry,) = guild_health.task_report(tasks, HealthSnapshot(tasks={}))
+    assert entry["name"] == "Other.poll" and entry["schedule"] == "toutes les minutes"
+    label = guild_health.TASK_LABELS["LeaderboardMixin.leaderboardpermanent"]
+    (known,) = guild_health.task_report(
+        ["LeaderboardMixin.leaderboardpermanent"], HealthSnapshot(tasks={})
+    )
+    assert known["label"] == label == "Classement XP"
+
+
+@pytest.mark.parametrize(
+    ("trigger", "words"),
+    [
+        (IntervalTrigger(seconds=30), "toutes les 30 s"),
+        (IntervalTrigger(minutes=5), "toutes les 5 min"),
+        (IntervalTrigger(hours=1), "toutes les heures"),
+        (IntervalTrigger(hours=6), "toutes les 6 h"),
+        (TimeTrigger(hour=3, minute=5, utc=False), "chaque jour à 03:05"),
+        (TimeTrigger(hour=9, utc=True), "chaque jour à 09:00 UTC"),
+        (
+            OrTrigger(TimeTrigger(hour=20, utc=False), TimeTrigger(hour=8, utc=False)),
+            "chaque jour à 08:00, 20:00",
+        ),
+        (OrTrigger(*[TimeTrigger(hour=h, utc=False) for h in range(24)]), "toutes les heures"),
+        (OrTrigger(*[TimeTrigger(hour=h, utc=False) for h in range(6)]), "6 fois par jour"),
+        (OrTrigger(IntervalTrigger(minutes=1), TimeTrigger(hour=1)), ""),
+    ],
+)
+def test_task_schedules_read_like_a_sentence(trigger, words):
+    assert guild_health.task_schedule(SimpleNamespace(trigger=trigger)) == words
+
+
+def _extension_tasks() -> dict[str, str]:
+    """``Class.method`` of every ``@Task.create`` method in the extensions, with its file."""
+    found = {}
+    for path in python_files("extensions"):
+        for cls in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if not isinstance(cls, ast.ClassDef):
+                continue
+            for fn in cls.body:
+                if isinstance(fn, ast.FunctionDef | ast.AsyncFunctionDef) and any(
+                    isinstance(d, ast.Call)
+                    and isinstance(d.func, ast.Attribute)
+                    and d.func.attr == "create"
+                    and getattr(d.func.value, "id", None) == "Task"
+                    for d in fn.decorator_list
+                ):
+                    found[f"{cls.name}.{fn.name}"] = rel(path)
+    return found
+
+
+def test_every_task_has_a_label_for_the_health_card():
+    tasks = _extension_tasks()
+    assert len(tasks) > 30  # the scan sees the extensions
+    assert [
+        f"{name} ({where})" for name, where in tasks.items() if name not in guild_health.TASK_LABELS
+    ] == []
+    assert sorted(set(guild_health.TASK_LABELS) - set(tasks)) == []  # no stale entry
 
 
 def test_the_route_without_a_bot_still_reports_the_feeds(monkeypatch, store_config):

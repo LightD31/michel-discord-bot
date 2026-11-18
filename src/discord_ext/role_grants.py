@@ -100,6 +100,59 @@ async def settings_refusal(
     return None
 
 
+CHECKED_USES = ("grant", "mention", "access")
+
+
+def _color(role: Any) -> str | None:
+    """The role's colour as ``#rrggbb``, ``None`` for an uncoloured role."""
+    try:
+        value = int(getattr(role, "color", 0) or 0)
+    except (TypeError, ValueError):
+        return None
+    return f"#{value:06x}" if value else None
+
+
+async def role_choices(
+    bot: Any, guild_id: str, user_id: str, *, is_developer: bool
+) -> dict[str, Any]:
+    """Every role of *guild_id* a setting can name, highest first (bot loop only).
+
+    For the dashboard's role pickers: each role carries, for each use the save
+    checks, why *user_id* may not pick it (``refusals``, ``None`` when they may),
+    worked out by the same rules as :func:`settings_refusal`. ``@everyone`` is
+    left out: no setting names it.
+    """
+    guild = bot.get_guild(int(guild_id))
+    if guild is None:
+        return {"roles": []}
+    member = await guild.fetch_member(int(user_id))
+    author = menu_author(guild, member, bypass_hierarchy=is_developer)
+    bot_position = await bot_top_position(bot, guild)
+    found: list[tuple[int, dict[str, Any]]] = []
+    for role in getattr(guild, "roles", []) or []:
+        info = role_info(role, guild.id)
+        if info.is_default:
+            continue
+        found.append(
+            (
+                info.position,
+                {
+                    "id": info.id,
+                    "name": str(getattr(role, "name", info.id)),
+                    "color": _color(role),
+                    "position": info.position,
+                    "managed": info.managed,
+                    "refusals": {
+                        use: role_refusal(use, info, author=author, bot_position=bot_position)
+                        for use in CHECKED_USES
+                    },
+                },
+            )
+        )
+    found.sort(key=lambda pair: -pair[0])
+    return {"roles": [role for _, role in found]}
+
+
 def auto_grant_refusal(role: RoleInfo) -> str | None:
     """Why the bot must not hand *role* out on its own right now, or ``None``."""
     if role.is_default:
@@ -128,6 +181,7 @@ __all__ = [
     "auto_grant_refusal",
     "can_mention_everyone",
     "grantable_role",
+    "role_choices",
     "role_refusal",
     "settings_refusal",
 ]

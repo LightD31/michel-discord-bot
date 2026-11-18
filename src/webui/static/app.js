@@ -51,7 +51,8 @@
             }).filter(Boolean);
             if (parts.length) return parts.join(' · ');
         }
-        if (typeof detail === 'string' && detail) return detail;
+        // A refusal names a role as Discord would (<@&id>): show its name.
+        if (typeof detail === 'string' && detail) return withRoleNames(detail);
         if (detail && typeof detail === 'object') return JSON.stringify(detail);
         return `Erreur HTTP ${status}`;
     }
@@ -137,11 +138,14 @@
     }
 
     document.addEventListener('keydown', (event) => {
-        const overlay = document.getElementById('modal-overlay');
+        // The confirmation sits above the JSON modal: it takes the keys first.
+        const confirming = document.getElementById('confirm-overlay')?.classList.contains('active');
+        const overlay = document.getElementById(confirming ? 'confirm-overlay' : 'modal-overlay');
         if (!overlay?.classList.contains('active')) return;
         if (event.key === 'Escape') {
             event.preventDefault();
-            closeModal();
+            if (confirming) settleConfirm(false);
+            else closeModal();
             return;
         }
         if (event.key !== 'Tab') return;
@@ -160,6 +164,35 @@
             first.focus();
         }
     });
+
+    // ── Confirmation ──────────────────────────────────
+    // askConfirm() resolves to true or false. A destructive action gets a red
+    // button and the focus on "Annuler", so Entrée doesn't confirm it.
+    let confirmResolve = null;
+    let confirmReturnFocus = null;
+
+    function askConfirm(message, { title = 'Confirmer', confirm = 'Confirmer', danger = false } = {}) {
+        if (confirmResolve) settleConfirm(false);
+        const overlay = document.getElementById('confirm-overlay');
+        document.getElementById('confirm-title').textContent = title;
+        document.getElementById('confirm-message').textContent = message;
+        const ok = document.getElementById('confirm-ok');
+        ok.textContent = confirm;
+        ok.className = `btn ${danger ? 'btn-danger' : 'btn-primary'}`;
+        confirmReturnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+        overlay.classList.add('active');
+        (danger ? document.getElementById('confirm-cancel') : ok).focus();
+        return new Promise((resolve) => { confirmResolve = resolve; });
+    }
+
+    function settleConfirm(answer) {
+        document.getElementById('confirm-overlay')?.classList.remove('active');
+        const resolve = confirmResolve;
+        confirmResolve = null;
+        confirmReturnFocus?.focus?.();
+        confirmReturnFocus = null;
+        resolve?.(answer === true);
+    }
 
     function openModal(title, json, onSave) {
         document.getElementById('modal-title').textContent = title;
@@ -259,9 +292,11 @@
         event.returnValue = '';
     });
 
-    function confirmDiscard() {
+    async function confirmDiscard() {
         if (!formDirty) return true;
-        if (!confirm('Des modifications ne sont pas enregistrées. Les abandonner ?')) return false;
+        const leave = await askConfirm('Des modifications ne sont pas enregistrées. Les abandonner ?',
+            { title: 'Modifications non enregistrées', confirm: 'Abandonner', danger: true });
+        if (!leave) return false;
         setDirty(false);
         return true;
     }
@@ -302,8 +337,8 @@
     });
 
     // ── Navigation ────────────────────────────────────
-    function navigate(page, serverId = null, moduleName = null, { fromHistory = false } = {}) {
-        if (!confirmDiscard()) {
+    async function navigate(page, serverId = null, moduleName = null, { fromHistory = false } = {}) {
+        if (!(await confirmDiscard())) {
             // Back/forward already moved the URL: put the current page's back.
             if (fromHistory) {
                 history.pushState(null, '', routeHash(state.currentPage, state.currentServerId, state.currentModule));
@@ -705,6 +740,15 @@
     // ── Schema-based form rendering ───────────────────
 
     // "Entre 2 et 50", from a number field's schema bounds.
+    // A field's help as written in its schema: **gras**, `code` and line
+    // breaks, on top of escaped text (nothing else is markup).
+    function mdInline(text) {
+        return escapeHtml(String(text ?? ''))
+            .replace(/`([^`\n]+)`/g, '<code>$1</code>')
+            .replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>')
+            .replace(/\n/g, '<br>');
+    }
+
     function numberRange(field) {
         const fmt = (n) => Number(n).toLocaleString('fr-FR');
         if (field.min != null && field.max != null) return `Entre ${fmt(field.min)} et ${fmt(field.max)}`;
@@ -741,7 +785,7 @@
             const fieldId = `f-${formId}-${key}`.replace(/[^A-Za-z0-9_-]/g, '_');
             html += `<div class="form-field" data-key="${key}">`;
             html += `<div class="form-field-header">`;
-            html += `<label class="form-label" for="${fieldId}">${field.label || key}`;
+            html += `<label class="form-label" for="${fieldId}">${escapeHtml(field.label || key)}`;
             if (isRequired) html += ' <span class="required-badge">requis</span>';
             html += `</label>`;
             if (RESETTABLE_TYPES.has(fieldType) && field.default !== undefined && field.default !== null) {
@@ -751,7 +795,7 @@
             }
             html += `</div>`;
             if (field.description) {
-                html += `<div class="form-description">${field.description}</div>`;
+                html += `<div class="form-description">${mdInline(field.description)}</div>`;
             }
 
             switch (fieldType) {
@@ -803,9 +847,22 @@
                     break;
                 }
                 case 'role':
+                    html += rolePickerHtml(hasValue ? String(value) : '',
+                        `data-field="${key}" data-type="role"`, field.roleUse, fieldId);
+                    break;
+
+                case 'member':
+                    html += memberPickerHtml(hasValue ? String(value) : '', `data-field="${key}" data-type="member"`);
+                    break;
+
+                case 'channellist':
+                case 'rolelist':
+                    html += multiPickerHtml(key, fieldType, Array.isArray(value) ? value : [], field.roleUse);
+                    break;
+
                 case 'message':
                 case 'url': {
-                    const typeHint = {role: 'ID du rôle', message: 'ID du message', url: 'URL'}[fieldType];
+                    const typeHint = {message: 'ID du message', url: 'URL'}[fieldType];
                     html += `<input type="text" class="form-input" data-field="${key}" data-type="${fieldType}"
                         value="${hasValue ? escapeHtml(String(value)) : ''}"
                         placeholder="${typeHint}">`;
@@ -891,15 +948,12 @@
                     const kvMap = (typeof value === 'object' && value !== null && !Array.isArray(value)) ? value : {};
                     const keyLabel = field.keyLabel || 'Clé';
                     const valueLabel = field.valueLabel || 'Valeur';
-                    html += `<div class="keyvaluemap-list" data-field="${key}" data-type="keyvaluemap" data-key-label="${escapeHtml(keyLabel)}" data-value-label="${escapeHtml(valueLabel)}">`;
+                    html += `<div class="keyvaluemap-list" data-field="${key}" data-type="keyvaluemap" data-key-label="${escapeHtml(keyLabel)}" data-value-label="${escapeHtml(valueLabel)}"
+                        data-role-use="${escapeHtml(field.roleUse || '')}" data-role-keys="${field.roleKeys ? '1' : ''}" data-member-keys="${field.memberKeys ? '1' : ''}">`;
                     html += `<div class="keyvaluemap-header"><span>${escapeHtml(keyLabel)}</span><span>${escapeHtml(valueLabel)}</span><span></span></div>`;
                     Object.entries(kvMap).forEach(([mapKey, mapValue]) => {
-                        html += `
-                            <div class="keyvaluemap-entry">
-                                <input type="text" data-kvmap-field="key" value="${escapeHtml(mapKey)}" placeholder="ex: ${escapeHtml(keyLabel).toLowerCase()}">
-                                <input type="text" data-kvmap-field="value" value="${escapeHtml(String(mapValue))}" placeholder="ex: ${escapeHtml(valueLabel).toLowerCase()}">
-                                <button class="btn-remove-entry" data-click="remove-closest" data-click-args="[&quot;.keyvaluemap-entry&quot;,{&quot;$&quot;:&quot;el&quot;}]" title="Supprimer" aria-label="Supprimer">✕</button>
-                            </div>`;
+                        html += keyValueEntryHtml(field.roleUse || '', !!field.roleKeys, !!field.memberKeys,
+                            keyLabel, valueLabel, mapKey, String(mapValue));
                     });
                     html += `</div>`;
                     html += `<button type="button" class="btn-add-entry" data-click="addKeyValueMapEntry" data-click-args="[{&quot;$&quot;:&quot;el&quot;}]">+ Ajouter une entrée</button>`;
@@ -1126,7 +1180,7 @@
     // Field types whose default can be restored with one click.
     const RESETTABLE_TYPES = new Set(['text', 'string', 'number', 'boolean', 'url']);
 
-    function resetFieldToDefault(btn) {
+    async function resetFieldToDefault(btn) {
         const field = btn.closest('.form-field');
         const input = field?.querySelector('[data-field]');
         if (!input) return;
@@ -1143,7 +1197,7 @@
             }
             // Long texts (the AI persona) are easy to lose: confirm before overwriting.
             if (input.tagName === 'TEXTAREA' && current.trim()
-                && !confirm('Remplacer le texte actuel par la valeur par défaut ?')) {
+                && !(await askConfirm('Remplacer le texte actuel par la valeur par défaut ?', { confirm: 'Remplacer', danger: true }))) {
                 return;
             }
             input.value = next;
@@ -1184,6 +1238,12 @@
                 case 'list':
                     val = input.value.trim() ? input.value.trim().split('\n').map(s => s.trim()).filter(Boolean) : undefined;
                     break;
+                case 'channellist':
+                case 'rolelist': {
+                    const ids = multiPickerIds(input);
+                    val = ids.length ? ids : undefined;
+                    break;
+                }
                 case 'list:number':
                     val = input.value.trim()
                         ? input.value.split(',').map(s => Number(s.trim())).filter(n => !isNaN(n))
@@ -1777,19 +1837,33 @@
         if (search) search.focus();
     }
 
+    // One row of a ``keyvaluemap``: a role picker on the side that names a
+    // role (``role_use``, the keys with ``role_keys``), a member picker for
+    // keys that are members (``member_keys``), a text input otherwise.
+    function keyValueEntryHtml(roleUse, roleKeys, memberKeys, keyLabel, valueLabel, mapKey, mapValue) {
+        const text = (side, label, val) => `<input type="text" data-kvmap-field="${side}" value="${escapeHtml(val)}" placeholder="ex: ${escapeHtml(label).toLowerCase()}">`;
+        let keyCell = text('key', keyLabel, mapKey);
+        let valueCell = text('value', valueLabel, mapValue);
+        if (memberKeys) keyCell = memberPickerHtml(mapKey, 'data-kvmap-field="key"');
+        if (roleUse && roleKeys) keyCell = rolePickerHtml(mapKey, 'data-kvmap-field="key"', roleUse);
+        if (roleUse && !roleKeys) valueCell = rolePickerHtml(mapValue, 'data-kvmap-field="value"', roleUse);
+        return `
+            <div class="keyvaluemap-entry">
+                ${keyCell}
+                ${valueCell}
+                <button class="btn-remove-entry" data-click="remove-closest" data-click-args="[&quot;.keyvaluemap-entry&quot;,{&quot;$&quot;:&quot;el&quot;}]" title="Supprimer" aria-label="Supprimer">✕</button>
+            </div>`;
+    }
+
     function addKeyValueMapEntry(btn) {
         const list = btn.previousElementSibling;
-        const keyLabel = list.dataset.keyLabel || 'Clé';
-        const valueLabel = list.dataset.valueLabel || 'Valeur';
-        const entry = document.createElement('div');
-        entry.className = 'keyvaluemap-entry';
-        entry.innerHTML = `
-            <input type="text" data-kvmap-field="key" value="" placeholder="ex: ${escapeHtml(keyLabel).toLowerCase()}">
-            <input type="text" data-kvmap-field="value" value="" placeholder="ex: ${escapeHtml(valueLabel).toLowerCase()}">
-            <button class="btn-remove-entry" data-click="remove-closest" data-click-args="[&quot;.keyvaluemap-entry&quot;,{&quot;$&quot;:&quot;el&quot;}]" title="Supprimer" aria-label="Supprimer">✕</button>
-        `;
-        list.appendChild(entry);
-        entry.querySelector('input').focus();
+        const d = list.dataset;
+        list.insertAdjacentHTML('beforeend', keyValueEntryHtml(d.roleUse || '', !!d.roleKeys, !!d.memberKeys,
+            d.keyLabel || 'Clé', d.valueLabel || 'Valeur', '', ''));
+        const entry = list.lastElementChild;
+        populateRolePickers(entry);
+        populateMemberPickers(entry);
+        entry.querySelector('input:not([style*="none"]), select')?.focus();
     }
 
     const STREAMER_TOGGLE_FIELDS = [
@@ -2371,26 +2445,16 @@
         return null;
     }
 
-    async function populateChannelPickers(container) {
-        const serverId = state.currentServerId;
-        if (!serverId || !container) return;
-        const pickers = container.querySelectorAll('.channel-picker');
-        if (pickers.length === 0) return;
-        const data = await fetchServerChannels(serverId);
-        if (!data) {
-            // Fall back to manual text entry
-            for (const picker of pickers) {
-                toggleChannelPickerMode(picker.querySelector('.btn-channel-toggle'), true);
-                const select = picker.querySelector('select');
-                if (select) select.innerHTML = `<option value="">— Bot hors ligne —</option>`;
-            }
-            return;
-        }
+    // The <option>s of a guild's channels, by category, each thread under its
+    // channel; *exclude* holds ids to leave out (those a list already has).
+    function channelOptionsHtml(data, exclude) {
         const {channels, categories} = data;
+        const skip = exclude || new Set();
         // Split top-level channels from threads and index threads by their parent text channel
         const topLevel = [];
         const threadsByParent = new Map();
         for (const c of channels) {
+            if (skip.has(String(c.id))) continue;
             if (c.is_thread) {
                 const pid = c.parent_id || '__orphan__';
                 if (!threadsByParent.has(pid)) threadsByParent.set(pid, []);
@@ -2407,7 +2471,7 @@
             grouped.get(catId).push(c);
         }
         // Build the options HTML once
-        let opts = '<option value="">— Choisir un salon —</option>';
+        let opts = '';
         const orderedCats = [
             ['__none__', 'Sans catégorie'],
             ...(categories || []).map(c => [c.id, c.name]),
@@ -2445,6 +2509,26 @@
             }
             opts += '</optgroup>';
         }
+        return opts;
+    }
+
+    async function populateChannelPickers(container) {
+        const serverId = state.currentServerId;
+        if (!serverId || !container) return;
+        const pickers = container.querySelectorAll('.channel-picker');
+        if (pickers.length === 0) return;
+        const data = await fetchServerChannels(serverId);
+        if (!data) {
+            // Fall back to manual text entry
+            for (const picker of pickers) {
+                toggleChannelPickerMode(picker.querySelector('.btn-channel-toggle'), true);
+                const select = picker.querySelector('select');
+                if (select) select.innerHTML = `<option value="">— Bot hors ligne —</option>`;
+            }
+            return;
+        }
+        const opts = '<option value="">— Choisir un salon —</option>' + channelOptionsHtml(data);
+        const channels = data.channels;
         const validIds = new Set(channels.map(c => c.id));
         for (const picker of pickers) {
             const select = picker.querySelector('select');
@@ -2485,6 +2569,257 @@
             const opt = select.querySelector(`option[value="${CSS.escape(manual.value)}"]`);
             if (opt) select.value = manual.value;
         }
+    }
+
+    // ── Role picker (P3) ──────────────────────────────
+    // Roles are picked by name, with their Discord colour. /role-choices says,
+    // for each role and each use a save checks (``ui(role_use=…)``), why the
+    // editor may not pick it: those roles carry a 🔒, and the reason shows as
+    // soon as one is selected, before the save refuses it. The manual input
+    // holds the value (the one collected), the list writes into it.
+    const _roleChoiceCache = {};
+    const ROLE_COLOR = /^#[0-9a-f]{6}$/i;
+
+    async function fetchRoleChoices(serverId) {
+        if (!serverId) return null;
+        if (_roleChoiceCache[serverId]) return _roleChoiceCache[serverId];
+        try {
+            const data = await api(`/api/servers/${encodeURIComponent(serverId)}/role-choices`);
+            if (data && Array.isArray(data.roles)) {
+                _roleChoiceCache[serverId] = data.roles;
+                return data.roles;
+            }
+        } catch (e) {
+            console.warn('Could not fetch roles', e);
+        }
+        return null;
+    }
+
+    function knownRole(id) {
+        return (_roleChoiceCache[state.currentServerId] || []).find(r => r.id === String(id)) || null;
+    }
+
+    // "<@&123>" in a refusal names the role the way Discord would.
+    function withRoleNames(text) {
+        return String(text || '').replace(/<@&(\d+)>/g, (m, id) => {
+            const role = knownRole(id);
+            return role ? `« ${role.name} »` : 'ce rôle';
+        });
+    }
+
+    function roleRefusal(role, use) {
+        return (role && use && role.refusals) ? withRoleNames(role.refusals[use] || '') : '';
+    }
+
+    function paintDot(dot, color) {
+        if (dot) dot.style.background = color && ROLE_COLOR.test(color) ? color : '';
+    }
+
+    function rolePickerHtml(currentId, fieldAttr, use, selectId = '') {
+        const safeId = escapeHtml(currentId || '');
+        return `
+            <div class="role-picker" data-role-use="${escapeHtml(use || '')}">
+                <div class="role-picker-row">
+                    <span class="role-dot" aria-hidden="true"></span>
+                    <select class="form-input role-picker-select" ${selectId ? `id="${selectId}"` : 'aria-label="Choisir un rôle"'}
+                            data-change="onRolePickerChange" data-change-args="[{&quot;$&quot;:&quot;el&quot;}]">
+                        <option value="">— Chargement des rôles… —</option>
+                        ${currentId ? `<option value="${safeId}" selected>${safeId}</option>` : ''}
+                    </select>
+                    <input type="text" class="form-input role-picker-manual" ${fieldAttr} value="${safeId}" placeholder="ID du rôle" style="display:none;">
+                    <button type="button" class="btn-channel-toggle" data-click="toggleRolePickerMode" data-click-args="[{&quot;$&quot;:&quot;el&quot;}]" title="Saisie manuelle" aria-label="Saisie manuelle">✎</button>
+                </div>
+                <div class="picker-warning" role="status"></div>
+            </div>`;
+    }
+
+    function roleOptionsHtml(roles, use, exclude) {
+        let opts = '';
+        for (const r of roles) {
+            if (exclude && exclude.has(r.id)) continue;
+            const locked = roleRefusal(r, use) ? ' 🔒' : '';
+            opts += `<option value="${escapeHtml(r.id)}">${escapeHtml(r.name)}${locked}</option>`;
+        }
+        return opts;
+    }
+
+    function fillRolePicker(picker, roles) {
+        const select = picker.querySelector('.role-picker-select');
+        const manual = picker.querySelector('.role-picker-manual');
+        if (!roles) {
+            toggleRolePickerMode(picker.querySelector('.btn-channel-toggle'), true);
+            select.innerHTML = '<option value="">— Bot hors ligne —</option>';
+            return;
+        }
+        const current = manual.value.trim();
+        select.innerHTML = '<option value="">— Aucun rôle —</option>' + roleOptionsHtml(roles, picker.dataset.roleUse);
+        if (current && !knownRole(current)) select.add(new Option(`Rôle introuvable (${current})`, current), 1);
+        select.value = current;
+        updateRolePicker(picker);
+    }
+
+    function updateRolePicker(picker) {
+        const id = picker.querySelector('.role-picker-manual').value.trim();
+        const role = knownRole(id);
+        paintDot(picker.querySelector('.role-dot'), role?.color);
+        let warning = '';
+        if (id && !role && _roleChoiceCache[state.currentServerId]) {
+            warning = "Ce rôle n'existe plus sur le serveur.";
+        } else if (role) {
+            warning = roleRefusal(role, picker.dataset.roleUse);
+        }
+        picker.querySelector('.picker-warning').textContent = warning ? `⚠️ ${warning}` : '';
+    }
+
+    function onRolePickerChange(select) {
+        const picker = select.closest('.role-picker');
+        if (!picker) return;
+        picker.querySelector('.role-picker-manual').value = select.value;
+        updateRolePicker(picker);
+    }
+
+    function toggleRolePickerMode(btn, forceManual) {
+        const picker = btn?.closest('.role-picker');
+        if (!picker) return;
+        const select = picker.querySelector('.role-picker-select');
+        const manual = picker.querySelector('.role-picker-manual');
+        const showManual = forceManual === true ? true : (manual.style.display === 'none');
+        manual.style.display = showManual ? '' : 'none';
+        select.style.display = showManual ? 'none' : '';
+        btn.textContent = showManual ? '☰' : '✎';
+        btn.title = showManual ? 'Choisir dans la liste' : 'Saisie manuelle';
+        if (!showManual) {
+            const typed = manual.value.trim();
+            if (typed && !select.querySelector(`option[value="${CSS.escape(typed)}"]`)) {
+                select.add(new Option(`Rôle introuvable (${typed})`, typed), 1);
+            }
+            select.value = typed;
+            updateRolePicker(picker);
+        }
+    }
+
+    // ── Channel and role lists (P3) ───────────────────
+    // A ``channellist`` / ``rolelist`` field: one chip per channel or role,
+    // named, and a list to add one more. Without the bot, ids are typed.
+    function multiPickerHtml(key, type, ids, use) {
+        const kind = type === 'rolelist' ? 'role' : 'channel';
+        const chips = ids.map(id => chipHtml(String(id), String(id), '')).join('');
+        return `
+            <div class="multi-picker" data-field="${escapeHtml(key)}" data-type="${type}" data-kind="${kind}" data-role-use="${escapeHtml(use || '')}">
+                <div class="multi-picker-chips">${chips}</div>
+                <select class="form-input multi-picker-add" aria-label="${kind === 'role' ? 'Ajouter un rôle' : 'Ajouter un salon'}"
+                        data-change="addMultiPickerChoice" data-change-args="[{&quot;$&quot;:&quot;el&quot;}]">
+                    <option value="">— Chargement… —</option>
+                </select>
+                <input type="text" class="form-input multi-picker-manual" style="display:none;"
+                       placeholder="ID ${kind === 'role' ? 'du rôle' : 'du salon'}, puis Entrée"
+                       data-keydown="onMultiPickerManualKey" data-keydown-args="[{&quot;$&quot;:&quot;el&quot;},{&quot;$&quot;:&quot;event&quot;}]">
+                <div class="picker-warning" role="status"></div>
+            </div>`;
+    }
+
+    function chipHtml(id, label, color, extra = '') {
+        const dot = ROLE_COLOR.test(color || '') ? `<span class="role-dot" style="background:${color}" aria-hidden="true"></span>` : '';
+        return `<span class="chip ${extra}" data-id="${escapeHtml(id)}">${dot}<span class="chip-label">${escapeHtml(label)}</span>`
+            + `<button type="button" class="chip-remove" data-click="removeMultiPickerChip" data-click-args="[{&quot;$&quot;:&quot;el&quot;}]" aria-label="Retirer ${escapeHtml(label)}" title="Retirer">✕</button></span>`;
+    }
+
+    function multiPickerIds(picker) {
+        return [...picker.querySelectorAll('.chip')].map(c => c.dataset.id);
+    }
+
+    async function populateMultiPickers(container) {
+        const serverId = state.currentServerId;
+        if (!serverId || !container) return;
+        const pickers = container.querySelectorAll('.multi-picker');
+        if (!pickers.length) return;
+        const needs = new Set([...pickers].map(p => p.dataset.kind));
+        const [roles, channels] = await Promise.all([
+            needs.has('role') ? fetchRoleChoices(serverId) : null,
+            needs.has('channel') ? fetchServerChannels(serverId) : null,
+        ]);
+        for (const picker of pickers) {
+            picker._source = picker.dataset.kind === 'role' ? roles : channels;
+            refreshMultiPicker(picker);
+        }
+    }
+
+    function refreshMultiPicker(picker) {
+        const source = picker._source;
+        const select = picker.querySelector('.multi-picker-add');
+        const manual = picker.querySelector('.multi-picker-manual');
+        const isRole = picker.dataset.kind === 'role';
+        const ids = multiPickerIds(picker);
+        if (!source) {
+            select.style.display = 'none';
+            manual.style.display = '';
+            return;
+        }
+        const use = picker.dataset.roleUse;
+        const channelsById = isRole ? null : new Map(source.channels.map(c => [String(c.id), c]));
+        const warnings = [];
+        picker.querySelector('.multi-picker-chips').innerHTML = ids.map(id => {
+            if (isRole) {
+                const role = knownRole(id);
+                if (!role) {
+                    warnings.push(`Rôle introuvable (${id}).`);
+                    return chipHtml(id, `Rôle introuvable (${id})`, '', 'chip-unknown');
+                }
+                const refusal = roleRefusal(role, use);
+                if (refusal) warnings.push(refusal);
+                return chipHtml(id, role.name, role.color, refusal ? 'chip-warning' : '');
+            }
+            const channel = channelsById.get(id);
+            if (!channel) {
+                warnings.push(`Salon introuvable (${id}).`);
+                return chipHtml(id, `Salon introuvable (${id})`, '', 'chip-unknown');
+            }
+            return chipHtml(id, `${channel.is_thread ? '🧵 ' : '#'}${channel.name}`, '');
+        }).join('');
+        const taken = new Set(ids);
+        select.innerHTML = `<option value="">${isRole ? '+ Ajouter un rôle…' : '+ Ajouter un salon…'}</option>`
+            + (isRole ? roleOptionsHtml(source, use, taken) : channelOptionsHtml(source, taken));
+        picker.querySelector('.picker-warning').textContent = warnings.length ? `⚠️ ${warnings.join(' ')}` : '';
+    }
+
+    function addMultiPickerId(picker, id) {
+        id = String(id || '').trim();
+        if (!id || multiPickerIds(picker).includes(id)) return;
+        picker.querySelector('.multi-picker-chips').insertAdjacentHTML('beforeend', chipHtml(id, id, ''));
+        refreshMultiPicker(picker);
+        if (picker.closest(DIRTY_SCOPE)) setDirty(true);
+    }
+
+    function addMultiPickerChoice(select) {
+        const picker = select.closest('.multi-picker');
+        if (picker && select.value) addMultiPickerId(picker, select.value);
+    }
+
+    function onMultiPickerManualKey(input, event) {
+        if (event.key !== 'Enter') return;
+        event.preventDefault();
+        const picker = input.closest('.multi-picker');
+        if (!picker) return;
+        addMultiPickerId(picker, input.value);
+        input.value = '';
+    }
+
+    function removeMultiPickerChip(btn) {
+        const picker = btn.closest('.multi-picker');
+        btn.closest('.chip')?.remove();
+        if (!picker) return;
+        refreshMultiPicker(picker);
+        if (picker.closest(DIRTY_SCOPE)) setDirty(true);
+        picker.querySelector('.multi-picker-add')?.focus();
+    }
+
+    async function populateRolePickers(container) {
+        const serverId = state.currentServerId;
+        if (!serverId || !container) return;
+        const pickers = container.querySelectorAll('.role-picker');
+        if (!pickers.length) return;
+        const roles = await fetchRoleChoices(serverId);
+        for (const picker of pickers) fillRolePicker(picker, roles);
     }
 
     // ── Member picker ─────────────────────────────────
@@ -2559,7 +2894,7 @@
         const fallback = m.display_name || m.username || m.id;
         const display = prenom || fallback;
         const uname = m.username && m.username !== display ? ` (${m.username})` : '';
-        return `${display}${uname} — ${m.id}`;
+        return `${display}${uname}`;
     }
 
     function getPickerSelectedId(picker) {
@@ -2736,6 +3071,40 @@
         }
     }
 
+    // ── Section index (P3) ────────────────────────────
+    // A long page (a server, the global settings, a module with several cards)
+    // gets a sticky row of links to its cards: 5 000 px of server page on a
+    // phone is otherwise a long scroll to the journal.
+    const INDEXED_PAGES = new Set(['server', 'global', 'module']);
+
+    function buildPageIndex() {
+        const main = document.querySelector('.main');
+        if (!main || !INDEXED_PAGES.has(state.currentPage)) return;
+        const cards = [...main.querySelectorAll('.card')]
+            .filter(card => !card.parentElement.closest('.card') && card.querySelector(':scope > .card-header .card-title'));
+        if (cards.length < 3) return;
+        const links = cards.map((card, i) => {
+            card.id = card.id || `section-${i}`;
+            const title = card.querySelector(':scope > .card-header .card-title').textContent.trim();
+            return `<button type="button" class="page-index-link" data-click="scrollToSection" data-click-args="${actionArgs(card.id)}">${escapeHtml(title)}</button>`;
+        }).join('');
+        const header = main.querySelector('.page-header');
+        const nav = `<nav class="page-index" aria-label="Sur cette page">${links}</nav>`;
+        if (header) header.insertAdjacentHTML('afterend', nav);
+        else main.insertAdjacentHTML('afterbegin', nav);
+    }
+
+    function scrollToSection(id) {
+        const target = document.getElementById(id);
+        if (!target) return;
+        target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        const focusable = target.querySelector('.card-title');
+        if (focusable) {
+            focusable.setAttribute('tabindex', '-1');
+            focusable.focus({ preventScroll: true });
+        }
+    }
+
     // ── Render ────────────────────────────────────────
     function render() {
         const app = document.getElementById('app');
@@ -2779,10 +3148,13 @@
                 }
             }
         }
+        buildPageIndex();
         // Populate any channel / member pickers on the current page
         if (state.currentServerId) {
             populateChannelPickers(document);
             populateMemberPickers(document);
+            populateRolePickers(document);
+            populateMultiPickers(document);
             refreshAiModelSelects(document);
         }
         // Server page: the messages the bot keeps up to date there.
@@ -2822,13 +3194,20 @@
             <div class="login-page">
                 <div class="login-card">
                     <h1>🤖 Michel Bot</h1>
-                    <p>Connectez-vous avec Discord pour accéder au dashboard de configuration.</p>
+                    <p class="login-lead">Le bot de vos serveurs Discord : niveaux et classement, anniversaires,
+                        modération, sondages, rappels, Père Noël Secret, flux RSS, Spotify et bien d'autres modules.</p>
+                    <ul class="login-points">
+                        <li>⚙️ Les administrateurs d'un serveur (droit « Gérer le serveur ») y règlent les modules de Michel.</li>
+                        <li>📊 Ils y suivent aussi l'activité, les sanctions et la santé du bot sur leur serveur.</li>
+                        <li>🔒 La connexion passe par Discord : le dashboard ne lit que votre profil et la liste de vos serveurs.</li>
+                    </ul>
                     <a href="/auth/login" class="login-btn">
                         <svg viewBox="0 0 24 24" fill="currentColor">
                             <path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028c.462-.63.874-1.295 1.226-1.994a.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03z"/>
                         </svg>
                         Se connecter avec Discord
                     </a>
+                    <p class="login-foot">Membre d'un serveur ? Tout se passe dans Discord : tapez <code>/aide</code>.</p>
                 </div>
             </div>
         `;
@@ -2849,7 +3228,6 @@
                         </div>
                         <div class="nav-item-label">
                             <span class="nav-item-name">${escapeHtml(s.name || id)}</span>
-                            <span class="nav-item-sub">${escapeHtml(id)}</span>
                         </div>
                     </a>
                 `;
@@ -3145,7 +3523,7 @@
     }
 
     async function deleteShortLink(shortCode) {
-        if (!confirm(`Supprimer le lien court « ${shortCode} » ? Les visiteurs recevront une erreur 404.`)) return;
+        if (!(await askConfirm(`Supprimer le lien court « ${shortCode} » ? Les visiteurs recevront une erreur 404.`, { title: 'Supprimer le lien', confirm: 'Supprimer', danger: true }))) return;
         try {
             await api(`/api/shlink/short-urls/${encodeURIComponent(shortCode)}`, { method: 'DELETE' });
             toast('Lien court supprimé', 'success');
@@ -3372,11 +3750,11 @@
                         <div class="card-subtitle">Toute la config est stockée dans <code>config/config.json</code></div>
                     </div>
                     <div class="card-actions">
-                        <button class="btn btn-danger btn-sm" data-click="cleanupConfig" title="Supprimer les clés non définies dans les schémas">
-                            🧹 Nettoyer la config
-                        </button>
                         <button class="btn btn-ghost btn-sm" data-click="downloadConfig">
                             ⬇️ Exporter
+                        </button>
+                        <button class="btn btn-ghost btn-sm btn-ghost-danger" data-click="cleanupConfig" title="Supprimer les clés non définies dans les schémas (aperçu d'abord)">
+                            🧹 Nettoyer…
                         </button>
                     </div>
                 </div>
@@ -3444,35 +3822,39 @@
                         </div>
                     </div>
                     <div class="module-list">
-                        ${exts.map(ext => {
-                            const isUnderscored = ext.filename.startsWith('_');
-                            return `
-                                <div class="module-item">
+                        ${exts.map(ext => `
+                                <div class="module-item extension-item">
                                     <div class="module-info">
-                                        <span class="module-name">📦 ${ext.filename}</span>
+                                        <span class="module-name">${escapeHtml(ext.icon || '📦')} ${escapeHtml(ext.label || ext.filename)}</span>
+                                        ${ext.description ? `<span class="module-description">${escapeHtml(ext.description)}</span>` : ''}
                                         <span class="module-status">
                                             ${ext.loaded
                                                 ? '<span style="color:var(--success)">● chargée</span>'
                                                 : '<span style="color:var(--text-muted)">○ non chargée</span>'}
-                                            ${isUnderscored ? ' · désactivée par défaut' : ''}
+                                            · <code title="Fichier">${escapeHtml(ext.filename)}</code>
                                         </span>
                                     </div>
                                     <label class="toggle" data-click="stop">
-                                        <input type="checkbox" ${ext.enabled ? 'checked' : ''} aria-label="Activer l'extension ${escapeHtml(ext.name || ext.path)}"
+                                        <input type="checkbox" ${ext.enabled ? 'checked' : ''} aria-label="Activer l'extension ${escapeHtml(ext.label || ext.path)}"
                                             data-change="toggleExtension" data-change-args="${actionArgs(ext.path, CHECKED)}">
                                         <span class="toggle-slider"></span>
                                     </label>
                                 </div>
-                            `;
-                        }).join('')}
+                            `).join('')}
                     </div>
                 </div>
             `}
         `;
     }
 
+    function extensionLabel(extPath) {
+        return (state.extensions || []).find(e => e.path === extPath)?.label || extPath;
+    }
+
     async function toggleExtension(extPath, enabled) {
-        if (!confirm(`${enabled ? 'Activer' : 'Désactiver'} l'extension ${extPath} pour tout le bot ?`)) {
+        const extLabel = extensionLabel(extPath);
+        if (!(await askConfirm(`${enabled ? 'Activer' : 'Désactiver'} « ${extLabel} » pour tout le bot ?`,
+            { title: enabled ? 'Activer l\'extension' : 'Désactiver l\'extension', confirm: enabled ? 'Activer' : 'Désactiver', danger: !enabled }))) {
             render();  // put the switch back
             return;
         }
@@ -3816,7 +4198,7 @@
                     </div>
                     <div>
                         <h2>${escapeHtml(server.name || sid)}</h2>
-                        <p>ID: ${sid} — ${configuredModules.length} module(s) configuré(s)</p>
+                        <p title="ID : ${escapeHtml(sid)}">${configuredModules.length} module(s) configuré(s)</p>
                     </div>
                 </div>
             </div>
@@ -3950,7 +4332,8 @@
         if (!tasks.length) return '';
         return tasks.map(t => {
             const failing = t.lastFailure && (!t.lastSuccess || t.lastFailure > t.lastSuccess);
-            return healthLine(!failing, `<code>${escapeHtml(t.name)}</code> : dernier succès ${escapeHtml(fmtEpoch(t.lastSuccess))}
+            const when = t.schedule ? ` <span style="color:var(--text-muted)">(${escapeHtml(t.schedule)})</span>` : '';
+            return healthLine(!failing, `<strong title="${escapeHtml(t.name)}">${escapeHtml(t.label || t.name)}</strong>${when} : dernier succès ${escapeHtml(fmtEpoch(t.lastSuccess))}
                 ${t.failures ? `, ${t.failures} échec(s) depuis le démarrage (dernier : ${escapeHtml(fmtEpoch(t.lastFailure))})` : ''}`);
         }).join('');
     }
@@ -4082,10 +4465,14 @@
             container.innerHTML = `<p style="color:var(--text-muted)">Aucun message pour l'instant : chaque module poste le sien à son premier rafraîchissement.</p>`;
             return;
         }
+        const channels = new Map(((await fetchServerChannels(serverId))?.channels || []).map(c => [String(c.id), c.name]));
+        const where = (id) => channels.has(String(id))
+            ? `#${escapeHtml(channels.get(String(id)))}`
+            : `<span title="${escapeHtml(id)}">salon introuvable</span>`;
         container.innerHTML = items.map(m => `
             <div class="message-status configured" style="margin-bottom:8px;">
                 <span class="status-icon">📌</span>
-                <span class="status-text"><strong>${escapeHtml(m.label)}</strong> · salon <code>${escapeHtml(m.channelId)}</code></span>
+                <span class="status-text"><strong>${escapeHtml(m.label)}</strong> · ${where(m.channelId)}</span>
                 <a class="status-link" href="${escapeHtml(m.url)}" target="_blank" rel="noreferrer">↗ voir</a>
                 <button type="button" class="btn-status-reset" data-slot="${escapeHtml(m.slot)}"
                         data-click="republishBotMessage" data-click-args="${actionArgs(serverId, dataArg('slot'), EL)}"
@@ -4094,7 +4481,7 @@
     }
 
     async function republishBotMessage(serverId, slot, btn) {
-        if (!confirm('Supprimer ce message ? Le bot le repostera à son prochain rafraîchissement.')) return;
+        if (!(await askConfirm('Supprimer ce message ? Le bot le repostera à son prochain rafraîchissement.', { title: 'Republier le message', confirm: 'Supprimer et republier', danger: true }))) return;
         if (btn) btn.disabled = true;
         try {
             await api(`/api/servers/${encodeURIComponent(serverId)}/bot-messages/republish`, {
@@ -4108,8 +4495,9 @@
 
     async function toggleModule(serverId, moduleName, enabled) {
         const label = state.moduleSchemas[moduleName]?.label || moduleName;
-        if (!confirm(`${enabled ? 'Activer' : 'Désactiver'} le module ${label} sur ce serveur ?`)
-            || !confirmDiscard()) {
+        if (!(await askConfirm(`${enabled ? 'Activer' : 'Désactiver'} le module ${label} sur ce serveur ?`,
+                { title: enabled ? 'Activer le module' : 'Désactiver le module', confirm: enabled ? 'Activer' : 'Désactiver', danger: !enabled }))
+            || !(await confirmDiscard())) {
             render();  // put the switch back
             return;
         }
@@ -4148,6 +4536,10 @@
         const icon = schema?.icon || '🧩';
         const description = schema?.description || '';
         const formId = `module-${sid}-${mod}`;
+        // A module whose only setting is its switch: no empty "Paramètres" card.
+        const onlyToggle = !!schema && !schema.directValue
+            && Object.keys(schema.fields || {}).every(k => k === 'enabled')
+            && Object.keys(modConfig).every(k => k === 'enabled');
 
         return `
             <div class="breadcrumb">
@@ -4172,7 +4564,9 @@
                 </div>
             </div>
 
-            <div class="card">
+            ${onlyToggle ? `
+            <p class="module-no-settings">Ce module n'a pas d'autre réglage que son interrupteur.</p>
+            ` : `<div class="card">
                 <div class="card-header">
                     <div class="card-title">Paramètres</div>
                     <div class="card-actions">
@@ -4190,11 +4584,6 @@
                             📢 Publier
                         </button>
                         ` : ''}
-                        ${mod === 'moduleReactionRoles' ? `
-                        <button class="btn btn-primary btn-sm" data-click="openRoleMenuBuilder" data-click-args="${actionArgs(sid, null)}">
-                            ✨ Nouveau menu
-                        </button>
-                        ` : ''}
                     </div>
                 </div>
                 ${schema
@@ -4209,7 +4598,7 @@
                         : renderConfigPreview(modConfig)
                     )
                 }
-            </div>
+            </div>`}
 
             ${mod === 'moduleReactionRoles' ? `
             <div class="card" style="margin-top:16px;">
@@ -4217,6 +4606,11 @@
                     <div>
                         <div class="card-title">Menus de rôles</div>
                         <div class="card-subtitle">Boutons que les membres cliquent pour s'auto-attribuer un rôle.</div>
+                    </div>
+                    <div class="card-actions">
+                        <button class="btn btn-primary btn-sm" data-click="openRoleMenuBuilder" data-click-args="${actionArgs(sid, null)}">
+                            ✨ Nouveau menu
+                        </button>
                     </div>
                 </div>
                 <div id="rolemenu-list" data-server-id="${sid}">
@@ -4262,8 +4656,9 @@
                         <div class="card-title">Infractions</div>
                         <div class="card-subtitle">Historique des sanctions enregistrées pour ce serveur.</div>
                     </div>
-                    <div class="card-actions" style="flex-wrap:wrap; gap:6px;">
-                        <input id="inf-filter-user" class="form-input" placeholder="ID utilisateur" style="width:150px;">
+                </div>
+                <div class="inf-filters">
+                        <div class="inf-filter-member" aria-label="Filtrer par membre">${memberPickerHtml('', 'id="inf-filter-user"')}</div>
                         <select id="inf-filter-type" class="form-input" style="width:150px;">
                             <option value="">Tous les types</option>
                             <option value="warn">Avertissement</option>
@@ -4281,7 +4676,6 @@
                             <option value="false">Révoqués</option>
                         </select>
                         <button class="btn btn-primary btn-sm" data-click="loadInfractions" data-click-args="${actionArgs(sid)}">🔍 Filtrer</button>
-                    </div>
                 </div>
                 <div id="infractions-list" data-server-id="${sid}">
                     <div class="loading"><div class="spinner"></div></div>
@@ -4482,6 +4876,12 @@
             } else {
                 const existing = server?.config?.[moduleName] || {};
                 config = { ...existing, ...values };
+                // A field of the form left empty is removed, not kept from
+                // the stored copy: emptying it is how an admin clears it.
+                const form = document.querySelector(`[data-form-id="${formId}"]`);
+                for (const el of form ? form.querySelectorAll('[data-field]') : []) {
+                    if (!(el.dataset.field in values)) delete config[el.dataset.field];
+                }
             }
             const result = await api(`/api/servers/${serverId}/modules/${moduleName}`, {
                 method: 'PUT',
@@ -4505,7 +4905,7 @@
     }
 
     async function publishEmbeds(serverId) {
-        if (!confirm('Publier (ou mettre à jour) les embeds de ce serveur dans leurs salons ?')) return;
+        if (!(await askConfirm('Publier (ou mettre à jour) les embeds de ce serveur dans leurs salons ?', { title: 'Publier les embeds', confirm: 'Publier' }))) return;
         try {
             const result = await api(`/api/servers/${serverId}/modules/moduleEmbedManager/publish`, { method: 'POST' });
             toast(`✓ ${result?.count ?? 0} embed(s) publié(s) avec succès`, 'success');
@@ -4683,8 +5083,8 @@
         list.insertAdjacentHTML('beforeend', _renderEntryRow(roles, null));
     }
 
-    function closeRoleMenuBuilder() {
-        if (!confirmDiscard()) return;
+    async function closeRoleMenuBuilder() {
+        if (!(await confirmDiscard())) return;
         const card = document.getElementById('rolemenu-builder-card');
         if (card) card.style.display = 'none';
         _rolemenuEditing = null;
@@ -4743,7 +5143,7 @@
     }
 
     async function deleteRoleMenu(serverId, menuId) {
-        if (!confirm('Supprimer ce menu ? Le message Discord associé sera également supprimé.')) return;
+        if (!(await askConfirm('Supprimer ce menu ? Le message Discord associé sera également supprimé.', { title: 'Supprimer le menu', confirm: 'Supprimer', danger: true }))) return;
         try {
             await api(`/api/servers/${serverId}/rolemenus/${menuId}`, { method: 'DELETE' });
             toast('Menu supprimé.', 'success');
@@ -4777,11 +5177,26 @@
                 container.innerHTML = `<div class="empty-state"><h3>Aucune infraction</h3><p>Aucune sanction ne correspond aux filtres.</p></div>`;
                 return;
             }
+            // Names, not ids: the members behind the cases, looked up by id.
+            let members = new Map();
+            try {
+                members = await resolveServerMembers(serverId, items.flatMap(i => [i.user_id, i.moderator_id]));
+            } catch (e) {
+                console.warn('Could not resolve members', e);
+            }
+            const who = (id) => {
+                const m = members.get(String(id));
+                if (!m) return `<span title="${escapeHtml(id)}">Ancien membre</span>`;
+                const prenom = getDiscord2NameMap()[m.id];
+                const name = prenom || m.display_name || m.username;
+                const uname = m.username && m.username !== name ? ` <span style="color:var(--text-muted)">(${escapeHtml(m.username)})</span>` : '';
+                return `${escapeHtml(name)}${uname}`;
+            };
             container.innerHTML = items.map(i => {
                 const label = INFRACTION_TYPE_LABELS[i.type] || i.type;
                 const date = i.created_at ? new Date(i.created_at).toLocaleString('fr-FR') : '';
                 const dur = i.duration_seconds ? ` · ${Math.round(i.duration_seconds / 60)} min` : '';
-                const by = i.moderator_id === 'automod' ? '🛡️ Automod' : i.moderator_id;
+                const by = i.moderator_id === 'automod' ? '🛡️ Automod' : who(i.moderator_id);
                 const revokeBtn = i.active
                     ? `<button class="btn btn-ghost btn-sm" style="color:var(--danger)" data-click="revokeInfraction" data-click-args="${actionArgs(serverId, i.id)}">Révoquer</button>`
                     : `<span style="color:var(--text-muted); font-size:12px;">Révoqué</span>`;
@@ -4790,12 +5205,13 @@
                         <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap;">
                             <div>
                                 <strong>#${i.id} · ${escapeHtml(label)}</strong>${dur}
-                                <span style="color:var(--text-muted); margin-left:8px;">utilisateur ${escapeHtml(i.user_id)}</span>
+                                <a href="#" class="inf-member" style="margin-left:8px;" title="Voir l'historique de ce membre"
+                                   data-click="filterInfractionsByUser" data-click-args="${actionArgs(serverId, String(i.user_id))}" data-prevent>${who(i.user_id)}</a>
                             </div>
                             <div style="display:flex; gap:6px; align-items:center;">${revokeBtn}</div>
                         </div>
                         <div style="font-size:13px;">${escapeHtml(i.reason || 'Aucune raison')}</div>
-                        <div style="font-size:12px; color:var(--text-muted);">Par ${escapeHtml(by)} · ${escapeHtml(date)}</div>
+                        <div style="font-size:12px; color:var(--text-muted);">Par ${by} · ${escapeHtml(date)}</div>
                     </div>
                 `;
             }).join('');
@@ -4804,8 +5220,25 @@
         }
     }
 
+    // A click on a member: their history, through the member filter.
+    async function filterInfractionsByUser(serverId, userId) {
+        const manual = document.getElementById('inf-filter-user');
+        const picker = manual?.closest('.member-picker');
+        if (!picker) return;
+        manual.value = userId;
+        picker.dataset.current = userId;
+        const select = picker.querySelector('.member-picker-select');
+        if (select && !select.querySelector(`option[value="${CSS.escape(userId)}"]`)) {
+            const m = memberStore(serverId).byId.get(userId);
+            select.add(new Option(m ? memberOptionLabel(m) : 'Ancien membre', userId), 1);
+        }
+        if (select) select.value = userId;
+        picker.scrollIntoView({ block: 'nearest' });
+        await loadInfractions(serverId);
+    }
+
     async function revokeInfraction(serverId, caseId) {
-        if (!confirm(`Révoquer le cas #${caseId} ?`)) return;
+        if (!(await askConfirm(`Révoquer le cas #${caseId} ?`, { title: 'Révoquer', confirm: 'Révoquer', danger: true }))) return;
         try {
             await api(`/api/servers/${serverId}/infractions/${caseId}`, { method: 'DELETE' });
             toast(`Cas #${caseId} révoqué.`, 'success');
@@ -4868,7 +5301,7 @@
     }
 
     async function drawSecretSanta(serverId, btn) {
-        if (!confirm('Lancer le tirage ? Chaque participant reçoit son destinataire par MP, et les inscriptions sont closes.')) return;
+        if (!(await askConfirm('Chaque participant reçoit son destinataire par MP, et les inscriptions sont closes.', { title: 'Lancer le tirage ?', confirm: '🎲 Lancer le tirage' }))) return;
         const allow = !!document.getElementById('santa-subgroups')?.checked;
         if (btn) btn.disabled = true;
         try {
@@ -5681,7 +6114,7 @@
 
     // ── Reload extensions ─────────────────────────────
     async function reloadAllExtensions() {
-        if (!confirm('Recharger toutes les extensions ? Les commandes en cours peuvent être interrompues.')) return;
+        if (!(await askConfirm('Les commandes en cours peuvent être interrompues.', { title: 'Recharger toutes les extensions ?', confirm: 'Recharger' }))) return;
         const btn = document.getElementById('reload-all-btn');
         const label = btn?.querySelector('.quick-action-label');
         const original = label?.textContent;
@@ -5894,8 +6327,8 @@
         }
     }
 
-    function rotatePublicLink(serverId, kind) {
-        if (!confirm('Régénérer le lien ? Les liens déjà partagés (XP et Spotify) cesseront de fonctionner.')) return;
+    async function rotatePublicLink(serverId, kind) {
+        if (!(await askConfirm('Les liens déjà partagés (XP et Spotify) cesseront de fonctionner.', { title: 'Régénérer le lien ?', confirm: 'Régénérer', danger: true }))) return;
         showPublicLink(serverId, kind, true);
     }
 
@@ -5924,9 +6357,10 @@
                 return;
             }
             const details = preview.removed.map(r => `• ${r.location} → ${r.key}`).join('\n');
-            if (!confirm(
-                `${preview.removed_count} clé(s) non présente(s) dans les schémas seront supprimée(s) :\n\n${details}\n\nConfirmer la suppression ?`
-            )) return;
+            if (!(await askConfirm(
+                `${preview.removed_count} clé(s) absente(s) des schémas seront supprimée(s) :\n\n${details}`,
+                { title: 'Nettoyer la configuration ?', confirm: 'Supprimer ces clés', danger: true },
+            ))) return;
             // Execute the real cleanup
             const result = await api('/api/cleanup-config', { method: 'POST' });
             if (result) {
@@ -6029,13 +6463,15 @@
 
     const ACTIONS = {
         addCommandEntry, addCommandResponse, addEmbedEntry, addEmbedLink, addKeyValueMapEntry,
+        addMultiPickerChoice, onMultiPickerManualKey, onRolePickerChange, removeMultiPickerChip,
+        toggleRolePickerMode,
         addMessageEntry, addModelEntry, addNameMapEntry, addRoleMenuEntry, addRssFeedEntry,
         addSpotifyUserEntry, addStreamerEntry, addTeamEntry, addYoutubeChannelEntry,
-        applyRssPreset, cancelEditShortLink, cleanupConfig, clearLogs, closeModal,
+        applyRssPreset, cancelEditShortLink, scrollToSection, settleConfirm, cleanupConfig, clearLogs, closeModal,
         closeRoleMenuBuilder, closeSidebar, copyPublicLink, copyShortLink, createShortLink,
         deleteRoleMenu, deleteShortLink, downloadConfig, downloadLogs, editGlobalSection,
         editGlobalSectionJson, editModuleConfigJson, gotoShortLinkPage, insertVariable,
-        drawSecretSanta, loadInfractions, loadSecretSanta, loadSpotifyStats, loadXpStats, logout, navigate, navigatePublic,
+        drawSecretSanta, filterInfractionsByUser, loadInfractions, loadSecretSanta, loadSpotifyStats, loadXpStats, logout, navigate, navigatePublic,
         onLogLevelChange, onLogSearchInput, onLogVerboseChange, onMemberPickerChange,
         onMemberPickerSearch, onRssModeChange, openModelCatalog, openRoleMenuBuilder,
         publishEmbeds, refreshLogs, reloadAllExtensions, removeNameMapEntry,

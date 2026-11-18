@@ -14,7 +14,7 @@ from src.core.logging import log_failure
 from src.discord_ext.channels import fetch_guild_channel
 from src.discord_ext.embedmanager import MODULE_KEY as EMBED_MANAGER_MODULE
 from src.discord_ext.embedmanager import build_embeds, publish_embeds
-from src.discord_ext.role_grants import settings_refusal
+from src.discord_ext.role_grants import role_choices, settings_refusal
 from src.webui import audit
 from src.webui.botops import run_extension_op, sync_commands
 from src.webui.channels import list_channels
@@ -367,6 +367,21 @@ def create_router(ctx: WebUIContext) -> APIRouter:
 
         data = await ctx.call_bot(
             list_channels, ctx.bot, server_id, what=f"list channels of guild {server_id}"
+        )
+        return JSONResponse(data)
+
+    @router.get("/api/servers/{server_id}/role-choices")
+    async def api_role_choices(request: Request, server_id: str):
+        """The server's roles for the settings' role pickers, with who may pick which."""
+        session = await ctx.require_guild_admin(request, server_id)
+        ctx.require_bot_loop()
+        data = await ctx.call_bot(
+            role_choices,
+            ctx.bot,
+            server_id,
+            str(session.user_id),
+            is_developer=ctx.oauth.is_developer(session),
+            what=f"list the roles of guild {server_id}",
         )
         return JSONResponse(data)
 

@@ -73,7 +73,7 @@ class LldapConfig(SchemaBase):
             "l'URL de la page du groupe). Un membre ayant l'un de ces rôles peut créer son "
             "compte avec /register ; perdre le rôle le retire du groupe."
         ),
-        key_label="ID du rôle",
+        key_label="Rôle",
         value_label="ID du groupe LLDAP",
         role_use="access",
         role_keys=True,

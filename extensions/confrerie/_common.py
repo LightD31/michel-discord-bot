@@ -68,10 +68,10 @@ class ConfrerieConfig(SchemaBase):
         ),
     )
     confrerieOwnerId: str | None = ui(
-        "ID propriétaire",
-        "string",
+        "Propriétaire",
+        "member",
         description=(
-            "ID Discord du propriétaire de la confrérie. Il reçoit en message privé "
+            "Le membre propriétaire de la confrérie. Il reçoit en message privé "
             "les fiches à valider (forums, /demande)."
         ),
     )
@@ -104,11 +104,12 @@ class ConfrerieConfig(SchemaBase):
         "keyvaluemap",
         default={},
         description=(
-            "Associe un ID Discord au nom d'auteur·ice utilisé dans Notion "
+            "Associe un membre au nom d'auteur·ice utilisé dans Notion "
             "(colonne « Auteur »). Sans entrée, le pseudo Discord est proposé."
         ),
-        key_label="ID Discord",
+        key_label="Membre",
         value_label="Nom dans Notion",
+        member_keys=True,
     )
     confrerieNotionDbMembresId: str | None = ui(
         "Notion DB Répertoire des membres",
