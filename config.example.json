@@ -195,6 +195,12 @@
             "moduleFeur": {
                 "enabled": false
             },
+            "moduleGazette": {
+                "enabled": false,
+                "gazetteChannelId": "",
+                "gazetteWeekday": 7,
+                "gazetteHour": 18
+            },
             "moduleGiveaway": {
                 "enabled": false,
                 "giveawayEmoji": "🎉",
@@ -399,6 +405,10 @@
                 "voiceXpEnabled": false,
                 "levelRewards": {},
                 "stackLevelRewards": false,
+                "seasonsEnabled": false,
+                "seasonMonths": 1,
+                "seasonChannelId": "",
+                "seasonChampionRoleId": "",
                 "levelUpMessageList": [
                     {
                         "text": "Bravo {mention}, tu as atteint le niveau {lvl} !",

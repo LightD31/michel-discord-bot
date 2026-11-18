@@ -3175,6 +3175,10 @@
         if (state.currentPage === 'module' && state.currentModule === 'moduleSecretSanta' && state.currentServerId) {
             loadSecretSanta(state.currentServerId);
         }
+        // The Gazette: this week's edition so far, and "Publier maintenant".
+        if (state.currentPage === 'module' && state.currentModule === 'moduleGazette' && state.currentServerId) {
+            loadGazette(state.currentServerId);
+        }
         // Moderation: load infraction history when on its module page.
         if (state.currentPage === 'module' && state.currentModule === 'moduleModeration' && state.currentServerId) {
             loadInfractions(state.currentServerId);
@@ -4359,6 +4363,7 @@
     const AUDIT_ACTIONS = {
         'module.save': 'a enregistré le module',
         'secretsanta.draw': 'a lancé le tirage du Père Noël Secret',
+        'gazette.publish': 'a publié la Gazette',
         'module.toggle': 'a basculé le module',
         'embeds.publish': 'a publié les embeds',
         'bot_message.republish': 'a republié le message',
@@ -4644,6 +4649,24 @@
                     </div>
                 </div>
                 <div id="secretsanta-session" data-server-id="${sid}">
+                    <div class="loading"><div class="spinner"></div></div>
+                </div>
+            </div>
+            ` : ''}
+
+            ${mod === 'moduleGazette' ? `
+            <div class="card" style="margin-top:16px;">
+                <div class="card-header">
+                    <div>
+                        <div class="card-title">📰 Aperçu de cette semaine</div>
+                        <div class="card-subtitle">Ce que dirait la Gazette si elle paraissait maintenant (les 7 derniers jours).</div>
+                    </div>
+                    <div class="card-actions">
+                        <button class="btn btn-ghost btn-sm" data-click="loadGazette" data-click-args="${actionArgs(sid)}">↻ Actualiser</button>
+                        <button class="btn btn-primary btn-sm" data-click="publishGazette" data-click-args="${actionArgs(sid, EL)}">📰 Publier maintenant</button>
+                    </div>
+                </div>
+                <div id="gazette-preview" data-server-id="${sid}">
                     <div class="loading"><div class="spinner"></div></div>
                 </div>
             </div>
@@ -5298,6 +5321,51 @@
         } catch (e) {
             container.innerHTML = `<div class="empty-state"><h3>Erreur</h3><p>${escapeHtml(String(e.message || e))}</p></div>`;
         }
+    }
+
+    // ── La Gazette: a preview of the week, and publishing it now ────────
+    // The post's own Markdown, as Discord shows it: bold, code, and https links.
+    function gazetteText(text) {
+        return mdInline(text).replace(
+            /\[([^\]]+)\]\((https:\/\/[^)\s]+)\)/g,
+            '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>',
+        );
+    }
+
+    function gazetteHtml(data) {
+        const fields = (data.fields || []).map(f => `
+            <div class="gazette-field">
+                <div class="gazette-field-name">${escapeHtml(f.name)}</div>
+                <div class="gazette-field-value">${gazetteText(f.value)}</div>
+            </div>`).join('');
+        return `
+            <div class="gazette-preview">
+                <div class="gazette-title">${escapeHtml(data.title || '')}</div>
+                <div class="gazette-intro">${gazetteText(data.intro)}</div>
+                ${fields}
+            </div>`;
+    }
+
+    async function loadGazette(serverId) {
+        const container = document.getElementById('gazette-preview');
+        if (!container) return;
+        container.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+        try {
+            const data = await api(`/api/servers/${encodeURIComponent(serverId)}/gazette`);
+            container.innerHTML = gazetteHtml(data || {});
+        } catch (e) {
+            container.innerHTML = `<div class="empty-state"><h3>Erreur</h3><p>${escapeHtml(String(e.message || e))}</p></div>`;
+        }
+    }
+
+    async function publishGazette(serverId, btn) {
+        if (!(await askConfirm("La Gazette de ces 7 derniers jours est publiée tout de suite dans son salon. L'édition de la semaine paraîtra quand même à son heure.", { title: 'Publier la Gazette maintenant ?', confirm: '📰 Publier' }))) return;
+        if (btn) btn.disabled = true;
+        try {
+            const result = await api(`/api/servers/${encodeURIComponent(serverId)}/gazette/publish`, { method: 'POST' });
+            toast(`Gazette publiée dans #${result.channel}.`, 'success');
+        } catch (e) { /* handled by api() */ }
+        finally { if (btn) btn.disabled = false; }
     }
 
     async function drawSecretSanta(serverId, btn) {
@@ -6471,7 +6539,7 @@
         closeRoleMenuBuilder, closeSidebar, copyPublicLink, copyShortLink, createShortLink,
         deleteRoleMenu, deleteShortLink, downloadConfig, downloadLogs, editGlobalSection,
         editGlobalSectionJson, editModuleConfigJson, gotoShortLinkPage, insertVariable,
-        drawSecretSanta, filterInfractionsByUser, loadInfractions, loadSecretSanta, loadSpotifyStats, loadXpStats, logout, navigate, navigatePublic,
+        drawSecretSanta, filterInfractionsByUser, loadGazette, loadInfractions, loadSecretSanta, publishGazette, loadSpotifyStats, loadXpStats, logout, navigate, navigatePublic,
         onLogLevelChange, onLogSearchInput, onLogVerboseChange, onMemberPickerChange,
         onMemberPickerSearch, onRssModeChange, openModelCatalog, openRoleMenuBuilder,
         publishEmbeds, refreshLogs, reloadAllExtensions, removeNameMapEntry,

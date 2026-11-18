@@ -2,6 +2,7 @@
 
 import asyncio
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from interactions import (
     Buckets,
@@ -9,6 +10,7 @@ from interactions import (
     Embed,
     File,
     OptionType,
+    SlashCommandChoice,
     SlashContext,
     User,
     cooldown,
@@ -23,9 +25,11 @@ from features.xp import (
     create_progress_bar,
     render_rank_card,
 )
+from features.xp.seasons import Season, season_of
+from src.core import clock
 from src.core.errors import DatabaseError
 from src.discord_ext.mentions import NO_PINGS
-from src.discord_ext.messages import send_error
+from src.discord_ext.messages import guild_id_of, send_error
 from src.discord_ext.paginator import CustomPaginator
 from src.discord_ext.scopes import guild_scopes
 
@@ -54,6 +58,12 @@ class CommandsMixin:
     _rank_cache: TTLCache
 
     def _repo(self, guild_id: str) -> XpRepository: ...  # provided by LevelingMixin
+
+    if TYPE_CHECKING:  # LeaderboardMixin, after this mixin in the MRO
+
+        async def _build_leaderboard_embeds(self, guild) -> list[Embed]: ...
+
+        async def _build_season_embeds(self, guild, season: Season) -> list[Embed]: ...
 
     async def _get_user_rank(self, guild_id: str, user_id: str) -> int | None:
         cache_key = f"{guild_id}_{user_id}"
@@ -151,10 +161,25 @@ class CommandsMixin:
         description="Affiche le classement des utilisateurs",
         scopes=guild_scopes(XP.guild_ids()),
     )
+    @slash_option(
+        "periode",
+        "La saison en cours (par défaut quand les saisons sont activées) ou depuis toujours",
+        opt_type=OptionType.STRING,
+        required=False,
+        choices=[
+            SlashCommandChoice(name="Saison en cours", value="saison"),
+            SlashCommandChoice(name="Depuis toujours", value="toujours"),
+        ],
+    )
     @cooldown(Buckets.USER, 1, 30)
-    async def leaderboard(self, ctx: SlashContext):
+    async def leaderboard(self, ctx: SlashContext, periode: str | None = None):
         # Members who left are fetched one by one: longer than Discord's 3 s on a big server.
         await ctx.defer()
-        embeds = await self._build_leaderboard_embeds(ctx.guild)
+        settings = XP.get(guild_id_of(ctx))
+        if settings.get("seasonsEnabled") and periode != "toujours":
+            season = season_of(clock.now(), settings.get("seasonMonths", 1))
+            embeds = await self._build_season_embeds(ctx.guild, season)
+        else:
+            embeds = await self._build_leaderboard_embeds(ctx.guild)
         paginator = CustomPaginator.create_from_embeds(self.bot, *embeds, timeout=3600)
         await paginator.send(ctx)

@@ -12,9 +12,10 @@ from features.xp import (
     calculate_level,
     get_rank_display,
 )
+from features.xp.seasons import Season, thousands
 from src.core.errors import DatabaseError
 from src.core.logging import log_failure
-from src.core.text import format_number
+from src.core.text import format_discord_timestamp, format_number
 from src.discord_ext.embeds import Colors
 from src.discord_ext.messages import (
     edit_message_if_changed,
@@ -128,6 +129,46 @@ class LeaderboardMixin:
                 continue
 
         embeds.append(embed)
+        return embeds
+
+    async def _build_season_embeds(self, guild: Guild, season: Season) -> list[Embed]:
+        """The season's ranking: XP earned since it began, members who left skipped."""
+        try:
+            ranking = await self._repo(str(guild.id)).season_ranking(season.start, season.end)
+        except DatabaseError as e:
+            logger.error("Database error building the season leaderboard: %s", e)
+            return [
+                Embed(
+                    title="Erreur",
+                    description="Impossible de récupérer le classement de la saison.",
+                    color=Colors.ERROR,
+                )
+            ]
+        title = f"Saison {season.label} — {guild.name}"
+        ends = format_discord_timestamp(season.end, "R")
+        embeds: list[Embed] = []
+        embed = Embed(title=title, description=f"Fin de la saison {ends}.", color=EMBED_COLOR)
+        shown = 0
+        for user_id, xp in ranking:
+            member_info = await self._get_member_info(guild, user_id)
+            if member_info is None:
+                continue
+            display_name, username = member_info
+            embed.add_field(
+                name=f"{get_rank_display(shown)} {display_name} ({username})",
+                value=f"`{thousands(xp)} XP cette saison`",
+                inline=False,
+            )
+            shown += 1
+            if shown % LEADERBOARD_PAGE_SIZE == 0:
+                embeds.append(embed)
+                embed = Embed(title=f"{title} (suite)", color=EMBED_COLOR)
+        if not shown:
+            embed.description = (
+                f"Personne n'a encore gagné d'XP cette saison. Fin de la saison {ends}."
+            )
+        if embed.fields or not embeds:
+            embeds.append(embed)
         return embeds
 
     @Task.create(TimeTrigger(utc=False))
