@@ -664,7 +664,7 @@ class VotesMixin:
                 await send_error(ctx, "Cette chanson est déjà dans la playlist.")
                 logger.info("Commande /addwithvote utilisée avec une chanson déjà présente")
         else:
-            await send_error(ctx, "Vous ne pouvez pas utiliser cette commande dans ce salon.")
+            await send_error(ctx, f"/addwithvote se lance dans <#{server.channel_id}>.", icon="🎵")
             logger.info(
                 "Commande /addwithvote utilisée dans un mauvais salon(%s)",
                 ctx.channel.name,

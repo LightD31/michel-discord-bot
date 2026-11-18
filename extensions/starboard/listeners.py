@@ -1,10 +1,23 @@
-"""Reaction listeners that mirror popular messages to the configured starboard."""
+"""Reaction listeners that mirror popular messages to the configured starboard.
+
+Staff can also put a message there by hand: right-click → Applications →
+"⭐ Mettre au starboard" (``Gérer les messages`` in the message's channel), with
+the same NSFW and private-channel rules as a message the reactions bring.
+"""
 
 import asyncio
 from datetime import datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Literal
 
-from interactions import Client, Embed, Timestamp, listen
+from interactions import (
+    Client,
+    ContextMenuContext,
+    Embed,
+    Permissions,
+    Timestamp,
+    listen,
+    message_context_menu,
+)
 from interactions.api.events import MessageReactionAdd, MessageReactionRemove
 
 from features.starboard import (
@@ -21,16 +34,36 @@ from src.core import clock
 from src.core.logging import log_failure
 from src.discord_ext.channels import everyone_can_view, fetch_guild_channel
 from src.discord_ext.embeds import Colors
-from src.discord_ext.messages import edit_message_if_changed
+from src.discord_ext.menus import menu_help
+from src.discord_ext.messages import (
+    CAN_PIN,
+    author_can,
+    edit_message_if_changed,
+    guild_id_of,
+    jump_url,
+    send_error,
+)
+from src.discord_ext.scopes import guild_scopes
 
-from ._common import get_guild_settings, logger
+from ._common import STARBOARD, get_guild_settings, logger
+
+STAR_MENU = "⭐ Mettre au starboard"
+Posted = Literal["posted", "no_board", "nsfw", "private", "failed"]
+NOT_POSTED: dict[str, str] = {
+    "no_board": (
+        "Le salon du starboard est introuvable : un administrateur doit le choisir à nouveau "
+        "dans le tableau de bord."
+    ),
+    "nsfw": "Ce message vient d'un salon NSFW et le starboard ne l'est pas : il reste ici.",
+    "private": (
+        "Ce salon n'est pas visible de tous, le starboard si : le message reste ici. Un "
+        "administrateur peut l'autoriser (« Accepter les salons privés »)."
+    ),
+    "failed": "Je n'ai pas pu publier au starboard : vérifie mes permissions dans son salon.",
+}
 
 
-def _jump_url(guild_id: str | int, channel_id: str | int, message_id: str | int) -> str:
-    return f"https://discord.com/channels/{guild_id}/{channel_id}/{message_id}"
-
-
-def _build_embed(message, count: int, emoji: str) -> Embed:
+def _build_embed(message, count: int, emoji: str, guild_id: str | int | None = None) -> Embed:
     author = message.author
     author_name = str(getattr(author, "display_name", None) or getattr(author, "username", "?"))
     avatar_url = None
@@ -48,7 +81,9 @@ def _build_embed(message, count: int, emoji: str) -> Embed:
         embed.set_image(url=image_url)
     embed.add_field(
         name="Source",
-        value=f"[Aller au message]({_jump_url(message.guild.id, message.channel.id, message.id)})",
+        value=(
+            f"[Aller au message]({jump_url(guild_id or message.guild.id, message.channel.id, message.id)})"
+        ),
         inline=False,
     )
     embed.set_footer(
@@ -182,7 +217,7 @@ class ListenersMixin:
         else:  # REFRESH
             mirror = await self._fetch_mirror(existing)
             if mirror is not None:
-                embed = _build_embed(message, count, emoji)
+                embed = _build_embed(message, count, emoji, guild_id)
                 await edit_message_if_changed(mirror, embeds=[embed], logger=logger)
             await repo.update_count(str(message.id), count)
 
@@ -195,28 +230,28 @@ class ListenersMixin:
         starboard_channel_id: str,
         *,
         allow_private: bool = False,
-    ) -> None:
+    ) -> Posted:
         channel = await fetch_guild_channel(self.bot, guild_id, starboard_channel_id, logger=logger)
         if channel is None or not hasattr(channel, "send"):
-            return
+            return "no_board"
         # Starring copies the message into the starboard: content from an
         # age-restricted channel must not land in one that isn't (a thread
         # reports its parent's setting).
         if getattr(message.channel, "nsfw", False) and not getattr(channel, "nsfw", False):
             logger.info("Starboard: message %s is in an NSFW channel, not mirrored", message.id)
-            return
+            return "nsfw"
         if exposes_hidden_channel(
             source_public=everyone_can_view(message.channel),
             board_public=everyone_can_view(channel),
             allow_private=allow_private,
         ):
             logger.info("Starboard: message %s is in a private channel, not mirrored", message.id)
-            return
+            return "private"
         try:
-            sent = await channel.send(embeds=[_build_embed(message, count, emoji)])
+            sent = await channel.send(embeds=[_build_embed(message, count, emoji, guild_id)])
         except Exception as e:
             log_failure(logger, "Failed to publish to starboard: %s", e)
-            return
+            return "failed"
         await self.repository(guild_id).upsert(
             StarEntry(
                 guild_id=guild_id,
@@ -232,6 +267,56 @@ class ListenersMixin:
         logger.info(
             "Starboard: posted message %s (count=%d) in guild %s", message.id, count, guild_id
         )
+        return "posted"
+
+    @menu_help("Publier ce message au starboard sans attendre les réactions (staff)")
+    @message_context_menu(
+        name=STAR_MENU,
+        scopes=guild_scopes(STARBOARD.guild_ids()),
+        default_member_permissions=Permissions.MANAGE_MESSAGES,
+    )
+    async def star_menu(self, ctx: ContextMenuContext) -> None:
+        message: Any = ctx.target
+        guild_id = guild_id_of(ctx)
+        settings = get_guild_settings(guild_id) or {}
+        board_id = str(settings.get("starboardChannelId") or "")
+        if not board_id:
+            await send_error(ctx, NOT_POSTED["no_board"], icon="⭐")
+            return
+        # The default permission is only checked where the menu is used: here,
+        # the message's own channel, but a server can loosen it.
+        if not await author_can(ctx, ctx.channel, CAN_PIN):
+            return
+        if str(ctx.channel_id) == board_id:
+            await send_error(ctx, "Ce message est déjà dans le salon du starboard.", icon="⭐")
+            return
+        repo = self.repository(guild_id)
+        emoji = settings.get("emoji", "⭐") or "⭐"
+        async with self.lock:
+            existing = await repo.get_by_original(str(message.id))
+            if existing is not None:
+                link = jump_url(guild_id, existing.mirror_channel_id, existing.mirror_message_id)
+                await send_error(ctx, f"Déjà au starboard : [voir]({link}).", icon="⭐")
+                return
+            count = await _count_valid_reactions(
+                message,
+                emoji,
+                allow_self=bool(settings.get("allowSelfStar", False)),
+                ignore_bots=bool(settings.get("ignoreBots", True)),
+            )
+            outcome = await self._post_mirror(
+                message,
+                guild_id,
+                count,
+                emoji,
+                board_id,
+                allow_private=bool(settings.get("allowPrivateSources", False)),
+            )
+        if outcome != "posted":
+            await send_error(ctx, NOT_POSTED[outcome])
+            return
+        logger.info("Starboard: message %s put there by %s", message.id, ctx.author.id)
+        await ctx.send(f"⭐ Message mis au starboard, dans <#{board_id}>.", ephemeral=True)
 
     async def _fetch_mirror(self, entry: StarEntry):
         """The mirror message on the starboard, or ``None`` if it can't be fetched."""

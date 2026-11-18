@@ -78,7 +78,16 @@ async def test_set_stores_a_reminder_at_the_paris_hour_typed(setup):
 async def test_set_refuses_a_malformed_date(setup):
     ext, ctx, repo, _ = setup
     await run(RemindersExtension.reminder_set, ext, ctx, 9, 0, "x", date="2026-12-01")
-    assert "JJ/MM/AAAA" in ctx.last and repo.items == {}
+    # Says what it read and how to write it (B9).
+    assert ctx.last == "📅 Je n'ai pas compris « 2026-12-01 ». Exemple : 24/12/2026."
+    assert repo.items == {}
+
+
+async def test_set_takes_a_date_without_its_year(setup):
+    ext, ctx, repo, _ = setup
+    await run(RemindersExtension.reminder_set, ext, ctx, 9, 0, "Noël", date="24/12")
+    (stored,) = repo.items.values()
+    assert clock.to_local(stored.remind_time).strftime("%d/%m %H:%M") == "24/12 09:00"
 
 
 async def test_set_refuses_a_one_shot_in_the_past(setup):
@@ -192,3 +201,40 @@ def test_a_reminder_set_on_a_date_reads_back_in_paris():
     now = datetime(2026, 6, 1, 12, 0, tzinfo=clock.LOCAL_TZ)
     when = first_occurrence(now, hour=9, minute=0, frequency=None, start=date(2026, 7, 1))
     assert (when.hour, clock.to_local(when).hour) == (7, 9)
+
+
+# ── "⏰ Me le rappeler": a reminder made from a message (B1) ──────────────
+
+
+async def test_a_message_becomes_a_reminder_that_links_back(setup):
+    from discord_fakes import FakeMessage
+
+    ext, ctx, repo, member = setup
+    message = FakeMessage(500, content="Rendez-vous samedi", channel=ctx.channel)
+    ctx.target = message
+    await run(RemindersExtension.remind_me_menu, ext, ctx)
+    (form,) = ctx.modals
+    assert form.custom_id == "remind_msg:10:500"
+    submit = FakeCtx(member, ctx.channel, custom_id=form.custom_id)
+    await run(RemindersExtension.on_remind_form, ext, submit, when="dans 2h", note="Y aller")
+    (stored,) = repo.items.values()
+    assert stored.message == "Y aller" and stored.jump_url.endswith("/1/10/500")
+    assert timedelta(minutes=119) < stored.remind_time - clock.now() <= timedelta(hours=2)
+    assert "Je te le rappelle en MP <t:" in submit.last
+    # The message's own text isn't copied: the link brings the member back to it.
+    assert "Rendez-vous" not in stored.message
+
+    stored.remind_time = clock.now() - timedelta(minutes=1)
+    await RemindersExtension.check_reminders.callback(ext)
+    assert member.dms[-1] == f"Y aller\n🔗 {stored.jump_url}"
+
+
+async def test_a_when_it_cannot_read_says_how_to_write_it(setup):
+    ext, ctx, repo, member = setup
+    submit = FakeCtx(member, ctx.channel, custom_id="remind_msg:10:500")
+    await run(RemindersExtension.on_remind_form, ext, submit, when="bientôt")
+    assert submit.last.startswith("📅 Je n'ai pas compris « bientôt »")
+    assert "demain 18h30" in submit.last and repo.items == {}
+    await run(RemindersExtension.on_remind_form, ext, submit, when="demain")
+    (stored,) = repo.items.values()
+    assert stored.message == "Revoir ce message"

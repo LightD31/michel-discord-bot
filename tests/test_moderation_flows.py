@@ -119,7 +119,9 @@ async def test_timeout_mutes_until_the_end_and_records_it(setup):
 async def test_timeout_refuses_a_bad_duration(setup):
     ext, ctx, repo, member, _ = setup
     await run(ModerationExtension.timeout, ext, ctx, member, "demain")
-    assert "Durée invalide" in ctx.last
+    assert ctx.last == (
+        "⏱️ Je n'ai pas compris la durée « demain ». Exemples : `10m`, `1h30m`, `2d`."
+    )
     assert member.timeouts == [] and repo.items == {}
 
 

@@ -30,7 +30,11 @@ class ModerationConfig(SchemaBase):
         "Salon des logs de modération",
         "channel",
         required=True,
-        description="Salon où chaque action de modération est enregistrée.",
+        description=(
+            "Salon où chaque action de modération est enregistrée, et où arrivent les "
+            "signalements des membres (clic droit sur un message → Applications → 🚩 Signaler). "
+            "Réserve-le aux modérateurs : les signalements y disent qui a signalé."
+        ),
     )
     staffRoleId: str | None = ui(
         "Rôle staff",
@@ -43,6 +47,15 @@ class ModerationConfig(SchemaBase):
         "boolean",
         default=True,
         description="Envoyer un message privé au membre lors d'une sanction.",
+    )
+    notifyReporters: bool = ui(
+        "Remercier qui signale",
+        "boolean",
+        default=True,
+        description=(
+            "Envoyer un MP aux membres qui ont signalé un message une fois que les modérateurs "
+            "l'ont traité (sans dire comment)."
+        ),
     )
     antiInvite: bool = ui(
         "Anti-invitations",
@@ -145,6 +158,9 @@ def can_moderate(actor: Any, target: Any, me: Any) -> str | None:
         return "Tu ne peux pas modérer un membre de rang égal ou supérieur au tien."
 
     if me is not None and top_role_position(target) >= top_role_position(me):
-        return "Mon rôle est trop bas dans la hiérarchie pour modérer ce membre."
+        return (
+            "Mon rôle est trop bas dans la hiérarchie pour modérer ce membre : un administrateur "
+            "peut le remonter au-dessus du sien (Paramètres du serveur → Rôles)."
+        )
 
     return None

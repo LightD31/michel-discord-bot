@@ -1,5 +1,6 @@
 """/aide: built from the loaded commands, grouped, filtered by permissions, paginated."""
 
+import copy
 from types import SimpleNamespace
 
 import interactions
@@ -148,3 +149,58 @@ async def test_aide_answers_privately_and_searches(store_config):
 
     await run(HelpExtension.aide, ext, ctx, search="introuvable")
     assert ctx.last == "Aucune commande ne correspond à « introuvable »."
+
+
+# ── Right-click menus (B1) ────────────────────────────────────────────────
+
+
+def test_right_click_menus_are_listed_with_where_to_find_them():
+    import extensions.moderation  # noqa: F401 — registers moduleModeration
+    from extensions.moderation import ModerationExtension
+
+    client = interactions.Client()
+    for shared in (ModerationExtension.report_message, ModerationExtension.history_menu):
+        menu = copy.copy(shared)  # the class's own stays as it is
+        menu.scopes = [GUILD]
+        client.add_command(owned_by(menu, SimpleNamespace(MODULE_KEYS=("moduleModeration",))))
+    by_name = {e.name: e for e in collect_entries(client.interactions_by_scope, GUILD, staff)}
+    report = by_name["🚩 Signaler"]
+    assert report.group == "🛡️ Modération" and report.mention == "**🚩 Signaler**"
+    assert report.description == (
+        "Signaler ce message aux modérateurs, en privé *(clic droit sur un message → Applications)*"
+    )
+    assert "clic droit sur un membre" in by_name["🛡️ Historique"].description
+    # A moderators' menu is hidden from members, as Discord hides it.
+    names = [e.name for e in collect_entries(client.interactions_by_scope, GUILD, everyone)]
+    assert names == ["🚩 Signaler"]
+    (page,) = render_pages(list(by_name.values()))
+    assert "clic droit" in page.description
+
+
+def test_every_right_click_menu_says_what_it_does():
+    import importlib
+    import pkgutil
+
+    import extensions
+    from src.discord_ext.menus import MENU_HELP
+
+    menus = []
+    for info in pkgutil.iter_modules(extensions.__path__):
+        if info.name.startswith("_"):
+            continue
+        module = importlib.import_module(f"extensions.{info.name}")
+        for value in vars(module).values():
+            if isinstance(value, type) and issubclass(value, interactions.Extension):
+                menus += [
+                    m for m in vars(value).values() if isinstance(m, interactions.ContextMenu)
+                ]
+                for base in value.__mro__[1:]:
+                    menus += [
+                        m for m in vars(base).values() if isinstance(m, interactions.ContextMenu)
+                    ]
+    names = {str(m.name) for m in menus}
+    assert len(names) >= 6
+    assert sorted(n for n in names if n not in MENU_HELP) == []
+    # Discord: at most 5 message menus and 5 user menus per server.
+    by_type = {t: {str(m.name) for m in menus if m.type == t} for t in (2, 3)}
+    assert all(len(found) <= 5 for found in by_type.values()), by_type

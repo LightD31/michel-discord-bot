@@ -209,7 +209,9 @@ class PollsExtension(Extension, PollButtonsMixin):
             close_seconds = parse_duration(duration)
             if close_seconds is None:
                 await send_error(
-                    ctx, "Format de durée invalide. Utilisez par ex. `30m`, `2h`, `1d`."
+                    ctx,
+                    f"Je n'ai pas compris la durée « {duration} ». Exemples : `30m`, `2h`, `1d`.",
+                    icon="⏱️",
                 )
                 return
         else:
@@ -374,7 +376,9 @@ class PollsExtension(Extension, PollButtonsMixin):
             seconds = parse_duration(duration)
             if seconds is None:
                 await send_error(
-                    ctx, "Format de durée invalide. Utilisez par ex. `30m`, `2h`, `1d`."
+                    ctx,
+                    f"Je n'ai pas compris la durée « {duration} ». Exemples : `30m`, `2h`, `1d`.",
+                    icon="⏱️",
                 )
                 return
         else:

@@ -74,7 +74,7 @@ class PlaylistMixin:
     async def addsong(self, ctx: SlashContext, song):
         server = self.get_server(ctx.guild_id)
         if str(ctx.channel_id) != str(server.channel_id):
-            await send_error(ctx, "Vous ne pouvez pas utiliser cette commande dans ce salon.")
+            await send_error(ctx, f"/addsong se lance dans <#{server.channel_id}>.", icon="🎵")
             logger.info("Commande /addsong utilisée dans un mauvais salon(%s)", ctx.channel.name)
             return
 

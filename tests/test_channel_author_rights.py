@@ -41,7 +41,7 @@ async def test_rolemenu_create_refuses_a_channel_the_author_cannot_post_in(store
     ext = bare_extension(ReactionRolesExtension, ctx.bot, repository=lambda guild_id: repo)
     await run(ReactionRolesExtension.rolemenu_create, ext, ctx, locked, "Rôles", "301,🎁,Jeux")
     assert repo.added == [] and locked.sent == []
-    assert "droits nécessaires" in ctx.last
+    assert "la permission « Envoyer des messages » dans" in ctx.last
 
 
 async def test_rolemenu_create_posts_where_the_author_can_post(store_config):
@@ -60,7 +60,7 @@ async def test_an_uptime_alert_needs_the_right_to_post_in_its_channel(store_conf
         UptimeExtension, ctx.bot, kuma_ok=True, monitors={5: SimpleNamespace(name="NAS")}
     )
     await run(UptimeExtension.setup_maintenance_alert, ext, ctx, "5", locked)
-    assert "droits nécessaires" in ctx.last
+    assert "la permission « Envoyer des messages » dans" in ctx.last
 
 
 async def test_the_twitch_planning_needs_the_right_to_post_and_pin(store_config, monkeypatch):
@@ -74,4 +74,4 @@ async def test_the_twitch_planning_needs_the_right_to_post_and_pin(store_config,
     ext = bare_extension(TwitchExtension, ctx.bot, streamers={"1_zerator": SimpleNamespace()})
     # STAFF may post in #10 but not pin (no MANAGE_MESSAGES).
     await run(TwitchExtension.twitch_planning_setup, ext, ctx, "zerator", here, pin=True)
-    assert saved == [] and "droits nécessaires" in ctx.last
+    assert saved == [] and "« Gérer les messages » dans" in ctx.last
