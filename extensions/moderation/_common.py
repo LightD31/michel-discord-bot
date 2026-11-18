@@ -13,7 +13,7 @@ from src.core import logging as logutil
 from src.core.config import ModuleConfig
 from src.discord_ext.look import Kind
 from src.discord_ext.staff import is_staff, top_role_position
-from src.webui.schemas import SchemaBase, enabled_field, register_module, ui
+from src.webui.schemas import ModuleHelp, SchemaBase, enabled_field, register_module, ui
 
 logger = logutil.init_logger(__name__)
 
@@ -24,6 +24,11 @@ class ModerationConfig(SchemaBase):
     __description__ = "Avertissements, exclusions, bannissements, historique et automod."
     __icon__ = "🛡️"
     __category__ = "Modération"
+    __help__ = ModuleHelp(
+        "Avertir, exclure, bannir, et garder l'historique de chaque membre.",
+        ("/avertir", "/exclure", "/infraction liste"),
+        "L'automod retire le spam ; chaque sanction est consignée dans le salon de modération. Clic droit sur un message → 🚩 Signaler, pour prévenir les modérateurs.",
+    )
 
     enabled: bool = enabled_field()
     modLogChannelId: str = ui(

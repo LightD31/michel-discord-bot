@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from src.core import logging as logutil
 from src.core.config import ModuleConfig
 from src.webui.schemas import (
+    ModuleHelp,
     SchemaBase,
     check_template,
     enabled_field,
@@ -60,6 +61,11 @@ class RssConfig(SchemaBase):
     )
     __icon__ = "📰"
     __category__ = "Médias & Streaming"
+    __help__ = ModuleHelp(
+        "Les nouveautés de flux RSS (actus, jeux gratuits, subreddits) dans les salons du serveur.",
+        ("/rss liste", "/rss tester"),
+        "Chaque flux est relu régulièrement, et ses nouveaux articles sont publiés.",
+    )
 
     enabled: bool = enabled_field()
     ChannelId: str = ui(

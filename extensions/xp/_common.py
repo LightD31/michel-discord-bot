@@ -14,6 +14,7 @@ from src.core import clock
 from src.core import logging as logutil
 from src.core.config import ModuleConfig
 from src.webui.schemas import (
+    ModuleHelp,
     SchemaBase,
     WeightedMessage,
     enabled_field,
@@ -28,6 +29,11 @@ class XpConfig(SchemaBase):
     __description__ = "Système de niveaux et d'expérience."
     __icon__ = "⭐"
     __category__ = "Communauté"
+    __help__ = ModuleHelp(
+        "Gagne de l'XP en discutant : des niveaux, un classement et des rôles à débloquer.",
+        ("/niveau", "/classement", "/profil"),
+        "Michel donne de l'XP à chaque message, une fois par minute (et en vocal si c'est activé), et annonce les niveaux.",
+    )
 
     enabled: bool = enabled_field()
     xpChannelId: str | None = ui(

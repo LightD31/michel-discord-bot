@@ -50,7 +50,14 @@ from src.discord_ext.paginator import CustomPaginator
 from src.discord_ext.role_grants import auto_grant_refusal
 from src.discord_ext.rolemenus import role_info
 from src.discord_ext.scopes import guild_scopes
-from src.webui.schemas import SchemaBase, WeightedMessage, enabled_field, register_module, ui
+from src.webui.schemas import (
+    ModuleHelp,
+    SchemaBase,
+    WeightedMessage,
+    enabled_field,
+    register_module,
+    ui,
+)
 
 # How /anniversaire liste writes a date ("5 mars") unless the server picks another.
 DEFAULT_DATE_LOCALE = "fr_FR"
@@ -62,6 +69,11 @@ class BirthdayConfig(SchemaBase):
     __description__ = "Vœux d'anniversaire quotidiens, rôle du jour et liste des anniversaires."
     __icon__ = "🎂"
     __category__ = "Communauté"
+    __help__ = ModuleHelp(
+        "Enregistre ton anniversaire : Michel te le souhaite le jour J.",
+        ("/anniversaire ajouter", "/anniversaire liste", "/anniversaire supprimer"),
+        "Chaque matin, les vœux du jour, et le rôle d'anniversaire pour la journée si le serveur en a un.",
+    )
 
     enabled: bool = enabled_field()
     birthdayChannelId: str | None = ui(

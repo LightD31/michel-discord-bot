@@ -1,6 +1,7 @@
 """/aide: built from the loaded commands, grouped, filtered by permissions, paginated."""
 
 import copy
+from datetime import timedelta
 from types import SimpleNamespace
 
 import interactions
@@ -15,8 +16,18 @@ from interactions import (
 )
 
 import extensions.giveaway  # noqa: F401 — registers the moduleGiveaway schema
-from extensions.help import HelpExtension, collect_entries, render_pages
+from extensions.help import (
+    HelpEntry,
+    HelpExtension,
+    collect_entries,
+    module_menus,
+    module_page,
+    modules,
+    render_pages,
+)
+from src.core import clock
 from src.core.text import EMBED_FIELD_VALUE_LIMIT
+from src.webui.schemas import ModuleHelp
 
 GUILD = 10
 
@@ -127,28 +138,136 @@ def test_long_lists_spread_over_fields_and_pages_discord_accepts():
     assert all(f"/commande{i:03d}" in listed for i in range(120))
 
 
-async def test_aide_answers_privately_and_searches(store_config):
+def aide_ctx(store_config, permissions=Permissions.NONE):
     store_config({"servers": {}})
     guild = FakeGuild(GUILD)
     channel = guild.add_channel(FakeChannel(20))
-    member = guild.add_member(FakeMember(7, "bob"))
+    member = guild.add_member(FakeMember(7, "bob", permissions=permissions))
     ctx = FakeCtx(member, channel)
     ctx.bot.interactions_by_scope = client_with_commands().interactions_by_scope
-    ext = bare_extension(HelpExtension, ctx.bot)
+    return ctx, bare_extension(HelpExtension, ctx.bot)
 
+
+async def test_aide_opens_on_the_modules_privately(store_config):
+    ctx, ext = aide_ctx(store_config)
     await run(HelpExtension.aide, ext, ctx)
-    (page,) = ctx.replies[-1]["embeds"]
-    assert ctx.replies[-1]["ephemeral"] is True
-    assert [f.name for f in page.fields] == ["🎲 Hasard"]  # bob has no Manage Server
+    reply = ctx.replies[-1]
+    assert reply["ephemeral"] is True
+    (page,) = reply["embeds"]
+    assert "Choisis un module" in page.description
+    assert "**🎲 Hasard**" in page.description
+    assert "Giveaways" not in page.description  # bob has no Manage Server
+    (row,) = reply["components"]
+    (menu,) = row.components
+    assert menu.custom_id == "aide:0"
+    assert [o.label for o in menu.options] == ["🎲 Hasard"]
 
-    member.guild_permissions = Permissions.ADMINISTRATOR
+
+async def test_a_module_picked_shows_what_it_does_and_its_commands(store_config):
+    ctx, ext = aide_ctx(store_config, Permissions.ADMINISTRATOR)
+    ctx.values = ["🎁 Giveaways"]
+    await run(HelpExtension.on_module_chosen, ext, ctx)
+    (edit,) = ctx.origin_edits
+    (page,) = edit["embeds"]
+    assert page.title == "🎁 Giveaways"
+    assert page.description.startswith("Des tirages au sort")
+    fields = {f.name: f.value for f in page.fields}
+    assert "⚙️ Tout seul" in fields
+    assert "/giveaway start" in fields["Les autres commandes"]
+    (menu,) = edit["components"][0].components
+    assert [o.default for o in menu.options] == [True, False]  # the chosen module stays picked
+
+
+async def test_a_module_gone_since_shows_the_list_again(store_config):
+    ctx, ext = aide_ctx(store_config)
+    ctx.values = ["🎁 Giveaways"]  # bob can't use any of it
+    await run(HelpExtension.on_module_chosen, ext, ctx)
+    (page,) = ctx.origin_edits[-1]["embeds"]
+    assert page.title == "❓ Aide"
+
+
+def test_more_than_25_modules_spread_over_several_lists():
+    entries = [
+        HelpEntry(f"Module {i:02d}", f"c{i}", f"`/c{i}`", "d", ModuleHelp("À quoi ça sert."))
+        for i in range(30)
+    ]
+    rows = module_menus(modules(entries))
+    assert [len(r.components[0].options) for r in rows] == [25, 5]
+    assert [r.components[0].custom_id for r in rows] == ["aide:0", "aide:1"]
+
+
+def test_a_module_page_features_the_commands_to_know():
+    about = ModuleHelp("Des niveaux.", ("/niveau", "/absente"), "De l'XP à chaque message.")
+    group = [
+        HelpEntry("⭐ XP", "niveau", "</niveau:1>", "Ton niveau", about),
+        HelpEntry("⭐ XP", "classement", "</classement:2>", "Le classement", about),
+    ]
+    page = module_page("⭐ XP", group)
+    fields = {f.name: f.value for f in page.fields}
+    assert fields["🧭 À connaître"] == "</niveau:1> — Ton niveau\n`/absente`"
+    assert fields["⚙️ Tout seul"] == "De l'XP à chaque message."
+    assert fields["Les autres commandes"] == "</classement:2> — Le classement"
+
+
+async def test_aide_still_searches(store_config):
+    ctx, ext = aide_ctx(store_config, Permissions.ADMINISTRATOR)
     await run(HelpExtension.aide, ext, ctx, search="GIVEAWAY")
     (page,) = ctx.replies[-1]["embeds"]
     assert [f.name for f in page.fields] == ["🎁 Giveaways"]
     assert "pour « GIVEAWAY »" in page.description
 
     await run(HelpExtension.aide, ext, ctx, search="introuvable")
-    assert ctx.last == "Aucune commande ne correspond à « introuvable »."
+    assert ctx.last.startswith("Aucune commande ne correspond à « introuvable ».")
+
+
+# ── Hello when Michel joins (B7) ──────────────────────────────────────────
+
+
+def joined_guild(minutes_ago: int, *, can_send: bool = True):
+    guild = FakeGuild(GUILD)
+    system = guild.add_channel(FakeChannel(30))
+    guild.system_channel = system
+    guild.me.joined_at = clock.now() - timedelta(minutes=minutes_ago)
+    rights = Permissions.VIEW_CHANNEL | Permissions.SEND_MESSAGES | Permissions.EMBED_LINKS
+    system.overrides[guild.me.id] = rights if can_send else Permissions.VIEW_CHANNEL
+    return guild, system
+
+
+async def hello(guild, store_config, *, ready=True, webui=None):
+    store_config({"config": {"webui": webui or {}}, "servers": {}})
+    bot = SimpleNamespace(is_ready=ready, get_guild=lambda gid: guild)
+    ext = bare_extension(HelpExtension, bot)
+    await HelpExtension.on_guild_join.callback(ext, SimpleNamespace(guild_id=GUILD))
+
+
+async def test_michel_says_hello_once_invited(store_config):
+    guild, system = joined_guild(1)
+    await hello(guild, store_config, webui={"enabled": True, "baseUrl": "https://michel.example"})
+    (message,) = system.sent
+    (embed,) = message.embeds
+    assert embed.title == "👋 Salut, moi c'est Michel"
+    assert "/aide" in embed.description
+    assert "[tableau de bord](https://michel.example)" in embed.description
+
+
+async def test_no_dashboard_link_when_the_dashboard_is_off(store_config):
+    guild, system = joined_guild(1)
+    await hello(guild, store_config, webui={"enabled": False, "baseUrl": "https://michel.example"})
+    assert "https://" not in system.sent[0].embeds[0].description
+
+
+async def test_the_startup_replay_and_old_servers_get_no_hello(store_config):
+    guild, system = joined_guild(1)
+    await hello(guild, store_config, ready=False)
+    old, old_system = joined_guild(60 * 24 * 30)
+    await hello(old, store_config)
+    assert system.sent == [] and old_system.sent == []
+
+
+async def test_no_hello_where_michel_cannot_write(store_config):
+    guild, system = joined_guild(1, can_send=False)
+    await hello(guild, store_config)
+    assert system.sent == []
 
 
 # ── Right-click menus (B1) ────────────────────────────────────────────────

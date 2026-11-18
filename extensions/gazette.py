@@ -36,7 +36,7 @@ from src.discord_ext.channels import fetch_guild_channel
 from src.discord_ext.gazette import gather_edition, gazette_embed, post_edition
 from src.discord_ext.messages import guild_id_of, send_error
 from src.discord_ext.scopes import guild_scopes
-from src.webui.schemas import SchemaBase, enabled_field, register_module, ui
+from src.webui.schemas import ModuleHelp, SchemaBase, enabled_field, register_module, ui
 
 logger = logutil.init_logger(__name__)
 
@@ -50,6 +50,11 @@ class GazetteConfig(SchemaBase):
     )
     __icon__ = "📰"
     __category__ = "Communauté"
+    __help__ = ModuleHelp(
+        "Le résumé de la semaine du serveur, chaque semaine.",
+        ("/gazette",),
+        "Au jour et à l'heure choisis, la Gazette est publiée : les plus actifs, le message de la semaine, les nouveaux, les anniversaires à venir…",
+    )
 
     enabled: bool = enabled_field()
     gazetteChannelId: str = ui(

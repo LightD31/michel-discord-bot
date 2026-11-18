@@ -4,7 +4,7 @@ import os
 
 from src.core import logging as logutil
 from src.core.config import ModuleConfig
-from src.webui.schemas import SchemaBase, enabled_field, register_module, ui
+from src.webui.schemas import ModuleHelp, SchemaBase, enabled_field, register_module, ui
 
 logger = logutil.init_logger(__name__)
 
@@ -15,6 +15,11 @@ class StarboardConfig(SchemaBase):
     __description__ = "Mise en avant des messages populaires dans un salon dédié."
     __icon__ = "⭐"
     __category__ = "Communauté"
+    __help__ = ModuleHelp(
+        "Les messages les plus appréciés, mis en avant dans un salon.",
+        (),
+        "Un message qui reçoit assez de ⭐ est recopié au starboard. Clic droit → ⭐ Mettre au starboard, pour les modérateurs.",
+    )
 
     enabled: bool = enabled_field()
     starboardChannelId: str = ui(

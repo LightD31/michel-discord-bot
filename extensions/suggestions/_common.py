@@ -5,7 +5,7 @@ import os
 from src.core import logging as logutil
 from src.core.config import ModuleConfig
 from src.discord_ext.look import Kind
-from src.webui.schemas import SchemaBase, enabled_field, register_module, ui
+from src.webui.schemas import ModuleHelp, SchemaBase, enabled_field, register_module, ui
 
 logger = logutil.init_logger(__name__)
 
@@ -16,6 +16,11 @@ class SuggestionsConfig(SchemaBase):
     __description__ = "Permet aux membres de proposer des idées avec votes et statut."
     __icon__ = "💡"
     __category__ = "Communauté"
+    __help__ = ModuleHelp(
+        "Propose une idée pour le serveur : les membres votent, le staff tranche.",
+        ("/suggerer",),
+        "Chaque suggestion reçoit des boutons 👍 / 👎, et sa carte montre où elle en est.",
+    )
 
     enabled: bool = enabled_field()
     suggestChannelId: str = ui(

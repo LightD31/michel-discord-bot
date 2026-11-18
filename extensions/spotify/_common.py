@@ -33,6 +33,7 @@ from src.webui.public_links import (
     public_token,
 )
 from src.webui.schemas import (
+    ModuleHelp,
     SchemaBase,
     enabled_field,
     register_module,
@@ -48,6 +49,11 @@ class SpotifyConfig(SchemaBase):
     __description__ = "Suivi des écoutes Spotify et playlists collaboratives."
     __icon__ = "🎵"
     __category__ = "Médias & Streaming"
+    __help__ = ModuleHelp(
+        "La playlist du serveur : ajoute tes titres, et chaque jour on vote pour garder ou retirer une chanson.",
+        ("/musique ajouter", "/musique proposer", "/musique info"),
+        "Chaque jour, un vote sur une chanson de la playlist, et le récapitulatif des ajouts.",
+    )
 
     enabled: bool = enabled_field()
     voteEnabled: bool = ui(

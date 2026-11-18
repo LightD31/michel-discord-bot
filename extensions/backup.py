@@ -37,6 +37,7 @@ from src.core.config import global_config
 from src.core.db import mongo_manager
 from src.discord_ext.look import card
 from src.discord_ext.scopes import guild_scopes
+from src.webui.schemas import ModuleHelp
 
 logger = logutil.init_logger(__name__)
 
@@ -71,6 +72,11 @@ class BackupExtension(Extension):
 
     MODULE_KEYS = ()
     HELP_LABEL = "💾 Sauvegardes"  # heading in /aide (dev guild only)
+    HELP = ModuleHelp(
+        "Les sauvegardes de la base de données du bot.",
+        ("/sauvegarde",),
+        "Les sauvegardes se font toutes seules, au rythme réglé dans la configuration globale.",
+    )
 
     def __init__(self, bot: Client) -> None:
         self.bot = bot

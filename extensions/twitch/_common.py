@@ -10,7 +10,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict
 
-from src.webui.schemas import SchemaBase, enabled_field, register_module, ui
+from src.webui.schemas import ModuleHelp, SchemaBase, enabled_field, register_module, ui
 
 
 class StreamerEntry(BaseModel):
@@ -37,6 +37,11 @@ class TwitchConfig(SchemaBase):
     __description__ = "Notifications de live et planning des streamers."
     __icon__ = "📺"
     __category__ = "Médias & Streaming"
+    __help__ = ModuleHelp(
+        "Les lives et le planning des streamers suivis.",
+        (),
+        "Un live qui commence est annoncé, et le planning de la semaine se met à jour.",
+    )
 
     enabled: bool = enabled_field()
     twitchStreamerList: dict[str, StreamerEntry] = ui(

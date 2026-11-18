@@ -28,7 +28,14 @@ from src.core.http import fetch
 from src.core.logging import log_failure
 from src.discord_ext.channels import fetch_guild_channel
 from src.discord_ext.mentions import everyone_if_written
-from src.webui.schemas import SchemaBase, check_template, enabled_field, register_module, ui
+from src.webui.schemas import (
+    ModuleHelp,
+    SchemaBase,
+    check_template,
+    enabled_field,
+    register_module,
+    ui,
+)
 
 
 class YoutubeChannelEntry(BaseModel):
@@ -51,6 +58,11 @@ class YoutubeConfig(SchemaBase):
     __description__ = "Notifications de nouvelles vidéos YouTube."
     __icon__ = "▶️"
     __category__ = "Médias & Streaming"
+    __help__ = ModuleHelp(
+        "Les nouvelles vidéos des chaînes YouTube suivies.",
+        (),
+        "Chaque nouvelle vidéo, short ou live est annoncé.",
+    )
 
     enabled: bool = enabled_field()
     ChannelId: str = ui(

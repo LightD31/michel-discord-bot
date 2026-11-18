@@ -3,7 +3,14 @@
 from features.lldap import parse_role_groups
 from src.core.config import ModuleConfig
 from src.integrations.lldap import DEFAULT_DISCORD_ATTRIBUTE, LldapSettings
-from src.webui.schemas import SchemaBase, enabled_field, register_module, secret_field, ui
+from src.webui.schemas import (
+    ModuleHelp,
+    SchemaBase,
+    enabled_field,
+    register_module,
+    secret_field,
+    ui,
+)
 
 
 @register_module("moduleLldap")
@@ -17,6 +24,11 @@ class LldapConfig(SchemaBase):
     )
     __icon__ = "🔐"
     __category__ = "Outils"
+    __help__ = ModuleHelp(
+        "Un compte sur les services du serveur (LLDAP), selon tes rôles Discord.",
+        ("/inscription",),
+        "Les groupes du compte suivent tes rôles, toutes les 10 minutes.",
+    )
 
     enabled: bool = enabled_field()
     lldapUrl: str = ui(

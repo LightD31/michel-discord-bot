@@ -137,13 +137,27 @@ for entry in sorted(os.listdir("extensions")):
                     "options": [str(o.name) for o in obj.options or []],
                     "localised": localised,
                 })
+from src.webui import schemas
+from src.webui.schemas import ModuleHelp
+
+helps = {key: list(cls.__help__.commands) for key, cls in schemas._MODULE_REGISTRY.items()
+         if cls.__help__ is not None}
+missing = sorted(key for key, cls in schemas._MODULE_REGISTRY.items() if cls.__help__ is None)
+for entry in sorted(os.listdir("extensions")):
+    name = entry.removesuffix(".py")
+    if name.startswith("_") or name == "__pycache__":
+        continue
+    for cls in vars(importlib.import_module("extensions." + name)).values():
+        own = getattr(cls, "HELP", None) if inspect.isclass(cls) else None
+        if isinstance(own, ModuleHelp):
+            helps[f"extensions.{name}"] = list(own.commands)
 with open(sys.argv[1], "w", encoding="utf-8") as f:
-    json.dump(found, f)
+    json.dump({"commands": found, "helps": helps, "without_help": missing}, f)
 """
 
 
 @pytest.fixture(scope="module")
-def commands(tmp_path_factory) -> list[dict]:
+def probe(tmp_path_factory) -> dict:
     target = tmp_path_factory.mktemp("names") / "commands.json"
     subprocess.run(
         [sys.executable, "-c", _PROBE, str(target)],
@@ -153,6 +167,11 @@ def commands(tmp_path_factory) -> list[dict]:
         timeout=120,
     )
     return json.loads(target.read_text(encoding="utf-8"))
+
+
+@pytest.fixture(scope="module")
+def commands(probe) -> list[dict]:
+    return probe["commands"]
 
 
 def english_words(name: str) -> set[str]:
@@ -177,6 +196,23 @@ def offenders(commands: list[dict]) -> list[str]:
 def test_commands_and_options_are_named_in_french(commands):
     assert commands, "the probe found no command"
     assert offenders(commands) == []
+
+
+def test_every_module_explains_itself_in_aide(probe):
+    """Each module's schema has a ``__help__``: /aide shows it when the module is picked (B7)."""
+    assert probe["without_help"] == []
+
+
+def test_the_commands_aide_recommends_exist(probe, commands):
+    """A ``__help__`` names commands as typed; a rename must not leave /aide pointing at nothing."""
+    typed = {"/" + " ".join(c["path"]) for c in commands}
+    wrong = {
+        where: [c for c in listed if c not in typed]
+        for where, listed in probe["helps"].items()
+        if any(c not in typed for c in listed)
+    }
+    assert wrong == {}
+    assert all(len(listed) <= 3 for listed in probe["helps"].values())
 
 
 def test_the_probe_sees_the_renamed_commands(commands):

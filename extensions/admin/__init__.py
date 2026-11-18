@@ -47,7 +47,7 @@ from src.discord_ext.messages import (
     send_success,
 )
 from src.discord_ext.scopes import guild_scopes
-from src.webui.schemas import SchemaBase, enabled_field, register_module, ui
+from src.webui.schemas import ModuleHelp, SchemaBase, enabled_field, register_module, ui
 
 
 @register_module("moduleUtils")
@@ -56,6 +56,11 @@ class UtilsConfig(SchemaBase):
     __description__ = "Commandes utilitaires : ping, sondages, rappels, suppression de messages."
     __icon__ = "🛠️"
     __category__ = "Outils"
+    __help__ = ModuleHelp(
+        "Les outils du quotidien : sondages, rappels, messages et salons.",
+        ("/sondage", "/rappel creer", "/rappel liste"),
+        "Un rappel arrive en MP à l'heure dite. Clic droit sur un message → ⏰ Me le rappeler.",
+    )
 
     enabled: bool = enabled_field()
     reminderSnoozeMinutes: int = ui(

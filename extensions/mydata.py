@@ -35,6 +35,7 @@ from src.core import logging as logutil
 from src.core.db import mongo_manager
 from src.core.errors import DatabaseError
 from src.discord_ext.messages import edit_message_if_changed
+from src.webui.schemas import ModuleHelp
 
 logger = logutil.init_logger(os.path.basename(__file__))
 
@@ -75,6 +76,11 @@ class MyDataExtension(Extension):
 
     MODULE_KEYS = ()
     HELP_LABEL = "🔐 Mes données"
+    HELP = ModuleHelp(
+        "Ce que Michel garde sur toi : en recevoir une copie, ou tout effacer.",
+        ("/mes-donnees exporter", "/mes-donnees supprimer"),
+        "Quand tu quittes un serveur, ce qui te concerne y est effacé 30 jours plus tard.",
+    )
 
     def __init__(self, bot: Client):
         self.bot: Client = bot

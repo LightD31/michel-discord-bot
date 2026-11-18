@@ -9,7 +9,14 @@ from typing import Any
 from features.mdi import TeamRef
 from src.core import logging as logutil
 from src.core.config import ModuleConfig, global_config
-from src.webui.schemas import SchemaBase, enabled_field, register_module, register_section, ui
+from src.webui.schemas import (
+    ModuleHelp,
+    SchemaBase,
+    enabled_field,
+    register_module,
+    register_section,
+    ui,
+)
 
 # ── Module config (Web UI schema) ─────────────────────────────────────────────
 
@@ -27,6 +34,11 @@ class MDIConfig(SchemaBase):
     )
     __icon__ = "🐉"
     __category__ = "Esport & Jeux"
+    __help__ = ModuleHelp(
+        "Le suivi du Mythic Dungeon International (Raider.IO).",
+        (),
+        "Le planning, les matchs en direct et les résultats de l'équipe suivie sont publiés et mis à jour.",
+    )
 
     enabled: bool = enabled_field()
     notificationChannelId: str | None = ui(
