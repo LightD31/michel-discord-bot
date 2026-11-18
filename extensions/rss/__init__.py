@@ -64,7 +64,7 @@ from src.core.text import (
 )
 from src.core.urls import redact_url
 from src.discord_ext.channels import fetch_guild_channel
-from src.discord_ext.embeds import Colors
+from src.discord_ext.look import card, sign
 from src.discord_ext.mentions import mentions_written_in
 from src.discord_ext.messages import guild_id_of, require_guild, send_error, send_success
 from src.discord_ext.scopes import guild_scopes
@@ -218,11 +218,13 @@ def _render_embed(feed_id: str, feed_cfg: dict, entry: RssEntry) -> Embed:
     title = _format_template(title_tpl, label=label, entry=entry, fallback=entry.title)
     description = _format_template(desc_tpl, label=label, entry=entry, fallback=entry.summary)
 
-    embed = Embed(
+    embed = card(
+        "moduleRss",
         title=clip(title, EMBED_TITLE_LIMIT) if title else "(sans titre)",
         description=clip(description, EMBED_DESCRIPTION_LIMIT) if description else None,
         url=entry.link or None,
-        color=_parse_color(feed_cfg.get("embed_color")) or Colors.UTIL,
+        author=False,
+        accent=_parse_color(feed_cfg.get("embed_color")),
     )
     if feed_cfg.get("embed_show_image", True) and entry.image_url:
         try:
@@ -233,7 +235,7 @@ def _render_embed(feed_id: str, feed_cfg: dict, entry: RssEntry) -> Embed:
         embed.set_author(name=clip(entry.author, EMBED_AUTHOR_LIMIT))
     if entry.published:
         embed.timestamp = Timestamp.fromdatetime(entry.published)
-    embed.set_footer(text=clip(label, EMBED_FOOTER_LIMIT))
+    sign(embed, "moduleRss", clip(label, EMBED_FOOTER_LIMIT))
     return embed
 
 
@@ -474,10 +476,10 @@ class RssExtension(Extension):
             await send_error(ctx, "Le flux est vide ou illisible.")
             return
 
-        embed = Embed(
+        embed = card(
+            "moduleRss",
             title=f"📰 Aperçu — {url}",
             description=f"{len(entries)} entrée(s) détectée(s). Voici les 3 plus récentes :",
-            color=Colors.UTIL,
         )
         for entry in entries[:3]:
             value_lines = []
@@ -530,10 +532,10 @@ class RssExtension(Extension):
                 elif state.last_poll_at:
                     status = format_discord_timestamp(state.last_poll_at, "R")
             lines.append(f"`{feed_id}` — **{label}**\n  <{url}>\n  Dernière relève : {status}")
-        embed = Embed(
+        embed = card(
+            "moduleRss",
             title="Flux RSS configurés",
             description=clip("\n\n".join(lines), EMBED_DESCRIPTION_LIMIT),
-            color=Colors.UTIL,
         )
         await ctx.send(embeds=[embed], ephemeral=True)
 

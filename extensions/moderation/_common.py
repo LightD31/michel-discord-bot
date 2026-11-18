@@ -11,7 +11,7 @@ from features.moderation.spam import (
 )
 from src.core import logging as logutil
 from src.core.config import ModuleConfig
-from src.discord_ext.embeds import Colors
+from src.discord_ext.look import Kind
 from src.discord_ext.staff import is_staff, top_role_position
 from src.webui.schemas import SchemaBase, enabled_field, register_module, ui
 
@@ -119,15 +119,16 @@ TYPE_LABELS: dict[str, str] = {
     "automod": "🛡️ Automod",
 }
 
-TYPE_COLORS: dict[str, int] = {
-    "warn": Colors.WARNING,
-    "timeout": Colors.WARNING,
-    "untimeout": Colors.SUCCESS,
-    "kick": Colors.ERROR,
-    "ban": Colors.ERROR,
-    "unban": Colors.SUCCESS,
-    "note": Colors.INFO,
-    "automod": Colors.ORANGE,
+# The kind of card each case is posted as (its colour, src/discord_ext/look.py).
+TYPE_KINDS: dict[str, Kind] = {
+    "warn": "warning",
+    "timeout": "warning",
+    "untimeout": "success",
+    "kick": "error",
+    "ban": "error",
+    "unban": "success",
+    "note": "neutral",
+    "automod": "warning",
 }
 
 

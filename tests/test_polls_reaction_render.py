@@ -10,10 +10,10 @@ import src.discord_ext.paginator as paginator_module
 from extensions.polls import PollsExtension
 from features.polls import Poll, is_reaction_poll_text, render_reaction_poll
 from features.polls.helpers import poll_option_label
-from src.discord_ext.embeds import Colors
+from src.discord_ext.look import Palette
 
 BOT_ID = 99
-POLL_FOOTER = "Créé par alice (ID: 123)"
+POLL_FOOTER = "Michel · Utilitaires · Sondage de alice"
 POLL_BODY = "1️⃣ Pizza : 4 fromages\n\n2️⃣ Sushi\n\n*Fermeture automatique : <t:1700000000:R>*"
 
 
@@ -66,7 +66,9 @@ def test_option_label_strips_only_the_tally(block, label):
         # button poll
         (POLL_FOOTER, "*Sondage anonyme* — cliquez sur un bouton pour voter.", False),
         # giveaway
-        ("Lancé par alice", "1️⃣ gagnant", False),
+        ("Michel · Giveaways · Lancé par alice", "1️⃣ gagnant", False),
+        # an older poll's footer, which printed its author's id
+        ("Créé par alice (ID: 123)", POLL_BODY, False),
     ],
 )
 def test_reaction_poll_recognition(footer, description, expected):
@@ -157,7 +159,7 @@ def ext(monkeypatch, store_config):
 
 
 def poll_embed(description=POLL_BODY, footer=POLL_FOOTER):
-    embed = Embed(title="Ce soir ?", description=description, color=Colors.UTIL)
+    embed = Embed(title="Ce soir ?", description=description, color=Palette.BLUE)
     if footer:
         embed.set_footer(text=footer)
     return embed
@@ -167,7 +169,7 @@ async def test_a_reaction_on_an_rss_post_leaves_it_alone(ext):
     rss = Embed(
         title="Le Monde",
         description="**Nouvel article : Sortie de la v2**\n\nLire la suite : https://x",
-        color=Colors.UTIL,
+        color=Palette.BLUE,
     )
     rss.set_footer(text="Flux : Le Monde")
     event = SimpleNamespace(message=message(rss), emoji="👍")
@@ -176,7 +178,7 @@ async def test_a_reaction_on_an_rss_post_leaves_it_alone(ext):
 
 
 async def test_a_reaction_on_a_role_menu_leaves_it_alone(ext):
-    menu = Embed(title="Rôles", description="<:pepe:123456> <@&42> — Joueurs", color=Colors.UTIL)
+    menu = Embed(title="Rôles", description="<:pepe:123456> <@&42> — Joueurs", color=Palette.BLUE)
     event = SimpleNamespace(message=message(menu), emoji="<:pepe:123456>")
     ext._refresh_reaction_poll(event)
     assert ext._refreshes.pending() == 0
@@ -274,7 +276,7 @@ async def test_editpoll_refuses_someone_elses_poll(ext):
     poll_channel(ext, message(poll_embed()))
     ctx = EditCtx(8)  # the stored author is 7
     await PollsExtension.editpoll.callback(ext, ctx, "10", question="Demain ?")
-    assert "que vous avez créés" in ctx.sent[-1]
+    assert "que tu as créés" in ctx.sent[-1]
     assert ext.edits == []
 
 

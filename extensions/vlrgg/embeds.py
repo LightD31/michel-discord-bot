@@ -16,11 +16,10 @@ from features.vlrgg import (
     veto_line,
 )
 from src.core.text import format_discord_timestamp
-from src.discord_ext.embeds import SPACER_FIELD, Colors
+from src.discord_ext.embeds import SPACER_FIELD
+from src.discord_ext.look import card, sign
 
 from ._common import (
-    DEFAULT_EMBED_COLOR,
-    LIVE_EMBED_COLOR,
     MAX_PAST_MATCHES,
     MAX_UPCOMING_MATCHES,
     TeamConfig,
@@ -54,7 +53,7 @@ class EmbedsMixin:
             past_embed = self._create_base_embed(
                 f"Derniers matchs de {team}",
                 description=self._rank_line(profile),
-                footer_text="Source: VLR.gg",
+                footer_text="Source : VLR.gg",
             )
             if logo:
                 past_embed.set_thumbnail(url=logo)
@@ -70,7 +69,7 @@ class EmbedsMixin:
         live = vlr_data.get("live", [])
         if live:
             live_embed = self._create_base_embed(
-                f"Match en cours de {team}", footer_text="Source: VLR.gg"
+                f"Match en cours de {team}", footer_text="Source : VLR.gg"
             )
             for match in live:
                 field_data = self._format_vlrgg_live(match)
@@ -83,7 +82,7 @@ class EmbedsMixin:
         if upcoming:
             upcoming_embed = self._create_base_embed(
                 f"Prochains matchs de {team}",
-                footer_text="Source: VLR.gg",
+                footer_text="Source : VLR.gg",
             )
             for i, match in enumerate(upcoming[:MAX_UPCOMING_MATCHES]):
                 field_data = self._format_vlrgg_upcoming(match)
@@ -252,10 +251,11 @@ class EmbedsMixin:
         if just_started:
             description += "\n\nLe match vient de commencer!"
 
-        embed = Embed(
+        embed = card(
+            "moduleVlrgg",
+            "success",
             title=f"🔴 LIVE: {team1} vs {team2}",
             description=description,
-            color=LIVE_EMBED_COLOR,
             timestamp=Timestamp.now(),
         )
         embed.add_field(
@@ -273,7 +273,7 @@ class EmbedsMixin:
         logo = self._event_logo(details) or _media_url(str(match.get("team1_logo") or ""))
         if logo:
             embed.set_thumbnail(url=logo)
-        embed.set_footer(text="Mise à jour automatique • Source: VLR.gg")
+        sign(embed, "moduleVlrgg", "Mise à jour automatique · Source : VLR.gg")
         return embed
 
     def _build_final_embed(
@@ -308,11 +308,11 @@ class EmbedsMixin:
                 pass
 
         if team_won is True:
-            result_emoji, result_text, embed_color = "🎉", "VICTOIRE", Colors.SUCCESS
+            result_emoji, result_text, kind = "🎉", "VICTOIRE", "success"
         elif team_won is False:
-            result_emoji, result_text, embed_color = "😢", "DÉFAITE", Colors.ERROR
+            result_emoji, result_text, kind = "😢", "DÉFAITE", "error"
         else:
-            result_emoji, result_text, embed_color = "🏁", "TERMINÉ", DEFAULT_EMBED_COLOR
+            result_emoji, result_text, kind = "🏁", "TERMINÉ", "info"
 
         event_name, series = event_and_series(details)
         if not event_name:
@@ -323,10 +323,11 @@ class EmbedsMixin:
         if series:
             description += f"\n{expand_round_name(series)}"
 
-        embed = Embed(
+        embed = card(
+            "moduleVlrgg",
+            kind,
             title=f"{result_emoji} {result_text}: {team1} vs {team2}",
             description=description,
-            color=embed_color,
             timestamp=Timestamp.now(),
         )
         embed.add_field(
@@ -336,7 +337,7 @@ class EmbedsMixin:
         logo = self._event_logo(details)
         if logo:
             embed.set_thumbnail(url=logo)
-        embed.set_footer(text="Match terminé • Source: VLR.gg")
+        sign(embed, "moduleVlrgg", "Match terminé · Source : VLR.gg")
         return embed, f"{result_emoji} **Match terminé!** {result_emoji}"
 
     def _add_details_fields(self, embed: Embed, details: dict[str, Any]) -> None:
@@ -384,14 +385,9 @@ class EmbedsMixin:
 
     def _create_base_embed(self, title: str, description: str = "", footer_text: str = "") -> Embed:
         """Crée un embed de base avec le style commun."""
-        embed = Embed(
-            title=title,
-            description=description,
-            color=DEFAULT_EMBED_COLOR,
-            timestamp=Timestamp.now(),
-        )
+        embed = card("moduleVlrgg", title=title, description=description, timestamp=Timestamp.now())
         if footer_text:
-            embed.set_footer(text=footer_text)
+            sign(embed, "moduleVlrgg", footer_text)
         return embed
 
     # ── Utility formatters ────────────────────────────────────────────────────

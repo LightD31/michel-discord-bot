@@ -12,7 +12,7 @@ from src.core import clock
 from src.core import logging as logutil
 from src.core.logging import log_failure
 from src.core.text import take_within_budget
-from src.discord_ext.embeds import Colors
+from src.discord_ext.look import card, sign
 from src.discord_ext.messages import edit_message_if_changed
 
 from ._common import CONFRERIE, ConfrerieError
@@ -35,14 +35,14 @@ def _lines(entries: list[str], empty: str) -> str:
 
 def build_statistics_embed(stats: ConfrerieStats) -> Embed:
     """Render the recap embed. Pure given ``stats`` so unchanged data re-renders identically."""
-    embed = Embed(
+    embed = card(
+        "moduleConfrerie",
         title="Statistiques de la confrérie",
         description=(
             f"**{plural(stats.total_works, 'œuvre')}** · "
             f"**{plural(stats.total_defi_entries, 'participation')}** aux défis · "
             f"**{plural(stats.author_count, 'auteur·ice')}**"
         ),
-        color=Colors.CONFRERIE,
         timestamp=clock.now(),
     )
 
@@ -139,8 +139,7 @@ class StatsMixin:
             raise ConfrerieError("Canal de récapitulatif introuvable ou invalide")
 
         embed = build_statistics_embed(stats)
-        footer = await self._create_embed_footer(guild_id)
-        embed.set_footer(text=footer.text, icon_url=footer.icon_url)
+        sign(embed, "moduleConfrerie", icon_url=self._footer_icon(guild_id))
 
         texts_url = settings.get("confrerieTextsUrl") or ""
         if texts_url:
@@ -150,9 +149,7 @@ class StatsMixin:
                 title="Textes de la confrérie",
                 tags=["confrerie"],
             )
-            content = (
-                f"Retrouvez tous les textes en [cliquant ici]({texts_url} 'Notion de la confrérie')"
-            )
+            content = f"Tous les textes sont [sur Notion]({texts_url} 'Notion de la confrérie')"
         else:
             content = ""
         try:

@@ -11,7 +11,6 @@ from datetime import datetime
 from interactions import (
     Buckets,
     Embed,
-    EmbedFooter,
     Extension,
     SlashContext,
     cooldown,
@@ -25,7 +24,7 @@ from src.core import clock
 from src.core import logging as logutil
 from src.core.config import ModuleConfig
 from src.core.text import sanitize_content
-from src.discord_ext.embeds import Colors
+from src.discord_ext.look import card
 from src.discord_ext.messages import require_guild
 from src.discord_ext.scopes import guild_scopes
 from src.webui.schemas import SchemaBase, enabled_field, register_module
@@ -145,15 +144,15 @@ class FeurExtension(Extension):
                 if len(top_users) == 5:
                     break
 
-        embed = Embed(
+        embed = card(
+            "moduleFeur",
             title="📊 Statistiques Feur",
-            color=Colors.FEUR,
             timestamp=clock.now(),
-            footer=EmbedFooter(text=f"Demandé par {ctx.author.display_name}"),
+            footer=f"Demandé par {ctx.author.display_name}",
         )
         embed.add_field(
             name="🏠 Stats du serveur",
-            value=f"Total: **{guild_stats.total}**\nFeur: **{guild_stats.feur}**\nPour feur: **{guild_stats.pour_feur}**",
+            value=f"Total : **{guild_stats.total}**\nFeur : **{guild_stats.feur}**\nPour feur : **{guild_stats.pour_feur}**",
             inline=False,
         )
         embed.add_field(

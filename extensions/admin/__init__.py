@@ -217,7 +217,7 @@ class AdminExtension(Extension):
         if channel is None:
             channel = ctx.channel
         if channel.type == ChannelType.GUILD_CATEGORY:
-            await send_error(ctx, "Vous ne pouvez pas envoyer de message dans une catégorie")
+            await send_error(ctx, "Je ne peux pas écrire dans une catégorie : choisis un salon.")
             return
 
         if not hasattr(channel, "send"):

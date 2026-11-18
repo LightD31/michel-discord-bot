@@ -19,7 +19,7 @@ from features.gazette.edition import TOP_MEMBERS, WEEK
 from features.xp import XpRepository
 from src.core import clock
 from src.core.config import ModuleConfig
-from src.discord_ext.embeds import Colors
+from src.discord_ext.look import card
 from src.discord_ext.mentions import NO_PINGS
 from src.discord_ext.messages import jump_url
 
@@ -100,10 +100,9 @@ async def gather_edition(bot: Any, guild_id: str, now: datetime) -> Edition:
 
 def gazette_embed(edition: Edition) -> Embed:
     title, intro, fields = render(edition)
-    embed = Embed(title=title, description=intro, color=Colors.INFO)
+    embed = card("moduleGazette", title=title, description=intro, footer="chaque semaine")
     for name, value in fields:
         embed.add_field(name=name, value=value, inline=False)
-    embed.set_footer(text="Michel · La Gazette, chaque semaine")
     return embed
 
 

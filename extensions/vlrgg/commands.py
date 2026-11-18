@@ -34,10 +34,11 @@ from features.vlrgg import (
 )
 from src.core.text import format_discord_timestamp
 from src.discord_ext.links import shorten_embed
+from src.discord_ext.look import card, sign
 from src.discord_ext.messages import send_error
 from src.discord_ext.scopes import guild_scopes
 
-from ._common import DEFAULT_EMBED_COLOR, LIVE_EMBED_COLOR, MAP_POOL_DAYS, VLRGG, logger
+from ._common import MAP_POOL_DAYS, VLRGG, logger
 
 # Codes acceptés par /v2/rankings
 REGIONS: dict[str, str] = {
@@ -180,11 +181,11 @@ class CommandsMixin:
             )
             if p
         ]
-        embed = Embed(
+        embed = card(
+            "moduleVlrgg",
             title=f"{name} ({tag})" if tag and tag != name else name,
             url=f"https://www.vlr.gg/team/{team_id}",
             description="\n".join(description),
-            color=DEFAULT_EMBED_COLOR,
             timestamp=Timestamp.now(),
         )
         logo = _media_url(str(profile.get("logo") or ""))
@@ -225,7 +226,7 @@ class CommandsMixin:
                 name=f"Maps ({MAP_POOL_DAYS} derniers jours)", value="\n".join(lines), inline=False
             )
 
-        embed.set_footer(text="Source: VLR.gg")
+        sign(embed, "moduleVlrgg", "Source : VLR.gg")
         return embed
 
     @staticmethod
@@ -271,16 +272,16 @@ class CommandsMixin:
             info = " · ".join(p for p in details if p)
             lines.append(f"**{row.get('rank', '?')}.** {row.get('team', '???')} — {info}")
 
-        embed = Embed(
+        embed = card(
+            "moduleVlrgg",
             title=f"Classement VLR.gg — {REGIONS.get(region, region)}",
             description="\n".join(lines),
-            color=DEFAULT_EMBED_COLOR,
             timestamp=Timestamp.now(),
         )
         logo = _media_url(str(rows[0].get("logo") or ""))
         if logo:
             embed.set_thumbnail(url=logo)
-        embed.set_footer(text="Source: VLR.gg")
+        sign(embed, "moduleVlrgg", "Source : VLR.gg")
         await ctx.send(embeds=[embed])
 
     # ── /vlr match ────────────────────────────────────────────────────────────
@@ -330,16 +331,17 @@ class CommandsMixin:
             for p in (f"**{event}**" if event else "", expand_round_name(series), status_text)
             if p
         )
-        embed = Embed(
+        embed = card(
+            "moduleVlrgg",
+            "success" if live else "info",
             title=title,
             url=f"https://www.vlr.gg/{match_id}",
             description=description,
-            color=LIVE_EMBED_COLOR if live else DEFAULT_EMBED_COLOR,
             timestamp=Timestamp.now(),
         )
         self._add_details_fields(embed, details)
         logo = self._event_logo(details)
         if logo:
             embed.set_thumbnail(url=logo)
-        embed.set_footer(text="Source: VLR.gg")
+        sign(embed, "moduleVlrgg", "Source : VLR.gg")
         return embed

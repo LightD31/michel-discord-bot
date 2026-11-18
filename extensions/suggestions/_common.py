@@ -4,7 +4,7 @@ import os
 
 from src.core import logging as logutil
 from src.core.config import ModuleConfig
-from src.discord_ext.embeds import Colors
+from src.discord_ext.look import Kind
 from src.webui.schemas import SchemaBase, enabled_field, register_module, ui
 
 logger = logutil.init_logger(__name__)
@@ -47,11 +47,12 @@ SUGGESTIONS = ModuleConfig("moduleSuggestions")
 # Persistent button namespace: suggvote:{sugg_id}:{up|down}
 VOTE_PREFIX = "suggvote"
 
-STATUS_COLORS: dict[str, int] = {
-    "pending": Colors.UTIL,
-    "approved": Colors.SUCCESS,
-    "denied": Colors.ERROR,
-    "implemented": Colors.SPOTIFY,
+# The kind of card a suggestion shows as, by status (its colour, src/discord_ext/look.py).
+STATUS_KINDS: dict[str, Kind] = {
+    "pending": "info",
+    "approved": "success",
+    "denied": "error",
+    "implemented": "success",
 }
 
 STATUS_LABELS: dict[str, str] = {

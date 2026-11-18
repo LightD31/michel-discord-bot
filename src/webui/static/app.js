@@ -1214,7 +1214,7 @@
         }
         input.dispatchEvent(new Event('input', { bubbles: true }));
         input.dispatchEvent(new Event('change', { bubbles: true }));
-        toast('Valeur par défaut rétablie — pensez à sauvegarder', 'success');
+        toast('Valeur par défaut rétablie — pense à sauvegarder', 'success');
     }
 
     function collectFormValues(formId) {
@@ -1729,7 +1729,7 @@
             loadModelCatalog(picker, first.id);
         } else {
             overlay.querySelector('[data-ai-list]').innerHTML =
-                '<p style="color:var(--text-muted);padding:12px">Aucune API configurée : renseignez la clé et l\'URL d\'OpenRouter ou de NanoGPT.</p>';
+                '<p style="color:var(--text-muted);padding:12px">Aucune API configurée : renseigne la clé et l\'URL d\'OpenRouter ou de NanoGPT.</p>';
         }
     }
 
@@ -1778,7 +1778,7 @@
                     <div class="ai-catalog-meta">${price}<br>${formatContext(m.context_length)}</div>
                 </button>`;
         }).join('') + (matches.length > shown.length
-            ? `<p style="color:var(--text-muted);padding:8px 12px;font-size:12px">${matches.length - shown.length} autres résultats — affinez la recherche.</p>`
+            ? `<p style="color:var(--text-muted);padding:8px 12px;font-size:12px">${matches.length - shown.length} autres résultats — affine la recherche.</p>`
             : '');
         listEl.querySelectorAll('[data-ai-model]').forEach(row => row.addEventListener('click', () => {
             const model = picker.catalog.find(m => m.id === row.dataset.aiModel);
@@ -1790,7 +1790,7 @@
                 model_id: model.id,
                 display_name: model.name,
             });
-            toast(`${model.name} ajouté — pensez à sauvegarder`, 'success');
+            toast(`${model.name} ajouté — pense à sauvegarder`, 'success');
             renderModelCatalog(picker);
         }));
     }
@@ -2003,7 +2003,7 @@
                 <div class="rssfeed-preset-banner">
                     <span class="rssfeed-preset-badge">🎮 Préréglage</span>
                     <span class="rssfeed-preset-name">${presetName}</span>
-                    <span class="rssfeed-preset-hint">Mise en forme gérée automatiquement — choisissez le salon ci-dessous.</span>
+                    <span class="rssfeed-preset-hint">Mise en forme gérée automatiquement — choisis le salon ci-dessous.</span>
                 </div>` : '';
         return `
             <div class="rssfeed-entry${isPreset ? ' preset' : ''}" data-mode="${mode}" data-advanced="${advanced}">${banner}
@@ -2183,7 +2183,7 @@
             return;  // api() already showed the error
         }
         if (!base) {
-            toast("Préréglages indisponibles : renseignez l'URL des flux LootScraper dans la section globale « Flux RSS ».", 'error');
+            toast("Préréglages indisponibles : renseigne l'URL des flux LootScraper dans la section globale « Flux RSS ».", 'error');
             return;
         }
         if (!base.endsWith('/')) base += '/';
@@ -2952,7 +2952,7 @@
                 opts += `<option value="${escapeHtml(m.id)}">${escapeHtml(memberOptionLabel(m))}</option>`;
             }
             if (total > list.length) {
-                opts += `<option value="" disabled>… ${total - list.length} autre(s) : affinez la recherche</option>`;
+                opts += `<option value="" disabled>… ${total - list.length} autre(s) : affine la recherche</option>`;
             }
             select.innerHTML = opts;
             select.value = ownId;
@@ -3208,12 +3208,12 @@
             <div class="login-page">
                 <div class="login-card">
                     <h1>🤖 Michel Bot</h1>
-                    <p class="login-lead">Le bot de vos serveurs Discord : niveaux et classement, anniversaires,
+                    <p class="login-lead">Le bot de tes serveurs Discord : niveaux et classement, anniversaires,
                         modération, sondages, rappels, Père Noël Secret, flux RSS, Spotify et bien d'autres modules.</p>
                     <ul class="login-points">
                         <li>⚙️ Les administrateurs d'un serveur (droit « Gérer le serveur ») y règlent les modules de Michel.</li>
                         <li>📊 Ils y suivent aussi l'activité, les sanctions et la santé du bot sur leur serveur.</li>
-                        <li>🔒 La connexion passe par Discord : le dashboard ne lit que votre profil et la liste de vos serveurs.</li>
+                        <li>🔒 La connexion passe par Discord : le dashboard ne lit que ton profil et la liste de tes serveurs.</li>
                     </ul>
                     <a href="/auth/login" class="login-btn">
                         <svg viewBox="0 0 24 24" fill="currentColor">
@@ -3221,7 +3221,7 @@
                         </svg>
                         Se connecter avec Discord
                     </a>
-                    <p class="login-foot">Membre d'un serveur ? Tout se passe dans Discord : tapez <code>/aide</code>.</p>
+                    <p class="login-foot">Membre d'un serveur ? Tout se passe dans Discord : tape <code>/aide</code>.</p>
                 </div>
             </div>
         `;
@@ -3396,7 +3396,7 @@
                 <div class="empty-state">
                     <div class="icon">🔗</div>
                     <h3>Shlink n'est pas configuré</h3>
-                    <p>Renseignez l'URL de l'instance et la clé API dans la section « Shlink » de la
+                    <p>Renseigne l'URL de l'instance et la clé API dans la section « Shlink » de la
                     <a href="#/global" data-click="navigate" data-click-args="[&quot;global&quot;]" data-prevent>config globale</a>.</p>
                 </div>
             `;
@@ -3625,7 +3625,7 @@
                     <div class="card-header">
                         <div>
                             <div class="card-title">Bienvenue, ${escapeHtml(state.user.username)} !</div>
-                            <div class="card-subtitle">Vous êtes connecté en tant qu'utilisateur. Seuls les administrateurs peuvent modifier la configuration du bot.</div>
+                            <div class="card-subtitle">Tu es connecté·e en tant que membre. Seuls les administrateurs peuvent modifier la configuration du bot.</div>
                         </div>
                     </div>
                 </div>
@@ -3818,14 +3818,14 @@
         return `
             <div class="page-header">
                 <h2>Extensions</h2>
-                <p>Activez ou désactivez les extensions globalement. Les modifications sont appliquées immédiatement et persistées au redémarrage.</p>
+                <p>Active ou désactive les extensions pour tout le bot. Les modifications sont appliquées immédiatement et persistées au redémarrage.</p>
             </div>
 
             ${exts.length === 0 ? `
                 <div class="empty-state">
                     <div class="icon">📭</div>
                     <h3>Aucune extension trouvée</h3>
-                    <p>Vérifiez le dossier <code>extensions/</code>.</p>
+                    <p>Vérifie le dossier <code>extensions/</code>.</p>
                 </div>
             ` : `
                 <div class="card">
@@ -4608,7 +4608,7 @@
                     : (Object.keys(modConfig).length === 0
                         ? `<div class="empty-state">
                             <h3>Configuration vide</h3>
-                            <p>Utilisez le bouton "JSON" pour ajouter des paramètres.</p>
+                            <p>Le bouton « JSON » permet d'ajouter des paramètres.</p>
                         </div>`
                         : renderConfigPreview(modConfig)
                     )
@@ -4970,7 +4970,7 @@
             const data = await api(`/api/servers/${serverId}/rolemenus`);
             const menus = data?.menus || [];
             if (menus.length === 0) {
-                container.innerHTML = `<div class="empty-state"><h3>Aucun menu</h3><p>Cliquez sur « Nouveau menu » pour en créer un.</p></div>`;
+                container.innerHTML = `<div class="empty-state"><h3>Aucun menu</h3><p>Clique sur « Nouveau menu » pour en créer un.</p></div>`;
                 return;
             }
             container.innerHTML = menus.map(m => {
@@ -6401,7 +6401,7 @@
             toast('Lien copié !', 'success');
         } catch (e) {
             input.select();
-            toast('Copie impossible : sélectionnez le lien et copiez-le manuellement.', 'warning');
+            toast('Copie impossible : sélectionne le lien et copie-le à la main.', 'warning');
         }
     }
 

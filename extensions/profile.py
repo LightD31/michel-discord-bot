@@ -37,7 +37,7 @@ from src.core import clock
 from src.core import logging as logutil
 from src.core.config import ModuleConfig
 from src.core.errors import DatabaseError
-from src.discord_ext.embeds import Colors
+from src.discord_ext.look import card
 from src.discord_ext.mentions import NO_PINGS
 from src.discord_ext.menus import menu_help
 from src.discord_ext.messages import guild_id_of, send_error
@@ -159,7 +159,7 @@ class ProfileExtension(Extension):
             return
 
         name = str(getattr(member, "display_name", None) or getattr(member, "username", uid))
-        embed = Embed(title=f"Profil de {name}", color=Colors.XP)
+        embed = card("moduleXp", title=f"Profil de {name}")
         lines = footprint_lines(found, season_label, season_xp)
         if stats is None:
             lines.insert(0, "Pas encore d'XP sur ce serveur.")
@@ -169,7 +169,7 @@ class ProfileExtension(Extension):
             xp = int(stats.get("xp", 0))
             lvl, xp_in_level, xp_max = calculate_level(xp)
             try:
-                card = await asyncio.to_thread(  # Pillow work, off the event loop
+                image = await asyncio.to_thread(  # Pillow work, off the event loop
                     render_rank_card,
                     avatar_bytes=await _avatar_bytes(member),
                     username=str(getattr(member, "username", name)),
@@ -182,7 +182,7 @@ class ProfileExtension(Extension):
                     member_count=getattr(ctx.guild, "member_count", None),
                     message_count=int(stats.get("msg", 0)),
                 )
-                files.append(File(file=card, file_name="profil.png"))
+                files.append(File(file=image, file_name="profil.png"))
                 embed.set_image(url="attachment://profil.png")
             except Exception as e:
                 logger.warning("Profile card not drawn, text only: %s", e)

@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, Any
 from interactions import ActionRow, Button, ButtonStyle, Embed
 
 from features.reactionroles.permissions import MenuAuthor, RoleInfo, role_menu_refusal
-from src.discord_ext.embeds import Colors
+from src.discord_ext.look import card
 
 if TYPE_CHECKING:
     from features.reactionroles.models import RoleMenuEntry
@@ -29,7 +29,7 @@ def build_embed(title: str, description: str | None, entries: list[RoleMenuEntry
     """Render a role-menu embed (title, optional description, role/emoji/label list)."""
     body_lines = [f"{e.emoji} <@&{e.role_id}> — {e.label}" for e in entries]
     embed_description = (description + "\n\n" if description else "") + "\n".join(body_lines)
-    return Embed(title=title, description=embed_description, color=Colors.UTIL)
+    return card("moduleReactionRoles", title=title, description=embed_description)
 
 
 def build_components(menu_id: str, entries: list[RoleMenuEntry]) -> list[ActionRow]:

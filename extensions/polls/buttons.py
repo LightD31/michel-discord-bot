@@ -14,7 +14,7 @@ from features.polls import (
     tally_ranked_choice,
 )
 from src.core import logging as logutil
-from src.discord_ext.embeds import Colors
+from src.discord_ext.look import recolour
 from src.discord_ext.messages import copy_embed, edit_message_if_changed
 
 logger = logutil.init_logger(__name__)
@@ -108,7 +108,7 @@ def update_poll_embed(embed: Embed, poll: Poll) -> Embed:
     else:
         embed.add_field(name=name, value=value, inline=False)
     if poll.closed:
-        embed.color = Colors.WARNING
+        recolour(embed, "moduleUtils", "neutral")
     return embed
 
 
@@ -192,7 +192,7 @@ class PollButtonsMixin:
             return
         user_id = str(ctx.author.id)
         if user_id not in poll.votes:
-            await ctx.send("Vous n'avez pas encore voté.", ephemeral=True)
+            await ctx.send("Tu n'as pas encore voté.", ephemeral=True)
             return
         updated = await repo.clear_vote(poll.id, user_id)
         if updated is None:

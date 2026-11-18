@@ -13,7 +13,6 @@ from features.xp.seasons import MAX_MONTHS, MIN_MONTHS
 from src.core import clock
 from src.core import logging as logutil
 from src.core.config import ModuleConfig
-from src.discord_ext.embeds import Colors
 from src.webui.schemas import (
     SchemaBase,
     WeightedMessage,
@@ -143,11 +142,9 @@ class XpConfig(SchemaBase):
 logger = logutil.init_logger(__name__)
 XP = ModuleConfig("moduleXp")
 
-EMBED_COLOR = Colors.SUCCESS
 TIMEZONE = clock.LOCAL_TZ
 
 __all__ = [
-    "EMBED_COLOR",
     "TIMEZONE",
     "XP",
     "XpConfig",

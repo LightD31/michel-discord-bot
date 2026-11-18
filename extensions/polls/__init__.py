@@ -47,6 +47,7 @@ from features.polls import (
     is_reaction_poll_text,
     options_description,
     parse_duration,
+    poll_footer,
     poll_option_emojis,
     validate_poll_options,
 )
@@ -59,7 +60,7 @@ from src.core.tasks import spawn
 from src.core.text import format_discord_timestamp
 from src.discord_ext.autocomplete import MAX_CHOICES, matching_choices
 from src.discord_ext.channels import fetch_guild_channel
-from src.discord_ext.embeds import Colors
+from src.discord_ext.look import card, recolour
 from src.discord_ext.messages import copy_embed, edit_message_if_changed, send_error
 from src.discord_ext.paginator import format_poll
 from src.discord_ext.scopes import guild_scopes
@@ -101,20 +102,25 @@ async def _lock_reaction_poll(message, options: list[str], emojis: list[str]) ->
     embed.description = options_description(options, emojis)
     if not (embed.title or "").startswith("🔒"):
         embed.title = f"🔒 {embed.title}"
-    embed.color = Colors.WARNING
+    recolour(embed, "moduleUtils", "neutral")
     await edit_message_if_changed(message, embed=embed, logger=logger)
     with contextlib.suppress(Exception):
         await message.clear_all_reactions()
 
 
 def _is_poll_embed(embed: Embed) -> bool:
-    """A reaction poll's embed: the poll colour, an author footer and option paragraphs.
+    """A reaction poll's embed: Michel's footer naming its author, and option paragraphs.
 
-    The colour alone is shared with RSS posts, role menus, giveaways and button
-    polls, which a reaction must never rewrite.
+    RSS posts, role menus, giveaways and button polls, which a reaction must
+    never rewrite, don't have both.
     """
     footer_text = embed.footer.text if embed.footer else None
-    return embed.color == Colors.UTIL and is_reaction_poll_text(footer_text, embed.description)
+    return is_reaction_poll_text(footer_text, embed.description)
+
+
+def _author_name(ctx) -> str:
+    """The poll's author as the server shows them (never their id: the footer is public)."""
+    return str(getattr(ctx.author, "display_name", None) or ctx.user.username)
 
 
 async def _add_poll_reactions(message, options: list[str], use_default: bool = False) -> None:
@@ -201,7 +207,7 @@ class PollsExtension(Extension, PollButtonsMixin):
         else:
             options = [option.strip() for option in options.split(";")]
             if not validate_poll_options(options):
-                await send_error(ctx, "Vous ne pouvez pas créer un sondage avec plus de 10 options")
+                await send_error(ctx, "Un sondage a 10 options au plus.")
                 return
             emojis = POLL_EMOJIS
         close_seconds: int | None = None
@@ -222,10 +228,12 @@ class PollsExtension(Extension, PollButtonsMixin):
             description += (
                 f"\n\n*Fermeture automatique : {format_discord_timestamp(close_time, 'R')}*"
             )
-        embed = Embed(title=question, description=description, color=Colors.UTIL)
-        embed.set_footer(
-            text=f"Créé par {ctx.user.username} (ID: {ctx.user.id})",
-            icon_url=ctx.user.avatar_url,
+        embed = card(
+            "moduleUtils",
+            title=question,
+            description=description,
+            footer=poll_footer(_author_name(ctx)),
+            footer_icon=ctx.user.avatar_url,
         )
         message = await ctx.send(embed=embed)
         await _add_poll_reactions(message, options, use_default=(options == DEFAULT_POLL_OPTIONS))
@@ -367,7 +375,10 @@ class PollsExtension(Extension, PollButtonsMixin):
             return
         options = [opt.strip() for opt in options_text.split(";") if opt.strip()]
         if len(options) < 2 or not validate_poll_options(options):
-            await send_error(ctx, "Indiquez entre 2 et 10 options séparées par `;`.")
+            await send_error(
+                ctx,
+                "Indique entre 2 et 10 options séparées par `;`. Exemple : `Pizza;Sushi;Tacos`.",
+            )
             return
 
         closes_at: datetime | None = None
@@ -387,15 +398,13 @@ class PollsExtension(Extension, PollButtonsMixin):
             closes_at = clock.now() + timedelta(seconds=seconds)
 
         mode_label = "anonyme" if mode == "anonymous" else "classement"
-        embed = Embed(
+        embed = card(
+            "moduleUtils",
             title=f"📊 {question}",
-            description=f"*Sondage {mode_label}* — cliquez sur un bouton pour voter."
+            description=f"*Sondage {mode_label}* — clique sur un bouton pour voter."
             + (f"\nFermeture : {format_discord_timestamp(closes_at, 'R')}" if closes_at else ""),
-            color=Colors.UTIL,
-        )
-        embed.set_footer(
-            text=f"Créé par {ctx.user.username} (ID: {ctx.user.id})",
-            icon_url=ctx.user.avatar_url,
+            footer=poll_footer(_author_name(ctx)),
+            footer_icon=ctx.user.avatar_url,
         )
         # Placeholder send so we have a message ID to embed in custom_ids.
         message = await ctx.send(embed=embed)
@@ -501,7 +510,9 @@ class PollsExtension(Extension, PollButtonsMixin):
 
         poll.closed = True
         embed = (
-            copy_embed(message.embeds[0]) if message.embeds else Embed(title=f"📊 {poll.question}")
+            copy_embed(message.embeds[0])
+            if message.embeds
+            else card("moduleUtils", title=f"📊 {poll.question}")
         )
         if not embed.title.startswith("🔒"):
             embed.title = f"🔒 {embed.title}"
@@ -601,7 +612,7 @@ class PollsExtension(Extension, PollButtonsMixin):
             await send_error(ctx, "Ce message n'est pas un sondage à réactions de ce serveur")
             return
         if stored.author_id != str(ctx.user.id):
-            await send_error(ctx, "Vous ne pouvez modifier que les sondages que vous avez créés")
+            await send_error(ctx, "Tu ne peux modifier que les sondages que tu as créés.")
             return
         # The poll may sit in another channel than the command: it is fetched where it was posted.
         channel = await fetch_guild_channel(self.bot, ctx.guild_id, stored.channel_id)
@@ -622,7 +633,7 @@ class PollsExtension(Extension, PollButtonsMixin):
         if options is not None:
             options = [option.strip() for option in options.split(";")]
             if not validate_poll_options(options):
-                await send_error(ctx, "Vous ne pouvez pas créer un sondage avec plus de 10 options")
+                await send_error(ctx, "Un sondage a 10 options au plus.")
                 return
             embed.description = "\n\n".join(
                 [f"{POLL_EMOJIS[i]} {option}" for i, option in enumerate(options)]

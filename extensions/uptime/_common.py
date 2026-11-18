@@ -30,5 +30,5 @@ MAX_EMBED_FIELDS = 25
 
 KUMA_UNREACHABLE = (
     "Uptime Kuma est injoignable pour le moment (URL ou clé API manquante, ou serveur hors "
-    "ligne). Réessayez plus tard."
+    "ligne). Réessaie plus tard."
 )

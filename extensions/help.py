@@ -39,7 +39,7 @@ from interactions import (
 
 from src.core import logging as logutil
 from src.core.text import EMBED_FIELD_VALUE_LIMIT, clip
-from src.discord_ext.embeds import Colors
+from src.discord_ext.look import card
 from src.discord_ext.menus import MENU_HELP
 from src.discord_ext.messages import guild_id_of, require_guild
 from src.discord_ext.paginator import CustomPaginator
@@ -203,7 +203,7 @@ def render_pages(entries: list[HelpEntry], search: str | None = None) -> list[Em
             or len(page.fields) >= MAX_FIELDS_PER_PAGE
             or used + size > PAGE_TEXT_BUDGET
         ):
-            page = Embed(title="❓ Aide — commandes", description=intro, color=Colors.UTIL)
+            page = card("michel", title="❓ Aide — commandes", description=intro)
             pages.append(page)
             used = 0
         page.add_field(name=heading, value=value, inline=False)

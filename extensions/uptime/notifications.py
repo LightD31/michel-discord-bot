@@ -16,23 +16,24 @@ from src.core import logging as logutil
 from src.core.errors import DatabaseError
 from src.core.logging import log_failure
 from src.discord_ext.channels import fetch_guild_channel
-from src.discord_ext.embeds import Colors
+from src.discord_ext.look import Kind, card
 from src.integrations.uptime_kuma import MonitorState
 
 logger = logutil.init_logger(__name__)
 
-_TONE_COLORS = {
-    AlertTone.DOWN: Colors.ERROR,
-    AlertTone.MAINTENANCE: Colors.ORANGE,
-    AlertTone.UP: Colors.SUCCESS,
+_TONE_KINDS: dict[AlertTone, Kind] = {
+    AlertTone.DOWN: "error",
+    AlertTone.MAINTENANCE: "warning",
+    AlertTone.UP: "success",
 }
 
 
 def _to_embed(message: AlertMessage) -> Embed:
-    embed = Embed(
+    embed = card(
+        "moduleUptime",
+        _TONE_KINDS[message.tone],
         title=message.title,
         description=message.description,
-        color=_TONE_COLORS[message.tone],
         timestamp=message.timestamp,
     )
     for field in message.fields:

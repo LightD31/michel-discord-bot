@@ -67,7 +67,7 @@ from src.core import logging as logutil
 from src.core.config import ModuleConfig
 from src.core.logging import log_failure
 from src.core.text import EMBED_DESCRIPTION_LIMIT, clip, format_discord_timestamp
-from src.discord_ext.embeds import Colors
+from src.discord_ext.look import card
 from src.discord_ext.menus import menu_help
 from src.discord_ext.messages import fetch_user_safe, guild_id_of, jump_url, send_error
 from src.discord_ext.scopes import guild_scopes
@@ -150,10 +150,10 @@ def reminders_embed(reminders: list[Reminder]) -> Embed:
         + (f" ([message]({r.jump_url}))" if r.jump_url else "")
         for r in reminders
     ]
-    return Embed(
+    return card(
+        "moduleUtils",
         title=f"Tes rappels ({len(reminders)}/{MAX_REMINDERS_PER_MEMBER})",
         description=clip("\n\n".join(lines), EMBED_DESCRIPTION_LIMIT),
-        color=Colors.UTIL,
     )
 
 

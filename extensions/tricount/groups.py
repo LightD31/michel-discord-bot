@@ -24,7 +24,7 @@ from features.tricount import (
 from src.core import clock
 from src.core import logging as logutil
 from src.discord_ext.autocomplete import guild_group_autocomplete
-from src.discord_ext.embeds import Colors
+from src.discord_ext.look import card
 from src.discord_ext.messages import require_guild
 from src.discord_ext.scopes import guild_scopes
 
@@ -84,10 +84,11 @@ class GroupsMixin:
         }
         group_id = await repo.create_group(group_data)
 
-        embed = Embed(
+        embed = card(
+            "moduleTricount",
+            "success",
             title="✅ Groupe créé",
             description=f"Le groupe **{nom}** a été créé avec succès !",
-            color=Colors.SUCCESS,
         )
         embed.add_field(name="ID du groupe", value=str(group_id), inline=True)
         embed.add_field(name="Créateur", value=ctx.author.mention, inline=True)
@@ -123,15 +124,16 @@ class GroupsMixin:
             await ctx.send(f"❌ Aucun groupe actif trouvé avec le nom '{nom}'.", ephemeral=True)
             return
         if ctx.author.id in group["members"]:
-            await ctx.send("❌ Vous êtes déjà membre de ce groupe.", ephemeral=True)
+            await ctx.send("❌ Tu es déjà membre de ce groupe.", ephemeral=True)
             return
 
         await repo.add_group_member(group["_id"], ctx.author.id)
 
-        embed = Embed(
+        embed = card(
+            "moduleTricount",
+            "success",
             title="✅ Groupe rejoint",
-            description=f"Vous avez rejoint le groupe **{nom}** !",
-            color=Colors.SUCCESS,
+            description=f"Tu as rejoint le groupe **{nom}** !",
         )
         logger.info(
             "Utilisateur %s a rejoint le groupe Tricount '%s' sur le serveur %s",
@@ -168,13 +170,13 @@ class GroupsMixin:
             await ctx.send(f"❌ Aucun groupe actif trouvé avec le nom '{nom}'.", ephemeral=True)
             return
         if ctx.author.id not in group["members"]:
-            await ctx.send("❌ Vous n'êtes pas membre de ce groupe.", ephemeral=True)
+            await ctx.send("❌ Tu n'es pas membre de ce groupe.", ephemeral=True)
             return
 
         await repo.remove_group_member(group["_id"], ctx.author.id)
         stopped = await repo.stop_member_recurring(group["_id"], ctx.author.id)
 
-        description = f"Vous avez quitté le groupe **{nom}**."
+        description = f"Tu as quitté le groupe **{nom}**."
         if stopped:
             description += f"\n\n{stopped} dépense(s) récurrente(s) arrêtée(s)."
         balance = compute_balances(
@@ -185,15 +187,11 @@ class GroupsMixin:
             # /bilan until a reimbursement brings them back to zero.
             currency = guild_currency(ctx.guild.id)
             description += (
-                f"\n\nVotre solde n'est pas réglé "
-                f"({format_amount(balance, currency, signed=True)}) : vous restez dans le bilan "
+                f"\n\nTon solde n'est pas réglé "
+                f"({format_amount(balance, currency, signed=True)}) : tu restes dans le bilan "
                 "jusqu'à ce qu'un remboursement soit enregistré avec `/tricount rembourser`."
             )
-        embed = Embed(
-            title="✅ Groupe quitté",
-            description=description,
-            color=Colors.WARNING,
-        )
+        embed = card("moduleTricount", "neutral", title="✅ Groupe quitté", description=description)
         logger.info(
             "Utilisateur %s a quitté le groupe Tricount '%s' sur le serveur %s",
             ctx.author.display_name,
@@ -233,7 +231,7 @@ class GroupsMixin:
     )
     @slash_option(
         name="payeur",
-        description="Qui a payé (par défaut : vous)",
+        description="Qui a payé (par défaut : toi)",
         opt_type=OptionType.USER,
         required=False,
     )
@@ -271,7 +269,7 @@ class GroupsMixin:
 
         if ctx.author.id not in members and ctx.author.id not in (payeur.id, destinataire.id):
             await ctx.send(
-                "❌ Vous devez être membre du groupe, ou concerné par le remboursement.",
+                "❌ Il faut être membre du groupe, ou concerné par le remboursement.",
                 ephemeral=True,
             )
             return
@@ -302,13 +300,14 @@ class GroupsMixin:
         after = compute_balances(await repo.list_group_expenses(group["_id"]), members)
 
         currency = guild_currency(ctx.guild.id)
-        embed = Embed(
+        embed = card(
+            "moduleTricount",
+            "success",
             title="✅ Remboursement enregistré",
             description=(
                 f"{payeur.mention} → {destinataire.mention} : "
                 f"**{format_amount(to_cents(round(montant, 2)), currency)}** dans **{groupe}**"
             ),
-            color=Colors.SUCCESS,
         )
         for person in (payeur, destinataire):
             cents = after.get(person.id, 0)

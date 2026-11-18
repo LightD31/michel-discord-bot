@@ -16,7 +16,7 @@ from features.xp.seasons import Season, thousands
 from src.core.errors import DatabaseError
 from src.core.logging import log_failure
 from src.core.text import format_discord_timestamp, format_number
-from src.discord_ext.embeds import Colors
+from src.discord_ext.look import card
 from src.discord_ext.messages import (
     edit_message_if_changed,
     fetch_or_create_persistent_message,
@@ -24,14 +24,14 @@ from src.discord_ext.messages import (
 )
 from src.discord_ext.paginator import CustomPaginator
 
-from ._common import EMBED_COLOR, TIMEZONE, XP, logger
+from ._common import TIMEZONE, XP, logger
 
 
 def create_leaderboard_embed(guild_name: str, is_continuation: bool = False) -> Embed:
     title = f"Classement de {guild_name}"
     if is_continuation:
-        title += " (cont.)"
-    return Embed(title=title, color=EMBED_COLOR, timestamp=datetime.now(TIMEZONE))
+        title += " (suite)"
+    return card("moduleXp", title=title, timestamp=datetime.now(TIMEZONE))
 
 
 class LeaderboardMixin:
@@ -88,10 +88,11 @@ class LeaderboardMixin:
         except DatabaseError as e:
             logger.error("Database error building leaderboard: %s", e)
             return [
-                Embed(
+                card(
+                    "moduleXp",
+                    "error",
                     title="Erreur",
                     description="Impossible de récupérer le classement.",
-                    color=Colors.ERROR,
                 )
             ]
 
@@ -138,16 +139,17 @@ class LeaderboardMixin:
         except DatabaseError as e:
             logger.error("Database error building the season leaderboard: %s", e)
             return [
-                Embed(
+                card(
+                    "moduleXp",
+                    "error",
                     title="Erreur",
                     description="Impossible de récupérer le classement de la saison.",
-                    color=Colors.ERROR,
                 )
             ]
         title = f"Saison {season.label} — {guild.name}"
         ends = format_discord_timestamp(season.end, "R")
         embeds: list[Embed] = []
-        embed = Embed(title=title, description=f"Fin de la saison {ends}.", color=EMBED_COLOR)
+        embed = card("moduleXp", title=title, description=f"Fin de la saison {ends}.")
         shown = 0
         for user_id, xp in ranking:
             member_info = await self._get_member_info(guild, user_id)
@@ -162,7 +164,7 @@ class LeaderboardMixin:
             shown += 1
             if shown % LEADERBOARD_PAGE_SIZE == 0:
                 embeds.append(embed)
-                embed = Embed(title=f"{title} (suite)", color=EMBED_COLOR)
+                embed = card("moduleXp", title=f"{title} (suite)")
         if not shown:
             embed.description = (
                 f"Personne n'a encore gagné d'XP cette saison. Fin de la saison {ends}."

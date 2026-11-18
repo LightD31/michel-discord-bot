@@ -12,6 +12,7 @@ from src.core import clock
 from src.core import logging as logutil
 from src.core.http import fetch
 from src.core.logging import log_failure
+from src.discord_ext.look import card
 from src.discord_ext.messages import edit_message_if_changed
 
 from ._common import (
@@ -441,10 +442,13 @@ class TasksMixin:
     ):
         """Fallback embed used when API fetch and cache both fail."""
         try:
-            simple_embed = Embed(
-                title="Zevent Update",
-                description=f"Total récolté: {total_amount}\n\nDésolé, nous rencontrons des difficultés techniques pour afficher les détails des streamers.",
-                color=0x59AF37,
+            simple_embed = card(
+                "moduleZevent",
+                title="Zevent",
+                description=(
+                    f"Total récolté : {total_amount}\n\n"
+                    "Je n'arrive pas à afficher le détail des streamers pour l'instant."
+                ),
             )
             simple_embed.timestamp = utils.timestamp_converter(clock.now())
 

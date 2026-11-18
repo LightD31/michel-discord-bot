@@ -29,8 +29,8 @@ from features.moderation import (
 )
 from src.core import clock
 from src.core.text import format_discord_timestamp
-from src.discord_ext.embeds import Colors
 from src.discord_ext.errors import failure_reply
+from src.discord_ext.look import card
 from src.discord_ext.messages import module_off, require_guild, send_error, send_success
 from src.discord_ext.scopes import guild_scopes
 
@@ -470,10 +470,12 @@ class CommandsMixin:
 
     def _build_history_embed(self, member: Member, items: list[Infraction]) -> Embed:
         active = sum(1 for i in items if i.active)
-        embed = Embed(
+        older = len(items) - 15
+        embed = card(
+            "moduleModeration",
             title=f"Historique de {member.display_name}",
             description=f"{len(items)} sanction(s) · {active} active(s)",
-            color=Colors.UTIL,
+            footer=f"+{older} sanction(s) plus ancienne(s)" if older > 0 else None,
         )
         for inf in items[:15]:
             ts = format_discord_timestamp(inf.created_at, "d")
@@ -489,8 +491,6 @@ class CommandsMixin:
                 value=f"{(inf.reason or '*Aucune raison*')[:300]}\nPar {by} · {ts}",
                 inline=False,
             )
-        if len(items) > 15:
-            embed.set_footer(text=f"+{len(items) - 15} sanction(s) plus ancienne(s)")
         return embed
 
     @slash_command(

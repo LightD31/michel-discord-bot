@@ -162,7 +162,7 @@ async def _resolve_author(ctx: WebUIContext, guild, session: Session) -> MenuAut
     is_developer = ctx.oauth.is_developer(session)
     member = await guild.fetch_member(int(session.user_id))
     if member is None and not is_developer:
-        raise HTTPException(status_code=403, detail="Vous n'êtes pas membre de ce serveur")
+        raise HTTPException(status_code=403, detail="Tu n'es pas membre de ce serveur.")
     return menu_author(guild, member, bypass_hierarchy=is_developer)
 
 

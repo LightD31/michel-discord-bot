@@ -42,7 +42,7 @@ class IAConfig(SchemaBase):
         "Contexte du serveur",
         "text",
         description="Ce que Michel doit savoir du serveur pour être dans le ton : qui est qui, "
-        "surnoms, blagues récurrentes, vocabulaire maison. Restez bref (2000 caractères max) : "
+        "surnoms, blagues récurrentes, vocabulaire maison. Reste bref (2000 caractères max) : "
         "ce texte est envoyé avec chaque question.",
     )
     compareByDefault: bool = ui(

@@ -3,7 +3,7 @@
 import os
 from datetime import datetime
 
-from interactions import Embed, EmbedFooter, OrTrigger, Task, TimeTrigger
+from interactions import Embed, OrTrigger, Task, TimeTrigger
 
 from features.confrerie.works import Work, parse_work
 from features.links import shorten_url
@@ -12,7 +12,7 @@ from src.core import logging as logutil
 from src.core.logging import log_failure
 from src.core.text import format_discord_timestamp
 from src.discord_ext.channels import fetch_guild_channel
-from src.discord_ext.embeds import Colors
+from src.discord_ext.look import card
 
 from ._common import CONFRERIE, ConfrerieError
 
@@ -47,10 +47,10 @@ def build_work_embed(
     *,
     notion_url: str,
     links: list[tuple[str, str]],
-    footer: EmbedFooter | None = None,
+    footer_icon: str | None = None,
 ) -> Embed:
     """Embed describing one œuvre (update announcements and ``/texte``)."""
-    embed = Embed(title=title, color=Colors.CONFRERIE, footer=footer, timestamp=clock.now())
+    embed = card("moduleConfrerie", title=title, footer_icon=footer_icon, timestamp=clock.now())
     embed.add_field(name="Titre", value=work.title[:1024], inline=True)
     if work.authors:
         embed.add_field(name="Auteur", value=", ".join(work.authors)[:1024], inline=True)
@@ -100,7 +100,7 @@ class UpdatesMixin:
             title,
             notion_url=notion_url,
             links=links,
-            footer=await self._create_embed_footer(guild_id),
+            footer_icon=self._footer_icon(guild_id),
         )
         await channel.send(work.update_note[:MESSAGE_LIMIT] or None, embed=embed)
         logger.info(f"Message de mise à jour envoyé pour la page {page_id}")

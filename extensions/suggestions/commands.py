@@ -31,7 +31,7 @@ from features.suggestions import Suggestion
 from src.core import clock
 from src.core.logging import log_failure
 from src.discord_ext.channels import fetch_guild_channel
-from src.discord_ext.embeds import Colors
+from src.discord_ext.look import card
 from src.discord_ext.menus import menu_help
 from src.discord_ext.messages import (
     edit_message_if_changed,
@@ -46,7 +46,7 @@ from src.discord_ext.scopes import guild_scopes
 from src.discord_ext.staff import is_staff
 
 from ._common import (
-    STATUS_COLORS,
+    STATUS_KINDS,
     STATUS_LABELS,
     SUGGESTIONS,
     VOTE_PREFIX,
@@ -59,15 +59,15 @@ def _build_embed(
     suggestion: Suggestion,
     *,
     anonymous: bool,
-    bot_name: str = "",
 ) -> Embed:
     up, down = suggestion.tally()
     author_value = "Anonyme" if anonymous else f"<@{suggestion.author_id}>"
 
-    embed = Embed(
+    embed = card(
+        "moduleSuggestions",
+        STATUS_KINDS.get(suggestion.status, "info"),
         title=f"Suggestion #{suggestion.id}",
         description=suggestion.text,
-        color=STATUS_COLORS.get(suggestion.status, Colors.UTIL),
     )
     embed.add_field(name="Statut", value=STATUS_LABELS[suggestion.status], inline=True)
     embed.add_field(name="Auteur", value=author_value, inline=True)
@@ -86,8 +86,6 @@ def _build_embed(
         embed.add_field(name="​", value="\n".join(details), inline=False)
 
     embed.timestamp = suggestion.created_at
-    if bot_name:
-        embed.set_footer(text=bot_name)
     return embed
 
 

@@ -179,7 +179,7 @@ class EditorsMixin:
             ParagraphText(
                 label="Commentaire",
                 custom_id="commentaire",
-                placeholder="Votre avis, votre expérience avec cet éditeur…",
+                placeholder="Ton avis, ton expérience avec cet éditeur…",
                 required=False,
                 max_length=2000,
             ),
@@ -216,7 +216,7 @@ class EditorsMixin:
         """Create the Notion page from this user's pending options + modal text."""
         editor = self._pending_editors.pop(ctx.author.id)
         if editor is None:
-            await send_error(ctx, "Données manquantes, veuillez relancer /editeur.")
+            await send_error(ctx, "Il me manque des données : relance /editeur.")
             return
 
         editor.ligne_editoriale = ligne_editoriale
@@ -236,7 +236,7 @@ class EditorsMixin:
             page = await self.notion_client.create_page(database_id=db_id, properties=properties)
         except NotionAPIError as e:
             logger.error("Erreur Notion lors de l'ajout de l'éditeur %s: %s", editor.name, e)
-            await send_error(ctx, "Notion a refusé l'ajout de l'éditeur, réessayez plus tard.")
+            await send_error(ctx, "Notion a refusé l'ajout de l'éditeur : réessaie plus tard.")
             return
 
         link = np.page_url(page)

@@ -5,7 +5,6 @@ from datetime import UTC, datetime, timedelta
 
 from interactions import (
     BaseChannel,
-    BrandColors,
     Embed,
     Guild,
     IntervalTrigger,
@@ -19,6 +18,7 @@ from mcstatus import JavaServer
 from features.minecraft import MinecraftSettings
 from src.core import clock
 from src.core.logging import log_failure
+from src.discord_ext.look import card
 from src.discord_ext.messages import edit_message_if_changed
 
 from ._common import MINECRAFT, build_stats_embed, logger
@@ -115,15 +115,23 @@ class StatusMixin:
             players = "\u200b"
             joueurs = "\u200b"
 
-        embed = Embed(
+        embed = card(
+            "moduleMinecraft",
+            "success",
             title=f"Serveur {settings.server_type + ' ' if settings.server_type else ''}{coloc_status.version.name}",
-            description=f"Adresse : `{settings.address}`"
-            + (
-                f"\nModpack : [{settings.modpack_name}]({settings.modpack_url})"
-                if settings.modpack_name and settings.modpack_url
-                else ""
-            )
-            + (f"\nVersion : **{settings.modpack_version}**" if settings.modpack_version else ""),
+            description=(
+                f"Adresse : `{settings.address}`"
+                + (
+                    f"\nModpack : [{settings.modpack_name}]({settings.modpack_url})"
+                    if settings.modpack_name and settings.modpack_url
+                    else ""
+                )
+                + (
+                    f"\nVersion : **{settings.modpack_version}**"
+                    if settings.modpack_version
+                    else ""
+                )
+            ),
             fields=[
                 {
                     "name": "Latence",
@@ -146,7 +154,6 @@ class StatusMixin:
                 if settings.status_url
                 else []
             ),
-            color=BrandColors.GREEN,
             timestamp=Timestamp.utcnow().isoformat(),
         )
         name = f"🟢︱{coloc_status.players.online if coloc_status.players.online != 0 else 'aucun'}᲼joueur{'s' if coloc_status.players.online > 1 else ''}"
@@ -154,7 +161,9 @@ class StatusMixin:
 
     def _create_offline_embed(self, settings: MinecraftSettings):
         """Create embed for offline server status."""
-        embed = Embed(
+        embed = card(
+            "moduleMinecraft",
+            "error",
             title="Serveur Hors-ligne",
             description=f"Adresse : `{settings.address}`",
             fields=[
@@ -165,7 +174,6 @@ class StatusMixin:
             ]
             if settings.status_url
             else [],
-            color=BrandColors.RED,
             timestamp=Timestamp.utcnow().isoformat(),
         )
         return embed, "🔴︱hors-ligne"
@@ -177,7 +185,9 @@ class StatusMixin:
         except IndexError:
             title = "Serveur Minecraft"
 
-        embed = Embed(
+        embed = card(
+            "moduleMinecraft",
+            "warning",
             title=title,
             description=f"Adresse : `{settings.address}`\n",
             fields=[
@@ -198,7 +208,6 @@ class StatusMixin:
             ),
             footer=settings.footer_text if settings.footer_text else None,
             timestamp=Timestamp.utcnow().isoformat(),
-            color=BrandColors.YELLOW,
         )
         return embed, "🟡︱veille"
 

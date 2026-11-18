@@ -73,7 +73,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
         session = await ctx.oauth.exchange_code(code)
         if not session:
             return HTMLResponse(
-                content="<h1>Accès refusé</h1><p>Vous n'êtes pas autorisé à accéder au dashboard.</p>",
+                content="<h1>Accès refusé</h1><p>Tu n'as pas accès au dashboard.</p>",
                 status_code=403,
             )
 

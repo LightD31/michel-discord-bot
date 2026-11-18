@@ -29,6 +29,7 @@ from src.core.errors import DatabaseError
 from src.core.logging import log_failure
 from src.core.message_refs import MessageRefRepository
 from src.discord_ext.channels import fetch_guild_channel, member_can
+from src.discord_ext.look import ok, oops
 
 # ---------------------------------------------------------------------------
 # Ephemeral responses
@@ -42,7 +43,7 @@ async def send_error(ctx: InteractionContext, message: str, *, icon: str = "❌"
     a date or a duration not understood, the module's own emoji for "not
     here"; ❌ is for the rest.
     """
-    await ctx.send(f"{icon} {message}", ephemeral=True)
+    await ctx.send(oops(message, icon), ephemeral=True)
 
 
 # What the author must hold in the channel a command makes the bot act on.
@@ -118,7 +119,7 @@ def jump_url(guild_id: int | str, channel_id: int | str, message_id: int | str) 
 
 async def send_success(ctx: InteractionContext, message: str) -> None:
     """Send an ephemeral success message prefixed with a check emoji."""
-    await ctx.send(f"✅ {message}", ephemeral=True)
+    await ctx.send(ok(message), ephemeral=True)
 
 
 # ---------------------------------------------------------------------------

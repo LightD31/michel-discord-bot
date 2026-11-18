@@ -35,7 +35,7 @@ from src.core import clock
 from src.core import logging as logutil
 from src.core.config import global_config
 from src.core.db import mongo_manager
-from src.discord_ext.embeds import Colors
+from src.discord_ext.look import card
 from src.discord_ext.scopes import guild_scopes
 
 logger = logutil.init_logger(__name__)
@@ -146,19 +146,16 @@ class BackupExtension(Extension):
             )
             elapsed = (clock.now() - start).total_seconds()
 
-            embed = Embed(
+            embed = card(
+                "michel",
+                "success",
                 title="✅ Sauvegarde terminée",
                 description=f"Sauvegarde enregistrée dans `{path}`",
-                color=Colors.BACKUP_SUCCESS,
             )
             embed.add_field(name="Durée", value=f"{elapsed:.1f}s", inline=True)
             embed.add_field(name="Rétention", value=f"{effective_max} sauvegardes", inline=True)
             await ctx.send(embed=embed)
         except Exception as e:
             logger.error("Manual backup failed: %s", e, exc_info=True)
-            embed = Embed(
-                title="❌ Erreur de sauvegarde",
-                description=str(e),
-                color=Colors.BACKUP_ERROR,
-            )
+            embed = card("michel", "error", title="❌ Erreur de sauvegarde", description=str(e))
             await ctx.send(embed=embed)

@@ -12,7 +12,7 @@ from interactions.client.errors import HTTPException
 import extensions.polls as polls_module
 from extensions.polls import PollsExtension
 from features.polls import POLL_EMOJIS, Poll, options_description
-from src.discord_ext.embeds import Colors
+from src.discord_ext.look import Palette
 
 
 def test_poll_model_accepts_reaction_polls():
@@ -51,7 +51,7 @@ class FakeMessage:
         self.id = message_id
         self.channel = SimpleNamespace(id=20)
         self.embeds = [
-            Embed(title="Pizza ?", description="1️⃣ Oui\n\n*Fermeture…*", color=Colors.UTIL)
+            Embed(title="Pizza ?", description="1️⃣ Oui\n\n*Fermeture…*", color=Palette.BLUE)
         ]
         self.reactions_cleared = False
 
@@ -160,7 +160,7 @@ def test_the_sweep_closes_a_due_reaction_poll(enabled):
     embed = kwargs["embed"]
     assert embed.title == "🔒 Pizza ?"
     assert embed.description == "1️⃣ Oui\n\n2️⃣ Non"  # deadline note gone
-    assert embed.color == Colors.WARNING
+    assert embed.color == Palette.GREY
     assert message.reactions_cleared
     assert repo.closed == ["b" * 24]
 

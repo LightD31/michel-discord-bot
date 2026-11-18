@@ -12,8 +12,8 @@ class LldapConfig(SchemaBase):
     __description__ = (
         "Comptes LLDAP pour les membres selon leurs rôles Discord : /register crée le compte "
         "et l'appartenance aux groupes suit les rôles (toutes les 10 minutes, ou /lldap sync). "
-        "Côté LLDAP, créez un attribut utilisateur personnalisé de type chaîne pour l'ID "
-        "Discord et utilisez un compte membre de lldap_admin."
+        "Côté LLDAP, crée un attribut utilisateur personnalisé de type chaîne pour l'ID "
+        "Discord et utilise un compte membre de lldap_admin."
     )
     __icon__ = "🔐"
     __category__ = "Outils"

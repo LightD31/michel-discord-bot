@@ -16,7 +16,7 @@ from src.core import clock
 from src.core import logging as logutil
 from src.core.logging import log_failure
 from src.discord_ext.channels import fetch_guild_channel
-from src.discord_ext.embeds import Colors
+from src.discord_ext.look import card
 from src.discord_ext.messages import edit_message_if_changed, fetch_user_safe, send_error
 from src.discord_ext.scopes import guild_scopes
 from src.discord_ext.secretsanta import (
@@ -111,7 +111,7 @@ class SessionsMixin:
             await send_error(
                 ctx,
                 "Une session de Père Noël Secret est déjà en cours !\n"
-                "Utilisez `/secretsanta cancel` pour l'annuler d'abord.",
+                "Annule-la d'abord avec `/secretsanta cancel`.",
             )
             return
         if existing and not may_organise(ctx, existing):
@@ -223,7 +223,7 @@ class SessionsMixin:
                 "avec ses boutons, grâce à `/secretsanta remind`."
             )
         await ctx.send(
-            embed=Embed(title="🎅 Session modifiée", description=text, color=Colors.SECRET_SANTA),
+            embed=card("moduleSecretSanta", title="🎅 Session modifiée", description=text),
             ephemeral=True,
         )
         logger.info("Secret Santa session %s changed by %s: %s", context_id, ctx.author.id, changes)
@@ -247,10 +247,10 @@ class SessionsMixin:
         listing = "\n".join(f"• {m}" for m in mentions) or "*Aucun participant pour le moment*"
         status = "✅ Tirage effectué" if session.is_drawn else "⏳ En attente du tirage"
 
-        embed = Embed(
+        embed = card(
+            "moduleSecretSanta",
             title=f"🎅 Participants ({len(session.participants)})",
             description=f"**Statut :** {status}\n\n{listing}",
-            color=Colors.SECRET_SANTA,
         )
         details = session_details(session)
         if details:
@@ -300,10 +300,10 @@ class SessionsMixin:
                 channel = await fetch_guild_channel(self.bot, ctx.guild.id, session.channel_id)
                 if channel:
                     message = await channel.fetch_message(session.message_id)
-                    embed = Embed(
+                    embed = card(
+                        "moduleSecretSanta",
                         title="🎅 Session annulée",
                         description="Cette session de Père Noël Secret a été annulée.",
-                        color=Colors.SECRET_SANTA_ACCENT,
                     )
                     await edit_message_if_changed(
                         message, embed=embed, components=[], logger=logger
@@ -315,10 +315,10 @@ class SessionsMixin:
         self.relay_limiter.forget(context_id)
 
         await ctx.send(
-            embed=Embed(
+            embed=card(
+                "moduleSecretSanta",
                 title="🎅 Session annulée",
                 description="La session de Père Noël Secret a été annulée avec succès.",
-                color=Colors.SECRET_SANTA,
             ),
             ephemeral=True,
         )

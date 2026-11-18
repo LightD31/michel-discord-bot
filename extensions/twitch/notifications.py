@@ -3,7 +3,7 @@
 import os
 from datetime import datetime
 
-from interactions import Embed, EmbedFooter
+from interactions import Embed
 from twitchAPI.helper import first
 from twitchAPI.object.api import ChannelInformation, Stream, TwitchUser
 from twitchAPI.object.eventsub import ChannelUpdateEvent
@@ -12,11 +12,9 @@ from twitchAPI.type import VideoType
 from src.core import clock
 from src.core import logging as logutil
 from src.core.logging import log_failure
-from src.discord_ext.embeds import Colors
+from src.discord_ext.look import card
 
 logger = logutil.init_logger(__name__)
-
-DEFAULT_EMBED_COLOR = Colors.TWITCH
 
 
 class NotificationsMixin:
@@ -35,27 +33,21 @@ class NotificationsMixin:
         guild_id: int,
         title: str,
         description: str,
-        color: int = DEFAULT_EMBED_COLOR,
     ) -> Embed:
         """Create a notification embed with a uniform footer/timestamp layout."""
         now = clock.now()
         try:
             bot = await self.bot.fetch_member(self.bot.user.id, guild_id)
-            return Embed(
+            return card(
+                "moduleTwitch",
                 title=title,
                 description=description,
-                color=color,
                 timestamp=now,
-                footer=EmbedFooter(text=bot.display_name, icon_url=bot.avatar_url),
+                footer_icon=bot.avatar_url,
             )
         except Exception as e:
             log_failure(logger, "Error creating notification embed for guild %s: %s", guild_id, e)
-            return Embed(
-                title=title,
-                description=description,
-                color=color,
-                timestamp=now,
-            )
+            return card("moduleTwitch", title=title, description=description, timestamp=now)
 
     async def create_stream_embed(
         self,
@@ -138,30 +130,30 @@ class NotificationsMixin:
         there); without a guild, there is no footer.
         """
         if guild_id is None:
-            return Embed(
+            return card(
+                "moduleTwitch",
                 title=title,
                 description=description,
-                color=Colors.TWITCH,
                 url=f"https://twitch.tv/{user_login}",
                 timestamp=clock.now(),
             )
 
         try:
             bot = await self.bot.fetch_member(self.bot.user.id, guild_id)
-            return Embed(
+            return card(
+                "moduleTwitch",
                 title=title,
                 description=description,
-                color=Colors.TWITCH,
                 url=f"https://twitch.tv/{user_login}",
-                footer=EmbedFooter(text=bot.display_name, icon_url=bot.avatar_url),
+                footer_icon=bot.avatar_url,
                 timestamp=clock.now(),
             )
         except Exception as e:
             log_failure(logger, f"Error creating embed for {user_login} in guild {guild_id}: {e}")
-            return Embed(
+            return card(
+                "moduleTwitch",
                 title=title,
                 description=description,
-                color=Colors.TWITCH,
                 url=f"https://twitch.tv/{user_login}",
                 timestamp=clock.now(),
             )
@@ -209,7 +201,6 @@ class NotificationsMixin:
                 streamer.guild_id,
                 title=f"{broadcaster_name} est en live !",
                 description=f"[Rejoindre le stream](https://twitch.tv/{streamer.streamer_id})",
-                color=Colors.TWITCH,
             )
             embed.add_field(name="Titre", value=title, inline=False)
             embed.add_field(name="Catégorie", value=category, inline=True)
@@ -295,7 +286,6 @@ class NotificationsMixin:
                 streamer.guild_id,
                 title=f"{broadcaster_name} a terminé son live",
                 description="Résumé de la session Twitch",
-                color=Colors.TWITCH_ALT,
             )
 
             embed.add_field(name="Durée", value=duration_str, inline=True)

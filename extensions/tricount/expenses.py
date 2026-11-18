@@ -18,7 +18,7 @@ from src.core import clock
 from src.core import logging as logutil
 from src.core.errors import DatabaseError
 from src.discord_ext.autocomplete import guild_group_autocomplete
-from src.discord_ext.embeds import Colors
+from src.discord_ext.look import card
 from src.discord_ext.messages import fetch_user_safe, require_guild
 from src.discord_ext.scopes import guild_scopes
 
@@ -65,7 +65,7 @@ class ExpensesMixin:
     )
     @slash_option(
         name="payeur",
-        description="Qui a payé (par défaut: vous)",
+        description="Qui a payé (par défaut : toi)",
         opt_type=OptionType.USER,
         required=False,
     )
@@ -102,7 +102,7 @@ class ExpensesMixin:
             return
         if ctx.author.id not in group["members"]:
             await ctx.send(
-                "❌ Vous devez être membre du groupe pour ajouter une dépense.", ephemeral=True
+                "❌ Il faut être membre du groupe pour ajouter une dépense.", ephemeral=True
             )
             return
         if payeur.id not in group["members"]:
@@ -126,10 +126,11 @@ class ExpensesMixin:
         await repo.add_expense(expense_data)
 
         currency = guild_currency(ctx.guild.id)
-        embed = Embed(
+        embed = card(
+            "moduleTricount",
+            "success",
             title="✅ Dépense ajoutée",
             description=f"Dépense ajoutée au groupe **{groupe}**",
-            color=Colors.SUCCESS,
         )
         embed.add_field(name="Montant", value=f"{montant:.2f}{currency}", inline=True)
         embed.add_field(name="Payeur", value=payeur.mention, inline=True)
@@ -200,21 +201,21 @@ class ExpensesMixin:
     )
     @slash_option(
         name="nouveau_montant",
-        description="Nouveau montant (laissez vide pour ne pas modifier)",
+        description="Nouveau montant (vide : inchangé)",
         opt_type=OptionType.NUMBER,
         required=False,
         max_value=MAX_AMOUNT,
     )
     @slash_option(
         name="nouvelle_description",
-        description="Nouvelle description (laissez vide pour ne pas modifier)",
+        description="Nouvelle description (vide : inchangée)",
         opt_type=OptionType.STRING,
         required=False,
         max_length=100,
     )
     @slash_option(
         name="nouveau_payeur",
-        description="Nouveau payeur (laissez vide pour ne pas modifier)",
+        description="Nouveau payeur (vide : inchangé)",
         opt_type=OptionType.USER,
         required=False,
     )
@@ -280,10 +281,11 @@ class ExpensesMixin:
             await ctx.send("❌ Dépense non trouvée dans ce groupe.", ephemeral=True)
             return
 
-        embed = Embed(
+        embed = card(
+            "moduleTricount",
+            "success",
             title="✅ Dépense modifiée",
             description=f"La dépense dans le groupe **{groupe}** a été modifiée.",
-            color=Colors.SUCCESS,
         )
         embed.add_field(name="Modifications", value="\n".join(changes_description), inline=False)
         logger.info(
@@ -305,7 +307,7 @@ class ExpensesMixin:
         manager = may_manage_group(ctx, group)
         if ctx.author.id not in group["members"] and not manager:
             await ctx.send(
-                f"❌ Vous devez être membre du groupe pour {verb} une dépense.", ephemeral=True
+                f"❌ Il faut être membre du groupe pour {verb} une dépense.", ephemeral=True
             )
             return None
         expense = await repo.find_expense_in_group(depense_id, group["_id"])
@@ -314,8 +316,8 @@ class ExpensesMixin:
             return None
         if not manager and ctx.author.id not in (expense["added_by"], expense["payer"]):
             await ctx.send(
-                f"❌ Vous ne pouvez {verb} que les dépenses que vous avez ajoutées ou payées "
-                "(ou celles du groupe si vous l'avez créé).",
+                f"❌ Tu ne peux {verb} que les dépenses que tu as ajoutées ou payées "
+                "(ou celles du groupe si tu l'as créé).",
                 ephemeral=True,
             )
             return None
@@ -365,13 +367,14 @@ class ExpensesMixin:
             expense.get("description"),
         )
         await ctx.send(
-            embed=Embed(
+            embed=card(
+                "moduleTricount",
+                "warning",
                 title="🗑️ Dépense supprimée",
                 description=(
                     f"**{expense.get('description', '')}** — {expense['amount']:.2f}{currency} "
                     f"retirée du groupe **{groupe}**."
                 ),
-                color=Colors.WARNING,
             )
         )
 

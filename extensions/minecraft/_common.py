@@ -1,9 +1,10 @@
 """Shared config schema, logger and stats embed for the minecraft extension."""
 
-from interactions import BrandColors, Embed, Timestamp, TimestampStyles
+from interactions import Embed, Timestamp, TimestampStyles
 
 from src.core import logging as logutil
 from src.core.config import ModuleConfig
+from src.discord_ext.look import card
 from src.webui.schemas import (
     SchemaBase,
     enabled_field,
@@ -111,14 +112,14 @@ def build_stats_embed(refreshed_at: Timestamp) -> Embed:
     relative label client-side and keeps "il y a 5 minutes" current on its own,
     so the bot never has to rewrite the message just to advance a clock.
     """
-    return Embed(
+    return card(
+        "moduleMinecraft",
         title="Stats",
         description=(
             "Actualisé toutes les heures à Xh10\n"
             f"Dernière actualisation : {refreshed_at.format(TimestampStyles.RelativeTime)}"
         ),
         images="attachment://stats.png",
-        color=BrandColors.BLURPLE,
         timestamp=refreshed_at,
     )
 

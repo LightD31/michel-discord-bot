@@ -208,7 +208,7 @@ async def test_notion_failure_puts_the_draft_back_up_for_review():
     ctx = await _click(harness, "approve", "defi-1-2")
     assert harness.repo.status("defi-1-2") == STATUS_PENDING
     assert ctx.origin_edits == []
-    assert "réessayez" in ctx.replies[0]
+    assert "réessaie" in ctx.replies[0]
 
 
 async def test_rejected_demande_tells_the_member():

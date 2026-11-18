@@ -44,8 +44,8 @@ from features.userdata import NOBODY
 from src.core import clock
 from src.core.text import EMBED_FIELD_VALUE_LIMIT, clip
 from src.discord_ext.channels import fetch_guild_channel, member_can
-from src.discord_ext.embeds import Colors
 from src.discord_ext.errors import failure_reply
+from src.discord_ext.look import card
 from src.discord_ext.menus import menu_help
 from src.discord_ext.messages import (
     CAN_PURGE,
@@ -151,10 +151,11 @@ def _reporter_lines(report: MessageReport) -> str:
 def report_card(report: MessageReport, quote: str, guild_id: str) -> tuple[Embed, list[ActionRow]]:
     """The card in the mod-log channel: the message, who reported it, and what to do."""
     count = len(report.reporters)
-    embed = Embed(
+    embed = card(
+        "moduleModeration",
+        "error" if report.is_open else "neutral",
         title="🚩 Message signalé" + (f" ×{count}" if count > 1 else ""),
         description=quote,
-        color=Colors.ERROR if report.is_open else Colors.UTIL,
     )
     embed.add_field(
         name="Auteur", value=f"<@{report.author_id}> (`{report.author_id}`)", inline=True

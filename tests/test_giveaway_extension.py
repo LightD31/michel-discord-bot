@@ -32,7 +32,7 @@ class FakeRepo:
 
 def announcement():
     embed = Embed(title="🎁 GIVEAWAY — Un jeu")
-    embed.set_footer(text="Lancé par alice", icon_url="https://cdn/alice.png")
+    embed.set_footer(text="Michel · Giveaways · Lancé par alice", icon_url="https://cdn/alice.png")
     replies = []
 
     async def reply(text, **kwargs):
@@ -111,7 +111,8 @@ async def test_the_draw_keeps_the_host_in_the_footer_and_removes_the_buttons(ext
     assert len(ext.repo.winners) == 1 and ext.repo.winners[0] in {"10", "11"}
     [edit] = ext.edits
     footer = edit["embeds"][0].footer
-    assert footer.text == "Lancé par alice" and footer.icon_url == "https://cdn/alice.png"
+    assert footer.text == "Michel · Giveaways · Lancé par alice"
+    assert footer.icon_url == "https://cdn/alice.png"
     assert edit["components"] == []
     assert message.replies and "Félicitations" in message.replies[0]
 

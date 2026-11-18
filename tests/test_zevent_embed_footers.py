@@ -64,7 +64,7 @@ def _location_embed(builder: _Embeds):
 
 
 def test_the_footer_lists_only_the_sources_given() -> None:
-    assert source_footer("a", None, "b") == "Source: a / b ❤️"
+    assert source_footer("a", None, "b") == "Source : a / b ❤️"
 
 
 def test_the_footer_is_empty_when_nothing_fed_the_embed() -> None:
@@ -76,7 +76,10 @@ def test_the_footer_is_empty_when_nothing_fed_the_embed() -> None:
 
 def test_the_main_embed_credits_streamlabs_when_it_feeds_the_total() -> None:
     footer = _Embeds().create_main_embed("1 000 €").footer.text
-    assert footer == f"Source: {SOURCE_ZEVENT} / {SOURCE_STREAMLABS} / {SOURCE_TWITCH} ❤️"
+    assert (
+        footer
+        == f"Michel · Zevent · Source : {SOURCE_ZEVENT} / {SOURCE_STREAMLABS} / {SOURCE_TWITCH} ❤️"
+    )
 
 
 def test_the_main_embed_drops_streamlabs_when_no_team_is_configured(monkeypatch) -> None:
@@ -84,7 +87,7 @@ def test_the_main_embed_drops_streamlabs_when_no_team_is_configured(monkeypatch)
     monkeypatch.setattr(module, "STREAMLABS_API_URL", "")
     footer = _Embeds().create_main_embed("1 000 €").footer.text
     assert SOURCE_STREAMLABS not in footer
-    assert footer == f"Source: {SOURCE_ZEVENT} / {SOURCE_TWITCH} ❤️"
+    assert footer == f"Michel · Zevent · Source : {SOURCE_ZEVENT} / {SOURCE_TWITCH} ❤️"
 
 
 # ─── Location embeds ──────────────────────────────────────────────────
@@ -93,7 +96,9 @@ def test_the_main_embed_drops_streamlabs_when_no_team_is_configured(monkeypatch)
 def test_the_location_embed_credits_the_stats_site_for_the_split() -> None:
     """The LAN/remote split is the stats API's contribution, not zevent.fr's."""
     footer = _location_embed(_Embeds()).footer.text
-    assert footer == f"Source: {SOURCE_ZEVENT} / {SOURCE_STATS} / {SOURCE_TWITCH} ❤️"
+    assert (
+        footer == f"Michel · Zevent · Source : {SOURCE_ZEVENT} / {SOURCE_STATS} / {SOURCE_TWITCH} ❤️"
+    )
 
 
 def test_the_location_embed_drops_the_stats_site_when_unconfigured(monkeypatch) -> None:
@@ -122,7 +127,7 @@ def test_the_goals_embed_credits_both_the_goals_and_the_pace(monkeypatch) -> Non
     ]
     embed = _Embeds().create_donation_goals_embed(participants)
     assert embed is not None
-    assert embed.footer.text == f"Source: {SOURCE_STATS} / {SOURCE_ZEVENT} ❤️"
+    assert embed.footer.text == f"Michel · Zevent · Source : {SOURCE_STATS} / {SOURCE_ZEVENT} ❤️"
 
 
 # ─── Planning count ───────────────────────────────────────────────────

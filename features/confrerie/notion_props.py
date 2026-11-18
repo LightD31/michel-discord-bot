@@ -136,7 +136,7 @@ def canonical_choices(
         if match is None:
             if strict:
                 raise ValidationError(
-                    f"{label} inconnu·e : « {value} ». Choisissez une valeur proposée."
+                    f"{label} inconnu·e : « {value} ». Choisis une valeur proposée."
                 )
             match = value
         if match not in result:

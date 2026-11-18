@@ -43,7 +43,7 @@ from src.core.config import ModuleConfig
 from src.core.errors import DatabaseError, ValidationError
 from src.core.logging import log_failure
 from src.core.text import pick_weighted_message
-from src.discord_ext.embeds import Colors
+from src.discord_ext.look import card
 from src.discord_ext.mentions import everyone_if_written
 from src.discord_ext.messages import edit_message_if_changed, fetch_user_safe, require_guild
 from src.discord_ext.paginator import CustomPaginator
@@ -231,7 +231,7 @@ class BirthdayExtension(Extension):
             await ctx.send(str(e), ephemeral=True)
         except DatabaseError as e:
             logger.error("Database error for user %s: %s", ctx.author.display_name, e)
-            await ctx.send("Erreur lors de l'enregistrement. Veuillez réessayer.", ephemeral=True)
+            await ctx.send("Je n'ai pas pu enregistrer ta date : réessaie.", ephemeral=True)
         except Exception as e:
             log_failure(logger, "Unexpected error in anniversaire command: %s", e)
             await ctx.send("Une erreur inattendue s'est produite.", ephemeral=True)
@@ -347,10 +347,10 @@ class BirthdayExtension(Extension):
                         lines.append(f"**{user.mention}** : {formatted} ({age} ans)")
                     if len(lines) % 25 == 0:
                         embeds.append(
-                            Embed(
+                            card(
+                                "moduleBirthday",
                                 title="Anniversaires 🎂",
                                 description="\n".join(lines),
-                                color=Colors.SUCCESS,
                             )
                         )
                         lines = []
@@ -359,9 +359,7 @@ class BirthdayExtension(Extension):
 
             if lines:
                 embeds.append(
-                    Embed(
-                        title="Anniversaires 🎂", description="\n".join(lines), color=Colors.SUCCESS
-                    )
+                    card("moduleBirthday", title="Anniversaires 🎂", description="\n".join(lines))
                 )
 
             if not embeds:

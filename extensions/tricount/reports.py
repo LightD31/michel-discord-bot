@@ -31,7 +31,7 @@ from src.core import clock
 from src.core import logging as logutil
 from src.core.logging import log_failure
 from src.discord_ext.autocomplete import guild_group_autocomplete
-from src.discord_ext.embeds import Colors
+from src.discord_ext.look import card, sign
 from src.discord_ext.messages import fetch_user_safe, require_guild
 from src.discord_ext.scopes import guild_scopes
 
@@ -90,7 +90,7 @@ class ReportsMixin:
             return
         if ctx.author.id not in group["members"]:
             await ctx.send(
-                "❌ Vous devez être membre du groupe pour voir les dépenses.", ephemeral=True
+                "❌ Il faut être membre du groupe pour voir les dépenses.", ephemeral=True
             )
             return
 
@@ -98,18 +98,18 @@ class ReportsMixin:
         expenses = await repo.list_recent_expenses(group["_id"], limit_value)
 
         if not expenses:
-            embed = Embed(
+            embed = card(
+                "moduleTricount",
                 title=f"📋 Dépenses du groupe {groupe}",
                 description="Aucune dépense enregistrée.",
-                color=Colors.INFO,
             )
             await ctx.send(embed=embed)
             return
 
-        embed = Embed(
+        embed = card(
+            "moduleTricount",
             title=f"📋 Dépenses du groupe {groupe}",
             description=f"Dernières {len(expenses)} dépense(s):",
-            color=Colors.INFO,
         )
         currency = guild_currency(ctx.guild.id)
         for i, expense in enumerate(expenses, 1):
@@ -138,7 +138,11 @@ class ReportsMixin:
                 )
             embed.add_field(name=title, value=field_value, inline=True)
 
-        embed.set_footer(text="💡 Utilisez l'ID pour modifier une dépense avec /modifier-depense")
+        sign(
+            embed,
+            "moduleTricount",
+            "💡 L'ID sert à modifier une dépense avec /modifier-depense",
+        )
         await ctx.send(embed=embed)
 
     @liste_depenses.autocomplete("groupe")
@@ -172,16 +176,14 @@ class ReportsMixin:
         balances = compute_balances(expenses, members)
         # Former members still on the books may check what they owe or are owed.
         if ctx.author.id not in members and not balances.get(ctx.author.id):
-            await ctx.send(
-                "❌ Vous devez être membre du groupe pour voir le bilan.", ephemeral=True
-            )
+            await ctx.send("❌ Il faut être membre du groupe pour voir le bilan.", ephemeral=True)
             return
 
         if not expenses:
-            embed = Embed(
+            embed = card(
+                "moduleTricount",
                 title=f"📊 Bilan du groupe {groupe}",
                 description="Aucune dépense enregistrée.",
-                color=Colors.INFO,
             )
             await ctx.send(embed=embed)
             return
@@ -192,12 +194,10 @@ class ReportsMixin:
             if not is_transfer(expense):
                 paid[expense["payer"]] += to_cents(expense.get("amount", 0))
 
-        embed = Embed(
+        embed = card(
+            "moduleTricount",
             title=f"📊 Bilan du groupe {groupe}",
-            description=(
-                f"**Total des dépenses :** {format_amount(spending_total(expenses), currency)}"
-            ),
-            color=Colors.INFO,
+            description=f"**Total des dépenses :** {format_amount(spending_total(expenses), currency)}",
         )
 
         lines = []
@@ -224,9 +224,11 @@ class ReportsMixin:
             inline=False,
         )
         if transfers:
-            embed.set_footer(
-                text="💡 Une fois payé, enregistrez-le avec /tricount rembourser. "
-                "Un membre qui quitte le groupe reste au bilan tant que son solde n'est pas réglé."
+            sign(
+                embed,
+                "moduleTricount",
+                "💡 Une fois payé, enregistre-le avec /tricount rembourser. "
+                "Un membre qui quitte le groupe reste au bilan tant que son solde n'est pas réglé.",
             )
         await ctx.send(embed=embed)
 
@@ -257,7 +259,7 @@ class ReportsMixin:
             return
         if ctx.author.id not in group["members"]:
             await ctx.send(
-                "❌ Vous devez être membre du groupe pour voir le graphique.",
+                "❌ Il faut être membre du groupe pour voir le graphique.",
                 ephemeral=True,
             )
             return
@@ -294,7 +296,7 @@ class ReportsMixin:
 
     @slash_command(
         name="mes-groupes",
-        description="Voir tous vos groupes Tricount",
+        description="Voir tous tes groupes Tricount",
         scopes=guild_scopes(TRICOUNT.guild_ids()),
     )
     async def mes_groupes(self, ctx: SlashContext):
@@ -305,18 +307,18 @@ class ReportsMixin:
         groups = await repo.list_member_groups(ctx.author.id)
 
         if not groups:
-            embed = Embed(
+            embed = card(
+                "moduleTricount",
                 title="📝 Mes groupes Tricount",
-                description="Vous n'êtes membre d'aucun groupe.",
-                color=Colors.INFO,
+                description="Tu n'es membre d'aucun groupe.",
             )
             await ctx.send(embed=embed)
             return
 
-        embed = Embed(
+        embed = card(
+            "moduleTricount",
             title="📝 Mes groupes Tricount",
-            description=f"Vous êtes membre de {len(groups)} groupe(s):",
-            color=Colors.INFO,
+            description=f"Tu es membre de {len(groups)} groupe(s) :",
         )
         currency = guild_currency(ctx.guild.id)
         for group in groups[:10]:

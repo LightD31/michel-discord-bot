@@ -16,7 +16,7 @@ from interactions import (
 from features.uptime import AlertMode, MonitorAlert, UptimeRepository
 from src.core import logging as logutil
 from src.core.errors import DatabaseError
-from src.discord_ext.embeds import Colors
+from src.discord_ext.look import card, sign
 from src.discord_ext.messages import (
     CAN_SEND,
     author_can,
@@ -113,7 +113,7 @@ class CommandsMixin:
         monitor_id = self._parse_monitor_id(sensor)
         monitor = self.monitors.get(monitor_id) if monitor_id is not None else None
         if monitor is None:
-            await send_error(ctx, "Capteur introuvable. Choisissez-le dans la liste proposée.")
+            await send_error(ctx, "Capteur introuvable : choisis-le dans la liste proposée.")
             return
         # The bot posts the alerts with its own rights: the author must be able to post there.
         if not await author_can(ctx, channel, CAN_SEND):
@@ -131,7 +131,7 @@ class CommandsMixin:
             await UptimeRepository(guild_id).save(alert)
         except DatabaseError as e:
             logger.error("Guild %s: could not save uptime alert %s: %s", guild_id, monitor.id, e)
-            await send_error(ctx, "Impossible d'enregistrer l'alerte, réessayez plus tard.")
+            await send_error(ctx, "Je n'ai pas pu enregistrer l'alerte : réessaie plus tard.")
             return
         async with self._state_lock:
             self.alerts.setdefault(guild_id, {})[monitor.id] = alert
@@ -186,7 +186,7 @@ class CommandsMixin:
             await UptimeRepository(guild_id).remove(monitor_id)
         except DatabaseError as e:
             logger.error("Guild %s: could not remove uptime alert %s: %s", guild_id, monitor_id, e)
-            await send_error(ctx, "Impossible de supprimer l'alerte, réessayez plus tard.")
+            await send_error(ctx, "Je n'ai pas pu supprimer l'alerte : réessaie plus tard.")
             return
         async with self._state_lock:
             self.alerts.get(guild_id, {}).pop(monitor_id, None)
@@ -235,7 +235,7 @@ class CommandsMixin:
             await send_error(ctx, "Aucune alerte de maintenance configurée sur ce serveur.")
             return
 
-        embed = Embed(title="📋 Alertes de maintenance configurées", color=Colors.INFO)
+        embed = card("moduleUptime", title="📋 Alertes de maintenance configurées")
         for alert in alerts[:MAX_EMBED_FIELDS]:
             # Not ``or``: DOWN is 0.
             status = self.current_status(alert.monitor_id)
@@ -251,7 +251,9 @@ class CommandsMixin:
                 inline=False,
             )
         if len(alerts) > MAX_EMBED_FIELDS:
-            embed.set_footer(f"{len(alerts) - MAX_EMBED_FIELDS} alerte(s) non affichée(s)")
+            sign(
+                embed, "moduleUptime", f"{len(alerts) - MAX_EMBED_FIELDS} alerte(s) non affichée(s)"
+            )
         if not self.kuma_ok:
             embed.description = "⚠️ Uptime Kuma est injoignable : les états peuvent être anciens."
         await ctx.send(embed=embed, ephemeral=True)

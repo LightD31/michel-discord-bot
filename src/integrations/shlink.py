@@ -159,7 +159,7 @@ class ShlinkClient:
         settings = settings or get_settings()
         if not settings.configured:
             raise ShlinkError(
-                "Shlink n'est pas configuré — renseignez l'URL de l'instance et la clé API."
+                "Shlink n'est pas configuré — renseigne l'URL de l'instance et la clé API."
             )
 
         url = f"{settings.base_url}/rest/{API_VERSION}/{path.lstrip('/')}"

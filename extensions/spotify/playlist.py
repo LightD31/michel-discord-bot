@@ -31,7 +31,7 @@ from src.core import logging as logutil
 from src.core.logging import log_failure
 from src.core.text import milliseconds_to_string
 from src.discord_ext.channels import fetch_guild_channel
-from src.discord_ext.embeds import Colors
+from src.discord_ext.look import card
 from src.discord_ext.messages import (
     edit_message_if_changed,
     fetch_or_create_persistent_message,
@@ -376,7 +376,7 @@ class PlaylistMixin:
                         remove=tally.supprimer,
                         menfou=tally.menfou,
                         users=tally.voters,
-                        color=Colors.SPOTIFY,
+                        kind="info",
                         guild_id=server.guild_id,
                         description=(
                             f"Vote effectué le {date}\n"
@@ -387,13 +387,14 @@ class PlaylistMixin:
             else:
                 embeds = [
                     embed,
-                    Embed(
+                    card(
+                        "moduleSpotify",
                         title="Vote",
                         description=(
                             f"La chanson est passée au vote et a été "
                             f"**{votes.get('state', '')}**\nPas de détails sur le vote."
                         ),
-                        color=Colors.SPOTIFY,
+                        author=False,
                     ),
                 ]
         else:
@@ -407,7 +408,7 @@ class PlaylistMixin:
         """Match name/artist against the local MongoDB playlist + vote archives."""
         server = self.get_server(ctx.guild_id)
         if not ctx.input_text:
-            choices = [{"name": "Veuillez entrer un nom de chanson", "value": "error"}]
+            choices = [{"name": "Tape le nom d'une chanson", "value": "error"}]
         else:
             words = ctx.input_text.split()
             regex_pattern = "|".join(words)

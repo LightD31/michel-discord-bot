@@ -13,7 +13,7 @@ from interactions import (
 )
 
 from src.core import logging as logutil
-from src.discord_ext.embeds import Colors
+from src.discord_ext.look import card
 from src.discord_ext.messages import fetch_user_safe, send_error
 from src.discord_ext.scopes import guild_scopes
 
@@ -38,7 +38,7 @@ class BansMixin:
         if session is not None and session.is_drawn:
             await send_error(
                 ctx,
-                "Le tirage a déjà eu lieu : créez une nouvelle session pour changer les exclusions.",
+                "Le tirage a déjà eu lieu : crée une nouvelle session pour changer les exclusions.",
             )
             return False
         return True
@@ -64,7 +64,7 @@ class BansMixin:
     )
     async def ban_pair(self, ctx: SlashContext, user1: Member | User, user2: Member | User) -> None:
         if user1.id == user2.id:
-            await send_error(ctx, "Vous ne pouvez pas bannir un utilisateur avec lui-même.")
+            await send_error(ctx, "Un membre ne peut pas être exclu avec lui-même.")
             return
 
         context_id = get_context_id(ctx)
@@ -83,10 +83,10 @@ class BansMixin:
         await self.repository.write_banned_pairs(context_id, banned_pairs)
 
         await ctx.send(
-            embed=Embed(
+            embed=card(
+                "moduleSecretSanta",
                 title="🎅 Paire interdite",
                 description=f"{user1.mention} et {user2.mention} ne pourront pas se tirer mutuellement.",
-                color=Colors.SECRET_SANTA,
             ),
             ephemeral=True,
         )
@@ -133,10 +133,10 @@ class BansMixin:
         await self.repository.write_banned_pairs(context_id, new_pairs)
 
         await ctx.send(
-            embed=Embed(
+            embed=card(
+                "moduleSecretSanta",
                 title="🎅 Paire autorisée",
                 description=f"{user1.mention} et {user2.mention} peuvent à nouveau se tirer mutuellement.",
-                color=Colors.SECRET_SANTA,
             ),
             ephemeral=True,
         )
@@ -157,10 +157,10 @@ class BansMixin:
 
         if not banned_pairs:
             await ctx.send(
-                embed=Embed(
+                embed=card(
+                    "moduleSecretSanta",
                     title="🎅 Aucune restriction",
                     description="Aucune paire d'utilisateurs n'est interdite.",
-                    color=Colors.SECRET_SANTA,
                 ),
                 ephemeral=True,
             )
@@ -175,10 +175,6 @@ class BansMixin:
             description += f"• {user1_mention} ↔ {user2_mention}\n"
 
         await ctx.send(
-            embed=Embed(
-                title="🎅 Paires interdites",
-                description=description,
-                color=Colors.SECRET_SANTA,
-            ),
+            embed=card("moduleSecretSanta", title="🎅 Paires interdites", description=description),
             ephemeral=True,
         )

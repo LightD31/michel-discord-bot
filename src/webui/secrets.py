@@ -78,7 +78,7 @@ def restore_section(
         if moved:
             label = meta.get("label") or name
             raise SecretRebindError(
-                f"Saisissez à nouveau « {label} » : l'adresse à laquelle il est envoyé a changé."
+                f"Saisis à nouveau « {label} » : l'adresse à laquelle il est envoyé a changé."
             )
         restored[name] = current_dict.get(name, "")
     return restored

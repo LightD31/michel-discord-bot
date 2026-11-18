@@ -104,7 +104,7 @@ class WebUIContext:
             raise
         except TimeoutError as e:
             logger.error("Bot call timed out after %.0fs: %s", timeout, what)
-            raise HTTPException(status_code=504, detail="Le bot ne répond pas — réessayez.") from e
+            raise HTTPException(status_code=504, detail="Le bot ne répond pas — réessaie.") from e
         except Exception as e:
             logger.exception("Bot call failed: %s", what)
             raise HTTPException(
@@ -247,7 +247,7 @@ class WebUIContext:
             )
             raise HTTPException(
                 status_code=503,
-                detail="Impossible de vérifier vos permissions sur ce serveur — réessayez.",
+                detail="Impossible de vérifier tes permissions sur ce serveur — réessaie.",
             ) from e
         for stale in [
             k for k, (at, _) in self._access_cache.items() if now - at >= GUILD_ACCESS_TTL_SECONDS

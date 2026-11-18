@@ -28,8 +28,8 @@ from features.ai import AiComparisonRepository, Comparison, compute_model_stats
 from features.ai.quota import MODULE_DISABLED
 from src.core.errors import DatabaseError
 from src.discord_ext.channels import fetch_guild_channel
-from src.discord_ext.embeds import Colors
 from src.discord_ext.locale import en_fr_desc
+from src.discord_ext.look import card, sign
 from src.discord_ext.messages import edit_message_if_changed
 from src.discord_ext.scopes import guild_scopes
 
@@ -161,7 +161,7 @@ class VotingMixin:
     @slash_command(
         name="ask-stats",
         description=en_fr_desc(
-            "AI model leaderboard from your votes", "Classement des modèles d'IA selon vos votes"
+            "AI model leaderboard from your votes", "Classement des modèles d'IA selon les votes"
         ),
         scopes=guild_scopes(enabled_guild_ids()),
     )
@@ -179,7 +179,7 @@ class VotingMixin:
             return
 
         stats = compute_model_stats(comparisons)
-        embed = Embed(title="🏆 Classement des modèles d'IA", color=Colors.INFO)
+        embed = card("moduleIA", title="🏆 Classement des modèles d'IA")
         if not stats:
             embed.description = "Aucun vote pour l'instant. Lance une comparaison avec `/ask` !"
         else:
@@ -190,7 +190,9 @@ class VotingMixin:
             ]
             embed.description = "\n".join(lines)
             voted = len(comparisons)
-            embed.set_footer(
-                f"{voted} comparaison{'s' if voted > 1 else ''} votée{'s' if voted > 1 else ''}"
+            sign(
+                embed,
+                "moduleIA",
+                f"{voted} comparaison{'s' if voted > 1 else ''} votée{'s' if voted > 1 else ''}",
             )
         await ctx.send(embed=embed)
