@@ -19,6 +19,8 @@ class Suggestion(BaseModel):
     message_id: str | None = None
     author_id: str
     text: str
+    # Made from a message ("💡 En faire une suggestion"): a link to it.
+    source_url: str | None = None
     status: SuggestionStatus = "pending"
     reason: str | None = None
     decided_by: str | None = None

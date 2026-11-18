@@ -16,5 +16,7 @@ class Reminder(BaseModel):
     message: str
     remind_time: datetime
     frequency: Frequency | None = None
+    # Made from a message ("⏰ Me le rappeler"): the link the DM brings back to.
+    jump_url: str | None = None
 
     model_config = {"populate_by_name": True}

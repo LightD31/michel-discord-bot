@@ -12,7 +12,9 @@ the same deletion runs for one server 30 days after they leave it
   key that names nobody, and where they are the author, creator, asker or
   winner, the id becomes :data:`NOBODY` (polls, suggestions, Spotify, AI
   comparisons, giveaways, starboard, role menus, book club drafts);
-* **kept** — moderation records (keeping servers safe), Secret Santa draws
+* **kept** — moderation records (keeping servers safe: infractions, and the
+  reports aimed at the member's messages; a member who *reported* a message
+  is anonymised there, their reason kept), Secret Santa draws
   already made (other people's gifts), and Tricount while the member owes or is
   owed money in a group (the others' balances depend on it). Once settled,
   Tricount is anonymised too.
@@ -163,6 +165,19 @@ class UserDataRepository:
             queries += [
                 ("giveaways", {"winners": uid}, {"winners": 0}),
                 ("infractions", {"user_id": uid}, None),
+                # Reports of the member's messages, never who reported them or why.
+                ("reports", {"author_id": uid}, {"reporters": 0}),
+                # The member's own reports: their entry alone.
+                (
+                    "reports",
+                    {"reporters.user_id": uid},
+                    {
+                        "channel_id": 1,
+                        "status": 1,
+                        "created_at": 1,
+                        "reporters": {"$elemMatch": {"user_id": uid}},
+                    },
+                ),
                 ("tricount_groups", {"members": int(uid)}, {"name": 1, "is_active": 1}),
                 (
                     "tricount_expenses",
@@ -244,6 +259,14 @@ class UserDataRepository:
         report.add(report.anonymised, f"{where}.giveaways", result.modified_count)
         if await db["infractions"].count_documents({"user_id": uid}, limit=1):
             report.kept.append(f"{where}.infractions")
+        result = await db["reports"].update_many(
+            {"reporters.user_id": uid},
+            {"$set": {"reporters.$[me].user_id": NOBODY}},
+            array_filters=[{"me.user_id": uid}],
+        )
+        report.add(report.anonymised, f"{where}.reports", result.modified_count)
+        if await db["reports"].count_documents({"author_id": uid}, limit=1):
+            report.kept.append(f"{where}.reports")
         await self._forget_secret_santa(db, where, report)
         await self._forget_tricount(db, where, report)
 

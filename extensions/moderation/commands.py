@@ -7,6 +7,7 @@ embed to the configured modlog channel.
 """
 
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 from interactions import (
     Embed,
@@ -30,7 +31,7 @@ from src.core import clock
 from src.core.text import format_discord_timestamp
 from src.discord_ext.embeds import Colors
 from src.discord_ext.errors import failure_reply
-from src.discord_ext.messages import require_guild, send_error, send_success
+from src.discord_ext.messages import module_off, require_guild, send_error, send_success
 from src.discord_ext.scopes import guild_scopes
 
 from ._common import (
@@ -47,6 +48,14 @@ from .logging_ import build_case_embed
 MAX_REASON_LENGTH = 512
 
 
+class ActionRefused(Exception):
+    """Discord refused a sanction (permissions, hierarchy, the member left): *cause* says why."""
+
+    def __init__(self, cause: Exception) -> None:
+        super().__init__(str(cause))
+        self.cause = cause
+
+
 class CommandsMixin:
     """Member-moderation commands and infraction-history sub-commands."""
 
@@ -57,13 +66,13 @@ class CommandsMixin:
             return None
         settings = get_guild_settings(ctx.guild_id)
         if not settings:
-            await send_error(ctx, "Le module de modération n'est pas activé sur ce serveur.")
+            await send_error(ctx, module_off("modération"), icon="🛡️")
             return None
         return settings
 
     async def _record(
         self,
-        ctx: SlashContext,
+        ctx: Any,
         *,
         mtype: InfractionType,
         target_id: str | int,
@@ -123,6 +132,21 @@ class CommandsMixin:
             await send_error(ctx, guard)
             return
         await ctx.defer(ephemeral=True)
+        infraction, count = await self.warn_member(ctx, settings, member, reason)
+        await send_success(
+            ctx,
+            f"{member.mention} averti (cas **#{infraction.id}**). "
+            f"Avertissements actifs : **{count}**.",
+        )
+
+    async def warn_member(
+        self, ctx: Any, settings: dict, member: Any, reason: str | None
+    ) -> tuple[Infraction, int]:
+        """Record a warning, DM the member and log the case: ``(case, active warnings)``.
+
+        Shared by ``/warn``, the "⚠️ Avertir…" right-click and a report's card;
+        the caller has checked :func:`can_moderate`.
+        """
         infraction = await self._record(ctx, mtype="warn", target_id=member.id, reason=reason)
         count = await self.repository(ctx.guild_id).count_active_warnings(str(member.id))
         await self.dm_target(
@@ -134,11 +158,7 @@ class CommandsMixin:
         await self.log_case(
             settings, infraction, target_name=member.mention, moderator_name=ctx.author.mention
         )
-        await send_success(
-            ctx,
-            f"{member.mention} averti (cas **#{infraction.id}**). "
-            f"Avertissements actifs : **{count}**.",
-        )
+        return infraction, count
 
     # --- /timeout ----------------------------------------------------------
 
@@ -182,10 +202,32 @@ class CommandsMixin:
             return
         secs = parse_duration(duration)
         if not secs:
-            await send_error(ctx, "Durée invalide. Exemples : `10m`, `1h30m`, `2d`.")
+            await send_error(
+                ctx,
+                f"Je n'ai pas compris la durée « {duration} ». Exemples : `10m`, `1h30m`, `2d`.",
+                icon="⏱️",
+            )
             return
         secs = clamp_timeout(secs)
         await ctx.defer(ephemeral=True)
+        try:
+            infraction = await self.timeout_member(ctx, settings, member, secs, reason)
+        except ActionRefused as e:
+            await send_error(ctx, failure_reply("Impossible d'exclure ce membre", e.cause, logger))
+            return
+        await send_success(
+            ctx,
+            f"{member.mention} exclu pour **{humanize_duration(secs)}** (cas **#{infraction.id}**).",
+        )
+
+    async def timeout_member(
+        self, ctx: Any, settings: dict, member: Any, secs: int, reason: str | None
+    ) -> Infraction:
+        """Time the member out for *secs*, record the case, DM them and log it.
+
+        Raises :class:`ActionRefused` when Discord refused the timeout itself
+        (nothing is recorded then). Shared by ``/timeout`` and a report's card.
+        """
         until = datetime.now(UTC) + timedelta(seconds=secs)
         try:
             await member.timeout(
@@ -193,8 +235,7 @@ class CommandsMixin:
                 reason=reason or f"Timeout par {ctx.author.username}",
             )
         except Exception as e:
-            await send_error(ctx, failure_reply("Impossible d'exclure ce membre", e, logger))
-            return
+            raise ActionRefused(e) from e
         infraction = await self._record(
             ctx,
             mtype="timeout",
@@ -212,10 +253,7 @@ class CommandsMixin:
         await self.log_case(
             settings, infraction, target_name=member.mention, moderator_name=ctx.author.mention
         )
-        await send_success(
-            ctx,
-            f"{member.mention} exclu pour **{humanize_duration(secs)}** (cas **#{infraction.id}**).",
-        )
+        return infraction
 
     # --- /untimeout --------------------------------------------------------
 

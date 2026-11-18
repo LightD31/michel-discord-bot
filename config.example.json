@@ -257,6 +257,7 @@
                 "modLogChannelId": "",
                 "staffRoleId": "",
                 "dmOnAction": true,
+                "notifyReporters": true,
                 "antiInvite": false,
                 "antiSpam": false,
                 "spamThreshold": 5,

@@ -14,7 +14,15 @@ from collections.abc import Sequence
 from typing import Any
 from urllib.parse import urlsplit
 
-from interactions import Client, Embed, Message, Permissions, SlashContext, ThreadChannel
+from interactions import (
+    Client,
+    Embed,
+    InteractionContext,
+    Message,
+    Permissions,
+    SlashContext,
+    ThreadChannel,
+)
 from interactions.models.discord.components import process_components
 
 from src.core.errors import DatabaseError
@@ -27,9 +35,14 @@ from src.discord_ext.channels import fetch_guild_channel, member_can
 # ---------------------------------------------------------------------------
 
 
-async def send_error(ctx: SlashContext, message: str) -> None:
-    """Send an ephemeral error message prefixed with a cross emoji."""
-    await ctx.send(f"❌ {message}", ephemeral=True)
+async def send_error(ctx: InteractionContext, message: str, *, icon: str = "❌") -> None:
+    """Send an ephemeral refusal, prefixed with *icon*.
+
+    A refusal says what to do next (B9): 🔒 for a missing right, 📅 / ⏱️ for
+    a date or a duration not understood, the module's own emoji for "not
+    here"; ❌ is for the rest.
+    """
+    await ctx.send(f"{icon} {message}", ephemeral=True)
 
 
 # What the author must hold in the channel a command makes the bot act on.
@@ -40,19 +53,70 @@ CAN_MANAGE = Permissions.VIEW_CHANNEL | Permissions.MANAGE_CHANNELS
 CAN_PIN = Permissions.VIEW_CHANNEL | Permissions.MANAGE_MESSAGES
 
 
-async def author_can(ctx: SlashContext, channel: Any, permission: Permissions) -> bool:
-    """Whether the author holds *permission* in *channel*, telling them when they don't.
+# The names Discord's French client gives the permissions a refusal can name.
+PERMISSION_NAMES: dict[Permissions, str] = {
+    Permissions.VIEW_CHANNEL: "Voir le salon",
+    Permissions.SEND_MESSAGES: "Envoyer des messages",
+    Permissions.MANAGE_MESSAGES: "Gérer les messages",
+    Permissions.MANAGE_CHANNELS: "Gérer les salons",
+    Permissions.MANAGE_ROLES: "Gérer les rôles",
+    Permissions.MANAGE_GUILD: "Gérer le serveur",
+    Permissions.MODERATE_MEMBERS: "Exclure temporairement des membres",
+    Permissions.KICK_MEMBERS: "Expulser des membres",
+    Permissions.BAN_MEMBERS: "Bannir des membres",
+    Permissions.MENTION_EVERYONE: "Mentionner @everyone, @here et tous les rôles",
+}
+
+
+def permission_names(permission: Permissions) -> str:
+    """« Voir le salon » et « Gérer les messages »: *permission* as a member reads it."""
+    names = [f"« {name} »" for flag, name in PERMISSION_NAMES.items() if flag in permission]
+    if not names:
+        return "les droits nécessaires"
+    return ", ".join(names[:-1]) + (" et " if len(names) > 1 else "") + names[-1]
+
+
+def missing_permissions(member: Any, channel: Any, permission: Permissions) -> Permissions:
+    """The bits of *permission* *member* lacks in *channel* (all of them when unreadable)."""
+    try:
+        held = int(channel.permissions_for(member))
+    except (AttributeError, RuntimeError, ValueError, TypeError):
+        return permission
+    return Permissions(int(permission) & ~held) or permission
+
+
+async def author_can(ctx: InteractionContext, channel: Any, permission: Permissions) -> bool:
+    """Whether the author holds *permission* in *channel*, telling them which right they lack.
 
     Discord checks a command's ``default_member_permissions`` in the channel
     it is run from; the bot then acts on the target with its own rights.
     """
     if member_can(ctx.author, channel, permission):
         return True
-    await send_error(ctx, f"Tu n'as pas les droits nécessaires dans <#{channel.id}>.")
+    missing = missing_permissions(ctx.author, channel, permission)
+    plural = (
+        "les permissions" if len(PERMISSION_NAMES.keys() & set(missing)) > 1 else "la permission"
+    )
+    await send_error(
+        ctx, f"Il te faut {plural} {permission_names(missing)} dans <#{channel.id}>.", icon="🔒"
+    )
     return False
 
 
-async def send_success(ctx: SlashContext, message: str) -> None:
+def module_off(label: str) -> str:
+    """The module *label* is switched off here: who can switch it on, and where."""
+    return (
+        f"Le module {label} n'est pas activé sur ce serveur : un administrateur peut l'activer "
+        "dans le tableau de bord de Michel."
+    )
+
+
+def jump_url(guild_id: int | str, channel_id: int | str, message_id: int | str) -> str:
+    """The link that opens a message in Discord."""
+    return f"https://discord.com/channels/{guild_id}/{channel_id}/{message_id}"
+
+
+async def send_success(ctx: InteractionContext, message: str) -> None:
     """Send an ephemeral success message prefixed with a check emoji."""
     await ctx.send(f"✅ {message}", ephemeral=True)
 

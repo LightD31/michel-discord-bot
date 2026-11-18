@@ -149,7 +149,45 @@ async def test_only_staff_decide(setup):
     ext, ctx, repo, _, _, _ = setup
     await suggest(ext, ctx)
     await run(SuggestionsExtension.suggestion_deny, ext, ctx, 1)
-    assert ctx.last.endswith("Réservé au staff.") and repo.items[1].status == "pending"
+    # Says who can (B9): the staff role, named, and the administrators.
+    assert ctx.last == (
+        f"🔒 Seuls le rôle <@&{STAFF_ROLE}> et les administrateurs peuvent trancher une suggestion."
+    )
+    assert repo.items[1].status == "pending"
+
+
+async def test_without_a_staff_role_the_refusal_says_admins_only(setup):
+    ext, ctx, repo, _, _, config = setup
+    del config["servers"]["1"]["moduleSuggestions"]["staffRoleId"]
+    await suggest(ext, ctx)
+    await run(SuggestionsExtension.suggestion_deny, ext, ctx, 1)
+    assert "Seuls les administrateurs" in ctx.last and "aucun rôle staff" in ctx.last
+
+
+def test_the_staff_commands_are_hidden_from_members():
+    assert SuggestionsExtension.suggestion_approve.default_member_permissions == (
+        Permissions.MANAGE_MESSAGES
+    )
+    assert SuggestionsExtension.suggest.default_member_permissions is None
+
+
+async def test_a_message_becomes_a_suggestion_that_links_back(setup):
+    from discord_fakes import FakeMessage
+
+    ext, ctx, repo, board, _, _ = setup
+    ctx.target = FakeMessage(500, content="Et si on faisait un tournoi ?", channel=ctx.channel)
+    await run(SuggestionsExtension.suggest_from_message, ext, ctx)
+    (form,) = ctx.modals
+    assert form.custom_id == "suggest_from:10:500"
+    assert form.components[0].value == "Et si on faisait un tournoi ?"
+    submit = FakeCtx(ctx.author, ctx.channel, bot=ctx.bot, custom_id=form.custom_id)
+    await run(SuggestionsExtension.on_suggest_form, ext, submit, text="Un tournoi Mario Kart")
+    (suggestion,) = repo.items.values()
+    assert suggestion.text == "Un tournoi Mario Kart"
+    assert suggestion.source_url.endswith("/1/10/500")
+    fields = {f.name: f.value for f in board.sent[0].embeds[0].fields}
+    assert fields["D'après"] == f"[ce message]({suggestion.source_url})"
+    assert "publiée dans <#20>" in submit.last
 
 
 async def test_an_admin_counts_as_staff(setup):

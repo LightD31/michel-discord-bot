@@ -27,7 +27,11 @@ class SuggestionsConfig(SchemaBase):
     staffRoleId: str | None = ui(
         "Rôle staff",
         "role",
-        description="Rôle autorisé à approuver/refuser les suggestions (sinon admin uniquement).",
+        description=(
+            "Rôle autorisé à approuver/refuser les suggestions (sinon admin uniquement). "
+            "`/suggestion` n'apparaît qu'aux membres qui peuvent « Gérer les messages » : si ce "
+            "rôle ne le peut pas, autorise-le dans Paramètres du serveur → Intégrations → Michel."
+        ),
         role_use="staff",
     )
     anonymous: bool = ui(

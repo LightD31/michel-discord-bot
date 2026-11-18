@@ -8,6 +8,10 @@ an extension without a module), mention-linked when Discord gave them an id,
 and those whose default permissions the member lacks are left out, as Discord
 hides them from the member's command picker.
 
+Right-click menus (context menus) are listed too, under their module, with
+where to find them and the line their decorator gives (``menu_help``,
+:mod:`src.discord_ext.menus`).
+
 The command is global but guild-only (``contexts=[GUILD]``, guild install):
 it exists on every server the bot is in, and in no DM.
 """
@@ -20,6 +24,8 @@ from typing import Any
 from interactions import (
     GLOBAL_SCOPE,
     Client,
+    CommandType,
+    ContextMenu,
     ContextType,
     Embed,
     Extension,
@@ -34,6 +40,7 @@ from interactions import (
 from src.core import logging as logutil
 from src.core.text import EMBED_FIELD_VALUE_LIMIT, clip
 from src.discord_ext.embeds import Colors
+from src.discord_ext.menus import MENU_HELP
 from src.discord_ext.messages import guild_id_of, require_guild
 from src.discord_ext.paginator import CustomPaginator
 from src.webui.schemas import module_model
@@ -47,6 +54,12 @@ MAX_FIELDS_PER_PAGE = 25
 MAX_SEARCH_LENGTH = 50
 
 
+MENU_PLACES = {
+    CommandType.MESSAGE: "clic droit sur un message → Applications",
+    CommandType.USER: "clic droit sur un membre → Applications",
+}
+
+
 @dataclass(frozen=True)
 class HelpEntry:
     """One command as ``/aide`` lists it."""
@@ -57,7 +70,7 @@ class HelpEntry:
     description: str
 
 
-def group_label(command: SlashCommand) -> str:
+def group_label(command: SlashCommand | ContextMenu) -> str:
     """The heading a command is listed under: its module's dashboard label."""
     extension = getattr(command, "extension", None)
     if extension is None:
@@ -83,12 +96,25 @@ def _description(command: SlashCommand) -> str:
     return str(text)
 
 
+def menu_entry(menu: ContextMenu) -> HelpEntry:
+    """A right-click menu as ``/aide`` lists it: its name, where it is, what it does."""
+    name = str(menu.name)
+    place = MENU_PLACES.get(CommandType(menu.type), "clic droit → Applications")
+    description = MENU_HELP.get(name, "")
+    return HelpEntry(
+        group_label(menu),
+        name,
+        f"**{name}**",
+        f"{description} *({place})*" if description else f"*({place})*",
+    )
+
+
 def collect_entries(
     interactions_by_scope: dict[Any, dict[str, Any]],
     guild_id: int,
     can_use: Any,
 ) -> list[HelpEntry]:
-    """The slash commands of *guild_id* and the global ones usable in a server.
+    """The slash commands and right-click menus of *guild_id*, and the global commands.
 
     *can_use* is called with a command's default member permissions (``None``
     when it has none) and says whether the member has them. Discord applies
@@ -100,6 +126,12 @@ def collect_entries(
     for scope in (int(guild_id), GLOBAL_SCOPE):
         base_permissions: dict[str, Any] = {}
         for command in interactions_by_scope.get(scope, {}).values():
+            if isinstance(command, ContextMenu):
+                key = f"menu:{command.name}"
+                if key not in seen and can_use(command.default_member_permissions):
+                    seen.add(key)
+                    entries.append(menu_entry(command))
+                continue
             if not isinstance(command, SlashCommand):
                 continue
             base = str(command.name)
@@ -159,6 +191,8 @@ def render_pages(entries: list[HelpEntry], search: str | None = None) -> list[Em
     intro = f"**{count}** commande{'s' if count > 1 else ''} disponible{'s' if count > 1 else ''}"
     intro += f" pour « {search} »." if search else " ici."
     intro += "\nClique sur une commande pour la préparer dans la barre de saisie."
+    if any(e.mention.startswith("**") for e in entries):
+        intro += "\nLes menus en **gras** s'ouvrent d'un clic droit (appui long sur mobile)."
     pages: list[Embed] = []
     page: Embed | None = None
     used = 0

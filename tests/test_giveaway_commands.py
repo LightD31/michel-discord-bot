@@ -130,7 +130,11 @@ async def test_start_posts_the_announcement_and_stores_the_giveaway(setup):
 
 @pytest.mark.parametrize(
     ("duration", "error"),
-    [("bientôt", "Format de durée invalide"), ("5s", "Durée minimale"), ("90d", "maximale")],
+    [
+        ("bientôt", "Je n'ai pas compris la durée « bientôt »"),
+        ("5s", "Durée minimale"),
+        ("90d", "maximale"),
+    ],
 )
 async def test_start_refuses_a_bad_duration(setup, duration, error):
     ext, ctx, repo, _ = setup

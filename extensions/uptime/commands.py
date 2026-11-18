@@ -17,7 +17,14 @@ from features.uptime import AlertMode, MonitorAlert, UptimeRepository
 from src.core import logging as logutil
 from src.core.errors import DatabaseError
 from src.discord_ext.embeds import Colors
-from src.discord_ext.messages import CAN_SEND, author_can, require_guild, send_error, send_success
+from src.discord_ext.messages import (
+    CAN_SEND,
+    author_can,
+    module_off,
+    require_guild,
+    send_error,
+    send_success,
+)
 from src.discord_ext.scopes import guild_scopes
 from src.integrations.uptime_kuma import MonitorStatus
 
@@ -44,7 +51,7 @@ class CommandsMixin:
         if not await require_guild(ctx):
             return None
         if not UPTIME.enabled(ctx.guild.id):
-            await send_error(ctx, "Le module Uptime n'est pas activé sur ce serveur.")
+            await send_error(ctx, module_off("Uptime"))
             return None
         return str(ctx.guild.id)
 
