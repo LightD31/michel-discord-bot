@@ -7,6 +7,8 @@ Assembled as a mixin composition mirroring the minecraft/zunivers packages:
 - :mod:`.commands` — :class:`.commands.CommandsMixin`: ``/rank``, ``/leaderboard``
 - :mod:`.leaderboard` — :class:`.leaderboard.LeaderboardMixin`: permanent
   leaderboard updater task and embed builders
+- :mod:`.seasons` — :class:`.seasons.SeasonsMixin`: the end of a season (podium,
+  champion role); ``/leaderboard`` shows the current season when they are on
 
 Persistence lives in :class:`features.xp.XpRepository` (MongoDB, one DB per
 guild, collections ``xp`` and ``xp_events``).
@@ -24,10 +26,13 @@ from ._common import XP, XpConfig, logger
 from .commands import CommandsMixin
 from .leaderboard import LeaderboardMixin
 from .leveling import LevelingMixin
+from .seasons import SeasonsMixin
 from .voice import VoiceMixin
 
 
-class XpExtension(Extension, LevelingMixin, VoiceMixin, CommandsMixin, LeaderboardMixin):
+class XpExtension(
+    Extension, LevelingMixin, VoiceMixin, CommandsMixin, LeaderboardMixin, SeasonsMixin
+):
     """XP and leveling system extension."""
 
     MODULE_KEYS = ("moduleXp",)
@@ -76,6 +81,8 @@ class XpExtension(Extension, LevelingMixin, VoiceMixin, CommandsMixin, Leaderboa
             self._archive_old_xp_events.start()
         if not self._voice_xp_tick.running:
             self._voice_xp_tick.start()
+        if not self._close_seasons.running:
+            self._close_seasons.start()
 
         if not self.leaderboardpermanent.running:
             self.leaderboardpermanent.start()

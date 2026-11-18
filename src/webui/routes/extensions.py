@@ -68,6 +68,11 @@ WITHOUT_MODULE: dict[str, tuple[str, str, str]] = {
         "/mes-donnees : un membre exporte ou supprime ses données.",
     ),
     "extensions.polls": ("📊", "Sondages", "/poll : sondages à boutons (module Utilitaires)."),
+    "extensions.profile": (
+        "🪪",
+        "Profil",
+        "/profil et « 📊 Profil » : la carte d'un membre (module Système d'XP).",
+    ),
     "extensions.random_": (
         "🎲",
         "Hasard",

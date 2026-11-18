@@ -11,7 +11,8 @@ the same deletion runs for one server 30 days after they leave it
 * **anonymised** — what other members share: their votes stay counted under a
   key that names nobody, and where they are the author, creator, asker or
   winner, the id becomes :data:`NOBODY` (polls, suggestions, Spotify, AI
-  comparisons, giveaways, starboard, role menus, book club drafts);
+  comparisons, giveaways, starboard, role menus, book club drafts, XP season
+  podiums);
 * **kept** — moderation records (keeping servers safe: infractions, and the
   reports aimed at the member's messages; a member who *reported* a message
   is anonymised there, their reason kept), Secret Santa draws
@@ -165,6 +166,12 @@ class UserDataRepository:
             queries += [
                 ("giveaways", {"winners": uid}, {"winners": 0}),
                 ("infractions", {"user_id": uid}, None),
+                # Season podiums: the member's own line.
+                (
+                    "xp_seasons",
+                    {"top.user_id": uid},
+                    {"label": 1, "closed_at": 1, "top": {"$elemMatch": {"user_id": uid}}},
+                ),
                 # Reports of the member's messages, never who reported them or why.
                 ("reports", {"author_id": uid}, {"reporters": 0}),
                 # The member's own reports: their entry alone.
@@ -259,6 +266,12 @@ class UserDataRepository:
         report.add(report.anonymised, f"{where}.giveaways", result.modified_count)
         if await db["infractions"].count_documents({"user_id": uid}, limit=1):
             report.kept.append(f"{where}.infractions")
+        result = await db["xp_seasons"].update_many(
+            {"top.user_id": uid},
+            {"$set": {"top.$[me].user_id": NOBODY}},
+            array_filters=[{"me.user_id": uid}],
+        )
+        report.add(report.anonymised, f"{where}.xp_seasons", result.modified_count)
         result = await db["reports"].update_many(
             {"reporters.user_id": uid},
             {"$set": {"reporters.$[me].user_id": NOBODY}},

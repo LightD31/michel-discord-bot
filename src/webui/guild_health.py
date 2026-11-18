@@ -166,6 +166,8 @@ TASK_LABELS: dict[str, str] = {
     "XpExtension._cache_cleanup_task": "Nettoyage du cache d'XP",
     "VoiceMixin._voice_xp_tick": "XP vocale",
     "LeaderboardMixin.leaderboardpermanent": "Classement XP",
+    "SeasonsMixin._close_seasons": "Fin de saison XP (podium, rôle du champion)",
+    "GazetteExtension.publish_due": "Publication de la Gazette",
     "YoutubeExtension.check_youtube": "Nouvelles vidéos YouTube",
     "TasksMixin.zevent": "Suivi du Zevent",
     "RemindersMixin.daily_journa_check": "Rappel /journa",
