@@ -9,7 +9,6 @@ from pydantic import BaseModel, ConfigDict, Field
 from features.vlrgg import _clean_vlr_text, expand_round_name
 from src.core import logging as logutil
 from src.core.config import ModuleConfig
-from src.discord_ext.embeds import Colors
 from src.webui.schemas import SchemaBase, enabled_field, register_module, ui
 
 
@@ -65,8 +64,6 @@ VLRGG = ModuleConfig("moduleVlrgg")
 
 # ── Constants ────────────────────────────────────────────────────────────────
 
-DEFAULT_EMBED_COLOR = Colors.VLR
-LIVE_EMBED_COLOR = Colors.SUCCESS
 MAX_PAST_MATCHES = 6
 MAX_UPCOMING_MATCHES = 6
 SCHEDULE_INTERVAL_MINUTES = 2
@@ -143,8 +140,6 @@ __all__ = [
     "VlrggConfig",
     "logger",
     "VLRGG",
-    "DEFAULT_EMBED_COLOR",
-    "LIVE_EMBED_COLOR",
     "MAX_PAST_MATCHES",
     "MAX_UPCOMING_MATCHES",
     "SCHEDULE_INTERVAL_MINUTES",

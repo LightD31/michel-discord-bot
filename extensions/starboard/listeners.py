@@ -33,7 +33,7 @@ from features.starboard import (
 from src.core import clock
 from src.core.logging import log_failure
 from src.discord_ext.channels import everyone_can_view, fetch_guild_channel
-from src.discord_ext.embeds import Colors
+from src.discord_ext.look import card
 from src.discord_ext.menus import menu_help
 from src.discord_ext.messages import (
     CAN_PIN,
@@ -74,7 +74,13 @@ def _build_embed(message, count: int, emoji: str, guild_id: str | int | None = N
     content = (message.content or "").strip()
     description = content if content else "*(message sans texte)*"
 
-    embed = Embed(description=description, color=Colors.WARNING)
+    channel_name = getattr(message.channel, "name", message.channel.id)
+    embed = card(
+        "moduleStarboard",
+        description=description,
+        author=False,
+        footer=f"{emoji} {count} · #{channel_name}",
+    )
     embed.set_author(name=author_name, icon_url=avatar_url)
     image_url = first_image_url(message)
     if image_url:
@@ -85,9 +91,6 @@ def _build_embed(message, count: int, emoji: str, guild_id: str | int | None = N
             f"[Aller au message]({jump_url(guild_id or message.guild.id, message.channel.id, message.id)})"
         ),
         inline=False,
-    )
-    embed.set_footer(
-        text=f"{emoji} {count} • #{getattr(message.channel, 'name', message.channel.id)}"
     )
     embed.timestamp = Timestamp.fromdatetime(getattr(message, "created_at", None) or clock.now())
     return embed

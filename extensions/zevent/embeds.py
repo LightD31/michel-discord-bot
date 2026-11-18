@@ -11,6 +11,8 @@ from src.core import clock
 from src.core import logging as logutil
 from src.core.logging import log_failure
 from src.core.text import take_within_budget
+from src.discord_ext.look import card, sign
+from src.discord_ext.messages import copy_embed
 
 from ._common import (
     GOALS_COUNT,
@@ -37,9 +39,9 @@ SOURCE_STREAMLABS = "Streamlabs Charity"
 
 
 def source_footer(*sources: str | None) -> str:
-    """``"Source: a / b ❤️"`` from the sources that are actually in play."""
+    """``"Source : a / b ❤️"`` from the sources that are actually in play."""
     named = [source for source in sources if source]
-    return f"Source: {' / '.join(named)} ❤️" if named else ""
+    return f"Source : {' / '.join(named)} ❤️" if named else ""
 
 
 # Discord's ceiling is 6000 characters across every embed in a message; the
@@ -110,12 +112,8 @@ class EmbedsMixin:
                 remaining_size -= embed_size
             else:
                 if embed.fields and remaining_size > 200:
-                    reduced_embed = Embed(
-                        title=embed.title, description=embed.description, color=embed.color
-                    )
-                    if embed.footer and embed.footer.text:
-                        reduced_embed.set_footer(embed.footer.text)
-                    reduced_embed.timestamp = embed.timestamp
+                    reduced_embed = copy_embed(embed)
+                    reduced_embed.fields = []
 
                     for field in embed.fields:
                         field_size = len(field.name or "") + len(field.value or "")
@@ -143,7 +141,7 @@ class EmbedsMixin:
         finished: bool = False,
         concert_status: str | None = None,
     ) -> Embed:
-        embed = Embed(title=self._event_title, color=0x59AF37)
+        embed = card("moduleZevent", title=self._event_title)
 
         if finished:
             embed.description = f"Total récolté: {total_amount}"
@@ -177,14 +175,16 @@ class EmbedsMixin:
 
         embed.timestamp = utils.timestamp_converter(clock.now())
         embed.set_thumbnail("attachment://Zevent_logo.png")
-        embed.set_footer(
+        sign(
+            embed,
+            "moduleZevent",
             source_footer(
                 SOURCE_ZEVENT,
                 # Only when a team URL is configured does Streamlabs feed the
                 # total (`get_total_amount` takes the higher of the two).
                 SOURCE_STREAMLABS if STREAMLABS_API_URL else None,
                 SOURCE_TWITCH,
-            )
+            ),
         )
 
         return embed
@@ -263,17 +263,19 @@ class EmbedsMixin:
         else:
             embed_title = f"Les {actual_count} {title}"
 
-        embed = Embed(title=embed_title, color=0x59AF37)
+        embed = card("moduleZevent", title=embed_title)
         if viewers_count and not finished and self._is_event_started():
             embed.description = f"Viewers: {viewers_count}"
-        embed.set_footer(
+        sign(
+            embed,
+            "moduleZevent",
             source_footer(
                 SOURCE_ZEVENT,
                 # Without the stats API there is no LAN/remote split to credit:
                 # everyone lands in the remote bucket.
                 SOURCE_STATS if STATS_API_URL else None,
                 SOURCE_TWITCH,
-            )
+            ),
         )
         embed.timestamp = utils.timestamp_converter(clock.now())
 
@@ -299,8 +301,8 @@ class EmbedsMixin:
         if PLANNING_COUNT <= 0:
             return None
 
-        embed = Embed(title="Prochains évènements", color=0x59AF37)
-        embed.set_footer(source_footer(SOURCE_STATS))
+        embed = card("moduleZevent", title="Prochains évènements")
+        sign(embed, "moduleZevent", source_footer(SOURCE_STATS))
         embed.timestamp = utils.timestamp_converter(clock.now())
 
         pending = upcoming_shows(shows, datetime.now(UTC), limit=PLANNING_COUNT)
@@ -370,10 +372,10 @@ class EmbedsMixin:
         if not pending:
             return None
 
-        embed = Embed(title="🎯 Prochains donation goals", color=0x59AF37)
+        embed = card("moduleZevent", title="🎯 Prochains donation goals")
         # The goals themselves come from the stats API; the pace that ranks
         # them is measured on the zevent.fr totals.
-        embed.set_footer(source_footer(SOURCE_STATS, SOURCE_ZEVENT))
+        sign(embed, "moduleZevent", source_footer(SOURCE_STATS, SOURCE_ZEVENT))
         embed.timestamp = utils.timestamp_converter(clock.now())
 
         # Build up to the 1024-char field limit a whole entry at a time; a
@@ -436,8 +438,8 @@ class EmbedsMixin:
             if not top_streamers:
                 return None
 
-            embed = Embed(title="🏆 Top Donations par streamer", color=0xFFD700)
-            embed.set_footer(source_footer(SOURCE_ZEVENT))
+            embed = card("moduleZevent", title="🏆 Top Donations par streamer")
+            sign(embed, "moduleZevent", source_footer(SOURCE_ZEVENT))
             embed.timestamp = utils.timestamp_converter(clock.now())
 
             # Build up to the 1024-char field limit a whole line at a time, so

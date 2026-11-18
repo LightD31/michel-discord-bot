@@ -22,7 +22,7 @@ from src.core import clock
 from src.core import logging as logutil
 from src.core.logging import log_failure
 from src.discord_ext.autocomplete import guild_group_autocomplete
-from src.discord_ext.embeds import Colors
+from src.discord_ext.look import card, sign
 from src.discord_ext.messages import require_guild
 from src.discord_ext.scopes import guild_scopes
 
@@ -152,15 +152,16 @@ class RecurringMixin:
             "created_at": clock.now(),
         }
         inserted_id = await repo.add_recurring(doc)
-        embed = Embed(
+        embed = card(
+            "moduleTricount",
+            "success",
             title="✅ Dépense récurrente créée",
             description=(
                 f"**{description}** — {montant:.2f}€ ({frequence})\n"
                 f"Prochaine occurrence : {clock.to_local(next_run):%d/%m/%Y %H:%M}"
             ),
-            color=Colors.SUCCESS,
         )
-        embed.set_footer(text=f"ID : {inserted_id}")
+        sign(embed, "moduleTricount", f"ID : {inserted_id}")
         await ctx.send(embed=embed)
 
     @depense_recurrente_ajouter.autocomplete("groupe")
@@ -177,7 +178,7 @@ class RecurringMixin:
 
     @depense_recurrente_ajouter.subcommand(
         sub_cmd_name="lister",
-        sub_cmd_description="Voir vos dépenses récurrentes actives",
+        sub_cmd_description="Voir tes dépenses récurrentes actives",
     )
     @slash_option(
         name="groupe",
@@ -193,10 +194,10 @@ class RecurringMixin:
         if not docs:
             await ctx.send("Aucune dépense récurrente active.", ephemeral=True)
             return
-        embed = Embed(
+        embed = card(
+            "moduleTricount",
             title="🔁 Dépenses récurrentes",
             description=f"{len(docs)} dépense(s) active(s)",
-            color=Colors.INFO,
         )
         for doc in docs[:10]:
             embed.add_field(

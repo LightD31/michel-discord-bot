@@ -28,12 +28,13 @@ from features.xp import (
 from features.xp.seasons import Season, season_of
 from src.core import clock
 from src.core.errors import DatabaseError
+from src.discord_ext.look import card
 from src.discord_ext.mentions import NO_PINGS
 from src.discord_ext.messages import guild_id_of, send_error
 from src.discord_ext.paginator import CustomPaginator
 from src.discord_ext.scopes import guild_scopes
 
-from ._common import EMBED_COLOR, TIMEZONE, XP, logger
+from ._common import TIMEZONE, XP, logger
 
 
 async def _fetch_avatar_bytes(target_user) -> bytes | None:
@@ -138,14 +139,14 @@ class CommandsMixin:
 
         # Embed fallback when image rendering fails (e.g. missing fonts/Pillow).
         rank_display = f"{rank}/{ctx.guild.member_count}" if rank else "N/A"
-        embed = Embed(
+        embed = card(
+            "moduleXp",
             title=f"Statistiques de {target_user.username}",
-            color=EMBED_COLOR,
             timestamp=datetime.now(TIMEZONE),
         )
-        embed.add_field(name="Name", value=target_user.mention, inline=True)
+        embed.add_field(name="Membre", value=target_user.mention, inline=True)
         embed.add_field(name="Niveau", value=lvl, inline=True)
-        embed.add_field(name="Rank", value=rank_display, inline=True)
+        embed.add_field(name="Rang", value=rank_display, inline=True)
         embed.add_field(name="XP", value=f"{xp_in_level}/{xp_max}", inline=True)
         embed.add_field(name="Messages", value=stats.get("msg", 0), inline=True)
         embed.add_field(

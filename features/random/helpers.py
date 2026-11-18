@@ -6,8 +6,8 @@ MIN_DIE_FACES = 2
 
 _ERROR_MESSAGES = {
     "fr": {
-        "no_choice": "🤔 Compliqué de faire un choix quand il n'y a pas le choix ! Ajoutez au moins 2 options.",
-        "too_many_choices": f"😅 Trop de choix ! Limitez-vous à {MAX_CHOICES} options maximum.",
+        "no_choice": "🤔 Compliqué de faire un choix quand il n'y a pas le choix ! Ajoute au moins 2 options.",
+        "too_many_choices": f"😅 Trop de choix ! Limite-toi à {MAX_CHOICES} options.",
         "invalid_die_faces": f"🎲 Un dé doit avoir entre {MIN_DIE_FACES} et {MAX_DIE_FACES:,} faces !",
     },
     "en": {

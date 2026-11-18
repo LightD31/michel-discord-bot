@@ -75,7 +75,7 @@ class RssConfig(SchemaBase):
         description=(
             "Une entrée par flux. URL obligatoire, libellé et salon dédié "
             "optionnels. Mode **texte** ou **embed** : en mode embed, "
-            "configurez la couleur, le titre, la description (multi-ligne), "
+            "configure la couleur, le titre, la description (multi-ligne), "
             "l'image et un bouton de lien optionnel. Le préréglage "
             "« LootScraper » importe en un clic les flux jeux gratuits Epic, "
             "Amazon Prime, itch.io et Steam. Variables disponibles dans tous "

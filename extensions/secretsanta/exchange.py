@@ -35,7 +35,7 @@ from src.core import clock
 from src.core import logging as logutil
 from src.core.logging import log_failure
 from src.core.text import EMBED_DESCRIPTION_LIMIT, clip, format_discord_timestamp
-from src.discord_ext.embeds import Colors
+from src.discord_ext.look import card, sign
 from src.discord_ext.mentions import NO_PINGS
 from src.discord_ext.messages import fetch_user_safe
 from src.discord_ext.secretsanta import (
@@ -208,13 +208,11 @@ class ExchangeMixin:
             name = receiver_display_name(context_guild_id(context_id), sender, me)
             title = "💬 Réponse de ton destinataire"
             text = f"**{name}** te répond :\n\n{text}"
-        embed = Embed(
-            title=title,
-            description=clip(text, EMBED_DESCRIPTION_LIMIT),
-            color=Colors.SECRET_SANTA,
+        embed = card(
+            "moduleSecretSanta", title=title, description=clip(text, EMBED_DESCRIPTION_LIMIT)
         )
         if guild_name:
-            embed.set_footer(text=f"Père Noël Secret · {guild_name}")
+            sign(embed, "moduleSecretSanta", guild_name)
         _, target = await fetch_user_safe(self.bot, target_id)
         try:
             await target.send(
@@ -280,16 +278,18 @@ class ExchangeMixin:
         if user is None:
             return False
         guild_name = await self._guild_name(session.context_id)
-        embed = Embed(
+        embed = card(
+            "moduleSecretSanta",
             title="🚩 Message signalé — Père Noël Secret",
-            description=clip(
-                f"**Signalé par :** <@{reporter}>\n**Envoyé par :** <@{sender}>\n\n{content}",
-                EMBED_DESCRIPTION_LIMIT,
+            description=(
+                clip(
+                    f"**Signalé par :** <@{reporter}>\n**Envoyé par :** <@{sender}>\n\n{content}",
+                    EMBED_DESCRIPTION_LIMIT,
+                )
             ),
-            color=Colors.SECRET_SANTA_ACCENT,
         )
         if guild_name:
-            embed.set_footer(text=guild_name)
+            sign(embed, "moduleSecretSanta", guild_name)
         try:
             await user.send(embed=embed, allowed_mentions=NO_PINGS)
         except Exception as e:
@@ -334,13 +334,13 @@ class ExchangeMixin:
         _, user = await fetch_user_safe(self.bot, other)
         guild_id = context_guild_id(context_id)
         if sent:
-            embed = Embed(
+            embed = card(
+                "moduleSecretSanta",
                 title="📦 Ton cadeau est en route !",
                 description=(
                     "Ton Père Noël secret a envoyé ton cadeau. Quand il arrive, clique sur "
                     "**🎁 Cadeau reçu** pour le prévenir."
                 ),
-                color=Colors.SECRET_SANTA,
             )
             components = spread_to_rows(
                 Button(
@@ -351,10 +351,11 @@ class ExchangeMixin:
             )
         else:
             name = receiver_display_name(guild_id, me, ctx.author)
-            embed = Embed(
+            embed = card(
+                "moduleSecretSanta",
+                "success",
                 title="🎁 Cadeau bien arrivé !",
                 description=f"Ton cadeau pour **{name}** est bien arrivé. Merci, Père Noël ! 🎅",
-                color=Colors.SECRET_SANTA_SUCCESS,
             )
             components = []
         try:
@@ -413,14 +414,14 @@ class ExchangeMixin:
             _, giver = await fetch_user_safe(self.bot, giver_id)
             _, receiver = await fetch_user_safe(self.bot, receiver_id)
             name = receiver_display_name(guild_id, receiver_id, receiver)
-            embed = Embed(
+            embed = card(
+                "moduleSecretSanta",
                 title="⏰ Père Noël Secret",
                 description=(
                     f"{lead} avant l'échange ! Ton cadeau pour **{name}** n'est pas encore "
                     "marqué envoyé.\n\nS'il est parti, clique sur **📦 Cadeau envoyé** "
                     "pour prévenir ton destinataire."
                 ),
-                color=Colors.SECRET_SANTA,
             )
             try:
                 await giver.send(

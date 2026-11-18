@@ -23,7 +23,7 @@ def test_build_embeds_renders_titles_colors_and_links():
     assert embed.title == "Liens utiles"
     assert embed.to_dict()["color"] == 0xFF0000
     assert [(f.name, f.value) for f in embed.fields] == [
-        ("Wiki", "[Cliquez ici](https://wiki.example.org)")
+        ("Wiki", "[Ouvrir le lien](https://wiki.example.org)")
     ]
 
 
@@ -92,7 +92,7 @@ async def test_publish_edits_the_persistent_message_with_short_links(monkeypatch
     assert fetched["pin"] is True
     assert edited["message"] is message
     assert edited["content"] == ""
-    assert edited["embeds"][0].fields[0].value == "[Cliquez ici](https://s.example/a)"
+    assert edited["embeds"][0].fields[0].value == "[Ouvrir le lien](https://s.example/a)"
 
 
 async def test_publish_reports_a_missing_message(monkeypatch):

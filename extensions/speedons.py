@@ -18,6 +18,7 @@ from src.core.config import ModuleConfig
 from src.core.http import fetch_untrusted
 from src.core.logging import log_failure
 from src.core.urls import redact_url
+from src.discord_ext.look import card
 from src.discord_ext.messages import GuildMessages, edit_message_if_changed
 from src.discord_ext.paginator import CustomPaginator
 from src.webui.schemas import (
@@ -64,7 +65,6 @@ class SpeedonsConfig(SchemaBase):
 logger = logutil.init_logger(__name__)
 
 SPEEDONS = ModuleConfig("moduleSpeedons")
-COLOR = 0xDBEA2B
 
 
 async def get_data(url):
@@ -104,10 +104,10 @@ async def render_schedule(base_url: str, icon_url: str | None):
     current_run = None
     # Fetch amount
     amount = float(amount_data["amount"])
-    embed = Embed(
+    embed = card(
+        "moduleSpeedons",
         title=f"Speedons 4 ({amount:.2f}€)",
         timestamp=clock.now(),
-        color=0xDBEA2B,
         thumbnail=icon_url,
     )
     # Create an incentive dict
@@ -169,10 +169,10 @@ async def render_schedule(base_url: str, icon_url: str | None):
             < utils.timestamp_converter(event["end_date"])
         ):
             current_run = i
-            embedlive = Embed(
+            embedlive = card(
+                "moduleSpeedons",
                 title=f"Run en cours ({amount:.2f}€)",
                 timestamp=clock.now(),
-                color=0xDBEA2B,
                 thumbnail=icon_url,
             )
             embedlive.add_field(
@@ -190,17 +190,15 @@ async def render_schedule(base_url: str, icon_url: str | None):
             )
         if len(embed.fields) == 5:
             embeds.append(embed)
-            embed = Embed(
-                title=f"Speedons 4 ({amount:.2f}€)",
-                timestamp=clock.now(),
-                color=0xDBEA2B,
+            embed = card(
+                "moduleSpeedons", title=f"Speedons 4 ({amount:.2f}€)", timestamp=clock.now()
             )
         i = i + 1
     embeds.append(embed)
-    live = embedlive or Embed(
+    live = embedlive or card(
+        "moduleSpeedons",
         title=f"Pas de run en cours ({amount:.2f}€)",
         timestamp=clock.now(),
-        color=COLOR,
         thumbnail=icon_url,
     )
     return embeds, live, (int(current_run / 5) if current_run is not None else 0)

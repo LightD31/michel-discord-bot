@@ -13,13 +13,9 @@ from interactions import Embed, Timestamp
 
 from features.mdi import GameSnapshot, MatchSnapshot, TeamRef
 from src.core.text import format_discord_timestamp
+from src.discord_ext.look import Kind, card, sign
 
 from ._common import (
-    EMBED_COLOR_DEFAULT,
-    EMBED_COLOR_LIVE,
-    EMBED_COLOR_LOSS,
-    EMBED_COLOR_SCHEDULED,
-    EMBED_COLOR_WIN,
     STATUS_EMOJI_LIVE,
     STATUS_EMOJI_SCHEDULED,
     STATUS_EMOJI_TERMINAL_LOSS,
@@ -105,12 +101,7 @@ class EmbedsMixin:
         team_name = team.name if team else team_slug.capitalize()
         title = f"📅 {team_name} — {EVENT_TITLE}"
         description = f"Suivi automatique des matchs de **{team_name}**."
-        embed = Embed(
-            title=title,
-            description=description,
-            color=EMBED_COLOR_DEFAULT,
-            timestamp=Timestamp.now(),
-        )
+        embed = card("moduleMDI", title=title, description=description, timestamp=Timestamp.now())
         if event_url:
             embed.url = event_url
         if team and team.icon_logo_url:
@@ -254,9 +245,10 @@ class EmbedsMixin:
         event_url: str | None,
         icon_url: str | None = None,
     ) -> Embed:
-        embed = Embed(
+        embed = card(
+            "moduleMDI",
+            "warning",
             title=self._embed_title(match, STATUS_EMOJI_SCHEDULED),
-            color=EMBED_COLOR_SCHEDULED,
             timestamp=Timestamp.now(),
         )
         if event_url:
@@ -285,9 +277,10 @@ class EmbedsMixin:
         event_url: str | None,
         icon_url: str | None = None,
     ) -> Embed:
-        embed = Embed(
+        embed = card(
+            "moduleMDI",
+            "error",
             title=self._embed_title(match, STATUS_EMOJI_LIVE),
-            color=EMBED_COLOR_LIVE,
             timestamp=Timestamp.now(),
         )
         if event_url:
@@ -310,7 +303,7 @@ class EmbedsMixin:
         if team and team.icon_logo_url:
             embed.set_thumbnail(url=team.icon_logo_url)
         self._set_event_author(embed, event_url, "live", icon_url)
-        embed.set_footer(text="Mise à jour automatique")
+        sign(embed, "moduleMDI", "Mise à jour automatique")
         return embed
 
     def _build_terminal_embed(
@@ -322,20 +315,21 @@ class EmbedsMixin:
     ) -> Embed:
         if team is not None and match.winner_team_id == team.id:
             emoji = STATUS_EMOJI_TERMINAL_WIN
-            color = EMBED_COLOR_WIN
+            kind: Kind = "success"
             verdict = "VICTOIRE 🎉"
         elif team is not None and match.winner_team_id is not None:
             emoji = STATUS_EMOJI_TERMINAL_LOSS
-            color = EMBED_COLOR_LOSS
+            kind = "error"
             verdict = "DÉFAITE 😢"
         else:
             emoji = STATUS_EMOJI_TERMINAL_NEUTRAL
-            color = EMBED_COLOR_DEFAULT
+            kind = "neutral"
             verdict = "Match terminé"
 
-        embed = Embed(
+        embed = card(
+            "moduleMDI",
+            kind,
             title=f"{emoji} {self._embed_title(match)}",
-            color=color,
             timestamp=Timestamp.now(),
         )
         if event_url:
@@ -358,7 +352,7 @@ class EmbedsMixin:
         if team and team.icon_logo_url:
             embed.set_thumbnail(url=team.icon_logo_url)
         self._set_event_author(embed, event_url, "terminal", icon_url)
-        embed.set_footer(text="Match terminé")
+        sign(embed, "moduleMDI", "Match terminé")
         return embed
 
     # ── Helpers ──────────────────────────────────────────────────────────────

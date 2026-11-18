@@ -100,7 +100,7 @@ class RequestsMixin:
             ShortText(
                 label="Titre du texte",
                 custom_id="title",
-                placeholder="Titre (ou objet de votre demande)",
+                placeholder="Titre (ou objet de ta demande)",
                 max_length=100,
             ),
             ShortText(
@@ -178,11 +178,11 @@ class RequestsMixin:
             log_failure(logger, "Demande de %s non enregistrée: %s", ctx.author, e)
             sent = False
         if not sent:
-            await send_error(ctx, "Impossible de transmettre votre demande, réessayez plus tard.")
+            await send_error(ctx, "Je n'ai pas pu transmettre ta demande : réessaie plus tard.")
             return
 
         await ctx.send(
-            "✅ Demande envoyée ! Vous recevrez un message privé quand elle aura été traitée.",
+            "✅ Demande envoyée ! Tu recevras un message privé quand elle aura été traitée.",
             ephemeral=True,
         )
         logger.info("Demande « %s » envoyée par %s", title, ctx.author)

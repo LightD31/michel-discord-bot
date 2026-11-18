@@ -12,7 +12,8 @@ _OPTION_EMOJIS = frozenset(POLL_EMOJIS) | frozenset(DEFAULT_POLL_EMOJIS)
 # The tally a previous render appended to an option: " : 2/5 votes" (bold or
 # not), then the voters on the next line.
 _VOTE_TALLY = re.compile(r" : (?:\*\*)?\d+/\d+ votes.*\Z", re.DOTALL)
-_FOOTER_PREFIX = "Créé par "
+# A poll's footer names its author, after Michel's: "Michel · Utilitaires · Sondage de bob".
+POLL_FOOTER_MARK = "Sondage de "
 
 
 def validate_poll_options(options: list[str]) -> bool:
@@ -20,12 +21,9 @@ def validate_poll_options(options: list[str]) -> bool:
     return len(options) <= MAX_POLL_OPTIONS
 
 
-def parse_poll_author_id(footer_text: str) -> str | None:
-    """Extract the author ID from a poll embed footer like
-    ``"Créé par <name> (ID: <id>)"``."""
-    if not footer_text or len(footer_text.split(" ")) < 5:
-        return None
-    return footer_text.split(" ")[4].rstrip(")")
+def poll_footer(author_name: str) -> str:
+    """What a poll adds to Michel's footer: who asked (by name, never by id)."""
+    return f"{POLL_FOOTER_MARK}{author_name}"
 
 
 def options_description(options: list[str], emojis: list[str]) -> str:
@@ -59,13 +57,13 @@ def poll_option_label(block: str) -> str:
 def is_reaction_poll_text(footer_text: str | None, description: str | None) -> bool:
     """Whether an embed's footer and body are those ``/poll`` writes.
 
-    The footer names the author (``Créé par <name> (ID: <id>)``) and the first
-    paragraph starts with an option emoji. Other embeds sharing the poll colour
-    (RSS posts, role menus, giveaways, button polls) don't match both.
+    The footer is Michel's with the author (``… · Sondage de <name>``) and the
+    first paragraph starts with an option emoji. Other embeds (RSS posts, role
+    menus, giveaways, button polls) don't match both.
     """
-    if not footer_text or not footer_text.startswith(_FOOTER_PREFIX):
+    if not footer_text or not footer_text.startswith("Michel · "):
         return False
-    if not (parse_poll_author_id(footer_text) or "").isdigit():
+    if f" · {POLL_FOOTER_MARK}" not in footer_text:
         return False
     first_block = (description or "").split("\n\n", 1)[0]
     return poll_block_emoji(first_block) is not None
@@ -106,7 +104,7 @@ __all__ = [
     "MAX_POLL_OPTIONS",
     "is_reaction_poll_text",
     "options_description",
-    "parse_poll_author_id",
+    "poll_footer",
     "poll_block_emoji",
     "poll_option_emojis",
     "poll_option_label",

@@ -109,6 +109,15 @@ async def test_an_anonymous_poll_is_stored_with_its_buttons(setup):
     ]
 
 
+async def test_a_poll_names_its_author_but_never_prints_their_id(setup):
+    """The footer is public: it named the author *and* printed their Discord id."""
+    ext, ctx, _, _, _ = setup
+    message = await create(ext, ctx, PollsExtension.poll_anonyme)
+    footer = message.embeds[0].footer.text
+    assert footer == "Michel · Utilitaires · Sondage de alice"
+    assert "3" not in footer
+
+
 @pytest.mark.parametrize("options", ["Seule", "A;" * 12])
 async def test_a_poll_needs_two_to_ten_options(setup, options):
     ext, ctx, repo, _, _ = setup

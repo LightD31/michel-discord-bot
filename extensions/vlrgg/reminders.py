@@ -20,8 +20,9 @@ from features.vlrgg import (
 )
 from src.core.errors import DatabaseError
 from src.core.text import format_discord_timestamp
+from src.discord_ext.look import card, sign
 
-from ._common import DEFAULT_EMBED_COLOR, MAP_POOL_DAYS, TeamState, logger
+from ._common import MAP_POOL_DAYS, TeamState, logger
 
 MAX_HEAD_TO_HEAD = 5
 MAX_POOL_MAPS = 7
@@ -97,10 +98,10 @@ class RemindersMixin:
             )
             if p
         )
-        embed = Embed(
+        embed = card(
+            "moduleVlrgg",
             title=f"⏰ {team1} vs {team2}",
             description=description,
-            color=DEFAULT_EMBED_COLOR,
             timestamp=Timestamp.now(),
         )
         logo = str((vlr_data.get("profile") or {}).get("logo") or "")
@@ -134,7 +135,7 @@ class RemindersMixin:
                 value=pool_text,
                 inline=False,
             )
-        embed.set_footer(text="Source: VLR.gg")
+        sign(embed, "moduleVlrgg", "Source : VLR.gg")
         return embed
 
     async def _map_pool_comparison(

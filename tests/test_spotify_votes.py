@@ -129,7 +129,7 @@ async def test_closing_the_daily_vote(votes_mod, monkeypatch, outcome, state):
         return kwargs["embedtype"], None
 
     async def fake_vote_embed(**kwargs):
-        return kwargs["color"]
+        return kwargs["kind"]
 
     async def fake_edit(message, **kwargs):
         calls.append(("edit", kwargs["content"]))

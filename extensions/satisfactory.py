@@ -18,6 +18,7 @@ from src.core import clock
 from src.core import logging as logutil
 from src.core.config import ModuleConfig
 from src.core.logging import log_failure
+from src.discord_ext.look import card
 from src.discord_ext.messages import GuildMessages, edit_message_if_changed
 from src.webui.schemas import (
     SchemaBase,
@@ -173,10 +174,10 @@ def _connection(settings: dict) -> tuple[str, str, str | None] | None:
 
 
 def _status_embed(settings: dict, players: int, tier: object) -> Embed:
-    embed = Embed(
+    embed = card(
+        "moduleSatisfactory",
         title="🏭 Serveur Satisfactory de la Coloc",
         description="Statut du serveur en temps réel",
-        color=0x00A86B,
         timestamp=clock.now(),
     )
     embed.add_field(

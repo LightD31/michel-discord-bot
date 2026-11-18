@@ -71,7 +71,7 @@ def _hierarchy_refusal(role: RoleInfo, author: MenuAuthor, purpose: str) -> str 
     if not can_manage_roles(author.permissions):
         return f"Il faut la permission « Gérer les rôles » pour {purpose}."
     if role.position >= author.top_position:
-        return f"Le rôle <@&{role.id}> n'est pas sous votre rôle le plus haut."
+        return f"Le rôle <@&{role.id}> n'est pas sous ton rôle le plus haut."
     return None
 
 
@@ -124,7 +124,7 @@ def mention_refusal(role: RoleInfo, *, author: MenuAuthor) -> str | None:
     one, unless they hold ``MENTION_EVERYONE``.
     """
     if role.is_default:
-        return "Utilisez @everyone dans le texte plutôt qu'en rôle à mentionner."
+        return "Écris @everyone dans le texte plutôt qu'en rôle à mentionner."
     if role.mentionable or author.is_owner or author.bypass_hierarchy:
         return None
     if has_any(author.permissions, ADMINISTRATOR | MENTION_EVERYONE):

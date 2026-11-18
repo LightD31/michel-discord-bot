@@ -64,7 +64,7 @@ class EmbedManagerConfig(SchemaBase):
     embeds: list[EmbedEntry] = ui(
         "Embeds",
         "embedlist",
-        description="Créez des embeds avec un titre, couleur et liens.",
+        description="Des embeds avec un titre, une couleur et des liens, publiés par Michel.",
         default=[],
     )
 

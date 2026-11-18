@@ -113,12 +113,6 @@ MEDAL_LABELS = {
     "ME_BRONZE": "Bronze",
 }
 
-MEDAL_COLORS = {
-    "ME_GOLD": 0xFFD700,
-    "ME_SILVER": 0xC0C0C0,
-    "ME_BRONZE": 0xCD7F32,
-}
-
 # Drapeaux des pays fréquents
 COUNTRY_FLAGS = {
     "FRA": "🇫🇷",
@@ -146,8 +140,6 @@ COUNTRY_FLAGS = {
     "BUL": "🇧🇬",
     "ROC": "🏳️",
 }
-
-EMBED_COLOR_FRANCE = 0x002395  # Bleu France
 
 
 def _get_flag(code: str) -> str:

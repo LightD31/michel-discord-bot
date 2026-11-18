@@ -9,7 +9,6 @@ from typing import Any
 from features.mdi import TeamRef
 from src.core import logging as logutil
 from src.core.config import ModuleConfig, global_config
-from src.discord_ext.embeds import Colors
 from src.webui.schemas import SchemaBase, enabled_field, register_module, register_section, ui
 
 # ── Module config (Web UI schema) ─────────────────────────────────────────────
@@ -119,11 +118,6 @@ LIVE_INTERVAL_MINUTES = 1.0
 # The pinned schedule message, in ``bot_messages`` (src.core.message_refs).
 SCHEDULE_SLOT = "mdi:schedule"
 
-EMBED_COLOR_DEFAULT = Colors.UTIL
-EMBED_COLOR_SCHEDULED = Colors.WARNING
-EMBED_COLOR_LIVE = Colors.ERROR
-EMBED_COLOR_WIN = Colors.SUCCESS
-EMBED_COLOR_LOSS = 0x8B0000  # darker red for "Mandatory lost"
 
 STATUS_EMOJI_SCHEDULED = "🟡"
 STATUS_EMOJI_LIVE = "🔴"
@@ -177,11 +171,6 @@ class GuildState:
 __all__ = [
     "DEFAULT_EVENT_SLUG",
     "DEFAULT_TEAM_SLUG",
-    "EMBED_COLOR_DEFAULT",
-    "EMBED_COLOR_LIVE",
-    "EMBED_COLOR_LOSS",
-    "EMBED_COLOR_SCHEDULED",
-    "EMBED_COLOR_WIN",
     "GuildConfig",
     "GuildState",
     "LIVE_INTERVAL_MINUTES",

@@ -31,7 +31,7 @@ from src.core.config import load_discord2name
 from src.core.logging import log_failure
 from src.core.text import clip
 from src.discord_ext.channels import fetch_guild_channel
-from src.discord_ext.embeds import Colors
+from src.discord_ext.look import card
 from src.discord_ext.messages import edit_message_if_changed, fetch_user_safe
 
 logger = logutil.init_logger(__name__)
@@ -94,22 +94,22 @@ def announcement_embed(session: SecretSantaSession, participants: list[str] | No
     """The session's announcement; *participants* is ``None`` in a group DM."""
     description = (
         "🎄 **Une session de Père Noël Secret est ouverte !** 🎄\n\n"
-        "Cliquez sur **Participer** pour rejoindre le tirage au sort : vous pourrez "
-        "y laisser votre liste d'envies, et la modifier avec **📝 Ma liste** "
-        "jusqu'au tirage. Vous pouvez vous retirer à tout moment avant le tirage.\n\n"
+        "Clique sur **Participer** pour rejoindre le tirage au sort : tu pourras "
+        "y laisser ta liste d'envies, et la modifier avec **📝 Ma liste** "
+        "jusqu'au tirage. Tu peux te retirer à tout moment avant le tirage.\n\n"
     )
     details = session_details(session)
     if details:
         description += details + "\n"
     if participants is None:
-        description += "\nUtilisez `/secretsanta participants` pour voir la liste des inscrits."
+        description += "\nLa liste des inscrits : `/secretsanta participants`."
     else:
         listed = "\n".join(f"• {m}" for m in participants) or "*Aucun participant pour le moment*"
         description += f"\n**Participants ({len(participants)}) :**\n{listed}"
-    return Embed(
+    return card(
+        "moduleSecretSanta",
         title="🎅 Père Noël Secret",
         description=clip(description, 4096),
-        color=Colors.SECRET_SANTA_SUCCESS,
     )
 
 
@@ -169,10 +169,7 @@ def draw_dm_embed(
             "est prévenu. Quand le tien arrive, clique sur **🎁 Cadeau reçu**."
         )
     parts.append("*Signé : Le vrai Père Noël* 🎅")
-    embed = Embed(title=title, description="\n\n".join(parts), color=Colors.SECRET_SANTA)
-    if footer:
-        embed.set_footer(text=footer)
-    return embed
+    return card("moduleSecretSanta", title=title, description="\n\n".join(parts), footer=footer)
 
 
 def receiver_display_name(guild_id: str | None, user_id: int, user: Any) -> str:
@@ -265,16 +262,16 @@ async def _announce(
     for uid in session.participants:
         _, user = await fetch_user_safe(bot, uid)
         mentions.append(user.mention if user else f"<@{uid}>")
-    embed = Embed(
+    embed = card(
+        "moduleSecretSanta",
         title="🎅 Tirage effectué ! 🎉",
         description=clip(
             f"Le tirage au sort a été effectué pour **{len(session.participants)}** "
             "participants !\n\n**Participants :**\n"
             + "\n".join(f"• {m}" for m in mentions)
-            + "\n\nVérifiez vos messages privés pour découvrir qui vous devez gâter ! 🎁",
+            + "\n\nChaque participant vient de recevoir en MP le nom de la personne à gâter ! 🎁",
             4096,
         ),
-        color=Colors.SECRET_SANTA,
     )
     try:
         if guild_id is None:

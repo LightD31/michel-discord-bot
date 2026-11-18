@@ -46,7 +46,7 @@ from src.core.config import global_config
 from src.core.errors import BotError
 from src.core.logging import log_failure
 from src.discord_ext.channels import fetch_guild_channel
-from src.discord_ext.embeds import Colors
+from src.discord_ext.look import card
 from src.discord_ext.messages import fetch_user_safe
 
 from ._common import CONFRERIE
@@ -68,7 +68,7 @@ _STATUS_LINES = {
 def review_embed(draft: Draft, status_line: str = "") -> Embed:
     """What the owner sees for one draft (and, once handled, its outcome)."""
     title = "📝 Nouvelle demande" if draft.source == SOURCE_DEMANDE else "📝 Fiche à valider"
-    embed = Embed(title=title, color=Colors.CONFRERIE, timestamp=draft.created_at)
+    embed = card("moduleConfrerie", title=title, timestamp=draft.created_at)
     embed.add_field(name="Titre", value=draft.title[:1024], inline=False)
     authors = ", ".join(draft.authors) or "—"
     if draft.unmapped_author:
@@ -281,7 +281,7 @@ class ReviewMixin:
             await ctx.defer(edit_origin=True)
             if not await self._approve(draft, repo):
                 await ctx.send(
-                    "Notion a refusé la création de la fiche, réessayez.", ephemeral=True
+                    "Notion a refusé la création de la fiche : réessaie.", ephemeral=True
                 )
                 return
             status = STATUS_APPROVED
@@ -361,7 +361,7 @@ class ReviewMixin:
 
         await ctx.defer(ephemeral=True)
         if not await self._approve(draft, repo):
-            await ctx.send("Notion a refusé la création de la fiche, réessayez.", ephemeral=True)
+            await ctx.send("Notion a refusé la création de la fiche : réessaie.", ephemeral=True)
             return
         await self._refresh_review_message(
             draft, _STATUS_LINES[STATUS_APPROVED].format(who=ctx.author.mention)
@@ -415,14 +415,12 @@ class ReviewMixin:
                 if user is None:
                     return
                 if draft.status == STATUS_APPROVED:
-                    text = (
-                        f"✅ Votre texte « {draft.title} » a été ajouté à la base de la confrérie"
-                    )
+                    text = f"✅ Ton texte « {draft.title} » a été ajouté à la base de la confrérie"
                     text += f" : {draft.notion_url}" if draft.notion_url else "."
                 elif draft.status == STATUS_DONE:
-                    text = f"✅ Votre demande « {draft.title} » a été traitée."
+                    text = f"✅ Ta demande « {draft.title} » a été traitée."
                 else:
-                    text = f"Votre demande « {draft.title} » n'a pas été retenue."
+                    text = f"Ta demande « {draft.title} » n'a pas été retenue."
                 await user.send(text)
             elif draft.status == STATUS_APPROVED and draft.channel_id:
                 channel = await fetch_guild_channel(self.bot, draft.guild_id, draft.channel_id)

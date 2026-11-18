@@ -484,7 +484,7 @@ class Discord2NameConfig(SchemaBase):
     __direct_value__ = True
 
     discord2name: dict[str, str] = ui(
-        "Membres", "discord2name", description="Associez un prénom à chaque ID Discord."
+        "Membres", "discord2name", description="Associe un prénom à chaque membre."
     )
 
 
@@ -785,7 +785,7 @@ class VlrggSection(SchemaBase):
         description=(
             "Plafond que le bot s'impose sur les routes /team et /match/details, que "
             "l'API limite par défaut à 20 requêtes par minute et par client. Au-delà, "
-            "les requêtes attendent leur tour. À relever si votre déploiement accorde "
+            "les requêtes attendent leur tour. À relever si ton déploiement accorde "
             "un quota plus large au bot ; 0 = pas de limite côté bot."
         ),
     )

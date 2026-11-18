@@ -12,7 +12,7 @@ from interactions import (
 from features.secretsanta import SecretSantaRepository
 from src.core import logging as logutil
 from src.core.logging import log_failure
-from src.discord_ext.embeds import Colors
+from src.discord_ext.look import card
 from src.discord_ext.messages import fetch_user_safe, send_error
 from src.discord_ext.scopes import guild_scopes
 from src.discord_ext.secretsanta import (
@@ -58,7 +58,7 @@ class DrawsMixin:
             await send_error(
                 ctx,
                 "Il n'y a pas de session de Père Noël Secret en cours.\n"
-                "Créez-en une avec `/secretsanta create`",
+                "Crées-en une avec `/secretsanta create`.",
             )
             return
 
@@ -86,10 +86,10 @@ class DrawsMixin:
             if outcome.error == IMPOSSIBLE:
                 if not allow_subgroups:
                     message += (
-                        "\n\n💡 **Astuce :** Essayez avec l'option `allow_subgroups: True` "
+                        "\n\n💡 **Astuce :** essaie avec l'option `allow_subgroups: True` "
                         "pour autoriser plusieurs sous-groupes."
                     )
-                message += "\nVérifiez les paires interdites avec `/secretsanta listbans`"
+                message += "\nVérifie les paires interdites avec `/secretsanta listbans`."
             await send_error(ctx, message)
             return
 
@@ -108,11 +108,7 @@ class DrawsMixin:
             )
 
         await ctx.send(
-            embed=Embed(
-                title="🎅 Tirage effectué",
-                description=response_msg,
-                color=Colors.SECRET_SANTA,
-            ),
+            embed=card("moduleSecretSanta", title="🎅 Tirage effectué", description=response_msg),
             ephemeral=True,
         )
 
@@ -146,10 +142,8 @@ class DrawsMixin:
             description += f"• {giver_mention} → {receiver_mention}\n"
 
         await ctx.send(
-            embed=Embed(
-                title="🎅 Révélation des attributions",
-                description=description,
-                color=Colors.SECRET_SANTA,
+            embed=card(
+                "moduleSecretSanta", title="🎅 Révélation des attributions", description=description
             ),
             ephemeral=True,
         )
@@ -195,10 +189,10 @@ class DrawsMixin:
                 components=gift_buttons(context_id, relay=relay, shipping=session.shipping),
             )
             await ctx.send(
-                embed=Embed(
+                embed=card(
+                    "moduleSecretSanta",
                     title="🎅 Rappel envoyé",
                     description="Regarde tes messages privés ! 📬",
-                    color=Colors.SECRET_SANTA,
                 ),
                 ephemeral=True,
             )

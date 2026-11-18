@@ -10,9 +10,9 @@ MAX_CHOICE_NAME = 100
 # Sentinel value the commands treat as "no real track picked".
 NO_TRACK = "error"
 
-PROMPT = "Veuillez entrer un nom de chanson"
+PROMPT = "Tape le nom d'une chanson"
 NO_RESULT = "Aucun résultat"
-UNAVAILABLE = "Spotify ne répond pas — réessayez dans un instant"
+UNAVAILABLE = "Spotify ne répond pas : réessaie dans un instant"
 
 
 def placeholder(message: str) -> list[dict[str, str]]:

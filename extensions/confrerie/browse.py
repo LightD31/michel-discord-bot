@@ -27,7 +27,7 @@ from features.confrerie.stats import COL_AUTHOR
 from features.links import shorten_url
 from src.core import logging as logutil
 from src.core.text import take_within_budget
-from src.discord_ext.embeds import Colors
+from src.discord_ext.look import card, sign
 from src.discord_ext.messages import send_error
 from src.discord_ext.scopes import guild_scopes
 
@@ -46,7 +46,7 @@ DESCRIPTION_BUDGET = 4000
 def _private_option():
     return slash_option(
         name="prive",
-        description="Réponse visible par vous seul·e",
+        description="Réponse visible par toi seul·e",
         required=False,
         opt_type=OptionType.BOOLEAN,
     )
@@ -103,7 +103,7 @@ class BrowseMixin:
             "📖 Fiche du texte" if titre else "📖 Un texte de la confrérie au hasard",
             notion_url=notion_url,
             links=links,
-            footer=await self._create_embed_footer(ctx.guild_id),
+            footer_icon=self._footer_icon(ctx.guild_id),
         )
         await ctx.send(embed=embed, ephemeral=prive)
 
@@ -145,13 +145,13 @@ class BrowseMixin:
             await send_error(ctx, "Aucun·e auteur·ice de ce nom dans la base.")
             return
 
-        embed = Embed(
+        embed = card(
+            "moduleConfrerie",
             title=f"✍️ {profile.name}",
             description=(
                 f"**{plural(profile.works, 'œuvre')}** · "
                 f"**{plural(profile.defis, 'participation')}** aux défis"
             ),
-            color=Colors.CONFRERIE,
         )
         lines = []
         for work in profile.latest:
@@ -179,8 +179,7 @@ class BrowseMixin:
                 kept, _ = take_within_budget(links, 1024, separator=" · ")
                 embed.add_field(name="Liens", value=" · ".join(kept), inline=False)
 
-        footer = await self._create_embed_footer(ctx.guild_id)
-        embed.set_footer(text=footer.text, icon_url=footer.icon_url)
+        sign(embed, "moduleConfrerie", icon_url=self._footer_icon(ctx.guild_id))
         await ctx.send(embed=embed, ephemeral=prive)
 
     @auteur.autocomplete("nom")
@@ -242,17 +241,19 @@ class BrowseMixin:
             entries.append(entry)
         kept, _ = take_within_budget(entries, DESCRIPTION_BUDGET, separator="\n\n")
 
-        embed = Embed(
+        embed = card(
+            "moduleConfrerie",
             title="🧰 Boîte à outils" + (f" — {theme}" if theme else ""),
             description="\n\n".join(kept),
-            color=Colors.CONFRERIE,
         )
         hidden = len(tools) - len(kept)
         count = plural(len(tools), "ressource")
-        embed.set_footer(
-            text=count
-            + (f" · {hidden} non affichée(s), affinez la recherche" if hidden else "")
-            + " · ✅ = testée par la confrérie"
+        sign(
+            embed,
+            "moduleConfrerie",
+            count
+            + (f" · {hidden} non affichée(s), affine la recherche" if hidden else "")
+            + " · ✅ = testée par la confrérie",
         )
         await ctx.send(embed=embed, ephemeral=prive)
 

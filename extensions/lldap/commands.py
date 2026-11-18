@@ -20,8 +20,8 @@ from features.lldap import (
     username_from_discord,
 )
 from src.core import logging as logutil
-from src.discord_ext.embeds import Colors
 from src.discord_ext.errors import failure_reply
+from src.discord_ext.look import card
 from src.discord_ext.messages import require_guild, send_error
 from src.discord_ext.scopes import guild_scopes
 from src.integrations.lldap import LldapError
@@ -184,13 +184,14 @@ class CommandsMixin:
             groups,
         )
         service = service_name(guild_id)
-        embed = Embed(
+        embed = card(
+            "moduleLldap",
+            "success",
             title=f"Compte {service} créé",
             description=(
                 "Voici tes identifiants. Change ce mot de passe temporaire dès ta première "
                 "connexion."
             ),
-            color=Colors.SUCCESS,
         )
         embed.add_field(name="Nom d'utilisateur", value=f"`{user_id}`", inline=True)
         embed.add_field(name="Mot de passe temporaire", value=f"`{password}`", inline=True)

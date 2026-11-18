@@ -16,6 +16,7 @@ from features.minecraft import get_config as get_mc_config
 from features.minecraft.table import build_stats_table
 from src.core.images import create_dynamic_image
 from src.core.logging import log_failure
+from src.discord_ext.look import card
 from src.discord_ext.messages import edit_message_if_changed
 
 from ._common import MINECRAFT, build_stats_embed, logger
@@ -41,7 +42,7 @@ class StatsMixin:
         if message is None:
             logger.debug("Guild %s: no status message configured yet; skipping stats", guild_id)
             return
-        embed1 = message.embeds[0] if message.embeds else Embed(title="Minecraft")
+        embed1 = message.embeds[0] if message.embeds else card("moduleMinecraft", title="Minecraft")
 
         player_stats = await self._get_player_stats(settings)
         table = build_stats_table(

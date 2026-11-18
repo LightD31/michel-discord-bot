@@ -60,7 +60,7 @@ from src.core.logging import log_failure
 from src.core.text import EMBED_DESCRIPTION_LIMIT, clip, format_discord_timestamp
 from src.discord_ext.autocomplete import MAX_CHOICES, matching_choices
 from src.discord_ext.channels import fetch_guild_channel
-from src.discord_ext.embeds import Colors
+from src.discord_ext.look import Kind, card
 from src.discord_ext.messages import (
     edit_message_if_changed,
     require_guild,
@@ -163,15 +163,21 @@ def _build_embed(
     labels with apparently-empty values on narrow viewports.
     """
     title_prefix = "🎁 GIVEAWAY"
-    color = Colors.UTIL
+    kind: Kind = "info"
     if cancelled:
         title_prefix = "🚫 GIVEAWAY ANNULÉ"
-        color = Colors.WARNING
+        kind = "neutral"
     elif closed:
         title_prefix = "🏁 GIVEAWAY TERMINÉ"
-        color = Colors.SUCCESS
+        kind = "success"
 
-    embed = Embed(title=f"{title_prefix} — {giveaway.prize}", color=color)
+    embed = card(
+        "moduleGiveaway",
+        kind,
+        title=f"{title_prefix} — {giveaway.prize}",
+        footer=f"{HOST_MARK}{host_name}",
+        footer_icon=host_avatar,
+    )
 
     # Description: prose only — the giveaway's own description plus the
     # call-to-action / status line.
@@ -214,8 +220,11 @@ def _build_embed(
     if participants_value is not None:
         embed.add_field(name="Participants", value=participants_value, inline=True)
 
-    embed.set_footer(text=f"Lancé par {host_name}", icon_url=host_avatar)
     return embed
+
+
+# The announcement's footer names its host after Michel's: "Michel · Giveaways · Lancé par alice".
+HOST_MARK = "Lancé par "
 
 
 def _footer_host(message: Message | None, giveaway: Giveaway) -> tuple[str, str | None]:
@@ -226,8 +235,8 @@ def _footer_host(message: Message | None, giveaway: Giveaway) -> tuple[str, str 
         return host_name, host_avatar
     footer = getattr(message.embeds[0], "footer", None)
     footer_text = getattr(footer, "text", None)
-    if isinstance(footer_text, str) and footer_text.startswith("Lancé par "):
-        resolved = footer_text.removeprefix("Lancé par ").strip()
+    if isinstance(footer_text, str) and HOST_MARK in footer_text:
+        resolved = footer_text.split(HOST_MARK, 1)[1].strip()
         if resolved:
             host_name = resolved
     footer_icon = getattr(footer, "icon_url", None)
@@ -515,7 +524,7 @@ class GiveawayExtension(Extension):
             await send_error(ctx, "Aucun giveaway trouvé pour ce message.")
             return
         if not giveaway.drawn:
-            await send_error(ctx, "Tirez d'abord les gagnants avec /giveaway end.")
+            await send_error(ctx, "Tire d'abord les gagnants avec /giveaway end.")
             return
 
         count = winners if winners is not None else giveaway.winners_count
@@ -558,10 +567,10 @@ class GiveawayExtension(Extension):
                 f"{len(g.entrants)} participant(s) — "
                 f"fin {format_discord_timestamp(g.ends_at, 'R')} [↗]({link})"
             )
-        embed = Embed(
+        embed = card(
+            "moduleGiveaway",
             title="Giveaways en cours",
             description=clip("\n".join(lines), EMBED_DESCRIPTION_LIMIT),
-            color=Colors.UTIL,
         )
         await ctx.send(embeds=[embed], ephemeral=True)
 
@@ -742,7 +751,7 @@ class GiveawayExtension(Extension):
         if mention:
             try:
                 await message.reply(
-                    f"🎉 Félicitations {mention}! Vous remportez **{giveaway.prize}**.",
+                    f"🎉 Félicitations {mention} ! Tu remportes **{giveaway.prize}**.",
                     allowed_mentions=_winners_only(winners),
                 )
             except Exception as e:

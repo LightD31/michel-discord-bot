@@ -249,6 +249,15 @@ def test_choice_fields_offer_what_the_save_accepts(probe):
     assert probe["choices"] == []
 
 
+def test_every_module_has_its_look(probe):
+    """Each module's cards say what the dashboard calls it, with the same icon (P6, B8)."""
+    from src.discord_ext.look import LOOKS
+
+    for key, schema in probe["module_schemas"].items():
+        assert key in LOOKS, f"{key} has no look in src/discord_ext/look.py"
+        assert (LOOKS[key].icon, LOOKS[key].label) == (schema.get("icon"), schema["label"]), key
+
+
 def test_every_extension_declares_its_modules_explicitly(probe):
     for name, classes in probe["extensions"].items():
         assert len(classes) == 1, f"{name} should define one Extension class: {sorted(classes)}"

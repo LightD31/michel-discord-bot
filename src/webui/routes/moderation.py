@@ -112,7 +112,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
                 raise HTTPException(status_code=404, detail="Cas introuvable")
             if str(existing.user_id) == str(session.user_id):
                 raise HTTPException(
-                    status_code=403, detail="Vous ne pouvez pas révoquer un cas qui vous vise."
+                    status_code=403, detail="Tu ne peux pas révoquer un cas qui te vise."
                 )
             if not existing.active:
                 raise HTTPException(status_code=400, detail="Cas déjà révoqué")

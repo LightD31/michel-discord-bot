@@ -11,7 +11,6 @@ from interactions import (
     Button,
     ButtonStyle,
     IntervalTrigger,
-    MaterialColors,
     OptionType,
     OrTrigger,
     SlashContext,
@@ -136,7 +135,7 @@ class VotesMixin:
                 content=(
                     f"Pas assez de votes ({total_votes}/{MIN_VOTES}), "
                     f"le vote est prolongé de 24h !\n"
-                    f"Voulez-vous **conserver** cette chanson dans playlist ? "
+                    f"On **conserve** cette chanson dans la playlist ? "
                     f"(poke <@{song['added_by']}>)"
                 ),
                 embeds=[embed_original],
@@ -194,7 +193,7 @@ class VotesMixin:
                     remove=tally.supprimer,
                     menfou=tally.menfou,
                     users=tally.voters,
-                    color=MaterialColors.DEEP_ORANGE if removed else MaterialColors.LIME,
+                    kind="error" if removed else "success",
                     guild_id=server.guild_id,
                 ),
             ],
@@ -301,8 +300,7 @@ class VotesMixin:
         )
         message = await channel.send(
             content=(
-                f"Voulez-vous **conserver** cette chanson dans playlist ? "
-                f"(poke <@{song['added_by']}>)"
+                f"On **conserve** cette chanson dans la playlist ? (poke <@{song['added_by']}>)"
             ),
             embeds=[embed],
             components=[
@@ -571,7 +569,7 @@ class VotesMixin:
 
     @slash_command(
         name="addwithvote",
-        description="Pas sûr d'ajouter une chanson ? Mettez-la au vote",
+        description="Pas sûr d'ajouter une chanson ? Mets-la au vote",
         scopes=guild_scopes(SPOTIFY.guild_ids()),
     )
     @slash_option(
@@ -641,7 +639,7 @@ class VotesMixin:
                 )
                 message = await ctx.send(
                     content=(
-                        f"Voulez-vous **ajouter** cette chanson à la playlist ? "
+                        f"On **ajoute** cette chanson à la playlist ? "
                         f"(Demandé par <@{ctx.author_id}>)\n"
                         f"{track['external_urls']['spotify']}"
                     ),

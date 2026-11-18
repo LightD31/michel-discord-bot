@@ -28,6 +28,7 @@ from src.core.logging import log_failure
 from src.core.tasks import spawn
 from src.core.text import escape_md
 from src.discord_ext.links import shorten_embeds
+from src.discord_ext.look import card
 from src.discord_ext.messages import (
     GuildMessages,
     edit_message_if_changed,
@@ -76,7 +77,6 @@ class StreamlabsCharityConfig(SchemaBase):
 logger = logutil.init_logger(__name__)
 
 # Constants
-COLOR = 0x005EA5
 
 STREAMLABS = ModuleConfig("moduleStreamlabsCharity")
 
@@ -272,7 +272,8 @@ class StreamlabsCharityExtension(Extension):
         formatted_amount = format_currency(
             campaign_data["amount_raised"] / 100, "EUR", locale="fr_FR"
         )
-        return Embed(
+        return card(
+            "moduleStreamlabsCharity",
             title=campaign_data["campaign"]["display_name"],
             description=(
                 f"L'initiative **{campaign_data['campaign']['display_name']}** a récolté **{formatted_amount}** "
@@ -280,7 +281,6 @@ class StreamlabsCharityExtension(Extension):
                 f"{campaign_data['campaign']['page_settings']['description']}"
             ),
             url=url or None,
-            color=COLOR,
         )
 
     def create_cause_embed(self, campaign_data):
@@ -302,21 +302,19 @@ class StreamlabsCharityExtension(Extension):
             if url
         }
         social_links_str = ", ".join(f"[{key}]({url})" for key, url in social_links.items())
-        return Embed(
+        return card(
+            "moduleStreamlabsCharity",
             title=campaign_data["campaign"]["causable"]["display_name"],
             description=f"{campaign_data['campaign']['causable']['description']}\n\n{social_links_str}",
             thumbnail=campaign_data["campaign"]["causable"]["avatar"]["url"],
             url=campaign_data["campaign"]["causable"]["page_settings"]["website_url"],
-            color=COLOR,
         )
 
     def create_streamers_embed(self, members_str_online, members_str_offline, members_dict):
         online_count = sum(member["is_live"] for member in members_dict.values())
         offline_count = len(members_dict) - online_count
-        embed_streamers = Embed(
-            title="Participants",
-            color=COLOR,
-            timestamp=clock.now(),
+        embed_streamers = card(
+            "moduleStreamlabsCharity", title="Participants", timestamp=clock.now()
         )
         self.add_embed_fields(
             embed_streamers, f"En ligne ({online_count}/{len(members_dict)})", members_str_online
@@ -373,6 +371,6 @@ class StreamlabsCharityExtension(Extension):
         return [escape_md(member["display_name"]) for member in members_dict.values()]
 
     def create_final_members_embed(self, members_str):
-        embed_streamers = Embed(title="Participants", color=COLOR)
+        embed_streamers = card("moduleStreamlabsCharity", title="Participants")
         self.add_embed_fields(embed_streamers, "Merci à tous <3", members_str)
         return embed_streamers

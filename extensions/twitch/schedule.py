@@ -6,7 +6,6 @@ from datetime import datetime, timedelta
 
 from interactions import (
     Embed,
-    EmbedFooter,
     Guild,
     OrTrigger,
     ScheduledEventStatus,
@@ -24,7 +23,7 @@ from twitchAPI.type import TwitchResourceNotFound
 from src.core import clock
 from src.core import logging as logutil
 from src.core.logging import log_failure
-from src.discord_ext.embeds import Colors
+from src.discord_ext.look import card
 from src.discord_ext.messages import (
     edit_message_if_changed,
     fetch_or_create_persistent_message,
@@ -120,15 +119,15 @@ class ScheduleMixin:
 
             if schedule is not None:
                 segments = schedule.segments
-                embed = Embed(
+                embed = card(
+                    "moduleTwitch",
                     title=(
                         f"<:TeamBelieve:808056449750138880> Planning de {schedule.broadcaster_name}"
                         " <:TeamBelieve:808056449750138880>"
                     ),
                     description="Les 5 prochains streams planifiés et dans moins de 10 jours.",
-                    color=Colors.TWITCH,
                     timestamp=clock.now(),
-                    footer=EmbedFooter(text=bot.display_name, icon_url=bot.avatar_url),
+                    footer_icon=bot.avatar_url,
                 )
                 now = clock.now()
                 for stream in segments:
@@ -139,23 +138,22 @@ class ScheduleMixin:
                     elif start_time < now + timedelta(days=10):
                         self.add_field_to_embed(embed, stream=stream, is_now=False)
                 return embed
-            return Embed(
-                title=(
-                    "<:TeamBelieve:808056449750138880> Planning <:TeamBelieve:808056449750138880>"
-                ),
+            return card(
+                "moduleTwitch",
+                title="<:TeamBelieve:808056449750138880> Planning <:TeamBelieve:808056449750138880>",
                 description="Aucun stream planifié",
-                color=Colors.TWITCH,
                 timestamp=clock.now(),
-                footer=EmbedFooter(text=bot.display_name, icon_url=bot.avatar_url),
+                footer_icon=bot.avatar_url,
             )
         except Exception as e:
             log_failure(
                 logger, f"Error creating schedule embed for user {user_id} in guild {guild_id}: {e}"
             )
-            return Embed(
+            return card(
+                "moduleTwitch",
+                "error",
                 title="Planning",
                 description="Erreur lors de la récupération du planning",
-                color=Colors.ERROR,
                 timestamp=clock.now(),
             )
 

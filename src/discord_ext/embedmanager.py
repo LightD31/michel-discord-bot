@@ -15,6 +15,7 @@ from interactions import Client, Embed
 
 from features.links import shorten_keyed
 from src.core import logging as logutil
+from src.discord_ext.look import custom
 from src.discord_ext.messages import edit_message_if_changed, fetch_or_create_persistent_message
 
 MODULE_KEY = "moduleEmbedManager"
@@ -43,7 +44,7 @@ def build_embeds(embeds_config: list[Any]) -> list[Embed]:
         except ValueError:
             logger.warning("Invalid color format: %s, using default", color_hex)
             color = int(DEFAULT_COLOR, 16)
-        embed = Embed(title=embed_data.get("title", "Sans titre"), color=color)
+        embed = custom(title=embed_data.get("title", "Sans titre"), color=color)
 
         links = embed_data.get("links")
         for link_data in links if isinstance(links, list) else []:
@@ -51,7 +52,7 @@ def build_embeds(embeds_config: list[Any]) -> list[Embed]:
                 continue
             embed.add_field(
                 name=link_data.get("title", "Lien"),
-                value=f"[Cliquez ici]({link_data['url']})",
+                value=f"[Ouvrir le lien]({link_data['url']})",
                 inline=False,
             )
         embeds.append(embed)

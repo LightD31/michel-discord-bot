@@ -17,7 +17,8 @@ from features.coloc.constants import (
 )
 from features.coloc.utils import format_event_items, parse_zunivers_date
 from src.core.text import format_discord_timestamp
-from src.discord_ext.embeds import SPACER_FIELD, Colors
+from src.discord_ext.embeds import SPACER_FIELD
+from src.discord_ext.look import Kind, card
 
 
 def create_event_embed(
@@ -37,7 +38,7 @@ def create_event_embed(
         Configured Embed object
     """
     is_start = event_type == "start"
-    color = Colors.SUCCESS if is_start else Colors.ERROR
+    kind: Kind = "success" if is_start else "neutral"
     emoji = "🎉" if is_start else "⏰"
     action = "Nouvel événement" if is_start else "Fin d'événement"
     description = (
@@ -46,10 +47,11 @@ def create_event_embed(
         else "L'événement vient de se terminer."
     )
 
-    embed = Embed(
+    embed = card(
+        "moduleZunivers",
+        kind,
         title=f"{emoji} {action} /im {event['name']}",
         description=description,
-        color=color,
     )
 
     # Parse and format dates
@@ -109,7 +111,7 @@ def create_season_embed(season: dict, season_type: str, settings: dict | None = 
         Configured Embed object
     """
     is_start = season_type == "start"
-    color = 0xFF4500 if is_start else 0x8B0000
+    kind: Kind = "warning" if is_start else "error"
     emoji = "🔥" if is_start else "💀"
     action = "Nouvelle saison HARDCORE" if is_start else "Fin de saison HARDCORE"
     description = (
@@ -118,10 +120,11 @@ def create_season_embed(season: dict, season_type: str, settings: dict | None = 
         else "La saison hardcore vient de se terminer."
     )
 
-    embed = Embed(
+    embed = card(
+        "moduleZunivers",
+        kind,
         title=f"{emoji} {action} : Saison {season['index']}",
         description=description,
-        color=color,
     )
 
     # Parse and format dates
@@ -158,10 +161,10 @@ def create_season_embed(season: dict, season_type: str, settings: dict | None = 
 
 def create_corporation_embed(data: dict, currency_emoji: str, site_url: str | None) -> Embed:
     """Create the main corporation info embed, its title linking to the corporation's page."""
-    embed = Embed(
+    embed = card(
+        "moduleZunivers",
         title=f"{data['name']} Corporation",
         description=data["description"],
-        color=Colors.COLOC,
         url=zunivers_link(site_url, CORPORATION_PAGE, corp_id=str(data["id"])),
     )
 
@@ -199,10 +202,7 @@ def create_corporation_logs_embed(
     currency_emoji: str,
 ) -> Embed:
     """Create the corporation logs embed."""
-    embed = Embed(
-        title=f"Journal de la corporation pour le {date}",
-        color=Colors.COLOC,
-    )
+    embed = card("moduleZunivers", title=f"Journal de la corporation pour le {date}")
 
     active_members = set()
     log_lines = []

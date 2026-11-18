@@ -17,8 +17,8 @@ from interactions import (
 from features.reactionroles import RoleMenu, RoleMenuEntry
 from src.core import clock
 from src.discord_ext.channels import fetch_guild_channel
-from src.discord_ext.embeds import Colors
 from src.discord_ext.errors import failure_reply
+from src.discord_ext.look import card
 from src.discord_ext.messages import (
     CAN_SEND,
     author_can,
@@ -37,7 +37,7 @@ def _parse_entries(raw: str) -> list[RoleMenuEntry] | str:
     """Parse ``"roleId,emoji,label;roleId,emoji,label"``. Return list or error message."""
     parts = [p.strip() for p in raw.split(";") if p.strip()]
     if not parts:
-        return "Vous devez fournir au moins une entrée."
+        return "Il faut au moins une entrée."
     if len(parts) > MAX_ENTRIES:
         return f"Maximum {MAX_ENTRIES} entrées par menu (Discord limite à 5×5 boutons)."
 
@@ -200,11 +200,7 @@ class CommandsMixin:
                 f"`{menu.id}` — **{menu.title}** ({len(menu.entries)} rôles) "
                 f"<#{menu.channel_id}> [↗]({link})"
             )
-        embed = Embed(
-            title="Menus de rôles",
-            description="\n".join(lines),
-            color=Colors.UTIL,
-        )
+        embed = card("moduleReactionRoles", title="Menus de rôles", description="\n".join(lines))
         await ctx.send(embeds=[embed], ephemeral=True)
 
     @rolemenu_create.subcommand(
@@ -274,7 +270,7 @@ class CommandsMixin:
         if not await require_guild(ctx) or not await _can_manage_menus(ctx):
             return
         if title is None and description is None:
-            await send_error(ctx, "Indiquez au moins un titre ou une description à modifier.")
+            await send_error(ctx, "Indique au moins un titre ou une description à modifier.")
             return
 
         menu = await self.repository(ctx.guild_id).get(menu_id)

@@ -8,9 +8,9 @@ from interactions import Embed
 from features.moderation import Infraction, humanize_duration
 from src.core.text import EMBED_FIELD_VALUE_LIMIT, clip
 from src.discord_ext.channels import fetch_guild_channel
-from src.discord_ext.embeds import Colors
+from src.discord_ext.look import card
 
-from ._common import AUTOMOD_MODERATOR_ID, TYPE_COLORS, TYPE_LABELS, logger
+from ._common import AUTOMOD_MODERATOR_ID, TYPE_KINDS, TYPE_LABELS, logger
 
 
 def build_case_embed(
@@ -20,9 +20,10 @@ def build_case_embed(
     moderator_name: str | None = None,
 ) -> Embed:
     """Build the standardized modlog embed for a single case."""
-    embed = Embed(
+    embed = card(
+        "moduleModeration",
+        TYPE_KINDS.get(infraction.type, "neutral"),
         title=f"{TYPE_LABELS.get(infraction.type, infraction.type)} · Cas #{infraction.id}",
-        color=TYPE_COLORS.get(infraction.type, Colors.UTIL),
     )
     target_value = target_name or f"<@{infraction.user_id}>"
     embed.add_field(name="Membre", value=f"{target_value} (`{infraction.user_id}`)", inline=True)

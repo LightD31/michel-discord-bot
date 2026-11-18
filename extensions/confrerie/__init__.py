@@ -8,7 +8,7 @@ logique métier vit dans ``features.confrerie``.
 
 import os
 
-from interactions import Client, EmbedFooter, Extension, listen
+from interactions import Client, Extension, listen
 
 from features.confrerie.editors import EditorInput
 from src.core import logging as logutil
@@ -101,11 +101,7 @@ class ConfrerieExtension(
             except Exception as e:
                 logger.warning(f"Failed to cache data source for {db_id}: {e}")
 
-    async def _create_embed_footer(self, guild_id) -> EmbedFooter:
-        """Standard footer used by stats and update embeds: the bot as *guild_id* sees it."""
+    def _footer_icon(self, guild_id) -> str | None:
+        """The server's icon, shown next to Michel's footer on stats and update embeds."""
         guild = self.bot.get_guild(guild_id) if guild_id else None
-        me = guild.me if guild else None
-        return EmbedFooter(
-            text=me.display_name if me else "Michel",
-            icon_url=guild.icon.url if guild and guild.icon else None,
-        )
+        return guild.icon.url if guild and guild.icon else None

@@ -20,7 +20,7 @@ from src.core import clock
 from src.core.errors import DatabaseError
 from src.core.logging import log_failure
 from src.discord_ext.channels import fetch_guild_channel
-from src.discord_ext.embeds import Colors
+from src.discord_ext.look import card
 from src.discord_ext.mentions import NO_PINGS
 from src.discord_ext.role_grants import grantable_role
 
@@ -34,10 +34,11 @@ CLOSING_GRACE = timedelta(days=7)
 
 
 def podium_embed(season: Season, ranking: list[tuple[str, int]], names: dict[str, str]) -> Embed:
-    embed = Embed(
+    embed = card(
+        "moduleXp",
         title=f"🏆 Fin de la saison : {season.label}",
         description="\n".join(podium_lines(ranking, names)),
-        color=Colors.XP,
+        footer="Une nouvelle saison commence : tout le monde repart à zéro !",
     )
     rest = ranking[3:KEPT_PER_SEASON]
     if rest:
@@ -48,7 +49,6 @@ def podium_embed(season: Season, ranking: list[tuple[str, int]], names: dict[str
             ),
             inline=False,
         )
-    embed.set_footer(text="Une nouvelle saison commence : tout le monde repart à zéro !")
     return embed
 
 

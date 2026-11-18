@@ -24,7 +24,7 @@ from src.core import logging as logutil
 from src.core.config import ModuleConfig, config_store, global_config, load_discord2name
 from src.core.errors import ConfigError
 from src.core.http import http_client
-from src.discord_ext.embeds import Colors
+from src.discord_ext.look import Kind, card, sign
 from src.integrations.spotify import SPOTIFY_ERRORS, spotify_api
 from src.webui.public_links import (
     PUBLIC_FLAG,
@@ -118,7 +118,7 @@ class SpotifyConfig(SchemaBase):
         "Lien d'écoute de la playlist",
         "url",
         description=(
-            "Lien « Ecouter la playlist » ajouté aux embeds d'ajout et de "
+            "Lien « Écouter la playlist » ajouté aux embeds d'ajout et de "
             "suppression. Vide = champ masqué."
         ),
     )
@@ -126,7 +126,7 @@ class SpotifyConfig(SchemaBase):
         "Lien d'écoute des découvertes",
         "url",
         description=(
-            "Lien « Ecouter les récents » ajouté aux embeds d'ajout et de "
+            "Lien « Écouter les récents » ajouté aux embeds d'ajout et de "
             "suppression. Vide = champ masqué."
         ),
     )
@@ -383,12 +383,12 @@ async def embed_song(
         EmbedType.ADD: {
             "title": "Chanson ajoutée à la playlist",
             "footer": f"Ajoutée par {person}",
-            "color": Colors.SPOTIFY,
+            "kind": "info",
         },
         EmbedType.DELETE: {
             "title": "Chanson supprimée de la playlist",
             "footer": "",
-            "color": interactions.MaterialColors.RED,
+            "kind": "error",
         },
         EmbedType.VOTE: {
             "title": (
@@ -396,22 +396,22 @@ async def embed_song(
                 f"{interactions.utils.timestamp_converter(time).format(interactions.TimestampStyles.RelativeTime)}"
             ),
             "footer": "Nettoyeur de playlist",
-            "color": interactions.MaterialColors.ORANGE,
+            "kind": "warning",
         },
         EmbedType.VOTE_WIN: {
             "title": "Résultat du vote",
             "footer": "",
-            "color": interactions.MaterialColors.LIME,
+            "kind": "success",
         },
         EmbedType.VOTE_LOSE: {
             "title": "Résultat du vote",
             "footer": "",
-            "color": interactions.MaterialColors.DEEP_ORANGE,
+            "kind": "error",
         },
         EmbedType.INFOS: {
             "title": "Informations sur la chanson",
             "footer": "",
-            "color": Colors.SPOTIFY,
+            "kind": "info",
         },
         EmbedType.VOTE_ADD: {
             "title": (
@@ -419,7 +419,7 @@ async def embed_song(
                 f"{interactions.utils.timestamp_converter(time).format(interactions.TimestampStyles.RelativeTime)}"
             ),
             "footer": "",
-            "color": interactions.MaterialColors.ORANGE,
+            "kind": "warning",
         },
     }
 
@@ -427,7 +427,12 @@ async def embed_song(
     if not settings:
         raise ValueError("Invalid embed type")
 
-    embed = interactions.Embed(title=settings["title"], color=settings["color"])
+    embed = card(
+        "moduleSpotify",
+        settings["kind"],  # type: ignore[arg-type]
+        title=settings["title"],
+        author=False,
+    )
     embed.set_thumbnail(url=track["album"]["images"][0]["url"])
 
     track_id = track["id"]
@@ -487,7 +492,7 @@ async def embed_song(
         if links.dashboard:
             embed.add_field(
                 name="\u200b",
-                value=f"Dashboard votes: {links.dashboard}",
+                value=f"Tableau de bord des votes : {links.dashboard}",
                 inline=False,
             )
 
@@ -495,17 +500,17 @@ async def embed_song(
         if links.playlist:
             embed.add_field(
                 name="\u200b",
-                value=f"[Ecouter la playlist]({links.playlist})",
+                value=f"[Écouter la playlist]({links.playlist})",
                 inline=False,
             )
         if links.new_playlist:
             embed.add_field(
                 name="\u200b",
-                value=f"[Ecouter les récents]({links.new_playlist})",
+                value=f"[Écouter les récents]({links.new_playlist})",
                 inline=True,
             )
 
-    embed.set_footer(text=settings["footer"], icon_url=icon or None)
+    sign(embed, "moduleSpotify", settings["footer"] or None, icon_url=icon or None)
     embed.timestamp = time
 
     return embed, preview_file
@@ -516,12 +521,12 @@ async def embed_message_vote(
     remove=0,
     menfou=0,
     users="",
-    color=interactions.MaterialColors.ORANGE,
+    kind: Kind = "warning",
     description="",
     guild_id: str | int | None = None,
 ):
     """Build the keep/remove/menfou tally embed attached under a vote message."""
-    embed = interactions.Embed(color=color, description=description)
+    embed = card("moduleSpotify", kind, description=description, author=False)
     embed.add_field(
         name="Conserver",
         value=f"{keep} vote{'s' if keep > 1 else ''}",
@@ -540,8 +545,8 @@ async def embed_message_vote(
     links = guild_links(guild_id)
     embed.add_field(name="\u200b", value=f"Votes de {', '.join(users)}")
     if links.dashboard:
-        embed.add_field(name="\u200b", value=f"Dashboard votes: {links.dashboard}")
-    embed.set_footer(text="Nettoyeur de Playlist", icon_url=links.icon or None)
+        embed.add_field(name="\u200b", value=f"Tableau de bord des votes : {links.dashboard}")
+    sign(embed, "moduleSpotify", "Nettoyeur de playlist", icon_url=links.icon or None)
     embed.timestamp = interactions.utils.timestamp_converter(clock.now())
     return embed
 
@@ -550,12 +555,12 @@ async def embed_message_vote_add(
     yes=0,
     no=0,
     users="",
-    color=interactions.MaterialColors.ORANGE,
+    kind: Kind = "warning",
     description="",
     guild_id: str | int | None = None,
 ):
     """Build the yes/no tally embed attached under an add-with-vote message."""
-    embed = interactions.Embed(color=color, description=description)
+    embed = card("moduleSpotify", kind, description=description, author=False)
     embed.add_field(
         name="Ajouter",
         value=f"{yes} vote{'s' if yes > 1 else ''}",
@@ -567,6 +572,6 @@ async def embed_message_vote_add(
         inline=True,
     )
     embed.add_field(name="\u200b", value=f"Votes de {', '.join(users)}")
-    embed.set_footer(text="", icon_url=guild_links(guild_id).icon or None)
+    sign(embed, "moduleSpotify", icon_url=guild_links(guild_id).icon or None)
     embed.timestamp = interactions.utils.timestamp_converter(clock.now())
     return embed

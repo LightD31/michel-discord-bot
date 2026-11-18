@@ -140,7 +140,7 @@ def render_comparison_footer(
     total = sum(counts)
     if not closed:
         deadline = f" — fin <t:{closes_at_ts}:R>" if closes_at_ts else ""
-        return f"-# 🗳️ Votez pour la meilleure réponse{deadline} · {_plural(total, 'vote')}"
+        return f"-# 🗳️ Vote pour la meilleure réponse{deadline} · {_plural(total, 'vote')}"
     best = winners(counts)
     lines = [f"**🔒 Vote terminé** · {_plural(total, 'vote')}"]
     for i, (label, count) in enumerate(zip(labels, counts, strict=False)):

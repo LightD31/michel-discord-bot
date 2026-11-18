@@ -5,12 +5,11 @@ from typing import Any, Optional
 
 from interactions import Embed, OptionType, SlashContext, Timestamp, slash_command, slash_option
 
+from src.discord_ext.look import card, sign
 from src.discord_ext.scopes import guild_scopes
 
 from ._common import (
     COUNTRY_CODE,
-    EMBED_COLOR_FRANCE,
-    MEDAL_COLORS,
     MEDAL_EMOJIS,
     MEDAL_LABELS,
     MEDALS_PATH,
@@ -92,7 +91,6 @@ class MedalsMixin:
         medal_type = medal.get("medalType", "")
         emoji = MEDAL_EMOJIS.get(medal_type, "🏅")
         label = MEDAL_LABELS.get(medal_type, "Médaille")
-        color = MEDAL_COLORS.get(medal_type, EMBED_COLOR_FRANCE)
 
         athlete = medal.get("competitorDisplayName", "France")
         event = medal.get("eventDescription", "Épreuve inconnue")
@@ -117,11 +115,7 @@ class MedalsMixin:
             except ValueError:
                 description_parts.append(f"📅 {date}")
 
-        embed = Embed(
-            title=title,
-            description="\n".join(description_parts),
-            color=color,
-        )
+        embed = card("moduleOlympics", title=title, description="\n".join(description_parts))
 
         # Ajouter le décompte total de la France
         if france_standing:
@@ -151,7 +145,7 @@ class MedalsMixin:
                     inline=False,
                 )
 
-        embed.set_footer(text="JO d'hiver Milan-Cortina 2026")
+        sign(embed, "moduleOlympics", "JO d'hiver Milan-Cortina 2026")
         if logo_url:
             embed.set_thumbnail(url=logo_url)
 
@@ -167,10 +161,7 @@ class MedalsMixin:
         Returns:
             Embed Discord du classement.
         """
-        embed = Embed(
-            title="🏅 Tableau des médailles — Milan-Cortina 2026",
-            color=EMBED_COLOR_FRANCE,
-        )
+        embed = card("moduleOlympics", title="🏅 Tableau des médailles — Milan-Cortina 2026")
 
         lines = []
         lines.append("```")
@@ -225,7 +216,7 @@ class MedalsMixin:
                 )
 
         # Info événements
-        embed.set_footer(text="JO d'hiver Milan-Cortina 2026 • Mis à jour")
+        sign(embed, "moduleOlympics", "JO d'hiver Milan-Cortina 2026 · Mis à jour")
         embed.timestamp = Timestamp.now()
 
         return embed
@@ -242,10 +233,7 @@ class MedalsMixin:
         Returns:
             Embed Discord avec toutes les médailles.
         """
-        embed = Embed(
-            title="🇫🇷 Médailles de la France — Milan-Cortina 2026",
-            color=EMBED_COLOR_FRANCE,
-        )
+        embed = card("moduleOlympics", title="🇫🇷 Médailles de la France — Milan-Cortina 2026")
 
         if not medals:
             embed.description = "Aucune médaille pour le moment."
@@ -304,7 +292,7 @@ class MedalsMixin:
                     inline=False,
                 )
 
-        embed.set_footer(text="JO d'hiver Milan-Cortina 2026")
+        sign(embed, "moduleOlympics", "JO d'hiver Milan-Cortina 2026")
         embed.timestamp = Timestamp.now()
 
         return embed
@@ -409,9 +397,8 @@ class MedalsMixin:
             country_name = country_data.get("description", code)
             flag = _get_flag(code)
 
-            embed = Embed(
-                title=f"{flag} Médailles — {country_name} — Milan-Cortina 2026",
-                color=EMBED_COLOR_FRANCE,
+            embed = card(
+                "moduleOlympics", title=f"{flag} Médailles — {country_name} — Milan-Cortina 2026"
             )
 
             if not all_medals:
@@ -466,7 +453,7 @@ class MedalsMixin:
                 inline=False,
             )
 
-            embed.set_footer(text="JO d'hiver Milan-Cortina 2026")
+            sign(embed, "moduleOlympics", "JO d'hiver Milan-Cortina 2026")
             embed.timestamp = Timestamp.now()
 
             await ctx.send(embeds=[embed])

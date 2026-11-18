@@ -10,7 +10,6 @@ from src.core import logging as logutil
 from src.core.errors import DatabaseError
 from src.core.http import http_client
 from src.core.logging import log_failure
-from src.discord_ext.embeds import Colors
 
 from ._common import StreamerInfo
 
@@ -142,12 +141,10 @@ class EmotesMixin:
         description: str,
         emote_name: str,
         last_field: tuple[str, str],
-        color: int | None = None,
     ):
         """The notification embed shared by the three kinds of emote change."""
-        kwargs = {"color": color} if color is not None else {}
         embed = await self.create_notification_embed(
-            streamer.guild_id, title=title, description=description, **kwargs
+            streamer.guild_id, title=title, description=description
         )
         embed.add_field(name="Emote", value=self.get_display_value(emote_name), inline=True)
         embed.add_field(
@@ -175,7 +172,6 @@ class EmotesMixin:
                 ),
                 emote_name=emote.name,
                 last_field=("Action", "Remplacement"),
-                color=Colors.ORANGE,
             )
             files: list[File] = []
             if old_cached_file and new_cached_file:
