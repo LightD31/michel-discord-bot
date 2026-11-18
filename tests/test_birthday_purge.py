@@ -1,4 +1,4 @@
-"""/anniversaire purge: the confirmation really deletes, on every server.
+"""/anniversaire purger: the confirmation really deletes, on every server.
 
 It never could: the button event was read as its context (no ``custom_id``),
 and the count was ``sum()`` over an async generator.

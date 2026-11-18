@@ -5,7 +5,7 @@ Assembled as a mixin composition mirroring the vlrgg/minecraft packages:
 - :mod:`._common` — Pydantic config schema (``moduleZunivers``), logger, base command
 - :mod:`.embeds` — Discord embed builders (events, seasons, corporation)
 - :mod:`.reminders` — RemindersMixin: /zunivers journa reminders, advent calendar
-- :mod:`.events` — EventsMixin: Zunivers events + hardcore season tracking, /zunivers check
+- :mod:`.events` — EventsMixin: Zunivers events + hardcore season tracking, /zunivers verifier
 - :mod:`.corporation` — CorporationMixin: daily recap + /zunivers corpo
 - :mod:`.ninja` — NinjaMixin: /zunivers ninja, a player's ZUnivers Ninja plan
 - :mod:`.zerator247` — Zerator247Mixin: /zunivers 247, DMs when !request opens on 24/7

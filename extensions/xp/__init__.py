@@ -4,11 +4,11 @@ Assembled as a mixin composition mirroring the minecraft/zunivers packages:
 - :mod:`._common` — Pydantic config schema (``moduleXp``), logger, theme
 - :mod:`.leveling` — :class:`.leveling.LevelingMixin`: ``on_message`` listener,
   cooldown and level-up handling
-- :mod:`.commands` — :class:`.commands.CommandsMixin`: ``/rank``, ``/leaderboard``
+- :mod:`.commands` — :class:`.commands.CommandsMixin`: ``/niveau``, ``/classement``
 - :mod:`.leaderboard` — :class:`.leaderboard.LeaderboardMixin`: permanent
   leaderboard updater task and embed builders
 - :mod:`.seasons` — :class:`.seasons.SeasonsMixin`: the end of a season (podium,
-  champion role); ``/leaderboard`` shows the current season when they are on
+  champion role); ``/classement`` shows the current season when they are on
 
 Persistence lives in :class:`features.xp.XpRepository` (MongoDB, one DB per
 guild, collections ``xp`` and ``xp_events``).

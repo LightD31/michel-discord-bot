@@ -39,14 +39,15 @@ class DrawsMixin:
         name="secretsanta",
         description="Commandes du Père Noël Secret",
         scopes=guild_scopes(SANTA.guild_ids()),
-        sub_cmd_name="draw",
+        sub_cmd_name="tirage",
         sub_cmd_description="Effectue le tirage au sort",
     )
     @slash_option(
-        name="allow_subgroups",
+        name="sous_groupes",
         description="Autoriser plusieurs sous-groupes si une boucle unique est impossible",
         required=False,
         opt_type=OptionType.BOOLEAN,
+        argument_name="allow_subgroups",
     )
     async def draw(self, ctx: SlashContext, allow_subgroups: bool = False) -> None:
         await ctx.defer(ephemeral=True)
@@ -58,11 +59,11 @@ class DrawsMixin:
             await send_error(
                 ctx,
                 "Il n'y a pas de session de Père Noël Secret en cours.\n"
-                "Crées-en une avec `/secretsanta create`.",
+                "Crées-en une avec `/secretsanta creer`.",
             )
             return
 
-        # Same rule as /secretsanta cancel: drawing closes the session for
+        # Same rule as /secretsanta annuler: drawing closes the session for
         # everyone and DMs every participant.
         is_creator = ctx.author.id == session.created_by
         is_admin = is_guild_admin(ctx)
@@ -86,10 +87,10 @@ class DrawsMixin:
             if outcome.error == IMPOSSIBLE:
                 if not allow_subgroups:
                     message += (
-                        "\n\n💡 **Astuce :** essaie avec l'option `allow_subgroups: True` "
+                        "\n\n💡 **Astuce :** essaie avec l'option `sous_groupes: True` "
                         "pour autoriser plusieurs sous-groupes."
                     )
-                message += "\nVérifie les paires interdites avec `/secretsanta listbans`."
+                message += "\nVérifie les paires interdites avec `/secretsanta paires-exclues`."
             await send_error(ctx, message)
             return
 
@@ -103,7 +104,7 @@ class DrawsMixin:
             failed_mentions = [f"<@{uid}>" for uid in outcome.failed_dms]
             response_msg += (
                 f"\n\n⚠️ Impossible d'envoyer un DM à : {', '.join(failed_mentions)}\n"
-                "Une fois leurs messages privés ouverts, `/secretsanta remind` leur renvoie "
+                "Une fois leurs messages privés ouverts, `/secretsanta relancer` leur renvoie "
                 "leur attribution."
             )
 
@@ -116,7 +117,7 @@ class DrawsMixin:
         name="secretsanta",
         description="Commandes du Père Noël Secret",
         scopes=guild_scopes(SANTA.guild_ids()),
-        sub_cmd_name="reveal",
+        sub_cmd_name="reveler",
         sub_cmd_description="Révèle les attributions (admin uniquement)",
     )
     async def reveal_assignments(self, ctx: SlashContext) -> None:
@@ -152,7 +153,7 @@ class DrawsMixin:
         name="secretsanta",
         description="Commandes du Père Noël Secret",
         scopes=guild_scopes(SANTA.guild_ids()),
-        sub_cmd_name="remind",
+        sub_cmd_name="relancer",
         sub_cmd_description="Renvoie ton attribution, ta liste et tes boutons par MP",
     )
     async def remind_assignment(self, ctx: SlashContext) -> None:

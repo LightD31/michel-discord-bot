@@ -184,7 +184,7 @@ class GroupsMixin:
         ).get(ctx.author.id, 0)
         if balance:
             # The shares already split stay theirs: departed members remain in
-            # /bilan until a reimbursement brings them back to zero.
+            # /tricount bilan until a reimbursement brings them back to zero.
             currency = guild_currency(ctx.guild.id)
             description += (
                 f"\n\nTon solde n'est pas réglé "

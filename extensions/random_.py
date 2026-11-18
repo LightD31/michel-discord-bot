@@ -24,7 +24,7 @@ from features.messages import chooseList, chooseListEn
 from features.random import validate_choices, validate_die_faces
 from src.core import logging as logutil
 from src.core.text import clip
-from src.discord_ext.locale import en_fr_desc, is_french, option_desc, option_name, say
+from src.discord_ext.locale import en_fr_desc, en_fr_name, is_french, option_desc, option_name, say
 from src.discord_ext.mentions import NO_PINGS
 
 logger = logutil.init_logger(__name__)
@@ -44,7 +44,7 @@ class RandomExtension(Extension):
         self.bot = bot
 
     @slash_command(
-        name="pick",
+        name=en_fr_name("pick", "choisir"),
         description=en_fr_desc(
             "Pick a random item (thanks to lightning!)",
             "Choisit un élément aléatoire (Grâce aux éclairs !)",
@@ -80,12 +80,12 @@ class RandomExtension(Extension):
         await ctx.send(clip(f"{phrase} **{selected}**"), allowed_mentions=NO_PINGS)
 
     @slash_command(
-        name="roll",
+        name=en_fr_name("roll", "lancer-de"),
         description=en_fr_desc("Roll a die", "Lance un dé"),
         integration_types=[IntegrationType.GUILD_INSTALL, IntegrationType.USER_INSTALL],
     )
     @slash_option(
-        name="faces",
+        name=option_name("faces", "faces"),
         description=option_desc("Number of faces of the die", "Nombre de faces du dé"),
         opt_type=OptionType.INTEGER,
         required=True,
@@ -99,7 +99,7 @@ class RandomExtension(Extension):
         await ctx.send(f":game_die: **{random.randint(1, faces)}** :game_die:")
 
     @slash_command(
-        name="coin",
+        name=en_fr_name("coin", "pile-ou-face"),
         description=en_fr_desc("Flip a coin", "Lance une pièce de monnaie"),
         integration_types=[IntegrationType.GUILD_INSTALL, IntegrationType.USER_INSTALL],
     )
@@ -113,7 +113,7 @@ class RandomExtension(Extension):
         await ctx.send(result)
 
     @slash_command(
-        name="shuffle",
+        name=en_fr_name("shuffle", "melanger"),
         description=en_fr_desc("Shuffle a list of items", "Mélange une liste d'éléments"),
         integration_types=[IntegrationType.GUILD_INSTALL, IntegrationType.USER_INSTALL],
     )

@@ -1,4 +1,4 @@
-"""CommandsMixin — /rank and /leaderboard slash commands."""
+"""CommandsMixin — /niveau and /classement slash commands."""
 
 import asyncio
 from datetime import datetime
@@ -83,15 +83,16 @@ class CommandsMixin:
         return rank
 
     @slash_command(
-        name="rank",
+        name="niveau",
         description="Affiche le niveau et l'XP d'un utilisateur",
         scopes=guild_scopes(XP.guild_ids()),
     )
     @slash_option(
-        "utilisateur",
+        "membre",
         "Utilisateur dont afficher le niveau et l'XP",
         opt_type=OptionType.USER,
         required=False,
+        argument_name="utilisateur",
     )
     @cooldown(Buckets.USER, 3, 30)
     async def rank(self, ctx: SlashContext, utilisateur: User = None):
@@ -158,7 +159,7 @@ class CommandsMixin:
         await ctx.send(embed=embed)
 
     @slash_command(
-        name="leaderboard",
+        name="classement",
         description="Affiche le classement des utilisateurs",
         scopes=guild_scopes(XP.guild_ids()),
     )

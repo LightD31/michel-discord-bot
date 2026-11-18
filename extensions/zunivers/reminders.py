@@ -90,7 +90,7 @@ class RemindersMixin:
     @zunivers_cmd.subcommand(
         group_name="journa",
         group_description="Rappels quotidiens /journa (et /bonus, /im premium)",
-        sub_cmd_name="set",
+        sub_cmd_name="activer",
         sub_cmd_description="Ajoute un rappel pour /journa (et /bonus, /im premium quand dispo)",
     )
     @slash_option(
@@ -211,7 +211,7 @@ class RemindersMixin:
     @zunivers_cmd.subcommand(
         group_name="journa",
         group_description="Rappels quotidiens /journa (et /bonus, /im premium)",
-        sub_cmd_name="remove",
+        sub_cmd_name="retirer",
         sub_cmd_description="Supprime un rappel pour /journa",
     )
     async def remove_reminder(self, ctx: SlashContext):

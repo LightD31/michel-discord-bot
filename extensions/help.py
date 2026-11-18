@@ -66,7 +66,7 @@ class HelpEntry:
 
     group: str
     name: str  # "giveaway start"
-    mention: str  # "</giveaway start:123>", or "`/giveaway start`" before the first sync
+    mention: str  # "</concours lancer:123>", or "`/concours lancer`" before the first sync
     description: str
 
 

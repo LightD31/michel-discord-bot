@@ -20,7 +20,7 @@ Les tests `tests/test_voice.py` et `tests/test_look.py` vérifient ce qui peut l
 - **Des phrases courtes.** Une idée par phrase.
 - **Dire quoi faire ensuite.** Un refus nomme le bon salon, le droit qui manque,
   qui peut corriger, ou un exemple de ce qui est attendu :
-  - « 🎵 /addsong se lance dans #musique. »
+  - « 🎵 /musique ajouter se lance dans #musique. »
   - « 🔒 Il te faut « Gérer les messages » dans #annonces. »
   - « 📅 Je n'ai pas compris « 31/02 ». Exemple : 24/12/2026. »
 - **Le premier emoji dit ce qui s'est passé**, avec les fonctions de

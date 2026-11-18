@@ -1,4 +1,4 @@
-"""/secretsanta create, modifier and participants: the date, the parcel option, the counts (P2)."""
+"""/secretsanta creer, modifier and participants: the date, the parcel option, the counts (P2)."""
 
 from datetime import datetime
 
@@ -113,7 +113,7 @@ async def test_after_the_draw_modifier_points_to_remind(setup):
     coro, ctx = call(SecretSantaExtension.modify_session, 3, shipping=True)
     await coro
     assert repo.session.shipping and edits == []  # the drawn announcement stays
-    assert "/secretsanta remind" in ctx.replies[-1]["embed"].description
+    assert "/secretsanta relancer" in ctx.replies[-1]["embed"].description
 
 
 @pytest.mark.parametrize(

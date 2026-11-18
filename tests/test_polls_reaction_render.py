@@ -247,7 +247,7 @@ class EditCtx:
 
 
 def poll_channel(ext, msg, *, channel_id=20, guild_id=1):
-    """Put *msg* in the channel the stored poll names (20), wherever /editpoll is typed."""
+    """Put *msg* in the channel the stored poll names (20), wherever /modifier-sondage is typed."""
 
     async def fetch_message(message_id):
         return msg if str(message_id) == str(msg.id) else None

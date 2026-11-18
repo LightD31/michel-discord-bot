@@ -1,6 +1,6 @@
 """``/profil`` and the "📊 Profil" right-click menu: a member's card (P5, A2).
 
-The rank card of ``/rank`` (level, rank, XP), with what the member left
+The rank card of ``/niveau`` (level, rank, XP), with what the member left
 across the server underneath: the XP of the current season, messages on the
 starboard and the stars they gathered, tracks added to the playlist,
 suggestions approved, giveaways won, and the day of their birthday (never the

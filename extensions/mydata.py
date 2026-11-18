@@ -53,7 +53,7 @@ KEPT_REASONS = {
 }
 NOT_COVERED = (
     "Hors de portée de cette commande : ce que les admins d'un serveur ont écrit dans sa "
-    "configuration (un prénom, un compte Spotify lié) et un compte LLDAP créé avec /register. "
+    "configuration (un prénom, un compte Spotify lié) et un compte LLDAP créé avec /inscription. "
     "Demande-les aux admins du serveur."
 )
 

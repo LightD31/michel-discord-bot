@@ -303,7 +303,7 @@ class TwitchExtension(
     # ─── Slash commands ───────────────────────────────────────────────
 
     @slash_command(
-        name="twitch-planning-setup",
+        name="twitch-planning",
         description="Créer/attacher le message de planning Twitch d'un streamer",
         scopes=guild_scopes(TWITCH.guild_ids()),
     )
@@ -315,17 +315,19 @@ class TwitchExtension(
         autocomplete=True,
     )
     @slash_option(
-        name="channel",
+        name="salon",
         description="Canal où créer le message de planning",
         opt_type=OptionType.CHANNEL,
         required=True,
         channel_types=[ChannelType.GUILD_TEXT, ChannelType.GUILD_NEWS],
+        argument_name="channel",
     )
     @slash_option(
-        name="pin",
+        name="epingler",
         description="Épingler le message",
         opt_type=OptionType.BOOLEAN,
         required=False,
+        argument_name="pin",
     )
     @slash_default_member_permission(Permissions.MANAGE_GUILD)
     async def twitch_planning_setup(

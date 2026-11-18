@@ -81,7 +81,7 @@ def settlement_plan(balances: Mapping[int, int]) -> list[tuple[int, int, int]]:
 
     Greedy: the largest debt pays the largest credit first, which settles a
     group in at most ``n - 1`` transfers. Ties break on the person's id, so the
-    plan is stable from one ``/bilan`` to the next.
+    plan is stable from one ``/tricount bilan`` to the next.
     """
     debtors = sorted(((-b, p) for p, b in balances.items() if b < 0), key=lambda x: (-x[0], x[1]))
     creditors = sorted(((b, p) for p, b in balances.items() if b > 0), key=lambda x: (-x[0], x[1]))

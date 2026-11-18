@@ -60,8 +60,10 @@ class ReportsMixin:
     """Query expense data: list, balance, and personal group overview."""
 
     @slash_command(
-        name="liste-depenses",
-        description="Voir la liste des dépenses d'un groupe",
+        name="tricount",
+        description="Gestion des dépenses partagées",
+        sub_cmd_name="depenses",
+        sub_cmd_description="Voir la liste des dépenses d'un groupe",
         scopes=guild_scopes(TRICOUNT.guild_ids()),
     )
     @slash_option(
@@ -141,7 +143,7 @@ class ReportsMixin:
         sign(
             embed,
             "moduleTricount",
-            "💡 L'ID sert à modifier une dépense avec /modifier-depense",
+            "💡 L'ID sert à modifier une dépense avec /tricount modifier-depense",
         )
         await ctx.send(embed=embed)
 
@@ -150,8 +152,10 @@ class ReportsMixin:
         await guild_group_autocomplete(ctx, TricountRepository.groups_collection)
 
     @slash_command(
-        name="bilan",
-        description="Voir le bilan des dépenses d'un groupe",
+        name="tricount",
+        description="Gestion des dépenses partagées",
+        sub_cmd_name="bilan",
+        sub_cmd_description="Voir le bilan des dépenses d'un groupe",
         scopes=guild_scopes(TRICOUNT.guild_ids()),
     )
     @slash_option(
@@ -237,8 +241,10 @@ class ReportsMixin:
         await guild_group_autocomplete(ctx, TricountRepository.groups_collection)
 
     @slash_command(
-        name="tricount-graphique",
-        description="Exporter un graphique des dépenses par catégorie",
+        name="tricount",
+        description="Gestion des dépenses partagées",
+        sub_cmd_name="graphique",
+        sub_cmd_description="Exporter un graphique des dépenses par catégorie",
         scopes=guild_scopes(TRICOUNT.guild_ids()),
     )
     @slash_option(
@@ -295,8 +301,10 @@ class ReportsMixin:
         await guild_group_autocomplete(ctx, TricountRepository.groups_collection)
 
     @slash_command(
-        name="mes-groupes",
-        description="Voir tous tes groupes Tricount",
+        name="tricount",
+        description="Gestion des dépenses partagées",
+        sub_cmd_name="mes-groupes",
+        sub_cmd_description="Voir tous tes groupes Tricount",
         scopes=guild_scopes(TRICOUNT.guild_ids()),
     )
     async def mes_groupes(self, ctx: SlashContext):

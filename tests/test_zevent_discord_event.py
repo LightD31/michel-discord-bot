@@ -88,7 +88,7 @@ def test_past_the_end_the_event_is_completed() -> None:
 
 
 def test_finished_forces_completion_mid_event() -> None:
-    """``/zevent_finish`` closes the event even before its scheduled end."""
+    """``/zevent-fin`` closes the event even before its scheduled end."""
     plan = _plan(MAIN_START + timedelta(hours=5), finished=True)
     assert plan.status == COMPLETED
 

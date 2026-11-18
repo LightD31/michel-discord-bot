@@ -110,7 +110,7 @@ class FeurExtension(Extension):
                 await repo.record_event(user_id, "feur")
 
     @slash_command(
-        name="feurstats",
+        name="feur-stats",
         description="Affiche les statistiques de feur",
         scopes=guild_scopes(FEUR.guild_ids()),
     )

@@ -192,7 +192,7 @@ class ConfigStore:
 
         Under the same lock as the write it mirrors, so the cache follows the
         disk in write order: set after the lock was released, two writes from
-        two threads (a dashboard save, ``/twitch-planning-setup`` on the bot
+        two threads (a dashboard save, ``/twitch-planning`` on the bot
         loop) could leave the cache on the older one until the next write.
         Subscribers are notified after the lock is released.
         """

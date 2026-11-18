@@ -253,7 +253,7 @@ def test_announced_event_is_cancelled_when_the_tracker_is_finished(now) -> None:
 
 
 def test_finishing_sticks_across_later_refresh_cycles(now) -> None:
-    """The refresh loop keeps running after ``/zevent_finish`` — it must not
+    """The refresh loop keeps running after ``/zevent-fin`` — it must not
     resurrect the event that command just closed."""
     tracker = Tracker(FakeGuild())
     run(tracker.sync(payload(1_250_000), None, concert_active=False))

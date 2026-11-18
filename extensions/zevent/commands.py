@@ -1,4 +1,4 @@
-"""`/zevent_finish`: post the final recap embed once the event is over."""
+"""`/zevent-fin`: post the final recap embed once the event is over."""
 
 import os
 
@@ -19,7 +19,7 @@ class CommandsMixin:
     """Admin command to freeze the guild's tracker message with the final recap."""
 
     @slash_command(
-        name="zevent_finish",
+        name="zevent-fin",
         description="Publie le récapitulatif final après l'évènement",
         scopes=guild_scopes(ZEVENT.guild_ids()),
     )

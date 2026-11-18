@@ -1,8 +1,8 @@
 """LLDAP Discord extension.
 
 Lets members holding a mapped role create their own LLDAP account
-(``/register``) and keeps LLDAP group membership in line with Discord roles
-(every 10 minutes, or ``/lldap sync``). Each guild configures its own LLDAP
+(``/inscription``) and keeps LLDAP group membership in line with Discord roles
+(every 10 minutes, or ``/lldap synchroniser``). Each guild configures its own LLDAP
 server in ``moduleLldap``. The LLDAP calls live in ``src.integrations.lldap``,
 the field rules and sync planning in ``features.lldap``; this package wires
 them to Discord: lifecycle here, commands in ``commands``, the sync in ``sync``.

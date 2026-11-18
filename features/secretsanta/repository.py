@@ -63,7 +63,7 @@ class SecretSantaRepository:
     async def create_session(self, session: SecretSantaSession) -> None:
         """Store a new session, replacing the context's previous one whole.
 
-        Only for ``/secretsanta create``. Joins and leaves change the stored
+        Only for ``/secretsanta creer``. Joins and leaves change the stored
         document in place (:meth:`add_participant`, :meth:`remove_participant`):
         rewriting the whole session from a copy read earlier lost a concurrent
         join, and could set ``is_drawn`` back to false after a draw.

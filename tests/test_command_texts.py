@@ -37,7 +37,7 @@ async def test_the_reminder_confirmation_reads_its_schedule_in_french(store_conf
 
 
 def test_the_reminder_command_describes_itself():
-    """/reminder was described as "Gère les rappels pour voter", copied from /rappelvote."""
+    """/rappel was described as "Gère les rappels pour voter", copied from /musique rappel."""
     assert "voter" not in str(RemindersExtension.reminder_set.description)
 
 
@@ -55,7 +55,7 @@ def test_command_descriptions_are_spelt_right(store_config):
 
 
 async def test_rank_of_a_member_without_xp_does_not_ping_them(store_config):
-    """A public "@x n'a pas encore de niveau" notified x of someone else's /rank (Q9)."""
+    """A public "@x n'a pas encore de niveau" notified x of someone else's /niveau (Q9)."""
     from extensions.xp import XpExtension
 
     store_config({"servers": {"1": {"moduleXp": {"enabled": True}}}})

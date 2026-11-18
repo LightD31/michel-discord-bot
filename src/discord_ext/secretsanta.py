@@ -1,6 +1,6 @@
 """The Secret Santa draw and the messages around it, shared with the dashboard.
 
-``/secretsanta draw`` and the dashboard's "Tirer au sort" both run
+``/secretsanta tirage`` and the dashboard's "Tirer au sort" both run
 :func:`run_draw`: claim the session, send each Santa their DM (recipient, wish
 list, budget, date, and the buttons of the session), store the results and
 close the announcement. The extension's buttons are the custom ids below.

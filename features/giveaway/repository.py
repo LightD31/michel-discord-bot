@@ -110,7 +110,7 @@ class GiveawayRepository:
         """Mark an open giveaway drawn and return it, entrants included; None when taken.
 
         One conditional update, so of two draws racing (the scheduler and
-        ``/giveaway end`` at the deadline), only one gets the giveaway. Entries
+        ``/concours tirer`` at the deadline), only one gets the giveaway. Entries
         close with it: the entrants returned are the final ones.
         """
         try:

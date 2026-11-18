@@ -1,4 +1,4 @@
-"""`/register` (members) and `/lldap sync` (admins)."""
+"""`/inscription` (members) and `/lldap synchroniser` (admins)."""
 
 from interactions import (
     Embed,
@@ -65,7 +65,7 @@ class CommandsMixin:
         return str(ctx.guild.id)
 
     @slash_command(
-        name="register",
+        name="inscription",
         description="Crée ton compte LLDAP grâce à tes rôles Discord",
         scopes=guild_scopes(LLDAP.guild_ids()),
     )
@@ -77,11 +77,12 @@ class CommandsMixin:
         max_length=254,
     )
     @slash_option(
-        name="username",
+        name="pseudo",
         description="Nom d'utilisateur souhaité (par défaut : ton pseudo Discord)",
         opt_type=OptionType.STRING,
         required=False,
         max_length=USERNAME_MAX_LENGTH,
+        argument_name="username",
     )
     async def register_command(
         self, ctx: SlashContext, email: str, username: str | None = None
@@ -209,7 +210,7 @@ class CommandsMixin:
         pass
 
     @lldap_command.subcommand(
-        sub_cmd_name="sync",
+        sub_cmd_name="synchroniser",
         sub_cmd_description="Synchronise maintenant les groupes LLDAP avec les rôles Discord",
     )
     async def lldap_sync(self, ctx: SlashContext) -> None:

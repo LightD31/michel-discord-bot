@@ -5,7 +5,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-# "reaction": a /poll counted with reactions. Only its options, emojis and
+# "reaction": a /sondage counted with reactions. Only its options, emojis and
 # deadline are stored, so the auto-close survives a restart; votes stay on the
 # message as reactions.
 PollMode = Literal["public", "anonymous", "ranked", "reaction"]

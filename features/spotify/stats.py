@@ -6,7 +6,7 @@ by ``extensions/spotify``:
 
 - playlist items: ``{_id, added_by, added_at, duration_ms, name, artists, album}``.
   ``added_at`` is an ISO string when the playlist sync mirrored the track, but
-  a ``datetime`` when ``/addsong`` inserted it; both are accepted.
+  a ``datetime`` when ``/musique ajouter`` inserted it; both are accepted.
 - vote docs: ``{_id, name, date: "YYYY-MM-DD", added_by, votes: {user_id: choice},
   state}``. ``state`` is only set once the poll closes. Docs imported from the
   old bot have no ``votes`` at all ("pas de détails sur le vote"): they count

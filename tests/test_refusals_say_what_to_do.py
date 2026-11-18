@@ -58,8 +58,10 @@ def test_a_bot_role_too_low_says_where_to_raise_it():
     assert refusal is not None and "Paramètres du serveur → Rôles" in refusal
 
 
-@pytest.mark.parametrize("command", ["addsong", "addwithvote"])
-async def test_spotify_says_where_its_commands_run(command):
+@pytest.mark.parametrize(
+    ("command", "typed"), [("addsong", "musique ajouter"), ("addwithvote", "musique proposer")]
+)
+async def test_spotify_says_where_its_commands_run(command, typed):
     guild = FakeGuild(1)
     elsewhere = guild.add_channel(FakeChannel(10))
     member = guild.add_member(FakeMember(7))
@@ -69,4 +71,4 @@ async def test_spotify_says_where_its_commands_run(command):
     )
     handler = getattr(SpotifyExtension, command)
     await run(handler, ext, ctx, "une chanson")
-    assert ctx.last == f"🎵 /{command} se lance dans <#42>."
+    assert ctx.last == f"🎵 /{typed} se lance dans <#42>."

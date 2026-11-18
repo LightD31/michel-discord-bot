@@ -10,7 +10,7 @@ VoteDirection = Literal["up", "down"]
 
 
 class Suggestion(BaseModel):
-    """A single suggestion submitted via ``/suggest``."""
+    """A single suggestion submitted via ``/suggerer``."""
 
     object_id: str | None = Field(default=None, alias="_id")
     id: int  # human-readable, auto-incrementing per guild

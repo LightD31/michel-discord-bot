@@ -28,7 +28,7 @@ from features.ai import AiComparisonRepository, Comparison, compute_model_stats
 from features.ai.quota import MODULE_DISABLED
 from src.core.errors import DatabaseError
 from src.discord_ext.channels import fetch_guild_channel
-from src.discord_ext.locale import en_fr_desc
+from src.discord_ext.locale import en_fr_desc, en_fr_name
 from src.discord_ext.look import card, sign
 from src.discord_ext.messages import edit_message_if_changed
 from src.discord_ext.scopes import guild_scopes
@@ -159,7 +159,7 @@ class VotingMixin:
     # =========================================================================
 
     @slash_command(
-        name="ask-stats",
+        name=en_fr_name("ask-stats", "classement-ia"),
         description=en_fr_desc(
             "AI model leaderboard from your votes", "Classement des modèles d'IA selon les votes"
         ),

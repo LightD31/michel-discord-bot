@@ -1,9 +1,9 @@
-"""Reminders Discord extension — /reminder slash command and due-check task.
+"""Reminders Discord extension — /rappel slash command and due-check task.
 
 Slash commands:
-- ``/reminder set`` — create a reminder for yourself (optional recurrence)
-- ``/reminder list`` — your reminders on this server and when they next fire
-- ``/reminder remove`` — interactive button list to delete one of your reminders
+- ``/rappel creer`` — create a reminder for yourself (optional recurrence)
+- ``/rappel liste`` — your reminders on this server and when they next fire
+- ``/rappel supprimer`` — interactive button list to delete one of your reminders
 
 Right-click a message → Applications → "⏰ Me le rappeler": a form asks when
 ("dans 2h", "demain 18h30", :mod:`features.reminders.when`) and for an
@@ -73,11 +73,11 @@ from src.discord_ext.messages import fetch_user_safe, guild_id_of, jump_url, sen
 from src.discord_ext.scopes import guild_scopes
 
 SNOOZE_PREFIX = "reminder_snooze"
-# Per member and server; /reminder remove lists up to 25 buttons too.
+# Per member and server; /rappel supprimer lists up to 25 buttons too.
 MAX_REMINDERS_PER_MEMBER = 25
 # A DM is capped at 2000 characters; snoozes prefix the text.
 MAX_REMINDER_LENGTH = 1500
-# How much of each reminder's text /reminder list shows.
+# How much of each reminder's text /rappel liste shows.
 LIST_PREVIEW_LENGTH = 120
 _SNOOZE_RE = re.compile(rf"^{SNOOZE_PREFIX}:(\d+):([0-9a-fA-F]+)$")
 REMIND_MENU = "⏰ Me le rappeler"
@@ -85,7 +85,7 @@ REMIND_FORM = "remind_msg"  # remind_msg:{channel_id}:{message_id}
 _REMIND_FORM_RE = re.compile(rf"^{REMIND_FORM}:(\d+):(\d+)$")
 MAX_NOTE_LENGTH = 500
 NO_REMINDER = (
-    "Tu n'as aucun rappel sur ce serveur. Crée-en un avec `/reminder set`, ou d'un clic "
+    "Tu n'as aucun rappel sur ce serveur. Crée-en un avec `/rappel creer`, ou d'un clic "
     "droit sur un message → Applications → ⏰ Me le rappeler."
 )
 DEFAULT_NOTE = "Revoir ce message"
@@ -99,7 +99,7 @@ def _snooze_minutes(guild_id: str | int) -> int:
 
 
 def start_day(text: str, today: date_type) -> date_type:
-    """The start date of ``/reminder set``: "24/12/2026", or "24/12", "24 décembre".
+    """The start date of ``/rappel creer``: "24/12/2026", or "24/12", "24 décembre".
 
     A full date may be in the past (a recurring reminder then starts at its
     next occurrence); a date without a year is the next such day.
@@ -174,8 +174,8 @@ class RemindersExtension(Extension):
         return ReminderRepository(str(guild_id))
 
     @slash_command(
-        name="reminder",
-        sub_cmd_name="set",
+        name="rappel",
+        sub_cmd_name="creer",
         description="Gère tes rappels",
         sub_cmd_description="Ajoute un rappel",
         scopes=guild_scopes(UTILS.guild_ids()),
@@ -206,7 +206,7 @@ class RemindersExtension(Extension):
         max_value=59,
     )
     @slash_option(
-        "périodicité",
+        "frequence",
         "Définit la périodicité du rappel (Défaut : Aucune)",
         OptionType.STRING,
         choices=[
@@ -257,7 +257,7 @@ class RemindersExtension(Extension):
             await send_error(
                 ctx,
                 f"Tu as déjà {MAX_REMINDERS_PER_MEMBER} rappels sur ce serveur : "
-                "supprimes-en un avec `/reminder remove`.",
+                "supprimes-en un avec `/rappel supprimer`.",
             )
             return
 
@@ -282,7 +282,7 @@ class RemindersExtension(Extension):
         )
 
     @reminder_set.subcommand(
-        sub_cmd_name="list",
+        sub_cmd_name="liste",
         sub_cmd_description="Affiche tes rappels sur ce serveur",
     )
     async def list_reminders(self, ctx: SlashContext):
@@ -293,7 +293,7 @@ class RemindersExtension(Extension):
         await ctx.send(embeds=[reminders_embed(reminders)], ephemeral=True)
 
     @reminder_set.subcommand(
-        sub_cmd_name="remove",
+        sub_cmd_name="supprimer",
         sub_cmd_description="Supprime un rappel",
     )
     async def delete_reminder(self, ctx):
@@ -394,7 +394,7 @@ class RemindersExtension(Extension):
     def _too_many() -> str:
         return (
             f"Tu as déjà {MAX_REMINDERS_PER_MEMBER} rappels sur ce serveur : "
-            "supprimes-en un avec `/reminder remove`."
+            "supprimes-en un avec `/rappel supprimer`."
         )
 
     @staticmethod

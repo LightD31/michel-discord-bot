@@ -130,7 +130,7 @@ class NinjaMixin:
         await ctx.send(choices=await strategy_choices(ctx.input_text))
 
 
-# /zunivers journa set value that clears a stored strategy (Ninja's own default applies again).
+# /zunivers journa activer value that clears a stored strategy (Ninja's own default applies again).
 DEFAULT_STRATEGY_CHOICE = "defaut"
 
 

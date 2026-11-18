@@ -1,4 +1,4 @@
-"""/secretsanta draw: who may run it, one draw per session, and the DMs (T04, P2)."""
+"""/secretsanta tirage: who may run it, one draw per session, and the DMs (T04, P2)."""
 
 import pytest
 from discord_fakes import (
@@ -115,7 +115,7 @@ async def test_impossible_constraints_are_explained(setup):
     repo.session.participants = [3, 4]
     repo.banned = [(3, 4), (4, 3)]
     await run(SecretSantaExtension.draw, ext, ctx)
-    assert "Impossible de générer" in ctx.last and "allow_subgroups" in ctx.last
+    assert "Impossible de générer" in ctx.last and "sous_groupes" in ctx.last
     assert not repo.session.is_drawn
 
 

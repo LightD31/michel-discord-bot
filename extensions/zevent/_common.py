@@ -474,7 +474,7 @@ class ZeventGuild:
     applied_plan: Any = None
     applied_cover_url: str | None = None
     event_recovered: bool = False
-    # ``/zevent_finish`` sticks: the refresh loop must not resurrect the
+    # ``/zevent-fin`` sticks: the refresh loop must not resurrect the
     # event it closed.
     event_finished: bool = False
 

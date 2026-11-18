@@ -2,7 +2,7 @@
 
 Pure functions used by ``extensions/reminders``: the first occurrence of a new
 reminder, the next one after it fires, and the label shown in
-``/reminder remove``.
+``/rappel supprimer``.
 
 Occurrences are UTC instants; the hour a member chose is a wall time in
 :data:`src.core.clock.LOCAL_TZ`, so periods are counted on the wall clock: a

@@ -1,7 +1,7 @@
 """Collapse tracks that appear more than once in a Spotify playlist.
 
 Spotify happily stores the same track twice, which happens when someone
-adds a song both from the Spotify app and through ``/addsong``. The bot's
+adds a song both from the Spotify app and through ``/musique ajouter``. The bot's
 playlist mirror is keyed by track id, so it never sees the second copy.
 
 The Web API removes a track by URI, i.e. every occurrence at once, so a

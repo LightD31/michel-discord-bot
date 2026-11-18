@@ -1,4 +1,4 @@
-"""/suggest, the vote buttons and the staff decisions (T04)."""
+"""/suggerer, the vote buttons and the staff decisions (T04)."""
 
 import pytest
 from discord_fakes import FakeChannel, FakeCtx, FakeGuild, FakeMember, FakeRole, bare_extension, run

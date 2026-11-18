@@ -8,7 +8,7 @@ from src.core import logging as logutil
 from src.core.config import ModuleConfig
 from src.webui.schemas import SchemaBase, enabled_field, register_module, ui
 
-# Default expense categories surfaced in /depense autocomplete. Free-form input
+# Default expense categories surfaced in /tricount depense autocomplete. Free-form input
 # is also accepted so guilds can use their own taxonomy.
 DEFAULT_CATEGORIES = [
     "Alimentation",
@@ -46,7 +46,7 @@ class TricountConfig(SchemaBase):
         "Catégories disponibles",
         "list",
         description=(
-            "Catégories proposées dans l'autocomplete de /depense. Vide = liste par défaut."
+            "Catégories proposées dans l'autocomplete de /tricount depense. Vide = liste par défaut."
         ),
         default=DEFAULT_CATEGORIES,
     )

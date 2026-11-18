@@ -86,7 +86,7 @@ async def test_add_playlist_item_keeps_the_existing_track(cols):
     repo = SpotifyRepository(GUILD)
     await repo.add_playlist_item(_song(added_by="alice"))
 
-    # A second add (e.g. a won poll for a track /addsong already added) is a
+    # A second add (e.g. a won poll for a track /musique ajouter already added) is a
     # no-op instead of a duplicate-key error, and doesn't rewrite who added it.
     assert await repo.add_playlist_item(_song(added_by="bob")) is False
     assert cols[PLAYLIST_COLLECTION].docs["t1"]["added_by"] == "alice"

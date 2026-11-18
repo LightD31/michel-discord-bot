@@ -72,7 +72,7 @@ class SessionsMixin:
         name="secretsanta",
         description="Commandes du Père Noël Secret",
         scopes=guild_scopes(SANTA.guild_ids()),
-        sub_cmd_name="create",
+        sub_cmd_name="creer",
         sub_cmd_description="Crée une nouvelle session de Père Noël Secret",
     )
     @slash_option(
@@ -111,11 +111,11 @@ class SessionsMixin:
             await send_error(
                 ctx,
                 "Une session de Père Noël Secret est déjà en cours !\n"
-                "Annule-la d'abord avec `/secretsanta cancel`.",
+                "Annule-la d'abord avec `/secretsanta annuler`.",
             )
             return
         if existing and not may_organise(ctx, existing):
-            # Re-creating drops the drawn session (and so /secretsanta reveal).
+            # Re-creating drops the drawn session (and so /secretsanta reveler).
             await send_error(
                 ctx,
                 "Seul le créateur de la dernière session ou un administrateur peut en créer "
@@ -220,7 +220,7 @@ class SessionsMixin:
         if updated.is_drawn:
             text += (
                 "\n\nLe tirage a déjà eu lieu : chacun retrouve son attribution à jour, "
-                "avec ses boutons, grâce à `/secretsanta remind`."
+                "avec ses boutons, grâce à `/secretsanta relancer`."
             )
         await ctx.send(
             embed=card("moduleSecretSanta", title="🎅 Session modifiée", description=text),
@@ -275,7 +275,7 @@ class SessionsMixin:
         name="secretsanta",
         description="Commandes du Père Noël Secret",
         scopes=guild_scopes(SANTA.guild_ids()),
-        sub_cmd_name="cancel",
+        sub_cmd_name="annuler",
         sub_cmd_description="Annule la session en cours",
     )
     async def cancel_session(self, ctx: SlashContext) -> None:

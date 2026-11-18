@@ -111,7 +111,7 @@ class PollRepository:
 
     @translates_db_errors
     async def list_open_reaction_polls(self, author_id: str, limit: int) -> list[Poll]:
-        """The *limit* newest open reaction polls *author_id* posted (``/editpoll``)."""
+        """The *limit* newest open reaction polls *author_id* posted (``/modifier-sondage``)."""
         cursor = (
             self._col()
             .find({"author_id": str(author_id), "mode": "reaction", "closed": False})
@@ -127,7 +127,7 @@ class PollRepository:
 
     @translates_db_errors
     async def set_options(self, poll_id: str, options: list[str], emojis: list[str]) -> None:
-        """Replace a stored poll's options (``/editpoll``)."""
+        """Replace a stored poll's options (``/modifier-sondage``)."""
         await self._col().update_one(
             {"_id": ObjectId(poll_id)}, {"$set": {"options": options, "emojis": emojis}}
         )

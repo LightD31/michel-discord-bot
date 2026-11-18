@@ -2,7 +2,7 @@
 
 The extension is a thin glue class that composes mixins for the data fetching
 APIs, Twitch stream aggregation, embed rendering, the refresh task, and the
-``/zevent_finish`` command.
+``/zevent-fin`` command.
 """
 
 import os

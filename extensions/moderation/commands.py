@@ -1,7 +1,7 @@
 """Slash commands for member moderation + infraction history (CommandsMixin).
 
-Member actions: ``/warn``, ``/timeout``, ``/untimeout``, ``/kick``, ``/ban``,
-``/unban``. History: ``/infraction list|view|remove``. Every action records a
+Member actions: ``/avertir``, ``/exclure``, ``/lever-exclusion``, ``/expulser``, ``/bannir``,
+``/debannir``. History: ``/infraction liste|view|remove``. Every action records a
 numbered :class:`Infraction` case, optionally DMs the target, and mirrors an
 embed to the configured modlog channel.
 """
@@ -100,10 +100,10 @@ class CommandsMixin:
     def _reason_suffix(reason: str | None) -> str:
         return f"\nRaison : {reason}" if reason else ""
 
-    # --- /warn -------------------------------------------------------------
+    # --- /avertir -------------------------------------------------------------
 
     @slash_command(
-        name="warn",
+        name="avertir",
         description="Avertir un membre",
         scopes=guild_scopes(MODERATION.guild_ids()),
     )
@@ -144,7 +144,7 @@ class CommandsMixin:
     ) -> tuple[Infraction, int]:
         """Record a warning, DM the member and log the case: ``(case, active warnings)``.
 
-        Shared by ``/warn``, the "⚠️ Avertir…" right-click and a report's card;
+        Shared by ``/avertir``, the "⚠️ Avertir…" right-click and a report's card;
         the caller has checked :func:`can_moderate`.
         """
         infraction = await self._record(ctx, mtype="warn", target_id=member.id, reason=reason)
@@ -160,10 +160,10 @@ class CommandsMixin:
         )
         return infraction, count
 
-    # --- /timeout ----------------------------------------------------------
+    # --- /exclure ----------------------------------------------------------
 
     @slash_command(
-        name="timeout",
+        name="exclure",
         description="Exclure temporairement un membre (timeout)",
         scopes=guild_scopes(MODERATION.guild_ids()),
     )
@@ -226,7 +226,7 @@ class CommandsMixin:
         """Time the member out for *secs*, record the case, DM them and log it.
 
         Raises :class:`ActionRefused` when Discord refused the timeout itself
-        (nothing is recorded then). Shared by ``/timeout`` and a report's card.
+        (nothing is recorded then). Shared by ``/exclure`` and a report's card.
         """
         until = datetime.now(UTC) + timedelta(seconds=secs)
         try:
@@ -255,10 +255,10 @@ class CommandsMixin:
         )
         return infraction
 
-    # --- /untimeout --------------------------------------------------------
+    # --- /lever-exclusion --------------------------------------------------------
 
     @slash_command(
-        name="untimeout",
+        name="lever-exclusion",
         description="Lever l'exclusion temporaire d'un membre",
         scopes=guild_scopes(MODERATION.guild_ids()),
     )
@@ -299,10 +299,10 @@ class CommandsMixin:
         )
         await send_success(ctx, f"Exclusion de {member.mention} levée (cas **#{infraction.id}**).")
 
-    # --- /kick -------------------------------------------------------------
+    # --- /expulser -------------------------------------------------------------
 
     @slash_command(
-        name="kick",
+        name="expulser",
         description="Expulser un membre",
         scopes=guild_scopes(MODERATION.guild_ids()),
     )
@@ -352,10 +352,10 @@ class CommandsMixin:
         )
         await send_success(ctx, f"{member.mention} expulsé (cas **#{infraction.id}**).")
 
-    # --- /ban --------------------------------------------------------------
+    # --- /bannir --------------------------------------------------------------
 
     @slash_command(
-        name="ban",
+        name="bannir",
         description="Bannir un membre",
         scopes=guild_scopes(MODERATION.guild_ids()),
     )
@@ -422,10 +422,10 @@ class CommandsMixin:
         )
         await send_success(ctx, f"{member.mention} banni (cas **#{infraction.id}**).")
 
-    # --- /unban ------------------------------------------------------------
+    # --- /debannir ------------------------------------------------------------
 
     @slash_command(
-        name="unban",
+        name="debannir",
         description="Révoquer le bannissement d'un utilisateur",
         scopes=guild_scopes(MODERATION.guild_ids()),
     )
@@ -466,7 +466,7 @@ class CommandsMixin:
         )
         await send_success(ctx, f"<@{user_id}> débanni (cas **#{infraction.id}**).")
 
-    # --- /infraction list|view|remove -------------------------------------
+    # --- /infraction liste|view|remove -------------------------------------
 
     def _build_history_embed(self, member: Member, items: list[Infraction]) -> Embed:
         active = sum(1 for i in items if i.active)
@@ -496,7 +496,7 @@ class CommandsMixin:
     @slash_command(
         name="infraction",
         description="Consulter et gérer l'historique de modération",
-        sub_cmd_name="list",
+        sub_cmd_name="liste",
         sub_cmd_description="Lister les sanctions d'un membre",
         scopes=guild_scopes(MODERATION.guild_ids()),
     )
@@ -516,7 +516,7 @@ class CommandsMixin:
         await ctx.send(embeds=[self._build_history_embed(member, items)], ephemeral=True)
 
     @infraction_list.subcommand(
-        sub_cmd_name="view", sub_cmd_description="Afficher une sanction précise"
+        sub_cmd_name="voir", sub_cmd_description="Afficher une sanction précise"
     )
     @slash_option(
         "id",
@@ -537,7 +537,7 @@ class CommandsMixin:
         await ctx.send(embeds=[build_case_embed(infraction)], ephemeral=True)
 
     @infraction_list.subcommand(
-        sub_cmd_name="remove", sub_cmd_description="Révoquer une sanction de l'historique"
+        sub_cmd_name="retirer", sub_cmd_description="Révoquer une sanction de l'historique"
     )
     @slash_option(
         "id",

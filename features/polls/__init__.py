@@ -1,4 +1,4 @@
-"""Polls feature package — constants and pure helpers for the /poll command."""
+"""Polls feature package — constants and pure helpers for the /sondage command."""
 
 from features.polls.constants import (
     DEFAULT_POLL_EMOJIS,

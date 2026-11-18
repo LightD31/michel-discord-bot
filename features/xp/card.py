@@ -1,4 +1,4 @@
-"""Image rank card renderer for the /rank command."""
+"""Image rank card renderer for the /niveau command."""
 
 from __future__ import annotations
 

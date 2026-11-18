@@ -78,7 +78,7 @@ class XpConfig(SchemaBase):
         "boolean",
         default=False,
         description=(
-            "Un classement qui repart à zéro chaque saison : `/leaderboard` montre la saison en "
+            "Un classement qui repart à zéro chaque saison : `/classement` montre la saison en "
             "cours (le classement de toujours reste disponible), et le podium est publié à la fin."
         ),
     )

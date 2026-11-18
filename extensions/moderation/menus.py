@@ -3,7 +3,7 @@
 Both are hidden from members without "Exclure temporairement des membres"
 (``default_member_permissions``) and check it again when they run, since a
 server can loosen the default. "Avertir…" asks for the reason in a form and
-then does what ``/warn`` does.
+then does what ``/avertir`` does.
 """
 
 from __future__ import annotations

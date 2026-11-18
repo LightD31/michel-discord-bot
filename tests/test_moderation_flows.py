@@ -1,4 +1,4 @@
-"""/warn, /timeout, /kick and the infraction history, with the role hierarchy (T04)."""
+"""/avertir, /exclure, /expulser and the infraction history, with the role hierarchy (T04)."""
 
 from datetime import UTC, datetime, timedelta
 

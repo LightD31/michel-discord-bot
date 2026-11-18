@@ -1,4 +1,4 @@
-"""Slash commands: ``/suggest`` (anyone) and ``/suggestion approve|deny|implement`` (staff).
+"""Slash commands: ``/suggerer`` (anyone) and ``/suggestion approuver|deny|implement`` (staff).
 
 Right-click a message → Applications → "💡 En faire une suggestion" opens a
 form holding the message's text, which the member rewrites as they like; the
@@ -145,10 +145,10 @@ def _vote_components(sugg_id: int, *, disabled: bool = False) -> list[ActionRow]
 
 
 class CommandsMixin:
-    """Public ``/suggest`` and staff-only ``/suggestion ...`` sub-commands."""
+    """Public ``/suggerer`` and staff-only ``/suggestion ...`` sub-commands."""
 
     @slash_command(
-        name="suggest",
+        name="suggerer",
         description="Proposer une suggestion à la communauté",
         scopes=guild_scopes(SUGGESTIONS.guild_ids()),
     )
@@ -182,7 +182,7 @@ class CommandsMixin:
     async def publish_suggestion(
         self, ctx: Any, text: str, *, source_url: str | None = None
     ) -> None:
-        """Post *text* as a suggestion in the configured channel, for ``/suggest`` and the form."""
+        """Post *text* as a suggestion in the configured channel, for ``/suggerer`` and the form."""
         settings = get_guild_settings(ctx.guild_id)
         if not settings:
             await send_error(ctx, module_off("suggestions"), icon="💡")
@@ -243,7 +243,7 @@ class CommandsMixin:
     @slash_command(
         name="suggestion",
         description="Gérer les suggestions (staff)",
-        sub_cmd_name="approve",
+        sub_cmd_name="approuver",
         sub_cmd_description="Approuver une suggestion",
         scopes=guild_scopes(SUGGESTIONS.guild_ids()),
     )
@@ -272,7 +272,7 @@ class CommandsMixin:
         await self._handle_decision(ctx, sugg_id, "approved", reason)
 
     @suggestion_approve.subcommand(
-        sub_cmd_name="deny",
+        sub_cmd_name="refuser",
         sub_cmd_description="Refuser une suggestion",
     )
     @slash_option(
@@ -296,7 +296,7 @@ class CommandsMixin:
         await self._handle_decision(ctx, sugg_id, "denied", reason)
 
     @suggestion_approve.subcommand(
-        sub_cmd_name="implement",
+        sub_cmd_name="implementer",
         sub_cmd_description="Marquer une suggestion comme implémentée",
     )
     @slash_option(
