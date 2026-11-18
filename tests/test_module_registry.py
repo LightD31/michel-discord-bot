@@ -42,6 +42,28 @@ from interactions import Extension
 from src.webui import schemas
 
 
+def choices_unlike_their_literal(schemas):
+    # A ``choice`` field whose ``choices`` differ from its ``Literal``: the
+    # dashboard would offer a value the save refuses, or hide one it accepts.
+    import typing
+
+    found = []
+    for key, cls in schemas._MODULE_REGISTRY.items():
+        for name, info in cls.model_fields.items():
+            meta = (info.json_schema_extra or {}).get("ui", {})
+            if meta.get("type") != "choice":
+                continue
+            offered = [c["value"] for c in meta.get("choices", [])]
+            accepted = (
+                list(typing.get_args(info.annotation))
+                if typing.get_origin(info.annotation) is typing.Literal
+                else None
+            )
+            if accepted is None or sorted(offered) != sorted(accepted):
+                found.append(f"{key}.{name}")
+    return found
+
+
 def numbers_without_bounds(schemas):
     # Every number of a module or section (nested entries too) missing a bound.
     import types, typing
@@ -122,6 +144,7 @@ for entry in sorted(os.listdir("extensions")):
     out["extensions"][name] = classes
 out["schemas"] = sorted(schemas.MODULE_SCHEMAS)
 out["numbers"] = numbers_without_bounds(schemas)
+out["choices"] = choices_unlike_their_literal(schemas)
 out["fields"] = {key: list(cls.model_fields) for key, cls in schemas._MODULE_REGISTRY.items()}
 out["module_schemas"] = schemas.MODULE_SCHEMAS
 with open(sys.argv[1], "w", encoding="utf-8") as f:
@@ -219,6 +242,11 @@ def test_every_number_has_bounds_the_dashboard_shows(probe):
     bot still clamps what it reads, for a config edited by hand.
     """
     assert probe["numbers"] == []
+
+
+def test_choice_fields_offer_what_the_save_accepts(probe):
+    """A ``choice`` field is a ``Literal`` with the same values as its ``choices``."""
+    assert probe["choices"] == []
 
 
 def test_every_extension_declares_its_modules_explicitly(probe):

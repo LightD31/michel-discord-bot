@@ -6,7 +6,9 @@ through the package root.
 """
 
 import os
+from typing import Literal
 
+from features.xp import LEVEL_UP_DESTINATIONS, MAX_LEVEL_UP_EVERY, MIN_LEVEL_UP_EVERY
 from features.xp.seasons import MAX_MONTHS, MIN_MONTHS
 from src.core import clock
 from src.core import logging as logutil
@@ -101,6 +103,33 @@ class XpConfig(SchemaBase):
             "Rôle donné au premier de la saison qui se termine, et retiré au champion précédent."
         ),
         role_use="grant",
+    )
+    levelUpDestination: Literal["here", "channel", "dm", "off"] = ui(
+        "Où annoncer les niveaux",
+        "choice",
+        default="here",
+        choices=LEVEL_UP_DESTINATIONS,
+        description=(
+            "Là où le membre parlait (le salon du message, ou le chat du salon vocal), dans un "
+            "salon dédié, en message privé, ou nulle part. Les rôles de niveau sont donnés "
+            "dans tous les cas."
+        ),
+    )
+    levelUpChannelId: str | None = ui(
+        "Salon des niveaux",
+        "channel",
+        description="Le salon dédié, quand les niveaux y sont annoncés.",
+    )
+    levelUpEvery: int = ui(
+        "Annoncer tous les … niveaux",
+        "number",
+        ge=MIN_LEVEL_UP_EVERY,
+        le=MAX_LEVEL_UP_EVERY,
+        default=1,
+        description=(
+            "1 : chaque niveau, 5 : les niveaux 5, 10, 15… Un niveau qui donne un rôle est "
+            "toujours annoncé."
+        ),
     )
     levelUpMessageList: list[WeightedMessage] = ui(
         "Messages de level-up",

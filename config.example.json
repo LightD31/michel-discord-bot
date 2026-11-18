@@ -409,6 +409,9 @@
                 "seasonMonths": 1,
                 "seasonChannelId": "",
                 "seasonChampionRoleId": "",
+                "levelUpDestination": "here",
+                "levelUpChannelId": "",
+                "levelUpEvery": 1,
                 "levelUpMessageList": [
                     {
                         "text": "Bravo {mention}, tu as atteint le niveau {lvl} !",
