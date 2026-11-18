@@ -5,7 +5,14 @@ from urllib.parse import urlsplit
 
 from src.core import logging as logutil
 from src.core.config import ModuleConfig, global_config
-from src.webui.schemas import SchemaBase, enabled_field, register_module, register_section, ui
+from src.webui.schemas import (
+    ModuleHelp,
+    SchemaBase,
+    enabled_field,
+    register_module,
+    register_section,
+    ui,
+)
 
 
 @register_module("moduleOlympics")
@@ -14,6 +21,11 @@ class OlympicsConfig(SchemaBase):
     __description__ = "Alertes médailles des Jeux Olympiques."
     __icon__ = "🏅"
     __category__ = "Événements"
+    __help__ = ModuleHelp(
+        "Les médailles des Jeux Olympiques.",
+        ("/jo medailles", "/jo france"),
+        "Chaque médaille française est annoncée.",
+    )
 
     enabled: bool = enabled_field()
     olympicsChannelId: str = ui(

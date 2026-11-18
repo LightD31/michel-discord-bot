@@ -9,7 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from features.vlrgg import _clean_vlr_text, expand_round_name
 from src.core import logging as logutil
 from src.core.config import ModuleConfig
-from src.webui.schemas import SchemaBase, enabled_field, register_module, ui
+from src.webui.schemas import ModuleHelp, SchemaBase, enabled_field, register_module, ui
 
 
 class TeamEntry(BaseModel):
@@ -32,6 +32,11 @@ class VlrggConfig(SchemaBase):
     __description__ = "Suivi automatique des matchs d'équipes Valorant via VLR.gg."
     __icon__ = "🎮"
     __category__ = "Esport & Jeux"
+    __help__ = ModuleHelp(
+        "Les matchs Valorant des équipes suivies (VLR.gg).",
+        ("/vlr equipe", "/vlr match", "/vlr classement"),
+        "Les matchs à venir, en cours et terminés sont annoncés.",
+    )
 
     enabled: bool = enabled_field()
     notificationChannelId: str | None = ui(

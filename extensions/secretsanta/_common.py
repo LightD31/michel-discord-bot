@@ -7,7 +7,7 @@ from interactions import ComponentContext, ModalContext, Permissions, SlashConte
 from src.core import logging as logutil
 from src.core.config import ModuleConfig
 from src.discord_ext.secretsanta import context_guild_id, join_buttons
-from src.webui.schemas import SchemaBase, enabled_field, register_module, ui
+from src.webui.schemas import ModuleHelp, SchemaBase, enabled_field, register_module, ui
 
 MIN_REMINDER_DAYS, MAX_REMINDER_DAYS = 1, 14
 DEFAULT_REMINDER_DAYS = 3
@@ -23,6 +23,11 @@ class SecretSantaConfig(SchemaBase):
     )
     __icon__ = "🎁"
     __category__ = "Événements"
+    __help__ = ModuleHelp(
+        "Le Père Noël secret : inscriptions avec liste d'envies, tirage, messages anonymes.",
+        ("/secretsanta creer", "/secretsanta tirage", "/secretsanta participants"),
+        "Après le tirage, chacun reçoit en MP le nom de la personne à gâter, et peut lui écrire anonymement.",
+    )
 
     enabled: bool = enabled_field()
     anonymousMessages: bool = ui(

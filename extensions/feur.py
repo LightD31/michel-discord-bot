@@ -27,7 +27,7 @@ from src.core.text import sanitize_content
 from src.discord_ext.look import card
 from src.discord_ext.messages import require_guild
 from src.discord_ext.scopes import guild_scopes
-from src.webui.schemas import SchemaBase, enabled_field, register_module
+from src.webui.schemas import ModuleHelp, SchemaBase, enabled_field, register_module
 
 
 @register_module("moduleFeur")
@@ -36,6 +36,11 @@ class FeurConfig(SchemaBase):
     __description__ = 'Répond "feur" aux messages se terminant par "quoi", avec stats par membre.'
     __icon__ = "🇫"
     __category__ = "Communauté"
+    __help__ = ModuleHelp(
+        "Quoi ? Feur.",
+        ("/feur-stats",),
+        "Michel répond « feur » aux messages qui finissent par « quoi », et compte les points.",
+    )
 
     enabled: bool = enabled_field()
 

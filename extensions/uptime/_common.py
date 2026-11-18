@@ -1,7 +1,7 @@
 """Shared config schema and constants for the Uptime extension."""
 
 from src.core.config import ModuleConfig
-from src.webui.schemas import SchemaBase, enabled_field, register_module
+from src.webui.schemas import ModuleHelp, SchemaBase, enabled_field, register_module
 
 
 @register_module("moduleUptime")
@@ -13,6 +13,11 @@ class UptimeConfig(SchemaBase):
     )
     __icon__ = "📡"
     __category__ = "Outils"
+    __help__ = ModuleHelp(
+        "L'état des serveurs suivis par Uptime Kuma.",
+        ("/uptime liste", "/uptime configurer"),
+        "Une panne, une maintenance ou un retour en ligne est annoncé dans le salon choisi.",
+    )
 
     enabled: bool = enabled_field()
 

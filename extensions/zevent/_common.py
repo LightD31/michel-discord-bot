@@ -16,6 +16,7 @@ from features.zevent.stats import (
 from src.core import logging as logutil
 from src.core.config import ModuleConfig, global_config
 from src.webui.schemas import (
+    ModuleHelp,
     SchemaBase,
     enabled_field,
     register_module,
@@ -35,6 +36,11 @@ class ZeventConfig(SchemaBase):
     )
     __icon__ = "🎉"
     __category__ = "Événements"
+    __help__ = ModuleHelp(
+        "Le suivi du Zevent sur ce serveur.",
+        (),
+        "Le total des dons, les streamers et les objectifs se mettent à jour pendant l'événement.",
+    )
 
     enabled: bool = enabled_field()
     zeventChannelId: str = ui(

@@ -25,6 +25,7 @@ Recognised widget types (``type=`` on ``ui()``):
     discord2name, models, text (multi-line string), aimodel (configured AI model key).
 """
 
+from dataclasses import dataclass
 from typing import Any, ClassVar, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
@@ -128,6 +129,23 @@ def ui(
     return Field(default=field_default, ge=ge, le=le, json_schema_extra={"ui": meta})
 
 
+@dataclass(frozen=True)
+class ModuleHelp:
+    """What ``/aide`` says about a module (``__help__`` on its schema; P6, B7).
+
+    *what* is one sentence on what the module is for, *commands* the (at most
+    three) commands to know, as typed (``"/niveau"``), and *auto* what the bot
+    does on its own. ``tests/test_command_names.py`` checks the commands exist.
+    """
+
+    what: str
+    commands: tuple[str, ...] = ()
+    auto: str = ""
+
+    def as_dict(self) -> dict[str, Any]:
+        return {"what": self.what, "commands": list(self.commands), "auto": self.auto}
+
+
 class SchemaBase(BaseModel):
     """Base for UI-schema source models; class vars hold module/section metadata.
 
@@ -146,6 +164,7 @@ class SchemaBase(BaseModel):
     __category__: ClassVar[str] = ""
     __no_toggle__: ClassVar[bool] = False
     __direct_value__: ClassVar[bool] = False
+    __help__: ClassVar[ModuleHelp | None] = None
 
 
 # A message's draw weight is relative to the others': 1000 to 1 is already "never".
@@ -445,6 +464,8 @@ def _module_dict(cls: type[SchemaBase]) -> dict[str, Any]:
         d["noToggle"] = True
     if cls.__direct_value__:
         d["directValue"] = True
+    if cls.__help__ is not None:
+        d["help"] = cls.__help__.as_dict()
     d["fields"] = _fields_of(cls)
     return d
 
@@ -482,6 +503,12 @@ class Discord2NameConfig(SchemaBase):
     __category__ = "Outils"
     __no_toggle__ = True
     __direct_value__ = True
+    __help__ = ModuleHelp(
+        "Les prénoms des membres, pour les messages qui les nomment.",
+    )
+    __help__ = ModuleHelp(
+        "Les prénoms des membres, pour les messages qui les nomment.",
+    )
 
     discord2name: dict[str, str] = ui(
         "Membres", "discord2name", description="Associe un prénom à chaque membre."

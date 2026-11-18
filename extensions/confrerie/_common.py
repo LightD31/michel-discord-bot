@@ -10,6 +10,7 @@ from src.core import logging as logutil
 from src.core.config import ModuleConfig
 from src.core.errors import BotError
 from src.webui.schemas import (
+    ModuleHelp,
     SchemaBase,
     enabled_field,
     register_module,
@@ -25,6 +26,11 @@ class ConfrerieConfig(SchemaBase):
     __description__ = "Intégration Notion pour la Confrérie de la Plume (textes, défis, éditeurs)."
     __icon__ = "📚"
     __category__ = "Outils"
+    __help__ = ModuleHelp(
+        "Les textes, auteurs, outils et éditeurs de la Confrérie de la Plume, depuis Notion.",
+        ("/texte", "/auteur", "/demande"),
+        "Les nouveaux textes et leurs mises à jour sont annoncés, et le récapitulatif se tient à jour.",
+    )
 
     enabled: bool = enabled_field()
     confrerieNotionDbOeuvresId: str = ui(

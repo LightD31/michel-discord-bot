@@ -10,7 +10,7 @@ import os
 from src.core import logging as logutil
 from src.core.config import ModuleConfig
 from src.discord_ext.rolemenus import BUTTON_PREFIX, MAX_ENTRIES, build_components, build_embed
-from src.webui.schemas import SchemaBase, enabled_field, register_module
+from src.webui.schemas import ModuleHelp, SchemaBase, enabled_field, register_module
 
 logger = logutil.init_logger(__name__)
 
@@ -21,6 +21,11 @@ class ReactionRolesConfig(SchemaBase):
     __description__ = "Menus de rôles auto-attribués via boutons persistants."
     __icon__ = "🎭"
     __category__ = "Communauté"
+    __help__ = ModuleHelp(
+        "Des menus pour choisir ses rôles d'un clic.",
+        ("/menu-roles creer", "/menu-roles liste"),
+        "Un clic sur un bouton du menu donne le rôle, un second le retire.",
+    )
 
     enabled: bool = enabled_field()
 

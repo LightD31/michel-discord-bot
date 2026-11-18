@@ -7,7 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from features.customcommands import MAX_COMMANDS_PER_GUILD
 from src.core import logging as logutil
-from src.webui.schemas import SchemaBase, enabled_field, register_module, ui
+from src.webui.schemas import ModuleHelp, SchemaBase, enabled_field, register_module, ui
 
 
 class CustomCommandEntry(BaseModel):
@@ -31,6 +31,9 @@ class CustomCommandsConfig(SchemaBase):
     __description__ = "Commandes slash propres au serveur qui répondent un GIF ou un texte."
     __icon__ = "✨"
     __category__ = "Communauté"
+    __help__ = ModuleHelp(
+        "Les commandes propres à ce serveur : un GIF ou un texte, choisis par les admins.",
+    )
 
     enabled: bool = enabled_field()
     commands: list[CustomCommandEntry] = ui(

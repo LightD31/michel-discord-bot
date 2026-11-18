@@ -6,7 +6,7 @@ from interactions import Permissions
 
 from src.core import logging as logutil
 from src.core.config import ModuleConfig
-from src.webui.schemas import SchemaBase, enabled_field, register_module, ui
+from src.webui.schemas import ModuleHelp, SchemaBase, enabled_field, register_module, ui
 
 # Default expense categories surfaced in /tricount depense autocomplete. Free-form input
 # is also accepted so guilds can use their own taxonomy.
@@ -34,6 +34,11 @@ class TricountConfig(SchemaBase):
     __description__ = "Gestion des dépenses partagées."
     __icon__ = "💰"
     __category__ = "Outils"
+    __help__ = ModuleHelp(
+        "Les dépenses partagées d'un groupe : qui a payé quoi, et qui doit combien à qui.",
+        ("/tricount depense", "/tricount bilan", "/tricount rembourser"),
+        "Les dépenses récurrentes s'ajoutent toutes seules, à leur date.",
+    )
 
     enabled: bool = enabled_field()
     tricountCurrency: str = ui(

@@ -22,6 +22,7 @@ from src.discord_ext.look import card
 from src.discord_ext.messages import GuildMessages, edit_message_if_changed
 from src.discord_ext.paginator import CustomPaginator
 from src.webui.schemas import (
+    ModuleHelp,
     SchemaBase,
     enabled_field,
     register_module,
@@ -35,6 +36,11 @@ class SpeedonsConfig(SchemaBase):
     __description__ = "Planning et suivi en temps réel de l'événement Speedons."
     __icon__ = "🏃"
     __category__ = "Événements"
+    __help__ = ModuleHelp(
+        "Le planning et le suivi en direct de Speedons.",
+        (),
+        "Le message de suivi se met à jour pendant l'événement.",
+    )
 
     enabled: bool = enabled_field()
     speedonsChannelId: str = ui(

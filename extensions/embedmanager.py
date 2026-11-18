@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from src.discord_ext.embedmanager import MODULE_KEY
 from src.webui.schemas import (
+    ModuleHelp,
     SchemaBase,
     enabled_field,
     register_module,
@@ -47,6 +48,11 @@ class EmbedManagerConfig(SchemaBase):
     __description__ = "Création et publication d'embeds personnalisés."
     __icon__ = "📝"
     __category__ = "Outils"
+    __help__ = ModuleHelp(
+        "Des messages mis en forme par les admins (règles, liens utiles), publiés par Michel.",
+        (),
+        "Une modification dans le tableau de bord met le message à jour.",
+    )
 
     enabled: bool = enabled_field()
     channelId: str = ui(

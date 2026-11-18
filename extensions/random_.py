@@ -26,6 +26,7 @@ from src.core import logging as logutil
 from src.core.text import clip
 from src.discord_ext.locale import en_fr_desc, en_fr_name, is_french, option_desc, option_name, say
 from src.discord_ext.mentions import NO_PINGS
+from src.webui.schemas import ModuleHelp
 
 logger = logutil.init_logger(__name__)
 
@@ -39,6 +40,10 @@ MAX_INPUT_LENGTH = 1500
 class RandomExtension(Extension):
     MODULE_KEYS = ()
     HELP_LABEL = "🎲 Hasard"  # heading in /aide
+    HELP = ModuleHelp(
+        "Un coup de pouce du hasard : tirer au sort, lancer un dé, une pièce, mélanger une liste.",
+        ("/pick", "/roll", "/coin"),
+    )
 
     def __init__(self, bot: Client):
         self.bot = bot

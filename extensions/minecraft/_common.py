@@ -6,6 +6,7 @@ from src.core import logging as logutil
 from src.core.config import ModuleConfig
 from src.discord_ext.look import card
 from src.webui.schemas import (
+    ModuleHelp,
     SchemaBase,
     enabled_field,
     register_module,
@@ -20,6 +21,11 @@ class MinecraftConfig(SchemaBase):
     __description__ = "Statut et gestion du serveur Minecraft via RCON."
     __icon__ = "⛏️"
     __category__ = "Esport & Jeux"
+    __help__ = ModuleHelp(
+        "Le statut du serveur Minecraft et les statistiques des joueurs.",
+        (),
+        "Le message de statut et le tableau des statistiques se mettent à jour tout seuls.",
+    )
 
     enabled: bool = enabled_field()
     minecraftChannelId: str = ui(

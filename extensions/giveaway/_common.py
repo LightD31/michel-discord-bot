@@ -4,7 +4,7 @@ import os
 
 from src.core import logging as logutil
 from src.core.config import ModuleConfig
-from src.webui.schemas import SchemaBase, enabled_field, register_module, ui
+from src.webui.schemas import ModuleHelp, SchemaBase, enabled_field, register_module, ui
 
 logger = logutil.init_logger(__name__)
 
@@ -19,6 +19,11 @@ class GiveawayConfig(SchemaBase):
     __description__ = "Tirages au sort avec bouton de participation et tirage planifié."
     __icon__ = "🎁"
     __category__ = "Communauté"
+    __help__ = ModuleHelp(
+        "Des tirages au sort : un bouton pour participer, un tirage à l'heure dite.",
+        ("/concours lancer", "/concours liste", "/concours tirer"),
+        "À l'heure dite, Michel tire les gagnants et les annonce.",
+    )
 
     enabled: bool = enabled_field()
     giveawayEmoji: str = ui(

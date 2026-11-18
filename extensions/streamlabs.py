@@ -36,6 +36,7 @@ from src.discord_ext.messages import (
 )
 from src.discord_ext.scopes import guild_scopes
 from src.webui.schemas import (
+    ModuleHelp,
     SchemaBase,
     enabled_field,
     register_module,
@@ -49,6 +50,11 @@ class StreamlabsCharityConfig(SchemaBase):
     __description__ = "Suivi d'une campagne Streamlabs Charity en direct."
     __icon__ = "❤️"
     __category__ = "Événements"
+    __help__ = ModuleHelp(
+        "Le suivi en direct d'une collecte Streamlabs Charity.",
+        ("/fin-collecte",),
+        "Le total et les participants se mettent à jour pendant la collecte.",
+    )
 
     enabled: bool = enabled_field()
     streamlabsChannelId: str = ui(

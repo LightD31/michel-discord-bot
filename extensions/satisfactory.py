@@ -21,6 +21,7 @@ from src.core.logging import log_failure
 from src.discord_ext.look import card
 from src.discord_ext.messages import GuildMessages, edit_message_if_changed
 from src.webui.schemas import (
+    ModuleHelp,
     SchemaBase,
     enabled_field,
     register_module,
@@ -44,6 +45,11 @@ class SatisfactoryConfig(SchemaBase):
     __description__ = "Statut et gestion du serveur Satisfactory."
     __icon__ = "🏭"
     __category__ = "Esport & Jeux"
+    __help__ = ModuleHelp(
+        "Le statut du serveur Satisfactory.",
+        (),
+        "Le message de statut se met à jour tout seul.",
+    )
 
     enabled: bool = enabled_field()
     satisfactoryChannelId: str = ui(

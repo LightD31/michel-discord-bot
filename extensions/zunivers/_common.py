@@ -14,7 +14,14 @@ from features.zerator247 import RequestSubscription
 from src.core import logging as logutil
 from src.core.config import ModuleConfig, global_config
 from src.discord_ext.scopes import guild_scopes
-from src.webui.schemas import SchemaBase, enabled_field, register_module, register_section, ui
+from src.webui.schemas import (
+    ModuleHelp,
+    SchemaBase,
+    enabled_field,
+    register_module,
+    register_section,
+    ui,
+)
 
 
 @register_section("zunivers")
@@ -52,6 +59,11 @@ class ZuniversConfig(SchemaBase):
     )
     __icon__ = "🎲"
     __category__ = "Communauté"
+    __help__ = ModuleHelp(
+        "Les rappels et les nouvelles de ZUnivers.",
+        ("/zunivers journa activer", "/zunivers corpo", "/zunivers ninja"),
+        "Les rappels /journa arrivent à l'heure choisie, et les événements et saisons sont annoncés.",
+    )
 
     enabled: bool = enabled_field()
     colocZuniversChannelId: str | None = ui(

@@ -10,7 +10,14 @@ from src.core import logging as logutil
 from src.core.config import ModuleConfig
 from src.core.text import pick_weighted_message
 from src.discord_ext.mentions import everyone_if_written
-from src.webui.schemas import SchemaBase, WeightedMessage, enabled_field, register_module, ui
+from src.webui.schemas import (
+    ModuleHelp,
+    SchemaBase,
+    WeightedMessage,
+    enabled_field,
+    register_module,
+    ui,
+)
 
 
 @register_module("moduleWelcome")
@@ -19,6 +26,11 @@ class WelcomeConfig(SchemaBase):
     __description__ = "Messages de bienvenue et de départ."
     __icon__ = "👋"
     __category__ = "Communauté"
+    __help__ = ModuleHelp(
+        "Un message pour chaque arrivée et chaque départ.",
+        (),
+        "Quand un membre arrive, Michel l'accueille (avec une carte si c'est activé) ; quand il part, il le dit.",
+    )
 
     enabled: bool = enabled_field()
     welcomeChannelId: str = ui(

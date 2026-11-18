@@ -15,7 +15,7 @@ from features.ai.settings import (
 )
 from src.core import logging as logutil
 from src.core.config import config_store
-from src.webui.schemas import SchemaBase, enabled_field, register_module, ui
+from src.webui.schemas import ModuleHelp, SchemaBase, enabled_field, register_module, ui
 
 MODULE_KEY = "moduleIA"
 
@@ -29,6 +29,11 @@ class IAConfig(SchemaBase):
     )
     __icon__ = "🤖"
     __category__ = "Outils"
+    __help__ = ModuleHelp(
+        "Pose une question à Michel : plusieurs modèles d'IA répondent, et le serveur vote pour la meilleure réponse.",
+        ("/ask", "/ask-stats"),
+        "En option, Michel répond aussi quand on le mentionne.",
+    )
 
     enabled: bool = enabled_field()
     persona: str = ui(
