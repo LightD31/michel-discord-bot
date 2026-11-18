@@ -19,7 +19,7 @@ import the DSL without triggering a circular import.
 Recognised widget types (``type=`` on ``ui()``):
     string, number, boolean, channel, role, message, secret, url,
     member (a member, picked by name), channellist, rolelist (several
-    channels / roles, picked by name),
+    channels / roles, picked by name), choice (one of ``choices``, a list),
     list, list:number, dict, messagelist, embedlist, commandlist, keyvaluemap,
     spotifymap, streamermap, youtubechannelmap, rssfeedmap, teams,
     discord2name, models, text (multi-line string), aimodel (configured AI model key).
@@ -66,6 +66,7 @@ def ui(
     role_use: str = "",
     role_keys: bool = False,
     member_keys: bool = False,
+    choices: dict[str, str] | None = None,
 ) -> Any:
     """Build a Pydantic ``Field(...)`` carrying UI metadata in ``json_schema_extra['ui']``.
 
@@ -86,6 +87,10 @@ def ui(
 
     ``member_keys`` marks a ``keyvaluemap`` whose keys are members, picked by
     name in the dashboard.
+
+    ``choices`` (value → label) are the options of a ``choice`` field, shown
+    as a list; annotate the field with the matching ``Literal`` so a save of
+    anything else is refused.
     """
     if role_use and role_use not in ROLE_USES:
         raise ValueError(f"role_use inconnu : {role_use}")
@@ -116,6 +121,8 @@ def ui(
         meta["roleKeys"] = True
     if member_keys:
         meta["memberKeys"] = True
+    if choices:
+        meta["choices"] = [{"value": v, "label": label} for v, label in choices.items()]
 
     field_default = default if default is not _UNSET else None
     return Field(default=field_default, ge=ge, le=le, json_schema_extra={"ui": meta})

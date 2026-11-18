@@ -12,14 +12,28 @@ from features.xp import (
     XP_MIN,
     TTLCache,
     XpRepository,
+    announces_level,
     calculate_level,
+    level_up_destination,
 )
 from src.core.errors import DatabaseError
 from src.core.text import pick_weighted_message
-from src.discord_ext.mentions import everyone_if_written
+from src.discord_ext.channels import fetch_guild_channel
+from src.discord_ext.mentions import NO_PINGS, everyone_if_written
 from src.discord_ext.role_grants import grantable_role
 
 from ._common import XP, logger
+
+
+def _rewards(settings: dict) -> dict[int, int]:
+    """``levelRewards`` as level → role id, malformed entries left out."""
+    parsed: dict[int, int] = {}
+    for raw_level, raw_role in (settings.get("levelRewards") or {}).items():
+        try:
+            parsed[int(raw_level)] = int(raw_role)
+        except (TypeError, ValueError):
+            continue
+    return parsed
 
 
 class LevelingMixin:
@@ -147,20 +161,51 @@ class LevelingMixin:
     ) -> None:
         await self._repo(guild_id).set_level(user_id, new_level)
         logger.debug("%s is now level %d.", user_id, new_level)
+        await self._announce_level_up(guild_id, message.author, new_level, message.channel)
+        await self._apply_level_rewards(guild_id, message.author, new_level)
 
-        guild_config = XP.get(guild_id)
-        formatted_message = pick_weighted_message(
-            guild_config,
+    async def _announce_level_up(self, guild_id: str, member, new_level: int, here) -> None:
+        """Announce *new_level* where the guild wants it (B10): *here*, a channel, a DM, nowhere.
+
+        *here* is where the member was talking: the message's channel, or the
+        chat of their voice channel. Every ``levelUpEvery`` levels only, but a
+        level that gives a role is always announced.
+        """
+        settings = XP.get(guild_id)
+        destination = level_up_destination(settings.get("levelUpDestination"))
+        if destination == "off":
+            return
+        if not announces_level(new_level, settings.get("levelUpEvery"), set(_rewards(settings))):
+            return
+        text = pick_weighted_message(
+            settings,
             "levelUpMessageList",
             DEFAULT_LEVEL_UP_MESSAGE,
-            mention=message.author.mention,
+            mention=member.mention,
             lvl=new_level,
         )
-        # The admins' template filled with a mention and a level.
-        await message.channel.send(
-            formatted_message, allowed_mentions=everyone_if_written(formatted_message)
-        )
-        await self._apply_level_rewards(guild_id, message.author, new_level)
+        target = here
+        if destination == "channel":
+            target = await fetch_guild_channel(
+                self.bot, guild_id, str(settings.get("levelUpChannelId") or ""), logger=logger
+            )
+            if target is None:
+                logger.warning("Guild %s: the level-up channel is unusable", guild_id)
+                return
+        elif destination == "dm":
+            try:
+                await member.send(text, allowed_mentions=NO_PINGS)
+            except Exception as e:  # DMs closed: the member simply isn't told
+                logger.debug("Level-up DM to %s not sent: %s", member.id, e)
+            return
+        send = getattr(target, "send", None)
+        if send is None:
+            return
+        try:
+            # The admins' template filled with a mention and a level.
+            await send(text, allowed_mentions=everyone_if_written(text))
+        except Exception as e:
+            logger.warning("Level-up of %s not announced in guild %s: %s", member.id, guild_id, e)
 
     async def _apply_level_rewards(self, guild_id: str, member, new_level: int) -> None:
         """Grant the configured role for ``new_level`` (and optionally drop lower-tier roles).
@@ -173,17 +218,7 @@ class LevelingMixin:
         Silent no-op when no reward matches or the bot lacks Manage Roles.
         """
         guild_config = XP.get(guild_id)
-        rewards: dict = guild_config.get("levelRewards") or {}
-        if not rewards:
-            return
-
-        # Map int level → role id, ignoring malformed entries.
-        parsed: dict[int, int] = {}
-        for raw_level, raw_role in rewards.items():
-            try:
-                parsed[int(raw_level)] = int(raw_role)
-            except (TypeError, ValueError):
-                continue
+        parsed = _rewards(guild_config)
         if not parsed:
             return
 

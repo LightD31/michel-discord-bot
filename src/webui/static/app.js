@@ -855,6 +855,16 @@
                     html += memberPickerHtml(hasValue ? String(value) : '', `data-field="${key}" data-type="member"`);
                     break;
 
+                case 'choice': {
+                    const current = hasValue ? String(value) : String(field.default ?? '');
+                    html += `<select class="form-input" data-field="${key}" data-type="choice">`;
+                    for (const option of field.choices || []) {
+                        html += `<option value="${escapeHtml(option.value)}" ${option.value === current ? 'selected' : ''}>${escapeHtml(option.label)}</option>`;
+                    }
+                    html += `</select>`;
+                    break;
+                }
+
                 case 'channellist':
                 case 'rolelist':
                     html += multiPickerHtml(key, fieldType, Array.isArray(value) ? value : [], field.roleUse);
@@ -1178,7 +1188,7 @@
     }
 
     // Field types whose default can be restored with one click.
-    const RESETTABLE_TYPES = new Set(['text', 'string', 'number', 'boolean', 'url']);
+    const RESETTABLE_TYPES = new Set(['text', 'string', 'number', 'boolean', 'url', 'choice']);
 
     async function resetFieldToDefault(btn) {
         const field = btn.closest('.form-field');

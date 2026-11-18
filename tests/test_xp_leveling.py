@@ -4,12 +4,20 @@ from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
 import pytest
-from discord_fakes import FakeChannel, FakeGuild, FakeMember, FakeMessage, FakeRole, bare_extension
+from discord_fakes import (
+    FakeBot,
+    FakeChannel,
+    FakeGuild,
+    FakeMember,
+    FakeMessage,
+    FakeRole,
+    bare_extension,
+)
 from interactions import Permissions
 
 import extensions.xp.leveling as leveling_module
 from extensions.xp import XpExtension
-from features.xp import TTLCache
+from features.xp import TTLCache, announces_level, level_up_destination
 
 
 class MemoryXp:
@@ -235,3 +243,117 @@ async def test_members_already_in_voice_earn_after_a_restart(setup, store_config
     assert ext._resume_voice_sessions() == 1
     assert set(ext._voice_sessions) == {("1", "7"), ("1", "8")}
     assert ext._voice_sessions[("1", "8")] == 123.0  # a running session keeps its clock
+
+
+# ── B10: where and when a level-up is announced ──────────────────────
+
+
+def settings_of(config, store_config, **changes):
+    config["servers"]["1"]["moduleXp"].update(changes)
+    store_config(config)
+
+
+def at_level_one(repo):
+    repo.users["7"] = {"_id": "7", "xp": 95, "time": 0, "msg": 5, "lvl": 0}  # 100 XP is level 1
+
+
+async def test_a_level_up_can_go_to_a_dedicated_channel(setup, store_config):
+    ext, repo, member, channel, config = setup
+    levels = member.guild.add_channel(FakeChannel(11))
+    ext.bot = FakeBot(member.guild)
+    settings_of(config, store_config, levelUpDestination="channel", levelUpChannelId="11")
+    at_level_one(repo)
+    await say(ext, member, channel, START)
+    assert channel.sent == []
+    assert [m.content for m in levels.sent] == ["GG <@7>, niveau 1 !"]
+    assert [r.id for r in member.roles] == [501]
+
+
+async def test_a_dedicated_channel_gone_announces_nothing_but_still_rewards(setup, store_config):
+    ext, repo, member, channel, config = setup
+    ext.bot = FakeBot(member.guild)
+    settings_of(config, store_config, levelUpDestination="channel", levelUpChannelId="404")
+    at_level_one(repo)
+    await say(ext, member, channel, START)
+    assert channel.sent == []
+    assert [r.id for r in member.roles] == [501]
+
+
+async def test_a_level_up_can_go_by_dm_without_pinging(setup, store_config):
+    ext, repo, member, channel, config = setup
+    settings_of(config, store_config, levelUpDestination="dm")
+    at_level_one(repo)
+    await say(ext, member, channel, START)
+    assert channel.sent == []
+    assert member.dms == ["GG <@7>, niveau 1 !"]
+
+
+async def test_closed_dms_dont_stop_the_reward(setup, store_config):
+    ext, repo, member, channel, config = setup
+    settings_of(config, store_config, levelUpDestination="dm")
+    member.dms_closed = True
+    at_level_one(repo)
+    await say(ext, member, channel, START)
+    assert repo.users["7"]["lvl"] == 1
+    assert [r.id for r in member.roles] == [501]
+
+
+async def test_a_silent_server_announces_nothing(setup, store_config):
+    ext, repo, member, channel, config = setup
+    settings_of(config, store_config, levelUpDestination="off")
+    at_level_one(repo)
+    await say(ext, member, channel, START)
+    assert channel.sent == [] and member.dms == []
+    assert [r.id for r in member.roles] == [501]
+
+
+async def test_every_n_levels_skips_the_others(setup, store_config):
+    ext, repo, member, channel, config = setup
+    settings_of(config, store_config, levelUpEvery=5, levelRewards={})
+    at_level_one(repo)
+    await say(ext, member, channel, START)
+    assert channel.sent == []
+    assert repo.users["7"]["lvl"] == 1
+
+
+async def test_a_level_with_a_reward_is_announced_anyway(setup, store_config):
+    ext, repo, member, channel, config = setup
+    settings_of(config, store_config, levelUpEvery=5)  # level 1 gives role 501
+    at_level_one(repo)
+    await say(ext, member, channel, START)
+    assert [m.content for m in channel.sent] == ["GG <@7>, niveau 1 !"]
+
+
+async def test_a_voice_level_up_follows_the_same_setting(setup, store_config):
+    ext, repo, member, channel, config = setup
+    settings_of(config, store_config, levelUpDestination="dm")
+    repo.users["7"] = {"_id": "7", "xp": 0, "time": 0, "msg": 0, "lvl": 0}
+    voice = FakeChannel(30)
+    await ext._handle_voice_level_up("1", "7", 1, voice, member)
+    assert voice.sent == []
+    assert member.dms == ["GG <@7>, niveau 1 !"]
+
+
+@pytest.mark.parametrize(
+    ("level", "every", "rewards", "announced"),
+    [
+        (3, 1, set(), True),
+        (3, 5, set(), False),
+        (10, 5, set(), True),
+        (3, 5, {3}, True),
+        (3, 0, set(), True),  # below the bounds: every level
+        (3, "x", set(), True),  # unreadable: every level
+        (100, 1000, set(), True),  # above: clamped to 100
+        (99, 1000, set(), False),
+    ],
+)
+def test_announces_level(level, every, rewards, announced):
+    assert announces_level(level, every, rewards) is announced
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [("dm", "dm"), ("off", "off"), ("channel", "channel"), ("ailleurs", "here"), (None, "here")],
+)
+def test_level_up_destination(value, expected):
+    assert level_up_destination(value) == expected

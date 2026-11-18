@@ -17,7 +17,16 @@ from features.xp.constants import (
     XP_MIN,
     XpSource,
 )
-from features.xp.leveling import calculate_level, create_progress_bar, get_rank_display
+from features.xp.leveling import (
+    LEVEL_UP_DESTINATIONS,
+    MAX_LEVEL_UP_EVERY,
+    MIN_LEVEL_UP_EVERY,
+    announces_level,
+    calculate_level,
+    create_progress_bar,
+    get_rank_display,
+    level_up_destination,
+)
 from features.xp.repository import UserXpStats, XpRepository
 from features.xp.stats import (
     ALLOWED_RANGES,
@@ -34,6 +43,9 @@ __all__ = [
     "ALLOWED_RANGES",
     "DEFAULT_LEVEL_UP_MESSAGE",
     "LEADERBOARD_PAGE_SIZE",
+    "LEVEL_UP_DESTINATIONS",
+    "MAX_LEVEL_UP_EVERY",
+    "MIN_LEVEL_UP_EVERY",
     "RANK_CACHE_TTL",
     "RANK_MEDALS",
     "STATS_TIMEZONE",
@@ -49,12 +61,14 @@ __all__ = [
     "XP_MIN",
     "XpRepository",
     "XpSource",
+    "announces_level",
     "build_heatmap",
     "calculate_level",
     "create_progress_bar",
     "fill_daily_series",
     "get_rank_display",
     "level_distribution",
+    "level_up_destination",
     "render_rank_card",
     "stats_window",
     "summarize",

@@ -44,6 +44,9 @@ class VoiceMixin:
     async def _handle_level_up(
         self, guild_id: str, user_id: str, new_level: int, message
     ) -> None: ...  # provided by LevelingMixin
+    async def _announce_level_up(
+        self, guild_id: str, member, new_level: int, here
+    ) -> None: ...  # provided by LevelingMixin
 
     @listen()
     async def on_voice_state_update(self, event: VoiceStateUpdate):
@@ -181,14 +184,6 @@ class VoiceMixin:
     ) -> None:
         """Persist the new level and announce in a sensible place."""
         await self._repo(guild_id).set_level(user_id, new_level)
-        announce = getattr(voice_channel, "send", None)
-        if announce is not None:
-            try:
-                await announce(
-                    f"Bravo {member.mention}, tu as atteint le niveau {new_level} (vocal) !"
-                )
-            except Exception as e:
-                logger.debug("Could not announce voice level-up: %s", e)
-        # Role rewards are applied by LevelingMixin via a shared helper resolved
-        # through the host class's MRO.
+        # "Là où le membre parlait": the chat of their voice channel.
+        await self._announce_level_up(guild_id, member, new_level, voice_channel)
         await self._apply_level_rewards(guild_id, member, new_level)  # type: ignore[attr-defined]
