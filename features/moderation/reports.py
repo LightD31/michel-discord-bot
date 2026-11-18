@@ -140,31 +140,50 @@ class ReportRepository:
         One update: the first report creates the document, the next ones are
         pushed onto it, and a member already in its reporters matches nothing,
         so the upsert collides with the existing id instead of adding them twice.
+        Two first reports at once both try the insert: the one that loses it
+        collides too, and tries again once, now that the document exists, so
+        only a member already among the reporters gets ``None``.
         """
-        try:
-            doc = await self._col().find_one_and_update(
-                {"_id": str(message_id), "reporters.user_id": {"$ne": str(reporter_id)}},
-                {
-                    "$setOnInsert": {
-                        "channel_id": str(channel_id),
-                        "author_id": str(author_id),
-                        "status": "open",
-                        "created_at": now,
-                        "expires_at": now + KEEP_FOR,
-                    },
-                    "$push": {
-                        "reporters": {
-                            "user_id": str(reporter_id),
-                            "reason": reason[:MAX_REASON_LENGTH],
-                            "at": now,
-                        }
-                    },
+        for attempt in range(2):
+            try:
+                return await self._push_report(
+                    message_id, channel_id, author_id, reporter_id, reason, now
+                )
+            except DuplicateKeyError:
+                if attempt:
+                    return None
+        return None
+
+    async def _push_report(
+        self,
+        message_id: str,
+        channel_id: str,
+        author_id: str,
+        reporter_id: str,
+        reason: str,
+        now: datetime,
+    ) -> MessageReport | None:
+        doc = await self._col().find_one_and_update(
+            {"_id": str(message_id), "reporters.user_id": {"$ne": str(reporter_id)}},
+            {
+                "$setOnInsert": {
+                    "channel_id": str(channel_id),
+                    "author_id": str(author_id),
+                    "status": "open",
+                    "created_at": now,
+                    "expires_at": now + KEEP_FOR,
                 },
-                upsert=True,
-                return_document=ReturnDocument.AFTER,
-            )
-        except DuplicateKeyError:
-            return None
+                "$push": {
+                    "reporters": {
+                        "user_id": str(reporter_id),
+                        "reason": reason[:MAX_REASON_LENGTH],
+                        "at": now,
+                    }
+                },
+            },
+            upsert=True,
+            return_document=ReturnDocument.AFTER,
+        )
         return self._model(doc)
 
     @translates_db_errors

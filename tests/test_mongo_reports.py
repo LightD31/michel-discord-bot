@@ -46,12 +46,24 @@ async def test_every_report_of_a_message_lands_on_one_document(mongo):
 
 
 async def test_concurrent_reports_by_different_members_are_all_kept(mongo):
+    """Two first reports of a message at once: both upserts insert, and the loser's
+    duplicate key was taken for "already reported", losing its report. Each round
+    is a fresh message, so every round races on the insert."""
     repo = ReportRepository(mongo.guild_id)
     members = [f"4{i:017d}" for i in range(1, 11)]
-    results = await asyncio.gather(*(report(repo, m) for m in members))
-    assert all(r is not None for r in results)
-    stored = await repo.get("500")
-    assert sorted(r.user_id for r in stored.reporters) == sorted(members)
+    for round_ in range(20):
+        message = str(600 + round_)
+        results = await asyncio.gather(*(report(repo, m, message=message) for m in members))
+        assert all(r is not None for r in results), f"a report was lost on round {round_}"
+        stored = await repo.get(message)
+        assert sorted(r.user_id for r in stored.reporters) == sorted(members)
+
+
+async def test_a_member_racing_their_own_report_is_counted_once(mongo):
+    repo = ReportRepository(mongo.guild_id)
+    results = await asyncio.gather(*(report(repo, ME, message="700") for _ in range(5)))
+    assert sum(r is not None for r in results) == 1
+    assert [r.user_id for r in (await repo.get("700")).reporters] == [ME]
 
 
 async def test_a_report_is_handled_once(mongo):
