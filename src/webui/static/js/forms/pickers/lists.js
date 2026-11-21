@@ -9,11 +9,13 @@ import { ROLE_COLOR, fetchRoleChoices, fillRolePicker, knownRole, roleOptionsHtm
 // ── Channel and role lists (P3) ───────────────────
 // A ``channellist`` / ``rolelist`` field: one chip per channel or role,
 // named, and a list to add one more. Without the bot, ids are typed.
+// A null *key* makes a picker inside a list entry, which its widget reads
+// (not a form value of its own).
 export function multiPickerHtml(key, type, ids, use) {
     const kind = type === 'rolelist' ? 'role' : 'channel';
     const chips = ids.map(id => chipHtml(String(id), String(id), '')).join('');
     return `
-            <div class="multi-picker" data-field="${escapeHtml(key)}" data-type="${type}" data-kind="${kind}" data-role-use="${escapeHtml(use || '')}">
+            <div class="multi-picker" ${key == null ? '' : `data-field="${escapeHtml(key)}"`} data-type="${type}" data-kind="${kind}" data-role-use="${escapeHtml(use || '')}">
                 <div class="multi-picker-chips">${chips}</div>
                 <select class="form-input multi-picker-add" aria-label="${kind === 'role' ? 'Ajouter un rôle' : 'Ajouter un salon'}"
                         data-change="addMultiPickerChoice" data-change-args="[{&quot;$&quot;:&quot;el&quot;}]">

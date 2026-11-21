@@ -7,7 +7,8 @@ the same deletion runs for one server 30 days after they leave it
 
 * **deleted** — what is the member's alone: XP and its log, birthday,
   reminders, ``!request`` reminders, "feur" counter, directory entry, AI quotas,
-  Secret Santa wish lists and gift marks, their entry in a giveaway;
+  Secret Santa wish lists and gift marks, their entry in a giveaway, who
+  greeted them on arrival and their own greetings of others;
 * **anonymised** — what other members share: their votes stay counted under a
   key that names nobody, and where they are the author, creator, asker or
   winner, the id becomes :data:`NOBODY` (polls, suggestions, Spotify, AI
@@ -91,6 +92,8 @@ def _personal_filters(uid: str) -> list[tuple[str, dict[str, Any]]]:
         ("users", {"_id": uid}),
         # Secret Santa wish lists and gift marks: the member's own entries.
         ("secret_santa_participants", {"user_id": int(uid)}),
+        # Who wished them welcome when they arrived.
+        ("welcome_greetings", {"member_id": uid}),
     ]
 
 
@@ -194,6 +197,8 @@ class UserDataRepository:
                     None,
                 ),
                 ("secret_santa_sessions", {"participants": int(uid)}, {"participants": 0}),
+                # The newcomers they greeted: the message, never who else did.
+                ("welcome_greetings", {"greeters": uid}, {"expires_at": 1}),
             ]
             for name, query, projection in queries:
                 docs = await db[name].find(query, projection).to_list()
@@ -285,6 +290,11 @@ class UserDataRepository:
         report.add(report.anonymised, f"{where}.reports", result.modified_count)
         if await db["reports"].count_documents({"author_id": uid}, limit=1):
             report.kept.append(f"{where}.reports")
+        # Greeting someone is theirs alone: they leave the count.
+        result = await db["welcome_greetings"].update_many(
+            {"greeters": uid}, {"$pull": {"greeters": uid}}
+        )
+        report.add(report.deleted, f"{where}.welcome_greetings.greeters", result.modified_count)
         await self._forget_secret_santa(db, where, report)
         await self._forget_tricount(db, where, report)
 

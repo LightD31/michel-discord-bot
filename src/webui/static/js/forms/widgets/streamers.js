@@ -1,7 +1,10 @@
 // The Twitch streamer list.
 import { registerActions } from '../../core/actions.js';
+import { html } from '../../core/html.js';
 import { escapeHtml } from '../../core/util.js';
 import { populateChannelPickers } from '../pickers/channels.js';
+import { populateRolePickers } from '../pickers/lists.js';
+import { rolePickerHtml } from '../pickers/roles.js';
 
 export const STREAMER_TOGGLE_FIELDS = [
     {key: 'twitchPlanningPinMessage', label: 'Épingler le planning', planningOnly: true},
@@ -16,6 +19,8 @@ export function renderStreamerEntry(login, cfg) {
     const planningChan = cfg.twitchPlanningChannelId ? String(cfg.twitchPlanningChannelId) : '';
     const notifChan = cfg.twitchNotificationChannelId ? String(cfg.twitchNotificationChannelId) : '';
     const planningEnabled = !!planningChan;
+    const mentionRole = cfg.twitchMentionRoleId ? String(cfg.twitchMentionRoleId) : '';
+    const template = typeof cfg.twitchNotificationTemplate === 'string' ? cfg.twitchNotificationTemplate : '';
     const toggles = STREAMER_TOGGLE_FIELDS.map(t => `
             <label class="streamer-toggle-inline${t.planningOnly ? ' planning-only' : ''}">
                 <input type="checkbox" data-streamer-field="${t.key}" ${cfg[t.key] ? 'checked' : ''}>
@@ -56,6 +61,17 @@ export function renderStreamerEntry(login, cfg) {
                     </div>
                 </div>
                 <div class="streamer-toggles">${toggles}</div>
+                <div class="streamer-entry-grid">
+                    <div class="streamer-field">
+                        <label>Rôle à mentionner au début du live</label>
+                        ${rolePickerHtml(mentionRole, 'data-streamer-field="twitchMentionRoleId"', 'mention')}
+                    </div>
+                    <div class="streamer-field">
+                        <label>Message au début du live</label>
+                        ${html`<input type="text" class="form-input" data-streamer-field="twitchNotificationTemplate" value="${template}" maxlength="500"
+                               placeholder="{streamer} est en live : {titre} !" aria-label="Message au début du live">`}
+                    </div>
+                </div>
             </div>`;
 }
 
@@ -73,6 +89,7 @@ export function addStreamerEntry(btn) {
     const entry = wrapper.firstElementChild;
     list.appendChild(entry);
     populateChannelPickers(entry);
+    populateRolePickers(entry);
     entry.querySelector('input[type="text"]').focus();
 }
 

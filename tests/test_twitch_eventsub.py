@@ -24,9 +24,11 @@ class FakeChannel:
     def __init__(self) -> None:
         self._guild_id = GUILD_ID  # the streamer's guild
         self.sent: list = []
+        self.sent_with: list[dict] = []
 
     async def send(self, *args, **kwargs):
         self.sent.append(kwargs.get("embed", args))
+        self.sent_with.append({"content": args[0] if args else None, **kwargs})
         return SimpleNamespace(id=1)
 
 
@@ -343,6 +345,46 @@ async def test_stream_end_notification_is_sent():
     fields = {f.name: f.value for f in embed.fields}
     assert fields["Durée"] == "2h 0min"
     assert fields["Catégories"] == "• Jeu A\n• Jeu B"
+
+
+LIVE = SimpleNamespace(
+    title="Speedrun <@&1> @everyone",
+    game_name="Celeste",
+    viewer_count=120,
+    thumbnail_url="https://static.example/{width}x{height}.jpg",
+)
+
+
+async def test_a_live_start_pings_the_streamers_role_with_the_admins_text():
+    """A10: the role and the message lead the embed; the title can't ping."""
+    streamer = make_streamer(
+        notifyStreamStart=True,
+        twitchMentionRoleId="555",
+        twitchNotificationTemplate="{streamer} lance {jeu} : {titre} → {lien}",
+    )
+    ext = make_extension(streamers=[streamer])
+
+    await ext.send_stream_start_notification(streamer, "ZeratoR", LIVE)
+
+    (sent,) = streamer.notif_channel.sent_with
+    assert sent["content"] == (
+        "<@&555> ZeratoR lance Celeste : Speedrun <@&1> @everyone → https://twitch.tv/zerator"
+    )
+    assert sent["allowed_mentions"].roles == [555]
+    assert not sent["allowed_mentions"].parse  # no @everyone from the title
+    ((button,),) = [row.components for row in sent["components"]]
+    assert button.custom_id == "twitch:alerte:555"
+
+
+async def test_a_live_start_without_a_role_or_text_is_the_embed_alone():
+    streamer = make_streamer(notifyStreamStart=True)
+    ext = make_extension(streamers=[streamer])
+
+    await ext.send_stream_start_notification(streamer, "ZeratoR", LIVE)
+
+    (sent,) = streamer.notif_channel.sent_with
+    assert sent["content"] is None and sent["components"] == []
+    assert sent["embed"].title == "ZeratoR est en live !"
 
 
 async def test_stream_end_notification_respects_the_toggle():

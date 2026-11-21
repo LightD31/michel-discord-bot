@@ -117,6 +117,11 @@ def jump_url(guild_id: int | str, channel_id: int | str, message_id: int | str) 
     return f"https://discord.com/channels/{guild_id}/{channel_id}/{message_id}"
 
 
+def channel_url(guild_id: int | str, channel_id: int | str) -> str:
+    """The link that opens a channel in Discord."""
+    return f"https://discord.com/channels/{guild_id}/{channel_id}"
+
+
 async def send_success(ctx: InteractionContext, message: str) -> None:
     """Send an ephemeral success message prefixed with a check emoji."""
     await ctx.send(ok(message), ephemeral=True)
@@ -585,6 +590,7 @@ class GuildMessages:
 
 
 __all__ = [
+    "channel_url",
     "guild_id_of",
     "GuildMessages",
     "copy_embed",

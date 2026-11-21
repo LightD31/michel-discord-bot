@@ -10,7 +10,7 @@ dropped with an explanation instead of breaking the whole guild.
 import random
 import re
 
-from features.customcommands.models import CustomCommand, ParsedCommands
+from features.customcommands.models import CustomCommand, ParsedCommands, TargetMode
 
 # Discord's own limits for guild application commands.
 MAX_NAME_LENGTH = 32
@@ -20,6 +20,9 @@ MAX_RESPONSE_LENGTH = 2000
 # commands, and Discord caps a guild at 100 application commands.
 MAX_COMMANDS_PER_GUILD = 25
 MAX_RESPONSES_PER_COMMAND = 25
+# The longest wait between two uses of a command by one member, in seconds.
+MAX_COOLDOWN_SECONDS = 3600
+TARGET_MODES: tuple[TargetMode, ...] = ("none", "optional", "required")
 
 DEFAULT_DESCRIPTION = "Commande personnalisée"
 
@@ -77,7 +80,22 @@ def _parse_one(entry: object, position: int) -> tuple[CustomCommand | None, str 
     if not responses:
         return None, f"{label} : aucune réponse configurée."
 
-    return CustomCommand(name=name, description=description, responses=responses), None
+    target = entry.get("target")
+    try:
+        cooldown = int(entry.get("cooldown") or 0)
+    except (TypeError, ValueError):
+        cooldown = 0
+    raw_roles = entry.get("roles")
+    roles = [str(r) for r in raw_roles if str(r).isdigit()] if isinstance(raw_roles, list) else []
+    return CustomCommand(
+        name=name,
+        description=description,
+        responses=responses,
+        target=target if target in TARGET_MODES else "none",
+        # The config can be edited by hand: the same bounds as the dashboard's.
+        cooldown=min(max(cooldown, 0), MAX_COOLDOWN_SECONDS),
+        roles=list(dict.fromkeys(roles)),
+    ), None
 
 
 def parse_commands(

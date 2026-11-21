@@ -6,6 +6,7 @@ import { escapeHtml } from '../core/util.js';
 import { askConfirm } from '../ui/confirm.js';
 import { toast } from '../ui/toast.js';
 import { multiPickerHtml, multiPickerIds } from './pickers/lists.js';
+import { commandOptions, commandOptionsHtml } from './widgets/commands.js';
 import { memberPickerHtml } from './pickers/members.js';
 import { rolePickerHtml } from './pickers/roles.js';
 import { keyValueEntryHtml } from './widgets/maps.js';
@@ -366,13 +367,14 @@ export function renderSchemaForm(formId, schema, values, options = {}) {
                     html += `<div><label class="commandlist-field-label">Description</label>`;
                     html += `<input type="text" class="form-input" data-cmd-field="description" value="${escapeHtml(cmdDesc)}" placeholder="Raconte une blague au hasard" maxlength="100"></div>`;
                     html += `</div>`;
+                    html += commandOptionsHtml(cmd);
                     html += `<div class="commandlist-responses">`;
                     html += `<div class="commandlist-responses-label">Réponses (tirées au hasard)</div>`;
                     responses.forEach((response) => {
                         const text = typeof response === 'string' ? response : String(response?.text ?? '');
                         html += `
                                 <div class="commandlist-response-entry">
-                                    <input type="text" data-response-field="text" value="${escapeHtml(text)}" placeholder="https://exemple.com/gif.gif ou un texte" maxlength="2000">
+                                    <input type="text" data-response-field="text" value="${escapeHtml(text)}" placeholder="{auteur} fait un câlin à {cible} https://exemple.com/calin.gif" maxlength="2000">
                                     <button type="button" class="btn-remove-response" data-click="remove-closest" data-click-args="[&quot;.commandlist-response-entry&quot;,{&quot;$&quot;:&quot;el&quot;}]" title="Supprimer" aria-label="Supprimer">✕</button>
                                 </div>`;
                     });
@@ -721,6 +723,8 @@ export function collectFormValues(formId) {
             const vod = !!entry.querySelector('[data-yt-field="vod"]')?.checked;
             const cfg = { shorts, live, vod };
             if (label) cfg.label = label;
+            const mentionRoleId = entry.querySelector('[data-yt-field="mentionRoleId"]')?.value?.trim();
+            if (mentionRoleId) cfg.mentionRoleId = mentionRoleId;
             channelMap[handle] = cfg;
         }
         result[key] = channelMap;
@@ -803,6 +807,10 @@ export function collectFormValues(formId) {
                 const cb = entry.querySelector(`[data-streamer-field="${t.key}"]`);
                 if (cb && cb.checked) cfg[t.key] = true;
             }
+            const mentionRoleId = entry.querySelector('[data-streamer-field="twitchMentionRoleId"]')?.value?.trim();
+            if (mentionRoleId) cfg.twitchMentionRoleId = mentionRoleId;
+            const template = entry.querySelector('[data-streamer-field="twitchNotificationTemplate"]')?.value?.trim();
+            if (template) cfg.twitchNotificationTemplate = template;
             streamerMap[login] = cfg;
         }
         result[key] = streamerMap;
@@ -840,7 +848,7 @@ export function collectFormValues(formId) {
                 if (text) responses.push(text);
             }
             if (name) {
-                commands.push({ name, description: description || '', responses });
+                commands.push({ name, description: description || '', responses, ...commandOptions(entry) });
             }
         }
         // Always assigned: removing the last command must persist as [].

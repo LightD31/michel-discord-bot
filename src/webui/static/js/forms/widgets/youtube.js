@@ -1,6 +1,8 @@
 // The YouTube channel list.
 import { registerActions } from '../../core/actions.js';
 import { escapeHtml } from '../../core/util.js';
+import { populateRolePickers } from '../pickers/lists.js';
+import { rolePickerHtml } from '../pickers/roles.js';
 
 export function renderYoutubeChannelEntry(handle, cfg) {
     const shorts = !!cfg.shorts;
@@ -23,6 +25,10 @@ export function renderYoutubeChannelEntry(handle, cfg) {
                     <span>VOD</span>
                 </label>
                 <button class="btn-remove-entry" data-click="remove-closest" data-click-args="[&quot;.youtubechannel-entry&quot;,{&quot;$&quot;:&quot;el&quot;}]" title="Supprimer" aria-label="Supprimer">✕</button>
+                <div class="youtubechannel-alert">
+                    <label>Rôle à mentionner à chaque vidéo</label>
+                    ${rolePickerHtml(cfg.mentionRoleId ? String(cfg.mentionRoleId) : '', 'data-yt-field="mentionRoleId"', 'mention')}
+                </div>
             </div>`;
 }
 
@@ -33,6 +39,7 @@ export function addYoutubeChannelEntry(btn) {
     wrapper.innerHTML = renderYoutubeChannelEntry('', { shorts: false, live: false, vod: true }).trim();
     const entry = wrapper.firstElementChild;
     list.appendChild(entry);
+    populateRolePickers(entry);
     entry.querySelector('input[type="text"]').focus();
 }
 

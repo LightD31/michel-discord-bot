@@ -3,22 +3,39 @@
 import os
 from datetime import datetime
 
-from interactions import Embed
+from interactions import ActionRow, ComponentContext, Embed, component_callback
 from twitchAPI.helper import first
 from twitchAPI.object.api import ChannelInformation, Stream, TwitchUser
 from twitchAPI.object.eventsub import ChannelUpdateEvent
 from twitchAPI.type import VideoType
 
+from extensions.twitch._common import TWITCH
+from features.twitch import live_text
 from src.core import clock
 from src.core import logging as logutil
 from src.core.logging import log_failure
+from src.discord_ext.live_alerts import (
+    TWITCH_ALERT,
+    alert_button,
+    alert_pattern,
+    configured_alert_roles,
+    toggle_alert_role,
+)
 from src.discord_ext.look import card
+from src.discord_ext.mentions import mentions_written_in
 
 logger = logutil.init_logger(__name__)
 
 
 class NotificationsMixin:
     """Embed construction and stream-state notification delivery."""
+
+    @component_callback(alert_pattern(TWITCH_ALERT))
+    async def on_live_alert(self, ctx: ComponentContext) -> None:
+        """ "🔔 M'avertir des lives": the streamer's mention role, given or taken back."""
+        settings = TWITCH.get(ctx.guild_id) if ctx.guild_id else {}
+        roles = configured_alert_roles(settings.get("twitchStreamerList"), "twitchMentionRoleId")
+        await toggle_alert_role(ctx, roles, what="des lives")
 
     @staticmethod
     def get_display_value(value: str | None, fallback: str = "Non renseigné") -> str:
@@ -221,7 +238,29 @@ class NotificationsMixin:
             except Exception as e:
                 logger.debug(f"Could not fetch user info for thumbnail: {e}")
 
-            await streamer.notif_channel.send(embed=embed)
+            link = f"https://twitch.tv/{streamer.streamer_id}"
+            content = live_text(
+                streamer.notification_template,
+                streamer.mention_role_id,
+                streamer=broadcaster_name,
+                titre=title,
+                jeu=category,
+                lien=link,
+            )
+            # What the admins wrote may ping (the title, the streamer's text, may not),
+            # and the role they named.
+            allowed = mentions_written_in(streamer.notification_template)
+            components = []
+            if streamer.mention_role_id:
+                allowed.roles = [*(allowed.roles or []), int(streamer.mention_role_id)]
+                components = [
+                    ActionRow(
+                        alert_button(TWITCH_ALERT, streamer.mention_role_id, "M'avertir des lives")
+                    )
+                ]
+            await streamer.notif_channel.send(
+                content, embed=embed, components=components, allowed_mentions=allowed
+            )
             logger.info(
                 "Sent stream start notification for %s in guild %s",
                 streamer.streamer_id,

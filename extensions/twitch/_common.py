@@ -8,9 +8,20 @@ the package root.
 from datetime import UTC, datetime
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from src.webui.schemas import ModuleHelp, SchemaBase, enabled_field, register_module, ui
+from src.core.config import ModuleConfig
+from src.webui.schemas import (
+    ModuleHelp,
+    SchemaBase,
+    check_template,
+    enabled_field,
+    register_module,
+    ui,
+)
+
+# The longest message a streamer's notification carries above its embed.
+MAX_LIVE_TEMPLATE_LENGTH = 500
 
 
 class StreamerEntry(BaseModel):
@@ -29,6 +40,15 @@ class StreamerEntry(BaseModel):
     notifyStreamEnd: bool = False
     notifyEmoteChanges: bool = False
     manageDiscordEvents: bool = False
+    # A10: the role the "live started" notification pings, which its 🔔
+    # button hands out, and the text above it.
+    twitchMentionRoleId: str | None = None
+    twitchNotificationTemplate: str = Field("", max_length=MAX_LIVE_TEMPLATE_LENGTH)
+
+    @field_validator("twitchNotificationTemplate")
+    @classmethod
+    def _plain_placeholders(cls, template: str) -> str:
+        return check_template(template)
 
 
 @register_module("moduleTwitch")
@@ -40,7 +60,8 @@ class TwitchConfig(SchemaBase):
     __help__ = ModuleHelp(
         "Les lives et le planning des streamers suivis.",
         (),
-        "Un live qui commence est annoncé, et le planning de la semaine se met à jour.",
+        "Un live qui commence est annoncé, avec un bouton « 🔔 M'avertir des lives » "
+        "qui donne le rôle mentionné ; le planning de la semaine se met à jour.",
     )
 
     enabled: bool = enabled_field()
@@ -50,9 +71,15 @@ class TwitchConfig(SchemaBase):
         required=True,
         description=(
             "Liste des streamers Twitch à suivre. "
-            "Chaque streamer a ses propres salons et préférences de notifications."
+            "Chaque streamer a ses propres salons et préférences de notifications. "
+            "Le **rôle à mentionner** est notifié à chaque début de live, et le bouton "
+            "« 🔔 M'avertir des lives » le donne à qui le demande. Dans le message, "
+            "`{streamer}`, `{titre}`, `{jeu}` et `{lien}` sont remplacés."
         ),
     )
+
+
+TWITCH = ModuleConfig("moduleTwitch")
 
 
 def ensure_utc(dt: datetime | None) -> datetime | None:
@@ -84,6 +111,9 @@ class StreamerInfo:
         self.notify_stream_end = bool(config.get("notifyStreamEnd", False))
         self.notify_emote_changes = bool(config.get("notifyEmoteChanges", False))
         self.manage_discord_events = bool(config.get("manageDiscordEvents", False))
+        role = str(config.get("twitchMentionRoleId") or "").strip()
+        self.mention_role_id: str | None = role if role.isdigit() else None
+        self.notification_template = str(config.get("twitchNotificationTemplate") or "")
         self.notif_channel = None
         self.scheduled_event = None
         # Stream session info (stored when stream starts)

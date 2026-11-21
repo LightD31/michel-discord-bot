@@ -41,9 +41,11 @@ class Channel:
     def __init__(self, guild):
         self._guild_id = guild
         self.sent: list[str] = []
+        self.components: list = []
 
-    async def send(self, content, allowed_mentions=None):
+    async def send(self, content, allowed_mentions=None, components=None):
         self.sent.append(content)
+        self.components.append(components)
 
 
 class Bot:
@@ -140,6 +142,19 @@ def test_failures_stay_local_and_progress_is_saved(youtube, monkeypatch):
     assert channels["100"].sent == ["https://www.youtube.com/watch?v=a1"]
     assert channels["200"].sent[-1] == "https://www.youtube.com/watch?v=x1"
     assert Repo.stored == {"A": {"@alpha": "a1"}, "B": {"@broken": "x1", "@bravo": "b1"}}
+
+
+def test_a_channel_with_a_mention_role_pings_it_and_offers_the_bell(youtube, monkeypatch):
+    """A10: the role leads the post, and its 🔔 button hands it out."""
+    calls: list = []
+    install_fakes(monkeypatch, youtube, latest={"alpha": "a1"}, calls=calls)
+    youtube.YOUTUBE.get("A")["youtubeChannelList"]["@alpha"]["mentionRoleId"] = "555"
+    channels = {"100": Channel("A"), "200": Channel("B")}
+    Repo.stored = {"A": {"@alpha": "a0"}, "B": {}}
+    tick(youtube, make_extension(youtube, Bot(channels)))
+    assert channels["100"].sent == ["<@&555> https://www.youtube.com/watch?v=a1"]
+    ((button,),) = [row.components for row in channels["100"].components[0]]
+    assert button.custom_id == "youtube:alerte:555" and button.label == "M'avertir des vidéos"
 
 
 def test_initial_sync_records_without_posting(youtube, monkeypatch):

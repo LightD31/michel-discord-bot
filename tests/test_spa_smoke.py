@@ -457,6 +457,85 @@ def test_a_field_emptied_in_the_form_is_emptied_in_the_config(page, dashboard):
     assert stored["servers"][GUILD][MODULE]["enabled"] is True  # not a field of the form
 
 
+def test_a_custom_command_keeps_its_target_cooldown_and_roles(page, dashboard, monkeypatch):
+    """A9: the command widget reads back what it shows, the roles as chips."""
+    import extensions.customcommands._common  # noqa: F401 — registers the schema
+    import src.webui.routes.config as config_routes
+
+    key = "moduleCustomCommands"
+    monkeypatch.setitem(config_routes.MODULE_SCHEMAS, key, schemas.MODULE_SCHEMAS[key])
+    command = {"name": "calin", "responses": ["{auteur} → {cible}"], "target": "required"}
+    config_store.mutate(
+        lambda data: data["servers"][GUILD].update(
+            {key: {"enabled": True, "commands": [{**command, "cooldown": 30, "roles": ["555"]}]}}
+        )
+    )
+    page.goto(f"http://127.0.0.1:{dashboard['port']}/#/module/{GUILD}/{key}")
+    page.reload()  # the page read the schemas before this one was added
+    entry = page.locator(".commandlist-entry")
+    entry.wait_for()
+    assert entry.get_by_label("Membre visé").input_value() == "required"
+    assert entry.locator('[data-cmd-field="cooldown"]').input_value() == "30"
+    assert entry.locator(".chip").count() == 1  # no bot: the id, typed by hand
+    entry.locator('[data-cmd-field="cooldown"]').fill("45")
+    entry.locator(".multi-picker-manual").fill("556")
+    entry.locator(".multi-picker-manual").press("Enter")
+    entry.get_by_label("Membre visé").select_option("optional")
+    save(page)
+    page.locator("#toasts .toast", has_text="Configuration sauvegardée").first.wait_for()
+    stored = json.loads(dashboard["config"].read_text(encoding="utf-8"))
+    assert stored["servers"][GUILD][key]["commands"] == [
+        {
+            **command,
+            "description": "",
+            "target": "optional",
+            "cooldown": 45,
+            "roles": ["555", "556"],
+        }
+    ]
+    # A new command starts without a target, a cooldown or roles.
+    page.get_by_role("button", name="+ Ajouter une commande").click()
+    new = page.locator(".commandlist-entry").nth(1)
+    assert new.get_by_label("Membre visé").input_value() == "none"
+    assert new.locator(".chip").count() == 0
+
+
+def test_a_streamer_keeps_its_mention_role_and_message(page, dashboard, monkeypatch):
+    """A10: the streamer widget reads back the role to ping and the message."""
+    import extensions.twitch._common  # noqa: F401 — registers the schema
+    import src.webui.routes.config as config_routes
+
+    key = "moduleTwitch"
+    monkeypatch.setitem(config_routes.MODULE_SCHEMAS, key, schemas.MODULE_SCHEMAS[key])
+    streamer = {"twitchNotificationChannelId": "70", "notifyStreamStart": True}
+    config_store.mutate(
+        lambda data: data["servers"][GUILD].update(
+            {
+                key: {
+                    "enabled": True,
+                    "twitchStreamerList": {"zerator": {**streamer, "twitchMentionRoleId": "555"}},
+                }
+            }
+        )
+    )
+    page.goto(f"http://127.0.0.1:{dashboard['port']}/#/module/{GUILD}/{key}")
+    page.reload()
+    entry = page.locator(".streamer-entry")
+    entry.wait_for()
+    assert entry.locator('[data-streamer-field="twitchMentionRoleId"]').input_value() == "555"
+    entry.get_by_label("Message au début du live").fill("{streamer} est en live !")
+    save(page)
+    page.locator("#toasts .toast", has_text="Configuration sauvegardée").first.wait_for()
+    stored = json.loads(dashboard["config"].read_text(encoding="utf-8"))
+    assert stored["servers"][GUILD][key]["twitchStreamerList"] == {
+        "zerator": {
+            **streamer,
+            "twitchMentionRoleId": "555",
+            "twitchNotificationTemplate": "{streamer} est en live !",
+        }
+    }
+
+
 MEMBER_SPACE = {
     "sections": ["xp", "reminders", "tricount"],
     "unavailable": [],

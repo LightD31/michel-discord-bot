@@ -27,6 +27,7 @@ from extensions.help import (
 )
 from src.core import clock
 from src.core.text import EMBED_FIELD_VALUE_LIMIT
+from src.discord_ext.help_button import HELP_BUTTON_ID
 from src.webui.schemas import ModuleHelp
 
 GUILD = 10
@@ -161,6 +162,15 @@ async def test_aide_opens_on_the_modules_privately(store_config):
     (menu,) = row.components
     assert menu.custom_id == "aide:0"
     assert [o.label for o in menu.options] == ["🎲 Hasard"]
+
+
+async def test_the_help_button_under_a_welcome_opens_the_same_overview(store_config):
+    ctx, ext = aide_ctx(store_config)
+    ctx.custom_id = HELP_BUTTON_ID
+    await run(HelpExtension.on_help_button, ext, ctx)
+    reply = ctx.replies[-1]
+    assert reply["ephemeral"] is True
+    assert "Choisis un module" in reply["embeds"][0].description
 
 
 async def test_a_module_picked_shows_what_it_does_and_its_commands(store_config):

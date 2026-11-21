@@ -1,6 +1,11 @@
 """Models for the per-guild custom slash commands feature."""
 
+from typing import Literal
+
 from pydantic import BaseModel
+
+# Whether the command takes a member to aim at (``/calin cible:@Léa``).
+TargetMode = Literal["none", "optional", "required"]
 
 
 class CustomCommand(BaseModel):
@@ -9,6 +14,11 @@ class CustomCommand(BaseModel):
     name: str
     description: str
     responses: list[str]
+    target: TargetMode = "none"
+    # Seconds a member waits between two uses (0: none).
+    cooldown: int = 0
+    # Role ids allowed to use it (empty: everyone).
+    roles: list[str] = []
 
 
 class ParsedCommands(BaseModel):

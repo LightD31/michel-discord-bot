@@ -17,10 +17,12 @@ VALUES = sample_values("7", "alice")
 
 def test_welcome_is_filled_as_the_bot_fills_it():
     test = TESTS["moduleWelcome"]["welcomeMessageList"]
-    rendered = render_test(test, ["Bienvenue {mention} !", "Salut {pseudo}"], VALUES)
-    assert rendered.texts == ["Bienvenue <@7> !", "Salut {pseudo}"]  # unknown kept, as sent
+    texts = ["Bienvenue {mention} sur {serveur}, {nombre}ᵉ membre !", "Salut {prenom}"]
+    rendered = render_test(test, texts, sample_values("7", "alice", "Les Copains"))
+    # An unknown name is kept, as the bot sends it.
+    assert rendered.texts == ["Bienvenue <@7> sur Les Copains, 42ᵉ membre !", "Salut {prenom}"]
     (warning,) = rendered.warnings
-    assert "{pseudo}" in warning and "tel quel" in warning
+    assert "{prenom}" in warning and "tel quel" in warning
 
 
 def test_a_youtube_template_with_an_unknown_name_falls_back_to_the_link():
@@ -47,6 +49,16 @@ def test_only_the_first_texts_are_tested():
     rendered = render_test(test, [f"r{i}" for i in range(15)], VALUES)
     assert len(rendered.texts) == template_tests.MAX_TEXTS
     assert "premiers" in rendered.warnings[-1]
+
+
+def test_a_custom_command_response_is_filled_and_shows_its_image():
+    test = TESTS["moduleCustomCommands"]["commands"]
+    values = sample_values("7", "alice", "Les Copains")
+    rendered = render_test(
+        test, ["{auteur} → {cible} ({serveur}) https://cdn.exemple.fr/a.gif"], values
+    )
+    assert rendered.texts == ["<@7> → <@7> (Les Copains)\nhttps://cdn.exemple.fr/a.gif"]
+    assert rendered.warnings == []
 
 
 def test_the_catalogue_names_each_fields_variables():
