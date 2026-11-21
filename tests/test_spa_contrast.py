@@ -3,20 +3,18 @@
 White on the green "Sauvegarder" button was 3.2:1, white on red 3.8:1 and the
 breadcrumb link 3.7:1. The theme now keeps two reds and two greens: the plain
 ones for text and outlines, the ``-strong`` ones for the fills white text sits
-on. This test reads the colours from ``index.html``, so a new shade that
+on. This test reads the colours from ``app.css``, so a new shade that
 doesn't pass fails here rather than in a screenshot.
 """
 
 import re
 
 import pytest
-from source_scan import ROOT
+from spa_sources import CSS, INDEX, SCRIPT
 
-INDEX = (ROOT / "src/webui/static/index.html").read_text(encoding="utf-8")
-APP = (ROOT / "src/webui/static/app.js").read_text(encoding="utf-8")
 ROOT_VARS = dict(
     re.findall(
-        r"--([a-z0-9-]+):\s*(#[0-9a-fA-F]{6})\b", INDEX.split(":root {", 1)[1].split("}", 1)[0]
+        r"--([a-z0-9-]+):\s*(#[0-9a-fA-F]{6})\b", CSS.split(":root {", 1)[1].split("}", 1)[0]
     )
 )
 AA = 4.5
@@ -67,7 +65,7 @@ def test_text_is_readable_on_its_background(text, background):
     ],
 )
 def test_white_text_sits_on_the_strong_fills(rule):
-    assert re.search(rule, INDEX), rule
+    assert re.search(rule, CSS), rule
 
 
 def test_every_colour_the_css_names_is_defined():
@@ -75,6 +73,6 @@ def test_every_colour_the_css_names_is_defined():
 
     ``--border-color`` was one: the ✎ buttons of the pickers had no border.
     """
-    used = set(re.findall(r"var\(--([a-z0-9-]+)\)", INDEX + APP))
-    defined = set(re.findall(r"--([a-z0-9-]+):", INDEX))
+    used = set(re.findall(r"var\(--([a-z0-9-]+)\)", INDEX + CSS + SCRIPT))
+    defined = set(re.findall(r"--([a-z0-9-]+):", CSS))
     assert sorted(used - defined) == []

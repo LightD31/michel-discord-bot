@@ -18,6 +18,8 @@ import pytest
 
 playwright_sync = pytest.importorskip("playwright.sync_api")
 
+from test_spa_smoke import script_error  # noqa: E402
+
 import extensions.moderation._common  # noqa: E402, F401 — registers moduleModeration
 import extensions.xp._common  # noqa: E402, F401 — registers moduleXp
 from features.userinfo.repository import UserInfoRepository  # noqa: E402
@@ -132,10 +134,15 @@ def page(browser, dashboard):
     page = context.new_page()
     errors: list[str] = []
     page.on("pageerror", lambda e: errors.append(str(e)))
+    page.on("console", lambda m: script_error(m) and errors.append(m.text))
     page.on("dialog", lambda d: errors.append(f"boîte native : {d.message}") or d.dismiss())
     # What MongoDB would answer: no case, no message, no audit entry.
-    page.route("**/infractions**", lambda route: route.fulfill(json={"infractions": []}))
-    page.route("**/xp/stats**", lambda route: route.fulfill(status=503, json={"detail": "x"}))
+    page.route(
+        "**/api/servers/*/infractions**", lambda route: route.fulfill(json={"infractions": []})
+    )
+    page.route(
+        "**/api/servers/*/xp/stats**", lambda route: route.fulfill(status=503, json={"detail": "x"})
+    )
     yield page
     assert errors == [], errors
     context.close()
@@ -235,7 +242,7 @@ def test_an_infraction_names_its_member_and_opens_their_history(page, dashboard)
         route.fulfill(json={"infractions": [case]})
 
     page.unroute("**/infractions**")
-    page.route("**/infractions**", answer)
+    page.route("**/api/servers/*/infractions**", answer)
     page.goto(f"{dashboard['base']}/#/module/{GA}/moduleModeration")
     case = page.locator("#infractions-list > div").first
     case.get_by_text("Spam").wait_for()
@@ -260,8 +267,8 @@ def test_a_switch_asks_in_the_apps_own_dialog(page, dashboard):
 
 
 def test_a_long_page_has_an_index_of_its_sections(page, dashboard):
-    page.route("**/bot-messages", lambda route: route.fulfill(json={"messages": []}))
-    page.route("**/audit**", lambda route: route.fulfill(json={"entries": []}))
+    page.route("**/api/servers/*/bot-messages", lambda route: route.fulfill(json={"messages": []}))
+    page.route("**/api/servers/*/audit**", lambda route: route.fulfill(json={"entries": []}))
     page.set_viewport_size({"width": 390, "height": 700})
     page.goto(f"{dashboard['base']}/#/server/{GA}")
     index = page.get_by_role("navigation", name="Sur cette page")

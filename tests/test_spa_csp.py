@@ -3,19 +3,19 @@
 ``security_headers.CONTENT_SECURITY_POLICY`` allows scripts from the
 dashboard's own files only, so an ``onclick="…"`` attribute or an inline
 ``<script>`` would simply not run. These checks keep the markup that way and
-make sure every action a control names exists in the SPA's allowlist.
+make sure every action a control names exists in the SPA's allowlist, which
+each module fills with ``registerActions({…})`` (C8).
 """
 
 import re
-from pathlib import Path
 
 import pytest
+from spa_sources import INDEX, MODULES, SCRIPT
 
+from src.webui.routes.frontend import IMPORT
 from src.webui.security_headers import CHARTJS_URL
 
-STATIC = Path(__file__).resolve().parents[1] / "src" / "webui" / "static"
-INDEX = (STATIC / "index.html").read_text(encoding="utf-8")
-APP = (STATIC / "app.js").read_text(encoding="utf-8")
+APP = SCRIPT
 
 # An on…= attribute, quoted or not, in markup or built by the script.
 INLINE_HANDLER = re.compile(r"""[\s"'/]on[a-z]+\s*=\s*["'`\\\w(]""", re.IGNORECASE)
@@ -27,11 +27,10 @@ STRING_CODE = re.compile(r"""\beval\s*\(|\bFunction\s*\(|\bset(Timeout|Interval)
 ACTION_ATTR = re.compile(r'data-(click|change|input|mousedown|keydown)="([\w-]+)"')
 
 
-def _allowlisted_actions(app: str = APP) -> set[str]:
-    """The keys of ``const ACTIONS = {…}``: top-level entries only, not parameters."""
-    start = app.index("const ACTIONS = {") + len("const ACTIONS = {")
+def _object_keys(code: str) -> set[str]:
+    """The top-level keys of the object literal *code* starts in: not parameters."""
     names, depth, entry = set(), 0, ""
-    code = re.sub(r"//[^\n]*", "", app[start:])
+    code = re.sub(r"//[^\n]*", "", code)
     for char in code:
         if depth == 0 and char in ",}":
             key = re.match(r"\s*(?:'([\w-]+)'|([A-Za-z_]\w*))\s*(?::|$)", entry)
@@ -47,9 +46,18 @@ def _allowlisted_actions(app: str = APP) -> set[str]:
     return names
 
 
+def _allowlisted_actions(app: str = APP) -> set[str]:
+    """The actions in ``const ACTIONS = {…}`` and in every ``registerActions({…})``."""
+    names: set[str] = set()
+    for opener in ("const ACTIONS = {", "registerActions({"):
+        for match in re.finditer(re.escape(opener), app):
+            names |= _object_keys(app[match.end() :])
+    return names
+
+
 def test_no_inline_script_or_handler_in_the_page():
     assert INLINE_SCRIPT.findall(INDEX) == []
-    assert '<script src="/static/app.js"></script>' in INDEX
+    assert '<script type="module" src="/static/js/main.js"></script>' in INDEX
     assert INLINE_HANDLER.findall(INDEX) == []
 
 
@@ -82,7 +90,7 @@ def test_the_checks_catch(pattern, text):
 @pytest.mark.parametrize(
     ("pattern", "text"),
     [
-        (INLINE_SCRIPT, '<script src="/static/app.js"></script>'),
+        (INLINE_SCRIPT, '<script type="module" src="/static/js/main.js"></script>'),
         (INLINE_HANDLER, "img.onload = () => draw();"),
         (INLINE_HANDLER, '<div data-click="save">'),
         (STRING_CODE, "setTimeout(() => el.remove(), 4000)"),
@@ -98,9 +106,10 @@ def test_the_allowlist_holds_action_names_not_parameter_names():
         "    saveForm,\n"
         "    'remove-closest': (selector, el) => el.closest(selector)?.remove(),\n"
         "    other: (a, { b }) => [a, b],\n"
-        "};"
+        "};\n"
+        "registerActions({\n    loadPage,\n    'go-on': (event) => go(event),\n});"
     )
-    assert _allowlisted_actions(app) == {"saveForm", "remove-closest", "other"}
+    assert _allowlisted_actions(app) == {"saveForm", "remove-closest", "other", "loadPage", "go-on"}
     assert "selector" not in _allowlisted_actions()
 
 
@@ -111,4 +120,25 @@ def test_every_action_a_control_names_is_allowlisted():
 
 
 def test_chartjs_is_loaded_from_the_url_the_policy_allows():
-    assert f"const CHARTJS_SRC = '{CHARTJS_URL}';" in APP
+    assert f"const CHARTJS_SRC = '{CHARTJS_URL}';" in MODULES["ui/charts.js"]
+
+
+def test_every_module_is_loaded_by_the_entry_point():
+    """main.js imports each module: its actions are registered, its listeners set."""
+    loaded = set(re.findall(r"^import '\./([\w./-]+)';$", MODULES["main.js"], re.MULTILINE))
+    assert loaded == set(MODULES) - {"main.js"}
+
+
+def test_every_import_is_one_the_server_versions():
+    """A static, relative, one-line import: the server adds ``?v=`` to it (frontend.py).
+
+    Any other form (a bare or absolute specifier, ``import()``, an import split
+    over lines) would load the file unversioned, from a cache a deploy doesn't
+    clear.
+    """
+    for path, code in MODULES.items():
+        imports = [
+            line for line in code.splitlines() if re.match(r"\s*(import|export .* from)\b", line)
+        ]
+        assert len(IMPORT.findall(code)) == len(imports), path
+        assert not re.search(r"\bimport\s*\(", code), path

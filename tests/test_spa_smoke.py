@@ -144,6 +144,7 @@ def page(browser, dashboard):
     page = context.new_page()
     errors: list[str] = []
     page.on("pageerror", lambda e: errors.append(str(e)))
+    page.on("console", lambda m: script_error(m) and errors.append(m.text))
     # The app asks with its own dialog: the browser's confirm() is never used.
     page.on("dialog", lambda d: errors.append(f"boîte native : {d.message}") or d.dismiss())
     page.goto(f"http://127.0.0.1:{dashboard['port']}/#/module/{GUILD}/{MODULE}")
@@ -151,6 +152,15 @@ def page(browser, dashboard):
     yield page
     assert errors == [], errors  # no uncaught script error along the way
     context.close()
+
+
+def script_error(message) -> bool:
+    """A console error from the app: a module that didn't load, an unknown action.
+
+    A failed request (an API answering 503 on purpose) is logged too, as
+    "Failed to load resource": the test asserts on what the page shows instead.
+    """
+    return message.type == "error" and not message.text.startswith("Failed to load resource")
 
 
 def demote(dashboard):
