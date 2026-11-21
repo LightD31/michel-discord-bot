@@ -38,15 +38,13 @@ from src.discord_ext.channels import fetch_guild_channel
 from src.discord_ext.messages import CAN_PIN, CAN_SEND, author_can, send_error, send_success
 from src.discord_ext.scopes import guild_scopes
 
-from ._common import StreamerInfo, ensure_utc
+from ._common import TWITCH, StreamerInfo, ensure_utc
 from .emotes import EMOTE_CACHE_DIR, EmotesMixin
 from .eventsub import EventSubMixin
 from .notifications import NotificationsMixin
 from .schedule import ScheduleMixin
 
 logger = logutil.init_logger(__name__)
-
-TWITCH = ModuleConfig("moduleTwitch")
 
 
 def _save_streamer_planning(guild_id: str, streamer_id: str, channel_id: str, pin: bool) -> None:

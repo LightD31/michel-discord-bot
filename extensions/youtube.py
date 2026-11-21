@@ -3,12 +3,15 @@
 from typing import Any, cast
 
 from interactions import (
+    ActionRow,
     BaseChannel,
     Client,
+    ComponentContext,
     Extension,
     IntervalTrigger,
     MessageableMixin,
     Task,
+    component_callback,
     listen,
 )
 from pydantic import BaseModel, ConfigDict, field_validator
@@ -27,6 +30,13 @@ from src.core.config import ModuleConfig, global_config
 from src.core.http import fetch
 from src.core.logging import log_failure
 from src.discord_ext.channels import fetch_guild_channel
+from src.discord_ext.live_alerts import (
+    YOUTUBE_ALERT,
+    alert_button,
+    alert_pattern,
+    configured_alert_roles,
+    toggle_alert_role,
+)
 from src.discord_ext.mentions import everyone_if_written
 from src.webui.schemas import (
     ModuleHelp,
@@ -50,6 +60,8 @@ class YoutubeChannelEntry(BaseModel):
     live: bool = False
     vod: bool = True
     label: str | None = None
+    # A10: the role each new video pings, which its 🔔 button hands out.
+    mentionRoleId: str | None = None
 
 
 @register_module("moduleYoutube")
@@ -61,7 +73,8 @@ class YoutubeConfig(SchemaBase):
     __help__ = ModuleHelp(
         "Les nouvelles vidéos des chaînes YouTube suivies.",
         (),
-        "Chaque nouvelle vidéo, short ou live est annoncé.",
+        "Chaque nouvelle vidéo, short ou live est annoncé, avec un bouton "
+        "« 🔔 M'avertir des vidéos » quand la chaîne mentionne un rôle.",
     )
 
     enabled: bool = enabled_field()
@@ -78,7 +91,9 @@ class YoutubeConfig(SchemaBase):
         description=(
             "Une ligne par chaîne avec ses propres bascules Shorts / Lives / "
             "VOD. Le handle accepte `@handle` ou juste le handle ; un libellé "
-            "optionnel apparaît dans les logs et les notifications."
+            "optionnel apparaît dans les logs et les notifications. Le **rôle à "
+            "mentionner** est notifié à chaque nouvelle vidéo, et le bouton "
+            "« 🔔 M'avertir des vidéos » le donne à qui le demande."
         ),
     )
     youtubeShortMaxSeconds: int = ui(
@@ -140,6 +155,13 @@ class YoutubeExtension(Extension):
         if not self.check_youtube.running:
             self.check_youtube.start()
         # await self.check_youtube()
+
+    @component_callback(alert_pattern(YOUTUBE_ALERT))
+    async def on_video_alert(self, ctx: ComponentContext) -> None:
+        """ "🔔 M'avertir des vidéos": the channel's mention role, given or taken back."""
+        settings = YOUTUBE.get(ctx.guild_id) if ctx.guild_id else {}
+        roles = configured_alert_roles(settings.get("youtubeChannelList"), "mentionRoleId")
+        await toggle_alert_role(ctx, roles, what="des nouvelles vidéos")
 
     @Task.create(IntervalTrigger(minutes=5))
     async def check_youtube(self):
@@ -208,7 +230,18 @@ class YoutubeExtension(Extension):
                     rendered = await shorten_text(rendered, tags=["youtube", handle])
                     # @everyone pings only when the template writes it, not
                     # through a value (a handle) it is filled with.
-                    await channel.send(rendered, allowed_mentions=everyone_if_written(template))
+                    role_id = str(channel_cfg.get("mentionRoleId") or "").strip()
+                    components = []
+                    if role_id.isdigit():
+                        rendered = f"<@&{role_id}> {rendered}"
+                        components = [
+                            ActionRow(alert_button(YOUTUBE_ALERT, role_id, "M'avertir des vidéos"))
+                        ]
+                    await channel.send(
+                        rendered,
+                        components=components,
+                        allowed_mentions=everyone_if_written(template),
+                    )
             except Exception as e:  # noqa: BLE001 — retried next tick, others carry on
                 logger.warning("YouTube check failed for %s on server %s: %s", handle, server, e)
                 continue

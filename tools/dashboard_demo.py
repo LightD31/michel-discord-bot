@@ -156,6 +156,9 @@ def demo_config(data_dir: str, port: int, mongo_url: str) -> dict[str, Any]:
                     "welcomeMessageList": [
                         {"text": f"Bienvenue {{mention}} ! Passe par <#{CH['règles']}> 👋"}
                     ],
+                    "welcomeArrivalRoleId": role["Membre"],
+                    "welcomeRulesChannelId": CH["règles"],
+                    "welcomeRolesChannelId": CH["rôles"],
                     "leaveMessageList": [{"text": "{username} nous a quittés."}],
                 },
                 "moduleStarboard": {
@@ -207,14 +210,38 @@ def demo_config(data_dir: str, port: int, mongo_url: str) -> dict[str, Any]:
                             "name": "cafe",
                             "description": "Un café pour la route",
                             "responses": ["☕ Et un café, un !", "☕☕ Double ristretto."],
-                        }
+                        },
+                        {
+                            "name": "calin",
+                            "description": "Un câlin pour quelqu'un",
+                            "responses": ["{auteur} fait un gros câlin à {cible} 🤗"],
+                            "target": "required",
+                            "cooldown": 30,
+                            "roles": [role["Membre"]],
+                        },
                     ],
                 },
                 "moduleReactionRoles": {"enabled": True},
                 "moduleTricount": {"enabled": True, "tricountCurrency": "€"},
                 "moduleSecretSanta": {"enabled": True},
-                "moduleTwitch": {"enabled": False},
-                "moduleYoutube": {"enabled": False},
+                "moduleTwitch": {
+                    "enabled": False,
+                    "twitchStreamerList": {
+                        "zerator": {
+                            "twitchNotificationChannelId": CH["général"],
+                            "notifyStreamStart": True,
+                            "twitchMentionRoleId": role["Notifs streams"],
+                            "twitchNotificationTemplate": "{streamer} est en live : {titre} !",
+                        }
+                    },
+                },
+                "moduleYoutube": {
+                    "enabled": False,
+                    "ChannelId": CH["général"],
+                    "youtubeChannelList": {
+                        "@micode": {"vod": True, "mentionRoleId": role["Notifs streams"]}
+                    },
+                },
                 "discord2name": {MEMBER: "Hugo"},
                 "publicDashboardToken": "demo-public-0123456789abcdef",
             },

@@ -212,6 +212,9 @@ def test_role_refs_and_mass_mentions_read_the_schema():
     assert schemas.role_refs(xp, {"levelRewards": {"5": " 101 ", "6": ""}}) == {("grant", "101")}
     assert schemas.role_refs(lldap, {"lldapRoleGroups": {"101": "3"}}) == {("access", "101")}
     assert schemas.role_refs(xp, None) == set()
+    commands = schemas.module_model("moduleCustomCommands")
+    entries = [{"name": "a", "roles": ["101", " "]}, {"name": "b", "roles": "x"}]
+    assert schemas.role_refs(commands, {"commands": entries}) == {("staff", "101"), ("staff", "x")}
     assert schemas.mass_mention_texts({"a": ["x @here", {"b": "y"}], "c": 3}) == {"x @here"}
 
 

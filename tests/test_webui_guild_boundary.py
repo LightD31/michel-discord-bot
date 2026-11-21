@@ -17,6 +17,7 @@ from fastapi import HTTPException
 import extensions.lldap._common  # noqa: F401 — registers moduleLldap
 import extensions.moderation._common  # noqa: F401 — registers moduleModeration
 import extensions.rss._common  # noqa: F401 — registers moduleRss
+import extensions.welcome._common  # noqa: F401 — registers moduleWelcome
 import extensions.xp._common  # noqa: F401 — registers moduleXp
 import src.webui.routes.rolemenus as rolemenu_routes
 import src.webui.routes.servers as servers_routes
@@ -146,6 +147,13 @@ def test_channel_ids_reads_top_level_and_nested_fields():
     }
     assert schemas.channel_ids(rss, config) == {"11", "12"}
     assert schemas.channel_ids(rss, None) == set()
+
+
+def test_a_channel_the_bot_only_links_to_is_not_checked_for_posting():
+    welcome = schemas.module_model("moduleWelcome")
+    config = {"welcomeChannelId": "10", "welcomeRulesChannelId": "11"}
+    assert schemas.channel_ids(welcome, config) == {"10", "11"}  # both checked on a save
+    assert schemas.channel_ids(welcome, config, lists=False) == {"10"}
 
 
 def test_channel_and_role_lists_are_read_entry_by_entry():

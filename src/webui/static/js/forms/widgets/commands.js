@@ -1,5 +1,41 @@
 // Custom commands.
 import { registerActions } from '../../core/actions.js';
+import { html, raw } from '../../core/html.js';
+import { multiPickerHtml, multiPickerIds, populateMultiPickers } from '../pickers/lists.js';
+
+const TARGETS = { none: 'Aucune', optional: 'Facultative', required: 'Obligatoire' };
+const MAX_COOLDOWN = 3600;
+
+// A command's target, cooldown and roles (A9), under its name.
+export function commandOptionsHtml(cmd = {}) {
+    const target = TARGETS[cmd.target] ? cmd.target : 'none';
+    const cooldown = Number.isInteger(cmd.cooldown) ? cmd.cooldown : 0;
+    const roles = Array.isArray(cmd.roles) ? cmd.roles.map(String) : [];
+    return html`
+            <div class="commandlist-entry-fields">
+                <div><label class="commandlist-field-label">Membre visé (<code>cible</code>)</label>
+                <select class="form-input" data-cmd-field="target" aria-label="Membre visé">
+                    ${Object.entries(TARGETS).map(([value, label]) => html`<option value="${value}" ${value === target ? raw('selected') : ''}>${label}</option>`)}
+                </select></div>
+                <div><label class="commandlist-field-label">Délai entre deux usages (secondes)</label>
+                <input type="number" class="form-input" data-cmd-field="cooldown" value="${cooldown}" min="0" max="${MAX_COOLDOWN}" step="1" aria-label="Délai entre deux usages, en secondes">
+                <div class="commandlist-field-label">Entre 0 et ${MAX_COOLDOWN.toLocaleString('fr-FR')} (0 : aucun).</div></div>
+            </div>
+            <div class="commandlist-roles"><label class="commandlist-field-label">Réservée aux rôles (vide : tout le monde)</label>
+            ${raw(multiPickerHtml(null, 'rolelist', roles, 'staff'))}</div>`;
+}
+
+// What commandOptionsHtml() holds, as the schema stores it.
+export function commandOptions(entry) {
+    const target = entry.querySelector('[data-cmd-field="target"]')?.value;
+    const cooldown = Math.round(Number(entry.querySelector('[data-cmd-field="cooldown"]')?.value || 0));
+    const picker = entry.querySelector('.commandlist-roles .multi-picker');
+    return {
+        target: TARGETS[target] ? target : 'none',
+        cooldown: Number.isFinite(cooldown) ? Math.min(Math.max(cooldown, 0), MAX_COOLDOWN) : 0,
+        roles: picker ? multiPickerIds(picker) : [],
+    };
+}
 
 export function addCommandEntry(btn) {
     const list = btn.previousElementSibling;
@@ -17,12 +53,14 @@ export function addCommandEntry(btn) {
                 <div><label class="commandlist-field-label">Description</label>
                 <input type="text" class="form-input" data-cmd-field="description" value="" placeholder="Raconte une blague au hasard" maxlength="100"></div>
             </div>
+            ${commandOptionsHtml()}
             <div class="commandlist-responses">
                 <div class="commandlist-responses-label">Réponses (tirées au hasard)</div>
             </div>
             <button type="button" class="btn-add-link" data-click="addCommandResponse" data-click-args="[{&quot;$&quot;:&quot;el&quot;}]">+ Ajouter une réponse</button>
         `;
     list.appendChild(entry);
+    populateMultiPickers(entry);
     // A command without a response is dropped at load, so start with one.
     addCommandResponse(entry.querySelector('.btn-add-link'));
     entry.querySelector('[data-cmd-field="name"]').focus();
@@ -35,7 +73,7 @@ export function addCommandResponse(btn) {
     const responseEntry = document.createElement('div');
     responseEntry.className = 'commandlist-response-entry';
     responseEntry.innerHTML = `
-            <input type="text" data-response-field="text" value="" placeholder="https://exemple.com/gif.gif ou un texte" maxlength="2000">
+            <input type="text" data-response-field="text" value="" placeholder="{auteur} fait un câlin à {cible} https://exemple.com/calin.gif" maxlength="2000">
             <button type="button" class="btn-remove-response" data-click="remove-closest" data-click-args="[&quot;.commandlist-response-entry&quot;,{&quot;$&quot;:&quot;el&quot;}]" title="Supprimer" aria-label="Supprimer">✕</button>
         `;
     container.appendChild(responseEntry);

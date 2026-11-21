@@ -52,6 +52,12 @@ async def send_test_dms(bot: Any, user_id: str, messages: list[str]) -> None:
         raise HTTPException(status_code=409, detail=DMS_CLOSED) from e
 
 
+def guild_name(ctx: WebUIContext, server_id: str) -> str:
+    """The server's name as the bot sees it, else its id."""
+    guild = ctx.bot.get_guild(int(server_id)) if ctx.bot else None
+    return str(getattr(guild, "name", None) or server_id)
+
+
 def create_router(ctx: WebUIContext) -> APIRouter:
     router = APIRouter()
 
@@ -72,7 +78,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
         test = TESTS.get(body.module, {}).get(body.field)
         if test is None:
             raise HTTPException(status_code=404, detail="Ce champ n'a pas d'aperçu")
-        values = sample_values(session.user_id, session.username)
+        values = sample_values(session.user_id, session.username, guild_name(ctx, server_id))
         return JSONResponse({"previews": preview_texts(test, body.texts, values)})
 
     @router.post("/api/servers/{server_id}/template-test")
@@ -84,16 +90,17 @@ def create_router(ctx: WebUIContext) -> APIRouter:
         texts = [t for t in body.texts if t.strip()]
         if not texts:
             raise HTTPException(status_code=422, detail="Aucun message à tester")
+        name = guild_name(ctx, server_id)
         try:
-            rendered = render_test(test, texts, sample_values(session.user_id, session.username))
+            rendered = render_test(
+                test, texts, sample_values(session.user_id, session.username, name)
+            )
         except TemplateRefused as e:
             raise HTTPException(status_code=422, detail=str(e)) from e
 
-        guild = ctx.bot.get_guild(int(server_id)) if ctx.bot else None
-        guild_name = str(getattr(guild, "name", None) or server_id)
         total = len(rendered.texts)
         messages = [
-            dm_text(test, guild_name, text, index, total)
+            dm_text(test, name, text, index, total)
             for index, text in enumerate(rendered.texts, start=1)
         ]
         ctx.require_bot_loop()

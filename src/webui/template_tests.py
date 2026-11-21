@@ -14,6 +14,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
+from features.customcommands import render_response
 from features.youtube import render_notification
 from src.core.text import MESSAGE_LIMIT, clip, fill_message, template_names, template_problem
 
@@ -42,14 +43,22 @@ def _youtube(text: str, values: dict[str, Any]) -> str:
     )
 
 
-def _as_is(text: str, values: dict[str, Any]) -> str:  # noqa: ARG001 — same signature
-    return text
+def _custom_command(text: str, values: dict[str, Any]) -> str:
+    response = render_response(
+        text, author=values["auteur"], target=values["cible"], server=values["serveur"]
+    )
+    # The image goes under the text, as the embed shows it.
+    return "\n".join(part for part in (response.text, response.image_url) if part)
 
 
 TESTS: dict[str, dict[str, TemplateTest]] = {
     "moduleWelcome": {
-        "welcomeMessageList": TemplateTest("Message de bienvenue", ("mention",), _fill),
-        "leaveMessageList": TemplateTest("Message de départ", ("username",), _fill),
+        "welcomeMessageList": TemplateTest(
+            "Message de bienvenue", ("mention", "pseudo", "serveur", "nombre"), _fill
+        ),
+        "leaveMessageList": TemplateTest(
+            "Message de départ", ("username", "pseudo", "serveur", "nombre"), _fill
+        ),
     },
     "moduleXp": {
         "levelUpMessageList": TemplateTest("Passage de niveau", ("mention", "lvl"), _fill),
@@ -66,7 +75,9 @@ TESTS: dict[str, dict[str, TemplateTest]] = {
         ),
     },
     "moduleCustomCommands": {
-        "commands": TemplateTest("Réponse de commande personnalisée", (), _as_is),
+        "commands": TemplateTest(
+            "Réponse de commande personnalisée", ("auteur", "cible", "serveur"), _custom_command
+        ),
     },
 }
 
@@ -82,11 +93,17 @@ def catalogue() -> dict[str, dict[str, dict[str, Any]]]:
     }
 
 
-def sample_values(user_id: str, username: str) -> dict[str, Any]:
-    """The values a test fills: the admin stands in for the member."""
+def sample_values(user_id: str, username: str, guild_name: str = "ton serveur") -> dict[str, Any]:
+    """The values a test fills: the admin stands in for the member (and its target)."""
+    mention = f"<@{user_id}>"
     return {
-        "mention": f"<@{user_id}>",
+        "mention": mention,
+        "auteur": mention,
+        "cible": mention,
+        "serveur": guild_name,
         "username": username,
+        "pseudo": username,
+        "nombre": 42,
         "lvl": 5,
         "age": 30,
         "video_id": SAMPLE_VIDEO_ID,

@@ -1979,7 +1979,13 @@ input[type="number"].form-input:invalid {
     border-radius: var(--radius);
 }
 
+.youtubechannel-entry > * {
+    min-width: 0;
+}
+
 .youtubechannel-entry input[type="text"] {
+    width: 100%;
+    min-width: 0;
     padding: 6px 8px;
     background: var(--bg-secondary);
     border: 1px solid var(--border);
@@ -2232,8 +2238,26 @@ input[type="number"].form-input:invalid {
 
 @media (max-width: 720px) {
     .youtubechannel-entry {
-        grid-template-columns: 1fr 1fr;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     }
+
+    .youtubechannel-entry .btn-remove-entry {
+        justify-self: end;
+    }
+}
+
+.youtubechannel-alert {
+    grid-column: 1 / -1;
+}
+
+.youtubechannel-alert label {
+    display: block;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-muted);
+    margin-bottom: 4px;
 }
 
 /* ── Name Mapping List Editor ────────────────── */
@@ -2632,6 +2656,12 @@ details.viz-data .viz-table-scroll { max-height: 240px; overflow-y: auto; }
 .commandlist-field-label {
     font-size: 11px;
     color: var(--text-muted);
+}
+
+.commandlist-roles {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
 }
 
 .commandlist-responses {

@@ -391,6 +391,12 @@
                         "weight": 1
                     }
                 ],
+                "welcomeArrivalRoleId": "",
+                "welcomeRulesChannelId": "",
+                "welcomeRolesChannelId": "",
+                "welcomeHelpButton": true,
+                "welcomeGreetButton": true,
+                "welcomeDmCopy": false,
                 "leaveMessageList": [
                     {
                         "text": "{username} nous a quittés.",

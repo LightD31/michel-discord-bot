@@ -59,6 +59,7 @@ from src.core import clock
 from src.core import logging as logutil
 from src.core.config import global_config
 from src.core.text import EMBED_FIELD_VALUE_LIMIT, clip
+from src.discord_ext.help_button import HELP_BUTTON_ID
 from src.discord_ext.look import card
 from src.discord_ext.menus import MENU_HELP
 from src.discord_ext.messages import guild_id_of, require_guild
@@ -438,12 +439,7 @@ class HelpExtension(Extension):
             )
             return
         if not search:
-            groups = modules(entries)
-            await ctx.send(
-                embeds=[overview_page(groups, dashboard_url())],
-                components=module_menus(groups),
-                ephemeral=True,
-            )
+            await self._send_overview(ctx, entries)
             return
         pages = render_pages(entries, search)
         if len(pages) == 1:
@@ -451,6 +447,23 @@ class HelpExtension(Extension):
             return
         paginator = CustomPaginator.create_from_embeds(self.bot, *pages, timeout=600)
         await paginator.send(ctx, ephemeral=True)
+
+    async def _send_overview(self, ctx: Any, entries: list[HelpEntry]) -> None:
+        groups = modules(entries)
+        await ctx.send(
+            embeds=[overview_page(groups, dashboard_url())],
+            components=module_menus(groups),
+            ephemeral=True,
+        )
+
+    @component_callback(HELP_BUTTON_ID)
+    async def on_help_button(self, ctx: ComponentContext) -> None:
+        """ "❓ Que faire ici ?" under a message (a welcome): ``/aide`` for the clicker."""
+        entries = self._entries(ctx)
+        if not entries:
+            await ctx.send("Aucune commande disponible ici.", ephemeral=True)
+            return
+        await self._send_overview(ctx, entries)
 
     @component_callback(re.compile(rf"^{MENU_PREFIX}:\d+$"))
     async def on_module_chosen(self, ctx: ComponentContext) -> None:

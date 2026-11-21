@@ -68,6 +68,7 @@ def ui(
     role_keys: bool = False,
     member_keys: bool = False,
     choices: dict[str, str] | None = None,
+    linked_only: bool = False,
 ) -> Any:
     """Build a Pydantic ``Field(...)`` carrying UI metadata in ``json_schema_extra['ui']``.
 
@@ -92,6 +93,10 @@ def ui(
     ``choices`` (value → label) are the options of a ``choice`` field, shown
     as a list; annotate the field with the matching ``Literal`` so a save of
     anything else is refused.
+
+    ``linked_only`` marks a ``channel`` the bot only links to (a welcome
+    message's "📜 Règles" button): the save still checks it belongs to the
+    server, and the health card doesn't ask for the rights to post there.
     """
     if role_use and role_use not in ROLE_USES:
         raise ValueError(f"role_use inconnu : {role_use}")
@@ -124,6 +129,8 @@ def ui(
         meta["memberKeys"] = True
     if choices:
         meta["choices"] = [{"value": v, "label": label} for v, label in choices.items()]
+    if linked_only:
+        meta["linkedOnly"] = True
 
     field_default = default if default is not _UNSET else None
     return Field(default=field_default, ge=ge, le=le, json_schema_extra={"ui": meta})
@@ -278,6 +285,16 @@ NESTED_CHANNEL_KEYS: dict[str, tuple[str, ...]] = {
 }
 
 
+# Widget types whose entries name roles of their own: entry key → what the bot
+# does with them (``ROLE_USES``). A role a streamer's notification pings is also
+# the one its "🔔" button hands out, so it is checked for both.
+NESTED_ROLE_KEYS: dict[str, dict[str, tuple[str, ...]]] = {
+    "commandlist": {"roles": ("staff",)},
+    "streamermap": {"twitchMentionRoleId": ("mention", "grant")},
+    "youtubechannelmap": {"mentionRoleId": ("mention", "grant")},
+}
+
+
 def _entries(value: Any) -> list[Any]:
     if isinstance(value, dict):
         return list(value.values())
@@ -293,7 +310,8 @@ def channel_ids(model: type[SchemaBase], value: Any, *, lists: bool = True) -> s
     widget types in :data:`NESTED_CHANNEL_KEYS`, plus each entry of a
     ``channellist`` unless *lists* is false: those name channels the bot
     leaves alone (the automod's ignored channels), which the health card
-    doesn't check for the rights to post. Empty values are skipped.
+    doesn't check for the rights to post. The ``linked_only`` channels are
+    left out with them. Empty values are skipped.
     """
     if not isinstance(value, dict):
         return set()
@@ -306,7 +324,7 @@ def channel_ids(model: type[SchemaBase], value: Any, *, lists: bool = True) -> s
 
     for name, meta in _fields_of(model).items():
         kind = meta.get("type")
-        if kind == "channel":
+        if kind == "channel" and (lists or not meta.get("linkedOnly")):
             add(value.get(name))
         elif kind == "channellist" and lists:
             raw = value.get(name)
@@ -322,13 +340,28 @@ def channel_ids(model: type[SchemaBase], value: Any, *, lists: bool = True) -> s
 def role_refs(model: type[SchemaBase], value: Any) -> set[tuple[str, str]]:
     """Every ``(use, role id)`` *value* (a module's config) names.
 
-    The ``role`` fields, each entry of a ``rolelist`` and the role side of
-    ``keyvaluemap`` fields that declare a ``role_use``. Empty values are skipped.
+    The ``role`` fields, each entry of a ``rolelist``, the role side of
+    ``keyvaluemap`` fields that declare a ``role_use``, and the per-entry role
+    keys of :data:`NESTED_ROLE_KEYS`. Empty values are skipped.
     """
     if not isinstance(value, dict):
         return set()
     found: set[tuple[str, str]] = set()
+
+    def add(use: str, candidate: Any) -> None:
+        if candidate is None or isinstance(candidate, (dict, list)):
+            return
+        text = str(candidate).strip()
+        if text:
+            found.add((use, text))
+
     for name, meta in _fields_of(model).items():
+        for key, uses in NESTED_ROLE_KEYS.get(meta.get("type") or "", {}).items():
+            for entry in _entries(value.get(name)):
+                raw = entry.get(key) if isinstance(entry, dict) else None
+                for candidate in raw if isinstance(raw, list) else [raw]:
+                    for nested_use in uses:
+                        add(nested_use, candidate)
         use = meta.get("roleUse")
         if not use:
             continue
@@ -341,11 +374,7 @@ def role_refs(model: type[SchemaBase], value: Any) -> set[tuple[str, str]]:
         else:
             candidates = [raw]
         for candidate in candidates:
-            if candidate is None or isinstance(candidate, (dict, list)):
-                continue
-            text = str(candidate).strip()
-            if text:
-                found.add((use, text))
+            add(use, candidate)
     return found
 
 
