@@ -29,7 +29,7 @@ async def test_the_reminder_confirmation_reads_its_schedule_in_french(store_conf
     repo = Reminders()
     ctx = ctx_in_guild()
     ext = bare_extension(RemindersExtension, ctx.bot, _reminder_repo=lambda gid: repo)
-    await run(RemindersExtension.reminder_set, ext, ctx, 20, 30, "Sortir le chien", "daily")
+    await run(RemindersExtension.reminder_set, ext, ctx, "Sortir le chien", "20h30", "daily")
     assert repo.added
     assert "daily" not in ctx.last
     assert "Tous les jours à 20:30" in ctx.last and "Sortir le chien" in ctx.last

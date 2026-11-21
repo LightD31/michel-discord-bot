@@ -4,6 +4,10 @@ One ``suggestions`` collection per guild plus a ``suggestions_meta`` collection
 holding a single counter document used to mint per-guild human IDs.
 """
 
+from __future__ import annotations
+
+import builtins
+
 import pymongo
 from pymongo import ReturnDocument
 
@@ -82,15 +86,39 @@ class SuggestionsRepository:
         await self._col().update_one({"id": sugg_id}, {"$set": {"message_id": message_id}})
 
     @translates_db_errors
-    async def update_status(
+    async def set_thread(self, sugg_id: int, thread_id: str) -> None:
+        await self._col().update_one({"id": sugg_id}, {"$set": {"thread_id": thread_id}})
+
+    @translates_db_errors
+    async def list_in(
+        self, statuses: builtins.list[SuggestionStatus], limit: int
+    ) -> builtins.list[Suggestion]:
+        """The newest *limit* suggestions in one of *statuses* (the staff autocomplete)."""
+        cursor = (
+            self._col()
+            .find({"status": {"$in": list(statuses)}})
+            .sort("created_at", pymongo.DESCENDING)
+            .limit(limit)
+        )
+        return [self._doc_to_suggestion(d) for d in await cursor.to_list()]
+
+    @translates_db_errors
+    async def decide(
         self,
         sugg_id: int,
         status: SuggestionStatus,
         reason: str | None,
         decided_by: str,
-    ) -> None:
-        await self._col().update_one(
-            {"id": sugg_id},
+        *,
+        from_statuses: tuple[SuggestionStatus, ...],
+    ) -> Suggestion | None:
+        """Record a staff decision, if the suggestion is still in one of *from_statuses*.
+
+        Two moderators clicking at once decide once: the second finds the
+        status moved on and gets ``None``, as for a suggestion that is gone.
+        """
+        doc = await self._col().find_one_and_update(
+            {"id": sugg_id, "status": {"$in": list(from_statuses)}},
             {
                 "$set": {
                     "status": status,
@@ -99,7 +127,9 @@ class SuggestionsRepository:
                     "decided_at": clock.now(),
                 }
             },
+            return_document=ReturnDocument.AFTER,
         )
+        return self._doc_to_suggestion(doc) if doc else None
 
     @translates_db_errors
     async def toggle_vote(

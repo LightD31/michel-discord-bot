@@ -88,15 +88,16 @@ def render_bar(count: int, total: int, length: int = 12) -> str:
 
 
 def parse_duration(text: str) -> int | None:
-    """Parse a duration string like ``"30m"``, ``"2h"``, ``"1d"``, ``"45"``.
+    """Parse a duration string like ``"30m"``, ``"2h"``, ``"1d"``, ``"3j"``, ``"1h 30m"``, ``"45"``.
 
     Returns total seconds or ``None`` on malformed input. Bare numbers are
-    minutes for backwards-friendliness with the slash-command UX.
+    minutes for backwards-friendliness with the slash-command UX. ``j`` (jour)
+    is ``d``, and spaces are ignored.
     """
     if not text:
         return None
-    text = text.strip().lower()
-    multipliers = {"s": 1, "m": 60, "h": 3600, "d": 86400}
+    text = "".join(text.lower().split())
+    multipliers = {"s": 1, "m": 60, "h": 3600, "d": 86400, "j": 86400}
     total = 0
     current = ""
     for ch in text:

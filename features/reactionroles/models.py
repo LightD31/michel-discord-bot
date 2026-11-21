@@ -1,15 +1,23 @@
 """Pydantic models for the reaction-roles feature."""
 
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
+# "buttons": one button per role, a click gives or takes it. "select": one
+# drop-down where the member ticks the roles they want (B3).
+MenuStyle = Literal["buttons", "select"]
+
 
 class RoleMenuEntry(BaseModel):
-    """A single (role, emoji, label) tuple inside a role menu."""
+    """A single (role, emoji, label) tuple inside a role menu.
+
+    The emoji may be empty: a menu built by picking roles in Discord has none.
+    """
 
     role_id: str
-    emoji: str
+    emoji: str = ""
     label: str
 
 
@@ -23,6 +31,10 @@ class RoleMenu(BaseModel):
     title: str
     description: str | None = None
     entries: list[RoleMenuEntry]
+    style: MenuStyle = "buttons"
+    # How many of the menu's roles a member may hold at once; 1 is "one of the
+    # group" (colour roles): a new pick replaces the old one. None: no limit.
+    max_roles: int | None = Field(default=None, ge=1, le=25)
     created_by: str
     created_at: datetime
 

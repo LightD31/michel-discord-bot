@@ -1,11 +1,13 @@
 """Suggestions Discord extension — community suggestion box with up/down voting.
 
 Slash commands:
-- ``/suggerer`` — anyone can submit a suggestion (published in the configured channel)
-- ``/suggestion approuver|deny|implement`` — staff-only status updates
+- ``/suggerer`` — anyone can submit a suggestion through a form (published in
+  the configured channel, with a discussion thread)
+- ``/suggestion approuver|refuser|implementer`` — staff decisions, ``id`` autocompleting
 
-Buttons (👍 / 👎) are persistent: callbacks rebind on extension load. Per-guild
-config: ``moduleSuggestions`` (channel, staff role, optional anonymity).
+Buttons (👍 / 👎, and the staff's ✅ / ❌ / 🛠️) are persistent: callbacks rebind on
+extension load. Per-guild config: ``moduleSuggestions`` (channel, staff role,
+threads, optional anonymity).
 """
 
 from interactions import Client, Extension, listen

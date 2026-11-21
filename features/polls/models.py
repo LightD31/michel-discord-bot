@@ -5,17 +5,15 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-# "reaction": a /sondage counted with reactions. Only its options, emojis and
-# deadline are stored, so the auto-close survives a restart; votes stay on the
-# message as reactions.
-PollMode = Literal["public", "anonymous", "ranked", "reaction"]
+# A public /sondage is a Discord poll, which Discord keeps: only these two are stored.
+PollMode = Literal["anonymous", "ranked"]
 
 
 class Poll(BaseModel):
     """A button-based poll persisted to MongoDB.
 
     ``votes`` maps Discord user IDs to a list of option indices:
-    - public/anonymous: a one-element list (the chosen option)
+    - anonymous: a one-element list (the chosen option)
     - ranked: ordered preference list (first item = top choice)
     """
 
@@ -25,11 +23,9 @@ class Poll(BaseModel):
     author_id: str
     question: str
     options: list[str]
-    mode: PollMode = "public"
+    mode: PollMode = "anonymous"
     closes_at: datetime | None = None
     closed: bool = False
     votes: dict[str, list[int]] = Field(default_factory=dict)
-    # Reaction polls: the emoji shown for each option.
-    emojis: list[str] = Field(default_factory=list)
 
     model_config = {"populate_by_name": True}

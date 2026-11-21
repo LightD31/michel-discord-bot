@@ -54,7 +54,7 @@ async def test_a_decided_suggestion_takes_no_more_votes(mongo):
     repo = SuggestionsRepository(mongo.guild_id)
     s = await new_suggestion(repo)
     await repo.toggle_vote(s.id, "10", "up")
-    await repo.update_status(s.id, "approved", "bonne idée", "99")
+    await repo.decide(s.id, "approved", "bonne idée", "99", from_statuses=("pending",))
     assert await repo.toggle_vote(s.id, "11", "up") is None
     assert await repo.toggle_vote(404, "11", "up") is None
     decided = await repo.get(s.id)
@@ -73,11 +73,43 @@ async def test_suggestions_are_listed_newest_first_and_by_status(mongo):
     repo = SuggestionsRepository(mongo.guild_id)
     first = await new_suggestion(repo, "a")
     second = await new_suggestion(repo, "b")
-    await repo.update_status(first.id, "denied", None, "99")
+    await repo.decide(first.id, "denied", None, "99", from_statuses=("pending",))
     assert [s.id for s in await repo.list()] == [second.id, first.id]
     assert [s.id for s in await repo.list("pending")] == [second.id]
     await repo.set_message(second.id, "555")
     assert (await repo.get(second.id)).message_id == "555"
+
+
+async def test_two_moderators_deciding_at_once_decide_once(mongo):
+    """Two clicks on ✅ / ❌ at the same moment: one decision, the other told it's taken (B5)."""
+    repo = SuggestionsRepository(mongo.guild_id)
+    s = await new_suggestion(repo)
+    results = await asyncio.gather(
+        repo.decide(s.id, "approved", "oui", "1", from_statuses=("pending",)),
+        repo.decide(s.id, "denied", "non", "2", from_statuses=("pending",)),
+    )
+    decided = [r for r in results if r is not None]
+    assert len(decided) == 1
+    assert (await repo.get(s.id)).status == decided[0].status
+    # An approved idea can still be marked implemented, a refused one can't.
+    implemented = await repo.decide(
+        s.id, "implemented", None, "1", from_statuses=("pending", "approved")
+    )
+    assert (implemented is not None) == (decided[0].status == "approved")
+
+
+async def test_open_suggestions_are_listed_for_the_staff(mongo):
+    repo = SuggestionsRepository(mongo.guild_id)
+    first = await new_suggestion(repo, "a")
+    second = await new_suggestion(repo, "b")
+    third = await new_suggestion(repo, "c")
+    await repo.decide(first.id, "approved", None, "9", from_statuses=("pending",))
+    await repo.decide(second.id, "denied", None, "9", from_statuses=("pending",))
+    assert [x.id for x in await repo.list_in(["pending"], 25)] == [third.id]
+    assert [x.id for x in await repo.list_in(["pending", "approved"], 25)] == [third.id, first.id]
+    assert len(await repo.list_in(["pending", "approved"], 1)) == 1
+    await repo.set_thread(third.id, "777")
+    assert (await repo.get(third.id)).thread_id == "777"
 
 
 async def test_the_human_id_is_unique(mongo):

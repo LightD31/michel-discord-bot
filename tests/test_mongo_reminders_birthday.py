@@ -54,6 +54,16 @@ async def test_a_one_shot_reminder_is_claimed_by_deleting_it(mongo):
     assert await repo.list_for_user("1") == []
 
 
+async def test_a_member_deletes_only_their_own_reminders(mongo):
+    repo = ReminderRepository(mongo.guild_id)
+    mine = [await repo.add(reminder()) for _ in range(3)]
+    theirs = await repo.add(reminder(user="9"))
+    assert await repo.delete_mine("1", [mine[0], mine[2], theirs, "not-an-id"]) == 2
+    assert [r.id for r in await repo.list_for_user("1")] == [mine[1]]
+    assert [r.id for r in await repo.list_for_user("9")] == [theirs]
+    assert await repo.delete_mine("1", ["nope"]) == 0
+
+
 async def test_a_reminder_is_rescheduled_then_deleted(mongo):
     repo = ReminderRepository(mongo.guild_id)
     rid = await repo.add(reminder(minutes=-5, frequency="weekly"))

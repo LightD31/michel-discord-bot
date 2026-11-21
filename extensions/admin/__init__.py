@@ -59,7 +59,9 @@ class UtilsConfig(SchemaBase):
     __help__ = ModuleHelp(
         "Les outils du quotidien : sondages, rappels, messages et salons.",
         ("/sondage", "/rappel creer", "/rappel liste"),
-        "Un rappel arrive en MP à l'heure dite. Clic droit sur un message → ⏰ Me le rappeler.",
+        "Un sondage public est un sondage Discord ; anonyme ou par classement, il a des "
+        "boutons. Un rappel arrive en MP à l'heure dite (« samedi 9h », « dans 2h »). "
+        "Clic droit sur un message → ⏰ Me le rappeler.",
     )
 
     enabled: bool = enabled_field()
@@ -81,9 +83,9 @@ class UtilsConfig(SchemaBase):
         le=30 * 24 * 60,
         default=0,
         description=(
-            "Si > 0, les commandes /sondage, /sondage-anonyme et /sondage-classement "
-            "appliquent cette fermeture automatique quand l'option `duree` "
-            "n'est pas fournie."
+            "Si > 0, un `/sondage` dont la durée est laissée vide se ferme après ce délai. "
+            "Sinon, un sondage public dure 24 h (Discord le ferme lui-même, entre 1 h et "
+            "32 jours) et un sondage anonyme ou classé reste ouvert."
         ),
     )
 

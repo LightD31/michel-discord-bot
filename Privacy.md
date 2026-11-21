@@ -1,6 +1,6 @@
 # Privacy Policy
 
-**Effective date: 2026-11-18**
+**Effective date: 2026-11-21**
 
 This policy explains what personal data **Michel** (the "Bot"), a Discord bot, processes, why, with whom it is shared, and how long it is kept. It also covers the Bot's web dashboard.
 
@@ -31,14 +31,14 @@ Data is stored in the Bot's own database, separately for each server. Data from 
 |---|---|
 | Member directory | Discord ID, username and display name of each member of each server, kept up to date. Used to show names on leaderboards and in the dashboard. |
 | XP & levels | Per member: XP, level, message count and last activity time. A log of each XP gain (time, amount, and whether it came from a message or voice activity), kept 400 days; older gains are summed per member, month and source, and the log entries deleted. No message text. Where the server uses seasons, the top 10 of each finished season (member and XP), posted as a podium. |
-| Birthdays | The date you register, whether to hide the year, and your time zone. |
+| Birthdays | The date you register (the year only if you give it), whether to hide the year, and your time zone (Europe/Paris unless you choose another). |
 | Reminders | The reminder text, its time and recurrence, and who should receive it. For a reminder made from a message ("⏰ Me le rappeler"), a link to that message; not its text. |
-| Polls | The poll, its options and each participant's vote (anonymous polls also store votes, but do not display who voted for what). |
-| Giveaways | The giveaway and its winners. Entering means reacting to the giveaway message; the participants can be listed in that message. |
-| Suggestions | The suggestion text, its author, the votes cast (by member) and the moderators' decision. For a suggestion made from a message, a link to that message. |
+| Polls | A public poll is a Discord poll: Discord keeps it and its votes, the Bot stores nothing. For an anonymous or ranked poll, the poll, its options and each participant's vote (an anonymous poll stores the votes but does not display who voted for what). |
+| Giveaways | The giveaway (with the role or XP level it may require) and its participants and winners. Entering means clicking its "Participer" button; the participants can be listed in that message. Checking an XP level reads the level the XP system already keeps. |
+| Suggestions | The suggestion's title and text, its author, the votes cast (by member), its discussion thread and the moderators' decision and reason, which its author also receives by direct message. For a suggestion made from a message, a link to that message. |
 | Moderation | Infractions (warning, timeout, kick, ban): the member, the moderator, the reason, the date and the duration. Messages caught by automatic filters are deleted; the infraction is recorded. Reports of a message ("🚩 Signaler"): which message and channel, its author, who reported it, their reason and the date, and how the moderators handled it (who, and the case). The message's text is not stored: the report's card in the moderators' channel quotes it, so Discord keeps that copy. Who reported a message is shown to the moderators only. |
 | Starboard | Which messages were reposted to the starboard and their reaction counts. The repost itself is a message in the server, so a copy of the original text and images is kept by Discord. A message from a channel not every member can see is not reposted to a starboard they all can, unless the server's administrators allow it. |
-| Reaction roles | The role menus (roles, labels and who created them). |
+| Reaction roles | The role menus (roles, labels, their style and limit, and who created them). A menu still being built with `/menu-roles creer` is kept in memory only, for 15 minutes. |
 | Tricount (shared expenses) | Groups and their members, expenses (amount, description, category, payer and who shares it) and reimbursements between members. A member who leaves a group still appears in its balance until they have settled up. |
 | Secret Santa | Participants, the draw results (who gives to whom) and the pairs that must not be drawn together. The draw results are stored unencrypted, readable by the Operator. Your wish list if you write one, and, for a session whose gifts are posted, when you marked your gift sent and the one you were given received. Anonymous messages between a Santa and their recipient are passed on by direct message and not stored; a message you report is sent to the session's organiser, with who sent it. |
 | Spotify playlist | The tracks added through the Bot, with who added them; votes on tracks, by member. Server administrators may also link members to their Spotify account and to a first name shown instead of their Discord name. |
@@ -116,7 +116,7 @@ The data is processed to provide the features that you, or the administrators of
 You can do two of these yourself, on every server at once:
 
 - `/mes-donnees exporter` sends you a file, visible to you alone, with everything the Bot stores about you.
-- `/mes-donnees supprimer` deletes what is yours alone (XP and its log, birthday, reminders, ZUnivers reminders, AI usage counters, Secret Santa wish lists and gift marks, member directory entry…) and anonymises what you share with others: your votes still count, but no longer under your name, and the polls, suggestions, playlist tracks, AI questions, giveaways, starboard posts, role menus, book club drafts and season podiums you are in no longer name you. It keeps your moderation records (including the reports of your messages; if you reported a message, the report no longer names you, but your reason stays), the Secret Santa draws already made, and your Tricount groups while you still owe or are owed money there. Configuration written by a server's administrators (a first name, a linked Spotify account) and an LLDAP account made with `/inscription` are handled by that server's administrators.
+- `/mes-donnees supprimer` deletes what is yours alone (XP and its log, birthday, reminders, ZUnivers reminders, AI usage counters, Secret Santa wish lists and gift marks, giveaway entries, member directory entry…) and anonymises what you share with others: your votes still count, but no longer under your name, and the polls, suggestions, playlist tracks, AI questions, giveaways, starboard posts, role menus, book club drafts and season podiums you are in no longer name you. It keeps your moderation records (including the reports of your messages; if you reported a message, the report no longer names you, but your reason stays), the Secret Santa draws already made, and your Tricount groups while you still owe or are owed money there. Configuration written by a server's administrators (a first name, a linked Spotify account) and an LLDAP account made with `/inscription` are handled by that server's administrators.
 
 You can also ask the Operator, at the address in section 1, to:
 

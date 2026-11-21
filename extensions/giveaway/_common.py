@@ -22,7 +22,8 @@ class GiveawayConfig(SchemaBase):
     __help__ = ModuleHelp(
         "Des tirages au sort : un bouton pour participer, un tirage à l'heure dite.",
         ("/concours lancer", "/concours liste", "/concours tirer"),
-        "À l'heure dite, Michel tire les gagnants et les annonce.",
+        "À l'heure dite, Michel tire les gagnants et les annonce. Un giveaway peut être "
+        "réservé à un rôle ou à un niveau d'XP.",
     )
 
     enabled: bool = enabled_field()
@@ -44,6 +45,8 @@ class GiveawayConfig(SchemaBase):
 
 
 GIVEAWAY = ModuleConfig(MODULE_KEY)
+# Read for a giveaway's minimum level.
+XP = ModuleConfig("moduleXp")
 
 
 def guild_emoji(guild_id: str | int | None) -> str:
@@ -75,6 +78,7 @@ __all__ = [
     "MODULE_KEY",
     "guild_allow_host_win",
     "GIVEAWAY",
+    "XP",
     "guild_emoji",
     "logger",
 ]

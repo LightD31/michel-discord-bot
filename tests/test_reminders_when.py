@@ -68,3 +68,12 @@ def test_the_past_and_the_far_future_are_refused():
 def test_the_result_is_a_utc_instant():
     when = parse_when("dans 2h", NOW)
     assert when.tzinfo is UTC or when.utcoffset() == timedelta(0)
+
+
+def test_what_it_read_is_said_back_in_french():
+    from features.reminders.when import reading
+
+    assert reading(parse_when("samedi 9h", NOW), NOW) == "samedi 21 novembre à 09:00"
+    assert reading(parse_when("1/12 18h", NOW), NOW) == "mardi 1er décembre à 18:00"
+    # Another year is named: "3/1" in November is next January.
+    assert reading(parse_when("3/1 10h", NOW), NOW) == "dimanche 3 janvier 2027 à 10:00"

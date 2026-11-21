@@ -153,6 +153,8 @@ def test_bar_is_empty_when_nobody_voted():
         ("90", 5400),
         ("1h30m", 5400),
         (" 2H ", 7200),
+        ("3j", 3 * 86400),  # French: jour
+        ("1h 30m", 5400),
     ],
 )
 def test_durations_parse(text, expected):
@@ -162,3 +164,35 @@ def test_durations_parse(text, expected):
 @pytest.mark.parametrize("text", ["", "bad", "m", "1x", "0m", "0"])
 def test_malformed_durations_are_rejected(text):
     assert parse_duration(text) is None
+
+
+# ---------------------------------------------------------------------------
+# The /sondage form (B4)
+# ---------------------------------------------------------------------------
+
+
+def test_options_are_read_one_per_line():
+    from features.polls import parse_options
+
+    assert parse_options("Pizza\n\n- Sushi\n• Tacos\npizza\n", limit=55) == [
+        "Pizza",
+        "Sushi",
+        "Tacos",
+    ]
+    assert parse_options("  ", limit=55, default_yes_no=True) == ["Oui", "Non"]
+    with pytest.raises(ValueError, match="au moins 2"):
+        parse_options("", limit=55)
+    with pytest.raises(ValueError, match="10 options au plus"):
+        parse_options("\n".join(str(i) for i in range(11)), limit=55)
+    with pytest.raises(ValueError, match="55 caractères"):
+        parse_options("a\n" + "b" * 56, limit=55)
+
+
+@pytest.mark.parametrize(
+    ("seconds", "hours"),
+    [(None, 24), (60, 1), (3600, 1), (3601, 2), (3 * 86400, 72), (90 * 86400, 768)],
+)
+def test_a_discord_poll_lasts_whole_hours_from_one_to_32_days(seconds, hours):
+    from features.polls import native_poll_hours
+
+    assert native_poll_hours(seconds) == hours

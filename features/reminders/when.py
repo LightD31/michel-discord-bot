@@ -12,7 +12,7 @@ from __future__ import annotations
 import re
 from datetime import date, datetime, timedelta
 
-from features.secretsanta.dates import MAX_DAYS_AHEAD, WEEKDAYS, parse_exchange_date
+from features.secretsanta.dates import MAX_DAYS_AHEAD, MONTH_NAMES, WEEKDAYS, parse_exchange_date
 from src.core import clock
 
 DEFAULT_HOUR = 9
@@ -122,4 +122,18 @@ def parse_when(text: str, now: datetime) -> datetime:
     return when
 
 
-__all__ = ["EXAMPLES", "parse_when"]
+def reading(when: datetime, now: datetime) -> str:
+    """How *when* reads back to the member: « samedi 21 novembre à 09:00 ».
+
+    The year is added when it isn't *now*'s, so "24/12" typed in late
+    December reads as next year's.
+    """
+    local = clock.to_local(when)
+    day = "1er" if local.day == 1 else str(local.day)
+    text = f"{WEEKDAYS[local.weekday()]} {day} {MONTH_NAMES[local.month - 1]}"
+    if local.year != clock.to_local(now).year:
+        text += f" {local.year}"
+    return f"{text} à {local:%H:%M}"
+
+
+__all__ = ["EXAMPLES", "parse_when", "reading"]
