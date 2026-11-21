@@ -57,6 +57,12 @@ from src.webui.routes import (
     moderation as moderation_routes,
 )
 from src.webui.routes import (
+    onboarding as onboarding_routes,
+)
+from src.webui.routes import (
+    overview as overview_routes,
+)
+from src.webui.routes import (
     public as public_routes,
 )
 from src.webui.routes import (
@@ -188,6 +194,8 @@ def create_app(bot=None, bot_loop=None) -> FastAPI:
     app.include_router(gazette_routes.create_router(ctx))
     app.include_router(audit_routes.create_router(ctx))
     app.include_router(health_routes.create_router(ctx))
+    app.include_router(overview_routes.create_router(ctx))
+    app.include_router(onboarding_routes.create_router(ctx))
     app.include_router(template_tests_routes.create_router(ctx))
     app.include_router(bot_messages_routes.create_router(ctx))
     app.include_router(xp_routes.create_router(ctx))

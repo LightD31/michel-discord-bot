@@ -308,6 +308,7 @@
 
     function routeHash(page, serverId = null, moduleName = null) {
         if (page === 'server' && serverId) return `#/server/${encodeURIComponent(serverId)}`;
+        if (page === 'setup' && serverId) return `#/setup/${encodeURIComponent(serverId)}`;
         if (page === 'module' && serverId && moduleName) {
             return `#/module/${encodeURIComponent(serverId)}/${encodeURIComponent(moduleName)}`;
         }
@@ -324,7 +325,7 @@
             return { page: 'home' };
         }
         const [page = 'home', a = null, b = null] = parts;
-        if (page === 'server' && a) return { page, serverId: a };
+        if ((page === 'server' || page === 'setup') && a) return { page, serverId: a };
         if (page === 'module' && a && b) return { page, serverId: a, moduleName: b };
         if (ROUTED_PAGES.includes(page)) return { page };
         return { page: 'home' };
@@ -346,7 +347,7 @@
             return;
         }
         // Restrict admin-only pages for non-admin users
-        const adminPages = ['server', 'module'];
+        const adminPages = ['server', 'module', 'setup'];
         const developerPages = ['global', 'extensions', 'logs', 'links'];
         if (adminPages.includes(page) && !isAdmin()) {
             page = 'home';
@@ -3169,6 +3170,8 @@
         }
         // Server page: the messages the bot keeps up to date there.
         if (state.currentPage === 'server' && state.currentServerId) {
+            loadOverview(state.currentServerId);
+            loadOnboarding(state.currentServerId);
             loadBotMessages(state.currentServerId);
             loadHealth(state.currentServerId);
             loadAudit(state.currentServerId);
@@ -3230,7 +3233,7 @@
     function renderSidebar() {
         const serverItems = state.servers
             ? Object.entries(state.servers).map(([id, s]) => {
-                const isActive = (state.currentPage === 'server' || state.currentPage === 'module') && state.currentServerId === id;
+                const isActive = ['server', 'module', 'setup'].includes(state.currentPage) && state.currentServerId === id;
                 const iconUrl = s.icon
                     ? `https://cdn.discordapp.com/icons/${id}/${s.icon}.png?size=64`
                     : null;
@@ -3304,6 +3307,7 @@
             case 'global': return renderGlobalConfig();
             case 'extensions': return renderExtensionsPage();
             case 'server': return renderServerPage();
+            case 'setup': return renderSetupPage();
             case 'module': return renderModulePage();
             case 'links': return renderShortLinksPage();
             case 'logs': return renderLogsPage();
@@ -4168,38 +4172,146 @@
     }
 
     // ── Server Page ───────────────────────────────────
+    // ── Server page (C2) ──────────────────────────────
+    // The server first: how the week went, what needs fixing, what changed;
+    // then the modules as cards, searched and filtered (Actifs / Disponibles /
+    // Archivés). A module of an event that is over (schema.archived) shows
+    // under Archivés only, unless this server still has it on.
+    const MODULE_FILTERS = [
+        ['actifs', 'Actifs'],
+        ['disponibles', 'Disponibles'],
+        ['archives', 'Archivés'],
+    ];
+    const CATEGORY_ORDER = ['Communauté', 'Modération', 'Médias & Streaming', 'Esport & Jeux', 'Événements', 'Outils'];
+
+    function fmtDay(iso) {
+        return iso ? new Date(iso).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }) : '';
+    }
+
+    function foldText(text) {
+        return String(text || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+    }
+
+    // Every module of the server, with what the grid needs to file and show it.
+    function serverModules(sid) {
+        const serverConfig = state.servers?.[sid]?.config || {};
+        const configured = Object.keys(serverConfig).filter(k => {
+            const v = serverConfig[k];
+            return v && typeof v === 'object' && !Array.isArray(v);
+        });
+        const names = [...new Set([...configured, ...Object.keys(state.moduleSchemas)])].sort();
+        return names.map(mod => {
+            const schema = state.moduleSchemas[mod];
+            const config = serverConfig[mod] || {};
+            const isConfigured = mod in serverConfig;
+            const noToggle = schema?.noToggle === true;
+            const on = noToggle ? isConfigured && Object.keys(config).length > 0 : config.enabled === true;
+            let group = 'disponibles';
+            if (schema && on) group = 'actifs';
+            else if (schema?.archived) group = 'archives';
+            return {
+                mod, schema, config, isConfigured, noToggle, on, group,
+                label: schema?.label || mod,
+                icon: schema?.icon || '🧩',
+                category: schema?.category || 'Autre',
+            };
+        });
+    }
+
+    function moduleFilterOf(sid, modules) {
+        const chosen = state.moduleFilter?.[sid];
+        if (chosen) return chosen;
+        return modules.some(m => m.group === 'actifs') ? 'actifs' : 'disponibles';
+    }
+
+    function setModuleFilter(sid, filter) {
+        state.moduleFilter = { ...(state.moduleFilter || {}), [sid]: filter };
+        refreshModuleBrowser(sid);
+    }
+
+    function setModuleSearch(sid, text) {
+        state.moduleSearch = { ...(state.moduleSearch || {}), [sid]: text };
+        refreshModuleBrowser(sid);
+    }
+
+    function refreshModuleBrowser(sid) {
+        const el = document.getElementById('module-browser');
+        if (el) el.innerHTML = moduleBrowserHtml(sid);
+    }
+
+    function moduleCardHtml(sid, m) {
+        if (!m.schema) {
+            // Configured here, but no loaded extension registers it:
+            // nothing to edit until the extension is enabled.
+            return `
+                <div class="module-card inactive" title="L'extension de ce module n'est pas chargée">
+                    <div class="module-card-head"><span class="module-card-icon">🧩</span>
+                        <span class="module-name">${escapeHtml(m.mod)}</span></div>
+                    <div class="module-card-desc">Extension inactive : rien à régler tant qu'elle n'est pas chargée.</div>
+                </div>`;
+        }
+        const status = m.noToggle
+            ? (m.on ? '📝 Réglé' : '⚪ Pas encore réglé')
+            : m.on ? '✅ Activé'
+                : m.schema.archived ? '🗄️ Archivé'
+                    : m.isConfigured ? '⏸ Désactivé' : '⚪ Disponible';
+        const changed = state.overview?.[sid]?.lastChanges?.[m.mod];
+        return `
+            <div class="module-card ${m.on ? 'on' : ''}" data-click="navigate" data-click-args="${actionArgs('module', sid, m.mod)}">
+                <div class="module-card-head">
+                    <span class="module-card-icon" aria-hidden="true">${escapeHtml(m.icon)}</span>
+                    <a class="module-name" href="${routeHash('module', sid, m.mod)}" data-click="navigate" data-click-args="${actionArgs('module', sid, m.mod)}" data-prevent>${escapeHtml(m.label)}</a>
+                    ${m.noToggle ? '' : `
+                    <label class="toggle" data-click="stop">
+                        <input type="checkbox" ${m.on ? 'checked' : ''} aria-label="Activer le module ${escapeHtml(m.label)}"
+                            data-change="toggleModule" data-change-args="${actionArgs(sid, m.mod, CHECKED)}">
+                        <span class="toggle-slider"></span>
+                    </label>`}
+                </div>
+                <div class="module-card-desc">${escapeHtml(m.schema.description || '')}</div>
+                <div class="module-card-foot">
+                    <span class="module-status">${status}</span>
+                    ${changed ? `<span class="module-status" title="${escapeHtml(new Date(changed).toLocaleString('fr-FR'))}">modifié le ${escapeHtml(fmtDay(changed))}</span>` : ''}
+                </div>
+            </div>`;
+    }
+
+    function moduleBrowserHtml(sid) {
+        const modules = serverModules(sid);
+        const search = foldText(state.moduleSearch?.[sid]).trim();
+        const filter = moduleFilterOf(sid, modules);
+        const counts = Object.fromEntries(MODULE_FILTERS.map(([key]) => [key, modules.filter(m => m.group === key).length]));
+        // A search looks through every module, whatever the filter.
+        const shown = search
+            ? modules.filter(m => foldText(`${m.label} ${m.schema?.description || ''} ${m.mod}`).includes(search))
+            : modules.filter(m => m.group === filter);
+        const chips = MODULE_FILTERS.map(([key, label]) => `
+            <button type="button" class="filter-chip ${!search && key === filter ? 'active' : ''}" aria-pressed="${!search && key === filter}"
+                data-click="setModuleFilter" data-click-args="${actionArgs(sid, key)}">${label} <span class="filter-count">${counts[key]}</span></button>`).join('');
+        let body;
+        if (!shown.length) {
+            body = `<p class="module-empty">${search
+                ? 'Aucun module ne correspond à ta recherche.'
+                : filter === 'actifs' ? 'Aucun module activé pour l\'instant : choisis-en dans « Disponibles », ou lance l\'assistant.'
+                    : filter === 'archives' ? 'Aucun module archivé.' : 'Tous les modules sont déjà activés.'}</p>`;
+        } else {
+            const grouped = {};
+            for (const m of shown) (grouped[m.category] ||= []).push(m);
+            const order = (c) => { const i = CATEGORY_ORDER.indexOf(c); return i === -1 ? 99 : i; };
+            body = Object.keys(grouped).sort((a, b) => order(a) - order(b)).map(cat => `
+                <div class="module-category-header">${escapeHtml(cat)}</div>
+                <div class="module-grid">${grouped[cat].map(m => moduleCardHtml(sid, m)).join('')}</div>`).join('');
+        }
+        return `<div class="filter-chips" role="group" aria-label="Filtrer les modules">${chips}</div>${body}`;
+    }
+
     function renderServerPage() {
         const sid = state.currentServerId;
         const server = state.servers?.[sid];
         if (!server) {
             return `<div class="loading"><div class="spinner"></div> Chargement...</div>`;
         }
-        const serverConfig = server.config || {};
-        // Module configs are objects; guild-level scalars that sit next to them
-        // (e.g. publicDashboardToken) are not modules.
-        const configuredModules = Object.keys(serverConfig).filter(k => {
-            const v = serverConfig[k];
-            return v && typeof v === 'object' && !Array.isArray(v);
-        });
-        const allModuleNames = new Set([
-            ...configuredModules,
-            ...Object.keys(state.moduleSchemas),
-        ]);
-        const moduleNames = [...allModuleNames].sort();
-
-        const CATEGORY_ORDER = ['Communauté', 'Médias & Streaming', 'Esport & Jeux', 'Événements', 'Outils'];
-        const grouped = {};
-        for (const mod of moduleNames) {
-            const cat = state.moduleSchemas[mod]?.category || 'Autre';
-            if (!grouped[cat]) grouped[cat] = [];
-            grouped[cat].push(mod);
-        }
-        const sortedCategories = Object.keys(grouped).sort((a, b) => {
-            const ai = CATEGORY_ORDER.indexOf(a);
-            const bi = CATEGORY_ORDER.indexOf(b);
-            return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
-        });
-
+        const active = serverModules(sid).filter(m => m.group === 'actifs').length;
         const iconUrl = server.icon
             ? `https://cdn.discordapp.com/icons/${sid}/${server.icon}.png?size=128`
             : null;
@@ -4212,68 +4324,28 @@
                     </div>
                     <div>
                         <h2>${escapeHtml(server.name || sid)}</h2>
-                        <p title="ID : ${escapeHtml(sid)}">${configuredModules.length} module(s) configuré(s)</p>
+                        <p title="ID : ${escapeHtml(sid)}">${active ? `${active} module${active > 1 ? 's' : ''} actif${active > 1 ? 's' : ''}` : 'Aucun module actif'}</p>
                     </div>
                 </div>
+            </div>
+
+            <div id="onboarding-slot">${onboardingHtml(sid)}</div>
+
+            <div class="card" id="overview-card">
+                <div class="card-header">
+                    <div class="card-title">Aperçu</div>
+                </div>
+                <div id="overview-body">${overviewHtml(sid)}</div>
             </div>
 
             <div class="card">
                 <div class="card-header">
                     <div class="card-title">Modules</div>
+                    <input type="search" class="form-input module-search" placeholder="Chercher un module…" aria-label="Chercher un module"
+                        value="${escapeHtml(state.moduleSearch?.[sid] || '')}"
+                        data-input="setModuleSearch" data-input-args="${actionArgs(sid, VALUE)}">
                 </div>
-                <div class="module-list">
-                    ${moduleNames.length === 0 ? `
-                        <div class="empty-state">
-                            <h3>Aucun module</h3>
-                            <p>Ce serveur n'a aucun module configuré.</p>
-                        </div>
-                    ` : sortedCategories.map(cat => {
-                        const mods = grouped[cat];
-                        const modItems = mods.map(mod => {
-                            const modConfig = serverConfig[mod] || {};
-                            const schema = state.moduleSchemas[mod];
-                            if (!schema) {
-                                // Configured here, but no loaded extension registers it:
-                                // nothing to edit until the extension is enabled.
-                                return `
-                                <div class="module-item inactive" title="L'extension de ce module n'est pas chargée">
-                                    <div class="module-info">
-                                        <span class="module-name">🧩 ${escapeHtml(mod)}</span>
-                                        <span class="module-status">⏸ Extension inactive</span>
-                                    </div>
-                                </div>
-                            `;
-                            }
-                            const noToggle = schema.noToggle === true;
-                            const enabled = modConfig.enabled === true;
-                            const label = schema.label || mod;
-                            const icon = schema.icon || '🧩';
-                            const isConfigured = mod in serverConfig;
-                            return `
-                                <div class="module-item" data-click="navigate" data-click-args="${actionArgs("module", sid, mod)}">
-                                    <div class="module-info">
-                                        <a class="module-name" href="${routeHash('module', sid, mod)}" data-click="navigate" data-click-args="${actionArgs("module", sid, mod)}" data-prevent>${escapeHtml(icon)} ${escapeHtml(label)}</a>
-                                        <span class="module-status">${
-                                            noToggle
-                                                ? (isConfigured && Object.keys(modConfig).length > 0 ? '📝 Configuré' : '⚪ Non configuré')
-                                                : (isConfigured
-                                                    ? (enabled ? '✅ Activé' : '❌ Désactivé')
-                                                    : '⚪ Non configuré')
-                                        }</span>
-                                    </div>
-                                    ${noToggle ? '' : `
-                                    <label class="toggle" data-click="stop">
-                                        <input type="checkbox" ${enabled ? 'checked' : ''} aria-label="Activer le module ${escapeHtml(label)}"
-                                            data-change="toggleModule" data-change-args="${actionArgs(sid, mod, CHECKED)}">
-                                        <span class="toggle-slider"></span>
-                                    </label>
-                                    `}
-                                </div>
-                            `;
-                        }).join('');
-                        return `<div class="module-category-header">${cat}</div>${modItems}`;
-                    }).join('')}
-                </div>
+                <div id="module-browser">${moduleBrowserHtml(sid)}</div>
             </div>
 
             <div class="card">
@@ -4287,7 +4359,7 @@
                 <div id="bot-messages-list"><div class="loading"><div class="spinner"></div></div></div>
             </div>
 
-            <div class="card">
+            <div class="card" id="health-card">
                 <div class="card-header">
                     <div class="card-title">Santé</div>
                 </div>
@@ -4300,6 +4372,381 @@
 
             ${renderAuditCard()}
         `;
+    }
+
+    // ── Overview (C2) ─────────────────────────────────
+    function overviewHtml(sid) {
+        const data = state.overview?.[sid];
+        const health = state.healthProblems?.[sid];
+        const activity = data?.activity;
+        const tile = (label, value, note = '') => `
+            <div class="stat-card"><div class="stat-label">${label}</div>
+                <div class="stat-value">${value}</div>${note ? `<div class="stat-note">${note}</div>` : ''}</div>`;
+        const xpOff = !(state.servers?.[sid]?.config?.moduleXp?.enabled);
+        const activityTiles = activity
+            ? tile('Membres actifs · 7 j', escapeHtml(String(activity.activeMembers)))
+                + tile('Messages · 7 j', escapeHtml(activity.messages.toLocaleString('fr-FR')))
+            : tile('Activité · 7 j', '—', xpOff
+                ? `Active le <a href="${routeHash('module', sid, 'moduleXp')}" data-click="navigate" data-click-args="${actionArgs('module', sid, 'moduleXp')}" data-prevent>Système d'XP</a> pour la voir.`
+                : data ? 'Indisponible pour le moment.' : 'Chargement…');
+        const healthTile = health === undefined
+            ? tile('Santé', '…')
+            : health === null
+                ? tile('Santé', '—', 'Diagnostic indisponible.')
+                : tile('Santé', health === 0 ? '✅ Tout va bien' : `⚠️ ${health} problème${health > 1 ? 's' : ''}`,
+                    health ? `<a href="#health-card" data-click="scrollToSection" data-click-args="${actionArgs('health-card')}" data-prevent>Voir le détail</a>` : '');
+        const recent = data?.recent;
+        const recentHtml = recent === undefined ? '' : !recent ? '' : recent.length === 0
+            ? '<p class="overview-recent-empty">Aucune modification depuis le dashboard pour l\'instant.</p>'
+            : recent.map(auditEntryHtml).join('')
+                + `<a href="#audit-card" class="overview-more" data-click="scrollToSection" data-click-args="${actionArgs('audit-card')}" data-prevent>Tout le journal</a>`;
+        return `<div class="stats-grid overview-tiles">${activityTiles}${healthTile}</div>
+            ${recentHtml ? `<h4 class="overview-subtitle">Dernières modifications</h4>${recentHtml}` : ''}`;
+    }
+
+    function refreshOverview(sid) {
+        const el = document.getElementById('overview-body');
+        if (el && state.currentServerId === sid) el.innerHTML = overviewHtml(sid);
+    }
+
+    async function loadOverview(sid) {
+        try {
+            const data = await api(`/api/servers/${encodeURIComponent(sid)}/overview`);
+            state.overview = { ...(state.overview || {}), [sid]: data };
+        } catch (e) {
+            state.overview = { ...(state.overview || {}), [sid]: { activity: null, recent: null, lastChanges: null } };
+        }
+        refreshOverview(sid);
+        refreshModuleBrowser(sid);
+    }
+
+    // ── First steps (C1) ──────────────────────────────
+    // The "Pour bien démarrer" list on the server page, and the wizard at
+    // #/setup/<id>: a pack of modules, their channels and roles, a test of
+    // the welcome message, Michel's announcement. Every step is read from
+    // the server's state (src/webui/onboarding.py); hiding the list is the
+    // only thing stored.
+    async function loadOnboarding(sid, { rerender = true } = {}) {
+        try {
+            const data = await api(`/api/servers/${encodeURIComponent(sid)}/onboarding`);
+            state.onboarding = { ...(state.onboarding || {}), [sid]: data };
+        } catch (e) {
+            return;
+        }
+        if (!rerender || state.currentServerId !== sid) return;
+        if (state.currentPage === 'server') {
+            const slot = document.getElementById('onboarding-slot');
+            if (slot) slot.innerHTML = onboardingHtml(sid);
+        } else if (state.currentPage === 'setup') {
+            render();
+        }
+    }
+
+    function onboardingStepAction(sid, step, steps) {
+        const welcomeOn = steps.find(s => s.key === 'welcome')?.done;
+        const module = (mod, label = 'Régler') => `<a class="btn btn-ghost btn-sm" href="${routeHash('module', sid, mod)}"
+            data-click="navigate" data-click-args="${actionArgs('module', sid, mod)}" data-prevent>${label}</a>`;
+        switch (step.key) {
+            case 'pack': return `<button type="button" class="btn btn-primary btn-sm" data-click="openSetup" data-click-args="${actionArgs(sid, 1)}">🚀 Lancer l'assistant</button>`;
+            case 'welcome': return module('moduleWelcome');
+            case 'moderators': return module('moduleModeration');
+            case 'welcome_test': return welcomeOn
+                ? `<button type="button" class="btn btn-ghost btn-sm" data-click="testWelcome" data-click-args="${actionArgs(sid, EL)}">✉️ Me l'envoyer</button>`
+                : '';
+            case 'announce': return `<button type="button" class="btn btn-ghost btn-sm" data-click="openSetup" data-click-args="${actionArgs(sid, 4)}">Annoncer</button>`;
+            default: return '';
+        }
+    }
+
+    function onboardingHtml(sid) {
+        const data = state.onboarding?.[sid];
+        if (!data) return '';
+        const steps = data.steps || [];
+        const done = steps.filter(s => s.done).length;
+        if (done === steps.length) return '';
+        if (data.dismissed) {
+            return `<p class="onboarding-hidden"><button type="button" class="btn-link" data-click="dismissOnboarding" data-click-args="${actionArgs(sid, false)}">
+                🚀 Pour bien démarrer (${done}/${steps.length}) : réafficher</button></p>`;
+        }
+        const fresh = !steps.find(s => s.key === 'pack')?.done;
+        const name = state.servers?.[sid]?.name || '';
+        const items = steps.map(step => `
+            <li class="checklist-item ${step.done ? 'done' : ''}">
+                <span class="checklist-mark" aria-hidden="true">${step.done ? '✓' : ''}</span>
+                <span class="checklist-text">${escapeHtml(step.label)}
+                    <span class="sr-only">${step.done ? '(fait)' : '(à faire)'}</span>
+                    ${step.hint ? `<span class="checklist-hint">${escapeHtml(step.hint)}</span>` : ''}</span>
+                ${step.done ? '' : onboardingStepAction(sid, step, steps)}
+            </li>`).join('');
+        return `
+            <div class="card onboarding-card" id="onboarding-card">
+                <div class="card-header">
+                    <div class="card-title">Pour bien démarrer · ${done}/${steps.length}</div>
+                    <button type="button" class="btn btn-ghost btn-sm" data-click="dismissOnboarding" data-click-args="${actionArgs(sid, true)}">Masquer</button>
+                </div>
+                ${fresh ? `<p class="onboarding-intro">Bienvenue sur ${escapeHtml(name)} 👋 Michel vient d'arriver : l'assistant active les bons modules pour ton type de communauté, en quatre étapes. Tout reste modifiable ensuite.</p>` : ''}
+                <div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="${steps.length}" aria-valuenow="${done}" aria-label="Étapes faites">
+                    <div class="progress-fill" style="width:${Math.round(100 * done / Math.max(steps.length, 1))}%"></div></div>
+                <ul class="checklist">${items}</ul>
+            </div>`;
+    }
+
+    async function dismissOnboarding(sid, dismissed) {
+        try {
+            await api(`/api/servers/${encodeURIComponent(sid)}/onboarding/dismiss`, {
+                method: 'POST',
+                body: JSON.stringify({ dismissed }),
+            });
+            toast(dismissed ? 'Liste masquée : tu la retrouves en haut de la page.' : 'Liste réaffichée.', 'success');
+        } catch (e) { return; }
+        await loadOnboarding(sid);
+    }
+
+    // The welcome messages as saved, sent to the admin by DM.
+    async function testWelcome(sid, btn) {
+        const texts = (state.servers?.[sid]?.config?.moduleWelcome?.welcomeMessageList || [])
+            .map(m => (m?.text || '').trim()).filter(Boolean);
+        if (!texts.length) {
+            toast('Aucun message de bienvenue enregistré : écris-en un dans le module Bienvenue.', 'info');
+            return;
+        }
+        if (btn) btn.disabled = true;
+        try {
+            const result = await api(`/api/servers/${encodeURIComponent(sid)}/template-test`, {
+                method: 'POST',
+                body: JSON.stringify({ module: 'moduleWelcome', field: 'welcomeMessageList', texts }),
+            });
+            toast(`${result.sent} message(s) de test envoyé(s) en MP.`, 'success');
+            for (const warning of result.warnings || []) toast(warning, 'warning');
+        } catch (e) { /* handled by api() */ }
+        finally { if (btn) btn.disabled = false; }
+        await loadOnboarding(sid);
+    }
+
+    // ── The wizard ────────────────────────────────────
+    const SETUP_STEPS = ['Type de communauté', 'Salons et rôles', 'Message de bienvenue', 'Annonce'];
+
+    function openSetup(sid, step = 1) {
+        state.setup = { serverId: sid, step, pack: state.setup?.serverId === sid ? state.setup.pack : null, result: null };
+        navigate('setup', sid);
+    }
+
+    function setupState(sid) {
+        if (state.setup?.serverId !== sid) state.setup = { serverId: sid, step: 1, pack: null, result: null };
+        return state.setup;
+    }
+
+    function setupGo(step) {
+        state.setup.step = step;
+        render();
+        document.querySelector('.main')?.scrollTo?.(0, 0);
+    }
+
+    function choosePack(key) {
+        state.setup.pack = key;
+        render();
+    }
+
+    function setupLeave(sid) {
+        state.setup = null;
+        navigate('server', sid);
+    }
+
+    function setupContinueFromPacks(sid) {
+        const setup = state.setup;
+        if (!setup?.pack) return;
+        if (setup.pack === 'sur-mesure') {
+            state.moduleFilter = { ...(state.moduleFilter || {}), [sid]: 'disponibles' };
+            toast('Voici tous les modules : active ceux qui te servent.', 'info');
+            setupLeave(sid);
+            return;
+        }
+        setupGo(2);
+    }
+
+    function setupPack(sid) {
+        return (state.onboarding?.[sid]?.packs || []).find(p => p.key === state.setup?.pack);
+    }
+
+    function moduleNames(mods) {
+        return mods.map(m => state.moduleSchemas[m]?.label || m);
+    }
+
+    function setupPacksHtml(sid, data) {
+        const total = Object.values(state.moduleSchemas).filter(s => !s.archived).length;
+        return `<div class="pack-grid" role="radiogroup" aria-label="Type de communauté">${(data.packs || []).map(pack => {
+            const chosen = state.setup.pack === pack.key;
+            const lines = pack.modules.length
+                ? moduleNames(pack.modules).map(l => `<li>${escapeHtml(l)}</li>`).join('')
+                : `<li>Le catalogue complet des ${total} modules</li>`;
+            return `<button type="button" class="pack-card ${chosen ? 'chosen' : ''}" role="radio" aria-checked="${chosen}"
+                    data-click="choosePack" data-click-args="${actionArgs(pack.key)}">
+                <span class="pack-icon" aria-hidden="true">${escapeHtml(pack.icon)}</span>
+                <span class="pack-title">${escapeHtml(pack.label)}</span>
+                <span class="pack-tagline">${escapeHtml(pack.tagline)}</span>
+                <ul class="pack-modules">${lines}</ul>
+            </button>`;
+        }).join('')}</div>
+        <div class="setup-actions">
+            <button type="button" class="btn btn-ghost" data-click="setupLeave" data-click-args="${actionArgs(sid)}">Passer</button>
+            <button type="button" class="btn btn-primary" ${state.setup.pack ? '' : 'disabled'}
+                data-click="setupContinueFromPacks" data-click-args="${actionArgs(sid)}">Continuer →</button>
+        </div>`;
+    }
+
+    function setupAsksHtml(sid) {
+        const pack = setupPack(sid);
+        if (!pack) return '<p>Choisis d\'abord un type de communauté.</p>';
+        const serverConfig = state.servers?.[sid]?.config || {};
+        const kept = pack.modules.filter(m => m in serverConfig);
+        const fields = {};
+        for (const ask of pack.asks) {
+            if (ask.module in serverConfig) continue;
+            const label = state.moduleSchemas[ask.module]?.label || ask.module;
+            fields[`${ask.module}__${ask.field}`] = { ...ask.meta, label: `${label} · ${ask.meta.label || ask.field}` };
+        }
+        const willEnable = pack.modules.filter(m => !(m in serverConfig));
+        return `
+            <p>Le pack <strong>${escapeHtml(pack.label)}</strong> active : ${moduleNames(willEnable).map(escapeHtml).join(', ') || 'rien de plus'}.</p>
+            ${kept.length ? `<p class="setup-note">Déjà réglés sur ce serveur, laissés tels quels : ${moduleNames(kept).map(escapeHtml).join(', ')}.</p>` : ''}
+            ${Object.keys(fields).length
+                ? `<p class="setup-note">Choisis où Michel poste. Un module dont le salon requis reste vide est laissé de côté : tu pourras l'activer plus tard.</p>
+                   ${renderSchemaForm('setup-asks', { fields }, {}, { serverId: sid })}`
+                : ''}
+            <div class="setup-actions">
+                <button type="button" class="btn btn-ghost" data-click="setupGo" data-click-args="${actionArgs(1)}">← Retour</button>
+                <button type="button" class="btn btn-primary" ${willEnable.length ? '' : 'disabled'}
+                    data-click="applyPack" data-click-args="${actionArgs(sid, EL)}">Activer ces modules</button>
+            </div>`;
+    }
+
+    async function applyPack(sid, btn) {
+        const values = collectFormValues('setup-asks');
+        const answers = {};
+        for (const [key, value] of Object.entries(values)) {
+            const [module, field] = key.split('__');
+            (answers[module] ||= {})[field] = value;
+        }
+        if (btn) btn.disabled = true;
+        let result;
+        try {
+            result = await api(`/api/servers/${encodeURIComponent(sid)}/onboarding/pack`, {
+                method: 'POST',
+                body: JSON.stringify({ pack: state.setup.pack, answers }),
+            });
+        } catch (e) {
+            if (btn) btn.disabled = false;
+            return;
+        }
+        const n = result.applied.length;
+        const failed = !!result.reload?.error || !!(result.commandSync && !result.commandSync.synced);
+        toast(n ? `${n} module${n > 1 ? 's' : ''} activé${n > 1 ? 's' : ''}${commandSyncSuffix(result)}` : 'Aucun module activé.',
+            failed ? 'warning' : 'success');
+        state.setup.result = result;
+        await loadServers();
+        await loadOnboarding(sid, { rerender: false });
+        setupGo(3);
+    }
+
+    function setupResultHtml(sid) {
+        const result = state.setup.result;
+        if (!result) return '';
+        const pack = setupPack(sid);
+        const link = (mod) => `<a href="${routeHash('module', sid, mod)}" data-click="navigate" data-click-args="${actionArgs('module', sid, mod)}" data-prevent>${escapeHtml(state.moduleSchemas[mod]?.label || mod)}</a>`;
+        const skipped = result.skipped || [];
+        const later = pack?.later || [];
+        return `<div class="setup-result">
+            ${result.applied.length ? `<p>✅ Activés : ${result.applied.map(link).join(', ')}.</p>` : ''}
+            ${skipped.length ? `<p>Laissés de côté : ${skipped.map(s => `${link(s.module)} (${escapeHtml(s.reason)})`).join(', ')}.</p>` : ''}
+            ${later.length ? `<p>À régler ensuite, à ton rythme : ${later.map(link).join(', ')}.</p>` : ''}
+        </div>`;
+    }
+
+    function setupWelcomeHtml(sid) {
+        const welcome = state.servers?.[sid]?.config?.moduleWelcome;
+        const on = welcome?.enabled && welcome?.welcomeChannelId;
+        return `${setupResultHtml(sid)}
+            ${on
+                ? `<p>Michel accueille chaque nouveau membre. Reçois le message en MP pour voir ce qu'il dira, avec toi à la place du nouveau.</p>
+                   <button type="button" class="btn btn-ghost" data-click="testWelcome" data-click-args="${actionArgs(sid, EL)}">✉️ Me l'envoyer</button>
+                   <p class="setup-note">Pour changer le texte : module ${`<a href="${routeHash('module', sid, 'moduleWelcome')}" data-click="navigate" data-click-args="${actionArgs('module', sid, 'moduleWelcome')}" data-prevent>Bienvenue</a>`}.</p>`
+                : '<p>Le module Bienvenue n\'est pas activé ici : rien à tester. Tu peux passer.</p>'}
+            <div class="setup-actions">
+                <button type="button" class="btn btn-primary" data-click="setupGo" data-click-args="${actionArgs(4)}">Continuer →</button>
+            </div>`;
+    }
+
+    function setupAnnounceHtml(sid, data) {
+        const field = { label: 'Salon de l\'annonce', type: 'channel', required: true,
+            description: 'Là où Michel se présente. Il te faut le droit d\'y écrire.' };
+        const lines = String(data.announcement || '').split('\n').map(line => mdInline(line) || '&nbsp;').join('<br>');
+        return `
+            <p>Michel se présente aux membres et liste ce qu'il fait ici. Facultatif : tu peux terminer sans annoncer.</p>
+            ${renderSchemaForm('setup-announce', { fields: { channelId: field } }, {}, { serverId: sid })}
+            <div class="announce-preview" aria-label="Aperçu de l'annonce">
+                <div class="announce-title">👋 Michel arrive sur le serveur</div>
+                <div class="announce-text">${lines}</div>
+            </div>
+            <div class="setup-actions">
+                <button type="button" class="btn btn-ghost" data-click="setupLeave" data-click-args="${actionArgs(sid)}">Terminer</button>
+                <button type="button" class="btn btn-primary" data-click="announceMichel" data-click-args="${actionArgs(sid, EL)}">Publier l'annonce</button>
+            </div>`;
+    }
+
+    async function announceMichel(sid, btn) {
+        const { channelId } = collectFormValues('setup-announce');
+        if (!channelId) {
+            toast('Choisis d\'abord le salon de l\'annonce.', 'info');
+            return;
+        }
+        if (!(await askConfirm('Michel va poster son annonce dans ce salon, visible de tous les membres qui y ont accès.',
+            { title: 'Annoncer Michel', confirm: 'Publier' }))) return;
+        if (btn) btn.disabled = true;
+        try {
+            await api(`/api/servers/${encodeURIComponent(sid)}/onboarding/announce`, {
+                method: 'POST',
+                body: JSON.stringify({ channelId }),
+            });
+        } catch (e) {
+            if (btn) btn.disabled = false;
+            return;
+        }
+        toast('Annonce publiée 🎉', 'success');
+        setupLeave(sid);
+    }
+
+    function renderSetupPage() {
+        const sid = state.currentServerId;
+        const server = state.servers?.[sid];
+        const data = state.onboarding?.[sid];
+        if (!server || !data) {
+            if (server && !data) loadOnboarding(sid);
+            return `<div class="loading"><div class="spinner"></div> Chargement...</div>`;
+        }
+        const setup = setupState(sid);
+        const step = setup.step;
+        const bodies = {
+            1: () => setupPacksHtml(sid, data),
+            2: () => setupAsksHtml(sid),
+            3: () => setupWelcomeHtml(sid),
+            4: () => setupAnnounceHtml(sid, data),
+        };
+        const intros = {
+            1: 'Quel genre de communauté es-tu ? Michel active les bons modules pour toi, modifiables ensuite.',
+            2: 'Où Michel poste-t-il ? Choisis les salons et les rôles des modules du pack.',
+            3: 'Vérifie le message que reçoit chaque nouveau membre.',
+            4: 'Dernière étape : présente Michel aux membres.',
+        };
+        return `
+            <div class="page-header">
+                <h2>Bienvenue sur ${escapeHtml(server.name || sid)} 👋</h2>
+                <p>${intros[step]}</p>
+            </div>
+            <ol class="setup-progress" aria-label="Étapes">
+                ${SETUP_STEPS.map((label, i) => `<li class="${i + 1 < step ? 'done' : i + 1 === step ? 'current' : ''}" ${i + 1 === step ? 'aria-current="step"' : ''}>
+                    <span class="setup-bar"></span><span class="setup-step-label">${i + 1}. ${label}</span></li>`).join('')}
+            </ol>
+            <div class="card setup-card">${bodies[step]()}</div>`;
     }
 
     // ── Guild health (F08) ────────────────────────────
@@ -4352,6 +4799,14 @@
         }).join('');
     }
 
+    // What the overview's "Santé" tile counts: each channel, feed or task in trouble.
+    function healthProblemCount(data) {
+        const channels = (data.channels || []).filter(c => !c.found || c.missing.length).length;
+        const feeds = (data.feeds || []).filter(f => f.failures).length;
+        const tasks = (data.tasks || []).filter(t => t.lastFailure && (!t.lastSuccess || t.lastFailure > t.lastSuccess)).length;
+        return channels + feeds + tasks;
+    }
+
     async function loadHealth(serverId) {
         const container = document.getElementById('health-report');
         if (!container) return;
@@ -4360,8 +4815,12 @@
             data = await api(`/api/servers/${encodeURIComponent(serverId)}/health`);
         } catch (e) {
             container.innerHTML = `<p style="color:var(--text-muted)">Diagnostic indisponible.</p>`;
+            state.healthProblems = { ...(state.healthProblems || {}), [serverId]: null };
+            refreshOverview(serverId);
             return;
         }
+        state.healthProblems = { ...(state.healthProblems || {}), [serverId]: healthProblemCount(data) };
+        refreshOverview(serverId);
         const section = (title, body) => body ? `<h4 style="margin:12px 0 6px;">${title}</h4>${body}` : '';
         container.innerHTML = section('Salons', healthChannelsHtml(data.channels))
             + section('Flux RSS', healthFeedsHtml(data.feeds))
@@ -4393,11 +4852,14 @@
         'short_url.update': 'a modifié le lien court',
         'short_url.delete': 'a supprimé le lien court',
         'spotify.authorize': 'a reconnecté le compte Spotify',
+        'onboarding.pack': 'a appliqué le pack',
+        'onboarding.dismiss': 'a changé la liste « Pour bien démarrer »',
+        'onboarding.announce': 'a annoncé Michel aux membres',
     };
 
     function renderAuditCard() {
         return `
-            <div class="card">
+            <div class="card" id="audit-card">
                 <div class="card-header">
                     <div class="card-title">Journal des modifications</div>
                 </div>
@@ -4414,6 +4876,7 @@
         if ('enabled' in details) parts.push(details.enabled ? 'activé' : 'désactivé');
         if ('count' in details) parts.push(`${details.count} embed(s)`);
         if ('participants' in details) parts.push(`${details.participants} participant(s)`);
+        if ('dismissed' in details) parts.push(details.dismissed ? 'masquée' : 'réaffichée');
         if ('reloaded' in details) parts.push(`${details.reloaded} rechargée(s), ${details.failed} en échec`);
         if (details.error) parts.push('avec une erreur');
         return parts.join(', ');
@@ -6545,6 +7008,8 @@
         toggleRolePickerMode,
         addMessageEntry, addModelEntry, addNameMapEntry, addRoleMenuEntry, addRssFeedEntry,
         addSpotifyUserEntry, addStreamerEntry, addTeamEntry, addYoutubeChannelEntry,
+        announceMichel, applyPack, choosePack, dismissOnboarding, openSetup, setModuleFilter,
+        setModuleSearch, setupContinueFromPacks, setupGo, setupLeave, testWelcome,
         applyRssPreset, cancelEditShortLink, scrollToSection, settleConfirm, cleanupConfig, clearLogs, closeModal,
         closeRoleMenuBuilder, closeSidebar, copyPublicLink, copyShortLink, createShortLink,
         deleteRoleMenu, deleteShortLink, downloadConfig, downloadLogs, editGlobalSection,

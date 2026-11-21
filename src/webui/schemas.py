@@ -165,6 +165,9 @@ class SchemaBase(BaseModel):
     __no_toggle__: ClassVar[bool] = False
     __direct_value__: ClassVar[bool] = False
     __help__: ClassVar[ModuleHelp | None] = None
+    # A module tied to an event that is over (D7): the dashboard lists it only
+    # under "Archivés", unless a server still has it on, and no pack enables it.
+    __archived__: ClassVar[bool] = False
 
 
 # A message's draw weight is relative to the others': 1000 to 1 is already "never".
@@ -464,6 +467,8 @@ def _module_dict(cls: type[SchemaBase]) -> dict[str, Any]:
         d["noToggle"] = True
     if cls.__direct_value__:
         d["directValue"] = True
+    if cls.__archived__:
+        d["archived"] = True
     if cls.__help__ is not None:
         d["help"] = cls.__help__.as_dict()
     d["fields"] = _fields_of(cls)

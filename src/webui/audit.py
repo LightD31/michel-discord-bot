@@ -90,6 +90,24 @@ class AuditRepository:
         cursor = self._col().find(query).sort("_id", pymongo.DESCENDING)
         return list(await cursor.limit(max(1, min(limit, PAGE_SIZE))).to_list())
 
+    @translates_db_errors
+    async def last_changes(self, actions: tuple[str, ...]) -> dict[str, datetime]:
+        """Each target's newest entry among *actions*: when a module was last changed (C2)."""
+        pipeline: list[dict[str, Any]] = [
+            {"$match": {"action": {"$in": list(actions)}, "target": {"$type": "string"}}},
+            {"$group": {"_id": "$target", "at": {"$max": "$at"}}},
+        ]
+        rows = await (await self._col().aggregate(pipeline)).to_list()
+        return {row["_id"]: row["at"] for row in rows if isinstance(row.get("at"), datetime)}
+
+    @translates_db_errors
+    async def has(self, action: str, target: str | None = None) -> bool:
+        """Whether *action* (on *target*, when given) was ever recorded, within the retention."""
+        query: dict[str, Any] = {"action": action}
+        if target is not None:
+            query["target"] = target
+        return await self._col().find_one(query, projection={"_id": 1}) is not None
+
 
 async def record(
     guild_id: str | None,
