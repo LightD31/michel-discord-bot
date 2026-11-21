@@ -72,12 +72,19 @@ async def test_only_open_polls_past_their_deadline_are_due(mongo):
     assert [p.id for p in await repo.list_due(NOW)] == [due]
 
 
-async def test_editing_a_poll_replaces_its_options(mongo):
+async def test_the_author_edits_the_options_only_until_a_vote(mongo):
+    """ "✏️ Modifier" (B4): votes point at an option's place, so a vote freezes the options."""
     repo = PollRepository(mongo.guild_id)
-    pid = await repo.add(poll(mode="reaction"))
-    await repo.set_options(pid, ["x", "y"], ["1️⃣", "2️⃣"])
-    stored = await repo.get_by_message("m1")
-    assert (stored.options, stored.emojis, stored.mode) == (["x", "y"], ["1️⃣", "2️⃣"], "reaction")
+    pid = await repo.add(poll())
+    assert await repo.edit(pid, "9", "Pas à toi ?") is None  # someone else's poll
+    edited = await repo.edit(pid, "2", "Lequel ?", ["x", "y"])
+    assert (edited.question, edited.options) == ("Lequel ?", ["x", "y"])
+    await repo.set_vote(pid, "10", [1])
+    assert await repo.edit(pid, "2", "Encore ?", ["z", "w"]) is None
+    assert (await repo.get_by_message("m1")).options == ["x", "y"]
+    assert (await repo.edit(pid, "2", "Encore ?")).question == "Encore ?"
+    await repo.mark_closed(pid)
+    assert await repo.edit(pid, "2", "Fermé ?") is None
 
 
 async def test_one_poll_per_message(mongo):
@@ -86,19 +93,6 @@ async def test_one_poll_per_message(mongo):
     await repo.add(poll())
     with pytest.raises(DatabaseError):
         await repo.add(poll())
-
-
-async def test_editpoll_offers_the_authors_open_reaction_polls_newest_first(mongo):
-    repo = PollRepository(mongo.guild_id)
-    await repo.add(poll("old", mode="reaction", author_id="7"))
-    await repo.add(poll("buttons", mode="public", author_id="7"))
-    await repo.add(poll("someone", mode="reaction", author_id="8"))
-    closed_id = await repo.add(poll("closed", mode="reaction", author_id="7"))
-    await repo.mark_closed(closed_id)
-    await repo.add(poll("new", mode="reaction", author_id="7"))
-    found = await repo.list_open_reaction_polls("7", 25)
-    assert [p.message_id for p in found] == ["new", "old"]
-    assert [p.message_id for p in await repo.list_open_reaction_polls("7", 1)] == ["new"]
 
 
 async def test_quick_clicks_on_a_ranked_poll_keep_every_rank(mongo):

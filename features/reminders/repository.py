@@ -57,6 +57,19 @@ class ReminderRepository:
         return result.deleted_count
 
     @translates_db_errors
+    async def delete_mine(self, user_id: str, reminder_ids: list[str]) -> int:
+        """Delete those of *reminder_ids* that belong to *user_id*; how many went.
+
+        The ids come from a select menu: one that isn't the member's, or isn't
+        an id at all, is skipped rather than deleted.
+        """
+        ids = [ObjectId(rid) for rid in reminder_ids if ObjectId.is_valid(rid)]
+        if not ids:
+            return 0
+        result = await self._col().delete_many({"_id": {"$in": ids}, "user_id": user_id})
+        return result.deleted_count
+
+    @translates_db_errors
     async def reschedule(self, reminder_id: str, new_time: datetime) -> None:
         await self._col().update_one(
             {"_id": ObjectId(reminder_id)}, {"$set": {"remind_time": new_time}}

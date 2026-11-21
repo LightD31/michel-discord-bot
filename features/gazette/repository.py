@@ -63,7 +63,7 @@ class GazetteRepository:
             await self._col("suggestions")
             .find(
                 {"decided_at": {"$gte": start, "$lt": end}, "status": {"$ne": "pending"}},
-                {"id": 1, "status": 1, "text": 1},
+                {"id": 1, "status": 1, "text": 1, "title": 1},
             )
             .sort("decided_at", pymongo.ASCENDING)
             .to_list()

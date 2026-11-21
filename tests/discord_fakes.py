@@ -176,6 +176,14 @@ class FakeMessage:
     async def delete(self, **_: Any) -> None:
         self.deleted = True
 
+    async def create_thread(self, name: str, **_: Any) -> FakeThread:
+        if self.channel is None:
+            raise not_found()
+        thread = FakeThread(self.id, name, parent=self.channel)
+        if self.channel.guild is not None:
+            self.channel.guild.add_channel(thread)
+        return thread
+
 
 class FakeChannel:
     def __init__(
@@ -213,6 +221,20 @@ class FakeChannel:
         if member.id in self.overrides:
             return self.overrides[member.id]
         return getattr(member, "guild_permissions", Permissions.NONE)
+
+
+class FakeThread(FakeChannel):
+    """A thread opened on a message (Discord gives it the message's id)."""
+
+    def __init__(self, cid: int, name: str, *, parent: FakeChannel):
+        super().__init__(cid, name)
+        self.parent = parent
+        self.archived = self.locked = False
+
+    async def edit(self, **kwargs: Any) -> FakeThread:
+        self.archived = kwargs.get("archived", self.archived)
+        self.locked = kwargs.get("locked", self.locked)
+        return self
 
 
 class RoleList(dict):
@@ -390,6 +412,7 @@ __all__ = [
     "FakeMember",
     "FakeMessage",
     "FakeRole",
+    "FakeThread",
     "FakeUser",
     "bare_extension",
     "discord_error",

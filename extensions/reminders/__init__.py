@@ -1,9 +1,11 @@
 """Reminders Discord extension — /rappel slash command and due-check task.
 
 Slash commands:
-- ``/rappel creer`` — create a reminder for yourself (optional recurrence)
+- ``/rappel creer`` — create a reminder for yourself: ``quand:`` reads "samedi 9h",
+  "dans 2h" (:mod:`features.reminders.when`), its autocomplete echoing the
+  reading; optional recurrence
 - ``/rappel liste`` — your reminders on this server and when they next fire
-- ``/rappel supprimer`` — interactive button list to delete one of your reminders
+- ``/rappel supprimer`` — a menu of your reminders, to delete one or several
 
 Right-click a message → Applications → "⏰ Me le rappeler": a form asks when
 ("dans 2h", "demain 18h30", :mod:`features.reminders.when`) and for an
@@ -17,12 +19,12 @@ its author, with a "Snooze 10 min" button, so a reminder is never sent twice. Pe
 """
 
 import re
-from datetime import date as date_type
-from datetime import datetime, timedelta
+from datetime import timedelta
 from typing import Any
 
 from interactions import (
     ActionRow,
+    AutocompleteContext,
     Button,
     ButtonStyle,
     Client,
@@ -38,6 +40,8 @@ from interactions import (
     ShortText,
     SlashCommandChoice,
     SlashContext,
+    StringSelectMenu,
+    StringSelectOption,
     Task,
     TimestampStyles,
     component_callback,
@@ -46,34 +50,32 @@ from interactions import (
     modal_callback,
     slash_command,
     slash_option,
-    spread_to_rows,
 )
 from interactions.client.utils import timestamp_converter
 
 from features.reminders import (
-    PastReminderError,
     Reminder,
     ReminderRepository,
-    first_occurrence,
     next_after,
     schedule_label,
     snooze_minutes,
     snoozed_text,
 )
-from features.reminders.when import EXAMPLES, parse_when
-from features.secretsanta.dates import parse_exchange_date
+from features.reminders.when import EXAMPLES, parse_when, reading
 from src.core import clock
 from src.core import logging as logutil
 from src.core.config import ModuleConfig
 from src.core.logging import log_failure
 from src.core.text import EMBED_DESCRIPTION_LIMIT, clip, format_discord_timestamp
-from src.discord_ext.look import card
+from src.discord_ext.autocomplete import CHOICE_NAME_LIMIT
+from src.discord_ext.look import card, ok
 from src.discord_ext.menus import menu_help
 from src.discord_ext.messages import fetch_user_safe, guild_id_of, jump_url, send_error
 from src.discord_ext.scopes import guild_scopes
 
 SNOOZE_PREFIX = "reminder_snooze"
-# Per member and server; /rappel supprimer lists up to 25 buttons too.
+DELETE_MENU = "reminder_delete"
+# Per member and server; /rappel supprimer's menu holds 25 options too.
 MAX_REMINDERS_PER_MEMBER = 25
 # A DM is capped at 2000 characters; snoozes prefix the text.
 MAX_REMINDER_LENGTH = 1500
@@ -98,20 +100,47 @@ def _snooze_minutes(guild_id: str | int) -> int:
     return snooze_minutes(UTILS.get(guild_id))
 
 
-def start_day(text: str, today: date_type) -> date_type:
-    """The start date of ``/rappel creer``: "24/12/2026", or "24/12", "24 décembre".
+def when_choices(typed: str) -> list[dict[str, int | float | str]]:
+    """The autocomplete of « quand » : what Michel reads in *typed*, or how to write it.
 
-    A full date may be in the past (a recurring reminder then starts at its
-    next occurrence); a date without a year is the next such day.
+    The value is what the member typed: the command parses it again, at the
+    moment it runs.
     """
+    now = clock.now()
+    typed = typed.strip()[:CHOICE_NAME_LIMIT]
+    if not typed:
+        return [
+            {
+                "name": clip(f"{example} → {reading(parse_when(example, now), now)}", 100),
+                "value": example,
+            }
+            for example in EXAMPLES.split(", ")
+        ]
     try:
-        return datetime.strptime(text.strip(), "%d/%m/%Y").date()
-    except ValueError:
-        pass
-    try:
-        return parse_exchange_date(text, today)
-    except ValueError:
-        raise ValueError(f"Je n'ai pas compris « {text} ». Exemple : 24/12/2026.") from None
+        found = parse_when(typed, now)
+    except ValueError as e:
+        return [{"name": clip(f"❓ {e}", CHOICE_NAME_LIMIT), "value": typed}]
+    return [{"name": clip(f"→ {reading(found, now)}", CHOICE_NAME_LIMIT), "value": typed}]
+
+
+def delete_menu(reminders: list[Reminder]) -> StringSelectMenu:
+    """The menu of ``/rappel supprimer``: one option per reminder, several at once."""
+    options = [
+        StringSelectOption(
+            label=clip(reminder.message, 100),
+            value=reminder.id,
+            description=clip(schedule_label(reminder), 100),
+        )
+        for reminder in reminders[:MAX_REMINDERS_PER_MEMBER]
+        if reminder.id
+    ]
+    return StringSelectMenu(
+        *options,
+        placeholder="Rappels à supprimer",
+        min_values=1,
+        max_values=len(options),
+        custom_id=DELETE_MENU,
+    )
 
 
 def reminder_text(reminder: Reminder) -> str:
@@ -189,76 +218,43 @@ class RemindersExtension(Extension):
         argument_name="task",
     )
     @slash_option(
-        name="heure",
-        description="Heure du rappel",
-        opt_type=OptionType.INTEGER,
+        name="quand",
+        description="Ex. dans 2h, demain 18h30, samedi 9h, 24/12 20h",
+        opt_type=OptionType.STRING,
         required=True,
-        min_value=0,
-        max_value=23,
-        argument_name="hour",
-    )
-    @slash_option(
-        "minute",
-        "Minute du rappel",
-        OptionType.INTEGER,
-        required=True,
-        min_value=0,
-        max_value=59,
+        max_length=60,
+        autocomplete=True,
+        argument_name="when",
     )
     @slash_option(
         "frequence",
-        "Définit la périodicité du rappel (Défaut : Aucune)",
+        "Le répéter (défaut : une seule fois)",
         OptionType.STRING,
         choices=[
-            SlashCommandChoice(name="Quotidien", value="daily"),
-            SlashCommandChoice(name="Hebdomadaire", value="weekly"),
-            SlashCommandChoice(name="Mensuel", value="monthly"),
-            SlashCommandChoice(name="Annuel", value="yearly"),
+            SlashCommandChoice(name="Tous les jours", value="daily"),
+            SlashCommandChoice(name="Toutes les semaines", value="weekly"),
+            SlashCommandChoice(name="Tous les mois", value="monthly"),
+            SlashCommandChoice(name="Tous les ans", value="yearly"),
         ],
         required=False,
         argument_name="frequency",
     )
-    @slash_option(
-        "date",
-        "Date de début, ex. 24/12 ou 24/12/2026 (défaut : aujourd'hui)",
-        OptionType.STRING,
-        required=False,
-    )
     async def reminder_set(
         self,
         ctx: SlashContext,
-        hour: int,
-        minute: int,
         task: str,
+        when: str,
         frequency: str | None = None,
-        date: str | None = None,
     ):
-        start = None
-        if date:
-            try:
-                start = start_day(date, clock.to_local(clock.now()).date())
-            except ValueError as e:
-                await send_error(ctx, str(e), icon="📅")
-                return
         try:
-            remind_time = first_occurrence(
-                clock.now(),
-                hour=hour,
-                minute=minute,
-                frequency=frequency,  # type: ignore[arg-type]
-                start=start,
-            )
-        except PastReminderError as e:
-            await send_error(ctx, str(e))
+            remind_time = parse_when(when, clock.now())
+        except ValueError as e:
+            await send_error(ctx, str(e), icon="📅")
             return
 
-        repo = self._reminder_repo(str(ctx.guild_id))
+        repo = self._reminder_repo(guild_id_of(ctx))
         if await repo.count_for_user(str(ctx.author.id)) >= MAX_REMINDERS_PER_MEMBER:
-            await send_error(
-                ctx,
-                f"Tu as déjà {MAX_REMINDERS_PER_MEMBER} rappels sur ce serveur : "
-                "supprimes-en un avec `/rappel supprimer`.",
-            )
+            await send_error(ctx, self._too_many())
             return
 
         reminder = Reminder(
@@ -270,16 +266,21 @@ class RemindersExtension(Extension):
         await repo.add(reminder)
 
         await ctx.send(
-            f"⏰ Rappel créé : **{schedule_label(reminder)}**\n{task}",
+            f"⏰ Rappel créé : **{schedule_label(reminder)}** "
+            f"({format_discord_timestamp(remind_time, 'R')})\n{task}",
             ephemeral=True,
         )
         logger.info(
-            "Reminder set for %s at %s with message %s (%s)",
+            "Reminder set for %s at %s (%s)",
             ctx.author.display_name,
             clock.to_local(remind_time).strftime("%H:%M"),
-            task,
             frequency,
         )
+
+    @reminder_set.autocomplete("quand")
+    async def when_choices(self, ctx: AutocompleteContext) -> None:
+        """Read « quand » back as it is typed: "samedi 9h" → "samedi 21 novembre à 09:00"."""
+        await ctx.send(choices=when_choices(ctx.input_text))
 
     @reminder_set.subcommand(
         sub_cmd_name="liste",
@@ -294,62 +295,30 @@ class RemindersExtension(Extension):
 
     @reminder_set.subcommand(
         sub_cmd_name="supprimer",
-        sub_cmd_description="Supprime un rappel",
+        sub_cmd_description="Supprime un ou plusieurs de tes rappels",
     )
-    async def delete_reminder(self, ctx):
-        user_id = str(ctx.author.id)
-        gid = str(ctx.guild_id)
-        repo = self._reminder_repo(gid)
-        reminders = await repo.list_for_user(user_id)
-
+    async def delete_reminder(self, ctx: SlashContext):
+        reminders = await self._reminder_repo(guild_id_of(ctx)).list_for_user(str(ctx.author.id))
         if not reminders:
             await send_error(ctx, NO_REMINDER, icon="⏰")
             return
-
-        id_map: dict[str, Reminder] = {}
-        buttons = []
-        for reminder in reminders:
-            if reminder.id is None:
-                continue
-            # Discord caps a button label at 80 characters.
-            label = f"{reminder.message[:40]} ({schedule_label(reminder)})"
-            buttons.append(Button(label=label, style=ButtonStyle.SECONDARY, custom_id=reminder.id))
-            id_map[reminder.id] = reminder
-
-        message = await ctx.send(
-            f"Quel rappel veux-tu supprimer (annulation {timestamp_converter(clock.now() + timedelta(seconds=60)).format(TimestampStyles.RelativeTime)})",
-            # Five buttons per row, 25 per message.
-            components=spread_to_rows(*buttons[:25]),
+        await ctx.send(
+            "Choisis les rappels à supprimer :",
+            components=[ActionRow(delete_menu(reminders))],
             ephemeral=True,
         )
 
-        try:
-            button_ctx = await self.bot.wait_for_component(
-                components=[button.custom_id for button in buttons], timeout=60
-            )
-            ctx = button_ctx.ctx
-            selected = id_map.get(ctx.custom_id)
-
-            if selected and selected.id:
-                deleted = await repo.delete(selected.id)
-                if deleted:
-                    await ctx.edit_origin(
-                        content=f"Rappel à {clock.to_local(selected.remind_time).strftime('%H:%M')} supprimé.",
-                        components=[],
-                    )
-                    logger.info(
-                        "Reminder at %s deleted for %s",
-                        clock.to_local(selected.remind_time).strftime("%H:%M"),
-                        ctx.author.display_name,
-                    )
-                else:
-                    await send_error(ctx, "Rappel introuvable")
-            else:
-                await send_error(ctx, "Rappel introuvable")
-        except TimeoutError:
-            await ctx.edit(
-                message=message, content="Annulé, aucun rappel sélectionné", components=[]
-            )
+    @component_callback(DELETE_MENU)
+    async def on_delete_chosen(self, ctx: ComponentContext) -> None:
+        deleted = await self._reminder_repo(guild_id_of(ctx)).delete_mine(
+            str(ctx.author.id), list(ctx.values)
+        )
+        if not deleted:
+            await ctx.edit_origin(content="⏰ Ces rappels n'existent plus.", components=[])
+            return
+        word = "rappel supprimé" if deleted == 1 else "rappels supprimés"
+        await ctx.edit_origin(content=ok(f"{deleted} {word}."), components=[])
+        logger.info("%d reminder(s) deleted for %s", deleted, ctx.author.display_name)
 
     @menu_help("Recevoir ce message en MP plus tard (« dans 2h », « demain 18h30 »)")
     @message_context_menu(name=REMIND_MENU, scopes=guild_scopes(UTILS.guild_ids()))

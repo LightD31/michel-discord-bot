@@ -19,7 +19,8 @@ class SuggestionsConfig(SchemaBase):
     __help__ = ModuleHelp(
         "Propose une idée pour le serveur : les membres votent, le staff tranche.",
         ("/suggerer",),
-        "Chaque suggestion reçoit des boutons 👍 / 👎, et sa carte montre où elle en est.",
+        "Chaque suggestion reçoit des boutons 👍 / 👎 et un fil de discussion ; le staff "
+        "la tranche avec ses boutons, et l'auteur reçoit la décision en MP.",
     )
 
     enabled: bool = enabled_field()
@@ -33,11 +34,21 @@ class SuggestionsConfig(SchemaBase):
         "Rôle staff",
         "role",
         description=(
-            "Rôle autorisé à approuver/refuser les suggestions (sinon admin uniquement). "
+            "Rôle autorisé à trancher les suggestions, avec les boutons ✅ / ❌ / 🛠️ de leur "
+            "carte (sinon admin uniquement). "
             "`/suggestion` n'apparaît qu'aux membres qui peuvent « Gérer les messages » : si ce "
             "rôle ne le peut pas, autorise-le dans Paramètres du serveur → Intégrations → Michel."
         ),
         role_use="staff",
+    )
+    discussionThreads: bool = ui(
+        "Fil de discussion",
+        "boolean",
+        default=True,
+        description=(
+            "Ouvrir un fil « Discussion #12 » sous chaque suggestion. Michel doit pouvoir "
+            "« Créer des fils publics » dans le salon."
+        ),
     )
     anonymous: bool = ui(
         "Suggestions anonymes",

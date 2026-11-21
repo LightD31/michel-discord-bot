@@ -1,80 +1,81 @@
-"""Polls Discord extension — poll creation, editing, and reaction tracking.
+"""Polls Discord extension — one ``/sondage``, three kinds of poll.
 
-Slash commands:
-- ``/sondage`` — reaction-based poll, up to 10 options, optional auto-close
-- ``/sondage-anonyme`` — button-based poll where voter identities aren't shown
-- ``/sondage-classement`` — ranked-choice (instant-runoff) poll
-- ``/modifier-sondage`` — edit the question, options, or reset reactions of a poll you created
-  (its ``sondage`` option autocompletes the member's open reaction polls)
+``/sondage [mode:] [plusieurs_choix:]`` opens a form: the question, the options
+one per line, and how long it stays open ("2h", "3j").
 
-Listens to :class:`MessageReactionAdd` / :class:`MessageReactionRemove` to keep
-reaction-based poll embeds' vote counts fresh. Button-based polls persist their
-state in MongoDB (``polls`` collection) and close automatically once their
-``closes_at`` deadline elapses. Reaction polls are stored there too
-(``mode="reaction"``): the reaction listener re-renders and ``/modifier-sondage`` edits
-only a stored poll, and its auto-close survives a restart. A poll the database
-refuses to store closes on an in-memory timer instead. Enabled per-guild via
-``moduleUtils``.
+- **public** (the default): a native Discord poll. Discord counts the votes,
+  shows the results and closes it (1 hour to 32 days); nothing is stored.
+- **anonyme**: buttons, the counts public and the voters hidden.
+- **classement**: buttons, ranked choice (instant runoff).
+
+Anonymous and ranked polls are stored in MongoDB (``polls`` collection), close
+once their ``closes_at`` deadline elapses (``check_closing_polls``), and carry a
+"✏️ Modifier" button for their author: the question can always change, the
+options until the first vote. Enabled per-guild via ``moduleUtils``.
 """
 
-import asyncio
-import contextlib
-import os
+import re
 from datetime import datetime, timedelta
 
 from interactions import (
-    AutocompleteContext,
     Client,
-    Embed,
     Extension,
     IntervalTrigger,
+    Modal,
+    ModalContext,
     OptionType,
+    ParagraphText,
+    ShortText,
+    SlashCommandChoice,
     SlashContext,
     Task,
     listen,
+    modal_callback,
     slash_command,
     slash_option,
 )
-from interactions.api.events import MessageReactionAdd, MessageReactionRemove
+from interactions import Poll as DiscordPoll
 from interactions.client.errors import Forbidden, NotFound
 
 from features.polls import (
-    DEFAULT_POLL_EMOJIS,
-    DEFAULT_POLL_OPTIONS,
-    POLL_EMOJIS,
+    BUTTON_OPTION_LIMIT,
+    NATIVE_ANSWER_LIMIT,
     Poll,
     PollRepository,
-    is_reaction_poll_text,
-    options_description,
+    native_poll_hours,
     parse_duration,
+    parse_options,
     poll_footer,
-    poll_option_emojis,
-    validate_poll_options,
 )
 from src.core import clock
 from src.core import logging as logutil
 from src.core.config import ModuleConfig
-from src.core.debounce import Coalescer
 from src.core.logging import log_failure
-from src.core.tasks import spawn
 from src.core.text import format_discord_timestamp
-from src.discord_ext.autocomplete import MAX_CHOICES, matching_choices
 from src.discord_ext.channels import fetch_guild_channel
-from src.discord_ext.look import card, recolour
+from src.discord_ext.look import card
 from src.discord_ext.messages import copy_embed, edit_message_if_changed, send_error
-from src.discord_ext.paginator import format_poll
 from src.discord_ext.scopes import guild_scopes
 
-from .buttons import PollButtonsMixin, render_results_field, update_poll_embed, vote_components
+from .buttons import (
+    EDIT_FORM_RE,
+    PollButtonsMixin,
+    render_results_field,
+    update_poll_embed,
+    vote_components,
+)
 
 logger = logutil.init_logger(__name__)
 UTILS = ModuleConfig("moduleUtils")
-# Votes on a reaction poll within this many seconds share one re-read of its voters.
-REFRESH_DELAY_SECONDS = 3
+
+MODES = {"public": "Public", "anonymous": "Anonyme", "ranked": "Classement"}
+NEW_FORM = "poll_new"  # poll_new:{mode}:{multi 1|0}
+_NEW_FORM_RE = re.compile(rf"^{NEW_FORM}:({'|'.join(MODES)}):([01])$")
+QUESTION_LIMIT = 250  # the embed title holds "🔒 📊 " before it
 
 
 def _default_poll_seconds(guild_id: str | int | None) -> int | None:
-    """Per-guild default auto-close (seconds) when ``duree`` is omitted; None disables it."""
+    """Per-guild default auto-close (seconds) when the duration is left empty; None disables it."""
     if guild_id is None:
         return None
     cfg = UTILS.get(guild_id)
@@ -86,51 +87,43 @@ def _default_poll_seconds(guild_id: str | int | None) -> int | None:
     return value * 60 if value > 0 else None
 
 
-# In-memory map of (guild_id, message_id) → asyncio.Task that auto-closes a
-# reaction poll the database refused to store, or one posted between the module
-# being switched off and the reload that removes /sondage. Everything else is
-# swept by check_closing_polls.
-_reaction_close_tasks: dict[tuple[str, str], asyncio.Task] = {}
-
-
-async def _lock_reaction_poll(message, options: list[str], emojis: list[str]) -> None:
-    """Close a reaction poll: lock its title, drop the deadline note, clear reactions."""
-    if not message or not message.embeds:
-        return
-    embed = copy_embed(message.embeds[0])
-    # Re-render the description without the relative-timestamp note.
-    embed.description = options_description(options, emojis)
-    if not (embed.title or "").startswith("🔒"):
-        embed.title = f"🔒 {embed.title}"
-    recolour(embed, "moduleUtils", "neutral")
-    await edit_message_if_changed(message, embed=embed, logger=logger)
-    with contextlib.suppress(Exception):
-        await message.clear_all_reactions()
-
-
-def _is_poll_embed(embed: Embed) -> bool:
-    """A reaction poll's embed: Michel's footer naming its author, and option paragraphs.
-
-    RSS posts, role menus, giveaways and button polls, which a reaction must
-    never rewrite, don't have both.
-    """
-    footer_text = embed.footer.text if embed.footer else None
-    return is_reaction_poll_text(footer_text, embed.description)
-
-
 def _author_name(ctx) -> str:
     """The poll's author as the server shows them (never their id: the footer is public)."""
     return str(getattr(ctx.author, "display_name", None) or ctx.user.username)
 
 
-async def _add_poll_reactions(message, options: list[str], use_default: bool = False) -> None:
-    emojis = DEFAULT_POLL_EMOJIS if use_default else POLL_EMOJIS
-    for i in range(len(options)):
-        await message.add_reaction(emojis[i])
+def poll_form(mode: str, multi: bool) -> Modal:
+    """The form ``/sondage`` opens."""
+    public = mode == "public"
+    return Modal(
+        ShortText(
+            label="Question",
+            custom_id="question",
+            placeholder="Ex. On joue à quoi samedi ?",
+            required=True,
+            max_length=QUESTION_LIMIT,
+        ),
+        ParagraphText(
+            label="Options, une par ligne" + (" (vide : Oui / Non)" if public else ""),
+            custom_id="options",
+            placeholder="Pizza\nSushi\nTacos",
+            required=not public,
+            max_length=1000,
+        ),
+        ShortText(
+            label="Durée (facultatif)",
+            custom_id="duration",
+            placeholder="Ex. 2h, 3j" + (" — 24 h si vide" if public else ""),
+            required=False,
+            max_length=20,
+        ),
+        title=f"Sondage {MODES[mode].lower()}",
+        custom_id=f"{NEW_FORM}:{mode}:{int(multi)}",
+    )
 
 
-# How many sweeps in a row may fail to read a due poll's message (Discord
-# 5xx, timeout) before it is closed without its results: 10 minutes at one
+# Every sweep a due poll's message can't be read (Discord 5xx, timeout) counts;
+# after this many in a row it closes without its results: 10 minutes at one
 # sweep every 30 s.
 MAX_CLOSE_FAILURES = 20
 
@@ -148,8 +141,6 @@ class PollsExtension(Extension, PollButtonsMixin):
     def __init__(self, bot: Client):
         self.bot = bot
         self._close_failures: dict[str, int] = {}  # poll id → failed sweeps in a row
-        # A burst of votes on a reaction poll re-reads its voters once.
-        self._refreshes = Coalescer(REFRESH_DELAY_SECONDS, name="poll-refresh", log=logger)
 
     def _poll_repo(self, guild_id: str | int) -> PollRepository:
         return PollRepository(str(guild_id))
@@ -164,239 +155,101 @@ class PollsExtension(Extension, PollButtonsMixin):
         if not self.check_closing_polls.running:
             self.check_closing_polls.start()
 
-    async def async_drop(self) -> None:
-        """Unload: cancel the in-memory close timers, which a reload would orphan."""
-        for task in list(_reaction_close_tasks.values()):
-            task.cancel()
-        _reaction_close_tasks.clear()
-
     @slash_command(
         name="sondage",
-        description="Créer un sondage",
+        description="Créer un sondage : un formulaire demande la question et les options",
         scopes=guild_scopes(UTILS.guild_ids()),
-    )  # type: ignore
-    @slash_option(
-        "question",
-        "Question du sondage",
-        opt_type=OptionType.STRING,
-        required=True,
     )
     @slash_option(
-        "options",
-        "Options du sondage, séparées par des point-virgules",
+        "mode",
+        "Public (défaut), anonyme ou par classement",
         opt_type=OptionType.STRING,
         required=False,
+        choices=[
+            SlashCommandChoice(name="Public : Discord compte les votes", value="public"),
+            SlashCommandChoice(
+                name="Anonyme : personne ne voit qui a voté quoi", value="anonymous"
+            ),
+            SlashCommandChoice(name="Classement : chacun range les options", value="ranked"),
+        ],
     )
     @slash_option(
-        "duree",
-        "Fermeture automatique après ce délai (ex: 30m, 2h, 1d)",
-        opt_type=OptionType.STRING,
+        "plusieurs_choix",
+        "Sondage public : chacun peut cocher plusieurs options",
+        opt_type=OptionType.BOOLEAN,
         required=False,
-        argument_name="duration",
+        argument_name="multi",
     )
-    async def poll(
-        self,
-        ctx: SlashContext,
-        question,
-        options=None,
-        duration: str | None = None,
-    ):
-        if options is None:
-            options = DEFAULT_POLL_OPTIONS
-            emojis = DEFAULT_POLL_EMOJIS
-        else:
-            options = [option.strip() for option in options.split(";")]
-            if not validate_poll_options(options):
-                await send_error(ctx, "Un sondage a 10 options au plus.")
-                return
-            emojis = POLL_EMOJIS
-        close_seconds: int | None = None
-        if duration:
-            close_seconds = parse_duration(duration)
-            if close_seconds is None:
-                await send_error(
-                    ctx,
-                    f"Je n'ai pas compris la durée « {duration} ». Exemples : `30m`, `2h`, `1d`.",
-                    icon="⏱️",
-                )
-                return
-        else:
-            close_seconds = _default_poll_seconds(ctx.guild_id)
-        description = "\n\n".join([f"{emojis[i]} {option}" for i, option in enumerate(options)])
-        if close_seconds:
-            close_time = clock.now() + timedelta(seconds=close_seconds)
-            description += (
-                f"\n\n*Fermeture automatique : {format_discord_timestamp(close_time, 'R')}*"
-            )
-        embed = card(
-            "moduleUtils",
-            title=question,
-            description=description,
-            footer=poll_footer(_author_name(ctx)),
-            footer_icon=ctx.user.avatar_url,
-        )
-        message = await ctx.send(embed=embed)
-        await _add_poll_reactions(message, options, use_default=(options == DEFAULT_POLL_OPTIONS))
-        await self._record_reaction_poll(ctx, message, close_seconds, question, options, emojis)
-        logger.debug(
-            "Création d'un sondage par %s (ID: %s)\nQuestion : %s\nOptions : %s",
-            ctx.user.username,
-            ctx.user.id,
-            question,
-            options,
-        )
+    async def poll(self, ctx: SlashContext, mode: str = "public", multi: bool = False) -> None:
+        await ctx.send_modal(poll_form(mode if mode in MODES else "public", multi))
 
-    async def _record_reaction_poll(
-        self,
-        ctx: SlashContext,
-        message,
-        seconds: int | None,
-        question: str,
-        options: list[str],
-        emojis: list[str],
+    @modal_callback(_NEW_FORM_RE)
+    async def on_poll_form(
+        self, ctx: ModalContext, question: str = "", options: str = "", duration: str = ""
     ) -> None:
-        """Store the poll where polls are on, and arrange its close after *seconds*.
-
-        A stored poll is what the reaction listener re-renders and /modifier-sondage
-        edits, and check_closing_polls closes it, even across restarts.
-        If the database refuses the write (or the module was switched off since
-        the command was registered), a poll with a deadline closes on an
-        in-memory timer instead.
-        """
-        guild_id = str(ctx.guild_id) if ctx.guild_id else None
-        if UTILS.enabled(guild_id):
-            poll = Poll(
-                channel_id=str(message.channel.id),
-                message_id=str(message.id),
-                author_id=str(ctx.user.id),
-                question=question,
-                options=options,
-                emojis=emojis[: len(options)],
-                mode="reaction",
-                closes_at=clock.now() + timedelta(seconds=seconds) if seconds else None,
+        """The form's answer: post the poll the mode in its custom id names."""
+        match = _NEW_FORM_RE.match(ctx.custom_id)
+        if not match:
+            return
+        mode, multi = match.groups()
+        question = question.strip()
+        if not question:
+            await send_error(ctx, "Écris la question du sondage.")
+            return
+        try:
+            choices = parse_options(
+                options,
+                limit=NATIVE_ANSWER_LIMIT if mode == "public" else BUTTON_OPTION_LIMIT,
+                default_yes_no=mode == "public",
             )
-            try:
-                await self._poll_repo(guild_id).add(poll)
-                return
-            except Exception as e:
-                logger.warning("Could not store reaction poll %s: %s", message.id, e)
-        if not seconds:
+        except ValueError as e:
+            await send_error(ctx, str(e))
             return
-
-        async def _close():
-            try:
-                await asyncio.sleep(seconds)
-                fresh = await message.channel.fetch_message(message.id)
-                await _lock_reaction_poll(fresh, options, emojis)
-            except Exception as e:
-                logger.warning("Reaction poll auto-close failed: %s", e)
-            finally:
-                _reaction_close_tasks.pop((str(guild_id), str(message.id)), None)
-
-        key = (str(guild_id), str(message.id))
-        _reaction_close_tasks[key] = spawn(_close(), name=f"poll-close:{key[1]}", log=logger)
-
-    @slash_command(
-        name="sondage-anonyme",
-        description="Créer un sondage à vote anonyme (boutons)",
-        scopes=guild_scopes(UTILS.guild_ids()),
-    )
-    @slash_option(
-        "question",
-        "Question du sondage",
-        opt_type=OptionType.STRING,
-        required=True,
-    )
-    @slash_option(
-        "options",
-        "Options du sondage, séparées par des point-virgules",
-        opt_type=OptionType.STRING,
-        required=True,
-    )
-    @slash_option(
-        "duree",
-        "Fermeture automatique (ex: 30m, 2h, 1d)",
-        opt_type=OptionType.STRING,
-        required=False,
-        argument_name="duration",
-    )
-    async def poll_anonyme(
-        self,
-        ctx: SlashContext,
-        question: str,
-        options: str,
-        duration: str | None = None,
-    ):
-        await self._create_button_poll(ctx, question, options, duration, mode="anonymous")
-
-    @slash_command(
-        name="sondage-classement",
-        description="Créer un sondage à vote alternatif (ranked-choice)",
-        scopes=guild_scopes(UTILS.guild_ids()),
-    )
-    @slash_option(
-        "question",
-        "Question du sondage",
-        opt_type=OptionType.STRING,
-        required=True,
-    )
-    @slash_option(
-        "options",
-        "Options du sondage, séparées par des point-virgules",
-        opt_type=OptionType.STRING,
-        required=True,
-    )
-    @slash_option(
-        "duree",
-        "Fermeture automatique (ex: 30m, 2h, 1d)",
-        opt_type=OptionType.STRING,
-        required=False,
-        argument_name="duration",
-    )
-    async def poll_classement(
-        self,
-        ctx: SlashContext,
-        question: str,
-        options: str,
-        duration: str | None = None,
-    ):
-        await self._create_button_poll(ctx, question, options, duration, mode="ranked")
-
-    async def _create_button_poll(
-        self,
-        ctx: SlashContext,
-        question: str,
-        options_text: str,
-        duration: str | None,
-        mode: str,
-    ) -> None:
-        if not ctx.guild_id:
-            await send_error(ctx, "Cette commande est réservée aux serveurs.")
-            return
-        options = [opt.strip() for opt in options_text.split(";") if opt.strip()]
-        if len(options) < 2 or not validate_poll_options(options):
-            await send_error(
-                ctx,
-                "Indique entre 2 et 10 options séparées par `;`. Exemple : `Pizza;Sushi;Tacos`.",
-            )
-            return
-
-        closes_at: datetime | None = None
         seconds: int | None = None
-        if duration:
+        if duration.strip():
             seconds = parse_duration(duration)
             if seconds is None:
                 await send_error(
                     ctx,
-                    f"Je n'ai pas compris la durée « {duration} ». Exemples : `30m`, `2h`, `1d`.",
+                    f"Je n'ai pas compris la durée « {duration.strip()} ». "
+                    "Exemples : `30m`, `2h`, `3j`.",
                     icon="⏱️",
                 )
                 return
         else:
             seconds = _default_poll_seconds(ctx.guild_id)
-        if seconds:
-            closes_at = clock.now() + timedelta(seconds=seconds)
+        if mode == "public":
+            await self._post_native_poll(ctx, question, choices, seconds, multi == "1")
+        else:
+            await self._create_button_poll(ctx, question, choices, seconds, mode)
 
+    async def _post_native_poll(
+        self, ctx, question: str, options: list[str], seconds: int | None, multi: bool
+    ) -> None:
+        """A Discord poll: Discord counts, shows and closes it; Michel keeps nothing."""
+        poll = DiscordPoll.create(
+            question,
+            duration=native_poll_hours(seconds),
+            allow_multiselect=multi,
+            answers=options,
+        )
+        await ctx.send(poll=poll)
+        logger.debug(
+            "Native poll by %s: %s (%d options)", ctx.user.username, question, len(options)
+        )
+
+    async def _create_button_poll(
+        self,
+        ctx,
+        question: str,
+        options: list[str],
+        seconds: int | None,
+        mode: str,
+    ) -> None:
+        if not ctx.guild_id:
+            await send_error(ctx, "Cette commande est réservée aux serveurs.")
+            return
+        closes_at: datetime | None = clock.now() + timedelta(seconds=seconds) if seconds else None
         mode_label = "anonyme" if mode == "anonymous" else "classement"
         embed = card(
             "moduleUtils",
@@ -426,6 +279,57 @@ class PollsExtension(Extension, PollButtonsMixin):
             message, embed=embed, components=vote_components(poll), logger=logger
         )
 
+    @modal_callback(EDIT_FORM_RE)
+    async def on_edit_form(
+        self, ctx: ModalContext, question: str = "", options: str | None = None
+    ) -> None:
+        """The author's "✏️ Modifier" form: the new question, and the options if nobody voted."""
+        match = EDIT_FORM_RE.match(ctx.custom_id)
+        if not match or not ctx.guild_id:
+            return
+        repo = self._poll_repo(ctx.guild_id)
+        new_options = None
+        if options is not None:
+            try:
+                new_options = parse_options(options, limit=BUTTON_OPTION_LIMIT)
+            except ValueError as e:
+                await send_error(ctx, str(e))
+                return
+        question = question.strip()[:QUESTION_LIMIT]
+        if not question:
+            await send_error(ctx, "Écris la question du sondage.")
+            return
+        edited = await repo.edit(match[1], str(ctx.author.id), question, new_options)
+        if edited is None and new_options is not None:
+            await send_error(
+                ctx,
+                "Quelqu'un vient de voter : les options ne changent plus. "
+                "Rouvre « Modifier » pour changer la question.",
+            )
+            return
+        if edited is None:
+            await send_error(ctx, "Ce sondage est fermé.")
+            return
+        await self._show_edit(ctx.guild_id, edited)
+        await ctx.send("✅ Sondage modifié.", ephemeral=True)
+
+    async def _show_edit(self, guild_id, poll: Poll) -> None:
+        channel = await fetch_guild_channel(self.bot, guild_id, poll.channel_id)
+        try:
+            message = await channel.fetch_message(int(poll.message_id)) if channel else None
+        except Exception as e:
+            logger.warning("Edited poll %s: its message can't be read: %s", poll.id, e)
+            return
+        if message is None or not message.embeds:
+            return
+        embed = copy_embed(message.embeds[0])
+        prefix = "🔒 📊 " if poll.closed else "📊 "
+        embed.title = f"{prefix}{poll.question}"
+        update_poll_embed(embed, poll)
+        await edit_message_if_changed(
+            message, embed=embed, components=vote_components(poll), logger=logger
+        )
+
     @Task.create(IntervalTrigger(seconds=30))
     async def check_closing_polls(self) -> None:
         now = clock.now()
@@ -439,10 +343,7 @@ class PollsExtension(Extension, PollButtonsMixin):
                 if poll.id is None:
                     continue
                 try:  # one poll failing to close doesn't hold back the others
-                    if poll.mode == "reaction":
-                        await self._close_reaction_poll(gid, poll)
-                    else:
-                        await self._close_button_poll(gid, poll)
+                    await self._close_button_poll(gid, poll)
                 except Exception as e:
                     log_failure(logger, "Could not close poll %s: %s", poll.id, e)
 
@@ -451,8 +352,8 @@ class PollsExtension(Extension, PollButtonsMixin):
 
         Only a deleted message or channel (or one the bot may no longer read)
         closes the poll without its results. Discord not answering (5xx, a
-        timeout) used to do the same; now the poll stays due and the next sweep
-        tries again, up to :data:`MAX_CLOSE_FAILURES` times, as giveaways do.
+        timeout) leaves it due, and the next sweep tries again, up to
+        :data:`MAX_CLOSE_FAILURES` times, as giveaways do.
         """
         key = str(poll.id)
         try:
@@ -484,22 +385,6 @@ class PollsExtension(Extension, PollButtonsMixin):
             logger.warning("Poll %s is gone from channel %s, closing it", poll.id, poll.channel_id)
         return message
 
-    async def _close_reaction_poll(self, guild_id: str, poll: Poll) -> None:
-        message = await self._fetch_due_poll(guild_id, poll)
-        if message is RETRY:
-            return
-        if message is None:
-            await self._poll_repo(guild_id).mark_closed(poll.id)
-            return
-        emojis = poll.emojis or (
-            DEFAULT_POLL_EMOJIS if poll.options == DEFAULT_POLL_OPTIONS else POLL_EMOJIS
-        )
-        try:
-            await _lock_reaction_poll(message, poll.options, emojis)
-        except Exception as e:
-            logger.warning("Could not close reaction poll %s: %s", poll.id, e)
-        await self._poll_repo(guild_id).mark_closed(poll.id)
-
     async def _close_button_poll(self, guild_id: str, poll: Poll) -> None:
         message = await self._fetch_due_poll(guild_id, poll)
         if message is RETRY:
@@ -524,168 +409,6 @@ class PollsExtension(Extension, PollButtonsMixin):
         except Exception as e:
             logger.warning("Could not edit closed poll %s: %s", poll.id, e)
         await self._poll_repo(guild_id).mark_closed(poll.id)
-
-    def _reaction_poll_message(self, event: MessageReactionAdd | MessageReactionRemove):
-        """The reaction poll *event* happened on, or None for any other message.
-
-        Checked before any work: a reaction poll is the bot's own message, in a
-        server where polls are on, and the reaction is one of its options.
-        """
-        message = event.message
-        guild = getattr(message, "guild", None)
-        if guild is None or not UTILS.enabled(guild.id):
-            return None
-        if not message.embeds or message.author.id != self.bot.user.id:
-            return None
-        embed = message.embeds[0]
-        if not _is_poll_embed(embed):
-            return None
-        if str(event.emoji) not in poll_option_emojis(embed.description):
-            return None
-        return message
-
-    def _refresh_reaction_poll(self, event: MessageReactionAdd | MessageReactionRemove) -> None:
-        """Schedule a re-render of the reaction poll *event* voted on, if it is one."""
-        message = self._reaction_poll_message(event)
-        if message is None:
-            return
-        self._refreshes.request(int(message.id), lambda: self._render_reaction_poll(message))
-
-    async def _render_reaction_poll(self, message) -> None:
-        if await self._stored_reaction_poll(message.guild.id, message.id) is None:
-            return
-        embed = await format_poll(message)
-        await edit_message_if_changed(message, embed=embed, logger=logger)
-
-    @listen(MessageReactionAdd)
-    async def on_message_reaction_add(self, event: MessageReactionAdd):
-        """Count reactions and update the poll embed."""
-        self._refresh_reaction_poll(event)
-
-    @listen(MessageReactionRemove)
-    async def on_message_reaction_remove(self, event: MessageReactionRemove):
-        """Count reactions and update the poll embed."""
-        self._refresh_reaction_poll(event)
-
-    @slash_command(
-        name="modifier-sondage",
-        description="Modifier un sondage",
-        scopes=guild_scopes(UTILS.guild_ids()),
-    )
-    @slash_option(
-        "sondage",
-        "Sondage à modifier (choisis-le dans la liste)",
-        opt_type=OptionType.STRING,
-        required=True,
-        autocomplete=True,
-        argument_name="message_id",
-    )
-    @slash_option(
-        "question",
-        "Question du sondage",
-        opt_type=OptionType.STRING,
-        required=False,
-    )
-    @slash_option(
-        "options",
-        "Options du sondage, séparées par des point-virgules",
-        opt_type=OptionType.STRING,
-        required=False,
-    )
-    @slash_option(
-        "reinitialiser_reactions",
-        "Réinitialiser les réactions du sondage",
-        opt_type=OptionType.BOOLEAN,
-        required=False,
-        argument_name="reset_reactions",
-    )
-    async def editpoll(
-        self,
-        ctx: SlashContext,
-        message_id,
-        question=None,
-        options=None,
-        reset_reactions=False,
-    ):
-        await ctx.defer(ephemeral=True)
-        stored = await self._stored_reaction_poll(ctx.guild_id, message_id)
-        if stored is None:
-            await send_error(ctx, "Ce message n'est pas un sondage à réactions de ce serveur")
-            return
-        if stored.author_id != str(ctx.user.id):
-            await send_error(ctx, "Tu ne peux modifier que les sondages que tu as créés.")
-            return
-        # The poll may sit in another channel than the command: it is fetched where it was posted.
-        channel = await fetch_guild_channel(self.bot, ctx.guild_id, stored.channel_id)
-        try:
-            message = await channel.fetch_message(stored.message_id) if channel else None
-        except Exception:
-            message = None
-        if message is None or not message.embeds:
-            await send_error(ctx, "Message introuvable ou inaccessible")
-            return
-        embed = copy_embed(message.embeds[0])
-        if reset_reactions:
-            await message.clear_all_reactions()
-        if question is not None:
-            embed.title = f"{question} (modifié)"
-        else:
-            embed.title = f"{embed.title} (modifié)"
-        if options is not None:
-            options = [option.strip() for option in options.split(";")]
-            if not validate_poll_options(options):
-                await send_error(ctx, "Un sondage a 10 options au plus.")
-                return
-            embed.description = "\n\n".join(
-                [f"{POLL_EMOJIS[i]} {option}" for i, option in enumerate(options)]
-            )
-            await _add_poll_reactions(message, options)
-            await self._update_stored_options(ctx.guild_id, stored, options)
-        elif reset_reactions:
-            description = embed.description or ""
-            option_count = len(description.split("\n\n")) if description else 2
-            for i in range(option_count):
-                await message.add_reaction(POLL_EMOJIS[i])
-
-        await edit_message_if_changed(message, embed=embed, logger=logger)
-        logger.info("Poll edited")
-        await ctx.send("Sondage modifié", ephemeral=True)
-
-    @editpoll.autocomplete("sondage")
-    async def editpoll_choices(self, ctx: AutocompleteContext) -> None:
-        """The member's open reaction polls on this server, newest first."""
-        if ctx.guild_id is None or not UTILS.enabled(ctx.guild_id):
-            await ctx.send(choices=[])
-            return
-        try:
-            polls = await self._poll_repo(ctx.guild_id).list_open_reaction_polls(
-                str(ctx.author.id), MAX_CHOICES
-            )
-        except Exception as e:
-            logger.warning("Could not list the polls of %s: %s", ctx.author.id, e)
-            polls = []
-        items = [(poll.question, poll.message_id) for poll in polls]
-        await ctx.send(choices=matching_choices(items, ctx.input_text))
-
-    async def _stored_reaction_poll(self, guild_id, message_id) -> Poll | None:
-        """The reaction poll stored for *message_id*, or None for any other message."""
-        try:
-            stored = await self._poll_repo(guild_id).get_by_message(str(message_id))
-        except Exception as e:
-            logger.warning("Could not read poll %s: %s", message_id, e)
-            return None
-        return stored if stored is not None and stored.mode == "reaction" else None
-
-    async def _update_stored_options(self, guild_id, stored: Poll, options: list[str]) -> None:
-        """Keep a stored reaction poll's options in step with /modifier-sondage, for its close."""
-        if stored.id is None or stored.closed:
-            return
-        try:
-            await self._poll_repo(guild_id).set_options(
-                stored.id, options, POLL_EMOJIS[: len(options)]
-            )
-        except Exception as e:
-            logger.warning("Could not update stored poll %s: %s", stored.message_id, e)
 
 
 def setup(bot: Client) -> None:

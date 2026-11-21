@@ -39,7 +39,7 @@ async def test_rolemenu_create_refuses_a_channel_the_author_cannot_post_in(store
     repo = Repo()
     ctx = FakeCtx(author, here)
     ext = bare_extension(ReactionRolesExtension, ctx.bot, repository=lambda guild_id: repo)
-    await run(ReactionRolesExtension.rolemenu_create, ext, ctx, locked, "Rôles", "301,🎁,Jeux")
+    await run(ReactionRolesExtension.rolemenu_create, ext, ctx, locked, "Rôles")
     assert repo.added == [] and locked.sent == []
     assert "la permission « Envoyer des messages » dans" in ctx.last
 
@@ -49,7 +49,13 @@ async def test_rolemenu_create_posts_where_the_author_can_post(store_config):
     repo = Repo()
     ctx = FakeCtx(author, here)
     ext = bare_extension(ReactionRolesExtension, ctx.bot, repository=lambda guild_id: repo)
-    await run(ReactionRolesExtension.rolemenu_create, ext, ctx, here, "Rôles", "301,🎁,Jeux")
+    await run(ReactionRolesExtension.rolemenu_create, ext, ctx, here, "Rôles")
+    draft_id = ctx.replies[-1]["components"][0].components[0].custom_id.split(":")[1]
+    pick = FakeCtx(author, here, bot=ctx.bot, custom_id=f"rrdraft:{draft_id}:roles")
+    pick.values = [role]
+    await run(ReactionRolesExtension.on_draft, ext, pick)
+    publish = FakeCtx(author, here, bot=ctx.bot, custom_id=f"rrdraft:{draft_id}:publish")
+    await run(ReactionRolesExtension.on_draft, ext, publish)
     assert len(repo.added) == 1 and len(here.sent) == 1
 
 

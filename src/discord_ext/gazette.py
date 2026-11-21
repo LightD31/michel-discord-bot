@@ -77,7 +77,7 @@ async def gather_edition(bot: Any, guild_id: str, now: datetime) -> Edition:
                 break
     if "suggestions" in on:
         edition.suggestions = [
-            (int(d.get("id", 0)), str(d.get("status")), str(d.get("text", "")))
+            (int(d.get("id", 0)), str(d.get("status")), str(d.get("title") or d.get("text", "")))
             for d in await repo.decided_suggestions(start, end)
         ]
     if "giveaways" in on:

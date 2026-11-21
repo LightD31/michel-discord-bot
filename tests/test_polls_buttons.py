@@ -1,4 +1,4 @@
-"""Button polls: creation, public / anonymous / ranked votes, and their close (T04)."""
+"""``/sondage``: the form, Discord's own public polls, anonymous and ranked votes, the edit."""
 
 from datetime import timedelta
 
@@ -53,6 +53,15 @@ class MemoryPolls:
     async def mark_closed(self, poll_id):
         self.items[poll_id].closed = True
 
+    async def edit(self, poll_id, author_id, question, options=None):
+        poll = self._open(poll_id)
+        if poll is None or poll.author_id != author_id or (options is not None and poll.votes):
+            return None
+        poll.question = question
+        if options is not None:
+            poll.options = options
+        return poll
+
 
 @pytest.fixture
 def setup(monkeypatch, store_config):
@@ -74,9 +83,23 @@ def setup(monkeypatch, store_config):
     return ext, ctx, repo, guild, channel
 
 
-async def create(ext, ctx, command, options="Pizza;Sushi;Tacos", **kw):
-    await run(command, ext, ctx, question="Ce soir ?", options=options, **kw)
-    return ctx.channel.messages[max(ctx.channel.messages)]
+async def create(
+    ext, ctx, mode="anonymous", options="Pizza\nSushi\nTacos", duration="", multi=False
+):
+    """``/sondage mode:`` opens its form (B4); the member fills it in."""
+    await run(PollsExtension.poll, ext, ctx, mode=mode, multi=multi)
+    form = ctx.modals.pop()
+    submit = FakeCtx(ctx.author, ctx.channel, bot=ctx.bot, custom_id=form.custom_id)
+    await run(
+        PollsExtension.on_poll_form,
+        ext,
+        submit,
+        question="Ce soir ?",
+        options=options,
+        duration=duration,
+    )
+    ctx.replies.extend(submit.replies)
+    return ctx.channel.messages[max(ctx.channel.messages)] if ctx.channel.messages else None
 
 
 def voter(guild, channel, message, uid, custom_id):
@@ -97,7 +120,7 @@ def results(message):
 
 async def test_an_anonymous_poll_is_stored_with_its_buttons(setup):
     ext, ctx, repo, _, _ = setup
-    message = await create(ext, ctx, PollsExtension.poll_anonyme, duration="1h")
+    message = await create(ext, ctx, duration="1h")
     (poll,) = repo.items.values()
     assert poll.mode == "anonymous" and poll.options == ["Pizza", "Sushi", "Tacos"]
     assert poll.closes_at - clock.now() == pytest.approx(
@@ -112,23 +135,29 @@ async def test_an_anonymous_poll_is_stored_with_its_buttons(setup):
 async def test_a_poll_names_its_author_but_never_prints_their_id(setup):
     """The footer is public: it named the author *and* printed their Discord id."""
     ext, ctx, _, _, _ = setup
-    message = await create(ext, ctx, PollsExtension.poll_anonyme)
+    message = await create(ext, ctx)
     footer = message.embeds[0].footer.text
     assert footer == "Michel · Utilitaires · Sondage de alice"
     assert "3" not in footer
 
 
-@pytest.mark.parametrize("options", ["Seule", "A;" * 12])
-async def test_a_poll_needs_two_to_ten_options(setup, options):
+@pytest.mark.parametrize(
+    ("options", "error"),
+    [
+        ("Seule", "au moins 2 options"),
+        ("\n".join(f"Option {i}" for i in range(12)), "10 options au plus"),
+    ],
+)
+async def test_a_poll_needs_two_to_ten_options(setup, options, error):
     ext, ctx, repo, _, _ = setup
-    await run(PollsExtension.poll_anonyme, ext, ctx, question="?", options=options)
-    assert "entre 2 et 10 options" in ctx.last
+    await create(ext, ctx, options=options)
+    assert error in ctx.last
     assert repo.items == {}
 
 
 async def test_a_vote_is_counted_and_can_be_changed(setup):
     ext, ctx, repo, guild, channel = setup
-    message = await create(ext, ctx, PollsExtension.poll_anonyme)
+    message = await create(ext, ctx)
     (poll,) = repo.items.values()
     first = await vote(ext, guild, channel, message, poll, 7, 0)
     assert "Pizza" in first.last and "(anonyme)" in first.last
@@ -139,7 +168,7 @@ async def test_a_vote_is_counted_and_can_be_changed(setup):
 
 async def test_a_ranked_vote_builds_a_ranking_and_can_be_reset(setup):
     ext, ctx, repo, guild, channel = setup
-    message = await create(ext, ctx, PollsExtension.poll_classement)
+    message = await create(ext, ctx, "ranked")
     (poll,) = repo.items.values()
     await vote(ext, guild, channel, message, poll, 7, 2)
     second = await vote(ext, guild, channel, message, poll, 7, 0)
@@ -155,7 +184,7 @@ async def test_a_ranked_vote_builds_a_ranking_and_can_be_reset(setup):
 
 async def test_a_vote_on_another_poll_id_is_refused(setup):
     ext, ctx, repo, guild, channel = setup
-    message = await create(ext, ctx, PollsExtension.poll_anonyme)
+    message = await create(ext, ctx)
     ctx_vote = voter(guild, channel, message, 7, "poll_vote:ffff:0")
     await run(PollsExtension.on_poll_vote, ext, ctx_vote)
     assert ctx_vote.last == "Sondage introuvable."
@@ -163,7 +192,7 @@ async def test_a_vote_on_another_poll_id_is_refused(setup):
 
 async def test_the_sweep_closes_a_due_poll_and_disables_its_buttons(setup):
     ext, ctx, repo, guild, channel = setup
-    message = await create(ext, ctx, PollsExtension.poll_anonyme, duration="1h")
+    message = await create(ext, ctx, duration="1h")
     (poll,) = repo.items.values()
     await vote(ext, guild, channel, message, poll, 7, 0)
     poll.closes_at = clock.now() - timedelta(minutes=1)
@@ -175,3 +204,74 @@ async def test_the_sweep_closes_a_due_poll_and_disables_its_buttons(setup):
     assert all(b.disabled for row in message.edits[-1]["components"] for b in row.components)
     late = await vote(ext, guild, channel, message, poll, 8, 1)
     assert late.last == "Ce sondage est fermé."
+
+
+async def test_a_public_poll_is_a_discord_poll_and_nothing_is_stored(setup):
+    """B4: Discord counts, shows and closes it; Michel keeps nothing."""
+    ext, ctx, repo, _, _ = setup
+    await create(ext, ctx, "public", options="", duration="3j", multi=True)
+    (sent,) = [r for r in ctx.replies if r.get("poll")]
+    poll = sent["poll"]
+    assert str(poll.question.text) == "Ce soir ?"
+    assert [str(a.poll_media.text) for a in poll.answers] == ["Oui", "Non"]
+    sent_as = poll.to_dict()
+    assert sent_as["duration"] == 72 and sent_as["allow_multiselect"] is True
+    assert repo.items == {}
+
+
+async def test_a_public_option_longer_than_discord_takes_is_refused(setup):
+    ext, ctx, _, _, _ = setup
+    await create(ext, ctx, "public", options="Court\n" + "x" * 56)
+    assert "55 caractères au plus" in ctx.last
+    assert not [r for r in ctx.replies if r.get("poll")]
+
+
+async def test_a_duration_it_cannot_read_says_how_to_write_it(setup):
+    ext, ctx, repo, _, _ = setup
+    await create(ext, ctx, duration="bientôt")
+    assert ctx.last.startswith("⏱️ Je n'ai pas compris la durée « bientôt »")
+    assert repo.items == {}
+
+
+async def test_the_author_edits_the_question_and_the_options_until_a_vote(setup):
+    ext, ctx, repo, guild, channel = setup
+    message = await create(ext, ctx)
+    (poll,) = repo.items.values()
+    tools = message.edits[-1]["components"][-1].components
+    assert [b.custom_id for b in tools] == [f"poll_edit:{poll.id}"]
+
+    click = FakeCtx(ctx.author, channel, message=message, custom_id=f"poll_edit:{poll.id}")
+    await run(PollsExtension.on_poll_edit, ext, click)
+    (form,) = click.modals
+    assert [c.custom_id for c in form.components] == ["question", "options"]
+    assert form.components[1].value == "Pizza\nSushi\nTacos"
+    submit = FakeCtx(ctx.author, channel, bot=ctx.bot, custom_id=form.custom_id)
+    await run(
+        PollsExtension.on_edit_form, ext, submit, question="Demain ?", options="Pizza\nCrêpes"
+    )
+    assert (poll.question, poll.options) == ("Demain ?", ["Pizza", "Crêpes"])
+    assert message.embeds[0].title == "📊 Demain ?"
+    labels = [b.label for b in message.edits[-1]["components"][0].components]
+    assert labels == ["1. Pizza", "2. Crêpes"]
+
+    await vote(ext, guild, channel, message, poll, 7, 0)
+    again = FakeCtx(ctx.author, channel, message=message, custom_id=f"poll_edit:{poll.id}")
+    await run(PollsExtension.on_poll_edit, ext, again)
+    (late_form,) = again.modals
+    assert [c.custom_id for c in late_form.components] == ["question"]
+
+
+async def test_only_the_author_edits_a_poll(setup):
+    ext, ctx, repo, guild, channel = setup
+    message = await create(ext, ctx)
+    (poll,) = repo.items.values()
+    other = voter(guild, channel, message, 8, f"poll_edit:{poll.id}")
+    await run(PollsExtension.on_poll_edit, ext, other)
+    assert other.modals == [] and other.last.startswith("🔒 Seule la personne")
+
+
+def test_one_sondage_command_remains():
+    """/sondage-anonyme, /sondage-classement and /modifier-sondage are gone (B4)."""
+    names = {str(getattr(v, "name", "")) for v in vars(PollsExtension).values()}
+    assert "sondage" in names
+    assert not names & {"sondage-anonyme", "sondage-classement", "modifier-sondage"}

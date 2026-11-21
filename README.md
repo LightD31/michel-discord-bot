@@ -34,16 +34,16 @@ A modular, multi-guild Discord bot built with **interactions.py**. Michel ships 
 | Module | Description |
 |--------|-------------|
 | **XP & Levels** | Message- and voice-based XP with cooldowns, level-up announcements, Pillow rank cards, a paginated leaderboard, and a stats view in the Web UI (daily activity, level distribution, top members, weekday × hour heatmap). |
-| **Birthday** | Store birthdays with timezone support, send daily greetings, and assign a birthday role. |
+| **Birthday** | Store birthdays ("12/03", the year and timezone optional), send daily greetings, and assign a birthday role. |
 | **Welcome** | Weighted-random welcome and farewell messages, with an optional illustrated welcome card. |
 | **Feur** | Classic French joke — the bot replies "feur" when someone ends a message with "quoi", with per-user stats. |
 | **Starboard** | Mirrors highly-reacted messages to a dedicated channel once a reaction threshold is hit. |
-| **Suggestions** | Community suggestion box with up/down voting and approve/deny/implement workflows. |
-| **Polls** | `/sondage`, `/sondage-anonyme`, and `/sondage-classement` (ranked-choice) — button-based, persisted across restarts, with optional auto-close. |
-| **Giveaway** | Giveaways with a "Participer" button and a scheduled random draw. |
+| **Suggestions** | `/suggerer` opens a form; each suggestion gets up/down votes, a discussion thread, and staff buttons (approve / deny / implemented, with a reason) that DM the author the decision. |
+| **Polls** | `/sondage mode:` opens a form. A public poll is a native Discord poll; an anonymous or ranked-choice one has buttons, is persisted across restarts, can be edited by its author, and closes on its own. |
+| **Giveaway** | `/concours lancer` opens a form; giveaways with a "Participer" button, an optional required role or XP level, and a scheduled random draw. |
 | **Secret Santa** | Organize a Secret Santa entirely in Discord — registrations, forbidden pairings, random draw, and DM delivery. |
 | **Reaction Roles** | Self-assignable roles via persistent buttons, with a menu builder in the Web UI. |
-| **Reminders** | `/rappel creer` with optional recurrence (25 per member and server), `/rappel liste` to see them and when they next fire, `/rappel supprimer`. DM delivery to its author with a snooze button, persisted and restored across restarts. |
+| **Reminders** | `/rappel creer quand:"samedi 9h"` ("dans 2h", "demain 18h30", read back as you type) with optional recurrence (25 per member and server), `/rappel liste` to see them and when they next fire, `/rappel supprimer` (a menu, several at once). DM delivery to its author with a snooze button, persisted and restored across restarts. |
 | **Custom Commands** | Slash commands defined per server from the Web UI — a name, a description, and a pool of responses (GIF links or plain text) picked at random. New commands reach Discord without a restart. |
 | **Random** | `/pick` (random choice from a list) and `/dice` (configurable die roll) powered by Random.org. |
 | **User Info** | Per-user profile lookup and shared member-tracking stats. |

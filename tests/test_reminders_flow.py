@@ -1,13 +1,13 @@
 """/rappel creer and supprimer, and the minute check that sends them (T04)."""
 
-from datetime import date, datetime, timedelta
-from types import SimpleNamespace
+from datetime import timedelta
 
 import pytest
 from discord_fakes import FakeChannel, FakeCtx, FakeGuild, FakeMember, bare_extension, run
 
 from extensions.reminders import MAX_REMINDERS_PER_MEMBER, RemindersExtension
 from features.reminders import Reminder
+from features.secretsanta.dates import WEEKDAYS
 from src.core import clock
 
 
@@ -23,8 +23,15 @@ class MemoryReminders:
         self.items[rid] = reminder.model_copy(update={"id": rid})
         return rid
 
-    async def delete(self, reminder_id):
-        return 1 if self.items.pop(reminder_id, None) else 0
+    async def delete_mine(self, user_id, reminder_ids):
+        mine = [
+            rid
+            for rid in reminder_ids
+            if self.items.get(rid, None) and self.items[rid].user_id == user_id
+        ]
+        for rid in mine:
+            del self.items[rid]
+        return len(mine)
 
     async def count_for_user(self, user_id):
         return sum(r.user_id == user_id for r in self.items.values())
@@ -64,45 +71,59 @@ def setup(store_config):
 
 async def test_set_stores_a_reminder_at_the_paris_hour_typed(setup):
     ext, ctx, repo, _ = setup
-    await run(
-        RemindersExtension.reminder_set, ext, ctx, 20, 30, "Sortir le chien", frequency="daily"
-    )
+    await run(RemindersExtension.reminder_set, ext, ctx, "Sortir le chien", "20h30", "daily")
     (stored,) = repo.items.values()
     local = clock.to_local(stored.remind_time)
     assert (local.hour, local.minute) == (20, 30)
     assert stored.remind_time.utcoffset() == timedelta(0)
     assert stored.frequency == "daily" and stored.user_id == "7"
-    assert "20:30" in ctx.last and ctx.replies[-1]["ephemeral"]
+    assert "Tous les jours à 20:30" in ctx.last and ctx.replies[-1]["ephemeral"]
 
 
-async def test_set_refuses_a_malformed_date(setup):
+async def test_set_reads_quand_like_the_message_form(setup):
+    """« quand » is the same French reading as "⏰ Me le rappeler" (B2)."""
     ext, ctx, repo, _ = setup
-    await run(RemindersExtension.reminder_set, ext, ctx, 9, 0, "x", date="2026-12-01")
-    # Says what it read and how to write it (B9).
-    assert ctx.last == "📅 Je n'ai pas compris « 2026-12-01 ». Exemple : 24/12/2026."
+    await run(RemindersExtension.reminder_set, ext, ctx, "Noël", "24/12 9h")
+    (stored,) = repo.items.values()
+    assert clock.to_local(stored.remind_time).strftime("%d/%m %H:%M") == "24/12 09:00"
+    assert stored.frequency is None
+
+
+async def test_set_refuses_what_it_cannot_read_with_examples(setup):
+    ext, ctx, repo, _ = setup
+    await run(RemindersExtension.reminder_set, ext, ctx, "x", "2026-12-01")
+    assert ctx.last.startswith("📅 Je n'ai pas compris « 2026-12-01 ». Exemples :")
     assert repo.items == {}
 
 
-async def test_set_takes_a_date_without_its_year(setup):
+async def test_set_refuses_a_moment_already_past(setup):
     ext, ctx, repo, _ = setup
-    await run(RemindersExtension.reminder_set, ext, ctx, 9, 0, "Noël", date="24/12")
-    (stored,) = repo.items.values()
-    assert clock.to_local(stored.remind_time).strftime("%d/%m %H:%M") == "24/12 09:00"
-
-
-async def test_set_refuses_a_one_shot_in_the_past(setup):
-    ext, ctx, repo, _ = setup
-    await run(RemindersExtension.reminder_set, ext, ctx, 9, 0, "x", date="01/01/2020")
-    assert "passé" in ctx.last and repo.items == {}
+    await run(RemindersExtension.reminder_set, ext, ctx, "x", "01/01/2020 9h")
+    assert ctx.last.startswith("📅") and repo.items == {}
 
 
 async def test_set_stops_at_the_quota(setup):
     ext, ctx, repo, _ = setup
     for _ in range(MAX_REMINDERS_PER_MEMBER):
-        await run(RemindersExtension.reminder_set, ext, ctx, 9, 0, "x", frequency="daily")
-    await run(RemindersExtension.reminder_set, ext, ctx, 9, 0, "one too many", frequency="daily")
+        await run(RemindersExtension.reminder_set, ext, ctx, "x", "9h", "daily")
+    await run(RemindersExtension.reminder_set, ext, ctx, "one too many", "9h", "daily")
     assert len(repo.items) == MAX_REMINDERS_PER_MEMBER
     assert "/rappel supprimer" in ctx.last
+
+
+def test_quand_reads_back_as_it_is_typed():
+    from extensions.reminders import when_choices
+
+    (choice,) = when_choices("demain 18h30")
+    assert choice["value"] == "demain 18h30"
+    tomorrow = clock.to_local(clock.now()) + timedelta(days=1)
+    assert choice["name"].startswith(f"→ {WEEKDAYS[tomorrow.weekday()]} ")
+    assert choice["name"].endswith("à 18:30")
+    (unread,) = when_choices("bientôt")
+    assert unread["name"].startswith("❓ Je n'ai pas compris") and unread["value"] == "bientôt"
+    examples = when_choices("")
+    assert [c["value"] for c in examples] == ["dans 2h", "demain 18h30", "samedi 9h", "24/12 20h"]
+    assert all(" → " in c["name"] and len(c["name"]) <= 100 for c in examples)
 
 
 def due(repo, *, frequency=None, minutes_late=1, text="Rappel"):
@@ -171,36 +192,27 @@ async def test_the_dm_carries_a_snooze_button_for_this_guild(setup, monkeypatch)
     assert button.custom_id == f"reminder_snooze:1:{reminder.id}"
 
 
-async def test_remove_deletes_the_chosen_reminder(setup):
+async def test_remove_offers_a_menu_and_deletes_what_was_chosen(setup):
     ext, ctx, repo, member = setup
-    await run(RemindersExtension.reminder_set, ext, ctx, 9, 0, "Garder", frequency="daily")
-    await run(RemindersExtension.reminder_set, ext, ctx, 10, 0, "Supprimer", frequency="daily")
-    target = next(r for r in repo.items.values() if r.message == "Supprimer")
-    click = FakeCtx(member, ctx.channel, custom_id=target.id)
-
-    async def wait_for_component(components, timeout):
-        assert target.id in components
-        return SimpleNamespace(ctx=click)
-
-    ext.bot.wait_for_component = wait_for_component
+    for task in ("Garder", "Supprimer", "Aussi"):
+        await run(RemindersExtension.reminder_set, ext, ctx, task, "9h", "daily")
     await run(RemindersExtension.delete_reminder, ext, ctx)
+    (row,) = ctx.replies[-1]["components"]
+    (menu,) = row.components
+    assert [o.label for o in menu.options] == ["Garder", "Supprimer", "Aussi"]
+    assert menu.max_values == 3 and ctx.replies[-1]["ephemeral"]
+    chosen = [o.value for o in menu.options if o.label != "Garder"]
+    click = FakeCtx(member, ctx.channel, custom_id="reminder_delete")
+    click.values = chosen
+    await run(RemindersExtension.on_delete_chosen, ext, click)
     assert [r.message for r in repo.items.values()] == ["Garder"]
-    assert "10:00" in click.origin_edits[-1]["content"]
+    assert click.origin_edits[-1]["content"] == "✅ 2 rappels supprimés."
 
 
 async def test_remove_without_reminders(setup):
     ext, ctx, _, _ = setup
     await run(RemindersExtension.delete_reminder, ext, ctx)
     assert "aucun rappel" in ctx.last
-
-
-def test_a_reminder_set_on_a_date_reads_back_in_paris():
-    # The stored instant of 1 July 09:00 Paris is 07:00 UTC (summer time).
-    from features.reminders import first_occurrence
-
-    now = datetime(2026, 6, 1, 12, 0, tzinfo=clock.LOCAL_TZ)
-    when = first_occurrence(now, hour=9, minute=0, frequency=None, start=date(2026, 7, 1))
-    assert (when.hour, clock.to_local(when).hour) == (7, 9)
 
 
 # ── "⏰ Me le rappeler": a reminder made from a message (B1) ──────────────

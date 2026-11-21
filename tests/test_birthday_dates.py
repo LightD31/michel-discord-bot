@@ -5,10 +5,12 @@ from datetime import date, datetime
 import pytest
 
 from features.birthday import (
+    NO_YEAR,
     BirthdayEntry,
     age_on,
     birthday_in_year,
     calendar_order,
+    has_year,
     is_birthday,
     parse_birth_date,
     strip_year_from_format,
@@ -51,12 +53,33 @@ def test_the_list_is_in_calendar_order_whatever_the_year():
 def test_birth_dates_must_be_valid_and_not_in_the_future():
     today = date(2026, 3, 10)
     assert parse_birth_date("29/02/2000", today=today) == datetime(2000, 2, 29)
-    with pytest.raises(ValueError, match="Format attendu"):
+    with pytest.raises(ValueError, match="Exemples : 12/03, 12/03/1990, 12 mars"):
         parse_birth_date("2000-02-29", today=today)
-    with pytest.raises(ValueError, match="Format attendu"):
+    with pytest.raises(ValueError, match="Je n'ai pas compris « 29/02/2001 »"):
         parse_birth_date("29/02/2001", today=today)
     with pytest.raises(ValueError, match="futur"):
         parse_birth_date("11/03/2026", today=today)
+    with pytest.raises(ValueError, match="année"):
+        parse_birth_date("11/03/1904", today=today)
+
+
+@pytest.mark.parametrize(
+    ("text", "day", "with_year"),
+    [
+        ("12/03", (12, 3), False),
+        ("12/03/1990", (12, 3), True),
+        ("12 mars", (12, 3), False),
+        ("1er mai 1985", (1, 5), True),
+        ("29/02", (29, 2), False),  # kept in a leap year
+        ("  12.3 ", (12, 3), False),
+    ],
+)
+def test_the_year_is_optional(text, day, with_year):
+    """B2: "12/03" is enough; the birthday is wished without an age."""
+    parsed = parse_birth_date(text, today=date(2026, 3, 10))
+    assert (parsed.day, parsed.month) == day
+    assert has_year(parsed) is with_year
+    assert parsed.year == (parsed.year if with_year else NO_YEAR)
 
 
 def test_entries_reject_an_unknown_timezone():

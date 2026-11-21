@@ -24,7 +24,9 @@ class ReactionRolesConfig(SchemaBase):
     __help__ = ModuleHelp(
         "Des menus pour choisir ses rôles d'un clic.",
         ("/menu-roles creer", "/menu-roles liste"),
-        "Un clic sur un bouton du menu donne le rôle, un second le retire.",
+        "Un clic sur un bouton du menu donne le rôle, un second le retire ; un menu en "
+        "liste déroulante garde les rôles choisis. `/menu-roles creer` montre l'aperçu "
+        "avant de publier.",
     )
 
     enabled: bool = enabled_field()

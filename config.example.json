@@ -346,6 +346,7 @@
                 "enabled": false,
                 "suggestChannelId": "",
                 "staffRoleId": "",
+                "discussionThreads": true,
                 "anonymous": false
             },
             "moduleTricount": {

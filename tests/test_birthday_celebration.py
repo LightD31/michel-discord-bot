@@ -7,7 +7,7 @@ import pytest
 from discord_fakes import FakeBot, FakeChannel, FakeGuild, FakeMember, bare_extension
 
 from extensions.birthday import BirthdayExtension
-from features.birthday import BirthdayEntry
+from features.birthday import NO_YEAR, BirthdayEntry, parse_birth_date
 
 GUILD = 1
 NOW = datetime(2026, 7, 14, 10, tzinfo=ZoneInfo("Europe/Paris"))
@@ -69,3 +69,55 @@ async def test_a_member_who_left_is_not_retried_all_day(setup):
     guild.members.pop(7)
     await ext._handle_birthday_celebration(entry(), GUILD, NOW)
     assert repo.celebrated == {7}
+
+
+async def test_a_birthday_without_its_year_is_wished_without_an_age(setup, store_config):
+    """A wish that says the age is skipped: "12/03" gave none (B2)."""
+    ext, guild, repo = setup
+    channel = guild.add_channel(FakeChannel(10))
+    store_config(
+        {
+            "servers": {
+                str(GUILD): {
+                    "moduleBirthday": {
+                        "enabled": True,
+                        "birthdayChannelId": "10",
+                        "birthdayMessageList": [
+                            {"text": "{mention} a {age} ans !", "weight": 100},
+                            {"text": "Bon anniversaire {mention} !", "weight": 1},
+                        ],
+                    }
+                }
+            }
+        }
+    )
+    dated = BirthdayEntry(
+        user=7, date=parse_birth_date("14/07", today=NOW.date()), timezone="Europe/Paris"
+    )
+    await ext._handle_birthday_celebration(dated, GUILD, NOW)
+    assert channel.sent[-1].content == "Bon anniversaire <@7> !"
+
+
+async def test_the_command_takes_paris_and_a_day_without_its_year(store_config):
+    from discord_fakes import FakeCtx, run
+
+    store_config({"servers": {str(GUILD): {"moduleBirthday": {"enabled": True}}}})
+    guild = FakeGuild(GUILD)
+    channel = guild.add_channel(FakeChannel(10))
+    ctx = FakeCtx(guild.add_member(FakeMember(7, "bob")), channel)
+    saved = []
+
+    class Store:
+        async def find_one(self, user):
+            return None
+
+        async def upsert(self, entry):
+            saved.append(entry)
+
+    ext = bare_extension(BirthdayExtension, ctx.bot, _repo=lambda guild_id: Store())
+    await run(BirthdayExtension.anniversaire, ext, ctx, "1er mars")
+    (stored,) = saved
+    assert stored.timezone == "Europe/Paris" and stored.date.year == NO_YEAR
+    assert ctx.last == "✅ Anniversaire ajouté : 1er mars."
+    await run(BirthdayExtension.anniversaire, ext, ctx, "31/02")
+    assert ctx.last.startswith("📅 Je n'ai pas compris « 31/02 »")

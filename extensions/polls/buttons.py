@@ -1,9 +1,18 @@
-"""Button-based voting for anonymous and ranked-choice polls."""
+"""Button-based voting for anonymous and ranked-choice polls, and their author's edit."""
 
-import os
 import re
 
-from interactions import ActionRow, Button, ButtonStyle, ComponentContext, Embed, component_callback
+from interactions import (
+    ActionRow,
+    Button,
+    ButtonStyle,
+    ComponentContext,
+    Embed,
+    Modal,
+    ParagraphText,
+    ShortText,
+    component_callback,
+)
 
 from features.polls import (
     POLL_EMOJIS,
@@ -15,15 +24,44 @@ from features.polls import (
 )
 from src.core import logging as logutil
 from src.discord_ext.look import recolour
-from src.discord_ext.messages import copy_embed, edit_message_if_changed
+from src.discord_ext.messages import copy_embed, edit_message_if_changed, send_error
 
 logger = logutil.init_logger(__name__)
 
 VOTE_PREFIX = "poll_vote"
 RESET_PREFIX = "poll_reset"
+EDIT_PREFIX = "poll_edit"
+EDIT_FORM = "poll_editform"
 
 _VOTE_RE = re.compile(rf"^{VOTE_PREFIX}:([0-9a-fA-F]+):(\d+)$")
 _RESET_RE = re.compile(rf"^{RESET_PREFIX}:([0-9a-fA-F]+)$")
+_EDIT_RE = re.compile(rf"^{EDIT_PREFIX}:([0-9a-fA-F]{{24}})$")
+EDIT_FORM_RE = re.compile(rf"^{EDIT_FORM}:([0-9a-fA-F]{{24}})$")
+
+
+def edit_form(poll: Poll) -> Modal:
+    """The author's "✏️ Modifier": the question, and the options while nobody has voted."""
+    fields = [
+        ShortText(
+            label="Question",
+            custom_id="question",
+            value=poll.question,
+            required=True,
+            max_length=250,
+        )
+    ]
+    if not poll.votes:
+        fields.append(
+            ParagraphText(
+                label="Options, une par ligne",
+                custom_id="options",
+                value="\n".join(poll.options),
+                required=True,
+                max_length=1000,
+            )
+        )
+    title = "Modifier le sondage" if not poll.votes else "Modifier la question (déjà des votes)"
+    return Modal(*fields, title=title, custom_id=f"{EDIT_FORM}:{poll.id}")
 
 
 def vote_components(poll: Poll) -> list[ActionRow]:
@@ -47,16 +85,25 @@ def vote_components(poll: Poll) -> list[ActionRow]:
     if buttons:
         rows.append(ActionRow(*buttons))
 
-    if poll.mode == "ranked" and not poll.closed:
-        rows.append(
-            ActionRow(
+    if not poll.closed:
+        tools = [
+            Button(
+                label="Modifier",
+                emoji="✏️",
+                style=ButtonStyle.SECONDARY,
+                custom_id=f"{EDIT_PREFIX}:{poll.id}",
+            )
+        ]
+        if poll.mode == "ranked":
+            tools.insert(
+                0,
                 Button(
                     label="Réinitialiser mon classement",
                     style=ButtonStyle.SECONDARY,
                     custom_id=f"{RESET_PREFIX}:{poll.id}",
-                )
+                ),
             )
-        )
+        rows.append(ActionRow(*tools))
     return rows
 
 
@@ -178,6 +225,23 @@ class PollButtonsMixin:
             await edit_message_if_changed(ctx.message, embed=embed, logger=logger)
         except Exception as e:  # noqa: BLE001 — saved anyway; the next vote catches up
             logger.warning("Poll %s: could not refresh its message: %s", poll.id, e)
+
+    @component_callback(_EDIT_RE)
+    async def on_poll_edit(self, ctx: ComponentContext) -> None:
+        """Open the edit form, for the poll's author only."""
+        match = _EDIT_RE.match(ctx.custom_id)
+        if not match or not ctx.guild_id:
+            return
+        poll = await self._poll_repo(ctx.guild_id).get_by_message(str(ctx.message.id))
+        if poll is None or poll.id != match[1] or poll.closed:
+            await send_error(ctx, "Ce sondage est fermé.")
+            return
+        if poll.author_id != str(ctx.author.id):
+            await send_error(
+                ctx, "Seule la personne qui a lancé ce sondage peut le modifier.", icon="🔒"
+            )
+            return
+        await ctx.send_modal(edit_form(poll))
 
     @component_callback(_RESET_RE)
     async def on_poll_reset(self, ctx: ComponentContext) -> None:

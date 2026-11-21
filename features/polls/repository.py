@@ -1,4 +1,4 @@
-"""MongoDB I/O for the button-based polls feature."""
+"""MongoDB I/O for the anonymous and ranked polls (a public poll is Discord's own)."""
 
 from datetime import datetime
 
@@ -110,27 +110,29 @@ class PollRepository:
         return self._doc_to_poll(doc) if doc else None
 
     @translates_db_errors
-    async def list_open_reaction_polls(self, author_id: str, limit: int) -> list[Poll]:
-        """The *limit* newest open reaction polls *author_id* posted (``/modifier-sondage``)."""
-        cursor = (
-            self._col()
-            .find({"author_id": str(author_id), "mode": "reaction", "closed": False})
-            .sort("_id", -1)
-            .limit(limit)
-        )
-        return [self._doc_to_poll(d) for d in await cursor.to_list()]
-
-    @translates_db_errors
     async def list_due(self, now: datetime) -> list[Poll]:
         cursor = self._col().find({"closed": False, "closes_at": {"$ne": None, "$lte": now}})
         return [self._doc_to_poll(d) for d in await cursor.to_list()]
 
     @translates_db_errors
-    async def set_options(self, poll_id: str, options: list[str], emojis: list[str]) -> None:
-        """Replace a stored poll's options (``/modifier-sondage``)."""
-        await self._col().update_one(
-            {"_id": ObjectId(poll_id)}, {"$set": {"options": options, "emojis": emojis}}
+    async def edit(
+        self, poll_id: str, author_id: str, question: str, options: list[str] | None = None
+    ) -> Poll | None:
+        """The author's edit of an open poll ("✏️ Modifier"); the updated poll, else ``None``.
+
+        The options change only while nobody has voted (votes point at an
+        option's place): with *options*, a poll someone voted on meanwhile is
+        left as it was and ``None`` comes back.
+        """
+        query: dict = {"_id": ObjectId(poll_id), "author_id": str(author_id), "closed": False}
+        change: dict = {"question": question}
+        if options is not None:
+            query["votes"] = {}
+            change["options"] = options
+        doc = await self._col().find_one_and_update(
+            query, {"$set": change}, return_document=pymongo.ReturnDocument.AFTER
         )
+        return self._doc_to_poll(doc) if doc else None
 
     @translates_db_errors
     async def mark_closed(self, poll_id: str) -> None:

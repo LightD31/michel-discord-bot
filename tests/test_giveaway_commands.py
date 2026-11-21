@@ -108,8 +108,23 @@ class RecordingRefreshes:
         self.requests.append((key, refresh))
 
 
-async def start(ext, ctx, **options):
+async def start(ext, ctx, *, prize, duration, winners="1", description="", **options):
+    """``/concours lancer`` opens its form (B2); the host fills it in."""
     await run(GiveawayExtension.giveaway_start, ext, ctx, **options)
+    if not ctx.modals:
+        return
+    form = ctx.modals.pop()
+    submit = FakeCtx(ctx.author, ctx.channel, bot=ctx.bot, custom_id=form.custom_id)
+    await run(
+        GiveawayExtension.on_start_form,
+        ext,
+        submit,
+        prize=prize,
+        duration=duration,
+        winners=str(winners),
+        description=description,
+    )
+    ctx.replies.extend(submit.replies)
 
 
 async def test_start_posts_the_announcement_and_stores_the_giveaway(setup):
@@ -256,7 +271,7 @@ async def test_a_failed_save_takes_the_announcement_down(setup):
     repo.add = broken
     await start(ext, ctx, prize="Un jeu", duration="2h")
     assert all(m.deleted for m in channel.messages.values())
-    assert "pas pu être enregistré" in ctx.last
+    assert "pas pu enregistrer" in ctx.last
 
 
 async def click(ext, member, message, button="enter"):
@@ -367,3 +382,54 @@ async def test_no_choices_where_giveaways_are_off(setup, store_config):
     store_config({"servers": {}})
     await run(GiveawayExtension.open_giveaway_choices, ext, typing(ctx))
     assert ctx.replies[-1]["choices"] == []
+
+
+@pytest.mark.parametrize("winners", ["0", "deux", "99"])
+async def test_the_form_refuses_a_winner_count_it_cannot_use(setup, winners):
+    ext, ctx, repo, _ = setup
+    await start(ext, ctx, prize="Un jeu", duration="2h", winners=winners)
+    assert ctx.last.startswith(f"❌ Je n'ai pas compris « {winners} » gagnants")
+    assert repo.items == {}
+
+
+async def test_a_giveaway_for_a_role_and_a_level(setup, store_config):
+    """B3: the conditions show on the announcement and are checked when a member enters."""
+    from discord_fakes import FakeRole
+
+    ext, ctx, repo, channel = setup
+    store_config(
+        {"servers": {"1": {"moduleGiveaway": {"enabled": True}, "moduleXp": {"enabled": True}}}}
+    )
+    vip = FakeRole(600, "VIP")
+    await start(
+        ext, ctx, prize="Un jeu", duration="3j", role=vip, min_level=5, description="Bonne chance"
+    )
+    (stored,) = repo.items.values()
+    assert (stored.required_role_id, stored.min_level) == ("600", 5)
+    assert stored.description == "Bonne chance"
+    (announcement,) = [r for r in ctx.replies if r.get("embeds")]
+    fields = {f.name: f.value for f in announcement["embeds"][0].fields}
+    assert fields["Pour participer"] == "Rôle <@&600> · niveau 5 ou plus"
+
+    message = FakeMessage(int(stored.message_id), channel=channel)
+    levels = {"7": 9, "8": 2}
+
+    async def member_level(guild_id, user_id):
+        return levels.get(user_id, 0)
+
+    ext._member_level = member_level
+    outsider = channel.guild.add_member(FakeMember(9, "eve"))
+    refused = await click(ext, outsider, message)
+    assert refused.last == "🔒 Ce giveaway est réservé au rôle <@&600>."
+    newcomer = channel.guild.add_member(FakeMember(8, "dan", roles=[vip]))
+    low = await click(ext, newcomer, message)
+    assert low.last.startswith("🔒 Ce giveaway demande le niveau 5 : tu es niveau 2.")
+    regular = channel.guild.add_member(FakeMember(7, "bob", roles=[vip]))
+    await click(ext, regular, message)
+    assert stored.entrants == ["7"]
+
+
+async def test_a_minimum_level_needs_the_xp_module(setup):
+    ext, ctx, repo, _ = setup
+    await run(GiveawayExtension.giveaway_start, ext, ctx, min_level=5)
+    assert ctx.modals == [] and "système d'XP n'est pas actif" in ctx.last

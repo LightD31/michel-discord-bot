@@ -33,19 +33,26 @@ from features.birthday import (
     BirthdayRepository,
     age_on,
     calendar_order,
+    has_year,
     is_birthday,
     parse_birth_date,
     strip_year_from_format,
 )
+from features.secretsanta.dates import MONTH_NAMES
 from src.core import clock
 from src.core import logging as logutil
 from src.core.config import ModuleConfig
 from src.core.errors import DatabaseError, ValidationError
 from src.core.logging import log_failure
 from src.core.text import pick_weighted_message
-from src.discord_ext.look import card
+from src.discord_ext.look import card, ok
 from src.discord_ext.mentions import everyone_if_written
-from src.discord_ext.messages import edit_message_if_changed, fetch_user_safe, require_guild
+from src.discord_ext.messages import (
+    edit_message_if_changed,
+    fetch_user_safe,
+    require_guild,
+    send_error,
+)
 from src.discord_ext.paginator import CustomPaginator
 from src.discord_ext.role_grants import auto_grant_refusal
 from src.discord_ext.rolemenus import role_info
@@ -111,6 +118,23 @@ def _validate_and_parse_date(date_str: str) -> datetime:
         return parse_birth_date(date_str, today=clock.local_now().date())
     except ValueError as e:
         raise ValidationError(str(e)) from e
+
+
+def day_label(birth: datetime) -> str:
+    """« 12 mars » or « 12 mars 1990 », as the confirmation reads it back."""
+    day = "1er" if birth.day == 1 else str(birth.day)
+    label = f"{day} {MONTH_NAMES[birth.month - 1]}"
+    return f"{label} {birth.year}" if has_year(birth) else label
+
+
+def without_age(settings: dict) -> dict:
+    """*settings* with only the birthday messages that don't say ``{age}``."""
+    messages = [
+        entry
+        for entry in settings.get("birthdayMessageList") or []
+        if not (isinstance(entry, dict) and "{age}" in str(entry.get("text", "")))
+    ]
+    return {**settings, "birthdayMessageList": messages}
 
 
 def _validate_timezone(timezone_str: str) -> ZoneInfo:
@@ -189,17 +213,16 @@ class BirthdayExtension(Extension):
     )
     @slash_option(
         name="date",
-        description="Date de l'anniversaire (format : JJ/MM/AAAA)",
+        description="Ex. 12/03, 12/03/1990 ou 12 mars (l'année est facultative)",
         opt_type=OptionType.STRING,
         required=True,
-        min_length=10,
-        max_length=10,
+        max_length=30,
     )
     @slash_option(
         name="fuseau",
-        description="Fuseau horaire ex : Europe/Paris",
+        description="Si tu ne vis pas à l'heure de Paris (défaut : Europe/Paris)",
         opt_type=OptionType.STRING,
-        required=True,
+        required=False,
         autocomplete=True,
         argument_name="timezone",
     )
@@ -214,14 +237,14 @@ class BirthdayExtension(Extension):
         self,
         ctx: SlashContext,
         date: str,
-        timezone: str,
+        timezone: str | None = None,
         hideyear: bool | None = False,
     ) -> None:
         if not await require_guild(ctx) or ctx.guild is None:
             return
         try:
             parsed_date = _validate_and_parse_date(date)
-            validated_tz = _validate_timezone(timezone)
+            validated_tz = _validate_timezone(timezone or clock.LOCAL_TZ.key)
             repo = self._repo(ctx.guild.id)
             existing = await repo.find_one(ctx.author.id)
             entry = BirthdayEntry(
@@ -233,7 +256,7 @@ class BirthdayExtension(Extension):
             )
             await repo.upsert(entry)
             verb = "mis à jour" if existing else "ajouté"
-            await ctx.send(f"Anniversaire {verb} ✅", ephemeral=True)
+            await ctx.send(ok(f"Anniversaire {verb} : {day_label(parsed_date)}."), ephemeral=True)
             logger.info(
                 "Anniversaire de %s %s sur le serveur %s (%s)",
                 ctx.author.display_name,
@@ -242,7 +265,7 @@ class BirthdayExtension(Extension):
                 parsed_date.strftime("%d/%m/%Y"),
             )
         except ValidationError as e:
-            await ctx.send(str(e), ephemeral=True)
+            await send_error(ctx, str(e), icon="📅")
         except DatabaseError as e:
             logger.error("Database error for user %s: %s", ctx.author.display_name, e)
             await ctx.send("Je n'ai pas pu enregistrer ta date : réessaie.", ephemeral=True)
@@ -354,7 +377,7 @@ class BirthdayExtension(Extension):
                         logger.warning("Could not fetch user %s", entry.user)
                         continue
                     formatted = format_date(entry.date, date_format, locale=locale)
-                    if entry.hideyear:
+                    if entry.hideyear or not has_year(entry.date):
                         lines.append(f"**{user.mention}** : {formatted}")
                     else:
                         age = age_on(entry.date, clock.local_now().date())
@@ -446,16 +469,13 @@ class BirthdayExtension(Extension):
             logger.warning("No valid channel for birthday message in server %s", server.name)
             await repo.mark_celebrated(entry.user)
             return
-        age = age_on(entry.date, now_tz.date())
+        age = age_on(entry.date, now_tz.date()) if has_year(entry.date) else None
         await self._send_birthday_message(channel, member, age, guild_id)
         if not await repo.mark_celebrated(entry.user):
             return  # another run celebrated it meanwhile
         await self._toggle_birthday_role(server, member, guild_id, add=True)
         logger.info(
-            "Birthday celebration completed for %s on server %s (%d years old)",
-            member.display_name,
-            server.name,
-            age,
+            "Birthday celebration completed for %s on server %s", member.display_name, server.name
         )
 
     async def _handle_birthday_end(self, entry: BirthdayEntry, guild_id: int) -> None:
@@ -474,9 +494,17 @@ class BirthdayExtension(Extension):
         except Exception as e:
             log_failure(logger, "Error handling birthday end: %s", e)
 
-    async def _send_birthday_message(self, channel, member, age: int, server_id: int) -> None:
-        """Post the wish. Raises when Discord refuses it, so the day isn't marked."""
+    async def _send_birthday_message(
+        self, channel, member, age: int | None, server_id: int
+    ) -> None:
+        """Post the wish. Raises when Discord refuses it, so the day isn't marked.
+
+        Without an age (a birthday typed without its year), only the messages
+        that don't say it are drawn from.
+        """
         srv_cfg = self._server_config(server_id)
+        if age is None:
+            srv_cfg = without_age(srv_cfg)
         text = pick_weighted_message(
             srv_cfg,
             "birthdayMessageList",

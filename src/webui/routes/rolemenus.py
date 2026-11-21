@@ -73,6 +73,8 @@ def _menu_to_dict(menu: RoleMenu) -> dict:
         "title": menu.title,
         "description": menu.description,
         "entries": [e.model_dump() for e in menu.entries],
+        "style": menu.style,
+        "max_roles": menu.max_roles,
         "created_by": menu.created_by,
         "created_at": menu.created_at.isoformat() if menu.created_at else None,
     }
@@ -264,8 +266,10 @@ async def _update_menu(
         if message:
             await edit_message_if_changed(
                 message,
-                embeds=[build_embed(title, description, entries)],
-                components=build_components(menu_id, entries),
+                embeds=[build_embed(title, description, entries, max_roles=existing.max_roles)],
+                components=build_components(
+                    menu_id, entries, style=existing.style, max_roles=existing.max_roles
+                ),
                 logger=logger,
             )
     except Exception as e:  # noqa: BLE001 — saved; the message catches up at the next edit

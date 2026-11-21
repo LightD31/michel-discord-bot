@@ -2,7 +2,7 @@
 
 POLL_EMOJIS: list[str] = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
 
+# A public poll whose options are left empty.
 DEFAULT_POLL_OPTIONS: list[str] = ["Oui", "Non"]
-DEFAULT_POLL_EMOJIS: list[str] = ["👍", "👎"]
 
-__all__ = ["DEFAULT_POLL_EMOJIS", "DEFAULT_POLL_OPTIONS", "POLL_EMOJIS"]
+__all__ = ["DEFAULT_POLL_OPTIONS", "POLL_EMOJIS"]

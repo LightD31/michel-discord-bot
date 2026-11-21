@@ -67,7 +67,11 @@ WITHOUT_MODULE: dict[str, tuple[str, str, str]] = {
         "Mes données",
         "/mes-donnees : un membre exporte ou supprime ses données.",
     ),
-    "extensions.polls": ("📊", "Sondages", "/sondage : sondages à boutons (module Utilitaires)."),
+    "extensions.polls": (
+        "📊",
+        "Sondages",
+        "/sondage : sondages Discord, anonymes ou par classement (module Utilitaires).",
+    ),
     "extensions.profile": (
         "🪪",
         "Profil",

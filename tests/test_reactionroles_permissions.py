@@ -288,7 +288,7 @@ def test_click_refuses_a_role_that_became_privileged():
     errors: list = []
     admin_role = FakeRole(30, 30, permissions=ADMINISTRATOR)
 
-    menu = SimpleNamespace(entries=entries(30))
+    menu = SimpleNamespace(entries=entries(30), max_roles=None)
 
     class Repo:
         async def get(self, menu_id):

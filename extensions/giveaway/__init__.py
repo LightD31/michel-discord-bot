@@ -1,8 +1,10 @@
 """Giveaway Discord extension — ``/concours`` slash command + draw scheduler.
 
 Slash commands:
-- ``/concours lancer prize:<str> duration:<30m|2h|1d> winners:<int> [allow_host_win:<bool>]`` — post a
-  giveaway embed with its "Participer" / "Se retirer" buttons.
+- ``/concours lancer [role_requis:] [niveau_min:] [organisateur_peut_gagner:]`` — a
+  form asks for the lot, the duration (30m, 2h, 3j), the winners and a text, then
+  the giveaway embed is posted with its "Participer" / "Se retirer" buttons. A
+  required role or XP level is checked when a member enters.
 - ``/concours tirer giveaway:<id>`` — end a giveaway early and draw winners now.
 - ``/concours nouveau-tirage giveaway:<id> [winners:<int>]`` — pick fresh winners
   excluding any prior winners.
@@ -41,12 +43,18 @@ from interactions import (
     Extension,
     IntervalTrigger,
     Message,
+    Modal,
+    ModalContext,
     OptionType,
+    ParagraphText,
     Permissions,
+    Role,
+    ShortText,
     SlashContext,
     Task,
     component_callback,
     listen,
+    modal_callback,
     slash_command,
     slash_default_member_permission,
     slash_option,
@@ -54,6 +62,7 @@ from interactions import (
 
 from features.giveaway import MAX_WINNERS, Giveaway, GiveawayRepository, pick_winners
 from features.polls import parse_duration  # reused: same DSL as /sondage
+from features.xp import XpRepository, calculate_level
 from src.core import clock
 from src.core.debounce import Coalescer
 from src.core.logging import log_failure
@@ -71,6 +80,7 @@ from src.discord_ext.scopes import guild_scopes
 
 from ._common import (
     GIVEAWAY,
+    XP,
     guild_allow_host_win,
     guild_emoji,
     logger,
@@ -103,6 +113,10 @@ MAX_DESCRIPTION_LENGTH = 1000
 ENTER_ID = "giveaway:enter"
 LEAVE_ID = "giveaway:leave"
 _CUSTOM_EMOJI = re.compile(r"^<a?:\w{2,32}:\d{17,20}>$")
+# giveaway_new:{role id, 0 for none}:{minimum level, 0 for none}:{host may win: 1, 0, x unset}
+START_FORM = "giveaway_new"
+_START_FORM_RE = re.compile(rf"^{START_FORM}:(\d+):(\d+):([10x])$")
+MAX_LEVEL = 500
 
 
 def _button_emoji(raw: str) -> str | None:
@@ -129,6 +143,55 @@ def _entry_buttons(giveaway: Giveaway) -> list[ActionRow]:
             Button(style=ButtonStyle.SECONDARY, label="Se retirer", custom_id=LEAVE_ID),
         )
     ]
+
+
+def entry_conditions(giveaway: Giveaway) -> str | None:
+    """« Rôle @x · niveau 5 ou plus », or None for a giveaway open to all."""
+    parts = []
+    if giveaway.required_role_id:
+        parts.append(f"Rôle <@&{giveaway.required_role_id}>")
+    if giveaway.min_level:
+        parts.append(f"niveau {giveaway.min_level} ou plus")
+    if not parts:
+        return None
+    text = " · ".join(parts)
+    return text[0].upper() + text[1:]
+
+
+def start_form(custom_id: str) -> Modal:
+    """The form ``/concours lancer`` opens: the lot, the duration, the winners, a text."""
+    return Modal(
+        ShortText(
+            label="Lot mis en jeu",
+            custom_id="prize",
+            placeholder="Ex. Une clé Steam",
+            required=True,
+            max_length=MAX_PRIZE_LENGTH,
+        ),
+        ShortText(
+            label="Durée",
+            custom_id="duration",
+            placeholder="Ex. 30m, 2h, 3j",
+            required=True,
+            max_length=20,
+        ),
+        ShortText(
+            label="Nombre de gagnants",
+            custom_id="winners",
+            value="1",
+            required=True,
+            max_length=2,
+        ),
+        ParagraphText(
+            label="Description (facultatif)",
+            custom_id="description",
+            placeholder="Les règles, ce que le lot contient…",
+            required=False,
+            max_length=MAX_DESCRIPTION_LENGTH,
+        ),
+        title="Lancer un giveaway",
+        custom_id=custom_id,
+    )
 
 
 def _participants_field_value(entrant_ids: list[str]) -> str:
@@ -212,6 +275,9 @@ def _build_embed(
         inline=True,
     )
     embed.add_field(name="Hôte", value=f"<@{giveaway.host_id}>", inline=True)
+    conditions = entry_conditions(giveaway)
+    if conditions and not cancelled and not closed:
+        embed.add_field(name="Pour participer", value=conditions, inline=True)
     participants_value: str | None = None
     if entrants is not None:
         participants_value = _participants_field_value(entrants)
@@ -263,7 +329,8 @@ def _eligible(giveaway: Giveaway) -> list[str]:
 
 
 class GiveawayExtension(Extension):
-    MODULE_KEYS = ("moduleGiveaway",)
+    # moduleXp: a giveaway may ask for a minimum level.
+    MODULE_KEYS = ("moduleGiveaway", "moduleXp")
 
     def __init__(self, bot: Client):
         self.bot: Client = bot
@@ -292,40 +359,24 @@ class GiveawayExtension(Extension):
         name="concours",
         description="Gérer les giveaways",
         sub_cmd_name="lancer",
-        sub_cmd_description="Lancer un giveaway avec bouton de participation",
+        sub_cmd_description="Lancer un giveaway : un formulaire demande le lot et la durée",
         scopes=guild_scopes(GIVEAWAY.guild_ids()),
     )
     @slash_option(
-        "lot",
-        "Lot mis en jeu",
-        opt_type=OptionType.STRING,
-        required=True,
-        max_length=MAX_PRIZE_LENGTH,
-        argument_name="prize",
+        "role_requis",
+        "Réserver le giveaway aux membres qui ont ce rôle",
+        opt_type=OptionType.ROLE,
+        required=False,
+        argument_name="role",
     )
     @slash_option(
-        "duree",
-        "Durée du giveaway (ex: 30m, 2h, 1d)",
-        opt_type=OptionType.STRING,
-        required=True,
-        argument_name="duration",
-    )
-    @slash_option(
-        "gagnants",
-        "Nombre de gagnant·e·s à tirer",
+        "niveau_min",
+        "Réserver le giveaway aux membres de ce niveau d'XP ou plus",
         opt_type=OptionType.INTEGER,
         required=False,
         min_value=1,
-        max_value=MAX_WINNERS,
-        argument_name="winners",
-    )
-    @slash_option(
-        "description",
-        "Texte additionnel affiché dans l'embed",
-        opt_type=OptionType.STRING,
-        required=False,
-        max_length=MAX_DESCRIPTION_LENGTH,
-        argument_name="description",
+        max_value=MAX_LEVEL,
+        argument_name="min_level",
     )
     @slash_option(
         "organisateur_peut_gagner",
@@ -338,27 +389,88 @@ class GiveawayExtension(Extension):
     async def giveaway_start(
         self,
         ctx: SlashContext,
-        prize: str,
-        duration: str,
-        winners: int = 1,
-        description: str | None = None,
+        role: Role | None = None,
+        min_level: int | None = None,
         allow_host_win: bool | None = None,
     ) -> None:
         if not await require_guild(ctx):
+            return
+        if min_level and not XP.enabled(ctx.guild_id):
+            await send_error(
+                ctx,
+                "Le système d'XP n'est pas actif sur ce serveur : sans lui, pas de niveau "
+                "minimum. Un administrateur peut l'activer dans le tableau de bord.",
+                icon="⭐",
+            )
+            return
+        role_id = "0" if role is None or str(role.id) == str(ctx.guild_id) else str(role.id)
+        host = {None: "x", True: "1", False: "0"}[allow_host_win]
+        await ctx.send_modal(start_form(f"{START_FORM}:{role_id}:{min_level or 0}:{host}"))
+
+    @modal_callback(_START_FORM_RE)
+    async def on_start_form(
+        self,
+        ctx: ModalContext,
+        prize: str = "",
+        duration: str = "",
+        winners: str = "",
+        description: str = "",
+    ) -> None:
+        match = _START_FORM_RE.match(ctx.custom_id)
+        if not match:
+            return
+        role_id, level, host = match.groups()
+        try:
+            count = int(winners.strip() or 1)
+        except ValueError:
+            count = 0
+        if not 1 <= count <= MAX_WINNERS:
+            await send_error(
+                ctx, f"Je n'ai pas compris « {winners} » gagnants : un nombre de 1 à {MAX_WINNERS}."
+            )
+            return
+        await self._launch(
+            ctx,
+            prize=prize.strip(),
+            duration=duration,
+            winners=count,
+            description=description.strip() or None,
+            required_role_id=None if role_id == "0" else role_id,
+            min_level=int(level) or None,
+            allow_host_win={"x": None, "1": True, "0": False}[host],
+        )
+
+    async def _launch(
+        self,
+        ctx,
+        *,
+        prize: str,
+        duration: str,
+        winners: int,
+        description: str | None,
+        required_role_id: str | None,
+        min_level: int | None,
+        allow_host_win: bool | None,
+    ) -> None:
+        """Post the announcement and store the giveaway: the form's last step."""
+        if not await require_guild(ctx):
+            return
+        if not prize:
+            await send_error(ctx, "Indique le lot mis en jeu.")
             return
         seconds = parse_duration(duration)
         if seconds is None:
             await send_error(
                 ctx,
-                f"Je n'ai pas compris la durée « {duration} ». Exemples : `30m`, `2h`, `1d`.",
+                f"Je n'ai pas compris la durée « {duration} ». Exemples : `30m`, `2h`, `3j`.",
                 icon="⏱️",
             )
             return
         if seconds < MIN_DURATION_SECONDS:
-            await send_error(ctx, f"Durée minimale : {MIN_DURATION_SECONDS} s.")
+            await send_error(ctx, f"Durée minimale : {MIN_DURATION_SECONDS} s.", icon="⏱️")
             return
         if seconds > MAX_DURATION_SECONDS:
-            await send_error(ctx, "Durée maximale : 30 jours.")
+            await send_error(ctx, "Durée maximale : 30 jours.", icon="⏱️")
             return
 
         ends_at = clock.now() + timedelta(seconds=seconds)
@@ -376,6 +488,8 @@ class GiveawayExtension(Extension):
             emoji=guild_emoji(ctx.guild_id),
             allow_host_win=effective_allow_host_win,
             winners_count=winners,
+            required_role_id=required_role_id,
+            min_level=min_level,
             ends_at=ends_at,
         )
 
@@ -397,7 +511,7 @@ class GiveawayExtension(Extension):
                 await message.delete()
             except Exception as delete_error:
                 logger.warning("Could not delete unsaved giveaway %s: %s", message.id, delete_error)
-            await send_error(ctx, "Le giveaway n'a pas pu être enregistré, réessaie plus tard.")
+            await send_error(ctx, "Je n'ai pas pu enregistrer le giveaway : réessaie plus tard.")
             return
 
         logger.info(
@@ -626,6 +740,11 @@ class GiveawayExtension(Extension):
         if entering and user_id == giveaway.host_id and not _allow_host(giveaway):
             await ctx.send("L'organisateur ne peut pas participer à ce giveaway.", ephemeral=True)
             return
+        if entering:
+            refusal = await self._entry_refusal(giveaway, ctx.author)
+            if refusal:
+                await send_error(ctx, refusal, icon="🔒")
+                return
         change = repo.add_entrant if entering else repo.remove_entrant
         before = await change(message_id, user_id, clock.now())
         if before is None:
@@ -642,6 +761,24 @@ class GiveawayExtension(Extension):
             self._refreshes.request(
                 int(message.id), lambda: self._refresh_participants(message, str(ctx.guild_id))
             )
+
+    async def _member_level(self, guild_id: str, user_id: str) -> int:
+        stats = await XpRepository(guild_id).get_user(user_id)
+        return calculate_level(int((stats or {}).get("xp", 0)))[0]
+
+    async def _entry_refusal(self, giveaway: Giveaway, member) -> str | None:
+        """Why *member* may not enter, said with what to do; None when they may."""
+        role_id = giveaway.required_role_id
+        if role_id and not any(str(getattr(r, "id", r)) == role_id for r in member.roles or []):
+            return f"Ce giveaway est réservé au rôle <@&{role_id}>."
+        if giveaway.min_level and XP.enabled(giveaway.guild_id):
+            level = await self._member_level(giveaway.guild_id, str(member.id))
+            if level < giveaway.min_level:
+                return (
+                    f"Ce giveaway demande le niveau {giveaway.min_level} : tu es niveau "
+                    f"{level}. `/niveau` te dit où tu en es."
+                )
+        return None
 
     async def _refresh_participants(self, message: Message, guild_id: str) -> None:
         """Re-render the participants of the giveaway *message* announces, from the database."""

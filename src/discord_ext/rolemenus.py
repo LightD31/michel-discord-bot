@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from interactions import ActionRow, Button, ButtonStyle, Embed
+from interactions import ActionRow, Button, ButtonStyle, Embed, StringSelectMenu, StringSelectOption
 
 from features.reactionroles.permissions import MenuAuthor, RoleInfo, role_menu_refusal
 from src.discord_ext.look import card
@@ -23,17 +23,62 @@ MAX_ENTRIES = 25
 
 # Persistent button namespace: rrole:{menu_id}:{entry_idx}
 BUTTON_PREFIX = "rrole"
+# A drop-down menu: rrolesel:{menu_id}, and its "remove my roles" button rroleclr:{menu_id}.
+SELECT_PREFIX = "rrolesel"
+CLEAR_PREFIX = "rroleclr"
 
 
-def build_embed(title: str, description: str | None, entries: list[RoleMenuEntry]) -> Embed:
+def build_embed(
+    title: str,
+    description: str | None,
+    entries: list[RoleMenuEntry],
+    *,
+    max_roles: int | None = None,
+) -> Embed:
     """Render a role-menu embed (title, optional description, role/emoji/label list)."""
-    body_lines = [f"{e.emoji} <@&{e.role_id}> — {e.label}" for e in entries]
+    body_lines = [
+        " ".join(part for part in (e.emoji, f"<@&{e.role_id}>") if part) + f" — {e.label}"
+        for e in entries
+    ]
     embed_description = (description + "\n\n" if description else "") + "\n".join(body_lines)
+    if max_roles == 1:
+        embed_description += "\n\n*Un seul rôle à la fois : en choisir un retire l'autre.*"
+    elif max_roles:
+        embed_description += f"\n\n*{max_roles} rôles au plus à la fois.*"
     return card("moduleReactionRoles", title=title, description=embed_description)
 
 
-def build_components(menu_id: str, entries: list[RoleMenuEntry]) -> list[ActionRow]:
-    """Render the action rows of buttons whose ``custom_id`` toggles each role."""
+def build_components(
+    menu_id: str,
+    entries: list[RoleMenuEntry],
+    *,
+    style: str = "buttons",
+    max_roles: int | None = None,
+) -> list[ActionRow]:
+    """The menu's components: a button per role, or one drop-down (*style* ``"select"``)."""
+    if style == "select":
+        options = [
+            StringSelectOption(label=e.label[:100], value=str(idx), emoji=e.emoji or None)
+            for idx, e in enumerate(entries)
+        ]
+        return [
+            ActionRow(
+                StringSelectMenu(
+                    *options,
+                    placeholder="Choisis tes rôles",
+                    min_values=1,
+                    max_values=min(max_roles or len(options), len(options)),
+                    custom_id=f"{SELECT_PREFIX}:{menu_id}",
+                )
+            ),
+            ActionRow(
+                Button(
+                    label="Retirer mes rôles",
+                    style=ButtonStyle.SECONDARY,
+                    custom_id=f"{CLEAR_PREFIX}:{menu_id}",
+                )
+            ),
+        ]
     rows: list[ActionRow] = []
     for chunk_start in range(0, len(entries), 5):
         buttons = []
@@ -43,12 +88,24 @@ def build_components(menu_id: str, entries: list[RoleMenuEntry]) -> list[ActionR
                 Button(
                     label=entry.label[:80],
                     style=ButtonStyle.SECONDARY,
-                    emoji=entry.emoji,
+                    emoji=entry.emoji or None,
                     custom_id=f"{BUTTON_PREFIX}:{menu_id}:{idx}",
                 )
             )
         rows.append(ActionRow(*buttons))
     return rows
+
+
+def render_menu(menu: Any, menu_id: str | None = None) -> dict[str, Any]:
+    """The ``embeds`` and ``components`` of a stored menu, as Discord shows it."""
+    return {
+        "embeds": [
+            build_embed(menu.title, menu.description, menu.entries, max_roles=menu.max_roles)
+        ],
+        "components": build_components(
+            menu_id or menu.id, menu.entries, style=menu.style, max_roles=menu.max_roles
+        ),
+    }
 
 
 # ── Permission checks (see features/reactionroles/permissions.py) ─────

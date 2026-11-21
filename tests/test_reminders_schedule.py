@@ -1,13 +1,13 @@
-"""When a reminder fires: first occurrence, catch-up after downtime, labels."""
+"""When a reminder fires again: catch-up after downtime, daylight saving, labels.
 
-from datetime import date, datetime
+Its first time is read from « quand » (``tests/test_reminders_when.py``)."""
+
+from datetime import datetime
 
 import pytest
 
 from features.reminders import (
-    PastReminderError,
     Reminder,
-    first_occurrence,
     next_after,
     schedule_label,
     snooze_minutes,
@@ -22,44 +22,6 @@ def paris(*args):
 
 
 NOW = paris(2026, 3, 10, 12, 0)  # a Tuesday
-
-
-def test_a_time_still_ahead_today_fires_today():
-    assert first_occurrence(NOW, hour=18, minute=30, frequency=None) == paris(2026, 3, 10, 18, 30)
-
-
-def test_a_time_already_past_today_fires_tomorrow():
-    assert first_occurrence(NOW, hour=8, minute=0, frequency=None) == paris(2026, 3, 11, 8, 0)
-    assert first_occurrence(NOW, hour=12, minute=0, frequency=None) == paris(2026, 3, 11, 12, 0)
-
-
-def test_a_one_shot_reminder_on_a_past_date_is_refused():
-    with pytest.raises(PastReminderError):
-        first_occurrence(NOW, hour=23, minute=0, frequency=None, start=date(2026, 3, 9))
-    with pytest.raises(PastReminderError):  # today, but the time has passed
-        first_occurrence(NOW, hour=9, minute=0, frequency=None, start=date(2026, 3, 10))
-
-
-def test_a_one_shot_reminder_on_a_future_date_keeps_it():
-    assert first_occurrence(
-        NOW, hour=9, minute=15, frequency=None, start=date(2026, 4, 1)
-    ) == paris(2026, 4, 1, 9, 15)
-
-
-@pytest.mark.parametrize(
-    ("frequency", "expected"),
-    [
-        ("daily", paris(2026, 3, 11, 9, 0)),
-        ("weekly", paris(2026, 3, 16, 9, 0)),
-        ("monthly", paris(2026, 4, 2, 9, 0)),
-        ("yearly", paris(2027, 3, 2, 9, 0)),
-    ],
-)
-def test_a_recurring_reminder_starting_in_the_past_fires_at_its_next_occurrence(
-    frequency, expected
-):
-    start = date(2026, 3, 2)  # the Monday before NOW
-    assert first_occurrence(NOW, hour=9, minute=0, frequency=frequency, start=start) == expected
 
 
 def test_next_after_skips_occurrences_missed_while_the_bot_was_down():
@@ -120,12 +82,6 @@ def test_snoozing_marks_the_text_once(dm, stored):
     assert snoozed_text(dm) == stored
 
 
-def test_occurrences_are_utc_instants():
-    when = first_occurrence(NOW, hour=18, minute=30, frequency=None)
-    assert when.utcoffset().total_seconds() == 0
-    assert when == datetime(2026, 3, 10, 17, 30, tzinfo=when.tzinfo)  # 18:30 in Paris, winter
-
-
 def test_a_daily_reminder_keeps_its_hour_across_the_spring_change():
     # Clocks go forward on 29 March 2026: 20:00 stays 20:00, an hour less of UTC between.
     fired = paris(2026, 3, 28, 20, 0)
@@ -140,16 +96,3 @@ def test_a_daily_reminder_keeps_its_hour_across_the_autumn_change():
     after = next_after(fired, "daily", fired)
     assert after.astimezone(LOCAL_TZ).hour == 8
     assert (after - fired).total_seconds() == 25 * 3600
-
-
-def test_a_weekly_reminder_set_before_the_change_fires_at_the_same_wall_time():
-    start = date(2026, 3, 23)  # a Monday, before the change
-    now = paris(2026, 3, 31, 12, 0)
-    when = first_occurrence(now, hour=9, minute=0, frequency="weekly", start=start)
-    assert when == paris(2026, 4, 6, 9, 0)
-
-
-def test_a_time_skipped_by_the_spring_change_lands_an_hour_later():
-    now = paris(2026, 3, 28, 12, 0)
-    when = first_occurrence(now, hour=2, minute=30, frequency=None, start=date(2026, 3, 29))
-    assert when.astimezone(LOCAL_TZ).hour == 3
