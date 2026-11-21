@@ -35,10 +35,13 @@ def test_the_fake_bot_has_the_servers_the_pages_need():
 def test_every_session_has_its_pages():
     modules = ["moduleXp"]
     assert demo.pages_for("membre", modules) == [("accueil", "")]
-    admin = dict(demo.pages_for("admin", modules))
-    assert admin["serveur"] == f"#/server/{demo.GA}" and "config-globale" not in admin
-    developer = dict(demo.pages_for("developpeur", modules))
-    assert developer["module-moduleXp"] == f"#/module/{demo.GA}/moduleXp"
+    admin = {name: rest for name, *rest in demo.pages_for("admin", modules)}
+    assert admin["serveur"] == [f"#/server/{demo.GA}"] and "config-globale" not in admin
+    # What only shows after a click: the page, then the step that makes it show.
+    assert admin["xp-historique"] == [f"#/module/{demo.GA}/moduleXp", "history"]
+    assert all(rest[1] in demo.STEPS for rest in admin.values() if len(rest) > 1)
+    developer = {name: rest for name, *rest in demo.pages_for("developpeur", modules)}
+    assert developer["module-moduleXp"] == [f"#/module/{demo.GA}/moduleXp"]
 
 
 @pytest.mark.mongo

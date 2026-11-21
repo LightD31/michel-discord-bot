@@ -11,6 +11,7 @@ export const AUDIT_ACTIONS = {
     'secretsanta.draw': 'a lancé le tirage du Père Noël Secret',
     'gazette.publish': 'a publié la Gazette',
     'module.toggle': 'a basculé le module',
+    'module.restore': 'a restauré une version du module',
     'embeds.publish': 'a publié les embeds',
     'bot_message.republish': 'a republié le message',
     'public_dashboard.create': 'a créé le lien des pages publiques',

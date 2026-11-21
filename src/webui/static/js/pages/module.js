@@ -68,6 +68,12 @@ export function renderModulePage() {
                             { } JSON
                         </button>
                         ${schema ? `
+                            <button class="btn btn-ghost btn-sm" data-click="openModuleHistory" data-click-args="${actionArgs(sid, mod)}">
+                                🕘 Historique
+                            </button>
+                            ${(state.connectionChecks || []).includes(mod) ? `
+                            <button class="btn btn-ghost btn-sm" data-click="checkModuleConnection" data-click-args="${actionArgs(sid, mod, EL)}"
+                                title="Essaie les réglages enregistrés">🔌 Vérifier la connexion</button>` : ''}
                             <span class="unsaved-badge" role="status">● Modifié</span>
                             <button class="btn btn-success btn-sm" data-click="saveModuleForm" data-click-args="${actionArgs(sid, mod, formId)}">
                                 💾 Sauvegarder

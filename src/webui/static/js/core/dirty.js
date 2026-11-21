@@ -7,15 +7,26 @@ import { askConfirm } from '../ui/confirm.js';
 // rebuilds it) asks first, instead of silently dropping what was typed.
 export let formDirty = false;
 export const DIRTY_SCOPE = '.main .schema-form, #rolemenu-builder-card';
+// The schema fields edited since the last save, by key: what the save bar counts (C5).
+export const changedFields = new Set();
+
+function announce() {
+    document.dispatchEvent(new CustomEvent('dirtychange'));
+}
 
 export function setDirty(dirty) {
     formDirty = dirty;
+    if (!dirty) changedFields.clear();
     document.body.classList.toggle('has-unsaved', dirty);
+    announce();
 }
 
 for (const type of ['input', 'change']) {
     document.addEventListener(type, (event) => {
-        if (event.target instanceof Element && event.target.closest(DIRTY_SCOPE)) setDirty(true);
+        if (!(event.target instanceof Element) || !event.target.closest(DIRTY_SCOPE)) return;
+        const key = event.target.closest('.main .schema-form .form-field[data-key]')?.dataset.key;
+        if (key) changedFields.add(key);
+        setDirty(true);
     }, true);
 }
 

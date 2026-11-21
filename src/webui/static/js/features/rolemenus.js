@@ -156,6 +156,21 @@ export async function openRoleMenuBuilder(serverId, menuId) {
                     <label class="form-label">Description (optionnel)</label>
                     <textarea class="form-textarea" id="rrf-description" rows="2" placeholder="Affichée au-dessus de la liste des rôles">${escapeHtml(initial.description || '')}</textarea>
                 </div>
+                <div class="rolemenu-style-row">
+                    <div>
+                        <label class="form-label" for="rrf-style">Présentation</label>
+                        <select class="form-input" id="rrf-style">
+                            <option value="buttons" ${initial.style !== 'select' ? 'selected' : ''}>Un bouton par rôle</option>
+                            <option value="select" ${initial.style === 'select' ? 'selected' : ''}>Une liste déroulante</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="form-label" for="rrf-max">Rôles par membre</label>
+                        <input type="number" class="form-input" id="rrf-max" min="1" max="25" placeholder="Sans limite"
+                            value="${Number.isInteger(initial.max_roles) ? initial.max_roles : ''}">
+                        <div class="form-description">Vide : autant qu'il veut. 1 : un seul, le nouveau remplace l'ancien (couleurs, équipes).</div>
+                    </div>
+                </div>
                 <div>
                     <label class="form-label">Entrées (max 25)</label>
                     <div id="rrf-entries">
@@ -197,7 +212,11 @@ export function _collectRoleMenuPayload() {
         const label = row.querySelector('[data-rrf="label"]')?.value?.trim() || '';
         if (role_id || emoji || label) entries.push({ role_id, emoji, label });
     });
-    return { channel_id, title, description: description || null, entries };
+    const style = document.getElementById('rrf-style')?.value === 'select' ? 'select' : 'buttons';
+    const max = Number.parseInt(document.getElementById('rrf-max')?.value || '', 10);
+    // Empty is no limit: null on a new menu, 0 to remove the limit of an existing one.
+    const max_roles = Number.isInteger(max) && max >= 1 ? Math.min(max, 25) : (_rolemenuEditing ? 0 : null);
+    return { channel_id, title, description: description || null, entries, style, max_roles };
 }
 
 export async function saveRoleMenu() {
@@ -219,6 +238,8 @@ export async function saveRoleMenu() {
                 title: payload.title,
                 description: payload.description,
                 entries: payload.entries,
+                style: payload.style,
+                max_roles: payload.max_roles,
             };
             await api(`/api/servers/${sid}/rolemenus/${_rolemenuEditing}`, {
                 method: 'PUT',

@@ -30,6 +30,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import contextlib
+import copy
 import importlib
 import json
 import os
@@ -637,6 +638,13 @@ async def seed(bot: FakeBot, *, days: int = 60) -> None:
         ("infraction.revoke", "#2", None),
     ]:
         await audit.record(GA, Admin(), action, target=target, changes=changes)
+    # What the moduleXp save above replaced: the module's history (C5).
+    from src.webui.config_history import ConfigHistoryRepository
+
+    xp = copy.deepcopy(demo_config("", 0, "")["servers"][GA]["moduleXp"])
+    xp["levelUpMessageList"] = [{"text": "GG {mention}, niveau {lvl} !", "weight": 1}]
+    xp["levelUpEvery"] = 5
+    await ConfigHistoryRepository(GA).add("moduleXp", xp)
 
 
 def record_task_runs(bot: FakeBot) -> None:
@@ -739,19 +747,70 @@ class Demo:
 VIEWPORTS = {"bureau": (1440, 900), "telephone": (390, 844)}
 
 
-def pages_for(who: str, module_names: list[str]) -> list[tuple[str, str]]:
-    """``(name, hash)`` of every page *who* can open."""
+def pages_for(who: str, module_names: list[str]) -> list[tuple[str, ...]]:
+    """``(name, hash[, step])`` of every page *who* can open; *step* names a click in STEPS."""
     if who == "anonyme":
         return [("connexion", "")]
     if who == "membre":
         return [("accueil", "")]
     pages = [("accueil", ""), ("serveur", f"#/server/{GA}"), ("serveur-neuf", f"#/server/{GB}")]
     pages += [("serveur-assistant", f"#/setup/{GB}")]
+    # After a click: what only shows once the admin does something (P9).
+    pages += [("xp-modifie", f"#/module/{GA}/moduleXp", "edit")]
+    pages += [("xp-historique", f"#/module/{GA}/moduleXp", "history")]
+    pages += [("rss-test", f"#/module/{GA}/moduleRss", "feed")]
     if who == "developpeur":
         pages += [("config-globale", "#/global"), ("extensions", "#/extensions")]
         pages += [("liens-courts", "#/links"), ("logs", "#/logs")]
         pages += [(f"module-{m}", f"#/module/{GA}/{m}") for m in module_names]
     return pages
+
+
+def _edit(page) -> None:
+    field = page.locator('.form-field[data-key="levelUpMessageList"] [data-msg-field="message"]')
+    field.first.fill("**Bravo** {mention} : niveau {lvl} ! Passe dans <#" + CH["général"] + ">")
+    page.locator("#save-bar").wait_for()
+    page.wait_for_timeout(800)  # the preview follows the typing
+
+
+def _history(page) -> None:
+    page.get_by_role("button", name="🕘 Historique").click()
+    page.locator("#modal-overlay .history-version").first.wait_for()
+
+
+def _feed(page) -> None:
+    # The demo has no Internet: the feed's answer is the one a real feed would give.
+    page.route(
+        "**/api/servers/*/rss/test",
+        lambda route: route.fulfill(
+            json={
+                "count": 20,
+                "entries": [
+                    {
+                        "title": title,
+                        "link": f"https://korben.info/{n}",
+                        "summary": "",
+                        "author": "Korben",
+                        "text": f"**korben** — [{title}](https://korben.info/{n})",
+                    }
+                    for n, title in enumerate(
+                        ["Un outil pour tout sauvegarder", "Linux sur un grille-pain", "Le Wi-Fi 8"]
+                    )
+                ],
+            }
+        ),
+    )
+    page.locator(".rssfeed-entry").first.get_by_role("button", name="🧪 Tester").click()
+    page.locator("#modal-overlay .dc-message").first.wait_for()
+
+
+STEPS = {"edit": _edit, "history": _history, "feed": _feed}
+# Leaves the page unmodified, so the next one opens without "Abandonner ?".
+FORGET_EDITS = """async () => {
+    document.activeElement?.blur?.();
+    const v = new URL(document.querySelector('script[type=module]').src).search;
+    (await import(`/static/js/core/dirty.js${v}`)).setDirty(false);
+}"""
 
 
 def take_shots(demo: Demo, out: Path, chromium: str | None, only: str | None) -> list[Path]:
@@ -783,7 +842,7 @@ def take_shots(demo: Demo, out: Path, chromium: str | None, only: str | None) ->
                     }
                     context.add_cookies([cookie])
                 page = context.new_page()
-                for name, hash_ in pages_for(who, modules):
+                for name, hash_, *step in pages_for(who, modules):
                     if only and only not in name:
                         continue
                     page.goto(f"{demo.base}/{hash_}")
@@ -794,9 +853,15 @@ def take_shots(demo: Demo, out: Path, chromium: str | None, only: str | None) ->
                             "() => !document.querySelector('.loading .spinner')", timeout=8000
                         )
                     page.wait_for_timeout(500)
+                    if step:
+                        STEPS[step[0]](page)
                     path = out / f"{viewport}-{who}-{name}.png"
                     page.screenshot(path=str(path), full_page=True)
                     written.append(path)
+                    if step:  # what the click left behind (an edit, a modal) goes
+                        page.keyboard.press("Escape")
+                        page.evaluate(FORGET_EDITS)
+                        page.goto("about:blank")
                 context.close()
         browser.close()
     return written

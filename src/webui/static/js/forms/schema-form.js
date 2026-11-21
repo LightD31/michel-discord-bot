@@ -1,6 +1,7 @@
 // Module and section forms, rendered from their schema and read back.
 import { EL, actionArgs, registerActions } from '../core/actions.js';
 import { state } from '../core/state.js';
+import { html as safeHtml } from '../core/html.js';
 import { escapeHtml } from '../core/util.js';
 import { askConfirm } from '../ui/confirm.js';
 import { toast } from '../ui/toast.js';
@@ -447,6 +448,9 @@ export function renderSchemaForm(formId, schema, values, options = {}) {
             html += `<button type="button" class="btn btn-ghost btn-sm template-test-btn" style="margin-top:6px;"
                     data-click="testTemplate" data-click-args="${actionArgs(options.serverId, options.module, key, EL)}"
                     title="Le bot t'envoie en MP ce que donnent les messages ci-dessus, avec toi à la place du membre">✉️ Tester en MP</button>`;
+            // Filled after the page renders, then as the field changes (C4).
+            html += safeHtml`<div class="discord-preview" aria-live="polite" aria-label="Aperçu dans Discord"
+                    data-server="${options.serverId}" data-module="${options.module}" data-preview-field="${key}"></div>`;
         }
         html += `</div>`;
         // The field's first control (a widget without one, a list say, is

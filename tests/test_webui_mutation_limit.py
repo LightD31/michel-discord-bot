@@ -8,8 +8,12 @@ from src.webui.mutation_limit import MutationRateLimitMiddleware
 from src.webui.ratelimit import RateLimiter
 
 
-def make_client(limit=2) -> TestClient:
+def make_client(limit=2, preview_limit=3) -> TestClient:
     app = FastAPI()
+
+    @app.post("/api/servers/{server_id}/template-preview")
+    async def preview(server_id: str):  # noqa: ARG001
+        return JSONResponse({"ok": True})
 
     @app.post("/api/thing")
     async def change():
@@ -23,7 +27,11 @@ def make_client(limit=2) -> TestClient:
     async def auth():
         return JSONResponse({"ok": True})
 
-    app.add_middleware(MutationRateLimitMiddleware, limiter=RateLimiter(limit, 60.0))
+    app.add_middleware(
+        MutationRateLimitMiddleware,
+        limiter=RateLimiter(limit, 60.0),
+        preview_limiter=RateLimiter(preview_limit, 60.0),
+    )
     return TestClient(app)
 
 
@@ -51,3 +59,19 @@ def test_each_session_has_its_own_budget():
     assert client.post("/api/thing", cookies={"michel_session": "alice"}).status_code == 200
     assert client.post("/api/thing", cookies={"michel_session": "bob"}).status_code == 200
     assert client.post("/api/thing", cookies={"michel_session": "alice"}).status_code == 429
+
+
+def test_the_template_preview_has_a_budget_of_its_own():
+    """Typing in a template never uses up the budget a save needs (C4), and is limited too."""
+    client = make_client(limit=1, preview_limit=3)
+    cookies = {"michel_session": "alice"}
+    preview = "/api/servers/123/template-preview"
+    assert [client.post(preview, cookies=cookies).status_code for _ in range(4)] == [
+        200,
+        200,
+        200,
+        429,
+    ]
+    assert client.post("/api/thing", cookies=cookies).status_code == 200
+    # Only that route: another path ending the same way counts as a change.
+    assert client.post("/api/thing/template-preview", cookies=cookies).status_code == 429

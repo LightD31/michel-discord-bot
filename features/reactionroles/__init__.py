@@ -1,4 +1,4 @@
-from features.reactionroles.models import RoleMenu, RoleMenuEntry
+from features.reactionroles.models import MenuStyle, RoleMenu, RoleMenuEntry
 from features.reactionroles.permissions import (
     MenuAuthor,
     RoleInfo,
@@ -12,6 +12,7 @@ from features.reactionroles.repository import ReactionRolesRepository
 
 __all__ = [
     "MenuAuthor",
+    "MenuStyle",
     "ReactionRolesRepository",
     "RoleInfo",
     "RoleMenu",

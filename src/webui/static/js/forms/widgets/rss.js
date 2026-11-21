@@ -46,6 +46,7 @@ export function renderRssFeedEntry(feedId, cfg) {
                         <option value="embed" ${mode === 'embed' ? 'selected' : ''}>Embed</option>
                     </select>
                     <button type="button" class="btn-rss-advanced" data-click="toggleRssAdvanced" data-click-args="[{&quot;$&quot;:&quot;el&quot;}]" title="Afficher / masquer l'éditeur complet">${advancedLabel}</button>
+                    <button type="button" class="btn-rss-advanced" data-click="testRssFeed" data-click-args="[{&quot;$&quot;:&quot;el&quot;}]" title="Lire le flux maintenant et voir ses derniers articles comme Michel les posterait">🧪 Tester</button>
                     <button class="btn-remove-entry" data-click="remove-closest" data-click-args="[&quot;.rssfeed-entry&quot;,{&quot;$&quot;:&quot;el&quot;}]" title="Supprimer" aria-label="Supprimer">✕</button>
                 </div>
                 <div class="rssfeed-advanced">

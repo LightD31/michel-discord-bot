@@ -1,7 +1,9 @@
 """Per-server configuration, channel listing, and EmbedManager publish."""
 
 import asyncio
+import copy
 import json
+from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
@@ -15,7 +17,7 @@ from src.discord_ext.channels import fetch_guild_channel
 from src.discord_ext.embedmanager import MODULE_KEY as EMBED_MANAGER_MODULE
 from src.discord_ext.embedmanager import build_embeds, publish_embeds
 from src.discord_ext.role_grants import role_choices, settings_refusal
-from src.webui import audit
+from src.webui import audit, config_history
 from src.webui.botops import run_extension_op, sync_commands
 from src.webui.channels import list_channels
 from src.webui.context import WebUIContext
@@ -292,6 +294,79 @@ async def _apply_module_change(
     return out
 
 
+async def save_module_settings(
+    ctx: WebUIContext,
+    server_id: str,
+    module_name: str,
+    config: dict,
+    session: Any,
+    *,
+    action: str = "module.save",
+    details: dict[str, Any] | None = None,
+) -> dict:
+    """Validate and write one module's settings, as a save from its page does.
+
+    The checks, in order: size, the channels and roles the settings add (on
+    the bot loop), then, inside the config lock, the secrets put back and the
+    schema. What the settings were just before is kept in the module's history
+    (C5, :mod:`src.webui.config_history`). Returns the response's ``reload``
+    (and ``commandSync``) entries.
+    """
+    from src.webui import schemas
+
+    _require_reasonable_size(config)
+    await require_own_channels(ctx, server_id, module_name, config)
+    await require_allowed_additions(ctx, server_id, module_name, config, session)
+
+    schema = schemas.MODULE_SCHEMAS.get(module_name)
+    model = schemas.module_model(module_name)
+    enabled_change: dict[str, bool] = {}
+    changes: list[str] = []
+    before: dict[str, Any] = {}
+
+    def mutator(data: dict) -> None:
+        server = data.setdefault("servers", {}).setdefault(server_id, {})
+        current = server.get(module_name)
+        enabled_change["before"] = _module_enabled(current)
+        try:
+            restored = restore_section(config, current, schema)
+        except SecretRebindError as e:
+            # The message is ours (French, names the field), not driver text.
+            raise HTTPException(status_code=422, detail=str(e)) from e
+        if model is not None:
+            # Raising here leaves config.json untouched (mutate writes after).
+            require_valid(schemas.validation_errors(model, restored, module=True))
+        changes[:] = audit.changed_fields(current, restored)
+        before.clear()
+        before.update(copy.deepcopy(current) if isinstance(current, dict) else {})
+        server[module_name] = restored
+        enabled_change["after"] = _module_enabled(server[module_name])
+
+    ctx.mutate_config(mutator)
+    logger.info(
+        "Updated %s config for server %s (by %s/%s)",
+        module_name,
+        server_id,
+        session.username,
+        session.user_id,
+    )
+    if changes:
+        await config_history.remember(server_id, module_name, before, schema)
+    # A save only changes the guild's commands when it flips the module's
+    # enabled state (the commands follow it) or edits custom commands.
+    scopes_changed = enabled_change["before"] != enabled_change["after"]
+    after = await _apply_module_change(
+        ctx,
+        server_id,
+        module_name,
+        scopes_changed=scopes_changed,
+        sync=scopes_changed or module_name == CUSTOM_COMMANDS_MODULE,
+    )
+    extra = {"details": details} if details else {}
+    await audit.record(server_id, session, action, target=module_name, changes=changes, **extra)
+    return after
+
+
 async def _visible_servers(ctx: WebUIContext, session) -> dict:
     """The guilds *session* may see in the dashboard, with their masked config.
 
@@ -418,50 +493,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
         """
         session = await ctx.require_guild_admin(request, server_id)
         _require_known_module(module_name)
-        _require_reasonable_size(body.config)
-        await require_own_channels(ctx, server_id, module_name, body.config)
-        await require_allowed_additions(ctx, server_id, module_name, body.config, session)
-        from src.webui import schemas
-
-        schema = schemas.MODULE_SCHEMAS.get(module_name)
-        model = schemas.module_model(module_name)
-        enabled_change: dict[str, bool] = {}
-        changes: list[str] = []
-
-        def mutator(data: dict) -> None:
-            server = data.setdefault("servers", {}).setdefault(server_id, {})
-            enabled_change["before"] = _module_enabled(server.get(module_name))
-            try:
-                restored = restore_section(body.config, server.get(module_name), schema)
-            except SecretRebindError as e:
-                # The message is ours (French, names the field), not driver text.
-                raise HTTPException(status_code=422, detail=str(e)) from e
-            if model is not None:
-                # Raising here leaves config.json untouched (mutate writes after).
-                require_valid(schemas.validation_errors(model, restored, module=True))
-            changes[:] = audit.changed_fields(server.get(module_name), restored)
-            server[module_name] = restored
-            enabled_change["after"] = _module_enabled(server[module_name])
-
-        ctx.mutate_config(mutator)
-        logger.info(
-            "Updated %s config for server %s (by %s/%s)",
-            module_name,
-            server_id,
-            session.username,
-            session.user_id,
-        )
-        # A save only changes the guild's commands when it flips the module's
-        # enabled state (the commands follow it) or edits custom commands.
-        scopes_changed = enabled_change["before"] != enabled_change["after"]
-        after = await _apply_module_change(
-            ctx,
-            server_id,
-            module_name,
-            scopes_changed=scopes_changed,
-            sync=scopes_changed or module_name == CUSTOM_COMMANDS_MODULE,
-        )
-        await audit.record(server_id, session, "module.save", target=module_name, changes=changes)
+        after = await save_module_settings(ctx, server_id, module_name, body.config, session)
         return JSONResponse({"status": "ok", **after})
 
     @router.post("/api/servers/{server_id}/modules/{module_name}/toggle")

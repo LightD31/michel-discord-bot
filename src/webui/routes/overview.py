@@ -22,7 +22,7 @@ logger = logutil.init_logger("webui.routes.overview")
 
 ACTIVITY_DAYS = 7
 RECENT_CHANGES = 3
-MODULE_ACTIONS = ("module.save", "module.toggle")
+MODULE_ACTIONS = ("module.save", "module.toggle", "module.restore")
 XP_MODULE = "moduleXp"
 
 

@@ -29,7 +29,9 @@ export class ApiError extends Error {
     }
 }
 
-export async function api(url, options = {}) {
+// quiet: a failure throws without a toast, for a request the user didn't ask
+// for themselves (the live preview, sent as they type), which says it in place.
+export async function api(url, { quiet = false, ...options } = {}) {
     const method = (options.method || 'GET').toUpperCase();
     let resp;
     try {
@@ -38,7 +40,7 @@ export async function api(url, options = {}) {
             ...options,
         });
     } catch (e) {
-        toast('Le dashboard ne répond pas. Vérifie ta connexion.', 'error');
+        if (!quiet) toast('Le dashboard ne répond pas. Vérifie ta connexion.', 'error');
         throw e;
     }
     if (resp.status === 401) {
@@ -58,7 +60,7 @@ export async function api(url, options = {}) {
     if (!resp.ok) {
         const err = await resp.json().catch(() => ({}));
         const message = errorText(err.detail, resp.status);
-        toast(message, 'error');
+        if (!quiet) toast(message, 'error');
         throw new ApiError(message, resp.status);
     }
     return await resp.json();

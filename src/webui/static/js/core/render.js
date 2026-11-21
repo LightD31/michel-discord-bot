@@ -23,6 +23,7 @@ import { loadOverview } from '../pages/overview.js';
 import { renderPublicPage } from '../pages/public.js';
 import { renderServerPage } from '../pages/server.js';
 import { renderSetupPage } from '../pages/setup.js';
+import { refreshPreviews } from '../forms/template-test.js';
 import { buildPageIndex } from '../ui/page-index.js';
 import { actionArgs } from './actions.js';
 import { isAdmin, isDeveloper } from './data.js';
@@ -74,6 +75,7 @@ export function render() {
         }
     }
     buildPageIndex();
+    refreshPreviews(document);
     // Populate any channel / member pickers on the current page
     if (state.currentServerId) {
         populateChannelPickers(document);

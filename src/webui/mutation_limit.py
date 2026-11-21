@@ -2,6 +2,9 @@
 
 Every ``POST`` / ``PUT`` / ``PATCH`` / ``DELETE`` under ``/api/`` counts
 against one budget per session (per client IP without a session cookie).
+The live preview of a message template (C4) is a ``POST`` that changes
+nothing and is sent as the admin types: it has a budget of its own
+(:data:`PREVIEW_RATE_LIMIT`), so typing never uses up the one saves need.
 Saves reload extensions and sync commands on the bot loop, and some routes
 post to Discord, so a script holding a valid session could otherwise hammer
 the bot. A person clicking through the dashboard stays far below the limit.
@@ -14,6 +17,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from collections.abc import Awaitable, Callable, MutableMapping
 from typing import Any
 
@@ -34,6 +38,9 @@ MUTATING_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 # Per session: a busy admin saving modules one after another stays well under it.
 MUTATION_RATE_LIMIT = 30
 MUTATION_RATE_WINDOW_SECONDS = 60.0
+# The template preview: one request per pause in the typing, at most.
+PREVIEW_RATE_LIMIT = 120
+PREVIEW_PATH = re.compile(r"^/api/servers/\d+/template-preview$")
 SESSION_COOKIE = "michel_session"
 
 
@@ -45,10 +52,14 @@ class MutationRateLimitMiddleware:
         app: ASGIApp,
         trusted_proxies: TrustedProxies | None = None,
         limiter: RateLimiter | None = None,
+        preview_limiter: RateLimiter | None = None,
     ) -> None:
         self.app = app
         self.trusted_proxies = trusted_proxies
         self.limiter = limiter or RateLimiter(MUTATION_RATE_LIMIT, MUTATION_RATE_WINDOW_SECONDS)
+        self.preview_limiter = preview_limiter or RateLimiter(
+            PREVIEW_RATE_LIMIT, MUTATION_RATE_WINDOW_SECONDS
+        )
 
     def _key(self, request: Request) -> str:
         cookie = request.cookies.get(SESSION_COOKIE)
@@ -67,7 +78,8 @@ class MutationRateLimitMiddleware:
             return
 
         request = Request(scope)
-        retry_after = self.limiter.check(self._key(request))
+        limiter = self.preview_limiter if PREVIEW_PATH.match(scope["path"]) else self.limiter
+        retry_after = limiter.check(self._key(request))
         if not retry_after:
             await self.app(scope, receive, send)
             return
@@ -90,4 +102,4 @@ class MutationRateLimitMiddleware:
         await send({"type": "http.response.body", "body": body})
 
 
-__all__ = ["MUTATION_RATE_LIMIT", "MutationRateLimitMiddleware"]
+__all__ = ["MUTATION_RATE_LIMIT", "PREVIEW_RATE_LIMIT", "MutationRateLimitMiddleware"]
