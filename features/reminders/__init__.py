@@ -1,4 +1,9 @@
-from features.reminders.models import Frequency, Reminder
+from features.reminders.models import (
+    MAX_REMINDER_LENGTH,
+    MAX_REMINDERS_PER_MEMBER,
+    Frequency,
+    Reminder,
+)
 from features.reminders.repository import ReminderRepository
 from features.reminders.schedule import (
     next_after,
@@ -8,6 +13,8 @@ from features.reminders.schedule import (
 )
 
 __all__ = [
+    "MAX_REMINDERS_PER_MEMBER",
+    "MAX_REMINDER_LENGTH",
     "Frequency",
     "Reminder",
     "ReminderRepository",

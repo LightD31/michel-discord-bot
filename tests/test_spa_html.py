@@ -26,6 +26,7 @@ ESCAPE_CALLS_CEILING = 255
 HTML_ONLY = [
     "pages/audit.js",
     "pages/health.js",
+    "pages/me.js",
     "pages/onboarding.js",
     "pages/overview.js",
     "pages/server.js",

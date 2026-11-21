@@ -207,6 +207,11 @@ class XpRepository:
         return None
 
     @translates_db_errors
+    async def count_ranked(self) -> int:
+        """How many members the ranking holds (the ``/ 214`` of "3ᵉ / 214")."""
+        return int(await self._xp().count_documents({}))
+
+    @translates_db_errors
     async def list_all_sorted_by_xp(self) -> list[dict[str, Any]]:
         """Every member's ``_id``, ``xp``, ``msg`` and ``lvl``, XP descending."""
         cursor = self._xp().find({}, {"xp": 1, "msg": 1, "lvl": 1}).sort("xp", -1)

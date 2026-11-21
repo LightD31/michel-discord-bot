@@ -29,7 +29,8 @@ from interactions import (
 )
 from interactions.api.events import MemberAdd, MemberRemove
 
-from features.userdata import DeparturesRepository, Report, UserDataRepository, export_json
+from features.userdata import DeparturesRepository, UserDataRepository, export_json
+from features.userdata.summary import summary
 from src.core import clock
 from src.core import logging as logutil
 from src.core.db import mongo_manager
@@ -44,32 +45,6 @@ CANCEL_ID = "mydata_delete_cancel"
 # Discord's attachment limit for a bot without boosts.
 MAX_EXPORT_BYTES = 8 * 1024 * 1024
 
-# A collection name, not a secret (detect-secrets reads the keyword in it).
-SANTA_DRAWS = "secret_santa_draw_results"  # pragma: allowlist secret
-# Why something is kept, in the member's words.
-KEPT_REASONS = {
-    "infractions": "les sanctions de modération (elles protègent les serveurs)",
-    SANTA_DRAWS: "les tirages Secret Santa déjà faits (les cadeaux des autres en dépendent)",
-    "tricount": "tes comptes Tricount, tant qu'il te reste un solde à régler",
-}
-NOT_COVERED = (
-    "Hors de portée de cette commande : ce que les admins d'un serveur ont écrit dans sa "
-    "configuration (un prénom, un compte Spotify lié) et un compte LLDAP créé avec /inscription. "
-    "Demande-les aux admins du serveur."
-)
-
-
-def summary(report: Report) -> str:
-    lines = [
-        f"🗑️ Supprimé ou anonymisé : {report.total} élément(s) "
-        f"({sum(report.deleted.values())} supprimé(s), {sum(report.anonymised.values())} anonymisé(s))."
-    ]
-    kept = sorted({where.rsplit(".", 1)[1] for where in report.kept})
-    if kept:
-        lines.append("Conservé : " + " ; ".join(KEPT_REASONS.get(k, k) for k in kept) + ".")
-    lines.append(NOT_COVERED)
-    return "\n".join(lines)
-
 
 class MyDataExtension(Extension):
     """Export or delete a member's data; forget members 30 days after they leave."""
@@ -79,7 +54,8 @@ class MyDataExtension(Extension):
     HELP = ModuleHelp(
         "Ce que Michel garde sur toi : en recevoir une copie, ou tout effacer.",
         ("/mes-donnees exporter", "/mes-donnees supprimer"),
-        "Quand tu quittes un serveur, ce qui te concerne y est effacé 30 jours plus tard.",
+        "Quand tu quittes un serveur, ce qui te concerne y est effacé 30 jours plus tard. "
+        "Les deux se font aussi depuis ton espace sur le dashboard (« Mon espace »).",
     )
 
     def __init__(self, bot: Client):

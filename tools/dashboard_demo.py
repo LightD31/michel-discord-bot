@@ -580,6 +580,44 @@ async def seed(bot: FakeBot, *, days: int = 60) -> None:
             }
         )
 
+    # Hugo's own things, for his space (C6): reminders, a debt in a Tricount group.
+    from features.reminders import Reminder, ReminderRepository
+
+    reminders = ReminderRepository(GA)
+    evening = clock.at_local(clock.local_now().date(), 20, 30)
+    await reminders.add(
+        Reminder(user_id=MEMBER, message="Sortir le chien", remind_time=evening, frequency="daily")
+    )
+    await reminders.add(
+        Reminder(
+            user_id=MEMBER,
+            message="Voter pour la chanson du jour",
+            remind_time=evening + timedelta(hours=12, minutes=30),
+        )
+    )
+    lea, tom = int(humans[5].id), int(humans[6].id)
+    group = await db["tricount_groups"].insert_one(
+        {
+            "name": "Vacances Lacanau",
+            "is_active": True,
+            "members": [int(MEMBER), lea, tom],
+            "created_by": lea,
+        }
+    )
+    for payer, amount, what in ((lea, 120.6, "Courses"), (tom, 30, "Essence")):
+        await db["tricount_expenses"].insert_one(
+            {
+                "group_id": group.inserted_id,
+                "group_name": "Vacances Lacanau",
+                "amount": amount,
+                "description": what,
+                "payer": payer,
+                "participants": [int(MEMBER), lea, tom],
+                "added_by": payer,
+                "date": now - timedelta(days=2),
+            }
+        )
+
     # A week the Gazette can tell: a starred message, a birthday, a suggestion, a giveaway.
     await db["starboard"].insert_one(
         {
@@ -754,6 +792,7 @@ def pages_for(who: str, module_names: list[str]) -> list[tuple[str, ...]]:
     if who == "membre":
         return [("accueil", "")]
     pages = [("accueil", ""), ("serveur", f"#/server/{GA}"), ("serveur-neuf", f"#/server/{GB}")]
+    pages += [("mon-espace", f"#/me/{GA}")]
     pages += [("serveur-assistant", f"#/setup/{GB}")]
     # After a click: what only shows once the admin does something (P9).
     pages += [("xp-modifie", f"#/module/{GA}/moduleXp", "edit")]

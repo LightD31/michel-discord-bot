@@ -54,6 +54,8 @@ from interactions import (
 from interactions.client.utils import timestamp_converter
 
 from features.reminders import (
+    MAX_REMINDER_LENGTH,
+    MAX_REMINDERS_PER_MEMBER,
     Reminder,
     ReminderRepository,
     next_after,
@@ -75,10 +77,6 @@ from src.discord_ext.scopes import guild_scopes
 
 SNOOZE_PREFIX = "reminder_snooze"
 DELETE_MENU = "reminder_delete"
-# Per member and server; /rappel supprimer's menu holds 25 options too.
-MAX_REMINDERS_PER_MEMBER = 25
-# A DM is capped at 2000 characters; snoozes prefix the text.
-MAX_REMINDER_LENGTH = 1500
 # How much of each reminder's text /rappel liste shows.
 LIST_PREVIEW_LENGTH = 120
 _SNOOZE_RE = re.compile(rf"^{SNOOZE_PREFIX}:(\d+):([0-9a-fA-F]+)$")

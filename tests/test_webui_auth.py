@@ -617,3 +617,68 @@ def test_a_sixth_login_evicts_the_oldest_session(monkeypatch):
     assert old[0].token_hash not in oauth.sessions
     assert len([s for s in oauth.sessions.values() if s.user_id == "42"]) == 4
     assert other_user.token_hash in oauth.sessions
+
+
+# ── The member tier (C6) ────────────────────────────────────────────────
+
+
+def test_require_guild_member_reads_membership_live():
+    """A member of the guild passes, whatever their rights; a former member doesn't."""
+    from fastapi import HTTPException
+
+    guild = FakeGuild(1, owner_id=5, members={42: FakeMember(42, 0)})
+    ctx = live_ctx(FakeBot(guild))
+    session = make_session(guilds=[{"id": "1", "permissions": "0"}])
+    ctx.oauth.sessions[session.token_hash] = session
+    request = make_authed_request(session.session_token)
+    assert run_live(ctx, lambda: ctx.require_guild_member(request, "1")) is session
+
+    del guild.members[42]  # left (or was banned) after logging in
+    ctx._access_cache.clear()
+    with pytest.raises(HTTPException) as exc:
+        run_live(ctx, lambda: ctx.require_guild_member(request, "1"))
+    assert exc.value.status_code == 403
+
+
+def test_require_guild_member_refuses_other_guilds_odd_ids_and_strangers():
+    from fastapi import HTTPException
+
+    guild = FakeGuild(1, owner_id=5, members={42: FakeMember(42, 0)})
+    ctx = live_ctx(FakeBot(guild, FakeGuild(2, owner_id=5, members={})))
+    session = make_session()
+    ctx.oauth.sessions[session.token_hash] = session
+    request = make_authed_request(session.session_token)
+    for guild_id, status in (("2", 403), ("3", 403), ("01", 404), (" 1", 404)):
+        with pytest.raises(HTTPException) as exc:
+            run_live(ctx, lambda gid=guild_id: ctx.require_guild_member(request, gid))
+        assert exc.value.status_code == status, guild_id
+    with pytest.raises(HTTPException) as exc:
+        run_live(ctx, lambda: ctx.require_guild_member(make_authed_request(None), "1"))
+    assert exc.value.status_code == 401
+
+
+def test_a_developer_gets_no_pass_on_the_member_tier():
+    from fastapi import HTTPException
+
+    ctx = live_ctx(FakeBot(FakeGuild(1, owner_id=5, members={})))
+    ctx.oauth = make_oauth(developer_ids=lambda: ["42"])
+    session = make_session()
+    ctx.oauth.sessions[session.token_hash] = session
+    with pytest.raises(HTTPException) as exc:
+        run_live(
+            ctx, lambda: ctx.require_guild_member(make_authed_request(session.session_token), "1")
+        )
+    assert exc.value.status_code == 403
+
+
+def test_the_member_tier_fails_closed_and_falls_back_only_without_a_bot():
+    from fastapi import HTTPException
+
+    session = make_session(guilds=[{"id": "1", "permissions": "0"}])
+    ctx = live_ctx(FakeBot())  # a bot client whose loop is gone
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(ctx.user_is_member(session, "1"))
+    assert exc.value.status_code == 503
+    standalone = WebUIContext(bot=None, bot_loop=None, oauth=make_oauth())
+    assert asyncio.run(standalone.user_is_member(session, "1"))
+    assert not asyncio.run(standalone.user_is_member(session, "2"))
