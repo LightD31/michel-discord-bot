@@ -54,7 +54,7 @@ Server administrators can also enter configuration that contains personal data, 
 
 ## 4. The web dashboard
 
-The dashboard lets server administrators configure the Bot.
+The dashboard lets server administrators configure the Bot. Every member can also open their own space there ("Mon espace"), on the servers they share with the Bot: their level and rank, their reminders, their birthday, their Tricount balances and their Secret Santa wish list, which they can change there as with the slash commands. It shows only the signed-in member's own data, on servers they are a member of right now (checked against Discord at least every minute); nothing new is stored for it.
 
 - **Sign-in:** you sign in with Discord (OAuth2, scopes `identify` and `guilds`). The Bot receives your Discord ID, username, display name, avatar and the list of your servers with your permissions in each. It uses these to decide what you may manage.
 - **Session:** your session lasts 24 hours. It is stored under a hash of your session cookie, never the cookie itself. The tokens Discord issues at sign-in are discarded straight after.
@@ -115,7 +115,7 @@ The data is processed to provide the features that you, or the administrators of
 
 ## 9. Your rights
 
-You can do two of these yourself, on every server at once:
+You can do two of these yourself, on every server at once, with the commands below or from your space in the dashboard ("Mes données"), which do the same:
 
 - `/mes-donnees exporter` sends you a file, visible to you alone, with everything the Bot stores about you.
 - `/mes-donnees supprimer` deletes what is yours alone (XP and its log, birthday, reminders, ZUnivers reminders, AI usage counters, Secret Santa wish lists and gift marks, giveaway entries, member directory entry…) and anonymises what you share with others: your votes still count, but no longer under your name, and the polls, suggestions, playlist tracks, AI questions, giveaways, starboard posts, role menus, book club drafts and season podiums you are in no longer name you. It keeps your moderation records (including the reports of your messages; if you reported a message, the report no longer names you, but your reason stays), the Secret Santa draws already made, and your Tricount groups while you still owe or are owed money there. Configuration written by a server's administrators (a first name, a linked Spotify account) and an LLDAP account made with `/inscription` are handled by that server's administrators.
@@ -139,7 +139,7 @@ The Bot is meant to be used on Discord, which requires its users to meet a minim
 
 ## 11. Security
 
-Access to the dashboard is limited to the administrators of each server, and their permissions are re-checked against Discord at least every minute. Sessions are stored as hashes, and secrets are never shown in the dashboard. The database and backups are kept on servers controlled by the Operator. No system is perfectly secure: if you notice a problem, please report it to the address in section 1.
+Configuring a server in the dashboard is limited to its administrators, and a member's space to that member's own data on the servers they belong to; both are re-checked against Discord at least every minute. Sessions are stored as hashes, and secrets are never shown in the dashboard. The database and backups are kept on servers controlled by the Operator. No system is perfectly secure: if you notice a problem, please report it to the address in section 1.
 
 ## 12. Changes to this policy
 

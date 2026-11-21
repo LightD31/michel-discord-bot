@@ -70,6 +70,29 @@ class ReminderRepository:
         return result.deleted_count
 
     @translates_db_errors
+    async def update_mine(
+        self,
+        user_id: str,
+        reminder_id: str,
+        *,
+        message: str,
+        remind_time: datetime,
+        frequency: str | None,
+    ) -> bool:
+        """Change *user_id*'s reminder *reminder_id*; ``False`` when it isn't theirs (or gone).
+
+        For the member space: the filter names the member, so an id another
+        member's reminder carries changes nothing.
+        """
+        if not ObjectId.is_valid(reminder_id):
+            return False
+        result = await self._col().update_one(
+            {"_id": ObjectId(reminder_id), "user_id": user_id},
+            {"$set": {"message": message, "remind_time": remind_time, "frequency": frequency}},
+        )
+        return bool(result.matched_count)
+
+    @translates_db_errors
     async def reschedule(self, reminder_id: str, new_time: datetime) -> None:
         await self._col().update_one(
             {"_id": ObjectId(reminder_id)}, {"$set": {"remind_time": new_time}}

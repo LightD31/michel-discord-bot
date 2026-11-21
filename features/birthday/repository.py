@@ -46,6 +46,26 @@ class BirthdayRepository:
         )
 
     @translates_db_errors
+    async def set_own(self, entry: BirthdayEntry) -> None:
+        """Save a member's birthday from the member space, in one update.
+
+        Unlike :meth:`upsert`, today's ``isBirthday`` mark is left as it is, so
+        changing one's time zone on the day doesn't wish it a second time.
+        """
+        await self._col().update_one(
+            {"user": entry.user},
+            {
+                "$set": {
+                    "date": entry.date,
+                    "timezone": entry.timezone,
+                    "hideyear": entry.hideyear,
+                },
+                "$setOnInsert": {"isBirthday": False},
+            },
+            upsert=True,
+        )
+
+    @translates_db_errors
     async def update_fields(self, user_id: int, fields: dict) -> None:
         await self._col().update_one({"user": user_id}, {"$set": fields})
 

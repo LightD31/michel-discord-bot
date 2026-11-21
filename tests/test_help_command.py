@@ -323,3 +323,20 @@ def test_every_right_click_menu_says_what_it_does():
     # Discord: at most 5 message menus and 5 user menus per server.
     by_type = {t: {str(m.name) for m in menus if m.type == t} for t in (2, 3)}
     assert all(len(found) <= 5 for found in by_type.values()), by_type
+
+
+def test_the_overview_points_members_to_their_space_when_the_dashboard_has_an_address():
+    from extensions.help import overview_page
+
+    assert "Mon espace" not in (overview_page({}).description or "")
+    page = overview_page({}, "https://michel.example/")
+    assert page.description.endswith("[Mon espace](https://michel.example/#/me)")
+
+
+def test_the_dashboard_address_is_read_only_when_the_dashboard_is_on(store_config):
+    from extensions.help import dashboard_url
+
+    store_config({"config": {"webui": {"enabled": False, "baseUrl": "https://michel.example"}}})
+    assert dashboard_url() is None
+    store_config({"config": {"webui": {"enabled": True, "baseUrl": " https://michel.example "}}})
+    assert dashboard_url() == "https://michel.example"

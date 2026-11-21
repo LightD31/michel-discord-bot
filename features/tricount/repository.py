@@ -99,6 +99,26 @@ class TricountRepository:
             .to_list()
         )
 
+    @translates_db_errors
+    async def find_active_group_by_str(self, group_id: str) -> dict | None:
+        """An active group by an id a user sent; ``None`` if malformed, gone or closed."""
+        parsed = _as_object_id(group_id)
+        if parsed is None:
+            return None
+        return await self._col(GROUPS_COLLECTION).find_one({"_id": parsed, "is_active": True})
+
+    @translates_db_errors
+    async def groups_on_the_books(self, user_id: int) -> list[dict]:
+        """The active groups *user_id* is a member of, or has paid or shared an expense in.
+
+        A former member stays on a group's books until their balance is settled.
+        """
+        involved = await self._col(EXPENSES_COLLECTION).distinct(
+            "group_id", {"$or": [{"payer": user_id}, {"participants": user_id}]}
+        )
+        query = {"is_active": True, "$or": [{"members": user_id}, {"_id": {"$in": involved}}]}
+        return await self._col(GROUPS_COLLECTION).find(query).sort("name", 1).to_list()
+
     # --- Expenses -----------------------------------------------------
 
     @translates_db_errors

@@ -455,3 +455,149 @@ def test_a_field_emptied_in_the_form_is_emptied_in_the_config(page, dashboard):
     stored = json.loads(dashboard["config"].read_text(encoding="utf-8"))
     assert "greeting" not in stored["servers"][GUILD][MODULE]
     assert stored["servers"][GUILD][MODULE]["enabled"] is True  # not a field of the form
+
+
+MEMBER_SPACE = {
+    "sections": ["xp", "reminders", "tricount"],
+    "unavailable": [],
+    "xp": {
+        "xp": 1500,
+        "level": 11,
+        "xpInLevel": 30,
+        "xpToNext": 1255,
+        "rank": 3,
+        "ranked": 214,
+        "season": {"label": "novembre 2026", "xp": 1240},
+    },
+    "reminders": {
+        "limit": 25,
+        "items": [
+            {
+                "id": "r1",
+                "message": "<b>Sortir</b> le chien",
+                "at": "2026-11-21T19:30:00+00:00",
+                "frequency": "daily",
+                "label": "Tous les jours à 20:30",
+                "jumpUrl": None,
+            },
+        ],
+    },
+    "tricount": [
+        {
+            "id": "g1",
+            "name": "Vacances",
+            "balance": -2340,
+            "owes": [{"to": "8", "cents": 2340}],
+            "owed": [],
+        }
+    ],
+    "currency": "€",
+    "names": {"8": "Léa"},
+}
+
+
+@pytest.fixture
+def member_page(browser, dashboard):
+    """A member who manages nothing and isn't a developer, on their space."""
+    session = Session(
+        user_id="77",
+        username="hugo",
+        avatar=None,
+        guilds=[{"id": GUILD, "name": "Les Copains", "permissions": "0"}],
+        expires_at=time.time() + 3600,
+    )
+    dashboard["oauth"].sessions[session.token_hash] = session
+    context = browser.new_context()
+    context.add_cookies(
+        [
+            {
+                "name": COOKIE_NAME,
+                "value": session.session_token,
+                "url": f"http://127.0.0.1:{dashboard['port']}",
+            }
+        ]
+    )
+    page = context.new_page()
+    errors: list[str] = []
+    page.on("pageerror", lambda e: errors.append(str(e)))
+    page.on("console", lambda m: script_error(m) and errors.append(m.text))
+    page.on("dialog", lambda d: errors.append(f"boîte native : {d.message}") or d.dismiss())
+    yield page
+    assert errors == [], errors
+    context.close()
+
+
+def test_a_member_lands_on_their_space_and_marks_a_debt_paid(member_page, dashboard):
+    page = member_page
+    sent: list[dict] = []
+    page.route(
+        f"**/api/me/servers/{GUILD}",
+        lambda route: route.fulfill(
+            status=200, content_type="application/json", body=json.dumps(MEMBER_SPACE)
+        ),
+    )
+
+    def settle(route):
+        sent.append(json.loads(route.request.post_data or "{}"))
+        route.fulfill(status=200, content_type="application/json", body='{"status": "ok"}')
+
+    page.route("**/api/me/servers/*/tricount/g1/settle", settle)
+    page.goto(f"http://127.0.0.1:{dashboard['port']}/")
+    page.wait_for_selector("#me-xp")
+    # The servers come from the real route (the session's guilds, without a bot).
+    assert page.url.endswith(f"#/me/{GUILD}")
+    assert page.locator(".page-header h2").inner_text() == "Salut hugo !"
+    assert "3e / 214" in page.locator("#me-xp").inner_text().replace("\n", "")
+    # A reminder's text is shown as text, never as markup.
+    assert page.locator("#me-reminders .me-row-title").inner_text() == "<b>Sortir</b> le chien"
+    assert "Tu dois 23,40 € à Léa" in page.locator("#me-tricount").inner_text()
+    assert page.locator(".sidebar").get_by_text("Accueil").count() == 0
+    page.get_by_role("button", name="J'ai remboursé").click()
+    page.locator("#confirm-ok").click()
+    page.wait_for_function("() => document.querySelectorAll('#toasts .toast').length > 0")
+    assert sent == [{"to": "8", "cents": 2340}]
+    assert "Remboursement enregistré." in toasts(page)
+
+
+def test_a_member_cannot_reach_a_server_page(member_page, dashboard):
+    page = member_page
+    page.route(
+        f"**/api/me/servers/{GUILD}",
+        lambda route: route.fulfill(
+            status=200, content_type="application/json", body=json.dumps(MEMBER_SPACE)
+        ),
+    )
+    page.goto(f"http://127.0.0.1:{dashboard['port']}/#/server/{GUILD}")
+    page.wait_for_selector("#me-xp")
+    assert "#/me" in page.url
+
+
+def test_a_member_creates_a_reminder_and_reads_the_moment_back(member_page, dashboard):
+    page = member_page
+    sent: list[dict] = []
+    page.route(
+        f"**/api/me/servers/{GUILD}",
+        lambda route: route.fulfill(
+            status=200, content_type="application/json", body=json.dumps(MEMBER_SPACE)
+        ),
+    )
+
+    def create(route):
+        sent.append(json.loads(route.request.post_data or "{}"))
+        route.fulfill(
+            status=200, content_type="application/json", body='{"status": "ok", "id": "r2"}'
+        )
+
+    page.route(f"**/api/me/servers/{GUILD}/reminders", create)
+    page.goto(f"http://127.0.0.1:{dashboard['port']}/#/me/{GUILD}")
+    page.get_by_role("button", name="+ Nouveau rappel").click()
+    page.locator("#me-reminder-message").fill("Appeler mamie")
+    page.locator("#me-reminder-when").press_sequentially("dans 2h")
+    # Read back by the real /api/me/when, as the slash command's autocomplete does.
+    page.wait_for_function(
+        "() => document.getElementById('me-reminder-reading').textContent.startsWith('→')"
+    )
+    page.locator("#me-reminder-frequency").select_option("weekly")
+    page.get_by_role("button", name="Créer le rappel").click()
+    page.wait_for_function("() => !document.getElementById('me-reminder-form')")
+    assert sent == [{"message": "Appeler mamie", "when": "dans 2h", "frequency": "weekly"}]

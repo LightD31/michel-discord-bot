@@ -285,6 +285,29 @@ class WebUIContext:
             )
         return session
 
+    async def user_is_member(self, session: Session, guild_id: str | int) -> bool:
+        """True if the user is a member of *guild_id* right now (read live, like the admin check).
+
+        Developers get no pass here: the member space shows one's own data,
+        which exists only where one is a member.
+        """
+        if not self.bot:
+            return any(str(g.get("id")) == str(guild_id) for g in session.guilds)
+        return (await self.guild_access(session, guild_id)).is_member
+
+    async def require_guild_member(self, request: Request, guild_id: str | int) -> Session:
+        """The member tier (C6): the session's user is a member of *guild_id*, read live.
+
+        One tier below :meth:`require_guild_admin`. A route behind it acts on
+        the session's own user id only, never on an id from the request.
+        """
+        session = self.require_session(request)
+        if not is_guild_id(str(guild_id)):
+            raise HTTPException(status_code=404, detail="Serveur non trouvé")
+        if not await self.user_is_member(session, guild_id):
+            raise HTTPException(status_code=403, detail="Tu n'es pas membre de ce serveur.")
+        return session
+
     def require_developer(self, request: Request) -> Session:
         session = self.require_session(request)
         if not self.oauth.is_developer(session):

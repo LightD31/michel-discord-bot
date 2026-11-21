@@ -17,6 +17,7 @@ export const ROUTED_PAGES = ['global', 'extensions', 'logs', 'links'];
 export function routeHash(page, serverId = null, moduleName = null) {
     if (page === 'server' && serverId) return `#/server/${encodeURIComponent(serverId)}`;
     if (page === 'setup' && serverId) return `#/setup/${encodeURIComponent(serverId)}`;
+    if (page === 'me') return serverId ? `#/me/${encodeURIComponent(serverId)}` : '#/me';
     if (page === 'module' && serverId && moduleName) {
         return `#/module/${encodeURIComponent(serverId)}/${encodeURIComponent(moduleName)}`;
     }
@@ -34,6 +35,7 @@ export function parseHash(hash = location.hash) {
     }
     const [page = 'home', a = null, b = null] = parts;
     if ((page === 'server' || page === 'setup') && a) return { page, serverId: a };
+    if (page === 'me') return { page, serverId: a };
     if (page === 'module' && a && b) return { page, serverId: a, moduleName: b };
     if (ROUTED_PAGES.includes(page)) return { page };
     return { page: 'home' };
@@ -54,15 +56,17 @@ export async function navigate(page, serverId = null, moduleName = null, { fromH
         }
         return;
     }
+    // A member who manages no server lands on their own space (C6).
+    if (page === 'home' && !isAdmin()) page = 'me';
     // Restrict admin-only pages for non-admin users
     const adminPages = ['server', 'module', 'setup'];
     const developerPages = ['global', 'extensions', 'logs', 'links'];
     if (adminPages.includes(page) && !isAdmin()) {
-        page = 'home';
+        page = 'me';
         serverId = null;
     }
     if (developerPages.includes(page) && !isDeveloper()) {
-        page = 'home';
+        page = isAdmin() ? 'home' : 'me';
         serverId = null;
         moduleName = null;
     }

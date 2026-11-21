@@ -43,6 +43,7 @@ import './pages/health.js';
 import './pages/home.js';
 import './pages/links.js';
 import './pages/logs.js';
+import './pages/me.js';
 import './pages/module.js';
 import './pages/onboarding.js';
 import './pages/overview.js';

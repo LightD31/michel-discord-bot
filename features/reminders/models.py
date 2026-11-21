@@ -7,6 +7,11 @@ from pydantic import BaseModel, Field
 
 Frequency = Literal["daily", "weekly", "monthly", "yearly"]
 
+# Per member and server; /rappel supprimer's menu holds 25 options too.
+MAX_REMINDERS_PER_MEMBER = 25
+# A DM is capped at 2000 characters; snoozes prefix the text.
+MAX_REMINDER_LENGTH = 1500
+
 
 class Reminder(BaseModel):
     """A single scheduled reminder, sent by DM to the member who created it (``user_id``)."""

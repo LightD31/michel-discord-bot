@@ -57,6 +57,9 @@ from src.webui.routes import (
     health as health_routes,
 )
 from src.webui.routes import (
+    me as me_routes,
+)
+from src.webui.routes import (
     members as members_routes,
 )
 from src.webui.routes import (
@@ -201,6 +204,7 @@ def create_app(bot=None, bot_loop=None) -> FastAPI:
     app.include_router(audit_routes.create_router(ctx))
     app.include_router(health_routes.create_router(ctx))
     app.include_router(overview_routes.create_router(ctx))
+    app.include_router(me_routes.create_router(ctx))
     app.include_router(onboarding_routes.create_router(ctx))
     app.include_router(config_history_routes.create_router(ctx))
     app.include_router(checks_routes.create_router(ctx))

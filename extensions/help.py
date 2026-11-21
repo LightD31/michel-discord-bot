@@ -273,7 +273,24 @@ def _about(group: list[HelpEntry]) -> ModuleHelp | None:
     return next((e.about for e in group if e.about is not None), None)
 
 
-def overview_page(groups: dict[str, list[HelpEntry]]) -> Embed:
+def dashboard_url() -> str | None:
+    """The dashboard's address, when it is on and has one."""
+    webui = global_config().get("webui") or {}
+    base = str(webui.get("baseUrl") or "").strip() if webui.get("enabled") else ""
+    return base or None
+
+
+def member_space_line(base: str | None) -> str:
+    """Where a member finds their own things in the dashboard (C6), when there is one."""
+    if not base:
+        return ""
+    return (
+        "\n\n🙂 Tes rappels, ton anniversaire, tes comptes et tes données, au même endroit : "
+        f"[Mon espace]({base.rstrip('/')}/#/me)"
+    )
+
+
+def overview_page(groups: dict[str, list[HelpEntry]], base: str | None = None) -> Embed:
     """``/aide``'s first page: every module of the server, one line each."""
     lines = [
         f"**{label}** — {about.what}" if (about := _about(group)) else f"**{label}**"
@@ -284,7 +301,9 @@ def overview_page(groups: dict[str, list[HelpEntry]]) -> Embed:
         "à quoi il sert, les commandes à connaître et ce qui se passe tout seul.\n"
         "Tu cherches une commande précise ? `/aide recherche:`\n\n"
     )
-    return card("michel", title="❓ Aide", description=clip(intro + "\n".join(lines), 4096))
+    space = member_space_line(base)
+    body = clip(intro + "\n".join(lines), 4096 - len(space)) + space
+    return card("michel", title="❓ Aide", description=body)
 
 
 def module_page(label: str, group: list[HelpEntry]) -> Embed:
@@ -421,7 +440,9 @@ class HelpExtension(Extension):
         if not search:
             groups = modules(entries)
             await ctx.send(
-                embeds=[overview_page(groups)], components=module_menus(groups), ephemeral=True
+                embeds=[overview_page(groups, dashboard_url())],
+                components=module_menus(groups),
+                ephemeral=True,
             )
             return
         pages = render_pages(entries, search)
@@ -437,7 +458,9 @@ class HelpExtension(Extension):
         groups = modules(self._entries(ctx))
         chosen = (ctx.values or [""])[0]
         if chosen not in groups:  # switched off since, or not for this member
-            await ctx.edit_origin(embeds=[overview_page(groups)], components=module_menus(groups))
+            await ctx.edit_origin(
+                embeds=[overview_page(groups, dashboard_url())], components=module_menus(groups)
+            )
             return
         await ctx.edit_origin(
             embeds=[module_page(chosen, groups[chosen])],
@@ -461,11 +484,8 @@ class HelpExtension(Extension):
         if channel.permissions_for(me) & needed != needed:
             logger.info("Guild %s joined: no right to say hello in its system channel", guild.id)
             return
-        webui = global_config().get("webui") or {}
-        base = str(webui.get("baseUrl") or "").strip() if webui.get("enabled") else ""
-        url = base or None
         try:
-            await channel.send(embeds=[hello_card(url)])
+            await channel.send(embeds=[hello_card(dashboard_url())])
         except Exception as e:
             logger.warning("Guild %s joined: hello not posted: %s", guild.id, e)
 
@@ -477,8 +497,10 @@ def setup(bot: Client) -> None:
 __all__ = [
     "HelpExtension",
     "collect_entries",
+    "dashboard_url",
     "hello_card",
     "just_joined",
+    "member_space_line",
     "module_menus",
     "module_page",
     "modules",

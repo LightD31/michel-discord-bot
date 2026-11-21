@@ -17,6 +17,7 @@ import { loadHealth } from '../pages/health.js';
 import { renderHomePage } from '../pages/home.js';
 import { renderShortLinksPage } from '../pages/links.js';
 import { handleLogScroll, renderLogsPage } from '../pages/logs.js';
+import { loadMe, renderMePage } from '../pages/me.js';
 import { renderModulePage } from '../pages/module.js';
 import { loadOnboarding } from '../pages/onboarding.js';
 import { loadOverview } from '../pages/overview.js';
@@ -92,6 +93,10 @@ export function render() {
         loadHealth(state.currentServerId);
         loadAudit(state.currentServerId);
     }
+    // The member space: the servers, then the chosen one's data.
+    if (state.currentPage === 'me') {
+        loadMe(state.currentServerId);
+    }
     // Global settings: the bot's own audit log (developers only).
     if (state.currentPage === 'global') {
         loadAudit(null);
@@ -132,6 +137,7 @@ export function renderLogin() {
                     <ul class="login-points">
                         <li>⚙️ Les administrateurs d'un serveur (droit « Gérer le serveur ») y règlent les modules de Michel.</li>
                         <li>📊 Ils y suivent aussi l'activité, les sanctions et la santé du bot sur leur serveur.</li>
+                        <li>🙂 Chaque membre y a son espace : ses rappels, son anniversaire, ses comptes Tricount, sa liste pour le Père Noël secret et ses données.</li>
                         <li>🔒 La connexion passe par Discord : le dashboard ne lit que ton profil et la liste de tes serveurs.</li>
                     </ul>
                     <a href="/auth/login" class="login-btn">
@@ -140,7 +146,7 @@ export function renderLogin() {
                         </svg>
                         Se connecter avec Discord
                     </a>
-                    <p class="login-foot">Membre d'un serveur ? Tout se passe dans Discord : tape <code>/aide</code>.</p>
+                    <p class="login-foot">Pour tout le reste, ça se passe dans Discord : tape <code>/aide</code>.</p>
                 </div>
             </div>
         `;
@@ -176,8 +182,12 @@ export function renderSidebar() {
                 <div class="sidebar-nav">
                     <div class="nav-section">
                         <div class="nav-section-title">Général</div>
+                        ${isAdmin() ? `
                         <a class="nav-item ${state.currentPage === 'home' ? 'active' : ''}" href="${routeHash('home')}" ${state.currentPage === 'home' ? 'aria-current="page"' : ''} data-click="navigate" data-click-args="[&quot;home&quot;]" data-prevent>
                             <span class="icon">🏠</span> Accueil
+                        </a>` : ''}
+                        <a class="nav-item ${state.currentPage === 'me' ? 'active' : ''}" href="${routeHash('me')}" ${state.currentPage === 'me' ? 'aria-current="page"' : ''} data-click="navigate" data-click-args="[&quot;me&quot;]" data-prevent>
+                            <span class="icon">🙂</span> Mon espace
                         </a>
                         ${isDeveloper() ? `
                         <a class="nav-item ${state.currentPage === 'global' ? 'active' : ''}" href="${routeHash('global')}" ${state.currentPage === 'global' ? 'aria-current="page"' : ''} data-click="navigate" data-click-args="[&quot;global&quot;]" data-prevent>
@@ -227,6 +237,7 @@ export function renderPage() {
         case 'module': return renderModulePage();
         case 'links': return renderShortLinksPage();
         case 'logs': return renderLogsPage();
+        case 'me': return renderMePage();
         default: return renderHomePage();
     }
 }
