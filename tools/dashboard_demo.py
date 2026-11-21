@@ -746,6 +746,7 @@ def pages_for(who: str, module_names: list[str]) -> list[tuple[str, str]]:
     if who == "membre":
         return [("accueil", "")]
     pages = [("accueil", ""), ("serveur", f"#/server/{GA}"), ("serveur-neuf", f"#/server/{GB}")]
+    pages += [("serveur-assistant", f"#/setup/{GB}")]
     if who == "developpeur":
         pages += [("config-globale", "#/global"), ("extensions", "#/extensions")]
         pages += [("liens-courts", "#/links"), ("logs", "#/logs")]

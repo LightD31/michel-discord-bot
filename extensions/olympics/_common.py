@@ -21,6 +21,8 @@ class OlympicsConfig(SchemaBase):
     __description__ = "Alertes médailles des Jeux Olympiques."
     __icon__ = "🏅"
     __category__ = "Événements"
+    # Milan-Cortina ended on 22 February 2026.
+    __archived__ = True
     __help__ = ModuleHelp(
         "Les médailles des Jeux Olympiques.",
         ("/jo medailles", "/jo france"),

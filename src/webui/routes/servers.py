@@ -53,7 +53,7 @@ def _require_known_module(module_name: str) -> None:
         raise HTTPException(status_code=404, detail=f"Module inconnu : {module_name}")
 
 
-def _require_valid(errors: list[str]) -> None:
+def require_valid(errors: list[str]) -> None:
     """422 listing what the schema rejected, if anything."""
     if errors:
         raise HTTPException(
@@ -75,7 +75,7 @@ async def _foreign_channels(bot, guild_id: str, channel_ids: list[str]) -> list[
     ]
 
 
-async def _require_own_channels(
+async def require_own_channels(
     ctx: WebUIContext, server_id: str, module_name: str, incoming: dict
 ) -> None:
     """422 unless every channel *incoming* adds to the module is one of the guild's.
@@ -112,7 +112,7 @@ async def _require_own_channels(
         )
 
 
-async def _require_allowed_additions(
+async def require_allowed_additions(
     ctx: WebUIContext, server_id: str, module_name: str, incoming: dict, session
 ) -> None:
     """422 unless the editor could do by hand what the save makes the bot do.
@@ -163,7 +163,14 @@ def _require_reasonable_size(config: dict) -> None:
 async def _try_reload_extension_for_module(
     ctx: WebUIContext, module_name: str, *, enabled_changed: bool = True
 ) -> dict:
-    """Auto-reload the extensions that read ``module_name`` after a config change.
+    """:func:`reload_for_modules` for one module."""
+    return await reload_for_modules(ctx, [module_name], enabled_changed=enabled_changed)
+
+
+async def reload_for_modules(
+    ctx: WebUIContext, module_names: list[str], *, enabled_changed: bool = True
+) -> dict:
+    """Auto-reload the extensions that read *module_names* after a config change.
 
     The reload runs on the bot loop (see ``src.webui.botops``) — doing it inline
     on the Web UI loop mutates the client from the wrong thread and leaves the
@@ -184,14 +191,19 @@ async def _try_reload_extension_for_module(
     demand) has nothing to reload.
 
     No command sync here; the callers sync their guild when the module's
-    command scopes may have changed (see :func:`_sync_guild_commands`).
+    command scopes may have changed (see :func:`sync_guild_commands`).
 
     Returns ``{"reloaded": str|None, "error": str|None, "skipped": bool}``;
     ``reloaded`` names the reloaded extensions, comma-separated.
     """
     if not ctx.bot or not ctx.bot_loop_alive():
         return {"reloaded": None, "error": "Bot non disponible", "skipped": False}
-    ext_paths = ctx.module_extension_map(on_save=not enabled_changed).get(module_name)
+    # An extension reading several of the modules (moduleUtils backs three) is
+    # reloaded once.
+    extension_map = ctx.module_extension_map(on_save=not enabled_changed)
+    ext_paths = list(
+        dict.fromkeys(path for name in module_names for path in extension_map.get(name) or ())
+    )
     if not ext_paths:
         return {"reloaded": None, "error": None, "skipped": True}
     # Same default as main.py: an extension missing from the list is enabled.
@@ -209,7 +221,7 @@ async def _try_reload_extension_for_module(
             log_failure(logger, f"Auto-reload failed for {ext_path}: {e}")
             failures.append(f"{ext_path} ({type(e).__name__})")
         else:
-            logger.info(f"Auto-reloaded {ext_path} after config change for {module_name}")
+            logger.info(f"Auto-reloaded {ext_path} after config change for {module_names}")
             reloaded.append(ext_path)
     return {
         "reloaded": ", ".join(reloaded) or None,
@@ -220,7 +232,7 @@ async def _try_reload_extension_for_module(
     }
 
 
-def _reload_succeeded(reload_result: dict) -> bool:
+def reload_succeeded(reload_result: dict) -> bool:
     """Every extension reading the module came back, so syncing loses nothing.
 
     After a failed reload the client may be missing that extension's commands,
@@ -234,7 +246,7 @@ def _module_enabled(module_config: object) -> bool:
     return isinstance(module_config, dict) and bool(module_config.get("enabled", False))
 
 
-async def _sync_guild_commands(ctx: WebUIContext, server_id: str) -> dict:
+async def sync_guild_commands(ctx: WebUIContext, server_id: str) -> dict:
     """Push this guild's slash commands to Discord after a module reload.
 
     Module commands are scoped to the guilds where the module is enabled, and
@@ -275,8 +287,8 @@ async def _apply_module_change(
         ctx, module_name, enabled_changed=scopes_changed
     )
     out: dict = {"reload": reload_result}
-    if sync and _reload_succeeded(reload_result):
-        out["commandSync"] = await _sync_guild_commands(ctx, server_id)
+    if sync and reload_succeeded(reload_result):
+        out["commandSync"] = await sync_guild_commands(ctx, server_id)
     return out
 
 
@@ -407,8 +419,8 @@ def create_router(ctx: WebUIContext) -> APIRouter:
         session = await ctx.require_guild_admin(request, server_id)
         _require_known_module(module_name)
         _require_reasonable_size(body.config)
-        await _require_own_channels(ctx, server_id, module_name, body.config)
-        await _require_allowed_additions(ctx, server_id, module_name, body.config, session)
+        await require_own_channels(ctx, server_id, module_name, body.config)
+        await require_allowed_additions(ctx, server_id, module_name, body.config, session)
         from src.webui import schemas
 
         schema = schemas.MODULE_SCHEMAS.get(module_name)
@@ -426,7 +438,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
                 raise HTTPException(status_code=422, detail=str(e)) from e
             if model is not None:
                 # Raising here leaves config.json untouched (mutate writes after).
-                _require_valid(schemas.validation_errors(model, restored, module=True))
+                require_valid(schemas.validation_errors(model, restored, module=True))
             changes[:] = audit.changed_fields(server.get(module_name), restored)
             server[module_name] = restored
             enabled_change["after"] = _module_enabled(server[module_name])

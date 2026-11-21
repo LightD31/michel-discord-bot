@@ -36,6 +36,8 @@ class SpeedonsConfig(SchemaBase):
     __description__ = "Planning et suivi en temps réel de l'événement Speedons."
     __icon__ = "🏃"
     __category__ = "Événements"
+    # Its API slug is the 2025 edition's.
+    __archived__ = True
     __help__ = ModuleHelp(
         "Le planning et le suivi en direct de Speedons.",
         (),
