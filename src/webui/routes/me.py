@@ -38,7 +38,7 @@ from features.reminders import (
     Reminder,
     ReminderRepository,
 )
-from features.reminders.when import parse_when, reading
+from features.reminders.when import EXAMPLES, parse_when, reading
 from features.secretsanta import SecretSantaRepository
 from features.secretsanta.dates import participant_expiry
 from features.tricount.balances import TRANSFER, compute_balances, settlement_plan
@@ -59,6 +59,7 @@ logger = logutil.init_logger("webui.routes.me")
 
 UNAVAILABLE = "Base de données injoignable : réessaie dans un instant."
 MODULE_OFF = "Ce module n'est pas activé sur ce serveur."
+WHEN_HINT = f"Pas encore compris, ou déjà passé. Exemples : {EXAMPLES}."
 
 
 class ReminderBody(BaseModel):
@@ -188,8 +189,9 @@ def create_router(ctx: WebUIContext) -> APIRouter:
         now = clock.now()
         try:
             found = parse_when(q[:60], now)
-        except ValueError as e:
-            return JSONResponse({"error": str(e)})
+        except ValueError:
+            # A hint, not the exception's text: saving says exactly what is wrong.
+            return JSONResponse({"error": WHEN_HINT})
         return JSONResponse({"reading": reading(found, now), "at": found.isoformat()})
 
     # --- Reminders -------------------------------------------------------

@@ -96,7 +96,7 @@ def test_when_reads_the_moment_back():
     found = json.loads(asyncio.run(when(None, q="dans 2h")).body)
     assert found["reading"] and found["at"]
     unread = json.loads(asyncio.run(when(None, q="un jour peut-être")).body)
-    assert "Exemple" in unread["error"]
+    assert unread == {"error": me_routes.WHEN_HINT} and "dans 2h" in unread["error"]
 
 
 def test_an_unreadable_section_is_named_not_fatal(store_config, monkeypatch):
