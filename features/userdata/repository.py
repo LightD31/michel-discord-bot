@@ -7,7 +7,7 @@ the same deletion runs for one server 30 days after they leave it
 
 * **deleted** — what is the member's alone: XP and its log, birthday,
   reminders, ``!request`` reminders, "feur" counter, directory entry, AI quotas,
-  Secret Santa wish lists and gift marks;
+  Secret Santa wish lists and gift marks, their entry in a giveaway;
 * **anonymised** — what other members share: their votes stay counted under a
   key that names nobody, and where they are the author, creator, asker or
   winner, the id becomes :data:`NOBODY` (polls, suggestions, Spotify, AI
@@ -165,6 +165,8 @@ class UserDataRepository:
             ]
             queries += [
                 ("giveaways", {"winners": uid}, {"winners": 0}),
+                # The giveaways they entered, never who else did.
+                ("giveaways", {"entrants": uid}, {"entrants": 0, "winners": 0}),
                 ("infractions", {"user_id": uid}, None),
                 # Season podiums: the member's own line.
                 (
@@ -264,6 +266,9 @@ class UserDataRepository:
             {"winners": uid}, {"$set": {"winners.$[me]": NOBODY}}, array_filters=[{"me": uid}]
         )
         report.add(report.anonymised, f"{where}.giveaways", result.modified_count)
+        # Entering is theirs alone: they are withdrawn (a drawn giveaway keeps its winners).
+        result = await db["giveaways"].update_many({"entrants": uid}, {"$pull": {"entrants": uid}})
+        report.add(report.deleted, f"{where}.giveaways.entrants", result.modified_count)
         if await db["infractions"].count_documents({"user_id": uid}, limit=1):
             report.kept.append(f"{where}.infractions")
         result = await db["xp_seasons"].update_many(

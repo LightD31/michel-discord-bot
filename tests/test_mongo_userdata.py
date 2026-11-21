@@ -184,3 +184,22 @@ async def test_departures_are_due_30_days_later_unless_cancelled(mongo):
     assert await repo.cancel_guild("2") == 1
     await repo.done("1", ME)
     assert await repo.due(left + timedelta(days=99)) == []
+
+
+async def test_entering_a_giveaway_is_exported_and_withdrawn(mongo):
+    """The giveaway's ``entrants`` named the member, and /mes-donnees missed them."""
+    g = mongo.guild_collection
+    await g("giveaways").insert_many(
+        [
+            {"_id": "open", "prize": "Un jeu", "entrants": [OTHER, ME], "winners": []},
+            {"_id": "other", "prize": "Un livre", "entrants": [OTHER], "winners": []},
+        ]
+    )
+    data = await UserDataRepository(ME).export([mongo.guild_id])
+    entered = data["guilds"][mongo.guild_id]["giveaways"]
+    assert [d["prize"] for d in entered] == ["Un jeu"]
+    assert all("entrants" not in d for d in entered)  # never who else entered
+
+    await UserDataRepository(ME).forget([mongo.guild_id])
+    assert (await g("giveaways").find_one({"_id": "open"}))["entrants"] == [OTHER]
+    assert (await g("giveaways").find_one({"_id": "other"}))["entrants"] == [OTHER]
