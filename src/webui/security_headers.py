@@ -10,9 +10,10 @@ What it sets, and why:
   ``X-Frame-Options: DENY``. Scripts run only from the dashboard's own files
   and the pinned Chart.js build: no inline script, no inline handler, no
   ``eval``, so markup injected through a value the SPA forgot to escape
-  cannot run code. The SPA's script is ``/static/app.js`` and its controls
-  name an action (``data-click="…"``) dispatched by one listener. Styles may
-  be inline (the markup carries ``style`` attributes; CSS cannot run code).
+  cannot run code. The SPA's scripts are the modules under ``/static/js/``,
+  and its controls name an action (``data-click="…"``) dispatched by one
+  listener. Styles may be inline (the markup carries ``style`` attributes;
+  CSS cannot run code).
   Images may come from any HTTPS host (guild icons, avatars, embed previews
   of configured URLs); requests (``fetch``, the log stream) only go to the
   dashboard itself. No other site can frame the dashboard (clickjacking a

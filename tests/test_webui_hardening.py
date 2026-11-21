@@ -285,18 +285,23 @@ def test_call_bot_times_out():
 # ── SPA caching ─────────────────────────────────────────────────────────
 
 
+def _frontend_client(tmp_path, monkeypatch):
+    import src.webui.routes.frontend as frontend
+
+    monkeypatch.setattr(frontend, "_STATIC_DIR", tmp_path)
+    frontend._cache.clear()
+    frontend._version.clear()
+    app = FastAPI()
+    app.include_router(frontend.create_router(None))
+    return TestClient(app), frontend
+
+
 def test_spa_is_cached_and_revalidated(tmp_path, monkeypatch):
     import os
 
-    import src.webui.routes.frontend as frontend
-
     page = tmp_path / "index.html"
     page.write_text("<h1>v1</h1>", encoding="utf-8")
-    monkeypatch.setattr(frontend, "_STATIC_DIR", tmp_path)
-    frontend._cache.clear()
-    app = FastAPI()
-    app.include_router(frontend.create_router(None))
-    client = TestClient(app)
+    client, _ = _frontend_client(tmp_path, monkeypatch)
 
     first = client.get("/")
     assert first.status_code == 200 and first.text == "<h1>v1</h1>"
@@ -314,18 +319,58 @@ def test_spa_is_cached_and_revalidated(tmp_path, monkeypatch):
     assert edited.headers["etag"] != etag
 
 
-def test_the_spa_script_is_served_as_its_own_file(tmp_path, monkeypatch):
-    import src.webui.routes.frontend as frontend
+def test_the_page_names_its_assets_by_version_and_modules_import_by_version(tmp_path, monkeypatch):
+    import os
 
-    (tmp_path / "app.js").write_text("init();", encoding="utf-8")
-    monkeypatch.setattr(frontend, "_STATIC_DIR", tmp_path)
-    frontend._cache.clear()
-    app = FastAPI()
-    app.include_router(frontend.create_router(None))
-    client = TestClient(app)
+    (tmp_path / "index.html").write_text(
+        '<link rel="stylesheet" href="/static/app.css">'
+        '<script type="module" src="/static/js/main.js"></script>',
+        encoding="utf-8",
+    )
+    (tmp_path / "app.css").write_text("body {}", encoding="utf-8")
+    (tmp_path / "js").mkdir()
+    main = tmp_path / "js" / "main.js"
+    main.write_text("import './pages/home.js';\nimport { a } from '../js/x.js';\ninit();", "utf-8")
+    client, frontend = _frontend_client(tmp_path, monkeypatch)
+    version = frontend.static_version()
 
-    script = client.get("/static/app.js")
-    assert script.status_code == 200 and script.text == "init();"
+    page = client.get("/").text
+    assert f'href="/static/app.css?v={version}"' in page
+    assert f'src="/static/js/main.js?v={version}"' in page
+
+    script = client.get(f"/static/js/main.js?v={version}")
+    assert script.status_code == 200
     assert script.headers["content-type"] == "text/javascript; charset=utf-8"
-    again = client.get("/static/app.js", headers={"If-None-Match": script.headers["etag"]})
+    assert script.headers["cache-control"] == "public, max-age=31536000, immutable"
+    assert f"import './pages/home.js?v={version}';" in script.text
+    assert f"import {{ a }} from '../js/x.js?v={version}';" in script.text
+    css = client.get(f"/static/app.css?v={version}")
+    assert css.headers["content-type"] == "text/css; charset=utf-8"
+
+    # Unversioned, or from a page older than this deploy: revalidated, never pinned.
+    assert client.get("/static/js/main.js").headers["cache-control"] == "no-cache"
+    main.write_text("init();", encoding="utf-8")
+    stat = main.stat()
+    os.utime(main, (stat.st_atime, stat.st_mtime + 5))
+    assert frontend.static_version() != version
+    stale = client.get(f"/static/js/main.js?v={version}")
+    assert stale.text == "init();" and stale.headers["cache-control"] == "no-cache"
+    again = client.get("/static/js/main.js", headers={"If-None-Match": stale.headers["etag"]})
     assert again.status_code == 304
+
+
+def test_static_serves_only_the_spas_scripts_and_styles(tmp_path, monkeypatch):
+    (tmp_path / "static").mkdir()
+    (tmp_path / "static" / "app.js").write_text("init();", encoding="utf-8")
+    (tmp_path / "outside.js").write_text("secret();", encoding="utf-8")
+    (tmp_path / "static" / "notes.txt").write_text("private", encoding="utf-8")
+    client, _ = _frontend_client(tmp_path / "static", monkeypatch)
+
+    assert client.get("/static/app.js").status_code == 200
+    for path in (
+        "/static/notes.txt",  # not a script or a stylesheet
+        "/static/missing.js",  # a 404, not the page served as a script
+        "/static/..%2Foutside.js",  # a script, but outside the folder
+        "/static/%2E%2E/outside.js",
+    ):
+        assert client.get(path).status_code == 404, path
