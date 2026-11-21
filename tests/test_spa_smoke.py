@@ -266,6 +266,26 @@ def test_a_new_role_menu_starts_with_empty_fields(page, dashboard, monkeypatch):
         "",
     ]
 
+    # Its look and limit (held over from P7) go with what the builder sends.
+    page.get_by_label("Présentation").select_option("select")
+    page.get_by_label("Rôles par membre").fill("1")
+    payload = page.evaluate(
+        """async () => {
+            const v = new URL(document.querySelector('script[type=module]').src).search;
+            const m = await import(`/static/js/features/rolemenus.js${v}`);
+            return m._collectRoleMenuPayload();
+        }"""
+    )
+    assert (payload["style"], payload["max_roles"]) == ("select", 1)
+    page.get_by_label("Rôles par membre").fill("")
+    payload = page.evaluate(
+        """async () => {
+            const v = new URL(document.querySelector('script[type=module]').src).search;
+            return (await import(`/static/js/features/rolemenus.js${v}`))._collectRoleMenuPayload();
+        }"""
+    )
+    assert payload["max_roles"] is None  # a new menu: no limit
+
 
 def test_an_expired_session_keeps_the_page_and_the_typing(page, dashboard):
     """A 401 used to swap the page for the login screen, edits and all (F02)."""

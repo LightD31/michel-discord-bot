@@ -63,6 +63,12 @@ export async function loadSchemas() {
     } catch (e) {
         state.templateTests = {};
     }
+    try {
+        // The modules with a "Vérifier la connexion" button (C9).
+        state.connectionChecks = (await api('/api/connection-checks')) || [];
+    } catch (e) {
+        state.connectionChecks = [];
+    }
 }
 
 export async function loadConfig() {

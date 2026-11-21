@@ -48,6 +48,7 @@ from interactions.client.errors import BadRequest
 from features.links import shorten_url
 from features.rss import RssEntry, RssFeedState, RssRepository
 from features.rss.network import fetch_feed
+from features.rss.render import DEFAULT_TEMPLATE, format_entry, render_text
 from features.rss.scheduling import is_due, next_poll_at
 from src.core import clock
 from src.core.errors import DatabaseError, IntegrationError
@@ -70,7 +71,6 @@ from src.discord_ext.messages import guild_id_of, require_guild, send_error, sen
 from src.discord_ext.scopes import guild_scopes
 
 from ._common import (
-    DEFAULT_TEMPLATE,
     MAX_CONCURRENT_FETCHES,
     MAX_NEW_PER_POLL,
     RSS,
@@ -102,73 +102,6 @@ def _iter_feeds(srv_config: dict):
         elif isinstance(cfg, str):
             # Shorthand: value is just a URL.
             yield str(feed_id), {"url": cfg}
-
-
-def _published_tokens(entry: RssEntry) -> dict[str, str]:
-    """Return Discord timestamp tags for ``entry.published``.
-
-    Each style mirrors a Discord timestamp format identifier — clients render
-    them in the viewer's locale and timezone. Empty strings if the feed entry
-    didn't expose a publish/updated date.
-    """
-    if not entry.published:
-        return {
-            "published": "",
-            "published_short": "",
-            "published_long": "",
-            "published_relative": "",
-            "published_date": "",
-            "published_iso": "",
-        }
-    ts = int(entry.published.timestamp())
-    return {
-        "published": f"<t:{ts}:F>",
-        "published_short": f"<t:{ts}:f>",
-        "published_long": f"<t:{ts}:F>",
-        "published_relative": f"<t:{ts}:R>",
-        "published_date": f"<t:{ts}:D>",
-        "published_iso": entry.published.isoformat(),
-    }
-
-
-def _format_template(template: str, *, label: str, entry: RssEntry, fallback: str) -> str:
-    """Fill the guild's template with the entry; a template that can't be filled gives *fallback*.
-
-    ``{name}`` placeholders only (:func:`format_template`): any other mistake
-    (``{title:d}``, ``{title.x}``, an unknown name) falls back instead of
-    failing the post, which left the entry unseen and retried forever.
-    """
-    try:
-        return format_template(
-            template,
-            title=entry.title,
-            link=entry.link,
-            summary=entry.summary,
-            author=entry.author,
-            label=label,
-            image=entry.image_url,
-            **_published_tokens(entry),  # type: ignore[arg-type]  # only str values, never keep_unknown
-        )
-    except (KeyError, ValueError):
-        return fallback
-
-
-def _render_text(feed_id: str, feed_cfg: dict, entry: RssEntry) -> str:
-    """Render a plain-text/markdown message for ``mode="text"``.
-
-    Clipped to Discord's 2000-char message-content limit; the parser caps the
-    summary near the embed limit so the same summary fed into a text template
-    can occasionally need clipping here.
-    """
-    label = feed_cfg.get("label") or feed_id
-    template = feed_cfg.get("template") or DEFAULT_TEMPLATE
-    fallback = DEFAULT_TEMPLATE.format(
-        title=entry.title, link=entry.link, label=label, summary="", author="", image=""
-    )
-    rendered = _format_template(template, label=label, entry=entry, fallback=fallback)
-    if len(rendered) > 2000:
-        rendered = rendered[:1999].rstrip() + "…"
-    return rendered
 
 
 async def _with_short_link(entry: RssEntry, feed_id: str) -> RssEntry:
@@ -215,8 +148,8 @@ def _render_embed(feed_id: str, feed_cfg: dict, entry: RssEntry) -> Embed:
     label = feed_cfg.get("label") or feed_id
     title_tpl = feed_cfg.get("embed_title") or "{title}"
     desc_tpl = feed_cfg.get("embed_description") or "{summary}"
-    title = _format_template(title_tpl, label=label, entry=entry, fallback=entry.title)
-    description = _format_template(desc_tpl, label=label, entry=entry, fallback=entry.summary)
+    title = format_entry(title_tpl, label=label, entry=entry, fallback=entry.title)
+    description = format_entry(desc_tpl, label=label, entry=entry, fallback=entry.summary)
 
     embed = card(
         "moduleRss",
@@ -419,7 +352,7 @@ class RssExtension(Extension):
                     # title saying "@everyone" must not.
                     template = job.feed_cfg.get("template") or DEFAULT_TEMPLATE
                     await sendable.send(
-                        _render_text(job.feed_id, job.feed_cfg, entry),
+                        render_text(job.feed_id, job.feed_cfg, entry),
                         allowed_mentions=mentions_written_in(template),
                         **send_kwargs,
                     )

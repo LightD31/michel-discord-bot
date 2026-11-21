@@ -21,6 +21,7 @@ playwright_sync = pytest.importorskip("playwright.sync_api")
 from test_spa_smoke import script_error  # noqa: E402
 
 import extensions.moderation._common  # noqa: E402, F401 — registers moduleModeration
+import extensions.rss._common  # noqa: E402, F401 — registers moduleRss
 import extensions.xp._common  # noqa: E402, F401 — registers moduleXp
 from features.userinfo.repository import UserInfoRepository  # noqa: E402
 from src.core import config as core_config  # noqa: E402
@@ -78,7 +79,7 @@ def dashboard(tmp_path, monkeypatch):
     config["config"]["webui"]["developerUserIds"] = []
     del config["config"]["mongodb"]
     config["servers"] = {
-        GA: {k: config["servers"][GA][k] for k in ("moduleModeration", "moduleXp")}
+        GA: {k: config["servers"][GA][k] for k in ("moduleModeration", "moduleXp", "moduleRss")}
     }
     path = tmp_path / "config.json"
     path.write_text(json.dumps(config), encoding="utf-8")
@@ -291,3 +292,62 @@ def test_the_login_page_says_what_michel_is(browser, dashboard):
     text = card.inner_text()
     assert "Gérer le serveur" in text and "/aide" in text
     context.close()
+
+
+def test_a_template_shows_as_discord_will_show_it(page, dashboard):
+    """The live preview (C4): rendered by the bot's function, mentions by name, escaped."""
+    open_module(page, dashboard, "moduleXp")
+    field = page.locator('.form-field[data-key="levelUpMessageList"]')
+    preview = field.locator(".discord-preview")
+    message = preview.locator(".dc-message").first
+    message.wait_for()
+    text = message.locator(".dc-content").inner_text()
+    assert text.startswith("Bravo @") and "niveau 5" in text
+    assert "{mention}" not in text and "<@" not in text  # filled, and named
+
+    field.locator('[data-msg-field="message"]').first.fill(
+        "**Salut** {mention} <img src=x onerror=alert(1)> [site](https://example.com) {oops}"
+    )
+    preview.locator(".dc-content strong", has_text="Salut").wait_for()
+    content = preview.locator(".dc-content").first
+    assert content.locator("img").count() == 0
+    assert "<img src=x onerror=alert(1)>" in content.inner_text()
+    assert content.locator("a").get_attribute("href") == "https://example.com"
+    assert "{oops}" in preview.locator(".dc-warning").first.inner_text()
+    # Typing never showed an error toast (the XP stats' 503 is this fixture's own).
+    errors = page.locator("#toasts .toast.error").all_inner_texts()
+    assert all(t.strip() == "x" for t in errors), errors
+
+
+def test_a_feed_is_tested_from_its_row(page, dashboard):
+    """C9: "Tester" reads the feed now and shows its entries as they'd be posted."""
+    asked = []
+
+    def answer(route):
+        asked.append(json.loads(route.request.post_data))
+        route.fulfill(
+            json={
+                "count": 12,
+                "entries": [
+                    {
+                        "title": "Un",
+                        "link": "https://korben.info/1",
+                        "summary": "",
+                        "author": "",
+                        "text": "**Korben** — [Un <b>gras</b>](https://korben.info/1)",
+                    },
+                ],
+            }
+        )
+
+    page.route("**/api/servers/*/rss/test", answer)
+    open_module(page, dashboard, "moduleRss")
+    page.locator(".rssfeed-entry").first.get_by_role("button", name="🧪 Tester").click()
+    modal = page.locator("#modal-overlay")
+    modal.locator(".dc-message").first.wait_for()
+    assert asked[0]["url"] == "https://korben.info/feed" and asked[0]["label"] == "korben"
+    assert "12 article(s)" in modal.inner_text()
+    content = modal.locator(".dc-content").first
+    assert content.locator("strong").inner_text() == "Korben"
+    assert content.locator("b").count() == 0  # the title's markup stays text
+    assert content.locator("a").get_attribute("href") == "https://korben.info/1"

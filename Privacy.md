@@ -61,6 +61,7 @@ The dashboard lets server administrators configure the Bot.
 - **Cookies:** two cookies, both strictly necessary: `michel_session` (24 hours, your session) and `oauth_state` (5 minutes, protects the sign-in). There are no advertising or analytics cookies.
 - **IP addresses:** they are used in memory to rate-limit sign-in attempts, for about a minute, and are not stored.
 - **Changes are logged:** each configuration change and action made through the dashboard (publishing embeds, reloading the Bot's modules, revoking a sanction…) is recorded with the name and Discord ID of whoever made it, in the technical logs and in an audit log kept one year. A server's audit log is shown to every administrator of that server in the dashboard; it names the settings that changed, never their values.
+- **Earlier settings:** each time a module's settings are saved from the dashboard, the settings they replace are kept for 90 days, so that the server's administrators can see what changed and put an earlier version back. Passwords and keys are never kept, and neither is who saved. These copies can hold whatever the administrators had written in the settings (message texts, first names, channel and role IDs).
 - **Third-party requests:** the dashboard loads images (avatars, server icons) from Discord's CDN, and the charting library from the jsDelivr CDN. These services therefore see your IP address when you use the dashboard.
 - **Public statistics pages:** server administrators can publish XP or Spotify statistics at a secret link. Anyone with that link can see the display names of the most active members, contributors and voters, but no Discord IDs. Votes on an open Spotify poll are only shown once it closes.
 
@@ -98,6 +99,7 @@ The Bot also fetches public information (RSS feeds, YouTube, Twitch, game server
 - XP gain log: 400 days, then summed per month (see section 3).
 - Dashboard sessions: 24 hours.
 - Dashboard audit log: one year.
+- Earlier module settings kept by the dashboard: 90 days.
 - Reports of a message to the moderators: one year after the message was first reported.
 - AI usage counters: about two days.
 - One-time reminders: deleted when they are sent.

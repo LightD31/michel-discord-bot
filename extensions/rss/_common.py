@@ -5,6 +5,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from features.rss.render import DEFAULT_TEMPLATE  # shared with the dashboard
 from src.core import logging as logutil
 from src.core.config import ModuleConfig
 from src.webui.schemas import (
@@ -27,8 +28,6 @@ MAX_NEW_PER_POLL = 5
 
 # How many feed URLs are fetched at once in a poll cycle, across every guild.
 MAX_CONCURRENT_FETCHES = 8
-
-DEFAULT_TEMPLATE = "**{label}** — [{title}]({link})"
 
 
 class RssFeedEntry(BaseModel):

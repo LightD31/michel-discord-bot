@@ -36,7 +36,13 @@ from src.webui.routes import (
     bot_messages as bot_messages_routes,
 )
 from src.webui.routes import (
+    checks as checks_routes,
+)
+from src.webui.routes import (
     config as config_routes,
+)
+from src.webui.routes import (
+    config_history as config_history_routes,
 )
 from src.webui.routes import (
     extensions as extensions_routes,
@@ -196,6 +202,8 @@ def create_app(bot=None, bot_loop=None) -> FastAPI:
     app.include_router(health_routes.create_router(ctx))
     app.include_router(overview_routes.create_router(ctx))
     app.include_router(onboarding_routes.create_router(ctx))
+    app.include_router(config_history_routes.create_router(ctx))
+    app.include_router(checks_routes.create_router(ctx))
     app.include_router(template_tests_routes.create_router(ctx))
     app.include_router(bot_messages_routes.create_router(ctx))
     app.include_router(xp_routes.create_router(ctx))

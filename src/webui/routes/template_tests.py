@@ -21,6 +21,7 @@ from src.webui.template_tests import (
     TemplateRefused,
     catalogue,
     dm_text,
+    preview_texts,
     render_test,
     sample_values,
 )
@@ -58,6 +59,21 @@ def create_router(ctx: WebUIContext) -> APIRouter:
     async def api_template_tests(request: Request):
         ctx.require_admin(request)
         return JSONResponse(catalogue())
+
+    @router.post("/api/servers/{server_id}/template-preview")
+    async def api_template_preview(request: Request, server_id: str, body: TemplateTestBody):
+        """The form's texts as the bot would send them, for the live preview (C4).
+
+        Rendered by the same function as the DM test and production, with the
+        admin standing in for the member; nothing is sent or recorded. The SPA
+        draws the result (Markdown, mentions by name) without adding to it.
+        """
+        session = await ctx.require_guild_admin(request, server_id)
+        test = TESTS.get(body.module, {}).get(body.field)
+        if test is None:
+            raise HTTPException(status_code=404, detail="Ce champ n'a pas d'aperçu")
+        values = sample_values(session.user_id, session.username)
+        return JSONResponse({"previews": preview_texts(test, body.texts, values)})
 
     @router.post("/api/servers/{server_id}/template-test")
     async def api_template_test(request: Request, server_id: str, body: TemplateTestBody):

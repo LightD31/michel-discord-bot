@@ -127,6 +127,29 @@ def render_test(test: TemplateTest, texts: list[str], values: dict[str, Any]) ->
     return Rendered(rendered, warnings)
 
 
+def preview_texts(
+    test: TemplateTest, texts: list[str], values: dict[str, Any]
+) -> list[dict[str, Any]]:
+    """Each text as the bot would send it, or why the save would refuse it (C4).
+
+    The live preview shows a refusal next to its message rather than failing
+    the whole request, and an empty message as nothing.
+    """
+    out: list[dict[str, Any]] = []
+    for text in texts[:MAX_TEXTS]:
+        if not text.strip():
+            out.append({"text": "", "warnings": []})
+            continue
+        try:
+            rendered = render_test(test, [text], values)
+        except TemplateRefused as e:
+            out.append({"error": str(e).removeprefix("Message 1 : ")})
+            continue
+        warnings = [w.removeprefix("Message 1 : ") for w in rendered.warnings]
+        out.append({"text": rendered.texts[0], "warnings": warnings})
+    return out
+
+
 def dm_text(test: TemplateTest, guild_name: str, rendered: str, index: int, total: int) -> str:
     counter = f" ({index}/{total})" if total > 1 else ""
     header = f"🧪 Test : {test.label}{counter} — serveur « {guild_name} »\n\n"
@@ -141,6 +164,7 @@ __all__ = [
     "TemplateTest",
     "catalogue",
     "dm_text",
+    "preview_texts",
     "render_test",
     "sample_values",
 ]

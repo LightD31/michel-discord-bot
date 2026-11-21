@@ -3290,3 +3290,109 @@ a.btn { text-decoration: none; }
     .setup-progress .current .setup-step-label { display: block; }
     .checklist-item { flex-wrap: wrap; }
 }
+
+/* The save bar of a module page (C5): on screen while edits aren't saved. */
+.save-bar {
+    position: fixed;
+    left: 50%;
+    bottom: 16px;
+    transform: translateX(-50%);
+    z-index: 900;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    width: min(720px, calc(100vw - 32px));
+    padding: 10px 16px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--warning);
+    border-radius: var(--radius-lg);
+    box-shadow: 0 8px 24px var(--shadow);
+}
+.save-bar[hidden] { display: none; }
+.save-bar-count { color: var(--warning); font-weight: 600; }
+.save-bar-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+body.has-save-bar .main { padding-bottom: 96px; }
+body.has-save-bar .toast-container { bottom: 88px; }
+
+/* A module's history (C5). */
+.history-intro, .history-empty { color: var(--text-secondary); font-size: 13px; margin-bottom: 12px; }
+.history-version { border-top: 1px solid var(--border); padding: 10px 0; }
+.history-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+.history-changes { margin: 6px 0 0 18px; color: var(--text-secondary); font-size: 13px; }
+.history-changes li { margin: 2px 0; overflow-wrap: anywhere; }
+.history-before { color: var(--text-muted); }
+.history-after { color: var(--text-primary); }
+
+/* A message as Discord shows it: the live preview of a template (C4). */
+.discord-preview { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
+.discord-preview:empty { display: none; }
+.dc-empty { color: var(--text-muted); font-size: 13px; }
+.dc-message {
+    display: flex;
+    gap: 12px;
+    padding: 10px 12px;
+    background: var(--bg-tertiary);
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+}
+.dc-avatar {
+    flex: 0 0 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: #ffffff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+}
+.dc-body { min-width: 0; flex: 1; }
+.dc-author { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; margin-bottom: 2px; }
+.dc-name { font-weight: 600; color: var(--text-primary); }
+.dc-bot {
+    font-size: 10px;
+    font-weight: 700;
+    padding: 1px 4px;
+    border-radius: 3px;
+    background: var(--accent);
+    color: #ffffff;
+}
+.dc-stamp { font-size: 12px; color: var(--text-muted); }
+.dc-content { color: var(--text-primary); line-height: 1.375; overflow-wrap: anywhere; }
+.dc-content code { background: var(--bg-secondary); padding: 0 3px; border-radius: 3px; font-size: 0.875em; }
+.dc-codeblock {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 6px 8px;
+    white-space: pre-wrap;
+    font-size: 0.875em;
+}
+.dc-content blockquote { border-left: 4px solid var(--border); padding-left: 10px; }
+.dc-content a { color: var(--link); }
+.dc-mention { color: var(--link); background: rgba(88, 101, 242, 0.3); border-radius: 3px; padding: 0 2px; font-weight: 500; }
+.dc-spoiler { background: var(--bg-primary); color: var(--bg-primary); border-radius: 3px; }
+.dc-spoiler:hover { color: var(--text-primary); }
+.dc-time { background: var(--bg-secondary); border-radius: 3px; padding: 0 2px; }
+.dc-h1 { font-size: 1.5em; font-weight: 700; margin: 4px 0; }
+.dc-h2 { font-size: 1.25em; font-weight: 700; margin: 4px 0; }
+.dc-h3 { font-size: 1.1em; font-weight: 700; margin: 4px 0; }
+.dc-sub { font-size: 0.8em; color: var(--text-muted); }
+.dc-warning { color: var(--warning); font-size: 13px; margin-top: 4px; }
+.dc-error { color: var(--danger); font-size: 13px; }
+.dc-embed {
+    border-left: 4px solid var(--accent);
+    background: var(--bg-secondary);
+    border-radius: 4px;
+    padding: 8px 12px;
+    max-width: 520px;
+}
+.dc-embed-title { color: var(--link); font-weight: 600; display: block; margin-bottom: 4px; }
+.dc-embed-text { color: var(--text-secondary); font-size: 14px; overflow-wrap: anywhere; }
+.dc-embed-foot { color: var(--text-muted); font-size: 12px; margin-top: 6px; }
+
+/* The role-menu builder's style and limit, side by side (one column on a phone). */
+.rolemenu-style-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+@media (max-width: 600px) { .rolemenu-style-row { grid-template-columns: 1fr; } }

@@ -77,3 +77,51 @@ def test_hand_escaping_only_goes_down():
     assert calls <= ESCAPE_CALLS_CEILING, (
         f"{calls} escapeHtml( calls: build the new markup with html`…` (js/core/html.js)"
     )
+
+
+RENDER = """async (texts) => {
+    const v = new URL(document.querySelector('script[type=module]').src).search;
+    const { discordMarkdown } = await import(`/static/js/ui/discord.js${v}`);
+    const names = { users: new Map([['7', 'Alice <3']]), channels: new Map([['9', 'général']]),
+                    roles: new Map() };
+    return texts.map(t => String(discordMarkdown(t, names)));
+}"""
+
+
+def test_the_discord_preview_draws_markdown_and_never_markup(page):
+    """C4: what an admin writes is shown as Discord would, and stays text."""
+    out = page.evaluate(
+        RENDER,
+        [
+            "**gras** *italique* __souligné__ ~~barré~~ ||spoiler||",
+            "<script>alert(1)</script> <img src=x onerror=go()>",
+            "Salut <@7> dans <#9>, <@&5> et <@8>",
+            "[clic](javascript:alert(1)) [site](https://ex.com/a_b**c**)",
+            "https://ex.com/<@7>",
+            "`**pas gras** <b>` et ```\n<i>bloc</i>\n```",
+            "> citation\n# Titre\n-# petit",
+            "@everyone 0",
+        ],
+    )
+    assert out[0] == (
+        '<div class="dc-line"><strong>gras</strong> <em>italique</em> <u>souligné</u> '
+        '<s>barré</s> <span class="dc-spoiler">spoiler</span></div>'
+    )
+    assert "<script" not in out[1] and "<img" not in out[1]
+    assert "&lt;script&gt;" in out[1] and "&lt;img src=x onerror=go()&gt;" in out[1]
+    assert '<span class="dc-mention">@Alice &lt;3</span>' in out[2]
+    assert '<span class="dc-mention">#général</span>' in out[2]
+    assert "@rôle inconnu" in out[2] and "@utilisateur inconnu" in out[2]
+    assert "javascript:" not in out[3].split("<a ", 1)[-1].split(">")[0]  # never a link
+    assert 'href="https://ex.com/a_b**c**"' in out[3]  # a URL is not formatted
+    # No markup ever lands in an href: the mention is cut out before the URL.
+    for anchor in out[4].split("<a ")[1:]:
+        assert "<" not in anchor.split(">", 1)[0]
+    assert "<code>**pas gras** &lt;b&gt;</code>" in out[5]
+    assert "<code>&lt;i&gt;bloc&lt;/i&gt;</code>" in out[5]
+    assert out[6].startswith("<blockquote>citation</blockquote>")
+    assert (
+        '<div class="dc-h1">Titre</div>' in out[6] and '<div class="dc-sub">petit</div>' in out[6]
+    )
+    assert '<span class="dc-mention">@everyone</span>' in out[7]
+    assert "" not in out[7]  # the slot mark can't be typed in

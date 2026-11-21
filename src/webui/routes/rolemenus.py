@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field
 
 from features.reactionroles import (
     MenuAuthor,
+    MenuStyle,
     ReactionRolesRepository,
     RoleMenu,
     RoleMenuEntry,
@@ -53,12 +54,19 @@ class RoleMenuCreate(BaseModel):
     title: str = Field(min_length=1, max_length=256)
     description: str | None = None
     entries: list[RoleMenuEntryIn]
+    # Buttons or a select menu, and how many roles a member may hold from it
+    # (None: as many as they like; 1: a new pick replaces the old one).
+    style: MenuStyle = "buttons"
+    max_roles: int | None = Field(default=None, ge=1, le=25)
 
 
 class RoleMenuUpdate(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=256)
     description: str | None = None
     entries: list[RoleMenuEntryIn] | None = None
+    style: MenuStyle | None = None
+    # None keeps the current limit; 0 removes it.
+    max_roles: int | None = Field(default=None, ge=0, le=25)
 
 
 # ── Helpers ─────────────────────────────────────────────────────────
@@ -219,14 +227,18 @@ async def _create_menu(
         title=body.title,
         description=body.description,
         entries=entries,
+        style=body.style,
+        max_roles=body.max_roles,
         created_by=str(getattr(session, "user_id", "webui")),
         created_at=clock.now(),
     )
     menu_id = await repo.add(menu)
     try:
         sent = await channel.send(
-            embeds=[build_embed(body.title, body.description, entries)],
-            components=build_components(menu_id, entries),
+            embeds=[build_embed(body.title, body.description, entries, max_roles=body.max_roles)],
+            components=build_components(
+                menu_id, entries, style=body.style, max_roles=body.max_roles
+            ),
         )
     except Exception as e:
         await repo.delete(menu_id)
@@ -241,7 +253,7 @@ async def _create_menu(
 async def _update_menu(
     ctx: WebUIContext, server_id: str, menu_id: str, session: Session, body: RoleMenuUpdate
 ) -> RoleMenu | None:
-    """Save the new title, description or entries, then edit the posted menu."""
+    """Save the new title, description, entries, style or limit, then edit the posted menu."""
     repo = ReactionRolesRepository(server_id)
     existing = await repo.get(menu_id)
     if not existing:
@@ -255,21 +267,24 @@ async def _update_menu(
         entries = _parse_entries(body.entries, guild)
         await _check_entries(ctx, guild, session, entries)
 
+    style = body.style or existing.style
+    max_roles = existing.max_roles if body.max_roles is None else (body.max_roles or None)
+
     await repo.update(
         menu_id,
         title=title,
         description=description,
         entries=[e.model_dump() for e in entries],
+        style=style,
+        max_roles=max_roles,
     )
     try:
         message = await _menu_message(ctx.bot, existing)
         if message:
             await edit_message_if_changed(
                 message,
-                embeds=[build_embed(title, description, entries, max_roles=existing.max_roles)],
-                components=build_components(
-                    menu_id, entries, style=existing.style, max_roles=existing.max_roles
-                ),
+                embeds=[build_embed(title, description, entries, max_roles=max_roles)],
+                components=build_components(menu_id, entries, style=style, max_roles=max_roles),
                 logger=logger,
             )
     except Exception as e:  # noqa: BLE001 — saved; the message catches up at the next edit

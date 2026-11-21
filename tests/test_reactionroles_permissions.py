@@ -336,3 +336,69 @@ def test_access_refusal_is_the_hierarchy_rule_alone():
         role(1), author=MenuAuthor(permissions=MANAGE_GUILD, top_position=20), purpose="x"
     )
     assert access_refusal(role(0, is_default=True), author=mod, purpose="x")
+
+
+def test_a_menu_from_the_dashboard_takes_its_style_and_limit(stub_repo):
+    """Held over from P7: a select menu, one role at a time, built from the dashboard."""
+    ctx, session = make_ctx(make_guild(MANAGE_GUILD | MANAGE_ROLES))
+    create_menu = endpoint(ctx, "/api/servers/{server_id}/rolemenus", "POST")
+    body = rolemenus_routes.RoleMenuCreate(
+        channel_id="555",
+        title="Couleurs",
+        entries=[rolemenus_routes.RoleMenuEntryIn(role_id="10", emoji="🎨", label="Rouge")],
+        style="select",
+        max_roles=1,
+    )
+    run(ctx, lambda: create_menu(request_for(session), "1000", body))
+    (menu,) = stub_repo.added
+    assert (menu.style, menu.max_roles) == ("select", 1)
+    kinds = [
+        type(c).__name__ for row in ctx.bot.channel.sent[0]["components"] for c in row.components
+    ]
+    assert kinds == ["StringSelectMenu", "Button"]  # the drop-down, and "Retirer mes rôles"
+    with pytest.raises(ValueError):
+        rolemenus_routes.RoleMenuCreate(channel_id="5", title="x", entries=[], style="radio")
+
+
+def test_an_edit_changes_the_style_and_zero_removes_the_limit(monkeypatch):
+    from datetime import UTC, datetime
+
+    from features.reactionroles import RoleMenu, RoleMenuEntry
+
+    menu = RoleMenu(
+        _id="a" * 24,
+        guild_id="1000",
+        channel_id="555",
+        title="Couleurs",
+        entries=[RoleMenuEntry(role_id="10", emoji="🎨", label="Rouge")],
+        style="select",
+        max_roles=1,
+        created_by="7",
+        created_at=datetime(2026, 11, 1, tzinfo=UTC),
+    )
+    updates = []
+
+    class Repo:
+        def __init__(self, guild_id):
+            pass
+
+        async def get(self, menu_id):
+            return menu
+
+        async def update(self, menu_id, **fields):
+            updates.append(fields)
+
+    monkeypatch.setattr(rolemenus_routes, "ReactionRolesRepository", Repo)
+    ctx, session = make_ctx(make_guild(MANAGE_GUILD | MANAGE_ROLES))
+    put = endpoint(ctx, "/api/servers/{server_id}/rolemenus/{menu_id}", "PUT")
+
+    def edit(**fields):
+        body = rolemenus_routes.RoleMenuUpdate(**fields)
+        run(ctx, lambda: put(request_for(session), "1000", "a" * 24, body))
+        return updates[-1]
+
+    assert (edit()["style"], updates[-1]["max_roles"]) == ("select", 1)  # untouched: kept
+    assert (edit(style="buttons", max_roles=0)["style"], updates[-1]["max_roles"]) == (
+        "buttons",
+        None,
+    )

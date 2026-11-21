@@ -126,3 +126,31 @@ def test_closed_dms_and_unknown_fields_are_reported():
             {"module": "moduleXp", "field": "levelUpMessageList", "texts": ["{mention.id}"]},
         )
     assert refused.value.status_code == 422
+
+
+def preview(ctx, body):
+    router = routes.create_router(ctx)
+    endpoint = next(r.endpoint for r in router.routes if r.path.endswith("template-preview"))
+    return json.loads(asyncio.run(endpoint(None, "1", routes.TemplateTestBody(**body))).body)
+
+
+def test_the_preview_renders_each_text_and_sends_nothing():
+    """The live preview (C4): the production renderer, per text, no DM."""
+    user = User()
+    texts = ["GG {mention}, niveau {lvl} !", "{nope} @everyone", "{0.__class__}", ""]
+    body = {"module": "moduleXp", "field": "levelUpMessageList", "texts": texts}
+    out = preview(Ctx(user), body)["previews"]
+    assert out[0] == {"text": "GG <@7>, niveau 5 !", "warnings": []}
+    assert out[1]["text"] == "{nope} @everyone"
+    assert any("{nope}" in w for w in out[1]["warnings"])
+    assert any("@everyone" in w for w in out[1]["warnings"])
+    assert not out[1]["warnings"][0].startswith("Message")  # shown next to its message
+    assert set(out[2]) == {"error"}  # what the save would refuse, said in place
+    assert out[3] == {"text": "", "warnings": []}
+    assert user.sent == []
+
+
+def test_a_field_without_a_preview_is_a_404():
+    with pytest.raises(HTTPException) as unknown:
+        preview(Ctx(User()), {"module": "moduleXp", "field": "xpChannelId", "texts": ["x"]})
+    assert unknown.value.status_code == 404
