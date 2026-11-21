@@ -50,6 +50,21 @@ def _etag(content: str) -> str:
     return '"' + hashlib.sha256(content.encode("utf-8")).hexdigest()[:32] + '"'
 
 
+def static_files() -> dict[str, Path]:
+    """Every script and stylesheet of the static folder, by its path from it ("js/main.js").
+
+    A request names one of these keys; the path served is the one found here,
+    never one built from the request, so nothing outside the folder (or not a
+    script or stylesheet) can be asked for.
+    """
+    root = _STATIC_DIR.resolve()
+    return {
+        p.relative_to(root).as_posix(): p
+        for p in root.rglob("*")
+        if p.suffix in STATIC_MEDIA_TYPES and p.is_file()
+    }
+
+
 def static_version() -> str:
     """A hash of every static file's name and content (recomputed when one changes)."""
     files = sorted(p for p in _STATIC_DIR.rglob("*") if p.is_file())
@@ -96,11 +111,10 @@ def _serve_frontend(request: Request | None = None) -> Response:
 
 def _serve_static(path: str, request: Request) -> Response:
     """A script or stylesheet from the static folder, and nothing else."""
-    root = _STATIC_DIR.resolve()
-    target = (root / path).resolve()
-    media_type = STATIC_MEDIA_TYPES.get(target.suffix)
-    if media_type is None or not target.is_relative_to(root) or not target.is_file():
+    target = static_files().get(path)
+    if target is None:
         raise HTTPException(status_code=404, detail="Fichier introuvable")
+    media_type = STATIC_MEDIA_TYPES[target.suffix]
     version = static_version()
     content = _read(target)
     if target.suffix == ".js":
