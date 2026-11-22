@@ -47,7 +47,7 @@ from src.core.config import global_config
 from src.core.errors import BotError
 from src.core.logging import log_failure
 from src.discord_ext.channels import fetch_guild_channel
-from src.discord_ext.look import card
+from src.discord_ext.look import card, ok
 from src.discord_ext.messages import fetch_user_safe
 
 from ._base import ConfrerieBase
@@ -368,7 +368,7 @@ class ReviewMixin(ConfrerieBase):
         await self._refresh_review_message(
             draft, _STATUS_LINES[STATUS_APPROVED].format(who=ctx.author.mention)
         )
-        await ctx.send("✅ Fiche créée.", ephemeral=True)
+        await ctx.send(ok("Fiche créée."), ephemeral=True)
         await self._notify_submitter(draft)
 
     # ── Outcome ──────────────────────────────────────────────────────────

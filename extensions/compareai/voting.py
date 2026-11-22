@@ -29,7 +29,7 @@ from features.ai.quota import MODULE_DISABLED
 from src.core.errors import DatabaseError
 from src.discord_ext.channels import fetch_guild_channel
 from src.discord_ext.locale import en_fr_desc, en_fr_name
-from src.discord_ext.look import card, sign
+from src.discord_ext.look import card, oops, sign
 from src.discord_ext.messages import edit_message_if_changed
 from src.discord_ext.scopes import guild_scopes
 
@@ -70,7 +70,7 @@ class VotingMixin:
             updated = await repo.set_vote(comparison_id, str(ctx.author.id), key)
         except DatabaseError as e:
             logger.error("Vote failed for comparison %s: %s", comparison_id, e)
-            await ctx.send("❌ Impossible d'enregistrer le vote pour l'instant.", ephemeral=True)
+            await ctx.send(oops("Impossible d'enregistrer le vote pour l'instant."), ephemeral=True)
             return
 
         if updated is None:  # closed between the read and the write
@@ -175,7 +175,7 @@ class VotingMixin:
             comparisons = await repo.list_for_stats()
         except DatabaseError as e:
             logger.error("Could not load AI stats: %s", e)
-            await ctx.send("❌ Statistiques indisponibles pour l'instant.", ephemeral=True)
+            await ctx.send(oops("Statistiques indisponibles pour l'instant."), ephemeral=True)
             return
 
         stats = compute_model_stats(comparisons)

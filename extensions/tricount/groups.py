@@ -24,7 +24,7 @@ from features.tricount import (
 from src.core import clock
 from src.core import logging as logutil
 from src.discord_ext.autocomplete import guild_group_autocomplete
-from src.discord_ext.look import card
+from src.discord_ext.look import card, oops
 from src.discord_ext.messages import guild_of, require_guild
 from src.discord_ext.scopes import guild_scopes
 
@@ -70,7 +70,7 @@ class GroupsMixin:
         existing_group = await repo.find_group_by_name(nom)
         if existing_group:
             await ctx.send(
-                f"❌ Un groupe avec le nom '{nom}' existe déjà sur ce serveur.", ephemeral=True
+                oops(f"Un groupe avec le nom '{nom}' existe déjà sur ce serveur."), ephemeral=True
             )
             return
 
@@ -121,10 +121,10 @@ class GroupsMixin:
         repo = TricountRepository(guild_of(ctx).id)
         group = await repo.find_active_group(nom)
         if not group:
-            await ctx.send(f"❌ Aucun groupe actif trouvé avec le nom '{nom}'.", ephemeral=True)
+            await ctx.send(oops(f"Aucun groupe actif trouvé avec le nom '{nom}'."), ephemeral=True)
             return
         if ctx.author.id in group["members"]:
-            await ctx.send("❌ Tu es déjà membre de ce groupe.", ephemeral=True)
+            await ctx.send(oops("Tu es déjà membre de ce groupe."), ephemeral=True)
             return
 
         await repo.add_group_member(group["_id"], ctx.author.id)
@@ -167,10 +167,10 @@ class GroupsMixin:
         repo = TricountRepository(guild_of(ctx).id)
         group = await repo.find_active_group(nom)
         if not group:
-            await ctx.send(f"❌ Aucun groupe actif trouvé avec le nom '{nom}'.", ephemeral=True)
+            await ctx.send(oops(f"Aucun groupe actif trouvé avec le nom '{nom}'."), ephemeral=True)
             return
         if ctx.author.id not in group["members"]:
-            await ctx.send("❌ Tu n'es pas membre de ce groupe.", ephemeral=True)
+            await ctx.send(oops("Tu n'es pas membre de ce groupe."), ephemeral=True)
             return
 
         await repo.remove_group_member(group["_id"], ctx.author.id)
@@ -247,18 +247,20 @@ class GroupsMixin:
             return
         payeur = payeur or ctx.author
         if montant <= 0:
-            await ctx.send("❌ Le montant doit être positif.", ephemeral=True)
+            await ctx.send(oops("Le montant doit être positif."), ephemeral=True)
             return
         if payeur.id == destinataire.id:
             await ctx.send(
-                "❌ Le payeur et le destinataire doivent être différents.", ephemeral=True
+                oops("Le payeur et le destinataire doivent être différents."), ephemeral=True
             )
             return
 
         repo = TricountRepository(guild_of(ctx).id)
         group = await repo.find_active_group(groupe)
         if not group:
-            await ctx.send(f"❌ Aucun groupe actif trouvé avec le nom '{groupe}'.", ephemeral=True)
+            await ctx.send(
+                oops(f"Aucun groupe actif trouvé avec le nom '{groupe}'."), ephemeral=True
+            )
             return
         members = group["members"]
         balances = compute_balances(await repo.list_group_expenses(group["_id"]), members)
@@ -269,14 +271,14 @@ class GroupsMixin:
 
         if ctx.author.id not in members and ctx.author.id not in (payeur.id, destinataire.id):
             await ctx.send(
-                "❌ Il faut être membre du groupe, ou concerné par le remboursement.",
+                oops("Il faut être membre du groupe, ou concerné par le remboursement."),
                 ephemeral=True,
             )
             return
         for person in (payeur, destinataire):
             if not on_the_books(person.id):
                 await ctx.send(
-                    f"❌ {person.mention} n'est ni membre du groupe ni en attente de règlement.",
+                    oops(f"{person.mention} n'est ni membre du groupe ni en attente de règlement."),
                     ephemeral=True,
                 )
                 return

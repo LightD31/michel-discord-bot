@@ -44,7 +44,10 @@ def test_no_command_asks_for_administrator_and_something_else():
     for path in python_files("extensions", "src"):
         tree = ast.parse(path.read_text(encoding="utf-8"))
         found += offenders(tree, Imports(tree, path), rel(path))
-    assert found == []
+    assert found == [], (
+        "default_member_permissions ORs its flags: ADMINISTRATOR | X lets X alone in. "
+        "Ask for one permission (docs/conventions/dashboard-security.md)"
+    )
 
 
 @pytest.mark.parametrize(

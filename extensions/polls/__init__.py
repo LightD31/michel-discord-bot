@@ -1,6 +1,6 @@
 """Polls Discord extension — one ``/sondage``, three kinds of poll.
 
-``/sondage [mode:] [plusieurs_choix:]`` opens a form: the question, the options
+``/sondage [mode:] [plusieurs-choix:]`` opens a form: the question, the options
 one per line, and how long it stays open ("2h", "3j").
 
 - **public** (the default): a native Discord poll. Discord counts the votes,
@@ -54,7 +54,7 @@ from src.core.config import ModuleConfig
 from src.core.logging import log_failure
 from src.core.text import format_discord_timestamp
 from src.discord_ext.channels import fetch_guild_channel
-from src.discord_ext.look import card
+from src.discord_ext.look import card, ok
 from src.discord_ext.messages import copy_embed, edit_message_if_changed, send_error
 from src.discord_ext.scopes import guild_scopes
 
@@ -175,7 +175,7 @@ class PollsExtension(Extension, PollButtonsMixin):
         ],
     )
     @slash_option(
-        "plusieurs_choix",
+        "plusieurs-choix",
         "Sondage public : chacun peut cocher plusieurs options",
         opt_type=OptionType.BOOLEAN,
         required=False,
@@ -313,7 +313,7 @@ class PollsExtension(Extension, PollButtonsMixin):
             await send_error(ctx, "Ce sondage est fermé.")
             return
         await self._show_edit(ctx.guild_id, edited)
-        await ctx.send("✅ Sondage modifié.", ephemeral=True)
+        await ctx.send(ok("Sondage modifié."), ephemeral=True)
 
     async def _show_edit(self, guild_id, poll: Poll) -> None:
         channel = await fetch_guild_channel(self.bot, guild_id, poll.channel_id)

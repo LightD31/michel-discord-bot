@@ -9,6 +9,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.testclient import TestClient
 
+import extensions.xp._common  # noqa: F401  (registers moduleXp's schema: the save test needs it)
 import src.core.config as core_config
 import src.webui.routes.servers as servers_routes
 from src.core import backup_format

@@ -166,7 +166,9 @@ def probe(tmp_path_factory) -> dict:
 
 
 def test_every_extension_imports(probe):
-    assert probe["failures"] == []
+    assert probe["failures"] == [], (
+        "an extension failed to import: its schema is unregistered and its module unsaveable"
+    )
 
 
 def test_no_module_schema_declares_a_message_id(probe):
@@ -177,7 +179,9 @@ def test_no_module_schema_declares_a_message_id(probe):
         for name in names
         if name.lower().endswith("messageid")
     ]
-    assert offenders == []
+    assert offenders == [], (
+        "keep message ids in a bot_messages slot, not config (docs/conventions/config.md)"
+    )
 
 
 def test_module_secrets_name_where_they_are_sent(probe):
@@ -200,7 +204,9 @@ def test_module_secrets_name_where_they_are_sent(probe):
                 for target in targets
                 if target not in fields
             )
-    assert offenders == []
+    assert offenders == [], (
+        "declare secret_field(sent_to=[…]) with the fields naming where the secret goes"
+    )
 
 
 def test_module_roles_say_what_the_bot_does_with_them(probe):
@@ -215,7 +221,7 @@ def test_module_roles_say_what_the_bot_does_with_them(probe):
         for name, meta in schema["fields"].items()
         if meta.get("type") in {"role", "rolelist"} and not meta.get("roleUse")
     ]
-    assert offenders == []
+    assert offenders == [], "give the role field ui(role_use=…): it picks the rule a save must pass"
 
 
 def test_ids_are_picked_by_name_not_typed(probe):
@@ -230,7 +236,7 @@ def test_ids_are_picked_by_name_not_typed(probe):
         for name, meta in schema["fields"].items()
         if meta.get("type") in {"list", "list:number"} and re.search(r"(Channel|Role)(Id)?s$", name)
     ]
-    assert offenders == []
+    assert offenders == [], "use a channellist / rolelist field: the dashboard picks those by name"
 
 
 def test_every_number_has_bounds_the_dashboard_shows(probe):
@@ -241,12 +247,14 @@ def test_every_number_has_bounds_the_dashboard_shows(probe):
     deleted every message (Q1); a retention of 0 backups deleted them all. The
     bot still clamps what it reads, for a config edited by hand.
     """
-    assert probe["numbers"] == []
+    assert probe["numbers"] == [], (
+        "bound the number with ui(…, ge=…, le=…): the save refuses what lies outside"
+    )
 
 
 def test_choice_fields_offer_what_the_save_accepts(probe):
     """A ``choice`` field is a ``Literal`` with the same values as its ``choices``."""
-    assert probe["choices"] == []
+    assert probe["choices"] == [], "make the field a Literal of the same values as its choices"
 
 
 def test_every_module_has_its_look(probe):

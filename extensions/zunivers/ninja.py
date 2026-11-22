@@ -31,6 +31,7 @@ from features.zunivers_ninja import (
 )
 from src.core.text import MESSAGE_LIMIT, clip
 from src.discord_ext.autocomplete import Choice
+from src.discord_ext.look import ok
 from src.discord_ext.mentions import NO_PINGS
 
 from ._base import ZuniversBase
@@ -106,7 +107,7 @@ class NinjaMixin(ZuniversBase):
         components = _web_link(user.username, hardcore, strategie)
         if plan.empty:
             await ctx.send(
-                f"✅ Rien de plus à faire aujourd'hui pour **{plan.player_display_name}**.",
+                ok(f"Rien de plus à faire aujourd'hui pour **{plan.player_display_name}**."),
                 components=components,
                 ephemeral=ephemeral,
             )

@@ -55,18 +55,23 @@ def _allowlisted_actions(app: str = APP) -> set[str]:
     return names
 
 
+NO_HANDLER = "the CSP refuses inline handlers: use data-action and registerActions"
+
+
 def test_no_inline_script_or_handler_in_the_page():
-    assert INLINE_SCRIPT.findall(INDEX) == []
+    assert INLINE_SCRIPT.findall(INDEX) == [], "the CSP refuses inline scripts: move it to a module"
     assert '<script type="module" src="/static/js/main.js"></script>' in INDEX
-    assert INLINE_HANDLER.findall(INDEX) == []
+    assert INLINE_HANDLER.findall(INDEX) == [], NO_HANDLER
 
 
 def test_no_inline_handler_in_the_markup_the_script_builds():
-    assert INLINE_HANDLER.findall(APP) == []
-    assert SET_HANDLER.findall(APP) == []
+    assert INLINE_HANDLER.findall(APP) == [], NO_HANDLER
+    assert SET_HANDLER.findall(APP) == [], NO_HANDLER
     for text in (APP, INDEX):
         assert "javascript:" not in text.lower()
-    assert STRING_CODE.findall(APP) == []
+    assert STRING_CODE.findall(APP) == [], (
+        'no code in strings (setTimeout("…"), new Function): the CSP refuses it'
+    )
 
 
 @pytest.mark.parametrize(

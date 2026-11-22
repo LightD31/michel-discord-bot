@@ -2,7 +2,8 @@
 
 Every guild command, subcommand group, subcommand and option is named in
 French, without accents, words joined by hyphens (``/mes-donnees``,
-``/lever-exclusion``; an option may join them with ``_``, as Python does).
+``/lever-exclusion``, ``depense-id:``; since P13 options too: the Python
+argument keeps its ``_`` through ``argument_name``).
 English names are only for the commands anyone may install, which carry a
 French localisation (``random_``, ``/ask``: ``src/discord_ext/locale.py``).
 
@@ -106,7 +107,6 @@ ENGLISH = {
     "separator",
 }
 NAME = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
-OPTION = re.compile(r"^[a-z0-9]+([-_][a-z0-9]+)*$")
 
 _PROBE = r"""
 import importlib, inspect, json, os, sys
@@ -188,19 +188,22 @@ def offenders(commands: list[dict]) -> list[str]:
             if not NAME.match(part) or english_words(part):
                 found.append(f"{where}: {part}")
         for option in command["options"]:
-            if not OPTION.match(option) or english_words(option):
+            if not NAME.match(option) or english_words(option):
                 found.append(f"{where} {option}:")
     return sorted(set(found))
 
 
 def test_commands_and_options_are_named_in_french(commands):
     assert commands, "the probe found no command"
-    assert offenders(commands) == []
+    assert offenders(commands) == [], (
+        "name commands and options in French, unaccented, words joined by hyphens; "
+        "keep the Python name with argument_name=… (docs/conventions/discord-messages.md)"
+    )
 
 
 def test_every_module_explains_itself_in_aide(probe):
     """Each module's schema has a ``__help__``: /aide shows it when the module is picked (B7)."""
-    assert probe["without_help"] == []
+    assert probe["without_help"] == [], "give the schema a __help__ = ModuleHelp(…): /aide shows it"
 
 
 def test_the_commands_aide_recommends_exist(probe, commands):
@@ -211,7 +214,7 @@ def test_the_commands_aide_recommends_exist(probe, commands):
         for where, listed in probe["helps"].items()
         if any(c not in typed for c in listed)
     }
-    assert wrong == {}
+    assert wrong == {}, "a __help__ names a command that does not exist: update it after a rename"
     assert all(len(listed) <= 3 for listed in probe["helps"].values())
 
 
@@ -231,6 +234,7 @@ def test_the_probe_sees_the_renamed_commands(commands):
         (["anniversaire"], ["hideyear"]),
         (["sondage"], ["Question"]),
         (["concours", "liste"], ["channel"]),
+        (["tricount", "supprimer-depense"], ["depense_id"]),
     ],
 )
 def test_english_or_misshapen_names_are_caught(path, options):
@@ -241,7 +245,7 @@ def test_english_or_misshapen_names_are_caught(path, options):
 def test_a_french_command_passes():
     command = {
         "path": ["tricount", "recurrente", "ajouter"],
-        "options": ["groupe", "montant", "depense_id"],
+        "options": ["groupe", "montant", "depense-id"],
         "localised": False,
     }
     assert offenders([command]) == []

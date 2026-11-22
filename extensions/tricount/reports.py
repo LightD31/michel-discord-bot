@@ -32,7 +32,7 @@ from src.core import clock
 from src.core import logging as logutil
 from src.core.logging import log_failure
 from src.discord_ext.autocomplete import guild_group_autocomplete
-from src.discord_ext.look import card, sign
+from src.discord_ext.look import card, oops, sign
 from src.discord_ext.messages import fetch_user_safe, guild_of, require_guild
 from src.discord_ext.scopes import guild_scopes
 
@@ -91,11 +91,13 @@ class ReportsMixin:
         repo = TricountRepository(guild_of(ctx).id)
         group = await repo.find_active_group(groupe)
         if not group:
-            await ctx.send(f"❌ Aucun groupe actif trouvé avec le nom '{groupe}'.", ephemeral=True)
+            await ctx.send(
+                oops(f"Aucun groupe actif trouvé avec le nom '{groupe}'."), ephemeral=True
+            )
             return
         if ctx.author.id not in group["members"]:
             await ctx.send(
-                "❌ Il faut être membre du groupe pour voir les dépenses.", ephemeral=True
+                oops("Il faut être membre du groupe pour voir les dépenses."), ephemeral=True
             )
             return
 
@@ -175,7 +177,9 @@ class ReportsMixin:
         repo = TricountRepository(guild_of(ctx).id)
         group = await repo.find_active_group(groupe)
         if not group:
-            await ctx.send(f"❌ Aucun groupe actif trouvé avec le nom '{groupe}'.", ephemeral=True)
+            await ctx.send(
+                oops(f"Aucun groupe actif trouvé avec le nom '{groupe}'."), ephemeral=True
+            )
             return
 
         expenses = await repo.list_group_expenses(group["_id"])
@@ -183,7 +187,9 @@ class ReportsMixin:
         balances = compute_balances(expenses, members)
         # Former members still on the books may check what they owe or are owed.
         if ctx.author.id not in members and not balances.get(ctx.author.id):
-            await ctx.send("❌ Il faut être membre du groupe pour voir le bilan.", ephemeral=True)
+            await ctx.send(
+                oops("Il faut être membre du groupe pour voir le bilan."), ephemeral=True
+            )
             return
 
         if not expenses:
@@ -264,11 +270,13 @@ class ReportsMixin:
         repo = TricountRepository(guild_of(ctx).id)
         group = await repo.find_active_group(groupe)
         if not group:
-            await ctx.send(f"❌ Aucun groupe actif trouvé avec le nom '{groupe}'.", ephemeral=True)
+            await ctx.send(
+                oops(f"Aucun groupe actif trouvé avec le nom '{groupe}'."), ephemeral=True
+            )
             return
         if ctx.author.id not in group["members"]:
             await ctx.send(
-                "❌ Il faut être membre du groupe pour voir le graphique.",
+                oops("Il faut être membre du groupe pour voir le graphique."),
                 ephemeral=True,
             )
             return
@@ -295,7 +303,7 @@ class ReportsMixin:
             )
         except Exception as e:
             log_failure(logger, "Could not render tricount chart: %s", e)
-            await ctx.send("❌ Erreur lors de la génération du graphique.")
+            await ctx.send(oops("Erreur lors de la génération du graphique."))
             return
         await ctx.send(file=File(file=buffer, file_name="tricount.png"))
 

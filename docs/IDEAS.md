@@ -23,6 +23,7 @@ Legend: 🚀 = ambitious. **Effort** (focused work, tests included): S ≤ 1 day
 6. [C. Dashboard](#c-dashboard) (C1–C10)
 7. [D. Quality findings](#d-quality-findings) (D1–D8)
 8. [Lots](#lots)
+9. [Round 8: what was set aside, and the backlog](#round-8-what-was-set-aside-and-the-backlog)
 
 ---
 
@@ -552,3 +553,24 @@ Numbered **P1…P12** so they don't clash with the audit's lots 1–6. Each lot 
 | *Backlog* | A3, A5, A11, B11, C10 | — | Good ideas that build on P5, P6 or P9 |
 
 **Suggested order:** P1 → P2 (date-bound) → P3 → P4 → P5, with P12 trickling alongside. Choose P6 or P8 next depending on whether members (P6) or new admins (P8) matter more to you right now.
+
+---
+
+## Round 8: what was set aside, and the backlog
+
+*22 November 2026. P1–P12 are merged. Each PR listed what it set aside and why. Round 8 builds all of it, with the backlog, in stacked lots: one branch and one PR each, each branch based on the previous one, to be merged in order. Decisions: Olympics and Speedons stay archived; the Secret Santa reveal moves to the dashboard for Discord administrators only; the three front-end refactors are included.*
+
+| Lot | Contents | From |
+|---|---|---|
+| **P13 Reprise code** | `ok()` / `oops()` on every reply, with a guard; options named with hyphens (`depense-id:`); compareai's startup tested; a fix for every guard's failure message; the test that failed when run alone | P6, P10, P12 |
+| **P14 Reprise Discord** | The Gazette's AI intro (opt-in); the feur of the week; a season tab on the public XP page; a giveaway's role checked again at the draw; the 👋 button removed after 7 days; the welcome linking a role menu; the last generic "pas activé" refusals | P4, P5, P7, P11 |
+| **P15 Dashboard admin** | The Confrérie forums picked by name; the reports list on the Modération page; each module's last activity; the Secret Santa reveal for administrators; per-module permissions in the Health card; save errors naming the field's label | P1, P2, P3, P4, P7, P8 |
+| **P16 Previews and Mon espace** | More Tester buttons (Satisfactory, Minecraft, Uptime, YouTube, Twitch); previews of embeds and role menus; a streamer message's preview; joining or leaving a Secret Santa from Mon espace; repayments recorded there; unsaved-change protection | P9, P10, P11 |
+| **P17 Nettoyage front** | The last pages on the `html` tag; inline `style=` attributes moved to classes; the schema form split; account pickers in the global settings | P3, P9 |
+| **P18 A3 Succès** | Achievements | Backlog |
+| **P19 A5 Agenda** | The shared agenda | Backlog |
+| **P20 A11 Rattrapage** | `/rattrapage` | Backlog |
+| **P21 C10 Incidents** | The server's incidents | Backlog |
+| **P22 B11 Components V2** | Components V2 cards | Backlog |
+
+Not built, because Discord or the design rules them out: editing a native poll (Discord forbids it); a wish list changed after the draw (the Santa already holds it in their DM); group-DM Secret Santa sessions (commands are guild-only); packs filling in streamer and team names (a pack can't guess them); the welcome test using unsaved texts (the module page has its own test).
