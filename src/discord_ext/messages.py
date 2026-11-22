@@ -21,6 +21,7 @@ from interactions import (
     InteractionContext,
     Member,
     Message,
+    MessageFlags,
     Permissions,
     SlashContext,
     ThreadChannel,
@@ -32,7 +33,7 @@ from src.core.errors import DatabaseError
 from src.core.logging import log_failure
 from src.core.message_refs import MessageRefRepository
 from src.discord_ext.channels import fetch_guild_channel, member_can
-from src.discord_ext.look import ok, oops
+from src.discord_ext.look import MICHEL, card_v2, ok, oops
 
 # ---------------------------------------------------------------------------
 # Ephemeral responses
@@ -332,6 +333,25 @@ def copy_embed(embed: Embed) -> Embed:
     return Embed.from_dict(embed.to_dict())
 
 
+def is_v2(message: Any) -> bool:
+    """Whether *message* is a Components V2 message (``IS_COMPONENTS_V2``)."""
+    try:
+        return bool(
+            MessageFlags(int(getattr(message, "flags", 0) or 0)) & MessageFlags.IS_COMPONENTS_V2
+        )
+    except (TypeError, ValueError):
+        return False
+
+
+def _without_ids(value: Any) -> Any:
+    """Components as sent, minus the ``id`` Discord numbers each one with (P22)."""
+    if isinstance(value, dict):
+        return {k: _without_ids(v) for k, v in value.items() if k != "id"}
+    if isinstance(value, list):
+        return [_without_ids(v) for v in value]
+    return value
+
+
 def _payload_differs(
     message: Message, payload: dict[str, Any], *, ignore_timestamp: bool = False
 ) -> bool:
@@ -359,9 +379,13 @@ def _payload_differs(
     ):
         return True
 
+    flags = payload.get("flags")
+    if flags is not None and bool(int(flags) & MessageFlags.IS_COMPONENTS_V2) != is_v2(message):
+        return True
+
     components = payload.get("components")
-    return components is not None and process_components(components) != process_components(
-        getattr(message, "components", None) or []
+    return components is not None and _without_ids(process_components(components)) != _without_ids(
+        process_components(getattr(message, "components", None) or [])
     )
 
 
@@ -434,6 +458,7 @@ async def fetch_or_create_persistent_message(
     pin: bool = False,
     label: str = "",
     logger: logging.Logger | None = None,
+    v2: bool = False,
 ) -> Message | None:
     """Return the guild's message for *slot* in *channel_id*, creating it if missing.
 
@@ -449,6 +474,11 @@ async def fetch_or_create_persistent_message(
     while the stored one can't be checked would leave a duplicate behind. The
     caller tries again at its next refresh. *label* names the message in the
     dashboard.
+
+    *v2*: the slot holds a Components V2 card (P22). Its placeholder is one,
+    and a stored message that isn't (posted before the module moved to V2)
+    is deleted and posted anew: Discord can't turn a message into V2 by an
+    edit.
     """
     if not channel_id:
         return None
@@ -460,7 +490,7 @@ async def fetch_or_create_persistent_message(
         cached = _resolved.get((gid, slot))
         if cached is not None and cached[0] == wanted:
             return cached[1]
-        message = await _resolve(bot, gid, slot, wanted, initial_content, pin, label, logger)
+        message = await _resolve(bot, gid, slot, wanted, initial_content, pin, label, logger, v2)
         if message is not None:
             _resolved[(gid, slot)] = (wanted, message)
         return message
@@ -475,6 +505,7 @@ async def _resolve(
     pin: bool,
     label: str,
     logger: logging.Logger | None,
+    v2: bool = False,
 ) -> Message | None:
     repo = MessageRefRepository(gid)
     try:
@@ -495,7 +526,11 @@ async def _resolve(
     if ref is not None and ref.channel_id == wanted and ref.message_id:
         try:
             existing = await channel.fetch_message(int(ref.message_id))
-            if existing is not None:
+            if existing is not None and v2 and not is_v2(existing):
+                if logger:
+                    logger.info("Guild %s: message %s moves to Components V2", gid, slot)
+                await existing.delete()
+            elif existing is not None:
                 return existing
         except Exception as e:  # noqa: BLE001 — log and recreate
             if logger:
@@ -507,7 +542,13 @@ async def _resolve(
                 )
 
     try:
-        msg = await channel.send(initial_content)
+        if v2:
+            msg = await channel.send(
+                components=[card_v2(MICHEL, title=initial_content, blocks=[])],
+                flags=MessageFlags.IS_COMPONENTS_V2,
+            )
+        else:
+            msg = await channel.send(initial_content)
     except Exception as e:  # noqa: BLE001 — log and return None
         if logger:
             log_failure(logger, "Could not create persistent message in %s: %s", wanted, e)
@@ -585,9 +626,11 @@ class GuildMessages:
         initial_content: str = "Initialisation…",
         pin_key: str | None = None,
         logger: logging.Logger | None = None,
+        v2: bool = False,
     ) -> None:
         self.bot = bot
         self.slot = slot
+        self.v2 = v2  # a Components V2 card (P22)
         self.channel_key = channel_key
         self.label = label
         self.initial_content = initial_content
@@ -612,6 +655,7 @@ class GuildMessages:
             pin=bool(settings.get(self.pin_key)) if self.pin_key else False,
             label=self.label,
             logger=self.logger,
+            v2=self.v2,
         )
 
     def cached(self, guild_id: int | str) -> Message | None:
@@ -639,6 +683,7 @@ __all__ = [
     "cached_persistent_message",
     "fetch_or_create_persistent_message",
     "event_url",
+    "is_v2",
     "fetch_user_safe",
     "forget_persistent_message",
     "republish_persistent_message",

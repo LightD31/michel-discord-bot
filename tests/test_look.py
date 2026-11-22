@@ -40,6 +40,8 @@ COLOUR_CLASSES = {
 }
 EMBED = {
     "interactions.Embed",
+    "interactions.ContainerComponent",
+    "interactions.models.discord.components.ContainerComponent",
     "interactions.models.discord.embed.Embed",
     "interactions.EmbedFooter",
 }
@@ -199,6 +201,7 @@ def test_colours_embeds_and_footers_come_from_look():
         "MEDAL_COLORS = {'gold': 0xFFD700}",
         "embed.color = 0x00FF00",
         "from interactions import EmbedFooter\ncard('m', footer=EmbedFooter(text='Michel'))",
+        "from interactions import ContainerComponent\nContainerComponent(accent_color=1)",
     ],
 )
 def test_the_guard_catches(source):
@@ -280,3 +283,33 @@ def test_the_reply_guard(source, caught):
 
 def test_the_module_exports_what_it_defines():
     assert set(look.__all__) <= set(vars(look))
+
+
+# ── Components V2 cards (P22) ────────────────────────────────────────
+
+
+def test_a_v2_card_has_the_module_stripe_its_name_and_michels_signature():
+    from src.discord_ext.look import card_v2
+
+    container = card_v2(
+        "moduleAgenda",
+        title="Les 14 prochains jours",
+        blocks=["**Demain**\n📅 Soirée"],
+        footer="toutes les 30 minutes",
+    )
+    assert container.accent_color == LOOKS["moduleAgenda"].accent
+    texts = [part.content for part in container.components if hasattr(part, "content")]
+    assert texts == [
+        "-# 🗓️ Agenda\n## Les 14 prochains jours",
+        "**Demain**\n📅 Soirée",
+        "-# Michel · Agenda · toutes les 30 minutes",
+    ]
+
+
+def test_v2_blocks_are_packed_within_discords_limits():
+    from src.discord_ext.look import V2_MAX_TEXTS, v2_texts
+
+    assert v2_texts(["a", "b"]) == ["a\n\nb"]
+    assert v2_texts(["x" * 3000, "y" * 3000]) == ["x" * 3000, "y" * 3000]
+    assert len(v2_texts(["z" * 4000] * 50)) == V2_MAX_TEXTS
+    assert v2_texts(["w" * 5000]) == ["w" * 4000]

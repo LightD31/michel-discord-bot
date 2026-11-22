@@ -49,10 +49,16 @@ class FakeChannel:
         # Channel "10" or "11" is guild 1's, "20" guild 2's, "90" guild 9's.
         self._guild_id = cid[0]
 
-    async def send(self, content):
+    async def send(self, content=None, *, components=None, flags=0):
         self.bot.next_id += 1
         message = SimpleNamespace(
-            id=self.bot.next_id, channel=self, content=content, pinned=False, deleted=False
+            id=self.bot.next_id,
+            channel=self,
+            content=content,
+            components=components,
+            flags=int(flags or 0),
+            pinned=False,
+            deleted=False,
         )
 
         async def pin():
@@ -104,9 +110,9 @@ def restart():
     messages._resolved.clear()
 
 
-async def get(bot, channel="10", slot="status", pin=False, guild="1"):
+async def get(bot, channel="10", slot="status", pin=False, guild="1", v2=False):
     return await fetch_or_create_persistent_message(
-        bot, guild_id=guild, slot=slot, channel_id=channel, pin=pin, label="Statut"
+        bot, guild_id=guild, slot=slot, channel_id=channel, pin=pin, label="Statut", v2=v2
     )
 
 
@@ -265,3 +271,25 @@ async def test_guild_messages_drop_the_guilds_switched_off(store):
     # Its message is still where it was: found again, not posted twice.
     await msgs.get("1", {"channelId": "10"})
     assert len(bot.sent) == 2
+
+
+async def test_a_v2_slot_posts_a_v2_placeholder(store):
+    from interactions import MessageFlags
+
+    bot = FakeBot()
+    first = await get(bot, v2=True)
+    assert first.flags & MessageFlags.IS_COMPONENTS_V2 and first.content is None
+    restart()
+    assert await get(bot, v2=True) is first  # already V2: kept
+
+
+async def test_a_message_posted_before_v2_is_replaced_not_edited(store):
+    from interactions import MessageFlags
+
+    bot = FakeBot()
+    old = await get(bot)  # an embed-era message
+    restart()
+    new = await get(bot, v2=True)
+    assert old.deleted and new is not old
+    assert new.flags & MessageFlags.IS_COMPONENTS_V2
+    assert store.docs[("1", "status")].message_id == str(new.id)

@@ -2,9 +2,10 @@ from datetime import datetime
 
 from interactions import (
     Client,
-    Embed,
+    ContainerComponent,
     Extension,
     IntervalTrigger,
+    MessageFlags,
     Task,
     listen,
 )
@@ -14,7 +15,7 @@ from src.core import clock
 from src.core import logging as logutil
 from src.core.config import ModuleConfig
 from src.core.logging import log_failure
-from src.discord_ext.look import card
+from src.discord_ext.look import card_v2
 from src.discord_ext.messages import GuildMessages, edit_message_if_changed
 from src.integrations.satisfactory import build_api, call, connection_of, normalize_fingerprint
 from src.webui.schemas import (
@@ -94,28 +95,20 @@ logger = logutil.init_logger(__name__)
 SATISFACTORY = ModuleConfig("moduleSatisfactory")
 
 
-def _status_embed(settings: dict, players: int, tier: object) -> Embed:
-    embed = card(
+def _status_card(settings: dict, players: int, tier: object) -> ContainerComponent:
+    """The server's status as a Components V2 card (P22): no timestamp, nothing to diff away."""
+    return card_v2(
         "moduleSatisfactory",
         title="🏭 Serveur Satisfactory de la Coloc",
-        description="Statut du serveur en temps réel",
-        timestamp=clock.now(),
+        blocks=[
+            "**📡 Connexion**\n"
+            f"IP : `{settings.get('satisfactoryServerIp', '')}`\n"
+            f"Port : `{settings.get('satisfactoryServerPort', '')}`\n"
+            f"Mot de passe : `{settings.get('satisfactoryServerPassword') or ''}`",
+            f"**🎮 Partie**\nPalier technologique : {tier}\nJoueurs connectés : {players}",
+        ],
+        footer="statut actualisé chaque minute",
     )
-    embed.add_field(
-        name="📡 Informations de Connexion",
-        value=(
-            f"**IP:** `{settings.get('satisfactoryServerIp', '')}`\n"
-            f"**Port:** `{settings.get('satisfactoryServerPort', '')}`\n"
-            f"**Mot de passe:** `{settings.get('satisfactoryServerPassword') or ''}`"
-        ),
-        inline=False,
-    )
-    embed.add_field(
-        name="🎮 Statut du Jeu",
-        value=f"**Tech Tier:** {tier}\n**Joueurs connectés:** {players}",
-        inline=False,
-    )
-    return embed
 
 
 class Satisfactory(Extension):
@@ -137,6 +130,7 @@ class Satisfactory(Extension):
             pin_key="satisfactoryPinMessage",
             initial_content="Initialisation du statut Satisfactory…",
             logger=logger,
+            v2=True,
         )
         # One client per server: guilds watching the same one share it.
         self._apis: dict[tuple[str, str, str], API] = {}
@@ -201,9 +195,8 @@ class Satisfactory(Extension):
         tier = data["serverGameState"]["techTier"]
         await edit_message_if_changed(
             message,
-            content="",
-            embed=_status_embed(settings, players, tier),
-            ignore_timestamp=True,
+            components=[_status_card(settings, players, tier)],
+            flags=MessageFlags.IS_COMPONENTS_V2,
             logger=logger,
         )
         logger.debug("Updated Satisfactory status: %d players, tier %s", players, tier)
