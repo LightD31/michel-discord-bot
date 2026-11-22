@@ -12,6 +12,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from src.core import incidents
 from src.core import logging as logutil
 from src.core.config import config_write_error, global_config
 from src.webui.auth import DiscordOAuth
@@ -58,6 +59,9 @@ from src.webui.routes import (
 )
 from src.webui.routes import (
     health as health_routes,
+)
+from src.webui.routes import (
+    incidents as incidents_routes,
 )
 from src.webui.routes import (
     me as me_routes,
@@ -156,6 +160,8 @@ def create_app(bot=None, bot_loop=None) -> FastAPI:
     # Install WebUI log handler on first app creation.
     if not WebUILogHandler.get_instance():
         install_log_handler(max_entries=2000)
+    # Each server's last failures, for its admins (P21).
+    incidents.install()
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
@@ -205,6 +211,7 @@ def create_app(bot=None, bot_loop=None) -> FastAPI:
     app.include_router(secretsanta_routes.create_router(ctx))
     app.include_router(gazette_routes.create_router(ctx))
     app.include_router(agenda_routes.create_router(ctx))
+    app.include_router(incidents_routes.create_router(ctx))
     app.include_router(audit_routes.create_router(ctx))
     app.include_router(health_routes.create_router(ctx))
     app.include_router(overview_routes.create_router(ctx))

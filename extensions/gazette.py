@@ -30,7 +30,7 @@ from interactions import (
 from features.gazette import GazetteRepository, is_due, week_key
 from features.gazette.edition import MAX_HOUR, MAX_WEEKDAY, MIN_HOUR, MIN_WEEKDAY
 from features.gazette.intro import write_intro
-from src.core import clock
+from src.core import clock, log_context
 from src.core import logging as logutil
 from src.core.config import ModuleConfig
 from src.core.errors import DatabaseError
@@ -144,10 +144,11 @@ class GazetteExtension(Extension):
             hour = _bounded(settings.get("gazetteHour"), MIN_HOUR, MAX_HOUR, 18)
             if not is_due(now, weekday, hour):
                 continue
-            try:
-                await self.publish_week(guild_id, settings, now)
-            except Exception as e:
-                log_failure(logger, "Gazette of guild %s not published: %s", guild_id, e)
+            with log_context.scope(guild_id=guild_id):
+                try:
+                    await self.publish_week(guild_id, settings, now)
+                except Exception as e:
+                    log_failure(logger, "Gazette of guild %s not published: %s", guild_id, e)
 
     async def publish_week(self, guild_id: str, settings: dict, now: Any) -> bool:
         """Post this week's edition in *guild_id* unless it was; ``True`` when this run did."""

@@ -3473,6 +3473,22 @@ body.has-save-bar .toast-container { bottom: 88px; }
 .me-actions { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
 .me-actions-start { justify-content: flex-start; margin: 10px 0 4px; }
 .me-empty { color: var(--text-muted); font-size: 13px; margin: 0; }
+/* The server's incidents (P21). */
+.incidents-search { max-width: 220px; }
+.incidents { list-style: none; margin: 0; padding: 0; }
+.incident { display: flex; align-items: flex-start; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--border); }
+.incident:last-child { border-bottom: none; }
+.incident-ref { flex: 0 0 auto; font-size: 13px; }
+.incident-main { flex: 1; min-width: 0; }
+.incident-where { font-weight: 600; overflow-wrap: anywhere; }
+.incident-reason { font-size: 13px; color: var(--text-secondary); }
+.incident-when { flex: 0 0 auto; font-size: 12px; color: var(--text-muted); white-space: nowrap; }
+@media (max-width: 768px) {
+    .incidents-search { max-width: none; width: 100%; }
+    .incident { flex-wrap: wrap; }
+    .incident-main { flex-basis: 100%; order: 3; }
+}
+
 /* The agenda's calendar (P19): a week per row on a desktop, the days with
    something on them as a list on a phone. */
 .agenda-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; }

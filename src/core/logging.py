@@ -218,4 +218,5 @@ def log_failure(
     if error is None:
         error = sys.exception()
     exc_info = error if error is not None and not is_expected_failure(error) else None
-    logger.error(msg, *args, exc_info=exc_info, stacklevel=2)
+    # ``failure`` lets a handler tell why without the traceback (src.core.incidents).
+    logger.error(msg, *args, exc_info=exc_info, stacklevel=2, extra={"failure": error})

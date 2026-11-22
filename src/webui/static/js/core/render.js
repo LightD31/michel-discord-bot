@@ -22,6 +22,7 @@ import { loadMe, renderMePage } from '../pages/me.js';
 import { renderModulePage } from '../pages/module.js';
 import { loadOnboarding } from '../pages/onboarding.js';
 import { loadAgenda } from '../pages/agenda.js';
+import { loadIncidents } from '../pages/incidents.js';
 import { loadOverview } from '../pages/overview.js';
 import { renderPublicPage } from '../pages/public.js';
 import { renderServerPage } from '../pages/server.js';
@@ -99,6 +100,7 @@ export function render() {
         loadOnboarding(state.currentServerId);
         loadBotMessages(state.currentServerId);
         loadHealth(state.currentServerId);
+        loadIncidents(state.currentServerId);
         loadAudit(state.currentServerId);
     }
     // The member space: the servers, then the chosen one's data.
