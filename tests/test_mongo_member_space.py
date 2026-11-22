@@ -234,7 +234,7 @@ async def test_i_settle_my_own_debt_and_only_as_the_plan_says(guild):
     group_id = await tricount_group(guild)
     settle = endpoint(guild, "POST", "/api/me/servers/{server_id}/tricount/{group_id}/settle")
     # OTHER's debt to the third member is not mine to mark paid.
-    for to, cents in (("7003", 1000), ("7002", 4000), ("7003", 3999)):
+    for to, cents in (("7002", 4000), ("7003", 4001)):
         with pytest.raises(HTTPException) as exc:
             await settle(None, guild, group_id, me_routes.SettleBody(to=to, cents=cents))
         assert exc.value.status_code == 409
@@ -248,6 +248,42 @@ async def test_i_settle_my_own_debt_and_only_as_the_plan_says(guild):
     with pytest.raises(HTTPException) as exc:  # paid already: the plan no longer says so
         await settle(None, guild, group_id, me_routes.SettleBody(to="7003", cents=4000))
     assert exc.value.status_code == 409
+
+
+async def test_a_part_of_my_debt_then_the_rest(guild):
+    """P16: a repayment may be partial; the plan then shows what is left."""
+    group_id = await tricount_group(guild)
+    settle = endpoint(guild, "POST", "/api/me/servers/{server_id}/tricount/{group_id}/settle")
+    await settle(None, guild, group_id, me_routes.SettleBody(to="7003", cents=1500))
+    out = body_of(await endpoint(guild, "GET", "/api/me/servers/{server_id}")(None, guild))
+    assert out["tricount"][0]["owes"] == [{"to": "7003", "cents": 2500}]
+    await settle(None, guild, group_id, me_routes.SettleBody(to="7003", cents=2500))
+    out = body_of(await endpoint(guild, "GET", "/api/me/servers/{server_id}")(None, guild))
+    assert out["tricount"][0]["balance"] == 0
+
+
+async def test_what_was_paid_back_to_me_only_lowers_a_debt_to_me(guild):
+    """P16: the creditor records a repayment received; never more than the plan's line."""
+    repo = TricountRepository(guild)
+    me, other = int(ME), int(OTHER)
+    oid = await repo.create_group({"name": "Coloc", "is_active": True, "members": [me, other]})
+    group_id = str(oid)
+    await repo.add_expense(
+        {"group_id": oid, "amount": 50, "payer": me, "participants": [me, other]}
+    )
+    settle = endpoint(guild, "POST", "/api/me/servers/{server_id}/tricount/{group_id}/settle")
+    for to, cents in (("7002", 2501), ("7003", 100)):
+        with pytest.raises(HTTPException) as exc:
+            body = me_routes.SettleBody(to=to, cents=cents, direction="received")
+            await settle(None, guild, group_id, body)
+        assert exc.value.status_code == 409
+    body = me_routes.SettleBody(to="7002", cents=2500, direction="received")
+    await settle(None, guild, group_id, body)
+    group = await repo.find_active_group_by_str(group_id)
+    expenses = await repo.list_group_expenses(group["_id"])
+    [transfer] = [e for e in expenses if e.get("kind") == TRANSFER]
+    assert (transfer["payer"], transfer["recipient"], transfer["added_by"]) == (other, me, me)
+    assert compute_balances(expenses, group["members"]) == {me: 0, other: 0}
 
 
 async def test_a_group_im_not_on_the_books_of_is_not_shown(guild):
@@ -352,3 +388,29 @@ async def test_a_former_member_who_still_owes_keeps_the_group(guild):
     )
     out = body_of(await endpoint(guild, "GET", "/api/me/servers/{server_id}")(None, guild))
     assert out["tricount"] == []  # settled and gone: no longer on the books
+
+
+async def test_i_join_and_leave_the_secret_santa_from_my_space(guild):
+    """P16: as the "Participer" and "Se retirer" buttons; the wish list leaves with me."""
+    repo = SecretSantaRepository()
+    context = f"guild_{guild}"
+    await repo.create_session(
+        SecretSantaSession(context_id=context, channel_id=1, participants=[int(OTHER)])
+    )
+    join = endpoint(guild, "POST", "/api/me/servers/{server_id}/santa/join")
+    leave = endpoint(guild, "POST", "/api/me/servers/{server_id}/santa/leave")
+    await join(None, guild)
+    await join(None, guild)  # twice: still once
+    assert (await repo.get_session(context)).participants == [int(OTHER), int(ME)]
+    put = endpoint(guild, "PUT", "/api/me/servers/{server_id}/santa/wishlist")
+    await put(None, guild, me_routes.WishlistBody(text="un livre"))
+    await leave(None, guild)
+    assert (await repo.get_session(context)).participants == [int(OTHER)]
+    assert (await repo.get_participant(context, int(ME))).wishlist is None
+
+    await join(None, guild)
+    await repo.claim_draw(context)
+    for route in (join, leave):
+        with pytest.raises(HTTPException) as exc:
+            await route(None, guild)
+        assert exc.value.status_code == 409

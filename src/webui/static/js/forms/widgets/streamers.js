@@ -1,6 +1,7 @@
 // The Twitch streamer list.
-import { registerActions } from '../../core/actions.js';
+import { EL, actionArgs, registerActions } from '../../core/actions.js';
 import { html } from '../../core/html.js';
+import { state } from '../../core/state.js';
 import { escapeHtml } from '../../core/util.js';
 import { populateChannelPickers } from '../pickers/channels.js';
 import { populateRolePickers } from '../pickers/lists.js';
@@ -66,10 +67,15 @@ export function renderStreamerEntry(login, cfg) {
                         <label>Rôle à mentionner au début du live</label>
                         ${rolePickerHtml(mentionRole, 'data-streamer-field="twitchMentionRoleId"', 'mention')}
                     </div>
-                    <div class="streamer-field">
+                    <div class="streamer-field form-field streamer-template">
                         <label>Message au début du live</label>
-                        ${html`<input type="text" class="form-input" data-streamer-field="twitchNotificationTemplate" value="${template}" maxlength="500"
-                               placeholder="{streamer} est en live : {titre} !" aria-label="Message au début du live">`}
+                        ${html`<input type="text" class="form-input" data-streamer-field="twitchNotificationTemplate" data-template-text value="${template}" maxlength="500"
+                               placeholder="{streamer} est en live : {titre} !" aria-label="Message au début du live">
+                        <button type="button" class="btn btn-ghost btn-sm template-test-btn"
+                                data-click="testTemplate" data-click-args="${actionArgs(state.currentServerId, 'moduleTwitch', 'twitchNotificationTemplate', EL)}"
+                                title="Le bot t'envoie en MP ce que donne ce message">✉️ Tester en MP</button>
+                        <div class="discord-preview" aria-live="polite" aria-label="Aperçu dans Discord"
+                             data-server="${state.currentServerId}" data-module="moduleTwitch" data-preview-field="twitchNotificationTemplate"></div>`}
                     </div>
                 </div>
             </div>`;

@@ -166,3 +166,15 @@ def test_a_field_without_a_preview_is_a_404():
     with pytest.raises(HTTPException) as unknown:
         preview(Ctx(User()), {"module": "moduleXp", "field": "xpChannelId", "texts": ["x"]})
     assert unknown.value.status_code == 404
+
+
+def test_a_streamer_s_live_message_is_filled_as_the_notification_is():
+    """P16: the message inside each streamer of the list has its preview and DM test."""
+    from src.webui.template_tests import TESTS, render_test, sample_values
+
+    test = TESTS["moduleTwitch"]["twitchNotificationTemplate"]
+    rendered = render_test(
+        test, ["{streamer} joue à {jeu} : {lien} {oups}"], sample_values("7", "alice")
+    )
+    assert rendered.texts == ["TaChaîne joue à Celeste : https://twitch.tv/tachaine {oups}"]
+    assert "{oups}" in rendered.warnings[0]

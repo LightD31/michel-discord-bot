@@ -131,4 +131,121 @@ def test_only_listed_modules_are_checked():
         check(Ctx({"moduleXp": {"enabled": True}}), "moduleXp")
     assert missing.value.status_code == 404
     get = endpoint(Ctx(), "GET", "/api/connection-checks")
-    assert json.loads(asyncio.run(get(None)).body) == ["moduleLldap"]
+    assert json.loads(asyncio.run(get(None)).body) == [
+        "moduleLldap",
+        "moduleMinecraft",
+        "moduleSatisfactory",
+        "moduleUptime",
+        "moduleYoutube",
+    ]
+
+
+# ── P16: the checks whose clients moved out of their extension ────────────
+
+SATISFACTORY = {
+    "enabled": True,
+    "satisfactoryServerIp": "sf.example.com",
+    "satisfactoryServerToken": "tok",
+    "satisfactoryServerCertificateSha256": "ab" * 32,
+}
+
+
+def test_satisfactory_is_reached_through_its_pinned_certificate(monkeypatch):
+    built = []
+
+    class Api:
+        def query_server_state(self):
+            return {"serverGameState": {"numConnectedPlayers": 3, "techTier": 5}}
+
+    def build_api(address, token, fingerprint):
+        built.append((address, token, fingerprint))
+        return Api()
+
+    monkeypatch.setattr(checks.satisfactory, "build_api", build_api)
+    out = check(Ctx({"moduleSatisfactory": SATISFACTORY}), "moduleSatisfactory")
+    assert out["message"] == "Serveur joignable : 3 joueur(s) connecté(s), palier 5."
+    assert built == [("sf.example.com:7777", "tok", "ab" * 32)]
+
+
+def test_satisfactory_without_a_fingerprint_never_sends_the_token(monkeypatch):
+    monkeypatch.setattr(checks.satisfactory, "build_api", lambda *a: pytest.fail("contacted"))
+    unpinned = {**SATISFACTORY, "satisfactoryServerCertificateSha256": ""}
+    with pytest.raises(HTTPException) as refused:
+        check(Ctx({"moduleSatisfactory": unpinned}), "moduleSatisfactory")
+    assert refused.value.status_code == 422 and "empreinte" in refused.value.detail
+
+    def down(*_):
+        raise ConnectionError("refused")
+
+    monkeypatch.setattr(checks.satisfactory, "build_api", down)
+    with pytest.raises(HTTPException) as unreachable:
+        check(Ctx({"moduleSatisfactory": SATISFACTORY}), "moduleSatisfactory")
+    assert unreachable.value.status_code == 502 and "refused" not in unreachable.value.detail
+
+
+def test_minecraft_answers_with_its_players(monkeypatch):
+    import mcstatus
+
+    status = SimpleNamespace(
+        players=SimpleNamespace(online=2, max=20), version=SimpleNamespace(name="1.21")
+    )
+    looked_up = []
+
+    class Server:
+        @staticmethod
+        def lookup(address):
+            looked_up.append(address)
+            return Server()
+
+        def status(self):
+            return status
+
+    monkeypatch.setattr(mcstatus, "JavaServer", Server)
+    settings = {
+        "enabled": True,
+        "minecraftUrl": "mc.example.com",
+        "minecraftIp": "",
+        "minecraftPort": "",
+    }
+    out = check(Ctx({"moduleMinecraft": settings}), "moduleMinecraft")
+    assert out["message"] == "Serveur joignable : 2/20 joueur(s), version 1.21."
+    assert looked_up == ["mc.example.com"]
+    with pytest.raises(HTTPException) as incomplete:
+        check(Ctx({"moduleMinecraft": {"enabled": True}}), "moduleMinecraft")
+    assert incomplete.value.status_code == 422
+
+
+def test_uptime_kuma_uses_the_global_settings(monkeypatch, store_config):
+    store_config({"config": {"uptimeKuma": {"uptimeKumaUrl": "https://kuma.example.com"}}})
+    with pytest.raises(HTTPException) as unset:
+        check(Ctx({"moduleUptime": {"enabled": True}}), "moduleUptime")
+    assert unset.value.status_code == 422
+
+    async def states(settings):
+        return {1: object(), 2: object()}
+
+    monkeypatch.setattr(checks, "UptimeKumaSettings", SimpleNamespace(
+        load=lambda: SimpleNamespace(metrics_configured=True)
+    ))  # fmt: skip
+    monkeypatch.setattr(checks, "fetch_monitor_states", states)
+    out = check(Ctx({"moduleUptime": {"enabled": True}}), "moduleUptime")
+    assert out["message"] == "Uptime Kuma répond : 2 sonde(s) visible(s)."
+
+
+def test_youtube_names_each_channel_s_latest_video(monkeypatch, store_config):
+    store_config({"config": {"youtube": {"youtubeApiKey": "k", "youtubeApiUrl": "https://yt/v3"}}})
+
+    async def uploads(handle):
+        if handle == "@perdu":
+            raise KeyError("items")
+        return f"UU-{handle}"
+
+    async def latest(playlist):
+        return {"title": f"Vidéo de {playlist}"}
+
+    monkeypatch.setattr(checks.youtube, "uploads_playlist", uploads)
+    monkeypatch.setattr(checks.youtube, "latest_upload", latest)
+    settings = {"enabled": True, "youtubeChannelList": {"@chaine": {}, "@perdu": {}}}
+    out = check(Ctx({"moduleYoutube": settings}), "moduleYoutube")
+    assert "@chaine : « Vidéo de UU-@chaine »" in out["message"]
+    assert "@perdu : introuvable" in out["message"]

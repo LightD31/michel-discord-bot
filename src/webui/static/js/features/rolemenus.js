@@ -1,6 +1,8 @@
 // The role menu builder.
 import { actionArgs, registerActions } from '../core/actions.js';
 import { api } from '../core/api.js';
+import { html } from '../core/html.js';
+import { discordButtons, discordEmbed, discordMessage, discordSelect } from '../ui/discord.js';
 import { confirmDiscard, setDirty } from '../core/dirty.js';
 import { state } from '../core/state.js';
 import { escapeHtml } from '../core/util.js';
@@ -178,8 +180,49 @@ export async function openRoleMenuBuilder(serverId, menuId) {
                     </div>
                     <button type="button" class="btn-add-entry" data-click="addRoleMenuEntry">+ Ajouter une entrée</button>
                 </div>
+                <div>
+                    <div class="form-label">Aperçu</div>
+                    <div id="rrf-preview" class="discord-preview" aria-live="polite" aria-label="Aperçu dans Discord"></div>
+                </div>
             </div>
         `;
+    refreshRoleMenuPreview();
+}
+
+// ── Preview (P16): the menu as src/discord_ext/rolemenus.py renders it ──
+export function roleMenuPreviewHtml(payload, roleNames) {
+    const lines = payload.entries
+        .filter(e => e.role_id || e.label)
+        .map(e => [e.emoji, e.role_id ? `<@&${e.role_id}>` : ''].filter(Boolean).join(' ') + ` — ${e.label}`);
+    let description = (payload.description ? payload.description + '\n\n' : '') + lines.join('\n');
+    if (payload.max_roles === 1) description += '\n\n*Un seul rôle à la fois : en choisir un retire l\'autre.*';
+    else if (payload.max_roles > 1) description += `\n\n*${payload.max_roles} rôles au plus à la fois.*`;
+    const embed = discordEmbed({
+        title: payload.title || 'Sans titre',
+        description,
+        author: '🎭 Rôles à boutons',
+        footer: 'Michel · Rôles à boutons',
+    }, { roles: roleNames });
+    const controls = payload.style === 'select'
+        ? html`${discordSelect('Choisis tes rôles')}${discordButtons([{ label: 'Retirer mes rôles' }])}`
+        : discordButtons(payload.entries.filter(e => e.label).map(e => ({ emoji: e.emoji, label: e.label })));
+    return discordMessage(html`${embed}${controls}`);
+}
+
+export function refreshRoleMenuPreview() {
+    const box = document.getElementById('rrf-preview');
+    if (!box) return;
+    const roles = _rolesCache[state.currentServerId] || [];
+    const names = new Map(roles.map(r => [String(r.id), r.name]));
+    box.innerHTML = String(roleMenuPreviewHtml(_collectRoleMenuPayload(), names));
+}
+
+for (const type of ['input', 'change', 'click']) {
+    document.addEventListener(type, (event) => {
+        if (event.target instanceof Element && event.target.closest('#rolemenu-builder-body')) {
+            refreshRoleMenuPreview();
+        }
+    });
 }
 
 export function addRoleMenuEntry() {

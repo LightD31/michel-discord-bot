@@ -6,7 +6,8 @@ import { askConfirm } from '../ui/confirm.js';
 // it (another page, the back button, closing the tab, a module switch that
 // rebuilds it) asks first, instead of silently dropping what was typed.
 export let formDirty = false;
-export const DIRTY_SCOPE = '.main .schema-form, #rolemenu-builder-card';
+// The member space's forms too (P16): a reminder, a birthday, a wish list half typed.
+export const DIRTY_SCOPE = '.main .schema-form, #rolemenu-builder-card, .me-card .me-form';
 // The schema fields edited since the last save, by key: what the save bar counts (C5).
 export const changedFields = new Set();
 

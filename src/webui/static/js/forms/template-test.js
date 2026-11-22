@@ -13,6 +13,9 @@ import { fetchRoleChoices } from './pickers/roles.js';
 export function templateTexts(fieldEl) {
     if (!fieldEl) return [];
     const pick = sel => [...fieldEl.querySelectorAll(sel)].map(i => i.value.trim()).filter(Boolean);
+    // A template inside a list entry (a streamer's message, P16) says so itself.
+    const own = pick(':scope > [data-template-text]');
+    if (own.length) return own;
     const texts = pick('[data-msg-field="message"]')
         .concat(pick('[data-response-field="text"]'));
     if (texts.length) return texts;

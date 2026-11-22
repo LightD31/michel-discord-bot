@@ -334,7 +334,41 @@ async def save_human_readable_draw(
         log_failure(logger, "Could not write the Secret Santa draw file: %s", e)
 
 
+async def participant_mentions(bot: Any, session: SecretSantaSession) -> list[str]:
+    mentions = []
+    for user_id in session.participants:
+        _, user = await fetch_user_safe(bot, user_id)
+        mentions.append(user.mention if user else f"<@{user_id}>")
+    return mentions
+
+
+async def refresh_announcement(bot: Any, session: SecretSantaSession) -> None:
+    """Show the session's current participants and details on its announcement.
+
+    Shared by the join and leave buttons and the member space (P16), on the bot loop.
+    """
+    guild_id = context_guild_id(session.context_id)
+    if guild_id is None or not session.message_id or session.is_drawn:
+        return
+    try:
+        channel = await fetch_guild_channel(bot, guild_id, session.channel_id)
+        if channel is None:
+            return
+        message = await channel.fetch_message(session.message_id)
+        if message:
+            await edit_message_if_changed(
+                message,
+                embed=announcement_embed(session, await participant_mentions(bot, session)),
+                components=join_buttons(session.context_id),
+                logger=logger,
+            )
+    except Exception as e:
+        log_failure(logger, "Failed to update the Secret Santa announcement: %s", e)
+
+
 __all__ = [
+    "participant_mentions",
+    "refresh_announcement",
     "DATA_DIR",
     "DrawOutcome",
     "announcement_embed",

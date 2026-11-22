@@ -3424,6 +3424,14 @@ body.has-save-bar .toast-container { bottom: 88px; }
 .dc-embed-title { color: var(--link); font-weight: 600; display: block; margin-bottom: 4px; }
 .dc-embed-text { color: var(--text-secondary); font-size: 14px; overflow-wrap: anywhere; }
 .dc-embed-foot { color: var(--text-muted); font-size: 12px; margin-top: 6px; }
+/* P16: the embeds and components the Embed manager and role menus post. */
+.dc-embed-author { font-size: 13px; font-weight: 600; margin-bottom: 4px; }
+.dc-embed-field { margin-top: 8px; }
+.dc-embed-field-name { font-weight: 600; font-size: 14px; }
+.dc-buttons { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.dc-button { background: var(--bg-tertiary, var(--bg-secondary)); border: 1px solid var(--border); border-radius: 4px; padding: 4px 12px; font-size: 14px; }
+.dc-select { display: flex; justify-content: space-between; max-width: 400px; margin-top: 8px; padding: 8px 12px; border: 1px solid var(--border); border-radius: 4px; color: var(--text-muted); background: var(--bg-secondary); }
+.embed-preview { margin-top: 8px; }
 
 /* The role-menu builder's style and limit, side by side (one column on a phone). */
 .rolemenu-style-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
@@ -3476,3 +3484,9 @@ body.has-save-bar .toast-container { bottom: 88px; }
 .report-reasons { margin: 0; padding-left: 18px; font-size: 13px; }
 .report-who { font-weight: 600; }
 .report-meta { font-size: 12px; color: var(--text-muted); }
+
+/* Member space: a repayment's amount and its button (P16). */
+.me-settle { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-left: auto; }
+.me-row:has(.me-settle) { flex-wrap: wrap; }
+.me-row:has(.me-settle) .me-row-main { flex: 1 1 220px; }
+.me-settle-amount { width: 110px; }

@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from features.customcommands import render_response
+from features.twitch.notify import LIVE_VARIABLES, live_text
 from features.youtube import render_notification
 from src.core.text import MESSAGE_LIMIT, clip, fill_message, template_names, template_problem
 
@@ -51,6 +52,20 @@ def _custom_command(text: str, values: dict[str, Any]) -> str:
     return "\n".join(part for part in (response.text, response.image_url) if part)
 
 
+def _twitch(text: str, values: dict[str, Any]) -> str:
+    return (
+        live_text(
+            text,
+            None,
+            streamer=values["streamer"],
+            titre=values["titre"],
+            jeu=values["jeu"],
+            lien=values["lien"],
+        )
+        or ""
+    )
+
+
 TESTS: dict[str, dict[str, TemplateTest]] = {
     "moduleWelcome": {
         "welcomeMessageList": TemplateTest(
@@ -72,6 +87,12 @@ TESTS: dict[str, dict[str, TemplateTest]] = {
             ("video_id", "handle", "label"),
             _youtube,
             unknown_note="fera envoyer le simple lien de la vidéo à la place du message",
+        ),
+    },
+    # Inside each streamer of the list (P16): the SPA sends that streamer's text.
+    "moduleTwitch": {
+        "twitchNotificationTemplate": TemplateTest(
+            "Message de début de live", LIVE_VARIABLES, _twitch
         ),
     },
     "moduleCustomCommands": {
@@ -109,6 +130,10 @@ def sample_values(user_id: str, username: str, guild_name: str = "ton serveur") 
         "video_id": SAMPLE_VIDEO_ID,
         "handle": "@chaine",
         "label": "Chaîne de test",
+        "streamer": "TaChaîne",
+        "titre": "Soirée découverte",
+        "jeu": "Celeste",
+        "lien": "https://twitch.tv/tachaine",
     }
 
 
