@@ -11,10 +11,11 @@ from features.vlrgg import (
 from src.core.logging import log_failure
 from src.discord_ext.channels import fetch_guild_channel
 
+from ._base import VlrggBase
 from ._common import TeamConfig, logger
 
 
-class ApiMixin:
+class ApiMixin(VlrggBase):
     """Mixin providing VLR.gg data-fetching and parsing helpers."""
 
     # ── Fetch helpers ─────────────────────────────────────────────────────────

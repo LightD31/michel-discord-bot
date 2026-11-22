@@ -9,10 +9,12 @@ from twitchAPI.object.api import ChannelInformation, Stream, TwitchUser
 from twitchAPI.object.eventsub import ChannelUpdateEvent
 from twitchAPI.type import VideoType
 
+from extensions.twitch._base import TwitchBase
 from extensions.twitch._common import TWITCH
 from features.twitch import live_text
 from src.core import clock
 from src.core import logging as logutil
+from src.core.errors import IntegrationError
 from src.core.logging import log_failure
 from src.discord_ext.live_alerts import (
     TWITCH_ALERT,
@@ -27,7 +29,7 @@ from src.discord_ext.mentions import mentions_written_in
 logger = logutil.init_logger(__name__)
 
 
-class NotificationsMixin:
+class NotificationsMixin(TwitchBase):
     """Embed construction and stream-state notification delivery."""
 
     @component_callback(alert_pattern(TWITCH_ALERT))
@@ -60,7 +62,7 @@ class NotificationsMixin:
                 title=title,
                 description=description,
                 timestamp=now,
-                footer_icon=bot.avatar_url,
+                footer_icon=getattr(bot, "avatar_url", None),
             )
         except Exception as e:
             log_failure(logger, "Error creating notification embed for guild %s: %s", guild_id, e)
@@ -119,8 +121,10 @@ class NotificationsMixin:
 
     async def get_offline_stream_info(self, user_id: str) -> tuple:
         """Fetch title/game via the Twitch API when the channel is offline."""
-        channel_infos = await self.twitch.get_channel_information(user_id)
-        channel: ChannelInformation = channel_infos[0] if channel_infos else None
+        channel_infos = await self._api().get_channel_information(user_id)
+        channel: ChannelInformation | None = channel_infos[0] if channel_infos else None
+        if channel is None:
+            raise IntegrationError(f"Twitch has no channel information for {user_id}")
         game = channel.game_name
         description = f"Ne joue pas à **{game}**"
         title = channel.title
@@ -162,7 +166,7 @@ class NotificationsMixin:
                 title=title,
                 description=description,
                 url=f"https://twitch.tv/{user_login}",
-                footer_icon=bot.avatar_url,
+                footer_icon=getattr(bot, "avatar_url", None),
                 timestamp=clock.now(),
             )
         except Exception as e:
@@ -178,7 +182,7 @@ class NotificationsMixin:
     async def add_user(self, embed: Embed, user_id: str, offline: bool = False) -> Embed:
         """Attach the broadcaster's author/avatar (and offline image) to the embed."""
         try:
-            user: TwitchUser | None = await first(self.twitch.get_users(user_ids=[user_id]))
+            user: TwitchUser | None = await first(self._api().get_users(user_ids=[user_id]))
             if user is None:  # renamed or banned since: no author line
                 return embed
             status = "n'est pas en live" if offline else "est en live !"
@@ -231,7 +235,7 @@ class NotificationsMixin:
 
             try:
                 user: TwitchUser | None = await first(
-                    self.twitch.get_users(user_ids=[streamer.user_id])
+                    self._api().get_users(user_ids=[streamer.user_id])
                 )
                 if user:
                     embed.set_thumbnail(url=user.profile_image_url)
@@ -297,7 +301,7 @@ class NotificationsMixin:
 
             vod_url = None
             try:
-                videos = self.twitch.get_videos(
+                videos = self._api().get_videos(
                     user_id=streamer.user_id, video_type=VideoType.ARCHIVE, first=1
                 )
                 async for video in videos:
@@ -336,7 +340,7 @@ class NotificationsMixin:
 
             try:
                 user: TwitchUser | None = await first(
-                    self.twitch.get_users(user_ids=[streamer.user_id])
+                    self._api().get_users(user_ids=[streamer.user_id])
                 )
                 if user:
                     embed.set_thumbnail(url=user.profile_image_url)

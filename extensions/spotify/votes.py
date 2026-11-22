@@ -49,6 +49,7 @@ from src.discord_ext.scopes import guild_scopes
 from src.integrations.spotify import spotifymongoformat
 from src.webui.auth import configured_developer_ids
 
+from ._base import SpotifyBase
 from ._common import (
     COOLDOWN_TIME,
     DEV_GUILD,
@@ -73,7 +74,7 @@ MAX_BUTTONS = 25
 vote_cooldown = VoteCooldown(COOLDOWN_TIME)
 
 
-class VotesMixin:
+class VotesMixin(SpotifyBase):
     """Slash commands, tasks, and component handlers for playlist voting."""
 
     @Task.create(TimeTrigger(hour=20, minute=0, utc=False))
@@ -123,13 +124,13 @@ class VotesMixin:
         outcome = daily_outcome(tally)
         total_votes = tally.total
         if outcome == "extend":
-            new_time = str(self.randomvote.next_run)
+            new_time = self._next_vote_time()
             embed_original = copy_embed(message.embeds[0])
             embed_original.title = (
                 f"Vote prolongé jusqu'à "
                 f"{timestamp_converter(new_time).format(TimestampStyles.RelativeTime)}"
             )
-            embed_original.timestamp = new_time
+            embed_original.timestamp = Timestamp.fromdatetime(new_time)
             await edit_message_if_changed(
                 message,
                 content=(
@@ -220,7 +221,7 @@ class VotesMixin:
         song: dict,
         total_votes: int,
         extensions: int,
-        deadline: str,
+        deadline: datetime,
     ):
         """Post a fresh reminder under an under-voted poll, replacing the previous one.
 
@@ -267,6 +268,13 @@ class VotesMixin:
                 e,
             )
 
+    def _next_vote_time(self) -> datetime:
+        """When the daily vote closes: the vote task's next run (it is running)."""
+        next_run = self.randomvote.next_run
+        if next_run is None:
+            raise RuntimeError("the daily vote task is not running")
+        return next_run
+
     async def _start_new_vote(self, server: ServerData):
         """Pick a fresh track (not previously voted on) and open a new poll.
 
@@ -286,6 +294,8 @@ class VotesMixin:
             return
         logger.info("Chanson tirée au sort : %s", track_id)
         song = await server.repo.get_playlist_item(track_id)
+        if song is None:  # removed from the playlist since the draw: the next run draws again
+            return
         track = await spotify_api.track(song["_id"], market="FR")
         channel = await fetch_guild_channel(self.bot, server.guild_id, server.channel_id)
         if channel is None:
@@ -295,7 +305,7 @@ class VotesMixin:
             song=song,
             track=track,
             embedtype=EmbedType.VOTE,
-            time=str(self.randomvote.next_run),
+            time=self._next_vote_time(),
             guild_id=server.guild_id,
         )
         message = await channel.send(
@@ -373,13 +383,19 @@ class VotesMixin:
         await vote_cooldown.record(user_id)
         message_id = server.vote_infos.get("message_id")
         track_id = server.vote_infos.get("track_id")
-        if message_id and ctx.message.id == int(message_id):
-            embed_original = copy_embed(ctx.message.embeds[0])
+        message = ctx.message
+        if message is None:  # a button always comes with its message
+            return
+        if message_id and track_id and message.id == int(message_id):
+            embed_original = copy_embed(message.embeds[0])
             user_id = str(ctx.user.id)
             if ctx.custom_id == "annuler":
                 votes = await server.repo.remove_vote(track_id, user_id)
             else:
                 votes = await server.repo.record_vote(track_id, user_id, ctx.custom_id)
+            if votes is None:  # its record is gone: the poll closed meanwhile
+                await send_error(ctx, "Ce vote est terminé.")
+                return
             logger.info("User %s voted %s", ctx.user.username, ctx.custom_id)
             tally = tally_daily_votes(votes["votes"], server.discord2name)
             logger.info(
@@ -393,7 +409,7 @@ class VotesMixin:
                 4
             ].value = f"{total} vote{'s' if total > 1 else ''} ({', '.join(tally.voters)})"
 
-            await edit_message_if_changed(ctx.message, embeds=[embed_original], logger=logger)
+            await edit_message_if_changed(message, embeds=[embed_original], logger=logger)
 
             if ctx.custom_id == "annuler":
                 await ctx.send("Ton vote a bien été annulé ! 🗳️", ephemeral=True)
@@ -545,7 +561,7 @@ class VotesMixin:
         )
         try:
             button_ctx: Component = await self.bot.wait_for_component(
-                components=list(by_custom_id),
+                components=buttons,
                 messages=message,
                 check=lambda component: component.ctx.author.id == user_id,
                 timeout=60,
@@ -640,7 +656,7 @@ class VotesMixin:
                     track=track,
                     embedtype=EmbedType.VOTE_ADD,
                     time=time_deadline,
-                    person=ctx.author.id,
+                    person=str(ctx.author.id),
                     icon=ctx.author.avatar.url,
                     guild_id=ctx.guild_id,
                 )
@@ -700,9 +716,12 @@ class VotesMixin:
             return
         yes, no, users = server.vote_manager.count_votes({song_id: poll}, song_id)
         users = ", ".join(users)
-        embed_original = copy_embed(event.ctx.message.embeds[0])
+        message = event.ctx.message
+        if message is None:  # a button always comes with its message
+            return
+        embed_original = copy_embed(message.embeds[0])
         embed_original.fields[4].value = f"{yes + no} vote{'s' if yes + no > 1 else ''} ({users})"
-        await edit_message_if_changed(event.ctx.message, embeds=[embed_original], logger=logger)
+        await edit_message_if_changed(message, embeds=[embed_original], logger=logger)
         if vote == "annuler":
             await event.ctx.send("Ton vote a bien été annulé ! 🗳️", ephemeral=True)
         else:

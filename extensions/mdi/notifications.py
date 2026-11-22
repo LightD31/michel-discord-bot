@@ -27,7 +27,11 @@ from ._common import (
 )
 
 if TYPE_CHECKING:  # pragma: no cover
-    from interactions import Client
+    from interactions import Client, Embed
+
+    from features.mdi import BracketInfo, MdiMatchesRepository, TeamRef
+
+    from ._common import GuildConfig
 
 # Slow-tick guard: when no bracket is currently active, only do real work every
 # this-many seconds even if the slow-task fires more often.
@@ -58,6 +62,39 @@ class NotificationsMixin:
     bot: Client
     _servers: dict[str, GuildState]
     _last_inactive_run: dict[str, float]
+
+    if TYPE_CHECKING:
+        # api.py
+        def _matches_repo(self, server_id: str) -> MdiMatchesRepository: ...
+        async def _collect_team_matches(
+            self, gc: GuildConfig
+        ) -> tuple[TeamRef | None, list[MatchSnapshot], list[BracketInfo]]: ...
+        def _has_active_bracket(
+            self, brackets: list[BracketInfo], matches: list[MatchSnapshot]
+        ) -> bool: ...
+        @staticmethod
+        def _match_hash(match: MatchSnapshot) -> str: ...
+        @staticmethod
+        def _schedule_hash(matches: list[MatchSnapshot]) -> str: ...
+
+        # embeds.py
+        @staticmethod
+        def _match_phase(match: MatchSnapshot) -> str: ...
+        def _build_match_embed(
+            self,
+            match: MatchSnapshot,
+            team: TeamRef | None,
+            event_url: str | None = None,
+            icon_url: str | None = None,
+        ) -> Embed: ...
+        def _build_schedule_embed(
+            self,
+            team: TeamRef | None,
+            team_slug: str,
+            matches: list[MatchSnapshot],
+            event_url: str | None = None,
+            icon_url: str | None = None,
+        ) -> Embed: ...
 
     # ── Scheduled tasks ──────────────────────────────────────────────────────
 

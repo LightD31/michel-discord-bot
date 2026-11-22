@@ -1,6 +1,7 @@
 """Button-based voting for anonymous and ranked-choice polls, and their author's edit."""
 
 import re
+from typing import TYPE_CHECKING
 
 from interactions import (
     ActionRow,
@@ -24,7 +25,7 @@ from features.polls import (
 )
 from src.core import logging as logutil
 from src.discord_ext.look import recolour
-from src.discord_ext.messages import copy_embed, edit_message_if_changed, send_error
+from src.discord_ext.messages import copy_embed, edit_message_if_changed, message_of, send_error
 
 logger = logutil.init_logger(__name__)
 
@@ -41,7 +42,7 @@ EDIT_FORM_RE = re.compile(rf"^{EDIT_FORM}:([0-9a-fA-F]{{24}})$")
 
 def edit_form(poll: Poll) -> Modal:
     """The author's "✏️ Modifier": the question, and the options while nobody has voted."""
-    fields = [
+    fields: list[ShortText | ParagraphText] = [
         ShortText(
             label="Question",
             custom_id="question",
@@ -162,7 +163,9 @@ def update_poll_embed(embed: Embed, poll: Poll) -> Embed:
 class PollButtonsMixin:
     """Component callbacks for button-based and ranked-choice polls."""
 
-    def _poll_repo(self, guild_id: str | int) -> PollRepository: ...  # supplied by extension
+    if TYPE_CHECKING:
+
+        def _poll_repo(self, guild_id: str | int) -> PollRepository: ...  # the extension's
 
     @component_callback(_VOTE_RE)
     async def on_poll_vote(self, ctx: ComponentContext) -> None:
@@ -172,7 +175,7 @@ class PollButtonsMixin:
         poll_id, option_idx = match.group(1), int(match.group(2))
 
         repo = self._poll_repo(ctx.guild_id)
-        poll = await repo.get_by_message(str(ctx.message.id))
+        poll = await repo.get_by_message(str(message_of(ctx).id))
         if poll is None or poll.id != poll_id:
             await ctx.send("Sondage introuvable.", ephemeral=True)
             return
@@ -190,9 +193,9 @@ class PollButtonsMixin:
                 feedback = f"Cette option est déjà à la position #{existing.index(option_idx) + 1}."
                 await ctx.send(feedback, ephemeral=True)
                 return
-            updated = await repo.add_to_ranking(poll.id, user_id, option_idx)
+            updated = await repo.add_to_ranking(poll_id, user_id, option_idx)
         else:
-            updated = await repo.set_vote(poll.id, user_id, [option_idx])
+            updated = await repo.set_vote(poll_id, user_id, [option_idx])
         if updated is None:  # closed between the read and the vote
             await ctx.send("Ce sondage est fermé.", ephemeral=True)
             return
@@ -216,13 +219,13 @@ class PollButtonsMixin:
     @staticmethod
     async def _refresh_poll_embed(ctx: ComponentContext, poll: Poll) -> None:
         """Show the new counts on the poll message; the vote is saved either way."""
-        if not ctx.message.embeds:
+        if not message_of(ctx).embeds:
             logger.warning("Poll %s: its message has no embed to refresh", poll.id)
             return
-        embed = copy_embed(ctx.message.embeds[0])
+        embed = copy_embed(message_of(ctx).embeds[0])
         update_poll_embed(embed, poll)
         try:
-            await edit_message_if_changed(ctx.message, embed=embed, logger=logger)
+            await edit_message_if_changed(message_of(ctx), embed=embed, logger=logger)
         except Exception as e:  # noqa: BLE001 — saved anyway; the next vote catches up
             logger.warning("Poll %s: could not refresh its message: %s", poll.id, e)
 
@@ -232,7 +235,7 @@ class PollButtonsMixin:
         match = _EDIT_RE.match(ctx.custom_id)
         if not match or not ctx.guild_id:
             return
-        poll = await self._poll_repo(ctx.guild_id).get_by_message(str(ctx.message.id))
+        poll = await self._poll_repo(ctx.guild_id).get_by_message(str(message_of(ctx).id))
         if poll is None or poll.id != match[1] or poll.closed:
             await send_error(ctx, "Ce sondage est fermé.")
             return
@@ -250,7 +253,7 @@ class PollButtonsMixin:
             return
         poll_id = match.group(1)
         repo = self._poll_repo(ctx.guild_id)
-        poll = await repo.get_by_message(str(ctx.message.id))
+        poll = await repo.get_by_message(str(message_of(ctx).id))
         if poll is None or poll.id != poll_id or poll.closed:
             await ctx.send("Sondage introuvable ou fermé.", ephemeral=True)
             return
@@ -258,7 +261,7 @@ class PollButtonsMixin:
         if user_id not in poll.votes:
             await ctx.send("Tu n'as pas encore voté.", ephemeral=True)
             return
-        updated = await repo.clear_vote(poll.id, user_id)
+        updated = await repo.clear_vote(poll_id, user_id)
         if updated is None:
             await ctx.send("Sondage introuvable ou fermé.", ephemeral=True)
             return

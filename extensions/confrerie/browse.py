@@ -27,10 +27,12 @@ from features.confrerie.stats import COL_AUTHOR
 from features.links import shorten_url
 from src.core import logging as logutil
 from src.core.text import take_within_budget
+from src.discord_ext.autocomplete import Choice
 from src.discord_ext.look import card, sign
-from src.discord_ext.messages import send_error
+from src.discord_ext.messages import guild_id_of, send_error
 from src.discord_ext.scopes import guild_scopes
 
+from ._base import ConfrerieBase
 from ._common import CONFRERIE, ConfrerieError, autocomplete_options
 from .stats import plural
 from .updates import build_work_embed, shorten_work_links
@@ -52,7 +54,7 @@ def _private_option():
     )
 
 
-class BrowseMixin:
+class BrowseMixin(ConfrerieBase):
     """Look up works, authors and tools from Discord."""
 
     _works_cache: dict[str, tuple[float, list[dict]]]
@@ -103,7 +105,7 @@ class BrowseMixin:
             "📖 Fiche du texte" if titre else "📖 Un texte de la confrérie au hasard",
             notion_url=notion_url,
             links=links,
-            footer_icon=self._footer_icon(ctx.guild_id),
+            footer_icon=self._footer_icon(guild_id_of(ctx)),
         )
         await ctx.send(embed=embed, ephemeral=prive)
 
@@ -114,7 +116,7 @@ class BrowseMixin:
         except Exception as e:  # noqa: BLE001 — an empty list beats a failed interaction
             logger.warning("Liste des œuvres indisponible: %s", e)
             works = []
-        choices = [
+        choices: list[Choice] = [
             {
                 "name": (w.title + (f" — {', '.join(w.authors)}" if w.authors else ""))[:100],
                 "value": w.page_id,
@@ -179,7 +181,7 @@ class BrowseMixin:
                 kept, _ = take_within_budget(links, 1024, separator=" · ")
                 embed.add_field(name="Liens", value=" · ".join(kept), inline=False)
 
-        sign(embed, "moduleConfrerie", icon_url=self._footer_icon(ctx.guild_id))
+        sign(embed, "moduleConfrerie", icon_url=self._footer_icon(guild_id_of(ctx)))
         await ctx.send(embed=embed, ephemeral=prive)
 
     @auteur.autocomplete("nom")

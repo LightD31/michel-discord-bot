@@ -14,6 +14,6 @@
 
 ## Checklist
 
-- [ ] Updated docs / README / CLAUDE.md if behavior changed
+- [ ] Updated docs / README / CLAUDE.md / docs/conventions if behavior changed
 - [ ] No secrets or credentials committed
 - [ ] Dockerfile still builds (if runtime deps or image changed)

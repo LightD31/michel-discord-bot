@@ -17,11 +17,14 @@ from urllib.parse import urlsplit
 from interactions import (
     Client,
     Embed,
+    Guild,
     InteractionContext,
+    Member,
     Message,
     Permissions,
     SlashContext,
     ThreadChannel,
+    User,
 )
 from interactions.models.discord.components import process_components
 
@@ -157,6 +160,39 @@ def guild_id_of(ctx: Any) -> str:
     if guild_id is None:
         raise RuntimeError("a guild command ran outside a guild")
     return str(guild_id)
+
+
+def guild_of(ctx: Any) -> Guild:
+    """The guild a guild command ran in (``ctx.guild``, typed ``Guild | None``).
+
+    Same contract as :func:`guild_id_of`: a guild command always has one.
+    """
+    guild = getattr(ctx, "guild", None)
+    if guild is None:
+        raise RuntimeError("a guild command ran outside a guild")
+    return guild
+
+
+def message_of(ctx: Any) -> Message:
+    """The message a button or select menu sits on (``ctx.message``, typed ``Message | None``).
+
+    A component always comes with its message; one without is a bug, raised.
+    """
+    message = getattr(ctx, "message", None)
+    if message is None:
+        raise RuntimeError("a component ran without its message")
+    return message
+
+
+def member_of(ctx: Any) -> Member:
+    """The member who ran a guild command (``ctx.author``, typed ``Member | User``).
+
+    In a guild the author is always a member; a plain user there is a bug, raised.
+    """
+    author = getattr(ctx, "author", None)
+    if author is None or (isinstance(author, User) and not isinstance(author, Member)):
+        raise RuntimeError("a guild command ran without a member")
+    return author
 
 
 # ---------------------------------------------------------------------------

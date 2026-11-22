@@ -7,7 +7,7 @@ embed to the configured modlog channel.
 """
 
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from interactions import (
     Embed,
@@ -23,6 +23,7 @@ from interactions import (
 from features.moderation import (
     Infraction,
     InfractionType,
+    ModerationRepository,
     clamp_timeout,
     humanize_duration,
     parse_duration,
@@ -31,7 +32,14 @@ from src.core import clock
 from src.core.text import format_discord_timestamp
 from src.discord_ext.errors import failure_reply
 from src.discord_ext.look import card
-from src.discord_ext.messages import module_off, require_guild, send_error, send_success
+from src.discord_ext.messages import (
+    guild_id_of,
+    guild_of,
+    module_off,
+    require_guild,
+    send_error,
+    send_success,
+)
 from src.discord_ext.scopes import guild_scopes
 
 from ._common import (
@@ -59,12 +67,27 @@ class ActionRefused(Exception):
 class CommandsMixin:
     """Member-moderation commands and infraction-history sub-commands."""
 
+    if TYPE_CHECKING:
+        # __init__.py and logging_.py
+        def repository(self, guild_id: str | int) -> ModerationRepository: ...
+
+        async def log_case(
+            self,
+            settings: dict,
+            infraction: Infraction,
+            *,
+            target_name: str | None = None,
+            moderator_name: str | None = None,
+        ) -> None: ...
+
+        async def dm_target(self, settings: dict, target: Any, text: str) -> None: ...
+
     # --- shared helpers ----------------------------------------------------
 
     async def _guild_settings_or_error(self, ctx: SlashContext) -> dict | None:
         if not await require_guild(ctx):
             return None
-        settings = get_guild_settings(ctx.guild_id)
+        settings = get_guild_settings(guild_id_of(ctx))
         if not settings:
             await send_error(ctx, module_off("modération"), icon="🛡️")
             return None
@@ -80,7 +103,7 @@ class CommandsMixin:
         duration_seconds: int | None = None,
         expires_at: datetime | None = None,
     ) -> Infraction:
-        repo = self.repository(ctx.guild_id)
+        repo = self.repository(guild_id_of(ctx))
         case_id = await repo.next_case_id()
         infraction = Infraction(
             id=case_id,
@@ -148,11 +171,11 @@ class CommandsMixin:
         the caller has checked :func:`can_moderate`.
         """
         infraction = await self._record(ctx, mtype="warn", target_id=member.id, reason=reason)
-        count = await self.repository(ctx.guild_id).count_active_warnings(str(member.id))
+        count = await self.repository(guild_id_of(ctx)).count_active_warnings(str(member.id))
         await self.dm_target(
             settings,
             member,
-            f"⚠️ Tu as reçu un avertissement sur **{ctx.guild.name}**."
+            f"⚠️ Tu as reçu un avertissement sur **{guild_of(ctx).name}**."
             + self._reason_suffix(reason),
         )
         await self.log_case(
@@ -247,7 +270,7 @@ class CommandsMixin:
         await self.dm_target(
             settings,
             member,
-            f"🔇 Tu as été exclu temporairement sur **{ctx.guild.name}** pour "
+            f"🔇 Tu as été exclu temporairement sur **{guild_of(ctx).name}** pour "
             f"**{humanize_duration(secs)}**." + self._reason_suffix(reason),
         )
         await self.log_case(
@@ -334,15 +357,17 @@ class CommandsMixin:
         await self.dm_target(
             settings,
             member,
-            f"👢 Tu as été expulsé de **{ctx.guild.name}**." + self._reason_suffix(reason),
+            f"👢 Tu as été expulsé de **{guild_of(ctx).name}**." + self._reason_suffix(reason),
         )
         try:
-            await ctx.guild.kick(member, reason=reason or f"Kick par {ctx.author.username}")
+            await guild_of(ctx).kick(member, reason=reason or f"Kick par {ctx.author.username}")
         except Exception as e:
             # The DM went first (afterwards the bot may share no server with
             # them): correct it.
             await self.dm_target(
-                settings, member, f"Finalement, tu n'as pas été expulsé de **{ctx.guild.name}**."
+                settings,
+                member,
+                f"Finalement, tu n'as pas été expulsé de **{guild_of(ctx).name}**.",
             )
             await send_error(ctx, failure_reply("Impossible d'expulser ce membre", e, logger))
             return
@@ -398,10 +423,10 @@ class CommandsMixin:
         await self.dm_target(
             settings,
             member,
-            f"🔨 Tu as été banni de **{ctx.guild.name}**." + self._reason_suffix(reason),
+            f"🔨 Tu as été banni de **{guild_of(ctx).name}**." + self._reason_suffix(reason),
         )
         try:
-            await ctx.guild.ban(
+            await guild_of(ctx).ban(
                 member,
                 # Not the deprecated delete_message_days: the library turns it
                 # into days * 3600 seconds, so "7 days" deleted 7 hours.
@@ -412,7 +437,7 @@ class CommandsMixin:
             # The DM went first (afterwards the bot may share no server with
             # them): correct it.
             await self.dm_target(
-                settings, member, f"Finalement, tu n'as pas été banni de **{ctx.guild.name}**."
+                settings, member, f"Finalement, tu n'as pas été banni de **{guild_of(ctx).name}**."
             )
             await send_error(ctx, failure_reply("Impossible de bannir ce membre", e, logger))
             return
@@ -454,7 +479,9 @@ class CommandsMixin:
             return
         await ctx.defer(ephemeral=True)
         try:
-            await ctx.guild.unban(int(user_id), reason=reason or f"Unban par {ctx.author.username}")
+            await guild_of(ctx).unban(
+                int(user_id), reason=reason or f"Unban par {ctx.author.username}"
+            )
         except Exception as e:
             await send_error(
                 ctx, failure_reply("Impossible de débannir cet utilisateur", e, logger)
@@ -509,7 +536,7 @@ class CommandsMixin:
         if settings is None:
             return
         await ctx.defer(ephemeral=True)
-        items = await self.repository(ctx.guild_id).list_for_user(str(member.id))
+        items = await self.repository(guild_id_of(ctx)).list_for_user(str(member.id))
         if not items:
             await send_success(ctx, f"Aucune sanction enregistrée pour {member.mention}.")
             return
@@ -530,7 +557,7 @@ class CommandsMixin:
         settings = await self._guild_settings_or_error(ctx)
         if settings is None:
             return
-        infraction = await self.repository(ctx.guild_id).get(case_id)
+        infraction = await self.repository(guild_id_of(ctx)).get(case_id)
         if not infraction:
             await send_error(ctx, f"Cas #{case_id} introuvable.")
             return
@@ -561,7 +588,7 @@ class CommandsMixin:
         settings = await self._guild_settings_or_error(ctx)
         if settings is None:
             return
-        repo = self.repository(ctx.guild_id)
+        repo = self.repository(guild_id_of(ctx))
         infraction = await repo.get(case_id)
         if not infraction:
             await send_error(ctx, f"Cas #{case_id} introuvable.")

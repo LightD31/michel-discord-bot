@@ -42,6 +42,9 @@ from src.webui.schemas import (
 
 logger = logutil.init_logger(__name__)
 
+# What a track search for an autocomplete can raise: it answers a message instead.
+SEARCH_ERRORS: tuple[type[Exception], ...] = (TimeoutError, *SPOTIFY_ERRORS)
+
 
 @register_module("moduleSpotify")
 class SpotifyConfig(SchemaBase):
@@ -175,7 +178,7 @@ COOLDOWN_TIME = 1
 AUTOCOMPLETE_TIMEOUT_SECONDS = 2.5
 
 
-async def autocomplete_track_choices(query: str | None) -> list[dict[str, str]]:
+async def autocomplete_track_choices(query: str | None) -> list[dict[str, str | int | float]]:
     """Choices for a song picker; a slow or failing Spotify yields a message, not an error."""
     if not query:
         return track_search.placeholder(track_search.PROMPT)
@@ -184,7 +187,7 @@ async def autocomplete_track_choices(query: str | None) -> list[dict[str, str]]:
             spotify_api.search(query, limit=10, type="track", market="FR"),
             timeout=AUTOCOMPLETE_TIMEOUT_SECONDS,
         )
-    except (TimeoutError, *SPOTIFY_ERRORS) as e:
+    except SEARCH_ERRORS as e:
         logger.warning("Spotify search failed for autocomplete: %s", e)
         return track_search.placeholder(track_search.UNAVAILABLE)
     return track_search.track_choices(result["tracks"]["items"])
@@ -282,9 +285,10 @@ class ServerData:
 
         # Loaded from MongoDB on first use (``SpotifyExtension.ensure_state``).
         self.loaded = False
-        self.vote_infos = {}
-        self.snapshot = {}
-        self.reminders = {}
+        self.vote_infos: dict[str, Any] = {}
+        self.snapshot: dict[str, Any] = {}
+        # When to remind (a Paris wall time) → who asked.
+        self.reminders: dict[datetime, set[int]] = {}
 
         self.vote_manager = VoteManager(self.repo, guild_id)
 
@@ -371,7 +375,7 @@ async def embed_song(
     track: dict,
     embedtype: EmbedType,
     time: datetime,
-    person: str = None,
+    person: str | None = None,
     icon: str | None = None,
     guild_id: str | int | None = None,
 ) -> tuple[interactions.Embed, interactions.File | None]:
@@ -517,7 +521,7 @@ async def embed_song(
             )
 
     sign(embed, "moduleSpotify", settings["footer"] or None, icon_url=icon or None)
-    embed.timestamp = time
+    embed.timestamp = interactions.Timestamp.fromdatetime(time)
 
     return embed, preview_file
 

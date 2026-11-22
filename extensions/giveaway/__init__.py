@@ -72,6 +72,8 @@ from src.discord_ext.channels import fetch_guild_channel
 from src.discord_ext.look import Kind, card
 from src.discord_ext.messages import (
     edit_message_if_changed,
+    guild_id_of,
+    message_of,
     require_guild,
     send_error,
     send_success,
@@ -541,7 +543,7 @@ class GiveawayExtension(Extension):
         if not await require_guild(ctx):
             return
         await ctx.defer(ephemeral=True)
-        giveaway = await self._repo(ctx.guild_id).get_by_message(message_id)
+        giveaway = await self._repo(guild_id_of(ctx)).get_by_message(message_id)
         if not giveaway:
             await send_error(ctx, "Aucun giveaway trouvé pour ce message.")
             return
@@ -576,7 +578,7 @@ class GiveawayExtension(Extension):
         if not await require_guild(ctx):
             return
         await ctx.defer(ephemeral=True)
-        giveaway = await self._repo(ctx.guild_id).get_by_message(message_id)
+        giveaway = await self._repo(guild_id_of(ctx)).get_by_message(message_id)
         if not giveaway or giveaway.id is None:
             await send_error(ctx, "Aucun giveaway trouvé pour ce message.")
             return
@@ -586,7 +588,7 @@ class GiveawayExtension(Extension):
         if giveaway.cancelled:
             await send_error(ctx, "Ce giveaway a déjà été annulé.")
             return
-        if not await self._repo(ctx.guild_id).mark_cancelled(giveaway.id):
+        if not await self._repo(guild_id_of(ctx)).mark_cancelled(giveaway.id):
             await send_error(ctx, "Ce giveaway vient d'être clos.")
             return
         giveaway.cancelled = True
@@ -633,7 +635,7 @@ class GiveawayExtension(Extension):
         if not await require_guild(ctx):
             return
         await ctx.defer(ephemeral=True)
-        giveaway = await self._repo(ctx.guild_id).get_by_message(message_id)
+        giveaway = await self._repo(guild_id_of(ctx)).get_by_message(message_id)
         if not giveaway or giveaway.id is None:
             await send_error(ctx, "Aucun giveaway trouvé pour ce message.")
             return
@@ -648,7 +650,7 @@ class GiveawayExtension(Extension):
             return
 
         giveaway.winners = giveaway.winners + new_winners
-        await self._repo(ctx.guild_id).update_winners(giveaway.id, giveaway.winners)
+        await self._repo(guild_id_of(ctx)).update_winners(giveaway.id, giveaway.winners)
 
         mention = ", ".join(f"<@{w}>" for w in new_winners)
         try:
@@ -656,7 +658,8 @@ class GiveawayExtension(Extension):
             if message is not None:
                 await message.reply(
                     f"🎉 Reroll : nouveau(x) gagnant(s) du giveaway **{giveaway.prize}** : {mention}",
-                    allowed_mentions=_winners_only(new_winners),
+                    # Message.reply() is annotated with a dict; send() takes either.
+                    allowed_mentions=_winners_only(new_winners),  # type: ignore[arg-type]
                 )
         except Exception as e:
             logger.warning("Could not post reroll reply: %s", e)
@@ -669,7 +672,7 @@ class GiveawayExtension(Extension):
     async def giveaway_list(self, ctx: SlashContext) -> None:
         if not await require_guild(ctx):
             return
-        active = await self._repo(ctx.guild_id).list_active()
+        active = await self._repo(guild_id_of(ctx)).list_active()
         if not active:
             await ctx.send("Aucun giveaway en cours.", ephemeral=True)
             return
@@ -732,7 +735,7 @@ class GiveawayExtension(Extension):
             await ctx.send("Les giveaways ne sont pas activés sur ce serveur.", ephemeral=True)
             return
         repo = self._repo(ctx.guild_id)
-        message_id, user_id = str(ctx.message.id), str(ctx.author.id)
+        message_id, user_id = str(message_of(ctx).id), str(ctx.author.id)
         giveaway = await repo.get_by_message(message_id)
         if giveaway is None:
             await ctx.send("Ce giveaway est introuvable.", ephemeral=True)
@@ -757,7 +760,7 @@ class GiveawayExtension(Extension):
             reply = "Ta participation est retirée." if was_in else "Tu ne participais pas."
         await ctx.send(reply, ephemeral=True)
         if was_in != entering:
-            message = ctx.message
+            message = message_of(ctx)
             self._refreshes.request(
                 int(message.id), lambda: self._refresh_participants(message, str(ctx.guild_id))
             )
@@ -829,7 +832,7 @@ class GiveawayExtension(Extension):
         )
         if channel is None or not hasattr(channel, "fetch_message"):
             return None
-        return await channel.fetch_message(int(giveaway.message_id))  # type: ignore[union-attr]
+        return await channel.fetch_message(int(giveaway.message_id))
 
     async def _draw(self, giveaway: Giveaway) -> DrawOutcome:
         """Pick winners, edit the announcement, and persist the result.
@@ -889,7 +892,8 @@ class GiveawayExtension(Extension):
             try:
                 await message.reply(
                     f"🎉 Félicitations {mention} ! Tu remportes **{giveaway.prize}**.",
-                    allowed_mentions=_winners_only(winners),
+                    # Message.reply() is annotated with a dict; send() takes either.
+                    allowed_mentions=_winners_only(winners),  # type: ignore[arg-type]
                 )
             except Exception as e:
                 logger.warning("Could not post winner reply for %s: %s", giveaway.id, e)

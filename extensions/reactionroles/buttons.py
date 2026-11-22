@@ -8,7 +8,7 @@ from interactions import ComponentContext, component_callback
 from features.reactionroles import self_assign_refusal
 from features.reactionroles.picks import Plan, button_plan, select_plan
 from src.core.logging import log_failure
-from src.discord_ext.messages import send_error
+from src.discord_ext.messages import guild_id_of, guild_of, member_of, send_error
 from src.discord_ext.rolemenus import CLEAR_PREFIX, SELECT_PREFIX, role_info
 
 from ._common import BUTTON_PREFIX, logger
@@ -33,7 +33,7 @@ class ButtonsMixin:
         if not ctx.guild:
             await send_error(ctx, "Cette action n'est disponible qu'en serveur.")
             return None
-        menu = await self.repository(ctx.guild_id).get(menu_id)
+        menu = await self.repository(guild_id_of(ctx)).get(menu_id)
         if not menu:
             await send_error(ctx, "Ce menu n'existe plus.")
         return menu
@@ -91,7 +91,7 @@ class ButtonsMixin:
         for role_id in plan.add:
             # Re-checked on every pick: a role can gain moderation permissions
             # after the menu was posted. Removing one is always allowed.
-            role = ctx.guild.get_role(int(role_id))
+            role = guild_of(ctx).get_role(int(role_id))
             refusal = self_assign_refusal(role_info(role, ctx.guild_id)) if role else None
             if refusal:
                 logger.warning(
@@ -103,7 +103,7 @@ class ButtonsMixin:
                 )
                 await send_error(ctx, refusal)
                 return
-        member = ctx.author
+        member = member_of(ctx)
         try:
             for role_id in plan.remove:
                 await member.remove_role(int(role_id), reason="Menu de rôles")

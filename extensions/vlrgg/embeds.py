@@ -17,8 +17,9 @@ from features.vlrgg import (
 )
 from src.core.text import format_discord_timestamp
 from src.discord_ext.embeds import SPACER_FIELD
-from src.discord_ext.look import card, sign
+from src.discord_ext.look import Kind, card, sign
 
+from ._base import VlrggBase
 from ._common import (
     MAX_PAST_MATCHES,
     MAX_UPCOMING_MATCHES,
@@ -37,7 +38,7 @@ def _ts(epoch: int, style: str) -> str:
     return format_discord_timestamp(datetime.fromtimestamp(epoch, UTC), style)
 
 
-class EmbedsMixin:
+class EmbedsMixin(VlrggBase):
     """Mixin providing embed-building helpers for VLR.gg data."""
 
     # ── Top-level embed builder ───────────────────────────────────────────────
@@ -307,6 +308,7 @@ class EmbedsMixin:
             except (ValueError, TypeError):
                 pass
 
+        kind: Kind
         if team_won is True:
             result_emoji, result_text, kind = "🎉", "VICTOIRE", "success"
         elif team_won is False:

@@ -18,6 +18,7 @@ from interactions import (
     ScheduledEvent,
     ScheduledEventStatus,
     ScheduledEventType,
+    Timestamp,
 )
 from interactions.client.errors import NotFound
 
@@ -32,6 +33,7 @@ from src.core import logging as logutil
 from src.core.http import http_client
 from src.core.logging import log_failure
 
+from ._base import ZeventBase
 from ._common import (
     EVENT_COVER_URL,
     STATS_SITE_URL,
@@ -59,7 +61,7 @@ MAX_COVER_BYTES = 8 * 1024 * 1024
 # one is history: adopting it would only produce failing edits.
 LIVE_STATUSES = frozenset({ScheduledEventStatus.SCHEDULED, ScheduledEventStatus.ACTIVE})
 
-_STATUS_BY_DISCORD = {
+_STATUS_BY_DISCORD: dict[int, str] = {
     ScheduledEventStatus.SCHEDULED: SCHEDULED,
     ScheduledEventStatus.ACTIVE: ACTIVE,
     ScheduledEventStatus.COMPLETED: COMPLETED,
@@ -73,19 +75,8 @@ def _same_instant(left: datetime | None, right: datetime | None) -> bool:
     return abs(left - right) <= SAME_INSTANT_TOLERANCE
 
 
-class DiscordEventMixin:
+class DiscordEventMixin(ZeventBase):
     """Create, refresh and end each guild's scheduled event for the edition."""
-
-    # Declared here (rather than inferred from ``Zevent.__init__``) so mypy
-    # sees the nullable cache slots for what they are.
-    _last_event_total: float | None
-    # Cover image per URL, downloaded once for every guild's event.
-    _covers: dict[str, bytes | None]
-    _event_title: str
-    _event_start: datetime
-    _main_event_start: datetime
-    _event_end: datetime | None
-    client: Client
 
     # ─── Location ─────────────────────────────────────────────────────
 
@@ -317,11 +308,12 @@ class DiscordEventMixin:
             name=plan.name,
             event_type=ScheduledEventType.EXTERNAL,
             external_location=plan.location,
-            start_time=start,
-            end_time=end,
+            start_time=Timestamp.fromdatetime(start),
+            end_time=Timestamp.fromdatetime(end),
             description=plan.description,
-            # ``None`` is what the library itself treats as "no cover".
-            cover_image=cover,
+            # Bytes are read as they are (``to_image_data``), and ``None`` means
+            # no cover; the library's annotation names neither.
+            cover_image=cover,  # type: ignore[arg-type]
         )
         if plan.status == ACTIVE:
             await event.edit(status=ScheduledEventStatus.ACTIVE)

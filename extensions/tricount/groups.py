@@ -25,7 +25,7 @@ from src.core import clock
 from src.core import logging as logutil
 from src.discord_ext.autocomplete import guild_group_autocomplete
 from src.discord_ext.look import card
-from src.discord_ext.messages import require_guild
+from src.discord_ext.messages import guild_of, require_guild
 from src.discord_ext.scopes import guild_scopes
 
 from ._common import MAX_AMOUNT, TRICOUNT, guild_currency
@@ -66,7 +66,7 @@ class GroupsMixin:
         if not await require_guild(ctx):
             return
 
-        repo = TricountRepository(ctx.guild.id)
+        repo = TricountRepository(guild_of(ctx).id)
         existing_group = await repo.find_group_by_name(nom)
         if existing_group:
             await ctx.send(
@@ -99,7 +99,7 @@ class GroupsMixin:
             "Groupe Tricount '%s' créé par %s sur le serveur %s",
             nom,
             ctx.author.display_name,
-            ctx.guild.name,
+            guild_of(ctx).name,
         )
         await ctx.send(embed=embed)
 
@@ -118,7 +118,7 @@ class GroupsMixin:
         if not await require_guild(ctx):
             return
 
-        repo = TricountRepository(ctx.guild.id)
+        repo = TricountRepository(guild_of(ctx).id)
         group = await repo.find_active_group(nom)
         if not group:
             await ctx.send(f"❌ Aucun groupe actif trouvé avec le nom '{nom}'.", ephemeral=True)
@@ -139,7 +139,7 @@ class GroupsMixin:
             "Utilisateur %s a rejoint le groupe Tricount '%s' sur le serveur %s",
             ctx.author.display_name,
             nom,
-            ctx.guild.name,
+            guild_of(ctx).name,
         )
         await ctx.send(embed=embed)
 
@@ -164,7 +164,7 @@ class GroupsMixin:
         if not await require_guild(ctx):
             return
 
-        repo = TricountRepository(ctx.guild.id)
+        repo = TricountRepository(guild_of(ctx).id)
         group = await repo.find_active_group(nom)
         if not group:
             await ctx.send(f"❌ Aucun groupe actif trouvé avec le nom '{nom}'.", ephemeral=True)
@@ -185,7 +185,7 @@ class GroupsMixin:
         if balance:
             # The shares already split stay theirs: departed members remain in
             # /tricount bilan until a reimbursement brings them back to zero.
-            currency = guild_currency(ctx.guild.id)
+            currency = guild_currency(guild_of(ctx).id)
             description += (
                 f"\n\nTon solde n'est pas réglé "
                 f"({format_amount(balance, currency, signed=True)}) : tu restes dans le bilan "
@@ -196,7 +196,7 @@ class GroupsMixin:
             "Utilisateur %s a quitté le groupe Tricount '%s' sur le serveur %s",
             ctx.author.display_name,
             nom,
-            ctx.guild.name,
+            guild_of(ctx).name,
         )
         await ctx.send(embed=embed)
 
@@ -255,7 +255,7 @@ class GroupsMixin:
             )
             return
 
-        repo = TricountRepository(ctx.guild.id)
+        repo = TricountRepository(guild_of(ctx).id)
         group = await repo.find_active_group(groupe)
         if not group:
             await ctx.send(f"❌ Aucun groupe actif trouvé avec le nom '{groupe}'.", ephemeral=True)
@@ -299,7 +299,7 @@ class GroupsMixin:
         )
         after = compute_balances(await repo.list_group_expenses(group["_id"]), members)
 
-        currency = guild_currency(ctx.guild.id)
+        currency = guild_currency(guild_of(ctx).id)
         embed = card(
             "moduleTricount",
             "success",

@@ -22,6 +22,7 @@ from src.core.errors import DatabaseError
 from src.core.text import format_discord_timestamp
 from src.discord_ext.look import card, sign
 
+from ._base import VlrggBase
 from ._common import MAP_POOL_DAYS, TeamState, logger
 
 MAX_HEAD_TO_HEAD = 5
@@ -34,7 +35,7 @@ def _pool_cell(tag: str, record: MapRecord | None) -> str:
     return f"{tag} {record.win_pct}% ({record.games})"
 
 
-class RemindersMixin:
+class RemindersMixin(VlrggBase):
     """Mixin posting a pre-match reminder in the notification channel."""
 
     async def _send_due_reminders(self, team_state: TeamState, vlr_data: dict[str, Any]) -> None:

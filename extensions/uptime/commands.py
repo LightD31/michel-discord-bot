@@ -1,5 +1,8 @@
 """`/uptime configurer|remove|list` admin commands for managing monitor alerts."""
 
+import asyncio
+from typing import TYPE_CHECKING, Any
+
 from interactions import (
     AutocompleteContext,
     BaseChannel,
@@ -20,13 +23,14 @@ from src.discord_ext.look import card, sign
 from src.discord_ext.messages import (
     CAN_SEND,
     author_can,
+    guild_of,
     module_off,
     require_guild,
     send_error,
     send_success,
 )
 from src.discord_ext.scopes import guild_scopes
-from src.integrations.uptime_kuma import MonitorStatus
+from src.integrations.uptime_kuma import MonitorState, MonitorStatus
 
 from ._common import (
     KUMA_UNREACHABLE,
@@ -46,14 +50,26 @@ def _choice_name(name: str) -> str:
 class CommandsMixin:
     """Admin `/uptime` command group + monitor autocompletes."""
 
+    # Set up by the extension (__init__.py).
+    alerts: dict[str, dict[int, MonitorAlert]]
+    monitors: dict[int, MonitorState]
+    kuma_ok: bool
+    _state_lock: asyncio.Lock
+
+    if TYPE_CHECKING:
+
+        def current_status(self, monitor_id: int) -> MonitorStatus | None: ...
+
+        def monitor_name(self, monitor_id: int) -> str: ...
+
     async def _check_guild(self, ctx: SlashContext) -> str | None:
         """The guild id, or ``None`` after telling the user why the command can't run."""
         if not await require_guild(ctx):
             return None
-        if not UPTIME.enabled(ctx.guild.id):
+        if not UPTIME.enabled(guild_of(ctx).id):
             await send_error(ctx, module_off("Uptime"))
             return None
-        return str(ctx.guild.id)
+        return str(guild_of(ctx).id)
 
     @staticmethod
     def _parse_monitor_id(value: str) -> int | None:
@@ -157,7 +173,7 @@ class CommandsMixin:
         """Every Kuma monitor whose name (with its group) matches the input."""
         query = (ctx.input_text or "").lower()
         monitors = sorted(self.monitors.values(), key=lambda m: m.name.lower())
-        choices = [
+        choices: list[dict[str, Any]] = [
             {"name": _choice_name(m.name), "value": str(m.id)}
             for m in monitors
             if query in m.name.lower()
@@ -215,7 +231,7 @@ class CommandsMixin:
             monitor_id: self.monitor_name(monitor_id)
             for monitor_id in self.alerts.get(str(ctx.guild.id), {})
         }
-        choices = [
+        choices: list[dict[str, Any]] = [
             {"name": _choice_name(name), "value": str(monitor_id)}
             for monitor_id, name in sorted(names.items(), key=lambda item: item[1].lower())
             if query in name.lower()

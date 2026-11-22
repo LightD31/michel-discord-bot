@@ -2,6 +2,7 @@
 
 import traceback
 from datetime import datetime
+from typing import TYPE_CHECKING, cast
 
 from interactions import Client, Embed, Guild, Message, Task, TimeTrigger
 
@@ -39,7 +40,9 @@ class LeaderboardMixin:
     _user_cache: TTLCache
     _leaderboard_paginators: dict[str, CustomPaginator]
 
-    def _repo(self, guild_id: str) -> XpRepository: ...  # provided by LevelingMixin
+    if TYPE_CHECKING:  # LevelingMixin's
+
+        def _repo(self, guild_id: str) -> XpRepository: ...
 
     async def _get_member_info(self, guild: Guild, user_id: str) -> tuple[str, str] | None:
         cache_key = f"user_{user_id}"
@@ -186,12 +189,12 @@ class LeaderboardMixin:
             return
 
         try:
-            guild: Guild = await self.bot.fetch_guild(guild_id)
+            guild = await self.bot.fetch_guild(guild_id)
             if guild is None:
                 logger.error("Could not fetch guild %s", guild_id)
                 return
 
-            message: Message = await fetch_or_create_persistent_message(
+            message = await fetch_or_create_persistent_message(
                 self.bot,
                 guild_id=guild_id,
                 slot="xp:leaderboard",
@@ -208,7 +211,10 @@ class LeaderboardMixin:
             embeds = await self._build_leaderboard_embeds(guild)
             paginator = self._leaderboard_paginators.get(guild_id)
             if paginator is None:
-                paginator = CustomPaginator.create_from_embeds(self.bot, *embeds)
+                # The classmethod builds an instance of the class it is called on.
+                paginator = cast(
+                    CustomPaginator, CustomPaginator.create_from_embeds(self.bot, *embeds)
+                )
                 self._leaderboard_paginators[guild_id] = paginator
             # Refreshes always render page 1, as they did before this was reused.
             paginator.set_pages(embeds, page_index=0)

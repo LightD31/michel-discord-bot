@@ -27,6 +27,7 @@ from features.confrerie.stats import COL_DEFI, COL_GENRE, COL_TYPE
 from src.core import logging as logutil
 from src.core.logging import log_failure
 
+from ._base import ConfrerieBase
 from ._common import CONFRERIE
 
 logger = logutil.init_logger(__name__)
@@ -45,7 +46,7 @@ def _guild_id_of(obj: object) -> str:
     return str(guild_id) if guild_id else ""
 
 
-class ForumsMixin:
+class ForumsMixin(ConfrerieBase):
     """Listen to the configured forums and submit drafts for review."""
 
     def _author_map(self, settings: dict) -> dict[str, str]:
@@ -76,10 +77,8 @@ class ForumsMixin:
             return
         try:
             schema = await self._oeuvres_schema(settings)
-            try:
-                tags = [tag.name for tag in thread.applied_tags]
-            except AttributeError:  # parent forum not cached
-                tags = []
+            # No tags when the parent forum isn't cached (the property raises).
+            tags = [tag.name for tag in getattr(thread, "applied_tags", None) or []]
 
             display_name = await self._display_name(thread.guild, owner_id)
             author, mapped = resolve_author(int(owner_id), display_name, self._author_map(settings))
@@ -89,7 +88,7 @@ class ForumsMixin:
                 source=SOURCE_TEXTES,
                 guild_id=guild_id,
                 submitter_id=int(owner_id),
-                title=thread.name[:100],
+                title=(thread.name or "")[:100],
                 authors=[author],
                 types=tags_to_options(tags, np.schema_options(schema, COL_TYPE)),
                 genres=tags_to_options(tags, np.schema_options(schema, COL_GENRE)),
@@ -126,7 +125,7 @@ class ForumsMixin:
                 return  # this member already answered this défi
 
             schema = await self._oeuvres_schema(settings)
-            defi = match_defi(channel.name, np.schema_options(schema, COL_DEFI))
+            defi = match_defi(channel.name or "", np.schema_options(schema, COL_DEFI))
             author, mapped = resolve_author(
                 int(message.author.id), message.author.display_name, self._author_map(settings)
             )

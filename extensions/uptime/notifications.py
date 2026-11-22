@@ -1,12 +1,14 @@
 """Turn status changes read from Kuma into embeds in each guild's channel."""
 
+import asyncio
 from datetime import UTC, datetime
 
-from interactions import Embed, MessageableMixin
+from interactions import Client, Embed, MessageableMixin
 
 from features.uptime import (
     AlertMessage,
     AlertTone,
+    MonitorAlert,
     StatusChange,
     UptimeRepository,
     apply_statuses,
@@ -44,6 +46,11 @@ def _to_embed(message: AlertMessage) -> Embed:
 class NotificationsMixin:
     """Apply each /metrics read to every guild's alerts."""
 
+    # Set up by the extension (__init__.py).
+    bot: Client
+    alerts: dict[str, dict[int, MonitorAlert]]
+    _state_lock: asyncio.Lock
+
     async def apply_states(self, states: dict[int, MonitorState]) -> None:
         async with self._state_lock:
             changes = apply_statuses(self.alerts, {i: s.status for i, s in states.items()})
@@ -63,6 +70,9 @@ class NotificationsMixin:
                     await self._post_alert(change, states[change.alert.monitor_id])
 
     async def _post_alert(self, change: StatusChange, state: MonitorState) -> None:
+        event = change.event
+        if event is None:  # a status saved without an alert to post
+            return
         alert = change.alert
         channel = await fetch_guild_channel(self.bot, change.guild_id, alert.channel_id)
         if not isinstance(channel, MessageableMixin):
@@ -75,7 +85,7 @@ class NotificationsMixin:
             return
 
         message = render_alert(
-            change.event,
+            event,
             alert.mode,
             monitor_id=alert.monitor_id,
             monitor_name=state.name,

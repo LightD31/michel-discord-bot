@@ -3,10 +3,12 @@
 import asyncio
 import contextlib
 import os
+from pathlib import PurePath
 
 from interactions import IntervalTrigger, OrTrigger, Task, TimeTrigger
 from twitchAPI.helper import first
 from twitchAPI.oauth import UserAuthenticationStorageHelper
+from twitchAPI.object.api import Stream
 from twitchAPI.object.eventsub import (
     ChannelUpdateEvent,
     StreamOfflineEvent,
@@ -20,6 +22,7 @@ from src.core.logging import log_failure
 from src.core.tasks import spawn
 from src.integrations.twitch_eventsub import BoundedEventSubWebsocket
 
+from ._base import TwitchBase
 from ._common import ensure_utc
 
 logger = logutil.init_logger(__name__)
@@ -33,13 +36,13 @@ EVENT_SUBSCRIPTIONS = (
 )
 
 
-class EventSubMixin:
+class EventSubMixin(TwitchBase):
     """Websocket subscription management and EventSub callback handlers."""
 
-    async def get_stream_data(self, user_id: str):
+    async def get_stream_data(self, user_id: str) -> Stream | None:
         """Return the live Stream object for a user (or None if offline/error)."""
         try:
-            return await first(self.twitch.get_streams(user_id=user_id))
+            return await first(self._api().get_streams(user_id=[user_id]))
         except Exception as e:
             log_failure(logger, f"Error getting stream data for user {user_id}: {e}")
             return None
@@ -107,7 +110,7 @@ class EventSubMixin:
         helper = UserAuthenticationStorageHelper(
             twitch=self.twitch,
             scopes=[AuthScope.USER_READ_SUBSCRIPTIONS],
-            storage_path="./data/twitchcreds.json",
+            storage_path=PurePath("./data/twitchcreds.json"),
         )
         await helper.bind()
 

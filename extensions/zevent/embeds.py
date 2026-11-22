@@ -14,6 +14,7 @@ from src.core.text import take_within_budget
 from src.discord_ext.look import card, sign
 from src.discord_ext.messages import copy_embed
 
+from ._base import ZeventBase
 from ._common import (
     GOALS_COUNT,
     GOALS_OFFLINE_FACTOR,
@@ -66,7 +67,7 @@ def escape_markdown(text: str) -> str:
     return text
 
 
-class EmbedsMixin:
+class EmbedsMixin(ZeventBase):
     """Build the main / location / planning / top-donations embeds."""
 
     def calculate_embed_size(self, embed: Embed) -> int:
@@ -209,7 +210,7 @@ class EmbedsMixin:
 
         if finished:
             online_streamers = list(streams.values())
-            offline_streamers = []
+            offline_streamers: list[StreamerInfo] = []
             status = f"Les {actual_count} {title}"
             withlink = False
         elif not self._is_event_started():

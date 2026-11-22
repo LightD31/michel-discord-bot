@@ -11,6 +11,7 @@ from interactions import (
     ScheduledEventStatus,
     ScheduledEventType,
     Task,
+    Timestamp,
     TimestampStyles,
     TimeTrigger,
     utils,
@@ -30,12 +31,13 @@ from src.discord_ext.messages import (
     forget_persistent_message,
 )
 
+from ._base import TwitchBase
 from ._common import StreamerInfo, ensure_utc
 
 logger = logutil.init_logger(__name__)
 
 
-class ScheduleMixin:
+class ScheduleMixin(TwitchBase):
     """Fetches Twitch schedules, updates the planning message, and manages the
     per-streamer Discord scheduled event.
     """
@@ -99,7 +101,7 @@ class ScheduleMixin:
     async def fetch_schedule(self, user_id: str, guild_id: int | None = None) -> Embed:
         """Return an embed with the next 5 scheduled streams for ``user_id``."""
         try:
-            schedule: ChannelStreamSchedule = await self.twitch.get_channel_stream_schedule(
+            schedule: ChannelStreamSchedule | None = await self._api().get_channel_stream_schedule(
                 broadcaster_id=user_id,
                 first=5,
             )
@@ -127,7 +129,7 @@ class ScheduleMixin:
                     ),
                     description="Les 5 prochains streams planifiés et dans moins de 10 jours.",
                     timestamp=clock.now(),
-                    footer_icon=bot.avatar_url,
+                    footer_icon=getattr(bot, "avatar_url", None),
                 )
                 now = clock.now()
                 for stream in segments:
@@ -143,7 +145,7 @@ class ScheduleMixin:
                 title="<:TeamBelieve:808056449750138880> Planning <:TeamBelieve:808056449750138880>",
                 description="Aucun stream planifié",
                 timestamp=clock.now(),
-                footer_icon=bot.avatar_url,
+                footer_icon=getattr(bot, "avatar_url", None),
             )
         except Exception as e:
             log_failure(
@@ -161,19 +163,24 @@ class ScheduleMixin:
         self,
         streamer: StreamerInfo,
         offline: bool = False,
-        data: ChannelUpdateEvent | StreamOfflineEvent | None = None,
+        data: ChannelUpdateEvent | None = None,
     ) -> None:
         """Update the planning message (if set up) and sync the Discord scheduled event."""
+        user_id = streamer.user_id
+        if user_id is None:  # every caller has resolved the login on Twitch already
+            return
         message = await self._planning_message(streamer)
 
         if offline is False:
-            stream = await self.get_stream_data(streamer.user_id)
+            stream = await self.get_stream_data(user_id)
 
             if streamer.manage_discord_events or streamer.scheduled_event:
                 try:
-                    guild: Guild = await self.bot.fetch_guild(streamer.guild_id)
+                    guild = await self.bot.fetch_guild(streamer.guild_id)
+                    if guild is None:
+                        raise LookupError(f"guild {streamer.guild_id} is out of reach")
                     _, title, description, user_login = await self.get_stream_info(
-                        stream, streamer.user_id, offline, data
+                        stream, user_id, offline, data
                     )
                     title100 = title if len(title) <= 100 else f"{title[:97]}..."
 
@@ -183,7 +190,9 @@ class ScheduleMixin:
                                 await streamer.scheduled_event.edit(
                                     name=title100,
                                     description=f"**{title}**\n\n{description}",
-                                    end_time=datetime.now(self.timezone) + timedelta(days=1),
+                                    end_time=Timestamp.fromdatetime(
+                                        datetime.now(self.timezone) + timedelta(days=1)
+                                    ),
                                 )
                             except NotFound:
                                 # Event was deleted in Discord; drop the stale reference
@@ -197,8 +206,12 @@ class ScheduleMixin:
                                 name=title100,
                                 event_type=ScheduledEventType.EXTERNAL,
                                 external_location=f"https://twitch.tv/{user_login}",
-                                start_time=datetime.now(self.timezone) + timedelta(seconds=5),
-                                end_time=datetime.now(self.timezone) + timedelta(days=1),
+                                start_time=Timestamp.fromdatetime(
+                                    datetime.now(self.timezone) + timedelta(seconds=5)
+                                ),
+                                end_time=Timestamp.fromdatetime(
+                                    datetime.now(self.timezone) + timedelta(days=1)
+                                ),
                                 description=f"**{title}**\n\n{description}",
                             )
                             await streamer.scheduled_event.edit(status=ScheduledEventStatus.ACTIVE)
@@ -213,10 +226,10 @@ class ScheduleMixin:
 
             if message:
                 try:
-                    embed = await self.fetch_schedule(streamer.user_id, streamer.guild_id)
+                    embed = await self.fetch_schedule(user_id, streamer.guild_id)
                     live_embed = await self.create_stream_embed(
                         stream,
-                        streamer.user_id,
+                        user_id,
                         offline=False,
                         data=data,
                         guild_id=streamer.guild_id,
@@ -247,9 +260,9 @@ class ScheduleMixin:
 
             if message:
                 try:
-                    embed = await self.fetch_schedule(streamer.user_id, streamer.guild_id)
+                    embed = await self.fetch_schedule(user_id, streamer.guild_id)
                     offline_embed = await self.create_stream_embed(
-                        None, streamer.user_id, offline=True, data=data, guild_id=streamer.guild_id
+                        None, user_id, offline=True, data=data, guild_id=streamer.guild_id
                     )
                     await edit_message_if_changed(
                         message,

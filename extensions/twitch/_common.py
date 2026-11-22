@@ -6,8 +6,9 @@ the package root.
 """
 
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, overload
 
+from interactions import ScheduledEvent
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from src.core.config import ModuleConfig
@@ -82,6 +83,10 @@ class TwitchConfig(SchemaBase):
 TWITCH = ModuleConfig("moduleTwitch")
 
 
+@overload
+def ensure_utc(dt: datetime) -> datetime: ...
+@overload
+def ensure_utc(dt: None) -> None: ...
 def ensure_utc(dt: datetime | None) -> datetime | None:
     """Ensure a datetime is timezone-aware in UTC."""
     if dt is None:
@@ -114,8 +119,9 @@ class StreamerInfo:
         role = str(config.get("twitchMentionRoleId") or "").strip()
         self.mention_role_id: str | None = role if role.isdigit() else None
         self.notification_template = str(config.get("twitchNotificationTemplate") or "")
-        self.notif_channel = None
-        self.scheduled_event = None
+        # The notification channel, resolved at startup; the live's Discord event.
+        self.notif_channel: Any = None
+        self.scheduled_event: ScheduledEvent | None = None
         # Stream session info (stored when stream starts)
         self.stream_start_time: datetime | None = None
         self.stream_title: str | None = None

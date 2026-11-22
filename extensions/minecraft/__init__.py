@@ -7,6 +7,7 @@ Assembled as a mixin composition mirroring the vlrgg/zevent packages:
 """
 
 from datetime import datetime
+from typing import Any
 
 from interactions import Client, Extension, listen
 
@@ -42,7 +43,7 @@ class Minecraft(Extension, StatusMixin, StatsMixin):
         # the scheduled event announcing players online (looked up once).
         self._last_stats_tables: dict[str, str | None] = {}
         self.channel_edit_timestamps: dict[str, datetime] = {}
-        self.scheduled_events: dict[str, object] = {}
+        self.scheduled_events: dict[str, Any] = {}
         self._events_recovered: set[str] = set()
 
     def _forget_disabled_guilds(self, enabled: list[str]) -> None:

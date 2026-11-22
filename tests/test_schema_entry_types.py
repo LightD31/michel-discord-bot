@@ -1,6 +1,6 @@
 """List and map fields are typed with what the SPA writes (Q03).
 
-CLAUDE.md: "Type what the SPA writes back into its markup". A ``list[Any]`` or
+docs/conventions/dashboard-security.md: "Type what the SPA writes back into its markup". A ``list[Any]`` or
 ``dict[str, dict]`` let a string or an unknown key through the save route and
 into the widget's ``value="…"`` attributes and the extension's code.
 """

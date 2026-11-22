@@ -33,11 +33,13 @@ from features.vlrgg import (
     upcoming_from_schedule,
 )
 from src.core.text import format_discord_timestamp
+from src.discord_ext.autocomplete import Choice
 from src.discord_ext.links import shorten_embed
 from src.discord_ext.look import card, sign
 from src.discord_ext.messages import send_error
 from src.discord_ext.scopes import guild_scopes
 
+from ._base import VlrggBase
 from ._common import MAP_POOL_DAYS, VLRGG, logger
 
 # Codes acceptés par /v2/rankings
@@ -75,7 +77,7 @@ def _ts(epoch: int, style: str) -> str:
     return format_discord_timestamp(datetime.fromtimestamp(epoch, UTC), style)
 
 
-class CommandsMixin:
+class CommandsMixin(VlrggBase):
     """Mixin providing the /vlr slash commands."""
 
     # ── /vlr equipe ───────────────────────────────────────────────────────────
@@ -112,7 +114,7 @@ class CommandsMixin:
     @vlr_equipe.autocomplete("equipe")
     async def vlr_equipe_autocomplete(self, ctx: AutocompleteContext) -> None:
         text = (ctx.input_text or "").strip()
-        choices: list[dict[str, str]] = []
+        choices: list[Choice] = []
         seen: set[str] = set()
 
         server = self._servers.get(str(ctx.guild_id)) if ctx.guild_id else None

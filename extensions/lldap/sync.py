@@ -3,7 +3,7 @@
 import asyncio
 from collections.abc import Iterable
 
-from interactions import IntervalTrigger, Task
+from interactions import Client, IntervalTrigger, Task
 
 from features.lldap import (
     GuildRoster,
@@ -13,7 +13,7 @@ from features.lldap import (
     protected_group_ids,
 )
 from src.core import logging as logutil
-from src.integrations.lldap import LldapError, LldapSettings
+from src.integrations.lldap import LldapClient, LldapError, LldapSettings
 
 from ._common import (
     CHUNK_TIMEOUT_SECONDS,
@@ -28,6 +28,13 @@ logger = logutil.init_logger(__name__)
 
 class SyncMixin:
     """Keeps each LLDAP server's mapped groups in line with the Discord roles."""
+
+    # Set up by the extension (__init__.py).
+    bot: Client
+    lldap: LldapClient
+    _sync_lock: asyncio.Lock
+    _failing: set[str]
+    _warned: set[str]
 
     def _warn_once(self, key: str, message: str, *args: object) -> None:
         if key not in self._warned:
@@ -71,8 +78,8 @@ class SyncMixin:
 
             desired, blocked = merge_rosters(rosters)
             report = SyncReport()
-            for groups in blocked.values():
-                report.blocked_groups.update(groups)
+            for blocked_groups in blocked.values():
+                report.blocked_groups.update(blocked_groups)
             for key, groups in desired.items():
                 if groups:
                     await self._sync_server(servers[key], groups, report)

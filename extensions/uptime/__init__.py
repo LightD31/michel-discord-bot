@@ -15,7 +15,7 @@ from interactions import Client, Extension, listen
 from features.uptime import MonitorAlert, UptimeRepository
 from src.core import logging as logutil
 from src.core.errors import DatabaseError
-from src.integrations.uptime_kuma import MonitorState
+from src.integrations.uptime_kuma import MonitorState, MonitorStatus
 
 from ._common import UPTIME
 from .commands import CommandsMixin
@@ -74,7 +74,7 @@ class UptimeExtension(Extension, CommandsMixin, NotificationsMixin, TasksMixin):
             len(alerts),
         )
 
-    def current_status(self, monitor_id: int):
+    def current_status(self, monitor_id: int) -> MonitorStatus | None:
         """The monitor's status in the last /metrics read, ``None`` if it wasn't there."""
         state = self.monitors.get(monitor_id)
         return state.status if state else None

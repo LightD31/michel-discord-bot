@@ -40,7 +40,7 @@ class ZuniversExtension(
     MODULE_KEYS = ("moduleZunivers",)
 
     def __init__(self, bot: Client):
-        self.bot = bot
+        self.bot: Client = bot
         self.api_client = ZuniversAPIClient(zunivers_api_url)
         # Reminders, event state and !request subscriptions, per guild.
         self._states: dict[str, GuildState] = {}
@@ -77,7 +77,7 @@ class ZuniversExtension(
             await state.storage.save_reminders(state.reminders)
         return removed
 
-    async def _state(self, guild_id) -> GuildState:
+    async def _state(self, guild_id: str | int) -> GuildState:
         """The guild's state, loaded from its database the first time it is needed."""
         gid = str(guild_id)
         async with self._states_lock:

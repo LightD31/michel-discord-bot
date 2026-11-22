@@ -1,9 +1,11 @@
 """Expense add, modify and delete commands."""
 
 import os
+from typing import Any
 
 from interactions import (
     AutocompleteContext,
+    Client,
     Embed,
     Member,
     OptionType,
@@ -17,9 +19,9 @@ from features.tricount import TricountRepository
 from src.core import clock
 from src.core import logging as logutil
 from src.core.errors import DatabaseError
-from src.discord_ext.autocomplete import guild_group_autocomplete
+from src.discord_ext.autocomplete import Choice, guild_group_autocomplete
 from src.discord_ext.look import card
-from src.discord_ext.messages import fetch_user_safe, require_guild
+from src.discord_ext.messages import fetch_user_safe, guild_of, require_guild
 from src.discord_ext.scopes import guild_scopes
 
 from ._common import (
@@ -36,6 +38,8 @@ logger = logutil.init_logger(__name__)
 
 class ExpensesMixin:
     """Add and modify individual expenses within a group."""
+
+    bot: Client
 
     @slash_command(
         name="tricount",
@@ -97,7 +101,7 @@ class ExpensesMixin:
             await ctx.send("❌ Le montant doit être positif.", ephemeral=True)
             return
 
-        repo = TricountRepository(ctx.guild.id)
+        repo = TricountRepository(guild_of(ctx).id)
         group = await repo.find_active_group(groupe)
         if not group:
             await ctx.send(f"❌ Aucun groupe actif trouvé avec le nom '{groupe}'.", ephemeral=True)
@@ -127,7 +131,7 @@ class ExpensesMixin:
         }
         await repo.add_expense(expense_data)
 
-        currency = guild_currency(ctx.guild.id)
+        currency = guild_currency(guild_of(ctx).id)
         embed = card(
             "moduleTricount",
             "success",
@@ -157,7 +161,7 @@ class ExpensesMixin:
     async def depense_categorie_autocomplete(self, ctx: AutocompleteContext):
         query = (ctx.input_text or "").lower()
         seen: set[str] = set()
-        choices: list[dict[str, str]] = []
+        choices: list[Choice] = []
         for cat in guild_categories(ctx.guild.id) if ctx.guild else []:
             if query in cat.lower() and cat not in seen:
                 seen.add(cat)
@@ -239,7 +243,7 @@ class ExpensesMixin:
             await ctx.send("❌ Le montant doit être positif.", ephemeral=True)
             return
 
-        repo = TricountRepository(ctx.guild.id)
+        repo = TricountRepository(guild_of(ctx).id)
         group = await repo.find_active_group(groupe)
         if not group:
             await ctx.send(f"❌ Aucun groupe actif trouvé avec le nom '{groupe}'.", ephemeral=True)
@@ -258,10 +262,10 @@ class ExpensesMixin:
             )
             return
 
-        modifications = {}
+        modifications: dict[str, Any] = {}
         changes_description = []
 
-        currency = guild_currency(ctx.guild.id)
+        currency = guild_currency(guild_of(ctx).id)
         if nouveau_montant is not None:
             modifications["amount"] = round(nouveau_montant, 2)
             changes_description.append(
@@ -351,7 +355,7 @@ class ExpensesMixin:
     async def supprimer_depense(self, ctx: SlashContext, groupe: str, depense_id: str):
         if not await require_guild(ctx):
             return
-        repo = TricountRepository(ctx.guild.id)
+        repo = TricountRepository(guild_of(ctx).id)
         group = await repo.find_active_group(groupe)
         if not group:
             await ctx.send(f"❌ Aucun groupe actif trouvé avec le nom '{groupe}'.", ephemeral=True)
@@ -362,7 +366,7 @@ class ExpensesMixin:
         if not await repo.delete_expense(depense_id, group["_id"]):
             await ctx.send("❌ Dépense non trouvée dans ce groupe.", ephemeral=True)
             return
-        currency = guild_currency(ctx.guild.id)
+        currency = guild_currency(guild_of(ctx).id)
         logger.info(
             "Dépense %s supprimée par %s dans le groupe '%s' (%s%s, %r)",
             depense_id,
@@ -390,7 +394,7 @@ class ExpensesMixin:
 
     @supprimer_depense.autocomplete("depense_id")
     async def supprimer_depense_id_autocomplete(self, ctx: AutocompleteContext):
-        await self.modifier_depense_id_autocomplete(ctx)
+        await self._expense_choices(ctx)
 
     @modifier_depense.autocomplete("groupe")
     async def modifier_depense_groupe_autocomplete(self, ctx: AutocompleteContext):
@@ -398,6 +402,10 @@ class ExpensesMixin:
 
     @modifier_depense.autocomplete("depense_id")
     async def modifier_depense_id_autocomplete(self, ctx: AutocompleteContext):
+        await self._expense_choices(ctx)
+
+    async def _expense_choices(self, ctx: AutocompleteContext) -> None:
+        """The member's expenses in their groups, matching what they typed."""
         if not ctx.guild:
             await ctx.send(choices=[])
             return
@@ -413,7 +421,7 @@ class ExpensesMixin:
         group_ids = [group["_id"] for group in user_groups]
         expenses = await repo.list_user_expenses(group_ids, ctx.author.id)
 
-        choices = []
+        choices: list[Choice] = []
         for expense in expenses:
             group_name = "Groupe inconnu"
             for group in user_groups:

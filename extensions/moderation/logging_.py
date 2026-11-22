@@ -3,7 +3,7 @@
 import contextlib
 from typing import Any
 
-from interactions import Embed
+from interactions import Embed, Timestamp
 
 from features.moderation import Infraction, humanize_duration
 from src.core.text import EMBED_FIELD_VALUE_LIMIT, clip
@@ -45,7 +45,7 @@ def build_case_embed(
     )
     if not infraction.active:
         embed.add_field(name="Statut", value="❌ Révoqué", inline=True)
-    embed.timestamp = infraction.created_at
+    embed.timestamp = Timestamp.fromdatetime(infraction.created_at)
     return embed
 
 

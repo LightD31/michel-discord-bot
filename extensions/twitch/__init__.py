@@ -11,6 +11,7 @@ import contextlib
 import copy
 import os
 from collections import defaultdict
+from typing import Any
 
 from interactions import (
     AutocompleteContext,
@@ -233,6 +234,8 @@ class TwitchExtension(
         for guild_id in streamers_by_guild:
             try:
                 guild = await self.bot.fetch_guild(guild_id)
+                if guild is None:
+                    raise LookupError(f"guild {guild_id} is out of reach")
                 events = await guild.list_scheduled_events()
             except Exception as e:
                 log_failure(logger, "Error fetching scheduled events for guild %s: %s", guild_id, e)
@@ -368,7 +371,7 @@ class TwitchExtension(
             return
         guild_id = int(ctx.guild.id)
         query = (ctx.input_text or "").lower()
-        choices = [
+        choices: list[dict[str, Any]] = [
             {"name": s.streamer_id, "value": s.streamer_id}
             for s in self.streamers.values()
             if s.guild_id == guild_id and query in s.streamer_id.lower()

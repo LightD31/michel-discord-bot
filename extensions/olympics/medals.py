@@ -1,7 +1,7 @@
 """MedalsMixin — slash commands and embed display logic for the Olympics extension."""
 
 from datetime import datetime
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 from interactions import Embed, OptionType, SlashContext, Timestamp, slash_command, slash_option
 
@@ -21,6 +21,10 @@ from ._common import (
 
 class MedalsMixin:
     """Mixin providing medal-table slash commands and embed builders."""
+
+    if TYPE_CHECKING:  # TasksMixin's, after this mixin in the MRO
+
+        async def _olympics_fetch(self, path: str, retries: int = 3) -> dict: ...
 
     # ─── Récupération de données ──────────────────────────────────────────────
 

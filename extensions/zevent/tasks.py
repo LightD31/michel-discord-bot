@@ -3,6 +3,7 @@
 import asyncio
 import os
 from datetime import UTC, datetime
+from typing import Any
 
 from interactions import Embed, File, IntervalTrigger, Task, utils
 
@@ -15,6 +16,7 @@ from src.core.logging import log_failure
 from src.discord_ext.look import card
 from src.discord_ext.messages import edit_message_if_changed
 
+from ._base import ZeventBase
 from ._common import (
     API_URL,
     MILESTONE_INTERVAL,
@@ -38,7 +40,7 @@ async def _no_zevent_data() -> None:
     return None
 
 
-class TasksMixin:
+class TasksMixin(ZeventBase):
     """Periodic Zevent refresh: render once, publish in every enabled guild."""
 
     def _remote_roster_embed(self, streams: dict, viewers: str | None, others: list) -> Embed:
@@ -169,6 +171,8 @@ class TasksMixin:
         unavailable (the rest still renders).
         """
         logger.debug("Fetching data from APIs...")
+        data: Any
+        streamlabs_data: Any
         data, streamlabs_data = await asyncio.gather(
             fetch(API_URL, return_type="json") if API_URL else _no_zevent_data(),
             fetch(STREAMLABS_API_URL, return_type="json")

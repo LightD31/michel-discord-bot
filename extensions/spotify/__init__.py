@@ -11,6 +11,7 @@ Web UI dashboard (``src/webui/routes/spotify.py``).
 
 import os
 from datetime import datetime
+from typing import Any
 
 from interactions import Client, Extension, listen
 
@@ -34,7 +35,7 @@ class SpotifyExtension(Extension, PlaylistMixin, VotesMixin):
     def __init__(self, bot: Client):
         self.bot: Client = bot
 
-    def get_server(self, guild_id) -> ServerData:
+    def get_server(self, guild_id: Any) -> ServerData:
         """Look up the per-guild state container."""
         return SERVERS[str(guild_id)]
 
@@ -116,7 +117,7 @@ class SpotifyExtension(Extension, PlaylistMixin, VotesMixin):
         else:
             server.vote_infos = {}
 
-    async def save_voteinfos(self, server: ServerData):
+    async def save_voteinfos(self, server: ServerData) -> None:
         await server.repo.save_vote_infos(server.vote_infos)
 
     async def load_snapshot(self, server: ServerData):
@@ -126,7 +127,7 @@ class SpotifyExtension(Extension, PlaylistMixin, VotesMixin):
         else:
             server.snapshot = {"snapshot": "", "duration": 0, "length": 0}
 
-    async def save_snapshot(self, server: ServerData):
+    async def save_snapshot(self, server: ServerData) -> None:
         await server.repo.save_snapshot(server.snapshot)
 
     async def load_reminders(self, server: ServerData):
@@ -136,7 +137,7 @@ class SpotifyExtension(Extension, PlaylistMixin, VotesMixin):
             wall = datetime.strptime(doc["_id"], "%Y-%m-%d %H:%M:%S")
             server.reminders[wall.replace(tzinfo=clock.LOCAL_TZ)] = set(doc["user_ids"])
 
-    async def save_reminders(self, server: ServerData):
+    async def save_reminders(self, server: ServerData) -> None:
         docs = [
             {
                 "_id": clock.to_local(remind_time).strftime("%Y-%m-%d %H:%M:%S"),

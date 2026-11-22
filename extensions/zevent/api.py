@@ -30,6 +30,7 @@ from src.core import logging as logutil
 from src.core.http import fetch
 from src.core.logging import log_failure
 
+from ._base import ZeventBase
 from ._common import (
     COMPARE_EVENT_ID,
     EVENT_END_OVERRIDE,
@@ -48,26 +49,8 @@ logger = logutil.init_logger(__name__)
 MAX_REFERENCE_LOOKBACK = 4
 
 
-class ApiMixin:
+class ApiMixin(ZeventBase):
     """Cached fetchers for the stats API and related validation helpers."""
-
-    # Declared here (rather than inferred from ``Zevent.__init__``) so mypy
-    # sees the nullable cache slots for what they are.
-    _stats_event: dict | None
-    _event_title: str
-    _event_start: datetime
-    _main_event_start: datetime
-    _event_end: datetime | None
-    _participant_cache: list[Participant]
-    _location_index: dict[str, str]
-    _planning_cache: list[Show] | None
-    _stats_events: list[dict]
-    _reference_curve: DonationCurve | None
-    _reference_gate: RetryGate
-    _velocity: DonationVelocity
-    _event_gate: RetryGate
-    _participant_gate: RetryGate
-    _planning_gate: RetryGate
 
     async def _ensure_stats_event(self) -> dict | None:
         """Resolve (and cache) the stats-API event this tracker follows.

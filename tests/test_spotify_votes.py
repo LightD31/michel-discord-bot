@@ -255,3 +255,40 @@ async def test_a_vote_whose_song_is_gone_opens_the_next_one(votes_mod):
     await votes_mod.VotesMixin._randomvote_for_server(harness, server)
 
     assert events == [("saved", CLOSED), "start"]
+
+
+async def test_a_vote_on_a_poll_whose_record_is_gone_says_it_is_over(votes_mod, monkeypatch):
+    """``record_vote`` answers ``None`` once the record is gone: the click used to raise."""
+    from discord_fakes import FakeChannel, FakeCtx, FakeGuild, FakeMember, FakeMessage
+
+    from src.discord_ext.look import card
+
+    class Cooldown:
+        async def is_on_cooldown(self, user_id):
+            return False
+
+        async def record(self, user_id):
+            return None
+
+    class Repo:
+        async def record_vote(self, track_id, user_id, vote):
+            return None
+
+    monkeypatch.setattr(votes_mod, "vote_cooldown", Cooldown())
+    guild = FakeGuild()
+    server = SimpleNamespace(
+        guild_id=str(guild.id), repo=Repo(), vote_infos={"message_id": "9", "track_id": "a"}
+    )
+
+    async def ensure_state(s):
+        return None
+
+    harness = SimpleNamespace(get_server=lambda gid: server, ensure_state=ensure_state)
+    poll = FakeMessage(9, content="", embeds=[card("moduleSpotify", title="Vote")])
+    channel = guild.add_channel(FakeChannel(10))
+    ctx = FakeCtx(FakeMember(guild=guild), channel, message=poll, custom_id="conserver")
+
+    await votes_mod.VotesMixin.on_component.callback(harness, SimpleNamespace(ctx=ctx))
+
+    assert len(ctx.replies) == 1 and ctx.replies[0].get("ephemeral")
+    assert "terminé" in str(ctx.replies[0])
