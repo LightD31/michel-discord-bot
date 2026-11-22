@@ -41,6 +41,7 @@ import threading
 import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -192,6 +193,7 @@ def demo_config(data_dir: str, port: int, mongo_url: str) -> dict[str, Any]:
                 },
                 "moduleGiveaway": {"enabled": True, "giveawayEmoji": "🎉"},
                 "moduleAchievements": {"enabled": True, "achievementsChannelId": CH["général"]},
+                "moduleAgenda": {"enabled": True, "agendaChannelId": CH["annonces"]},
                 "moduleGazette": {
                     "enabled": True,
                     "gazetteChannelId": CH["général"],
@@ -348,6 +350,32 @@ class FakeGuild:
 
     def get_member(self, uid):
         return next((m for m in self.members if m.id == int(uid)), None)
+
+    async def list_scheduled_events(self, with_user_count=False):
+        # The agenda's Discord events (P19): one under way, two to come.
+        from src.core import clock
+
+        today = clock.to_local(clock.now()).date()
+        return [
+            SimpleNamespace(
+                id=1500000000000000001,
+                name="Soirée jeux de société",
+                status=1,
+                start_time=clock.at_local(today + timedelta(days=2), 20, 30),
+            ),
+            SimpleNamespace(
+                id=1500000000000000002,
+                name="Tournoi Mario Kart",
+                status=1,
+                start_time=clock.at_local(today + timedelta(days=6), 21),
+            ),
+            SimpleNamespace(
+                id=1500000000000000003,
+                name="Stream de Lucas",
+                status=2,
+                start_time=clock.now() - timedelta(hours=1),
+            ),
+        ]
 
     async def fetch_member(self, uid):
         return self.get_member(uid)
@@ -745,6 +773,33 @@ async def seed(bot: FakeBot, *, days: int = 60) -> None:
             "ends_at": now - timedelta(days=3),
             "drawn": True,
             "winners": [str(humans[6].id)],
+        }
+    )
+
+    # Coming up (P19): a giveaway and a poll that close this fortnight.
+    await db["giveaways"].insert_one(
+        {
+            "guild_id": GA,
+            "channel_id": CH["général"],
+            "message_id": "1300000000000000004",
+            "host_id": ADMIN,
+            "prize": "Un abonnement Nitro",
+            "ends_at": now + timedelta(days=4, hours=2),
+            "drawn": False,
+            "cancelled": False,
+            "winners": [],
+        }
+    )
+    await db["polls"].insert_one(
+        {
+            "channel_id": CH["général"],
+            "message_id": "1300000000000000005",
+            "author_id": ADMIN,
+            "question": "On fait une sortie ciné samedi ?",
+            "options": ["Oui", "Non"],
+            "closes_at": now + timedelta(days=1, hours=3),
+            "closed": False,
+            "votes": {},
         }
     )
 

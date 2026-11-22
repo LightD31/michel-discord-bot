@@ -3473,6 +3473,27 @@ body.has-save-bar .toast-container { bottom: 88px; }
 .me-actions { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
 .me-actions-start { justify-content: flex-start; margin: 10px 0 4px; }
 .me-empty { color: var(--text-muted); font-size: 13px; margin: 0; }
+/* The agenda's calendar (P19): a week per row on a desktop, the days with
+   something on them as a list on a phone. */
+.agenda-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; }
+.agenda-weekday { font-size: 12px; color: var(--text-muted); text-align: center; text-transform: uppercase; }
+.agenda-day { min-height: 84px; background: var(--bg-tertiary); border: 1px solid var(--border); border-radius: var(--radius); padding: 6px; min-width: 0; }
+.agenda-day.is-out { background: transparent; border-style: dashed; }
+.agenda-day.is-out .agenda-num { color: var(--text-muted); }
+.agenda-day.is-today { border-color: var(--accent); }
+.agenda-date { display: none; font-weight: 600; margin-bottom: 4px; }
+.agenda-num { font-weight: 600; font-size: 13px; color: var(--text-secondary); }
+.agenda-day ul { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.agenda-entry { font-size: 12px; line-height: 1.35; overflow-wrap: anywhere; }
+.agenda-time { color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+@media (max-width: 768px) {
+    .agenda-grid { display: flex; flex-direction: column; }
+    .agenda-weekday, .agenda-num, .agenda-day:not(.has-entries) { display: none; }
+    .agenda-date { display: block; }
+    .agenda-day { min-height: 0; }
+    .agenda-entry { font-size: 14px; }
+}
+
 .xp-badges { font-size: 13px; margin-left: 4px; letter-spacing: 1px; white-space: nowrap; }
 .me-badges { display: flex; flex-direction: column; gap: 8px; }
 .me-badge { display: flex; align-items: center; gap: 10px; }
