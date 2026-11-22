@@ -1,6 +1,6 @@
 # Privacy Policy
 
-**Effective date: 2026-11-21**
+**Effective date: 2026-11-22**
 
 This policy explains what personal data **Michel** (the "Bot"), a Discord bot, processes, why, with whom it is shared, and how long it is kept. It also covers the Bot's web dashboard.
 
@@ -46,6 +46,7 @@ Data is stored in the Bot's own database, separately for each server. Data from 
 | AI answers (`/ask`, mentions) | Comparisons of answers: the question, the answers, the asker's and each voter's IDs, and the votes. Daily usage counters per member, used to enforce limits. See section 5. |
 | Book club ("Confrérie") | Submitted drafts and their authors. |
 | "Feur" replies | Per member: how many times the Bot answered them. Each answer is also dated, with the member, for a week, so the Gazette can name the feur of the week. |
+| Badges (succès, where enabled) | The badges you won (a starboard post, voice time, playlist tracks, a suggestion implemented, a year on the server, "feur" answers) and the day you won each. They are worked out every hour from what the modules above already keep and from the date you joined the server, given by Discord; nothing else is counted. They show in `/succes`, on `/profil`, in your dashboard space and next to your name in the server's XP leaderboard (including its public page, where the server publishes one). A new badge may be announced in a channel chosen by the server's administrators, naming you without a notification. |
 | Profile (`/profil`) and weekly Gazette | Nothing new: they show what the modules above already keep and the server already shows (level, season XP, starboard posts, playlist tracks, suggestions, giveaways won, the day and month of a birthday, never the year). The Gazette also names the members who joined the server that week, from Discord. The Bot keeps only the date and message of each Gazette it posted. |
 | ZUnivers | The ZUnivers username you provide and your reminder settings. |
 | Account registration (`/inscription`, where enabled) | On the server's own account directory (LLDAP), managed by that server's administrators: an account with your email, a username derived from your Discord name, your display name and your Discord ID. Your roles are kept in sync with your directory groups. The temporary password is shown only to you and is not stored by the Bot. |
@@ -106,6 +107,7 @@ The Bot also fetches public information (RSS feeds, YouTube, Twitch, game server
 - Reports of a message to the moderators: one year after the message was first reported.
 - Who wished a newcomer welcome: 9 days after the welcome message (the button closes after 7).
 - The date of each "feur" answer: 8 days.
+- Badges: as long as you are on the server; a badge isn't taken back when the data it was worked out from goes (an emptied playlist, for instance).
 - AI usage counters: about two days.
 - One-time reminders: deleted when they are sent.
 - Secret Santa wish lists and gift marks: 30 days after the exchange date (90 days after the session was created when it has no date), or sooner when the session is cancelled or replaced.
@@ -123,7 +125,7 @@ The data is processed to provide the features that you, or the administrators of
 You can do two of these yourself, on every server at once, with the commands below or from your space in the dashboard ("Mes données"), which do the same:
 
 - `/mes-donnees exporter` sends you a file, visible to you alone, with everything the Bot stores about you.
-- `/mes-donnees supprimer` deletes what is yours alone (XP and its log, birthday, reminders, ZUnivers reminders, "feur" counters and their dates, AI usage counters, Secret Santa wish lists and gift marks, giveaway entries, who wished you welcome and the welcomes you gave, member directory entry…) and anonymises what you share with others: your votes still count, but no longer under your name, and the polls, suggestions, playlist tracks, AI questions, giveaways, starboard posts, role menus, book club drafts and season podiums you are in no longer name you. It keeps your moderation records (including the reports of your messages; if you reported a message, the report no longer names you, but your reason stays), the Secret Santa draws already made, and your Tricount groups while you still owe or are owed money there. Configuration written by a server's administrators (a first name, a linked Spotify account) and an LLDAP account made with `/inscription` are handled by that server's administrators.
+- `/mes-donnees supprimer` deletes what is yours alone (XP and its log, birthday, reminders, ZUnivers reminders, "feur" counters and their dates, badges, AI usage counters, Secret Santa wish lists and gift marks, giveaway entries, who wished you welcome and the welcomes you gave, member directory entry…) and anonymises what you share with others: your votes still count, but no longer under your name, and the polls, suggestions, playlist tracks, AI questions, giveaways, starboard posts, role menus, book club drafts and season podiums you are in no longer name you. It keeps your moderation records (including the reports of your messages; if you reported a message, the report no longer names you, but your reason stays), the Secret Santa draws already made, and your Tricount groups while you still owe or are owed money there. Configuration written by a server's administrators (a first name, a linked Spotify account) and an LLDAP account made with `/inscription` are handled by that server's administrators.
 
 You can also ask the Operator, at the address in section 1, to:
 

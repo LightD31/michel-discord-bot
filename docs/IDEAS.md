@@ -567,7 +567,7 @@ Numbered **P1…P12** so they don't clash with the audit's lots 1–6. Each lot 
 | **P15 Dashboard admin** | The Confrérie forums picked by name; the reports list on the Modération page; each module's last activity; the Secret Santa reveal for administrators; per-module permissions in the Health card; save errors naming the field's label | P1, P2, P3, P4, P7, P8 |
 | **P16 Previews and Mon espace** | More Tester buttons (Satisfactory, Minecraft, Uptime, YouTube, Twitch); previews of embeds and role menus; a streamer message's preview; joining or leaving a Secret Santa from Mon espace; repayments recorded there; unsaved-change protection | P9, P10, P11 |
 | **P17 Nettoyage front** | The last pages on the `html` tag; inline `style=` attributes moved to classes; the schema form split; account pickers in the global settings | P3, P9 |
-| **P18 A3 Succès** | Achievements | Backlog |
+| **P18 A3 Succès** | Achievements: six badges checked every hour from what the modules keep, `/succes`, on `/profil`, in Mon espace and the XP leaderboard; announced in a chosen channel | Backlog |
 | **P19 A5 Agenda** | The shared agenda | Backlog |
 | **P20 A11 Rattrapage** | `/rattrapage` | Backlog |
 | **P21 C10 Incidents** | The server's incidents | Backlog |

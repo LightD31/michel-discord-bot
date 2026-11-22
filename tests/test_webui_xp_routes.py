@@ -155,3 +155,39 @@ def test_database_error_is_503_without_the_driver_message(client):
     resp = http.get("/api/servers/123/xp/stats")
     assert resp.status_code == 503
     assert "mongo" not in resp.json()["detail"].lower()
+
+
+def test_the_top_members_carry_their_badges_where_the_succes_are_on(
+    client, store_config, monkeypatch
+):
+    http, _ = client
+    store_config(
+        {
+            "servers": {
+                "123": {
+                    "moduleAchievements": {"enabled": True, "badgeSeniority": False},
+                    "moduleStarboard": {"enabled": True},
+                }
+            }
+        }
+    )
+
+    class Badges:
+        def __init__(self, guild_id):
+            pass
+
+        async def badges_of_many(self, ids):
+            return {uid: (["star", "seniority"] if uid == "1" else []) for uid in ids}
+
+    monkeypatch.setattr(xp_routes, "AchievementsRepository", Badges)
+    top = http.get("/api/servers/123/xp/stats?days=7").json()["top"]
+    # The badge switched off doesn't show, even though it was won.
+    assert top[0]["badges"] == [{"emoji": "⭐", "name": "Étoilé·e"}]
+    assert top[1]["badges"] == []
+
+
+def test_no_badges_key_where_the_succes_are_off(client, store_config):
+    http, _ = client
+    store_config({"servers": {"123": {}}})
+    top = http.get("/api/servers/123/xp/stats?days=7").json()["top"]
+    assert "badges" not in top[0]

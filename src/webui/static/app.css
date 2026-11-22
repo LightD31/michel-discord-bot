@@ -3473,6 +3473,11 @@ body.has-save-bar .toast-container { bottom: 88px; }
 .me-actions { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
 .me-actions-start { justify-content: flex-start; margin: 10px 0 4px; }
 .me-empty { color: var(--text-muted); font-size: 13px; margin: 0; }
+.xp-badges { font-size: 13px; margin-left: 4px; letter-spacing: 1px; white-space: nowrap; }
+.me-badges { display: flex; flex-direction: column; gap: 8px; }
+.me-badge { display: flex; align-items: center; gap: 10px; }
+.me-badge-emoji { font-size: 22px; width: 32px; text-align: center; flex: 0 0 auto; }
+.me-badge:not(.is-won) .me-badge-emoji { filter: grayscale(1); opacity: 0.5; }
 @media (max-width: 900px) { .me-grid { grid-template-columns: 1fr; } }
 @media (max-width: 480px) { .me-tile-value { font-size: 17px; } }
 

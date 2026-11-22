@@ -188,7 +188,7 @@ export function renderXpTopTable(top) {
                 <tr>
                     <td class="num">${raw(XP_MEDALS[m.rank - 1] || m.rank)}</td>
                     <td>
-                        <div class="xp-top-name">${m.display_name}</div>
+                        <div class="xp-top-name">${m.display_name}${m.badges?.length ? html` <span class="xp-badges">${m.badges.map(b => html`<span title="${b.name}" aria-label="${b.name}">${b.emoji}</span>`)}</span>` : ''}</div>
                         ${raw(handle ? String(html`<div class="xp-top-sub">${handle}</div>`) : '')}
                     </td>
                     <td class="num">${raw(fmtNum(m.level))}</td>

@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from features.achievements import AchievementsRepository, active_badges
 from features.birthday import BirthdayRepository, has_year
 from features.reminders import MAX_REMINDERS_PER_MEMBER, ReminderRepository, schedule_label
 from features.secretsanta import SecretSantaRepository
@@ -32,6 +33,7 @@ SECTIONS: dict[str, str] = {
     "birthday": "moduleBirthday",
     "tricount": "moduleTricount",
     "santa": "moduleSecretSanta",
+    "badges": "moduleAchievements",
 }
 DEFAULT_CURRENCY = "€"
 
@@ -160,8 +162,24 @@ async def santa(guild_id: str, user_id: str) -> dict[str, Any] | None:
     }
 
 
+async def badges(guild_id: str, user_id: str) -> list[dict[str, Any]]:
+    """The server's badges, each with when the member won it (``None``: still to win)."""
+    won = await AchievementsRepository(guild_id).badges_of(user_id)
+    return [
+        {
+            "key": badge.key,
+            "emoji": badge.emoji,
+            "name": badge.name,
+            "goal": badge.goal,
+            "earnedAt": clock.as_utc(won[badge.key]).isoformat() if badge.key in won else None,
+        }
+        for badge in active_badges(guild_id)
+    ]
+
+
 __all__ = [
     "SECTIONS",
+    "badges",
     "birthday",
     "currency",
     "reminders",
