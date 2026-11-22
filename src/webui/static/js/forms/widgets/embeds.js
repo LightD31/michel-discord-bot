@@ -1,5 +1,7 @@
 // Embed manager entries.
 import { registerActions } from '../../core/actions.js';
+import { html } from '../../core/html.js';
+import { discordEmbed, discordMessage } from '../../ui/discord.js';
 
 export function addEmbedEntry(btn, fieldKey) {
     const list = btn.previousElementSibling;
@@ -30,6 +32,7 @@ export function addEmbedEntry(btn, fieldKey) {
             <button type="button" class="btn-add-link" data-click="addEmbedLink" data-click-args="[{&quot;$&quot;:&quot;el&quot;}]">+ Ajouter un lien</button>
         `;
     list.appendChild(entry);
+    refreshEmbedPreview(entry);
 
     // Update title when title input changes
     const titleInput = entry.querySelector('[data-embed-field="title"]');
@@ -54,6 +57,48 @@ export function addEmbedLink(btn) {
         `;
     linkContainer.appendChild(linkEntry);
     linkEntry.querySelector('input').focus();
+}
+
+// ── Preview (P16) ────────────────────────────────
+// Each embed as Discord will show it once published: built as
+// src/discord_ext/embedmanager.py builds it (a field per link with a URL).
+export function embedPreviewHtml(entry) {
+    const value = (sel) => entry.querySelector(sel)?.value?.trim() || '';
+    const links = [...entry.querySelectorAll('.embedlist-link-entry')]
+        .map(row => ({
+            title: row.querySelector('[data-link-field="title"]')?.value?.trim() || 'Lien',
+            url: row.querySelector('[data-link-field="url"]')?.value?.trim() || '',
+        }))
+        .filter(link => link.url);
+    const embed = discordEmbed({
+        title: value('[data-embed-field="title"]') || 'Sans titre',
+        color: value('[data-embed-field="color"]').replace(/^#/, ''),
+        // The link itself is shortened when published: the preview shows where it leads.
+        fields: links.map(link => ({ name: link.title, value: '[Ouvrir le lien](' + link.url + ')' })),
+    });
+    return discordMessage(embed);
+}
+
+export function refreshEmbedPreview(entry) {
+    let box = entry.querySelector(':scope > .embed-preview');
+    if (!box) {
+        box = document.createElement('div');
+        box.className = 'discord-preview embed-preview';
+        box.setAttribute('aria-label', 'Aperçu dans Discord');
+        entry.appendChild(box);
+    }
+    box.innerHTML = String(html`${embedPreviewHtml(entry)}`);
+}
+
+export function refreshEmbedPreviews(root = document) {
+    for (const entry of root.querySelectorAll('.embedlist-entry')) refreshEmbedPreview(entry);
+}
+
+for (const type of ['input', 'change', 'click']) {
+    document.addEventListener(type, (event) => {
+        const entry = event.target instanceof Element ? event.target.closest('.embedlist-entry') : null;
+        if (entry && entry.isConnected) refreshEmbedPreview(entry);
+    });
 }
 
 export function updateEmbedColorText(input) {

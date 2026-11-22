@@ -55,7 +55,7 @@ Server administrators can also enter configuration that contains personal data, 
 
 ## 4. The web dashboard
 
-The dashboard lets server administrators configure the Bot. Every member can also open their own space there ("Mon espace"), on the servers they share with the Bot: their level and rank, their reminders, their birthday, their Tricount balances and their Secret Santa wish list, which they can change there as with the slash commands. It shows only the signed-in member's own data, on servers they are a member of right now (checked against Discord at least every minute); nothing new is stored for it.
+The dashboard lets server administrators configure the Bot. Every member can also open their own space there ("Mon espace"), on the servers they share with the Bot: their level and rank, their reminders, their birthday, their Tricount balances (where they can record a repayment they made or received) and the server's Secret Santa (joining, leaving and their wish list), which they can change there as with the slash commands and buttons. It shows only the signed-in member's own data, on servers they are a member of right now (checked against Discord at least every minute); nothing new is stored for it.
 
 - **Sign-in:** you sign in with Discord (OAuth2, scopes `identify` and `guilds`). The Bot receives your Discord ID, username, display name, avatar and the list of your servers with your permissions in each. It uses these to decide what you may manage.
 - **Session:** your session lasts 24 hours. It is stored under a hash of your session cookie, never the cookie itself. The tokens Discord issues at sign-in are discarded straight after.

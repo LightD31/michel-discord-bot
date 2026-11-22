@@ -34,6 +34,7 @@ def setup(store_config, monkeypatch):
         edits.append(kwargs)
 
     monkeypatch.setattr(sessions_module, "edit_message_if_changed", edit)
+    monkeypatch.setattr("src.discord_ext.secretsanta.edit_message_if_changed", edit)
     guild = FakeGuild(1)
     channel = guild.add_channel(FakeChannel(10))
     channel.messages[77] = FakeMessage(77, channel=channel)

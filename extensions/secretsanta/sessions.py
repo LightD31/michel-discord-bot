@@ -23,6 +23,8 @@ from src.discord_ext.secretsanta import (
     announcement_embed,
     context_guild_id,
     join_buttons,
+    participant_mentions,
+    refresh_announcement,
     session_details,
 )
 
@@ -42,31 +44,11 @@ class SessionsMixin:
     relay_limiter: RelayLimiter
 
     async def _participant_mentions(self, session: SecretSantaSession) -> list[str]:
-        mentions = []
-        for user_id in session.participants:
-            _, user = await fetch_user_safe(self.bot, user_id)
-            mentions.append(user.mention if user else f"<@{user_id}>")
-        return mentions
+        return await participant_mentions(self.bot, session)
 
     async def _refresh_announcement(self, session: SecretSantaSession) -> None:
         """Show the session's current participants and details on its announcement."""
-        guild_id = context_guild_id(session.context_id)
-        if guild_id is None or not session.message_id or session.is_drawn:
-            return
-        try:
-            channel = await fetch_guild_channel(self.bot, guild_id, session.channel_id)
-            if channel is None:
-                return
-            message = await channel.fetch_message(session.message_id)
-            if message:
-                await edit_message_if_changed(
-                    message,
-                    embed=announcement_embed(session, await self._participant_mentions(session)),
-                    components=join_buttons(session.context_id),
-                    logger=logger,
-                )
-        except Exception as e:
-            log_failure(logger, "Failed to update the Secret Santa announcement: %s", e)
+        await refresh_announcement(self.bot, session)
 
     @slash_command(
         name="secretsanta",

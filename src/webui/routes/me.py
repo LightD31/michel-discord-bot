@@ -8,7 +8,8 @@ server they share with Michel:
 - ``GET /api/me/servers/{id}`` — their XP card, reminders, birthday, Tricount
   balances and Secret Santa (:mod:`src.webui.member_space`);
 - reminders created, changed and deleted; the birthday set or removed; a
-  Tricount debt marked paid ("J'ai remboursé"); the Secret Santa wish list;
+  Tricount repayment recorded, in full or in part, paid or received; the Secret
+  Santa joined or left, and its wish list;
 - ``POST /api/me/data/export`` and ``…/delete`` — ``/mes-donnees`` from the
   dashboard, on every server at once, as the command does.
 
@@ -49,7 +50,7 @@ from src.core import clock
 from src.core import logging as logutil
 from src.core.db import mongo_manager
 from src.core.errors import DatabaseError
-from src.discord_ext.secretsanta import WISHLIST_LIMIT
+from src.discord_ext.secretsanta import WISHLIST_LIMIT, refresh_announcement
 from src.webui import member_space
 from src.webui.auth import Session
 from src.webui.context import WebUIContext
@@ -75,8 +76,11 @@ class BirthdayBody(BaseModel):
 
 
 class SettleBody(BaseModel):
+    # The other member of the plan's line: whom the member paid back, or who paid them.
     to: str = Field(pattern=r"^[1-9][0-9]{0,19}$")
     cents: int = Field(ge=1, le=10_000_000)
+    # "paid": the member paid *to* back; "received": *to* paid the member back (P16).
+    direction: Literal["paid", "received"] = "paid"
 
 
 class WishlistBody(BaseModel):
@@ -281,17 +285,24 @@ def create_router(ctx: WebUIContext) -> APIRouter:
 
     @router.post("/api/me/servers/{server_id}/tricount/{group_id}/settle")
     async def api_settle(request: Request, server_id: str, group_id: str, body: SettleBody):
-        """Record that the member paid back what the group's plan says they owe *to*."""
+        """Record a repayment on a line of the group's plan, in full or in part (P16).
+
+        The member may record what they paid back (``paid``), or what was paid
+        back to them (``received``), never more than the line: either way it
+        only lowers a debt the plan shows, so no one's balance turns against them.
+        """
         session = await ctx.require_guild_member(request, server_id)
         require_section(server_id, "tricount")
-        uid, to = int(session.user_id), int(body.to)
+        uid, other = int(session.user_id), int(body.to)
+        debtor, creditor = (uid, other) if body.direction == "paid" else (other, uid)
         repo = TricountRepository(server_id)
         group = await guarded(repo.find_active_group_by_str(group_id))
         if group is None:
             raise HTTPException(status_code=404, detail="Groupe introuvable.")
         expenses = await guarded(repo.list_group_expenses(group["_id"]))
         plan = settlement_plan(compute_balances(expenses, group["members"]))
-        if (uid, to, body.cents) not in plan:
+        owed = next((n for d, c, n in plan if d == debtor and c == creditor), 0)
+        if not owed or body.cents > owed:
             raise HTTPException(
                 status_code=409,
                 detail="Le bilan du groupe a changé depuis : recharge la page pour voir ce qui reste.",
@@ -304,16 +315,17 @@ def create_router(ctx: WebUIContext) -> APIRouter:
                     "kind": TRANSFER,
                     "amount": round(body.cents / 100, 2),
                     "description": "Remboursement",
-                    "payer": uid,
-                    "recipient": to,
-                    "participants": [to],
+                    "payer": debtor,
+                    "recipient": creditor,
+                    "participants": [creditor],
                     "added_by": uid,
                     "date": clock.now(),
                 }
             )
         )
         logger.info(
-            "Tricount reimbursement recorded from the member space by %s in group %s of %s",
+            "Tricount reimbursement (%s) recorded from the member space by %s in group %s of %s",
+            body.direction,
             session.user_id,
             group_id,
             server_id,
@@ -347,6 +359,60 @@ def create_router(ctx: WebUIContext) -> APIRouter:
             )
         )
         return JSONResponse({"status": "ok"})
+
+    @router.post("/api/me/servers/{server_id}/santa/join")
+    async def api_santa_join(request: Request, server_id: str):
+        """Join the server's Secret Santa, as its "Participer" button does (P16)."""
+        session = await ctx.require_guild_member(request, server_id)
+        require_section(server_id, "santa")
+        repo = SecretSantaRepository()
+        context_id = f"guild_{server_id}"
+        updated = await guarded(repo.add_participant(context_id, int(session.user_id)))
+        if updated is None:
+            current = await guarded(repo.get_session(context_id))
+            if current is None:
+                raise HTTPException(status_code=404, detail="Pas de Père Noël Secret en cours ici.")
+            if current.is_drawn:
+                raise HTTPException(
+                    status_code=409, detail="Le tirage est fait : les inscriptions sont closes."
+                )
+            return JSONResponse({"status": "ok"})  # already in
+        await refresh_santa(server_id, updated)
+        return JSONResponse({"status": "ok"})
+
+    @router.post("/api/me/servers/{server_id}/santa/leave")
+    async def api_santa_leave(request: Request, server_id: str):
+        """Leave it, as "Se retirer" does: the wish list goes with it (P16)."""
+        session = await ctx.require_guild_member(request, server_id)
+        require_section(server_id, "santa")
+        repo = SecretSantaRepository()
+        context_id = f"guild_{server_id}"
+        uid = int(session.user_id)
+        updated = await guarded(repo.remove_participant(context_id, uid))
+        if updated is None:
+            current = await guarded(repo.get_session(context_id))
+            if current is not None and current.is_drawn:
+                raise HTTPException(
+                    status_code=409, detail="Le tirage est fait : tu ne peux plus te retirer."
+                )
+            return JSONResponse({"status": "ok"})  # not in (or no session): nothing to do
+        await guarded(repo.clear_wishlist(context_id, uid))
+        await refresh_santa(server_id, updated)
+        return JSONResponse({"status": "ok"})
+
+    async def refresh_santa(server_id: str, santa: Any) -> None:
+        """Show the new participants on the Discord announcement (best effort)."""
+        if not ctx.bot:
+            return
+        try:
+            await ctx.call_bot(
+                refresh_announcement,
+                ctx.bot,
+                santa,
+                what=f"Secret Santa announcement of {server_id}",
+            )
+        except Exception as e:  # noqa: BLE001 — joined all the same: the next change shows it
+            logger.warning("Secret Santa announcement of %s not refreshed: %s", server_id, e)
 
     # --- My data (/mes-donnees) ------------------------------------------
 

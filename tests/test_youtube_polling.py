@@ -102,7 +102,7 @@ def install_fakes(monkeypatch, module, *, latest, calls):
 
     Repo.stored = {}
     Repo.loads = 0
-    monkeypatch.setattr(module, "fetch", fake_fetch)
+    monkeypatch.setattr("src.integrations.youtube.fetch", fake_fetch)
     monkeypatch.setattr(module, "YoutubeRepository", Repo)
     monkeypatch.setattr(module, "shorten_text", identity)
 

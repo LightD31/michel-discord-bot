@@ -4,6 +4,7 @@
 // nothing here names a member, only a reminder, a group or the person paid back.
 import { EL, VALUE, actionArgs, registerActions } from '../core/actions.js';
 import { api } from '../core/api.js';
+import { setDirty } from '../core/dirty.js';
 import { html } from '../core/html.js';
 import { navigate, routeHash } from '../core/router.js';
 import { state } from '../core/state.js';
@@ -210,15 +211,30 @@ function tricountCardHtml(sid, data) {
                 ${g.owes.map(line => html`
                     <div class="me-row">
                         <div class="me-row-main">Tu dois <strong>${money(line.cents, data.currency)}</strong> à ${name(line.to)}</div>
-                        <button type="button" class="btn btn-success btn-sm" data-click="meSettle"
-                            data-click-args="${actionArgs(sid, g.id, line.to, line.cents, `${money(line.cents, data.currency)} à ${name(line.to)}`, EL)}">J'ai remboursé</button>
+                        ${settleControls(sid, g.id, line.to, line.cents, 'paid', `à ${name(line.to)}`)}
                     </div>`)}
-                ${g.owed.map(line => html`<div class="me-row-sub">${name(line.from)} te doit ${money(line.cents, data.currency)}</div>`)}
+                ${g.owed.map(line => html`
+                    <div class="me-row">
+                        <div class="me-row-main">${name(line.from)} te doit <strong>${money(line.cents, data.currency)}</strong></div>
+                        ${settleControls(sid, g.id, line.from, line.cents, 'received', `de ${name(line.from)}`)}
+                    </div>`)}
                 ${!g.owes.length && !g.owed.length && html`<div class="me-row-sub">Tu es à jour ✅</div>`}
             </div>`)
             : html`<p class="me-empty">Aucun compte en cours. Un groupe se crée avec <code>/tricount groupe</code>.</p>`;
     }
     return html`<div class="card me-card" id="me-tricount"><div class="card-title">💰 Mes comptes</div>${inner}</div>`;
+}
+
+// A line of the plan: its amount (all by default, less for part of it) and the button (P16).
+function settleControls(sid, groupId, other, cents, direction, who) {
+    const max = (cents / 100).toFixed(2);
+    return html`
+        <div class="me-settle">
+            <input type="number" class="form-input me-settle-amount" min="0.01" max="${max}" step="0.01" value="${max}"
+                aria-label="Montant ${direction === 'paid' ? 'remboursé' : 'reçu'} ${who}">
+            <button type="button" class="btn ${direction === 'paid' ? 'btn-success' : 'btn-secondary'} btn-sm" data-click="meSettle"
+                data-click-args="${actionArgs(sid, groupId, other, cents, direction, who, EL)}">${direction === 'paid' ? 'J\'ai remboursé' : 'On m\'a remboursé'}</button>
+        </div>`;
 }
 
 // ── Secret Santa ──────────────────────────────────
@@ -233,7 +249,9 @@ function santaCardHtml(sid, data) {
                 .filter(Boolean).join(' · ');
             let action;
             if (!s.participant) {
-                action = html`<p class="me-empty">Tu n'y participes pas : inscris-toi depuis son message dans Discord.</p>`;
+                action = s.drawn
+                    ? html`<p class="me-empty">Le tirage est fait : les inscriptions sont closes.</p>`
+                    : html`<div class="me-actions"><button type="button" class="btn btn-primary btn-sm" data-click="meSantaJoin" data-click-args="${actionArgs(sid, EL)}">🎁 Participer</button></div>`;
             } else if (s.drawn) {
                 action = html`<p class="me-row-sub">Le tirage est fait : regarde tes MP pour savoir à qui tu offres.</p>
                     ${s.wishlist && html`<p class="me-row-sub">Ta liste : ${s.wishlist}</p>`}`;
@@ -245,6 +263,7 @@ function santaCardHtml(sid, data) {
                             placeholder="Des idées pour ton Père Noël : un livre, un jeu…">${s.wishlist}</textarea>
                         <div class="me-actions">
                             <button type="button" class="btn btn-primary btn-sm" data-click="meSaveWishlist" data-click-args="${actionArgs(sid, EL)}">Enregistrer ma liste</button>
+                            <button type="button" class="btn btn-ghost btn-sm" data-click="meSantaLeave" data-click-args="${actionArgs(sid, EL)}">Me retirer</button>
                         </div>
                     </div>`;
             }
@@ -310,6 +329,7 @@ async function write(btn, url, options, success) {
     try {
         const result = await api(url, options);
         if (success) toast(success, 'success');
+        setDirty(false);  // saved: nothing typed is left to lose (P16)
         return result ?? true;
     } catch (e) {
         if (btn) btn.disabled = false;
@@ -334,6 +354,7 @@ export function meEditReminder(id) {
 
 export function meCancelReminder() {
     me().editing = null;
+    setDirty(false);  // given up on purpose
     refreshBody();
 }
 
@@ -399,12 +420,36 @@ export async function meDeleteBirthday(sid, btn) {
     }
 }
 
-export async function meSettle(sid, groupId, to, cents, label, btn) {
-    if (!(await askConfirm(`Enregistrer que tu as remboursé ${label} ? Le bilan du groupe sera mis à jour.`,
-        { title: 'J\'ai remboursé', confirm: 'Enregistrer' }))) return;
+export async function meSettle(sid, groupId, to, cents, direction, who, btn) {
+    const typed = Math.round(Number.parseFloat(btn?.parentElement?.querySelector('.me-settle-amount')?.value || '') * 100);
+    if (!Number.isInteger(typed) || typed < 1 || typed > cents) {
+        toast(`Le montant va de 0,01 à ${(cents / 100).toLocaleString('fr-FR', { minimumFractionDigits: 2 })}.`, 'error');
+        return;
+    }
+    const amount = (typed / 100).toLocaleString('fr-FR', { minimumFractionDigits: 2 });
+    const question = direction === 'paid'
+        ? `Enregistrer que tu as remboursé ${amount} ${who} ?`
+        : `Enregistrer qu'on t'a remboursé ${amount} ${who} ?`;
+    if (!(await askConfirm(`${question} Le bilan du groupe sera mis à jour.`,
+        { title: direction === 'paid' ? 'J\'ai remboursé' : 'On m\'a remboursé', confirm: 'Enregistrer' }))) return;
     const ok = await write(btn, `${base(sid)}/tricount/${encodeURIComponent(groupId)}/settle`,
-        { method: 'POST', body: JSON.stringify({ to, cents }) }, 'Remboursement enregistré.');
+        { method: 'POST', body: JSON.stringify({ to, cents: typed, direction }) }, 'Remboursement enregistré.');
     if (ok) await loadMeServer(sid);
+}
+
+export async function meSantaJoin(sid, btn) {
+    if (await write(btn, `${base(sid)}/santa/join`, { method: 'POST' },
+        'Tu es inscrit·e au Père Noël Secret ! Écris ta liste d\'envies ci-dessous.')) {
+        await loadMeServer(sid);
+    }
+}
+
+export async function meSantaLeave(sid, btn) {
+    if (!(await askConfirm('Tu ne participeras plus au Père Noël Secret, et ta liste d\'envies sera effacée.',
+        { title: 'Me retirer', confirm: 'Me retirer', danger: true }))) return;
+    if (await write(btn, `${base(sid)}/santa/leave`, { method: 'POST' }, 'Tu t\'es retiré·e du Père Noël Secret.')) {
+        await loadMeServer(sid);
+    }
 }
 
 export async function meSaveWishlist(sid, btn) {
@@ -465,6 +510,8 @@ registerActions({
     meNewReminder,
     meSaveBirthday,
     meSaveReminder,
+    meSantaJoin,
+    meSantaLeave,
     meSaveWishlist,
     meSettle,
     meWhenTyped,

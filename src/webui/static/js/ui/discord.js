@@ -96,3 +96,28 @@ export function discordMessage(content, { warnings = [], error = null } = {}) {
             </div>
         </div>`;
 }
+
+// An embed as Discord frames it (P16): its colour stripe, title, text and fields.
+// *description* is Markdown (drawn as the message's is); *color* six hex digits.
+export function discordEmbed({ title = '', description = '', color = '', author = '', fields = [], footer = '' }, names = {}) {
+    const hex = /^[0-9a-fA-F]{6}$/.test(String(color)) ? `#${color}` : null;
+    return html`
+        <div class="dc-embed" ${hex ? raw(`style="border-left-color:${hex}"`) : ''}>
+            ${author && html`<div class="dc-embed-author">${author}</div>`}
+            ${title && html`<div class="dc-embed-title">${title}</div>`}
+            ${description && html`<div class="dc-embed-text">${discordMarkdown(description, names)}</div>`}
+            ${fields.map(f => html`<div class="dc-embed-field"><div class="dc-embed-field-name">${f.name}</div>
+                <div class="dc-embed-text">${discordMarkdown(f.value, names)}</div></div>`)}
+            ${footer && html`<div class="dc-embed-foot">${footer}</div>`}
+        </div>`;
+}
+
+// The components under a message: a row of buttons, or a drop-down.
+export function discordButtons(buttons) {
+    return html`<div class="dc-buttons">${buttons.map(b => html`
+        <span class="dc-button">${b.emoji && html`<span aria-hidden="true">${b.emoji}</span> `}${b.label}</span>`)}</div>`;
+}
+
+export function discordSelect(placeholder) {
+    return html`<div class="dc-select"><span>${placeholder}</span><span aria-hidden="true">▾</span></div>`;
+}

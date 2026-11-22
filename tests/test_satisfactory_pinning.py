@@ -14,7 +14,8 @@ from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.x509.oid import NameOID
 from pyfactorybridge.exceptions import ServerError
 
-import extensions.satisfactory as satisfactory
+import extensions.satisfactory as satisfactory_ext
+import src.integrations.satisfactory as satisfactory
 
 
 def self_signed(tmp_path):
@@ -79,7 +80,7 @@ def tls_server(tmp_path):
 
 def test_the_pinned_server_is_reached(tls_server):
     address, fingerprint, _ = tls_server
-    api = satisfactory._build_api(address, "tok", fingerprint)
+    api = satisfactory.build_api(address, "tok", fingerprint)
     try:
         assert api.query_server_state() == {}
     finally:
@@ -89,7 +90,7 @@ def test_the_pinned_server_is_reached(tls_server):
 def test_another_certificate_gets_nothing(tls_server):
     address, _, seen = tls_server
     with pytest.raises(ServerError):
-        satisfactory._build_api(address, "tok", "00" * 32)
+        satisfactory.build_api(address, "tok", "00" * 32)
     assert seen == []  # not even the health check reached the server
 
 
@@ -110,8 +111,8 @@ def test_fingerprints_are_normalised(raw, expected):
 
 async def test_an_unpinned_server_is_not_contacted(monkeypatch, caplog):
     built: list = []
-    monkeypatch.setattr(satisfactory, "_build_api", lambda *a: built.append(a))
-    ext = object.__new__(satisfactory.Satisfactory)
+    monkeypatch.setattr(satisfactory_ext, "build_api", lambda *a: built.append(a))
+    ext = object.__new__(satisfactory_ext.Satisfactory)
     ext._apis = {}
     ext._unpinned_warned = set()
     settings = {"satisfactoryServerIp": "a", "satisfactoryServerToken": "t"}

@@ -26,8 +26,7 @@ from features.youtube import (
     wanted,
 )
 from src.core import logging as logutil
-from src.core.config import ModuleConfig, global_config
-from src.core.http import fetch
+from src.core.config import ModuleConfig
 from src.core.logging import log_failure
 from src.discord_ext.channels import fetch_guild_channel
 from src.discord_ext.live_alerts import (
@@ -38,6 +37,7 @@ from src.discord_ext.live_alerts import (
     toggle_alert_role,
 )
 from src.discord_ext.mentions import everyone_if_written
+from src.integrations import youtube as youtube_api_client
 from src.webui.schemas import (
     ModuleHelp,
     SchemaBase,
@@ -128,19 +128,12 @@ logger = logutil.init_logger(__name__)
 YOUTUBE = ModuleConfig("moduleYoutube")
 
 
-def _setting(name: str) -> str:
-    """A field of the global section ``youtube``, read at each call."""
-    return str((global_config().get("youtube") or {}).get(name) or "").strip()
-
-
 def _api_key() -> str:
-    """The YouTube Data API key."""
-    return _setting("youtubeApiKey")
+    return youtube_api_client.api_key()
 
 
 def _api_url() -> str:
-    """The YouTube Data API base URL, without a trailing slash."""
-    return _setting("youtubeApiUrl").rstrip("/")
+    return youtube_api_client.api_url()
 
 
 class YoutubeExtension(Extension):
@@ -262,32 +255,20 @@ class YoutubeExtension(Extension):
 
     @staticmethod
     async def _api(endpoint: str, **params: str | int) -> dict:
-        """GET a YouTube Data API endpoint.
-
-        The key travels in the ``X-Goog-Api-Key`` header, never in the URL, so
-        it can't end up in a logged URL or an error message.
-        """
-        data = await fetch(
-            f"{_api_url()}/{endpoint}",
-            return_type="json",
-            params=params,
-            headers={"X-Goog-Api-Key": _api_key()},
-        )
-        logger.debug(data)
-        return data
+        """GET a YouTube Data API endpoint (``src/integrations/youtube.py``)."""
+        return await youtube_api_client.youtube_api(endpoint, **params)
 
     async def get_uploads(self, user):
         if user not in self.playlist_cache:
-            data = await self._api("channels", part="contentDetails", forHandle=user)
-            uploads = data["items"][0]["contentDetails"]["relatedPlaylists"]["uploads"]
+            uploads = await youtube_api_client.uploads_playlist(user)
             self.playlist_cache[user] = uploads
         else:
             uploads = self.playlist_cache[user]
         return uploads
 
     async def get_video_id(self, uploads):
-        data = await self._api("playlistItems", part="snippet", maxResults=1, playlistId=uploads)
-        return data["items"][0]["snippet"]["resourceId"]["videoId"]
+        snippet = await youtube_api_client.latest_upload(uploads)
+        return snippet["resourceId"]["videoId"]
 
     async def get_youtube_data(self):
         data = {}

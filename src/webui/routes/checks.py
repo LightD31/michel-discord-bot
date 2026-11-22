@@ -8,11 +8,14 @@
 - "Vérifier la connexion" (``POST …/modules/{module}/check``): the module's
   *saved* settings tried against their service, so the stored secrets never
   leave the server. Only modules whose client lives outside their extension
-  are listed in :data:`CHECKS` (a route never imports an extension).
+  are listed in :data:`CHECKS` (a route never imports an extension): LLDAP,
+  and since P16 Satisfactory, Minecraft, Uptime Kuma and YouTube, whose
+  clients moved to ``src/integrations`` or ``features`` for it.
 
 Neither stores nor posts anything; neither is recorded in the audit log.
 """
 
+import asyncio
 from collections.abc import Awaitable, Callable
 from typing import Any
 
@@ -20,13 +23,16 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
+from features.minecraft import MinecraftSettings
 from features.rss.network import fetch_feed
 from features.rss.render import render_text
 from src.core import logging as logutil
 from src.core.errors import IntegrationError
 from src.core.http import BlockedUrlError
 from src.core.urls import redact_url
+from src.integrations import satisfactory, youtube
 from src.integrations.lldap import LldapClient, LldapError, LldapSettings
+from src.integrations.uptime_kuma import UptimeKumaError, UptimeKumaSettings, fetch_monitor_states
 from src.webui.context import WebUIContext
 
 logger = logutil.init_logger("webui.routes.checks")
@@ -69,9 +75,112 @@ async def check_lldap(settings: dict[str, Any]) -> str:
     return f"Connexion à LLDAP réussie : {len(groups)} groupe(s) trouvé(s)."
 
 
+def _incomplete(what: str) -> HTTPException:
+    return HTTPException(status_code=422, detail=f"Réglages incomplets : enregistre {what}.")
+
+
+def _unreachable(what: str) -> HTTPException:
+    return HTTPException(status_code=502, detail=f"❌ {what}")
+
+
+async def check_satisfactory(settings: dict[str, Any]) -> str:
+    """Reach the saved server through its pinned certificate and read its state (P16)."""
+    connection = satisfactory.connection_of(settings)
+    if connection is None:
+        raise _incomplete("l'adresse du serveur et son jeton d'API")
+    address, token, fingerprint = connection
+    if fingerprint is None:
+        raise _incomplete("l'empreinte SHA-256 du certificat (le jeton n'est envoyé qu'à elle)")
+    try:
+        api = await satisfactory.call(satisfactory.build_api, address, token, fingerprint)
+        state = (await satisfactory.call(api.query_server_state))["serverGameState"]
+    except Exception as e:  # noqa: BLE001 — what the admin needs is that it failed
+        logger.info("Satisfactory check of %s failed: %s", address, e)
+        raise _unreachable(
+            "Le serveur ne répond pas, refuse le jeton, ou son certificat n'a pas cette empreinte."
+        ) from e
+    return (
+        f"Serveur joignable : {state.get('numConnectedPlayers', 0)} joueur(s) connecté(s), "
+        f"palier {state.get('techTier', '?')}."
+    )
+
+
+MINECRAFT_TIMEOUT_SECONDS = 10.0
+
+
+async def check_minecraft(settings: dict[str, Any]) -> str:
+    """Ask the saved Minecraft server for its status, as the status task does (P16)."""
+    from mcstatus import JavaServer
+
+    mc = MinecraftSettings.from_config(settings)
+    if not mc.address and not mc.ip:
+        raise _incomplete("l'adresse du serveur")
+
+    def query():
+        try:
+            server = JavaServer.lookup(mc.address) if mc.address else JavaServer(mc.ip, mc.port)
+        except Exception:  # noqa: BLE001 — the IP and port are the fallback, as in the task
+            server = JavaServer(mc.ip, mc.port)
+        return server.status()
+
+    try:
+        status = await asyncio.wait_for(asyncio.to_thread(query), MINECRAFT_TIMEOUT_SECONDS)
+    except Exception as e:  # noqa: BLE001
+        logger.info("Minecraft check of %s failed: %s", mc.address or mc.ip, e)
+        raise _unreachable("Le serveur ne répond pas à cette adresse.") from e
+    return (
+        f"Serveur joignable : {status.players.online}/{status.players.max} joueur(s), "
+        f"version {status.version.name}."
+    )
+
+
+async def check_uptime(settings: dict[str, Any]) -> str:  # noqa: ARG001 — Kuma is global
+    """Read Uptime Kuma's monitors with the bot's URL and key (P16)."""
+    kuma = UptimeKumaSettings.load()
+    if not kuma.metrics_configured:
+        raise HTTPException(
+            status_code=422,
+            detail="Uptime Kuma n'est pas configuré : un développeur doit renseigner son URL et sa clé d'API.",
+        )
+    try:
+        states = await fetch_monitor_states(kuma)
+    except UptimeKumaError as e:
+        logger.info("Uptime Kuma check failed: %s", e)
+        raise _unreachable("Uptime Kuma ne répond pas ou refuse la clé d'API.") from e
+    return f"Uptime Kuma répond : {len(states)} sonde(s) visible(s)."
+
+
+YOUTUBE_CHECKED_CHANNELS = 5
+
+
+async def check_youtube(settings: dict[str, Any]) -> str:
+    """The API key, and the latest video of the first followed channels (P16)."""
+    if not youtube.api_key() or not youtube.api_url():
+        raise HTTPException(
+            status_code=422,
+            detail="L'API YouTube n'est pas configurée : un développeur doit renseigner sa clé.",
+        )
+    handles = list(settings.get("youtubeChannelList") or {})[:YOUTUBE_CHECKED_CHANNELS]
+    if not handles:
+        raise _incomplete("au moins une chaîne à suivre")
+    lines = []
+    for handle in handles:
+        try:
+            latest = await youtube.latest_upload(await youtube.uploads_playlist(handle))
+            lines.append(f"{handle} : « {latest.get('title', '?')} »")
+        except Exception as e:  # noqa: BLE001 — one channel wrong is said, the rest checked
+            logger.info("YouTube check of %s failed: %s", handle, e)
+            lines.append(f"{handle} : introuvable (le @ de la chaîne est-il juste ?)")
+    return "Dernière vidéo de chaque chaîne : " + " · ".join(lines)
+
+
 # module → the check of its saved settings, which returns what to tell the admin.
 CHECKS: dict[str, Callable[[dict[str, Any]], Awaitable[str]]] = {
     "moduleLldap": check_lldap,
+    "moduleMinecraft": check_minecraft,
+    "moduleSatisfactory": check_satisfactory,
+    "moduleUptime": check_uptime,
+    "moduleYoutube": check_youtube,
 }
 
 

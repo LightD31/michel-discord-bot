@@ -6,7 +6,7 @@ import time
 import pytest
 from pyfactorybridge.exceptions import ServerError
 
-import extensions.satisfactory as satisfactory
+import src.integrations.satisfactory as satisfactory
 
 
 @pytest.fixture
@@ -23,7 +23,7 @@ def test_the_client_gives_up_on_a_silent_server(silent_server, monkeypatch):
     monkeypatch.setattr(satisfactory, "REQUEST_TIMEOUT", (0.5, 0.5))
     started = time.monotonic()
     with pytest.raises(ServerError):
-        satisfactory._build_api(silent_server, "token", "ab" * 32)
+        satisfactory.build_api(silent_server, "token", "ab" * 32)
     assert time.monotonic() - started < 5
 
 
@@ -43,7 +43,7 @@ def test_every_request_gets_the_timeout(monkeypatch):
 async def test_a_call_is_bounded_even_if_a_request_hangs(monkeypatch):
     monkeypatch.setattr(satisfactory, "CALL_TIMEOUT_SECONDS", 0.2)
     with pytest.raises(TimeoutError):
-        await satisfactory._call(time.sleep, 1)
+        await satisfactory.call(time.sleep, 1)
 
 
 async def test_the_client_is_built_with_the_token(monkeypatch):
@@ -59,7 +59,7 @@ async def test_the_client_is_built_with_the_token(monkeypatch):
         return Response()
 
     monkeypatch.setattr(satisfactory.requests.Session, "request", fake_request)
-    api = await satisfactory._call(satisfactory._build_api, "host:7777", "tok", "ab" * 32)
+    api = await satisfactory.call(satisfactory.build_api, "host:7777", "tok", "ab" * 32)
     assert api.URL == "https://host:7777/api/v1/"
     assert calls == ["HealthCheck"]
     assert api.auth is not None

@@ -287,6 +287,46 @@ def test_a_new_role_menu_starts_with_empty_fields(page, dashboard, monkeypatch):
     )
     assert payload["max_roles"] is None  # a new menu: no limit
 
+    # P16: the builder shows the menu as Discord will, as it is typed.
+    page.get_by_label("Présentation").select_option("buttons")
+    page.locator("#rrf-title").fill("Tes <b>jeux</b>")
+    page.locator('[data-rrf="emoji"]').first.fill("🎮")
+    page.locator('[data-rrf="label"]').first.fill("Gamer")
+    preview = page.locator("#rrf-preview")
+    preview.locator(".dc-button", has_text="Gamer").wait_for()
+    assert "Tes <b>jeux</b>" in preview.locator(".dc-embed-title").inner_text()  # text, not markup
+    page.get_by_label("Rôles par membre").fill("1")
+    assert "Un seul rôle à la fois" in preview.inner_text()
+    page.get_by_label("Présentation").select_option("select")
+    assert preview.locator(".dc-select").inner_text().startswith("Choisis tes rôles")
+
+
+def test_an_embed_shows_as_it_will_be_published(page, dashboard, monkeypatch):
+    """P16: each embed of the Embed manager previews its colour, title and links."""
+    import extensions.embedmanager  # noqa: F401 — registers the schema
+    import src.webui.routes.config as config_routes
+
+    key = "moduleEmbedManager"
+    monkeypatch.setitem(config_routes.MODULE_SCHEMAS, key, schemas.MODULE_SCHEMAS[key])
+    embed = {
+        "title": "Liens utiles",
+        "color": "e91e63",
+        "links": [{"title": "Site", "url": "https://x.example"}],
+    }
+    config_store.mutate(
+        lambda data: data["servers"][GUILD].update({key: {"enabled": True, "embeds": [embed]}})
+    )
+    page.goto(f"http://127.0.0.1:{dashboard['port']}/#/module/{GUILD}/{key}")
+    page.reload()
+    preview = page.locator(".embedlist-entry .embed-preview").first
+    preview.locator(".dc-embed").wait_for()
+    assert preview.locator(".dc-embed-title").inner_text() == "Liens utiles"
+    assert preview.locator(".dc-embed-field-name").inner_text() == "Site"
+    style = preview.locator(".dc-embed").get_attribute("style")
+    assert "e91e63" in style
+    page.locator('.embedlist-entry [data-embed-field="title"]').first.fill("Nos liens")
+    page.locator(".embed-preview .dc-embed-title", has_text="Nos liens").wait_for()
+
 
 def test_an_expired_session_keeps_the_page_and_the_typing(page, dashboard):
     """A 401 used to swap the page for the login screen, edits and all (F02)."""
@@ -541,6 +581,9 @@ def test_a_streamer_keeps_its_mention_role_and_message(page, dashboard, monkeypa
     entry.wait_for()
     assert entry.locator('[data-streamer-field="twitchMentionRoleId"]').input_value() == "555"
     entry.get_by_label("Message au début du live").fill("{streamer} est en live !")
+    # P16: the streamer's own message gets the live preview, rendered by the bot.
+    entry.locator(".discord-preview .dc-message").first.wait_for()
+    assert "TaChaîne est en live !" in entry.locator(".discord-preview").inner_text()
     save(page)
     page.locator("#toasts .toast", has_text="Configuration sauvegardée").first.wait_for()
     stored = json.loads(dashboard["config"].read_text(encoding="utf-8"))
@@ -648,11 +691,33 @@ def test_a_member_lands_on_their_space_and_marks_a_debt_paid(member_page, dashbo
     assert page.locator("#me-reminders .me-row-title").inner_text() == "<b>Sortir</b> le chien"
     assert "Tu dois 23,40 € à Léa" in page.locator("#me-tricount").inner_text()
     assert page.locator(".sidebar").get_by_text("Accueil").count() == 0
+    # P16: part of the debt; the amount starts at the whole line.
+    amount = page.get_by_label("Montant remboursé à Léa")
+    assert amount.input_value() == "23.40"
+    amount.fill("10")
     page.get_by_role("button", name="J'ai remboursé").click()
     page.locator("#confirm-ok").click()
     page.wait_for_function("() => document.querySelectorAll('#toasts .toast').length > 0")
-    assert sent == [{"to": "8", "cents": 2340}]
+    assert sent == [{"to": "8", "cents": 1000, "direction": "paid"}]
     assert "Remboursement enregistré." in toasts(page)
+
+
+def test_a_half_typed_reminder_is_not_lost_by_leaving(member_page, dashboard):
+    """P16: the member space's forms ask before dropping what was typed."""
+    page = member_page
+    page.route(
+        f"**/api/me/servers/{GUILD}",
+        lambda route: route.fulfill(
+            status=200, content_type="application/json", body=json.dumps(MEMBER_SPACE)
+        ),
+    )
+    page.goto(f"http://127.0.0.1:{dashboard['port']}/")
+    page.wait_for_selector("#me-reminders")
+    page.get_by_role("button", name="+ Nouveau rappel").click()
+    page.locator("#me-reminder-message").fill("Appeler mamie")
+    page.evaluate("location.hash = '#/home'")
+    confirm_dialog(page).get_by_role("button", name="Annuler").click()
+    assert page.locator("#me-reminder-message").input_value() == "Appeler mamie"
 
 
 def test_a_member_cannot_reach_a_server_page(member_page, dashboard):
