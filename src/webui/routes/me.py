@@ -6,7 +6,7 @@ server they share with Michel:
 
 - ``GET /api/me/servers`` — the servers, and the sections each one has on;
 - ``GET /api/me/servers/{id}`` — their XP card, reminders, birthday, Tricount
-  balances and Secret Santa (:mod:`src.webui.member_space`);
+  balances, Secret Santa and badges (:mod:`src.webui.member_space`);
 - reminders created, changed and deleted; the birthday set or removed; a
   Tricount repayment recorded, in full or in part, paid or received; the Secret
   Santa joined or left, and its wish list;
@@ -121,6 +121,7 @@ async def server_overview(server_id: str, user_id: str) -> dict[str, Any]:
         "birthday": member_space.birthday,
         "tricount": member_space.tricount,
         "santa": member_space.santa,
+        "badges": member_space.badges,
     }
     out: dict[str, Any] = {"sections": sections, "unavailable": []}
     for name in sections:

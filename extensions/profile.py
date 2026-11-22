@@ -3,8 +3,8 @@
 The rank card of ``/niveau`` (level, rank, XP), with what the member left
 across the server underneath: the XP of the current season, messages on the
 starboard and the stars they gathered, tracks added to the playlist,
-suggestions approved, giveaways won, and the day of their birthday (never the
-year). Each line shows only where its module is on and there is something to
+suggestions approved, giveaways won, the day of their birthday (never the
+year) and the badges they won (P18). Each line shows only where its module is on and there is something to
 say; all of it is already public on the server. Lives where XP is on.
 """
 
@@ -29,6 +29,7 @@ from interactions import (
     user_context_menu,
 )
 
+from features.achievements import AchievementsRepository, Badge, active_badges
 from features.profile import Footprint, ProfileRepository
 from features.secretsanta.dates import MONTH_NAMES
 from features.xp import XpRepository, calculate_level, render_rank_card
@@ -62,7 +63,12 @@ def plural(count: int, word: str) -> str:
     return f"{thousands(count)} {word}{'s' if count > 1 else ''}"
 
 
-def footprint_lines(found: Footprint, season_label: str | None, season_xp: int | None) -> list[str]:
+def footprint_lines(
+    found: Footprint,
+    season_label: str | None,
+    season_xp: int | None,
+    badges: list[Badge] | None = None,
+) -> list[str]:
     """The card's lines, each only when its module is on and there is something to show."""
     lines = []
     if season_label is not None and season_xp is not None:
@@ -82,6 +88,8 @@ def footprint_lines(found: Footprint, season_label: str | None, season_xp: int |
         day = found.birthday
         first = "1er" if day.day == 1 else str(day.day)
         lines.append(f"🎂 Anniversaire le {first} {MONTH_NAMES[day.month - 1]}")
+    if badges:
+        lines.append("🏆 " + " · ".join(badge.label for badge in badges))
     return lines
 
 
@@ -104,6 +112,7 @@ class ProfileExtension(Extension):
         "moduleSuggestions",
         "moduleGiveaway",
         "moduleBirthday",
+        "moduleAchievements",
     )
 
     def __init__(self, bot: Client):
@@ -149,6 +158,9 @@ class ProfileExtension(Extension):
             stats = await self.xp_repo(guild_id).get_user(uid)
             rank = await self.xp_repo(guild_id).get_user_rank(uid) if stats else None
             found = await self.profile_repo(guild_id).footprint(uid, sections)
+            playing = active_badges(guild_id)
+            won = await AchievementsRepository(guild_id).badges_of(uid) if playing else {}
+            badges = [badge for badge in playing if badge.key in won]
             season_label = season_xp = None
             if settings.get("seasonsEnabled"):
                 season = season_of(clock.now(), settings.get("seasonMonths", 1))
@@ -161,7 +173,7 @@ class ProfileExtension(Extension):
 
         name = str(getattr(member, "display_name", None) or getattr(member, "username", uid))
         embed = card("moduleXp", title=f"Profil de {name}")
-        lines = footprint_lines(found, season_label, season_xp)
+        lines = footprint_lines(found, season_label, season_xp, badges)
         if stats is None:
             lines.insert(0, "Pas encore d'XP sur ce serveur.")
         embed.description = "\n".join(lines) or "Rien à montrer pour l'instant."

@@ -14,6 +14,7 @@ import pytest
 from fastapi import HTTPException
 
 import src.webui.routes.me as me_routes
+from features.achievements import AchievementsRepository
 from features.birthday import BirthdayEntry, BirthdayRepository
 from features.reminders import Reminder, ReminderRepository
 from features.secretsanta import SecretSantaRepository, SecretSantaSession
@@ -86,6 +87,24 @@ async def seed(gid: str) -> dict:
     await xp.insert_new_user(ME, 300, now.timestamp())
     await xp.insert_new_user(OTHER, 900, now.timestamp())
     return {"mine": mine, "theirs": theirs}
+
+
+async def test_my_badges_and_those_left(guild, store_config):
+    store_config(
+        {
+            "servers": {
+                guild: {"moduleAchievements": {"enabled": True}, "moduleXp": {"enabled": True}}
+            }
+        }
+    )
+    now = clock.now()
+    await AchievementsRepository(guild).award("seniority", [ME], now)
+    await AchievementsRepository(guild).award("voice", [OTHER], now)
+    out = body_of(await endpoint(guild, "GET", "/api/me/servers/{server_id}")(None, guild))
+    assert out["sections"] == ["xp", "badges"]
+    won = {b["key"]: b["earnedAt"] for b in out["badges"]}
+    assert set(won) == {"voice", "seniority"}  # star needs the starboard on, dj Spotify…
+    assert won["seniority"] is not None and won["voice"] is None  # OTHER's isn't mine
 
 
 async def test_the_overview_holds_my_data_and_never_another_members(guild):

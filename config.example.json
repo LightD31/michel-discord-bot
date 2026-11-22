@@ -153,6 +153,16 @@
     "servers": {
         "YOUR_SERVER_ID": {
             "discord2name": {},
+            "moduleAchievements": {
+                "enabled": false,
+                "achievementsChannelId": "",
+                "badgeStar": true,
+                "badgeVoice": true,
+                "badgeDj": true,
+                "badgeIdeas": true,
+                "badgeSeniority": true,
+                "badgeFeur": true
+            },
             "moduleBirthday": {
                 "enabled": false,
                 "birthdayChannelId": "",

@@ -74,6 +74,7 @@ MICHEL = "michel"
 LOOKS: dict[str, Look] = {
     MICHEL: Look("🤖", "Michel", Palette.BLURPLE),
     "discord2name": Look("👤", "Discord → Prénoms", Palette.GREY),
+    "moduleAchievements": Look("🏆", "Succès", Palette.AMBER),
     "moduleBirthday": Look("🎂", "Anniversaires", Palette.PINK),
     "moduleConfrerie": Look("📚", "Confrérie", Palette.BROWN),
     "moduleCustomCommands": Look("✨", "Commandes personnalisées", Palette.CYAN),

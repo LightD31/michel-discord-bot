@@ -32,6 +32,12 @@ async def seed(mongo):
     await g("feur_stats").insert_many([{"_id": f"user_{ME}", "total": 2}, {"_id": "guild_total"}])
     await g("feur_events").insert_many([{"user_id": ME}, {"user_id": OTHER}])
     await g("users").insert_one({"_id": ME, "username": "me"})
+    await g("achievements").insert_many(
+        [
+            {"_id": f"{ME}:star", "user_id": ME, "badge": "star"},
+            {"_id": f"{OTHER}:star", "user_id": OTHER, "badge": "star"},
+        ]
+    )
     await g("polls").insert_one({"_id": "p", "author_id": ME, "votes": {ME: [1], OTHER: [0]}})
     await g("suggestions").insert_one({"_id": "s", "author_id": OTHER, "votes": {ME: "up"}})
     await g("playlistItemsFull").insert_one({"_id": "t", "added_by": ME})
@@ -74,6 +80,7 @@ async def test_the_export_holds_the_member_and_nobody_else(mongo):
     mine = data["guilds"][mongo.guild_id]
     assert [d["_id"] for d in mine["xp"]] == [ME]
     assert len(mine["xp_events"]) == 2
+    assert [d["badge"] for d in mine["achievements"]] == ["star"]  # theirs only
     polls = mine["polls"]
     assert [p.get("votes") for p in polls] == [None, {ME: [1]}]  # never the others' votes
     assert mine["infractions"][0]["type"] == "warn"
@@ -100,6 +107,7 @@ async def test_forgetting_deletes_anonymises_and_keeps(mongo):
     assert await g("feur_stats").count_documents({}) == 1  # the guild total stays
     assert await g("feur_events").count_documents({"user_id": ME}) == 0
     assert await g("feur_events").count_documents({}) == 1
+    assert [d["user_id"] async for d in g("achievements").find()] == [OTHER]
 
     poll = await g("polls").find_one({"_id": "p"})
     assert poll["author_id"] == NOBODY and ME not in poll["votes"] and OTHER in poll["votes"]

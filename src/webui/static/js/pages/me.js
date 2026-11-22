@@ -85,6 +85,7 @@ function serverHtml(sid) {
     if (data === null) return html`<div class="card"><p class="me-empty">Ce serveur ne répond pas pour l'instant : réessaie dans un instant.</p></div>`;
     const cards = [
         data.sections.includes('xp') && xpCardHtml(server, data),
+        data.sections.includes('badges') && badgesCardHtml(data),
         data.sections.includes('reminders') && remindersCardHtml(sid, data),
         data.sections.includes('birthday') && birthdayCardHtml(sid, data),
         data.sections.includes('tricount') && tricountCardHtml(sid, data),
@@ -120,6 +121,25 @@ function xpCardHtml(server, data) {
             <div class="progress-fill" style="width:${Math.min(100, Math.round((xp.xpInLevel / Math.max(1, xp.xpToNext)) * 100))}%"></div>
         </div>`;
     return html`<div class="card me-card" id="me-xp"><div class="card-title">${server.name}</div>${inner}</div>`;
+}
+
+// ── Badges (P18) ──────────────────────────────────
+function badgesCardHtml(data) {
+    const all = data.badges || [];
+    const won = all.filter(b => b.earnedAt);
+    const row = b => html`
+        <div class="me-badge ${b.earnedAt ? 'is-won' : ''}">
+            <span class="me-badge-emoji" aria-hidden="true">${b.emoji}</span>
+            <div class="me-row-main">
+                <div class="me-row-title">${b.name}</div>
+                <p class="me-row-sub">${b.earnedAt ? `Débloqué le ${new Date(b.earnedAt).toLocaleDateString('fr-FR')}` : `À débloquer : ${b.goal}`}</p>
+            </div>
+        </div>`;
+    const inner = unavailable(data, 'badges') || (all.length
+        ? html`<p class="me-row-sub">${won.length} sur ${all.length} · vérifiés toutes les heures</p>
+               <div class="me-badges">${[...won, ...all.filter(b => !b.earnedAt)].map(row)}</div>`
+        : html`<p class="me-empty">Aucun badge actif sur ce serveur.</p>`);
+    return html`<div class="card me-card" id="me-badges"><div class="card-title">🏆 Succès</div>${inner}</div>`;
 }
 
 // ── Reminders ─────────────────────────────────────

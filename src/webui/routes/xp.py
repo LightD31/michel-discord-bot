@@ -12,6 +12,7 @@ from datetime import UTC, datetime
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 
+from features.achievements import AchievementsRepository, active_badges
 from features.userinfo.repository import UserInfoRepository
 from features.xp import (
     ALLOWED_RANGES,
@@ -71,13 +72,21 @@ async def collect_xp_stats(server_id: str, days: int) -> dict:
         "period_voice_minutes": voice_ticks * VOICE_TICK_SECONDS // 60,
         "active_members": active_total,
     }
+    top = top_members(docs, names)
+    playing = active_badges(server_id)
+    if playing:
+        # The badges of each top member (P18), as emojis in the server's order.
+        won = await AchievementsRepository(server_id).badges_of_many(top_ids)
+        for row in top:
+            keys = set(won.get(str(row.get("user_id", "")), []))
+            row["badges"] = [{"emoji": b.emoji, "name": b.name} for b in playing if b.key in keys]
     return {
         "days": days,
         "timezone": STATS_TIMEZONE,
         "summary": summary,
         "daily": daily,
         "levels": level_distribution(docs),
-        "top": top_members(docs, names),
+        "top": top,
         "heatmap": build_heatmap(heatmap),
     }
 

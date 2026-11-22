@@ -191,6 +191,7 @@ def demo_config(data_dir: str, port: int, mongo_url: str) -> dict[str, Any]:
                     "ignoredRoleIds": [role["Modérateur"]],
                 },
                 "moduleGiveaway": {"enabled": True, "giveawayEmoji": "🎉"},
+                "moduleAchievements": {"enabled": True, "achievementsChannelId": CH["général"]},
                 "moduleGazette": {
                     "enabled": True,
                     "gazetteChannelId": CH["général"],
@@ -615,6 +616,21 @@ async def seed(bot: FakeBot, *, days: int = 60) -> None:
                 "expires_at": now + timedelta(days=60),
             }
         )
+
+    # Badges (P18): a few won, by the first members of the leaderboard.
+    won = {0: ["star", "voice", "seniority"], 1: ["voice", "dj"], 2: ["star"], 3: ["ideas"]}
+    await db["achievements"].insert_many(
+        [
+            {
+                "_id": f"{humans[i].id}:{badge}",
+                "user_id": str(humans[i].id),
+                "badge": badge,
+                "earned_at": now - timedelta(days=3 * (i + n)),
+            }
+            for i, badges in won.items()
+            for n, badge in enumerate(badges)
+        ]
+    )
 
     # Two reported messages (P15): one to handle, one already dismissed.
     await db["reports"].insert_many(
