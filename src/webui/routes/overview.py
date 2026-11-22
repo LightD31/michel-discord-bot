@@ -1,11 +1,15 @@
 """The top of a server page (C2): the week's activity, the latest changes, each module's last edit.
 
+Each module card also says when the module last did its own work in the
+background (``lastRuns``, P15): the latest success of its tasks, from the bot's
+task health; ``null`` without a bot.
+
 The activity comes from the XP log (``xp_events``), so it is only known where
 the XP module is on; the changes from the dashboard's audit log. Each part
 that can't be read is ``null`` rather than failing the page.
 """
 
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from fastapi import APIRouter, Request
@@ -15,8 +19,10 @@ from features.xp import STATS_TIMEZONE, XpRepository
 from src.core import clock
 from src.core import logging as logutil
 from src.core.errors import DatabaseError
+from src.core.health import health
 from src.webui.audit import AuditRepository, entry_to_json
 from src.webui.context import WebUIContext
+from src.webui.guild_health import module_last_runs
 
 logger = logutil.init_logger("webui.routes.overview")
 
@@ -44,7 +50,18 @@ def create_router(ctx: WebUIContext) -> APIRouter:
         await ctx.require_guild_admin(request, server_id)
         server = ctx.get_full_config().get("servers", {}).get(server_id)
         xp = server.get(XP_MODULE) if isinstance(server, dict) else None
-        out: dict[str, Any] = {"activity": None, "recent": None, "lastChanges": None}
+        out: dict[str, Any] = {
+            "activity": None,
+            "recent": None,
+            "lastChanges": None,
+            "lastRuns": None,
+        }
+        bot = getattr(ctx, "bot", None)
+        if bot is not None:
+            runs = module_last_runs(bot, health.snapshot())
+            out["lastRuns"] = {
+                module: datetime.fromtimestamp(at, UTC).isoformat() for module, at in runs.items()
+            }
         if isinstance(xp, dict) and xp.get("enabled"):
             try:
                 out["activity"] = await week_activity(server_id)

@@ -44,6 +44,7 @@ class SmokeConfig(SchemaBase):
     )
     rounds: int = ui("Nombre de tours", "number", default=3, ge=1, le=10)
     notify: bool = ui("Prévenir les membres", "boolean", default=True)
+    board: str | None = ui("Forum suivi", "forum")
 
 
 def free_port() -> int:
@@ -204,10 +205,10 @@ def test_a_validation_error_is_readable(page):
     """FastAPI's list of errors used to show as "[object Object]" (F03)."""
     page.get_by_label("Message d'accueil").fill("x" * 40)
     save(page)
-    page.locator("#toasts .toast.error").first.wait_for()
+    page.locator("#toasts .toast.error", has_text="Configuration invalide").wait_for()
     texts = " ".join(toasts(page))
     assert "[object Object]" not in texts
-    assert "greeting" in texts
+    assert "« Message d'accueil » : 20 caractères au plus" in texts  # its label (P15)
 
 
 def test_a_number_shows_its_bounds_and_one_outside_them_is_refused(page, dashboard):
@@ -219,9 +220,9 @@ def test_a_number_shows_its_bounds_and_one_outside_them_is_refused(page, dashboa
     rounds.fill("-3")
     assert rounds.evaluate("el => el.matches(':invalid')")
     save(page)
-    page.locator("#toasts .toast.error").first.wait_for()
+    page.locator("#toasts .toast.error", has_text="Configuration invalide").wait_for()
     texts = " ".join(toasts(page))
-    assert "rounds: doit être supérieur ou égal à 1" in texts, texts
+    assert "« Nombre de tours » : doit être supérieur ou égal à 1" in texts, texts
     assert not any("sauvegardée" in t for t in toasts(page))
     stored = json.loads(dashboard["config"].read_text(encoding="utf-8"))
     assert "rounds" not in stored["servers"][GUILD][MODULE]
@@ -375,9 +376,16 @@ def test_the_secret_santa_card_shows_the_session_and_draws(page, dashboard, monk
     draws = []
 
     def answer(route):
-        if route.request.method == "POST":
+        if route.request.url.endswith("/reveal"):
+            pairs = [
+                {"giver": "Alice", "receiver": "<b>Bob</b>"},
+                {"giver": "<b>Bob</b>", "receiver": "Alice"},
+            ]
+            route.fulfill(json={"pairs": pairs})
+        elif route.request.method == "POST":
             draws.append(json.loads(route.request.post_data))
             summary["is_drawn"], summary["sent"], summary["received"] = True, 1, 0
+            summary["can_reveal"] = True  # an administrator, as the API says
             route.fulfill(json={"count": 2, "subgroups": 1, "failed_dms": []})
         else:
             route.fulfill(json={"session": summary})
@@ -399,6 +407,15 @@ def test_the_secret_santa_card_shows_the_session_and_draws(page, dashboard, monk
     card.get_by_text("✅ Tirage effectué").wait_for()
     assert "📦 Colis envoyés" in card.inner_text()
     assert card.get_by_role("button", name="🎲 Lancer le tirage").count() == 0
+
+    # P15: an administrator reveals who gives to whom, after a confirmation.
+    card.get_by_role("button", name="🔍 Révéler les attributions").click()
+    confirm_dialog(page).get_by_role("button", name="🔍 Révéler").click()
+    pairs = card.locator(".santa-pairs li")
+    pairs.first.wait_for()
+    assert pairs.first.inner_text().split() == ["Alice", "→", "<b>Bob</b>"]  # text, not markup
+    card.get_by_role("button", name="Masquer").click()
+    assert pairs.count() == 0
 
 
 def test_a_cancelled_draw_sends_nothing(page, dashboard, monkeypatch):
@@ -717,3 +734,68 @@ def test_the_public_xp_page_shows_the_season_where_there_is_one(browser, dashboa
     assert not card.is_visible()
     assert errors == [], errors
     context.close()
+
+
+def test_a_forum_field_offers_the_forums_only(page, dashboard):
+    """P15: the Confrérie's forums are picked by name; a forum is never a channel to post in."""
+    channels = {
+        "channels": [
+            {"id": "10", "name": "général", "parent_id": None, "position": 0,
+             "is_thread": False, "archived": False, "is_forum": False},
+            {"id": "20", "name": "textes", "parent_id": None, "position": 1,
+             "is_thread": False, "archived": False, "is_forum": True},
+        ],
+        "categories": [],
+    }  # fmt: skip
+    page.route(f"**/api/servers/{GUILD}/channels", lambda r: r.fulfill(json=channels))
+    page.reload()
+    select = page.locator('[data-field="board"] select')
+    select.locator('option[value="20"]').wait_for(state="attached")
+    options = select.locator("option").all_inner_texts()
+    assert "#textes" in options and "#général" not in options
+    select.select_option("20")
+    save(page)
+    page.wait_for_timeout(500)
+    stored = json.loads(dashboard["config"].read_text(encoding="utf-8"))
+    assert stored["servers"][GUILD][MODULE]["board"] == "20"
+
+
+def test_the_moderation_page_lists_the_reports(page, dashboard, monkeypatch):
+    """P15: the reported messages, named, with links to the message and its card."""
+    import src.webui.routes.config as config_routes
+
+    class Moderation(SchemaBase):
+        __label__ = "Modération"
+        enabled: bool = enabled_field()
+
+    monkeypatch.setitem(schemas._MODULE_REGISTRY, "moduleModeration", Moderation)
+    monkeypatch.setitem(
+        config_routes.MODULE_SCHEMAS, "moduleModeration", schemas.MODULE_SCHEMAS["moduleModeration"]
+    )
+    config_store.mutate(
+        lambda data: data["servers"][GUILD].update(moduleModeration={"enabled": True})
+    )
+    report = {
+        "message_id": "500", "channel_id": "10", "author_id": "7", "status": "open",
+        "handled_by": None, "handled_at": None, "created_at": "2026-11-20T10:00:00+00:00",
+        "reporters": [{"user_id": "8", "reason": "<script>spam</script>", "at": "2026-11-20T10:00:00+00:00"}],
+        "message_url": f"https://discord.com/channels/{GUILD}/10/500", "card_url": None,
+    }  # fmt: skip
+    asked = []
+
+    def answer(route):
+        asked.append(route.request.url.split("?")[-1])
+        route.fulfill(json={"reports": [report] if "status=open" in route.request.url else []})
+
+    page.route(f"**/api/servers/{GUILD}/reports**", answer)
+    page.route(
+        f"**/api/servers/{GUILD}/infractions**", lambda r: r.fulfill(json={"infractions": []})
+    )
+    page.goto(f"http://127.0.0.1:{dashboard['port']}/#/module/{GUILD}/moduleModeration")
+    item = page.locator("#reports-list .report-item")
+    item.wait_for()
+    assert "<script>spam</script>" in item.inner_text()  # a reason is text
+    assert item.get_by_role("link", name="Voir le message").get_attribute("href").endswith("/500")
+    page.locator("#report-filter").select_option("")
+    page.locator("#reports-list", has_text="Aucun signalement").wait_for()
+    assert asked == ["status=open", "status="]

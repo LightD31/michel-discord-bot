@@ -1,6 +1,7 @@
 // The infraction browser.
 import { actionArgs, registerActions } from '../core/actions.js';
 import { api } from '../core/api.js';
+import { html } from '../core/html.js';
 import { escapeHtml } from '../core/util.js';
 import { getDiscord2NameMap, memberOptionLabel, memberStore, resolveServerMembers } from '../forms/pickers/members.js';
 import { askConfirm } from '../ui/confirm.js';
@@ -74,6 +75,60 @@ export async function loadInfractions(serverId) {
     }
 }
 
+// ── Moderation: the reported messages (P15) ─────────────────────────
+export const REPORT_STATUS_LABELS = {
+    open: '🚩 À traiter', deleted: '🗑️ Message supprimé', warned: '⚠️ Averti',
+    timed_out: '🔇 Exclu', dismissed: '✅ Classé sans suite',
+};
+
+export async function loadReports(serverId) {
+    const container = document.getElementById('reports-list');
+    if (!container) return;
+    container.innerHTML = `<div class="loading"><div class="spinner"></div></div>`;
+    const status = document.getElementById('report-filter')?.value ?? 'open';
+    let data;
+    try {
+        data = await api(`/api/servers/${serverId}/reports?status=${encodeURIComponent(status)}`, { quiet: true });
+    } catch (e) {
+        container.innerHTML = String(html`<div class="empty-state"><p>${e.message || String(e)}</p></div>`);
+        return;
+    }
+    if (data === null) {
+        container.innerHTML = String(html`<div class="empty-state"><p>🔒 Les signalements sont réservés aux modérateurs : il faut la permission « Exclure temporairement des membres ».</p></div>`);
+        return;
+    }
+    const items = data?.reports || [];
+    if (items.length === 0) {
+        container.innerHTML = String(html`<div class="empty-state"><h3>Aucun signalement</h3><p>${status === 'open' ? 'Rien à traiter pour l\'instant.' : 'Aucun message n\'a été signalé.'}</p></div>`);
+        return;
+    }
+    let members = new Map();
+    try {
+        members = await resolveServerMembers(serverId, items.flatMap(r => [r.author_id, r.handled_by, ...r.reporters.map(x => x.user_id)].filter(Boolean)));
+    } catch (e) {
+        console.warn('Could not resolve members', e);
+    }
+    const name = (id) => {
+        const m = members.get(String(id));
+        return m ? (getDiscord2NameMap()[m.id] || m.display_name || m.username) : 'Ancien membre';
+    };
+    container.innerHTML = String(html`${items.map(r => html`
+            <div class="report-item${r.status === 'open' ? '' : ' report-done'}">
+                <div class="report-head">
+                    <strong>Message de ${name(r.author_id)}</strong>
+                    <span class="report-status">${REPORT_STATUS_LABELS[r.status] || r.status}</span>
+                </div>
+                <ul class="report-reasons">${r.reporters.map(x => html`
+                    <li><span class="report-who">${name(x.user_id)}</span> : ${x.reason || 'sans raison'}</li>`)}</ul>
+                <div class="report-meta">
+                    ${new Date(r.created_at).toLocaleString('fr-FR')}
+                    ${r.handled_by && html` · traité par ${name(r.handled_by)}`}
+                    ${r.message_url && html` · <a href="${r.message_url}" target="_blank" rel="noopener">Voir le message</a>`}
+                    ${r.card_url && html` · <a href="${r.card_url}" target="_blank" rel="noopener">Voir la carte</a>`}
+                </div>
+            </div>`)}`);
+}
+
 // A click on a member: their history, through the member filter.
 export async function filterInfractionsByUser(serverId, userId) {
     const manual = document.getElementById('inf-filter-user');
@@ -103,5 +158,6 @@ export async function revokeInfraction(serverId, caseId) {
 registerActions({
     filterInfractionsByUser,
     loadInfractions,
+    loadReports,
     revokeInfraction,
 });

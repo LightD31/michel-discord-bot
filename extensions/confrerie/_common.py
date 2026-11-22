@@ -90,16 +90,16 @@ class ConfrerieConfig(SchemaBase):
         ),
     )
     confrerieTextesForumId: str | None = ui(
-        "ID du forum « textes »",
-        "string",
+        "Forum « textes »",
+        "forum",
         description=(
             "Chaque nouveau fil de ce forum devient une fiche à valider (titre, "
             "auteur·ice, tags de genre/type, lien vers le fil). Vide = désactivé."
         ),
     )
     confrerieDefisForumId: str | None = ui(
-        "ID du forum « défis »",
-        "string",
+        "Forum « défis »",
+        "forum",
         description=(
             "La première réponse de chaque membre dans un fil de défi (texte long, "
             "fichier ou lien) devient une fiche à valider. Vide = désactivé."

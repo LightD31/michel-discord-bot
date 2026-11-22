@@ -54,7 +54,12 @@ def create_router(ctx: WebUIContext) -> APIRouter:
                 server, _models(), partial(schemas.channel_ids, lists=False)
             )
             channels = await ctx.call_bot(
-                channel_report, ctx.bot, server_id, wanted, what=f"check channels of {server_id}"
+                channel_report,
+                ctx.bot,
+                server_id,
+                wanted,
+                server,
+                what=f"check channels of {server_id}",
             )
             tasks = task_report(guild_tasks(ctx.bot, enabled), health.snapshot())
 

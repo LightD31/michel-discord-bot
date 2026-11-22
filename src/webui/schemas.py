@@ -17,7 +17,8 @@ frontend — are built lazily via module ``__getattr__`` so extensions can
 import the DSL without triggering a circular import.
 
 Recognised widget types (``type=`` on ``ui()``):
-    string, number, boolean, channel, role, message, secret, url,
+    string, number, boolean, channel, forum (a forum the bot reads), role,
+    message, secret, url,
     member (a member, picked by name), channellist, rolelist (several
     channels / roles, picked by name), choice (one of ``choices``, a list),
     list, list:number, dict, messagelist, embedlist, commandlist, keyvaluemap,
@@ -26,7 +27,7 @@ Recognised widget types (``type=`` on ``ui()``):
 """
 
 from dataclasses import dataclass
-from typing import Any, ClassVar, Literal
+from typing import Any, ClassVar, Literal, get_args
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
@@ -326,6 +327,10 @@ def channel_ids(model: type[SchemaBase], value: Any, *, lists: bool = True) -> s
         kind = meta.get("type")
         if kind == "channel" and (lists or not meta.get("linkedOnly")):
             add(value.get(name))
+        elif kind == "forum" and lists:
+            # A forum the bot reads (the Confrérie's): checked as the guild's on
+            # save, never for the right to post.
+            add(value.get(name))
         elif kind == "channellist" and lists:
             raw = value.get(name)
             for entry in raw if isinstance(raw, list) else []:
@@ -418,9 +423,43 @@ def validation_errors(model: type[SchemaBase], value: Any, *, module: bool) -> l
         model.model_validate(value)
     except ValidationError as e:
         for err in e.errors():
-            where = ".".join(str(part) for part in err["loc"]) or "(racine)"
-            errors.append(f"{where}: {_message(err)}")
+            errors.append(f"{_where(model, err['loc'])} : {_message(err)}")
     return errors
+
+
+def _inner_model(annotation: Any) -> type[BaseModel] | None:
+    """The model a field holds, directly or in a list / dict (``dict[str, StreamerEntry]``)."""
+    if isinstance(annotation, type) and issubclass(annotation, BaseModel):
+        return annotation
+    for arg in get_args(annotation):
+        found = _inner_model(arg)
+        if found is not None:
+            return found
+    return None
+
+
+def _where(model: type[BaseModel], loc: tuple[Any, ...]) -> str:
+    """A field as the form names it: ``« Streamers suivis » › zerator › …`` (P15).
+
+    A field with a label shows it; a list item shows its rank (``n°2``); a key
+    of a map, or a field without a label, keeps its name.
+    """
+    parts: list[str] = []
+    current: type[BaseModel] | None = model
+    for part in loc:
+        if isinstance(part, int):
+            parts.append(f"n°{part + 1}")
+            continue
+        field = current.model_fields.get(str(part)) if current is not None else None
+        if field is None:
+            parts.append(str(part))
+            continue
+        extra = field.json_schema_extra if isinstance(field.json_schema_extra, dict) else {}
+        meta = extra.get("ui")
+        label = meta.get("label") if isinstance(meta, dict) else None
+        parts.append(f"« {label} »" if label else str(part))
+        current = _inner_model(field.annotation)
+    return " › ".join(parts) or "(racine)"
 
 
 # Pydantic's messages are English; the dashboard shows these to guild admins.
@@ -432,12 +471,38 @@ _BOUND_MESSAGES = {
 }
 
 
+_TYPE_MESSAGES = {
+    "int_parsing": "doit être un nombre entier",
+    "int_type": "doit être un nombre entier",
+    "int_from_float": "doit être un nombre entier",
+    "float_parsing": "doit être un nombre",
+    "float_type": "doit être un nombre",
+    "bool_parsing": "doit être activé ou désactivé (vrai ou faux)",
+    "bool_type": "doit être activé ou désactivé (vrai ou faux)",
+    "string_type": "doit être un texte",
+    "dict_type": "doit être un objet",
+    "list_type": "doit être une liste",
+    "missing": "obligatoire",
+    "extra_forbidden": "champ inconnu",
+}
+
+
 def _message(err: Any) -> str:
-    bound = _BOUND_MESSAGES.get(err.get("type", ""))
-    limit = (err.get("ctx") or {}).get(bound[0]) if bound else None
-    if bound is None or limit is None:
-        return str(err["msg"])
-    return bound[1].format(_number(limit))
+    kind = err.get("type", "")
+    ctx = err.get("ctx") or {}
+    bound = _BOUND_MESSAGES.get(kind)
+    limit = ctx.get(bound[0]) if bound else None
+    if bound is not None and limit is not None:
+        return bound[1].format(_number(limit))
+    if kind == "string_too_long":
+        return f"{ctx.get('max_length')} caractères au plus"
+    if kind == "string_too_short":
+        return f"{ctx.get('min_length')} caractère(s) au moins"
+    if kind == "literal_error":
+        return f"doit être l'une des valeurs : {ctx.get('expected')}"
+    if kind in _TYPE_MESSAGES:
+        return _TYPE_MESSAGES[kind]
+    return str(err["msg"]).removeprefix("Value error, ")
 
 
 def _number(value: Any) -> str:

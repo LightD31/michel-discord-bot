@@ -1,6 +1,9 @@
-"""Infraction browser endpoints for the WebUI moderation view.
+"""Infraction browser endpoints for the WebUI moderation view, and the reports.
 
-Read-only listing plus a revoke action. Revoking flips a case to inactive in
+Read-only listing plus a revoke action. ``GET …/reports`` (P15) lists the
+messages members reported, for the moderators (``MODERATE_MEMBERS``): it
+names the reporters, which only moderators see on the mod-log cards too. The
+cards' buttons stay the place to act. Revoking flips a case to inactive in
 MongoDB and posts a best-effort note to the guild's modlog channel via the bot
 loop (mirroring how ``routes/rolemenus.py`` calls back into Discord).
 """
@@ -11,6 +14,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 
 from features.moderation import Infraction, InfractionType, ModerationRepository
+from features.moderation.reports import MessageReport, ReportRepository
 from src.core import logging as logutil
 from src.core.errors import DatabaseError
 from src.core.permissions import ADMINISTRATOR, MODERATE_MEMBERS, has_any
@@ -41,7 +45,32 @@ def _infraction_to_dict(inf: Infraction) -> dict:
     }
 
 
-async def _require_moderator(ctx: WebUIContext, session: Session, server_id: str) -> None:
+def _report_to_dict(server_id: str, report: MessageReport) -> dict:
+    def link(channel_id: str | None, message_id: str | None) -> str | None:
+        if not channel_id or not message_id:
+            return None
+        return f"https://discord.com/channels/{server_id}/{channel_id}/{message_id}"
+
+    return {
+        "message_id": report.message_id,
+        "channel_id": report.channel_id,
+        "author_id": report.author_id,
+        "status": report.status,
+        "handled_by": report.handled_by,
+        "handled_at": report.handled_at.isoformat() if report.handled_at else None,
+        "created_at": report.created_at.isoformat(),
+        "reporters": [
+            {"user_id": r.user_id, "reason": r.reason, "at": r.at.isoformat()}
+            for r in report.reporters
+        ],
+        "message_url": link(report.channel_id, report.message_id),
+        "card_url": link(report.card_channel_id, report.card_message_id),
+    }
+
+
+async def _require_moderator(
+    ctx: WebUIContext, session: Session, server_id: str, *, to: str = "révoquer"
+) -> None:
     """403 unless the user could lift a sanction in Discord: ``MODERATE_MEMBERS``.
 
     The dashboard bar (``MANAGE_GUILD``) is a settings permission; revoking a
@@ -62,7 +91,7 @@ async def _require_moderator(ctx: WebUIContext, session: Session, server_id: str
     if not (owner or has_any(permissions, ADMINISTRATOR | MODERATE_MEMBERS)):
         raise HTTPException(
             status_code=403,
-            detail="Il faut la permission « Exclure temporairement des membres » pour révoquer.",
+            detail=f"Il faut la permission « Exclure temporairement des membres » pour {to}.",
         )
 
 
@@ -100,6 +129,19 @@ def create_router(ctx: WebUIContext) -> APIRouter:
                 status_code=500, detail="Erreur interne — détails dans les logs du bot."
             ) from e
         return JSONResponse({"infractions": [_infraction_to_dict(i) for i in items]})
+
+    @router.get("/api/servers/{server_id}/reports")
+    async def api_list_reports(
+        request: Request, server_id: str, status: str | None = Query(default=None)
+    ):
+        session = await ctx.require_guild_admin(request, server_id)
+        await _require_moderator(ctx, session, server_id, to="voir les signalements")
+        try:
+            items = await ReportRepository(server_id).list(open_only=status == "open")
+        except DatabaseError as e:
+            logger.warning("List reports failed for %s: %s", server_id, e)
+            raise HTTPException(status_code=503, detail=DB_UNAVAILABLE) from e
+        return JSONResponse({"reports": [_report_to_dict(server_id, r) for r in items]})
 
     @router.delete("/api/servers/{server_id}/infractions/{case_id}")
     async def api_revoke_infraction(request: Request, server_id: str, case_id: int):

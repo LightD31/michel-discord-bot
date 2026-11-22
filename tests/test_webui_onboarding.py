@@ -351,4 +351,4 @@ def test_the_overview_without_a_database_shows_nothing_rather_than_failing():
     router = overview_routes.create_router(ctx)
     get = next(r.endpoint for r in router.routes if r.path.endswith("/overview"))
     data = json.loads(asyncio.run(get(None, GUILD)).body)
-    assert data == {"activity": None, "recent": None, "lastChanges": None}
+    assert data == {"activity": None, "recent": None, "lastChanges": None, "lastRuns": {}}

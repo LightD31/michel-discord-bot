@@ -17,7 +17,7 @@ from extensions.twitch._common import TwitchConfig
 from extensions.vlrgg._common import VlrggConfig
 from extensions.youtube import YoutubeConfig
 from src.integrations.llm import SUPPORTED_APIS
-from src.webui.schemas import AiModelEntry, AISection, validation_errors
+from src.webui.schemas import AiModelEntry, AISection, _where, validation_errors
 
 
 def errors(model, value):
@@ -78,9 +78,11 @@ CASES = [
     ("model", "field", "valid", "invalid"), CASES, ids=lambda c: getattr(c, "__name__", None)
 )
 def test_the_spa_shape_is_accepted_and_others_refused(model, field, valid, invalid):
-    assert [e for e in errors(model, {field: valid}) if e.startswith(field)] == []
+    assert [e for e in errors(model, {field: valid}) if e.startswith(_where(model, (field,)))] == []
     for value in invalid:
-        assert [e for e in errors(model, {field: value}) if e.startswith(field)], value
+        assert [
+            e for e in errors(model, {field: value}) if e.startswith(_where(model, (field,)))
+        ], value
 
 
 def test_ai_models_name_a_supported_api():

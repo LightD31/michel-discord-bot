@@ -62,6 +62,7 @@ async def test_text_channels_threads_and_categories_are_listed_in_order():
         "position": 3,
         "is_thread": True,
         "archived": True,
+        "is_forum": False,
     }
     assert [c["id"] for c in data["categories"]] == ["9", "1"]
 
@@ -84,3 +85,22 @@ async def test_an_unknown_guild_is_a_404_without_details():
         await list_channels(Bot(LookupError("Unknown Guild 10004")), "1")
     assert caught.value.status_code == 404
     assert "10004" not in caught.value.detail
+
+
+async def test_forums_are_listed_and_marked_for_the_forum_fields():
+    """P15: the Confrérie's forums are picked by name, never offered as a channel to post in."""
+    forum = chan(8, ChannelType.GUILD_FORUM, "textes", 4, parent_id=1)
+    data = await list_channels(Bot(Guild([*CHANNELS, forum])), "1")
+    (found,) = [c for c in data["channels"] if c["id"] == "8"]
+    assert found["is_forum"] and not found["is_thread"]
+    assert not any(c["is_forum"] for c in data["channels"] if c["id"] != "8")
+
+
+def test_a_forum_field_is_a_channel_of_the_guild_but_not_one_to_post_in():
+    import extensions.confrerie._common  # noqa: F401 — registers moduleConfrerie
+    from src.webui import schemas
+
+    model = schemas.module_model("moduleConfrerie")
+    value = {"confrerieTextesForumId": "8", "confrerieDefisForumId": "9"}
+    assert schemas.channel_ids(model, value) == {"8", "9"}  # checked on save
+    assert schemas.channel_ids(model, value, lists=False) == set()  # not a place to post

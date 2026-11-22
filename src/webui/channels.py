@@ -1,6 +1,7 @@
 """A guild's channels for the dashboard's channel pickers.
 
-Runs on the bot loop (``ctx.call_bot``): text and news channels, the threads
+Runs on the bot loop (``ctx.call_bot``): text and news channels, forums
+(``is_forum``, for the ``forum`` fields only), the threads
 the gateway knows plus the active ones (private threads the bot can see
 included), and the categories they sit in, each sorted by position.
 """
@@ -26,7 +27,12 @@ THREAD_TYPES = frozenset(
 )
 
 
-def channel_entry(channel: Any, *, is_thread: bool, position: int = 0) -> dict:
+FORUM_TYPES = frozenset({ChannelType.GUILD_FORUM})
+
+
+def channel_entry(
+    channel: Any, *, is_thread: bool, position: int = 0, is_forum: bool = False
+) -> dict:
     """One channel or thread as the picker shows it."""
     cid = str(channel.id)
     parent = getattr(channel, "parent_id", None) or getattr(channel, "category_id", None)
@@ -37,6 +43,9 @@ def channel_entry(channel: Any, *, is_thread: bool, position: int = 0) -> dict:
         "position": position,
         "is_thread": is_thread,
         "archived": bool(getattr(channel, "archived", False)),
+        # A forum is picked only by a ``forum`` field (the Confrérie's, P15):
+        # the bot reads its posts, it never sends there.
+        "is_forum": is_forum,
     }
 
 
@@ -70,6 +79,15 @@ async def list_channels(bot: Any, guild_id: str) -> dict:
         ctype = getattr(channel, "type", None)
         if ctype == ChannelType.GUILD_CATEGORY:
             categories.append(category_entry(channel))
+        elif ctype in FORUM_TYPES:
+            result.append(
+                channel_entry(
+                    channel,
+                    is_thread=False,
+                    is_forum=True,
+                    position=getattr(channel, "position", 0) or 0,
+                )
+            )
         elif ctype in TEXT_TYPES or ctype in THREAD_TYPES:
             result.append(
                 channel_entry(
@@ -96,4 +114,11 @@ async def list_channels(bot: Any, guild_id: str) -> dict:
     return {"channels": result, "categories": categories}
 
 
-__all__ = ["THREAD_TYPES", "TEXT_TYPES", "category_entry", "channel_entry", "list_channels"]
+__all__ = [
+    "FORUM_TYPES",
+    "THREAD_TYPES",
+    "TEXT_TYPES",
+    "category_entry",
+    "channel_entry",
+    "list_channels",
+]

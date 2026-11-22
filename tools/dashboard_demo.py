@@ -72,6 +72,8 @@ CH = {  # channel name -> id in server A
     "classement": "1200000000000000021",
     "rôles": "1200000000000000022",
     "jeux": "1200000000000000023",
+    "textes": "1200000000000000024",  # forums (the Confrérie's, P15)
+    "défis": "1200000000000000025",
 }
 
 FIRST_NAMES = [
@@ -171,6 +173,11 @@ def demo_config(data_dir: str, port: int, mongo_url: str) -> dict[str, Any]:
                     "enabled": True,
                     "suggestChannelId": CH["suggestions"],
                     "staffRoleId": role["Modérateur"],
+                },
+                "moduleConfrerie": {
+                    "enabled": False,
+                    "confrerieTextesForumId": CH["textes"],
+                    "confrerieDefisForumId": CH["défis"],
                 },
                 "moduleModeration": {
                     "enabled": True,
@@ -387,6 +394,8 @@ def _server_a() -> FakeGuild:
         ("jeux", community, ChannelType.GUILD_TEXT),
         ("classement", community, ChannelType.GUILD_TEXT),
         ("mod-logs", staff, ChannelType.GUILD_TEXT),
+        ("textes", community, ChannelType.GUILD_FORUM),
+        ("défis", community, ChannelType.GUILD_FORUM),
     ]
     for i, (name, category, kind) in enumerate(layout):
         g.channels.append(FakeChannel(g, CH[name], name, kind, i, category.id))
@@ -606,6 +615,37 @@ async def seed(bot: FakeBot, *, days: int = 60) -> None:
                 "expires_at": now + timedelta(days=60),
             }
         )
+
+    # Two reported messages (P15): one to handle, one already dismissed.
+    await db["reports"].insert_many(
+        [
+            {
+                "_id": "1400000000000000101",
+                "channel_id": CH["général"],
+                "author_id": str(humans[7].id),
+                "reporters": [
+                    {"user_id": str(humans[3].id), "reason": "Spoil du dernier épisode", "at": now},
+                    {"user_id": str(humans[4].id), "reason": "Spoil sans balise", "at": now},
+                ],
+                "status": "open",
+                "card_channel_id": CH["mod-logs"],
+                "card_message_id": "1400000000000000102",
+                "created_at": now - timedelta(hours=2),
+                "expires_at": now + timedelta(days=365),
+            },
+            {
+                "_id": "1400000000000000103",
+                "channel_id": CH["jeux"],
+                "author_id": str(humans[8].id),
+                "reporters": [{"user_id": str(humans[5].id), "reason": "Pub", "at": now}],
+                "status": "dismissed",
+                "handled_by": ADMIN,
+                "handled_at": now - timedelta(days=1),
+                "created_at": now - timedelta(days=2),
+                "expires_at": now + timedelta(days=363),
+            },
+        ]
+    )
 
     # Hugo's own things, for his space (C6): reminders, a debt in a Tricount group.
     from features.reminders import Reminder, ReminderRepository

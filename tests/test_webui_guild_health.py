@@ -211,3 +211,67 @@ def test_the_route_without_a_bot_still_reports_the_feeds(monkeypatch, store_conf
     body = json.loads(asyncio.run(route.endpoint(None, "1")).body)
     assert body["channels"] is None and body["tasks"] == []
     assert body["feeds"][0]["lastError"] == "timeout"
+
+
+def test_a_module_s_own_needs_are_checked_where_it_posts(monkeypatch):
+    """P15: suggestions open threads, the XP leaderboard is pinned when asked to."""
+    channel = Channel("idées", BASE | Permissions.ATTACH_FILES | Permissions.READ_MESSAGE_HISTORY)
+
+    async def fetch(bot, guild_id, channel_id, **kwargs):
+        return channel
+
+    monkeypatch.setattr(guild_health, "fetch_guild_channel", fetch)
+    bot = SimpleNamespace(get_guild=lambda gid: SimpleNamespace(me=object()))
+
+    def missing(wanted, server):
+        (entry,) = asyncio.run(guild_health.channel_report(bot, "1", wanted, server))
+        return entry["missing"]
+
+    suggestions = {"moduleSuggestions": {"enabled": True}}  # threads are on by default
+    assert missing({"10": ["moduleSuggestions"]}, suggestions) == [
+        "Créer des fils publics",
+        "Envoyer des messages dans les fils",
+    ]
+    suggestions["moduleSuggestions"]["discussionThreads"] = False
+    assert missing({"10": ["moduleSuggestions"]}, suggestions) == []
+    xp = {"moduleXp": {"enabled": True, "xpPinMessage": True}}
+    assert missing({"10": ["moduleXp"]}, xp) == ["Gérer les messages"]
+    assert missing({"10": ["moduleXp"]}, {"moduleXp": {"enabled": True}}) == []
+
+
+def test_each_module_says_when_its_own_tasks_last_ran():
+    """P15: a module card's "a tourné il y a …", from the tasks of the extension it names first."""
+    from interactions import IntervalTrigger, Task
+
+    from src.core.health import HealthSnapshot, TaskRecord
+    from src.discord_ext.task_health import task_name
+
+    class Gazette:
+        MODULE_KEYS = ("moduleGazette", "moduleXp")
+
+        @Task.create(IntervalTrigger(minutes=15))
+        async def publish_due(self):
+            pass
+
+    class Xp:
+        MODULE_KEYS = ("moduleXp",)
+
+        @Task.create(IntervalTrigger(minutes=1))
+        async def tick(self):
+            pass
+
+        @Task.create(IntervalTrigger(hours=1))
+        async def never(self):
+            pass
+
+    bot = SimpleNamespace(ext={"g": Gazette(), "x": Xp()})
+    snapshot = HealthSnapshot(
+        tasks={
+            task_name(Gazette.publish_due): TaskRecord(last_success=100.0),
+            task_name(Xp.tick): TaskRecord(last_success=50.0),
+        }
+    )
+    assert guild_health.module_last_runs(bot, snapshot) == {
+        "moduleGazette": 100.0,
+        "moduleXp": 50.0,
+    }
