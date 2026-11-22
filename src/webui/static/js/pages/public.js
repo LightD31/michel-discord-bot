@@ -94,6 +94,7 @@ export function renderPublicPage() {
             <a class="public-tab ${k === kind ? 'active' : ''}" href="/public/${state.publicView.token}/${k}"
                data-click="navigatePublic" data-click-args="${actionArgs(EVENT, k)}">${PUBLIC_DASHBOARDS[k].tab}</a>`).join('');
     const body = kind === 'xp' ? `
+            <div id="xp-season" hidden></div>
             <div class="card">
                 <div class="card-header">
                     <div>

@@ -30,6 +30,7 @@ async def seed(mongo):
     await g("birthday").insert_one({"user": int(ME), "date": "x"})
     await g("task_reminders").insert_one({"user_id": ME, "message": "m"})
     await g("feur_stats").insert_many([{"_id": f"user_{ME}", "total": 2}, {"_id": "guild_total"}])
+    await g("feur_events").insert_many([{"user_id": ME}, {"user_id": OTHER}])
     await g("users").insert_one({"_id": ME, "username": "me"})
     await g("polls").insert_one({"_id": "p", "author_id": ME, "votes": {ME: [1], OTHER: [0]}})
     await g("suggestions").insert_one({"_id": "s", "author_id": OTHER, "votes": {ME: "up"}})
@@ -97,6 +98,8 @@ async def test_forgetting_deletes_anonymises_and_keeps(mongo):
     for name in ("xp_monthly", "birthday", "task_reminders", "users"):
         assert await g(name).count_documents({}) == 0, name
     assert await g("feur_stats").count_documents({}) == 1  # the guild total stays
+    assert await g("feur_events").count_documents({"user_id": ME}) == 0
+    assert await g("feur_events").count_documents({}) == 1
 
     poll = await g("polls").find_one({"_id": "p"})
     assert poll["author_id"] == NOBODY and ME not in poll["votes"] and OTHER in poll["votes"]

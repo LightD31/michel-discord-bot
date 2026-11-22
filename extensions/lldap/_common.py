@@ -2,6 +2,7 @@
 
 from features.lldap import parse_role_groups
 from src.core.config import ModuleConfig
+from src.discord_ext.messages import module_off
 from src.integrations.lldap import DEFAULT_DISCORD_ATTRIBUTE, LldapSettings
 from src.webui.schemas import (
     ModuleHelp,
@@ -128,7 +129,7 @@ SYNC_MINUTES = 10
 # Gateway member chunking of a large guild can take a while; past this the guild is skipped.
 CHUNK_TIMEOUT_SECONDS = 60
 
-NOT_ENABLED = "Le module LLDAP n'est pas activé sur ce serveur."
+NOT_ENABLED = module_off("LLDAP")
 NOT_CONFIGURED = (
     "LLDAP n'est pas configuré sur ce serveur (URL, base DN ou compte administrateur manquant)."
 )

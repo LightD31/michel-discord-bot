@@ -52,16 +52,32 @@ def buttons(message) -> list[str]:
 
 @pytest.fixture(autouse=True)
 def no_database(welcome, monkeypatch):
-    opened = []
+    class Opened(list):
+        menus: dict
+
+    opened = Opened()
 
     class Greetings:
         def __init__(self, guild_id):
             self.guild_id = guild_id
 
-        async def open(self, message_id, member_id, now):
+        async def open(self, message_id, member_id, now, channel_id=None):
             opened.append((self.guild_id, member_id))
 
     monkeypatch.setattr("extensions.welcome.GreetingRepository", Greetings, raising=False)
+
+    class Menus:
+        posted: dict = {}
+
+        def __init__(self, guild_id):
+            self.guild_id = guild_id
+
+        async def first_message_in(self, channel_id):
+            return Menus.posted.get(channel_id)
+
+    Menus.posted = {}
+    monkeypatch.setattr("extensions.welcome.ReactionRolesRepository", Menus, raising=False)
+    opened.menus = Menus.posted
     return opened
 
 
@@ -129,6 +145,16 @@ def test_the_links_the_role_and_the_dm_copy(welcome, no_database):
     (dm,) = ev.member.dm_messages
     assert dm.content == "-# Depuis Les Copains\nBienvenue <@5> !"
     assert buttons(dm) == [rules, roles]  # in a DM, only the links
+
+
+def test_the_roles_link_opens_the_menu_posted_there(welcome, no_database):
+    """P14: with a role menu in the roles channel, the link lands on it."""
+    module, configs = welcome
+    ev, channel = event()
+    configs[GUILD].update(welcomeRolesChannelId="71", welcomeGreetButton=False)
+    no_database.menus["71"] = "880"
+    run(module, "on_member_add", ev)
+    assert f"https://discord.com/channels/{GUILD}/71/880" in buttons(channel.sent[0])
 
 
 def test_a_staff_arrival_role_is_never_given(welcome):

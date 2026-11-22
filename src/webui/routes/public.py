@@ -9,6 +9,8 @@ the same 404, so the endpoints reveal nothing about which guilds exist.
 
 The payloads reuse the admin module-page aggregations with these differences:
 
+- the XP page also shows the current season's top 10 where the server runs
+  seasons (``/xp/season``);
 - no Discord ids: XP rows keep only the display name, and Spotify user ids are
   replaced by the member's name server-side;
 - the open Spotify poll shows only its title, date, who added the track and
@@ -32,7 +34,10 @@ from fastapi.responses import JSONResponse
 
 from features.userinfo.labels import member_label_resolver
 from features.userinfo.repository import UserInfoRepository
+from features.xp import XpRepository
 from features.xp.cache import TTLCache
+from features.xp.seasons import KEPT_PER_SEASON, clamp_months, season_of
+from src.core import clock
 from src.core import logging as logutil
 from src.core.config import config_store
 from src.core.errors import DatabaseError
@@ -84,6 +89,33 @@ def _public_xp_payload(stats: dict[str, Any]) -> dict[str, Any]:
             public_row["display_name"] = UNKNOWN_MEMBER
         top.append(public_row)
     return {**stats, "top": top}
+
+
+def runs_seasons(server: dict[str, Any]) -> bool:
+    xp = server.get("moduleXp") or {}
+    return bool(xp.get("enabled") and xp.get("seasonsEnabled"))
+
+
+async def collect_public_season(server_id: str, server: dict[str, Any]) -> dict[str, Any]:
+    """The current XP season's top members, by name only."""
+    xp = server.get("moduleXp") or {}
+    season = season_of(clock.now(), clamp_months(xp.get("seasonMonths")))
+    ranking = await XpRepository(server_id).season_ranking(
+        season.start, season.end, KEPT_PER_SEASON
+    )
+    names = await UserInfoRepository(server_id).get_names([uid for uid, _ in ranking])
+    return {
+        "label": season.label,
+        "ends_at": season.end.isoformat(),
+        "top": [
+            {
+                "rank": i + 1,
+                "display_name": (names.get(uid) or {}).get("display_name") or UNKNOWN_MEMBER,
+                "xp": xp_gained,
+            }
+            for i, (uid, xp_gained) in enumerate(ranking)
+        ],
+    }
 
 
 def _public_spotify_payload(stats: dict[str, Any]) -> dict[str, Any]:
@@ -210,6 +242,25 @@ def create_router(ctx: WebUIContext) -> APIRouter:
                 status_code=503, detail="Statistiques momentanément indisponibles."
             ) from e
         return JSONResponse(stats)
+
+    @router.get("/api/public/{token}/xp/season")
+    async def api_public_xp_season(token: str):
+        """The current season's top 10 (P14); 404 where the guild runs no seasons."""
+        server_id, server = _require_public(token, "xp")
+        if not runs_seasons(server):
+            raise HTTPException(status_code=404, detail="Pas de saison sur ce serveur.")
+
+        async def compute() -> dict[str, Any]:
+            return await collect_public_season(server_id, server)
+
+        try:
+            found = await cache.get_or_compute(f"xp-season:{server_id}", compute)
+        except DatabaseError as e:
+            logger.error("Public XP season failed for %s: %s", server_id, e)
+            raise HTTPException(
+                status_code=503, detail="Statistiques momentanément indisponibles."
+            ) from e
+        return JSONResponse(found)
 
     @router.get("/api/public/{token}/spotify/stats")
     async def api_public_spotify_stats(token: str):

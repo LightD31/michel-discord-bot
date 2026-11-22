@@ -23,7 +23,8 @@ class GiveawayConfig(SchemaBase):
         "Des tirages au sort : un bouton pour participer, un tirage à l'heure dite.",
         ("/concours lancer", "/concours liste", "/concours tirer"),
         "À l'heure dite, Michel tire les gagnants et les annonce. Un giveaway peut être "
-        "réservé à un rôle ou à un niveau d'XP.",
+        "réservé à un rôle ou à un niveau d'XP ; au tirage, qui a perdu le rôle ou quitté le "
+        "serveur ne peut plus gagner.",
     )
 
     enabled: bool = enabled_field()

@@ -2,7 +2,7 @@
 
 Runs on the bot loop (it reads the guild's members). Each section is read only
 when its module is on in the guild: XP for the most active members, the
-starboard, birthdays, Spotify, suggestions, giveaways; the newcomers come from
+starboard, birthdays, Spotify, suggestions, giveaways, feur; the newcomers come from
 Discord (``joined_at``). Members are named, never mentioned, and the post
 pings nobody (``NO_PINGS``).
 """
@@ -14,6 +14,7 @@ from typing import Any
 
 from interactions import Embed
 
+from features.feur import FeurRepository
 from features.gazette import Edition, GazetteRepository, render, upcoming_birthdays
 from features.gazette.edition import TOP_MEMBERS, WEEK
 from features.xp import XpRepository
@@ -30,6 +31,7 @@ SOURCES = {
     "tracks": ModuleConfig("moduleSpotify"),
     "suggestions": ModuleConfig("moduleSuggestions"),
     "giveaways": ModuleConfig("moduleGiveaway"),
+    "feur": ModuleConfig("moduleFeur"),
 }
 
 
@@ -88,6 +90,12 @@ async def gather_edition(bot: Any, guild_id: str, now: datetime) -> Edition:
             )
             for d in await repo.drawn_giveaways(start, end)
         ]
+    if "feur" in on:
+        for uid, times in (await FeurRepository(guild_id).counts_between(start, end)).most_common():
+            name = _name(guild, uid)
+            if name:
+                edition.feur = (name, times)
+                break
     for member in list(getattr(guild, "members", None) or []):
         joined = getattr(member, "joined_at", None)
         if joined is None or getattr(member, "bot", False):

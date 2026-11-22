@@ -87,7 +87,8 @@ def bot_with(channel):
     async def fetch_channel(channel_id):
         return channel
 
-    return SimpleNamespace(fetch_channel=fetch_channel)
+    # No guild in the cache: the winners can't be checked again, so they stand.
+    return SimpleNamespace(fetch_channel=fetch_channel, get_guild=lambda gid: None)
 
 
 async def draw(ext, scheduled):

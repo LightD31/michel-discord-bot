@@ -3,7 +3,9 @@
 Every 15 minutes the task looks at the guilds where the Gazette is on: on the
 configured day, from the configured hour (Paris), the week's edition is
 claimed (``gazette_editions``, once per ISO week), gathered
-(:mod:`src.discord_ext.gazette`) and posted in the configured channel. A post
+(:mod:`src.discord_ext.gazette`), opened by a few lines of the AI where the
+admins asked for them (:mod:`features.gazette.intro`), and posted in the
+configured channel. A post
 Discord refuses gives the claim back, so the next run tries again. A day the
 bot was down is skipped: next week's edition covers its own week.
 
@@ -27,6 +29,7 @@ from interactions import (
 
 from features.gazette import GazetteRepository, is_due, week_key
 from features.gazette.edition import MAX_HOUR, MAX_WEEKDAY, MIN_HOUR, MIN_WEEKDAY
+from features.gazette.intro import write_intro
 from src.core import clock
 from src.core import logging as logutil
 from src.core.config import ModuleConfig
@@ -81,7 +84,18 @@ class GazetteConfig(SchemaBase):
             "Heure de Paris. Chaque rubrique n'apparaît que si son module est activé et qu'il "
             "s'est passé quelque chose : les plus actifs (XP), le message de la semaine "
             "(starboard), les anniversaires des 7 jours à venir, la playlist, les suggestions "
-            "tranchées et les giveaways tirés."
+            "tranchées, les giveaways tirés et le feur de la semaine."
+        ),
+    )
+    gazetteAiIntro: bool = ui(
+        "Introduction écrite par l'IA",
+        "boolean",
+        default=False,
+        description=(
+            "Quelques phrases d'ouverture écrites par l'IA à partir du sommaire. Demande le "
+            "module IA activé ; chaque Gazette compte un appel dans le quota quotidien de l'IA, "
+            "et son texte (les pseudos qu'elle cite) est envoyé au fournisseur d'IA. L'aperçu "
+            "et /gazette ne la montrent pas."
         ),
     )
 
@@ -107,6 +121,7 @@ class GazetteExtension(Extension):
         "moduleSpotify",
         "moduleSuggestions",
         "moduleGiveaway",
+        "moduleFeur",
     )
     HELP_LABEL = "📰 La Gazette"
 
@@ -149,6 +164,7 @@ class GazetteExtension(Extension):
             return False
         try:
             edition = await gather_edition(self.bot, guild_id, now)
+            edition.ai_intro = await self._ai_intro(guild_id, edition)
             message = await post_edition(channel, edition)
         except Exception:
             await repo.release_edition(key)
@@ -156,6 +172,14 @@ class GazetteExtension(Extension):
         await repo.set_edition_message(key, str(channel.id), str(message.id))
         logger.info("Gazette %s published in guild %s", key, guild_id)
         return True
+
+    async def _ai_intro(self, guild_id: str, edition: Any) -> str:
+        """The AI's opening lines where they were asked for; ``""`` rather than no paper."""
+        try:
+            return await write_intro(guild_id, edition)
+        except Exception as e:
+            log_failure(logger, "Gazette intro of guild %s failed: %s", guild_id, e)
+            return ""
 
     @slash_command(
         name="gazette",

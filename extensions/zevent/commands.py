@@ -7,7 +7,7 @@ from interactions import Permissions, SlashContext, slash_command, slash_default
 from src.core import logging as logutil
 from src.core.http import fetch
 from src.core.logging import log_failure
-from src.discord_ext.messages import edit_message_if_changed, member_of
+from src.discord_ext.messages import edit_message_if_changed, member_of, module_off, send_error
 from src.discord_ext.scopes import guild_scopes
 
 from ._base import ZeventBase
@@ -33,7 +33,7 @@ class CommandsMixin(ZeventBase):
             return
         settings = ZEVENT.get(ctx.guild_id)
         if not settings:
-            await ctx.send("Le module Zevent n'est pas activé sur ce serveur.", ephemeral=True)
+            await send_error(ctx, module_off("Zevent"))
             return
         if not API_URL:
             await ctx.send(

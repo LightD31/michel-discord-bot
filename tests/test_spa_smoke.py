@@ -680,3 +680,40 @@ def test_a_member_creates_a_reminder_and_reads_the_moment_back(member_page, dash
     page.get_by_role("button", name="Créer le rappel").click()
     page.wait_for_function("() => !document.getElementById('me-reminder-form')")
     assert sent == [{"message": "Appeler mamie", "when": "dans 2h", "frequency": "weekly"}]
+
+
+def test_the_public_xp_page_shows_the_season_where_there_is_one(browser, dashboard):
+    """P14: the current season's top members above the statistics; none, no card."""
+    context = browser.new_context()
+    page = context.new_page()
+    errors: list[str] = []
+    page.on("pageerror", lambda e: errors.append(str(e)))
+    page.on("console", lambda m: script_error(m) and errors.append(m.text))
+    meta = {"id": GUILD, "name": "Les Copains", "icon": None, "dashboards": ["xp"]}
+    season = {
+        "label": "T4 2026",
+        "ends_at": "2026-12-31T23:00:00+00:00",
+        "top": [{"rank": 1, "display_name": "<b>Camille</b>", "xp": 1200}],
+    }
+    answers = {"season": season}
+    page.route("**/api/public/tok", lambda r: r.fulfill(json=meta))
+    page.route("**/api/public/tok/xp/stats**", lambda r: r.fulfill(json={"summary": {}}))
+    page.route(
+        "**/api/public/tok/xp/season",
+        lambda r: (
+            r.fulfill(json=answers["season"])
+            if answers["season"]
+            else r.fulfill(status=404, json={"detail": "Pas de saison sur ce serveur."})
+        ),
+    )
+    base = f"http://127.0.0.1:{dashboard['port']}"
+    page.goto(f"{base}/public/tok/xp")
+    card = page.locator("#xp-season")
+    card.get_by_text("🏆 Saison T4 2026").wait_for()
+    assert card.locator(".xp-top-name").inner_text() == "<b>Camille</b>"  # escaped, not markup
+    answers["season"] = None
+    page.reload()
+    page.get_by_text("Aucune donnée").wait_for()
+    assert not card.is_visible()
+    assert errors == [], errors
+    context.close()

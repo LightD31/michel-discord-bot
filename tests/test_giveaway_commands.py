@@ -9,6 +9,7 @@ from discord_fakes import (
     FakeGuild,
     FakeMember,
     FakeMessage,
+    FakeRole,
     bare_extension,
     run,
 )
@@ -91,6 +92,8 @@ def setup(monkeypatch, store_config):
     guild = FakeGuild(1)
     channel = guild.add_channel(FakeChannel(10))
     host = guild.add_member(FakeMember(3, "alice"))
+    for uid in (7, 8, 9):
+        guild.add_member(FakeMember(uid))
     repo = MemoryGiveaways()
     ext = bare_extension(
         GiveawayExtension, _repo=lambda guild_id: repo, _refreshes=RecordingRefreshes()
@@ -346,7 +349,7 @@ async def test_buttons_where_giveaways_are_off(setup, store_config):
     store_config({"servers": {}})
     bob = channel.guild.add_member(FakeMember(7, "bob"))
     off = await click(ext, bob, message)
-    assert "pas activés" in off.last
+    assert "Giveaways n'est pas activé" in off.last and "tableau de bord" in off.last
 
 
 async def test_cancel_removes_the_buttons(setup):
@@ -433,3 +436,40 @@ async def test_a_minimum_level_needs_the_xp_module(setup):
     ext, ctx, repo, _ = setup
     await run(GiveawayExtension.giveaway_start, ext, ctx, min_level=5)
     assert ctx.modals == [] and "système d'XP n'est pas actif" in ctx.last
+
+
+async def test_the_draw_skips_entrants_who_left_or_lost_the_role(setup):
+    """P14: the role is checked again at the draw, on the entrants drawn only."""
+    ext, ctx, repo, channel = setup
+    guild = channel.guild
+    vip = FakeRole(55)
+    guild.get_member(8).roles = [vip]
+    guild.members.pop(9)  # 9 left the server
+    giveaway, message = posted(
+        repo, channel, entrants=["7", "8", "9"], required_role_id="55", winners_count=3
+    )
+    await run(GiveawayExtension.giveaway_end, ext, ctx, "500")
+    assert giveaway.winners == ["8"]  # 7 lost the role, 9 is gone
+
+
+async def test_a_reroll_also_skips_who_left(setup):
+    ext, ctx, repo, channel = setup
+    channel.guild.members.pop(8)
+    giveaway, message = posted(repo, channel, entrants=["7", "8", "9"], drawn=True, winners=["7"])
+    await run(GiveawayExtension.giveaway_reroll, ext, ctx, "500", winners=2)
+    assert giveaway.winners == ["7", "9"]
+
+
+async def test_an_unreadable_member_still_wins(setup, monkeypatch):
+    """Discord not answering is no reason to lose a prize."""
+    ext, ctx, repo, channel = setup
+    guild = channel.guild
+    guild.members.pop(7)
+
+    async def outage(uid):
+        raise RuntimeError("503")
+
+    guild.fetch_member = outage
+    giveaway, _ = posted(repo, channel, entrants=["7"])
+    await run(GiveawayExtension.giveaway_end, ext, ctx, "500")
+    assert giveaway.winners == ["7"]

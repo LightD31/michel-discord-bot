@@ -2,6 +2,7 @@
 import { registerActions } from '../core/actions.js';
 import { api } from '../core/api.js';
 import { state } from '../core/state.js';
+import { html } from '../core/html.js';
 import { escapeHtml } from '../core/util.js';
 import { publicApi } from '../pages/public.js';
 import { applyChartTheme, cssVar, ensureChartJs, withAlpha } from '../ui/charts.js';
@@ -81,6 +82,46 @@ export async function loadXpStats(serverId) {
     }
     if (stale()) return;
     drawXpCharts(data);
+}
+
+// The public page's current season (P14): its top 10, by name. A server
+// without seasons answers 404 and the card stays hidden.
+export async function loadPublicSeason(token) {
+    const container = document.getElementById('xp-season');
+    if (!container) return;
+    let season;
+    try {
+        season = await publicApi(`/api/public/${token}/xp/season`);
+    } catch {
+        return;
+    }
+    if (!season || !container.isConnected) return;
+    container.innerHTML = renderPublicSeason(season);
+    container.hidden = false;
+}
+
+export function renderPublicSeason(season) {
+    const ends = new Date(season.ends_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' });
+    const rows = season.top.map(m => html`
+                <tr>
+                    <td class="num">${XP_MEDALS[m.rank - 1] || m.rank}</td>
+                    <td><div class="xp-top-name">${m.display_name}</div></td>
+                    <td class="num">${fmtNum(m.xp)}</td>
+                </tr>`);
+    return String(html`
+            <div class="card">
+                <div class="card-header">
+                    <div>
+                        <div class="card-title">🏆 Saison ${season.label}</div>
+                        <div class="card-subtitle">L'XP gagnée depuis le début de la saison, jusqu'au ${ends}.</div>
+                    </div>
+                </div>
+                ${season.top.length ? html`
+                <table class="xp-top-table xp-season-table">
+                    <thead><tr><th class="num">#</th><th>Membre</th><th class="num">XP de la saison</th></tr></thead>
+                    <tbody>${rows}</tbody>
+                </table>` : html`<div class="empty-state"><p>Personne n'a encore gagné d'XP cette saison.</p></div>`}
+            </div>`);
 }
 
 export function renderXpStats(data) {

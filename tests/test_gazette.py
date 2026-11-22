@@ -133,3 +133,36 @@ async def test_a_missing_channel_gives_the_week_back(world):
     ext, channel, editions, settings = world
     assert not await ext.publish_week("1", {**settings, "gazetteChannelId": "999"}, SUNDAY_7PM)
     assert editions.claimed == {}
+
+
+def test_the_feur_of_the_week_and_the_ai_intro_are_in_the_paper():
+    start = SUNDAY_7PM - timedelta(days=7)
+    edition = Edition("Les Copains", start, SUNDAY_7PM, feur=("Hugo", 4))
+    _, intro, fields = render(edition)
+    assert dict(fields)["🇫 Le feur de la semaine"] == "Hugo, tombé·e 4 fois dans le panneau."
+    edition.ai_intro = "Quelle semaine !"
+    assert render(edition)[1].endswith("\n\nQuelle semaine !")
+    edition.feur = None  # a quiet week keeps its own words
+    assert "Quelle semaine" not in render(edition)[1]
+
+
+async def test_a_failing_ai_intro_does_not_stop_the_paper(world, monkeypatch):
+    ext, channel, editions, settings = world
+
+    async def broken(guild_id, edition):
+        raise RuntimeError("provider down")
+
+    monkeypatch.setattr(gazette_module, "write_intro", broken)
+    assert await ext.publish_week("1", settings, SUNDAY_7PM)
+    assert len(channel.sent) == 1
+
+
+async def test_the_ai_intro_opens_the_posted_paper(world, monkeypatch):
+    ext, channel, editions, settings = world
+
+    async def intro(guild_id, edition):
+        return "Une semaine à feu et à sang."
+
+    monkeypatch.setattr(gazette_module, "write_intro", intro)
+    await ext.publish_week("1", settings, SUNDAY_7PM)
+    assert channel.sent[0].embeds[0].description.endswith("Une semaine à feu et à sang.")

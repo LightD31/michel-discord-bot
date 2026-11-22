@@ -2,11 +2,14 @@
 
 Under a welcome message, "👋 Souhaiter la bienvenue": each click adds the
 member to that message's ``welcome_greetings`` document (``_id`` the message
-id), and the message says how many did. A document lives 7 days (TTL on
-``expires_at``); after that the button answers that it's too late and the
-message keeps the count it shows.
+id), and the message says how many did. Greetings close after 7 days
+(``expires_at``): the hourly task then takes the button off the message (P14)
+and marks the document ``closed``. A click that comes before the task answers
+that it's too late. The document is deleted :data:`PURGE_GRACE` after it
+closed (a TTL on ``expires_at``), which leaves the task time for an outage.
 
-What is stored: the newcomer's id and the ids of those who greeted them.
+What is stored: the newcomer's id, the welcome's channel and the ids of those
+who greeted them.
 ``/mes-donnees supprimer`` deletes a newcomer's document and takes a greeter
 out of the others (``features/userdata/repository.py``).
 """
@@ -27,6 +30,9 @@ logger = init_logger(__name__)
 
 COLLECTION = "welcome_greetings"
 KEEP_FOR = timedelta(days=7)
+PURGE_GRACE = timedelta(days=2)
+TTL_INDEX = "expires_grace_ttl"
+CLOSE_BATCH = 50
 # Names shown on the message; the others are counted.
 NAMES_SHOWN = 5
 # The line the bot adds under the welcome text, so it can rewrite it.
@@ -40,6 +46,8 @@ class Greeting(BaseModel):
     member_id: str
     greeters: list[str] = Field(default_factory=list)
     expires_at: datetime
+    channel_id: str | None = None
+    closed: bool = False
 
     model_config = {"populate_by_name": True}
 
@@ -86,8 +94,14 @@ class GreetingRepository:
 
     async def ensure_indexes(self) -> None:
         try:
+            # Until P14 the TTL deleted a document as it closed: no time to take
+            # its button off. The old index goes; the new one waits PURGE_GRACE.
+            if "expires_ttl" in await self._col().index_information():
+                await self._col().drop_index("expires_ttl")
             await self._col().create_index(
-                [("expires_at", pymongo.ASCENDING)], expireAfterSeconds=0, name="expires_ttl"
+                [("expires_at", pymongo.ASCENDING)],
+                expireAfterSeconds=int(PURGE_GRACE.total_seconds()),
+                name=TTL_INDEX,
             )
             await self._col().create_index([("member_id", pymongo.ASCENDING)], name="member_idx")
             await self._col().create_index([("greeters", pymongo.ASCENDING)], name="greeters_idx")
@@ -95,19 +109,39 @@ class GreetingRepository:
             log_failure(logger, "Failed to create greeting indexes for %s: %s", self._guild_id, e)
 
     @translates_db_errors
-    async def open(self, message_id: str, member_id: str, now: datetime) -> None:
+    async def open(
+        self, message_id: str, member_id: str, now: datetime, channel_id: str | None = None
+    ) -> None:
         """Start counting the greetings of the welcome message *message_id*."""
         await self._col().update_one(
             {"_id": str(message_id)},
             {
                 "$setOnInsert": {
                     "member_id": str(member_id),
+                    "channel_id": str(channel_id) if channel_id else None,
                     "greeters": [],
                     "expires_at": now + KEEP_FOR,
+                    "closed": False,
                 }
             },
             upsert=True,
         )
+
+    @translates_db_errors
+    async def due_to_close(self, now: datetime) -> list[Greeting]:
+        """Welcomes whose greetings ended and whose button is still up (oldest first)."""
+        docs = (
+            await self._col()
+            .find({"expires_at": {"$lte": now}, "closed": {"$ne": True}})
+            .sort("expires_at", pymongo.ASCENDING)
+            .limit(CLOSE_BATCH)
+            .to_list()
+        )
+        return [Greeting.model_validate(d) for d in docs]
+
+    @translates_db_errors
+    async def mark_closed(self, message_id: str) -> None:
+        await self._col().update_one({"_id": str(message_id)}, {"$set": {"closed": True}})
 
     @translates_db_errors
     async def greet(
@@ -141,6 +175,7 @@ __all__ = [
     "COLLECTION",
     "GREETING_MARK",
     "KEEP_FOR",
+    "PURGE_GRACE",
     "GreetRefusal",
     "Greeting",
     "GreetingRepository",

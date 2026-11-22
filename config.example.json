@@ -199,7 +199,8 @@
                 "enabled": false,
                 "gazetteChannelId": "",
                 "gazetteWeekday": 7,
-                "gazetteHour": 18
+                "gazetteHour": 18,
+                "gazetteAiIntro": false
             },
             "moduleGiveaway": {
                 "enabled": false,
