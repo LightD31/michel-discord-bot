@@ -1,6 +1,6 @@
 // The layout: login page, sidebar, and the current page.
 import { loadGazette } from '../features/gazette.js';
-import { loadInfractions } from '../features/moderation.js';
+import { loadInfractions, loadReports } from '../features/moderation.js';
 import { loadRoleMenus } from '../features/rolemenus.js';
 import { loadSecretSanta } from '../features/secretsanta.js';
 import { destroySpotifyCharts, loadSpotifyStats } from '../features/spotify.js';
@@ -119,6 +119,7 @@ export function render() {
     // Moderation: load infraction history when on its module page.
     if (state.currentPage === 'module' && state.currentModule === 'moduleModeration' && state.currentServerId) {
         loadInfractions(state.currentServerId);
+        loadReports(state.currentServerId);
     }
     // Spotify: draw the playlist / vote charts when on its module page.
     if (state.currentPage === 'module' && state.currentModule === 'moduleSpotify' && state.currentServerId) {

@@ -112,9 +112,11 @@ export function renderSchemaForm(formId, schema, values, options = {}) {
                     </div>`;
                 break;
 
-            case 'channel': {
+            case 'channel':
+            case 'forum': {
+                // A forum field (P15) lists the server's forums only; a channel one, never them.
                 const currentVal = hasValue ? String(value) : '';
-                html += `<div class="channel-picker" data-field="${key}" data-type="channel" data-current="${escapeHtml(currentVal)}">
+                html += `<div class="channel-picker" data-field="${key}" data-type="${field.type}" data-current="${escapeHtml(currentVal)}">
                         <select class="form-input channel-picker-select" data-channel-select="${key}">
                             <option value="">— Chargement des salons… —</option>
                             ${currentVal ? `<option value="${escapeHtml(currentVal)}" selected>${escapeHtml(currentVal)}</option>` : ''}
@@ -513,7 +515,8 @@ export function collectFormValues(formId) {
             case 'boolean':
                 val = input.checked;
                 break;
-            case 'channel': {
+            case 'channel':
+            case 'forum': {
                 if (input.tagName === 'INPUT') {
                     val = (input.value || '').trim() || undefined;
                 } else {

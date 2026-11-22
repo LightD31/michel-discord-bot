@@ -10,6 +10,12 @@ shows them.
 (:func:`src.discord_ext.secretsanta.run_draw`) on the bot loop, for the same
 people: the session's creator or an administrator of the server, read live.
 The dashboard bar (``MANAGE_GUILD``) is not enough, as in Discord.
+
+``POST …/secretsanta/reveal`` (P15) shows who gives to whom, as
+``/secretsanta reveler`` does: to the server's owner and its administrators
+only, read live from Discord (not the session's creator, and not
+``MANAGE_GUILD``), and written to the audit log. A POST: it is a disclosure,
+counted by the mutation limit, never prefetched.
 """
 
 from __future__ import annotations
@@ -105,6 +111,11 @@ async def _may_draw(
         )
 
 
+async def _is_administrator(ctx: WebUIContext, session: Session, server_id: str) -> bool:
+    access = await ctx.guild_access(session, server_id)
+    return bool(access.is_owner or has_any(access.permissions, ADMINISTRATOR))
+
+
 async def draw_on_bot(
     bot: Any, server_id: str, santa: SecretSantaSession, allow_subgroups: bool
 ) -> dict[str, Any]:
@@ -144,7 +155,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
 
     @router.get("/api/servers/{server_id}/secretsanta")
     async def api_secretsanta(request: Request, server_id: str):
-        await ctx.require_guild_admin(request, server_id)
+        session = await ctx.require_guild_admin(request, server_id)
         santa = await _session(server_id)
         if santa is None:
             return JSONResponse({"session": None})
@@ -157,6 +168,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
         except DatabaseError as e:
             logger.warning("Secret Santa summary failed for %s: %s", server_id, e)
             raise HTTPException(status_code=503, detail=DB_UNAVAILABLE) from e
+        data["can_reveal"] = santa.is_drawn and await _is_administrator(ctx, session, server_id)
         return JSONResponse({"session": data})
 
     @router.post("/api/servers/{server_id}/secretsanta/draw")
@@ -186,5 +198,43 @@ def create_router(ctx: WebUIContext) -> APIRouter:
             server_id, session, "secretsanta.draw", details={"participants": result["count"]}
         )
         return JSONResponse(result)
+
+    @router.post("/api/servers/{server_id}/secretsanta/reveal")
+    async def api_secretsanta_reveal(request: Request, server_id: str):
+        session = await ctx.require_guild_admin(request, server_id)
+        if not await _is_administrator(ctx, session, server_id):
+            raise HTTPException(
+                status_code=403,
+                detail="Seul un administrateur du serveur peut révéler les attributions.",
+            )
+        santa = await _session(server_id)
+        if santa is None:
+            raise HTTPException(status_code=404, detail="Aucune session de Père Noël Secret.")
+        try:
+            pairs = await SecretSantaRepository().get_draw_results(santa.context_id)
+        except DatabaseError as e:
+            logger.warning("Secret Santa results read failed for %s: %s", server_id, e)
+            raise HTTPException(status_code=503, detail=DB_UNAVAILABLE) from e
+        if not santa.is_drawn or not pairs:
+            raise HTTPException(status_code=409, detail="Le tirage n'a pas encore été fait.")
+        ids = list(dict.fromkeys(uid for pair in pairs for uid in pair))
+        names = await ctx.call_bot(
+            member_names, ctx.bot, server_id, ids, what=f"name Secret Santa pairs of {server_id}"
+        )
+        logger.info(
+            "Secret Santa revealed via WebUI for guild %s (by %s/%s)",
+            server_id,
+            session.username,
+            session.user_id,
+        )
+        await audit.record(server_id, session, "secretsanta.reveal", details={"pairs": len(pairs)})
+        return JSONResponse(
+            {
+                "pairs": [
+                    {"giver": names.get(str(g), str(g)), "receiver": names.get(str(r), str(r))}
+                    for g, r in pairs
+                ]
+            }
+        )
 
     return router

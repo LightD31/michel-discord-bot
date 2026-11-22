@@ -119,7 +119,7 @@ export async function openRoleMenuBuilder(serverId, menuId) {
     if (channelData?.channels) {
         const grouped = new Map();
         for (const c of channelData.channels) {
-            if (c.is_thread) continue;
+            if (c.is_thread || c.is_forum) continue;  // a menu is a message: not in a forum
             const catId = c.parent_id || '__none__';
             if (!grouped.has(catId)) grouped.set(catId, []);
             grouped.get(catId).push(c);

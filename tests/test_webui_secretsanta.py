@@ -65,10 +65,14 @@ def santa(monkeypatch, tmp_path, store_config):
 
     monkeypatch.setattr(santa_routes.audit, "record", record)
 
-    def call(method, user_id="3", permissions=MANAGE_GUILD, body=None):
+    def call(method, user_id="3", permissions=MANAGE_GUILD, body=None, path="draw"):
         router = santa_routes.create_router(Ctx(bot, user_id, permissions))
-        endpoint = next(r.endpoint for r in router.routes if method in r.methods)
-        args = (None, GUILD) if method == "GET" else (None, GUILD, body)
+        endpoint = next(
+            r.endpoint
+            for r in router.routes
+            if method in r.methods and (method == "GET" or r.path.endswith("/" + path))
+        )
+        args = (None, GUILD) if method == "GET" or path != "draw" else (None, GUILD, body)
         response = asyncio.run(endpoint(*args))
         return json.loads(response.body)
 
@@ -152,3 +156,36 @@ def test_drawing_without_a_session_is_a_404(santa):
     with pytest.raises(HTTPException) as exc:
         call("POST", body=santa_routes.DrawRequest())
     assert exc.value.status_code == 404
+
+
+def test_an_administrator_reveals_the_pairs_and_it_is_audited(santa):
+    """P15: as /secretsanta reveler, for the server's administrators only."""
+    repo, _, call, audits = santa
+    repo.session.is_drawn = True
+    repo.results = [(3, 4), (4, 5), (5, 3)]
+    assert call("GET", user_id="7", permissions=ADMINISTRATOR)["session"]["can_reveal"] is True
+    result = call("POST", user_id="7", permissions=ADMINISTRATOR, path="reveal")
+    assert result["pairs"] == [
+        {"giver": "m3", "receiver": "m4"},
+        {"giver": "m4", "receiver": "Zoé"},
+        {"giver": "Zoé", "receiver": "m3"},
+    ]
+    assert audits == [(GUILD, "secretsanta.reveal", {"details": {"pairs": 3}})]
+
+
+@pytest.mark.parametrize("user_id", ["3", "7"])  # the creator, a manager of the server
+def test_neither_the_creator_nor_a_manager_may_reveal(santa, user_id):
+    repo, _, call, audits = santa
+    repo.session.is_drawn = True
+    repo.results = [(3, 4), (4, 3)]
+    assert call("GET", user_id=user_id)["session"]["can_reveal"] is False
+    with pytest.raises(HTTPException) as exc:
+        call("POST", user_id=user_id, path="reveal")
+    assert exc.value.status_code == 403 and audits == []
+
+
+def test_nothing_to_reveal_before_the_draw(santa):
+    _, _, call, audits = santa
+    with pytest.raises(HTTPException) as exc:
+        call("POST", user_id="7", permissions=ADMINISTRATOR, path="reveal")
+    assert exc.value.status_code == 409 and audits == []

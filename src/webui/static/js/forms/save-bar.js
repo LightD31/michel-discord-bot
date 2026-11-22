@@ -115,7 +115,7 @@ function describe(field, value, lookups) {
         return `${describe(field, fallback, lookups)} (par défaut)`;
     }
     const type = field?.type;
-    if (type === 'channel') return names([value], lookups.channels, '#');
+    if (type === 'channel' || type === 'forum') return names([value], lookups.channels, '#');
     if (type === 'channellist' && Array.isArray(value)) return names(value, lookups.channels, '#') || '—';
     if (type === 'role') return names([value], lookups.roles, '@');
     if (type === 'rolelist' && Array.isArray(value)) return names(value, lookups.roles, '@') || '—';

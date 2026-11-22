@@ -31,6 +31,15 @@ export function fmtDay(iso) {
     return iso ? new Date(iso).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }) : '';
 }
 
+// "il y a 5 min", "il y a 3 h", "le 12 nov." (P15: a module's last run).
+export function fmtAgo(iso, now = Date.now()) {
+    const minutes = Math.max(0, Math.round((now - new Date(iso).getTime()) / 60000));
+    if (minutes < 1) return 'à l\'instant';
+    if (minutes < 60) return `il y a ${minutes} min`;
+    if (minutes < 24 * 60) return `il y a ${Math.round(minutes / 60)} h`;
+    return `le ${fmtDay(iso)}`;
+}
+
 export function foldText(text) {
     return String(text || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 }
@@ -99,6 +108,7 @@ export function moduleCardHtml(sid, m) {
             : m.schema.archived ? '🗄️ Archivé'
                 : m.isConfigured ? '⏸ Désactivé' : '⚪ Disponible';
     const changed = state.overview?.[sid]?.lastChanges?.[m.mod];
+    const ran = m.on && state.overview?.[sid]?.lastRuns?.[m.mod];
     return html`
             <div class="module-card ${m.on ? 'on' : ''}" data-click="navigate" data-click-args="${actionArgs('module', sid, m.mod)}">
                 <div class="module-card-head">
@@ -115,6 +125,7 @@ export function moduleCardHtml(sid, m) {
                 <div class="module-card-foot">
                     <span class="module-status">${status}</span>
                     ${changed && html`<span class="module-status" title="${new Date(changed).toLocaleString('fr-FR')}">modifié le ${fmtDay(changed)}</span>`}
+                    ${ran && html`<span class="module-status" title="Dernière tâche de fond réussie : ${new Date(ran).toLocaleString('fr-FR')}">a tourné ${fmtAgo(ran)}</span>`}
                 </div>
             </div>`;
 }

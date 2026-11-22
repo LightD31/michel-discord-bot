@@ -5,7 +5,8 @@ used to see nothing: only a developer reading the logs could tell. The
 server's "Santé" card gathers, from data the bot already keeps:
 
 * each channel the guild's enabled modules point at, and the rights the bot
-  lacks there (it can't post, embed, attach or read back its own messages);
+  lacks there (it can't post, embed, attach or read back its own messages, and
+  what a module needs on top: a thread, a pin, :data:`MODULE_PERMISSIONS`);
 * each RSS feed's last error and consecutive failures, and when it is next
   polled (the wait doubles with each failure, :mod:`features.rss.scheduling`);
 * the periodic tasks of the extensions serving the guild: last success, last
@@ -39,6 +40,38 @@ REQUIRED_PERMISSIONS: tuple[tuple[Permissions, str], ...] = (
 )
 THREAD_SEND = (Permissions.SEND_MESSAGES_IN_THREADS, "Envoyer des messages dans les fils")
 MAX_CHANNELS = 50
+
+# What a module needs beyond the basics in its channels (P15, set aside in P7):
+# module → [(the switch that asks for it and its default, or None: always; flag, label)].
+NeedsIf = tuple[str, bool] | None
+MODULE_PERMISSIONS: dict[str, list[tuple[NeedsIf, Permissions, str]]] = {
+    # Each suggestion opens its discussion thread under the post (on by default).
+    "moduleSuggestions": [
+        (("discussionThreads", True), Permissions.CREATE_PUBLIC_THREADS, "Créer des fils publics"),
+        (
+            ("discussionThreads", True),
+            Permissions.SEND_MESSAGES_IN_THREADS,
+            "Envoyer des messages dans les fils",
+        ),
+    ],
+    # The vote of the week is pinned.
+    "moduleSpotify": [(None, Permissions.MANAGE_MESSAGES, "Gérer les messages")],
+    "moduleXp": [(("xpPinMessage", False), Permissions.MANAGE_MESSAGES, "Gérer les messages")],
+}
+
+
+def module_permissions(modules: list[str], server: dict[str, Any]) -> list[tuple[Permissions, str]]:
+    """The rights *modules* need beyond :data:`REQUIRED_PERMISSIONS`, as they are set up."""
+    needed: dict[str, tuple[Permissions, str]] = {}
+    for module in modules:
+        raw = server.get(module)
+        settings = raw if isinstance(raw, dict) else {}
+        for needs_if, flag, label in MODULE_PERMISSIONS.get(module, []):
+            if needs_if is None or settings.get(needs_if[0], needs_if[1]):
+                needed[label] = (flag, label)
+    return list(needed.values())
+
+
 DEFAULT_RSS_MINUTES = 15
 MIN_RSS_MINUTES = 5
 
@@ -70,8 +103,13 @@ def configured_channels(
     return found
 
 
-async def channel_report(bot: Any, guild_id: str, wanted: dict[str, list[str]]) -> list[dict]:
-    """For each configured channel, whether it exists and what the bot lacks there (bot loop)."""
+async def channel_report(
+    bot: Any, guild_id: str, wanted: dict[str, list[str]], server: dict[str, Any] | None = None
+) -> list[dict]:
+    """For each configured channel, whether it exists and what the bot lacks there (bot loop).
+
+    With *server* (its settings), a module's own needs count too (:data:`MODULE_PERMISSIONS`).
+    """
     guild = bot.get_guild(int(guild_id))
     me = getattr(guild, "me", None)
     report = []
@@ -85,6 +123,12 @@ async def channel_report(bot: Any, guild_id: str, wanted: dict[str, list[str]]) 
         if me is not None and hasattr(channel, "permissions_for"):
             permissions = channel.permissions_for(me)
             missing = missing_permissions(permissions, thread=isinstance(channel, ThreadChannel))
+            if Permissions.ADMINISTRATOR not in permissions:
+                missing += [
+                    label
+                    for flag, label in module_permissions(modules, server or {})
+                    if flag not in permissions and label not in missing
+                ]
         report.append(
             {**entry, "found": True, "name": getattr(channel, "name", None), "missing": missing}
         )
@@ -223,6 +267,28 @@ def guild_tasks(bot: Any, enabled_modules: set[str]) -> dict[str, Any]:
     return dict(sorted(tasks.items()))
 
 
+def module_last_runs(bot: Any, snapshot: HealthSnapshot) -> dict[str, float]:
+    """Each module's last background run (P15): the latest success of its own tasks.
+
+    A module's own tasks are those of the extensions that name it first in
+    ``MODULE_KEYS`` (the Gazette's task is the Gazette's, not the XP module's
+    it reads). Runs are counted for the whole bot, every server at once.
+    """
+    runs: dict[str, float] = {}
+    for ext in list(getattr(bot, "ext", {}).values()):
+        modules = declared_modules(ext)
+        if not modules:
+            continue
+        for klass in type(ext).__mro__:
+            for value in vars(klass).values():
+                if not isinstance(value, Task):
+                    continue
+                record = snapshot.tasks.get(task_name(value))
+                if record is not None and record.last_success is not None:
+                    runs[modules[0]] = max(runs.get(modules[0], 0.0), record.last_success)
+    return runs
+
+
 def guild_task_names(bot: Any, enabled_modules: set[str]) -> list[str]:
     return list(guild_tasks(bot, enabled_modules))
 
@@ -250,7 +316,10 @@ def task_report(tasks: dict[str, Any] | list[str], snapshot: HealthSnapshot) -> 
 
 __all__ = [
     "REQUIRED_PERMISSIONS",
+    "MODULE_PERMISSIONS",
     "channel_report",
+    "module_last_runs",
+    "module_permissions",
     "configured_channels",
     "TASK_LABELS",
     "guild_task_names",

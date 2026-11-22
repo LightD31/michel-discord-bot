@@ -112,3 +112,52 @@ async def test_a_reporter_is_anonymised_and_the_author_kept(mongo):
     kept = await UserDataRepository(AUTHOR).forget([mongo.guild_id])
     assert f"guild_{mongo.guild_id}.reports" in kept.kept
     assert await repo.count_against(AUTHOR) == 1
+
+
+async def test_the_dashboard_lists_the_reports_for_moderators_only(mongo):
+    """P15: the reports on the Modération page, newest first, open ones on their own."""
+    import json
+    from types import SimpleNamespace
+
+    from fastapi import HTTPException
+
+    import src.webui.routes.moderation as moderation_routes
+    from src.core.permissions import MANAGE_GUILD, MODERATE_MEMBERS
+    from src.webui.guild_access import GuildAccess
+
+    repo = ReportRepository(mongo.guild_id)
+    await report(repo, ME, message="500", minutes=0)
+    await report(repo, OTHER, message="500", reason="insulte", minutes=1)
+    await report(repo, ME, message="501", minutes=5)
+    await repo.set_card("500", "90", "900")
+    await repo.claim("501", "dismissed", OTHER, NOW + timedelta(minutes=6))
+
+    class Ctx:
+        bot = object()
+        oauth = SimpleNamespace(is_developer=lambda session: False)
+        permissions = MODERATE_MEMBERS
+
+        async def require_guild_admin(self, request, guild_id):  # noqa: ARG002
+            return SimpleNamespace(username="alice", user_id="7", guilds=[])
+
+        async def guild_access(self, session, guild_id):  # noqa: ARG002
+            return GuildAccess(is_member=True, permissions=self.permissions)
+
+    ctx = Ctx()
+    router = moderation_routes.create_router(ctx)
+    endpoint = next(r.endpoint for r in router.routes if r.path.endswith("/reports"))
+
+    everything = json.loads((await endpoint(None, mongo.guild_id, status=None)).body)["reports"]
+    assert [r["message_id"] for r in everything] == ["501", "500"]
+    assert everything[0]["status"] == "dismissed" and everything[0]["handled_by"] == OTHER
+    first = everything[1]
+    assert [r["reason"] for r in first["reporters"]] == ["spam", "insulte"]
+    assert first["card_url"] == f"https://discord.com/channels/{mongo.guild_id}/90/900"
+    assert first["message_url"] == f"https://discord.com/channels/{mongo.guild_id}/10/500"
+    opened = json.loads((await endpoint(None, mongo.guild_id, status="open")).body)["reports"]
+    assert [r["message_id"] for r in opened] == ["500"]
+
+    ctx.permissions = MANAGE_GUILD  # the settings permission: not enough to see who reported
+    with pytest.raises(HTTPException) as refused:
+        await endpoint(None, mongo.guild_id, status=None)
+    assert refused.value.status_code == 403

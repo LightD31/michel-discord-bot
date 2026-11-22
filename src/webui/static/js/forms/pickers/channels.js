@@ -24,8 +24,10 @@ export async function fetchServerChannels(serverId) {
 
 // The <option>s of a guild's channels, by category, each thread under its
 // channel; *exclude* holds ids to leave out (those a list already has).
-export function channelOptionsHtml(data, exclude) {
-    const {channels, categories} = data;
+// *forums*: the server's forums alone (a forum field), else every channel but them.
+export function channelOptionsHtml(data, exclude, forums = false) {
+    const {categories} = data;
+    const channels = data.channels.filter(c => Boolean(c.is_forum) === forums);
     const skip = exclude || new Set();
     // Split top-level channels from threads and index threads by their parent text channel
     const topLevel = [];
@@ -105,13 +107,14 @@ export async function populateChannelPickers(container) {
         return;
     }
     const opts = '<option value="">— Choisir un salon —</option>' + channelOptionsHtml(data);
+    const forumOpts = '<option value="">— Choisir un forum —</option>' + channelOptionsHtml(data, null, true);
     const channels = data.channels;
     const validIds = new Set(channels.map(c => c.id));
     for (const picker of pickers) {
         const select = picker.querySelector('select');
         const manual = picker.querySelector('.channel-picker-manual');
         const current = picker.dataset.current || '';
-        select.innerHTML = opts;
+        select.innerHTML = picker.dataset.type === 'forum' ? forumOpts : opts;
         if (current && validIds.has(current)) {
             select.value = current;
         } else if (current) {

@@ -199,6 +199,23 @@ export function renderModulePage() {
                     <div class="loading"><div class="spinner"></div></div>
                 </div>
             </div>
+            <div class="card" style="margin-top:16px;">
+                <div class="card-header">
+                    <div>
+                        <div class="card-title">🚩 Signalements</div>
+                        <div class="card-subtitle">Les messages signalés par les membres. On les traite avec les boutons de leur carte, dans le salon de modération.</div>
+                    </div>
+                    <div class="card-actions">
+                        <select id="report-filter" class="form-input" aria-label="Signalements à afficher" data-change="loadReports" data-change-args="${actionArgs(sid)}">
+                            <option value="open">À traiter</option>
+                            <option value="">Tous</option>
+                        </select>
+                    </div>
+                </div>
+                <div id="reports-list" data-server-id="${sid}">
+                    <div class="loading"><div class="spinner"></div></div>
+                </div>
+            </div>
             ` : ''}
             ${mod === 'moduleSpotify' ? `
             <div class="card" style="margin-top:16px;">

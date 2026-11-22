@@ -55,12 +55,12 @@ def errors(module, value):
 
 def test_saves_refuse_a_format_spec_in_any_template():
     (error,) = errors("moduleXp", {"levelUpMessageList": [{"text": "{mention:>99999}"}]})
-    assert error.startswith("levelUpMessageList.0.text:")
+    assert error.startswith("« Messages de level-up » › n°1 › text : ")
     (error,) = errors("moduleYoutube", {"youtubeNotificationTemplate": "{label!r}"})
-    assert error.startswith("youtubeNotificationTemplate:")
+    assert error.startswith("« Modèle de notification » : ")
     feeds = {"news": {"url": "https://x/feed", "template": "{title.__class__}"}}
     (error,) = errors("moduleRss", {"rssFeeds": feeds})
-    assert error.startswith("rssFeeds:")
+    assert error.startswith("« Flux suivis » : ")
 
 
 def test_saves_accept_plain_templates():

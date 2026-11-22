@@ -222,6 +222,19 @@ class ReportRepository:
         await self._col().update_one({"_id": str(message_id)}, {"$set": {"case_id": case_id}})
 
     @translates_db_errors
+    async def list(self, *, open_only: bool = False, limit: int = 100) -> list[MessageReport]:
+        """The latest reported messages (the dashboard's list, P15), newest first."""
+        query: dict = {"status": "open"} if open_only else {}
+        docs = (
+            await self._col()
+            .find(query)
+            .sort("created_at", pymongo.DESCENDING)
+            .limit(limit)
+            .to_list()
+        )
+        return [MessageReport.model_validate(d) for d in docs]
+
+    @translates_db_errors
     async def count_against(self, author_id: str) -> int:
         """How many of the member's messages were reported."""
         return int(await self._col().count_documents({"author_id": str(author_id)}))

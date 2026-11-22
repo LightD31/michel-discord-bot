@@ -1,6 +1,7 @@
 // Secret Santa: the session and its draw.
 import { EL, actionArgs, registerActions } from '../core/actions.js';
 import { api } from '../core/api.js';
+import { html } from '../core/html.js';
 import { escapeHtml } from '../core/util.js';
 import { askConfirm } from '../ui/confirm.js';
 import { toast } from '../ui/toast.js';
@@ -40,12 +41,50 @@ export function secretSantaHtml(serverId, s) {
                 <label class="santa-check"><input type="checkbox" id="santa-subgroups"> Autoriser plusieurs sous-groupes si les exclusions empêchent une boucle unique</label>
                 <button class="btn btn-primary" data-click="drawSecretSanta" data-click-args="${actionArgs(serverId, EL)}" ${s.total < 2 ? 'disabled title="Il faut au moins 2 participants"' : ''}>🎲 Lancer le tirage</button>
             </div>`;
+    // P15: who gives to whom, for the server's administrators only (the API checks it again).
+    const reveal = s.can_reveal ? html`
+            <div class="santa-reveal">
+                <button class="btn btn-secondary" data-click="revealSecretSanta" data-click-args="${actionArgs(serverId, EL)}">🔍 Révéler les attributions</button>
+                <div id="santa-pairs" hidden></div>
+            </div>` : '';
     return `
             <dl class="santa-facts">${facts.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join('')}</dl>
             ${progress}
             <h4 style="margin:16px 0 8px;">Participants (${s.total})</h4>
             ${people}
-            ${draw}`;
+            ${draw}
+            ${reveal}`;
+}
+
+export function santaPairsHtml(pairs) {
+    return html`
+            <p class="santa-reveal-note">Seulement pour toi : rien n'est envoyé aux participants.</p>
+            <ul class="santa-people santa-pairs">${pairs.map(p => html`
+                <li><span>${p.giver}</span><span aria-hidden="true">→</span><span>${p.receiver}</span></li>`)}</ul>
+            <button class="btn btn-ghost btn-sm" data-click="hideSecretSantaPairs">Masquer</button>`;
+}
+
+export async function revealSecretSanta(serverId, btn) {
+    if (!(await askConfirm('Tu vas voir qui offre un cadeau à qui. C\'est noté dans le journal du serveur.', { title: 'Révéler les attributions ?', confirm: '🔍 Révéler' }))) return;
+    if (btn) btn.disabled = true;
+    try {
+        const result = await api(`/api/servers/${encodeURIComponent(serverId)}/secretsanta/reveal`, { method: 'POST' });
+        const box = document.getElementById('santa-pairs');
+        if (box && result?.pairs) {
+            box.innerHTML = String(santaPairsHtml(result.pairs));
+            box.hidden = false;
+        }
+    } catch (e) { /* handled by api() */ }
+    finally {
+        if (btn) btn.disabled = false;
+    }
+}
+
+export function hideSecretSantaPairs() {
+    const box = document.getElementById('santa-pairs');
+    if (!box) return;
+    box.innerHTML = '';
+    box.hidden = true;
 }
 
 export async function loadSecretSanta(serverId) {
@@ -82,5 +121,7 @@ export async function drawSecretSanta(serverId, btn) {
 
 registerActions({
     drawSecretSanta,
+    hideSecretSantaPairs,
     loadSecretSanta,
+    revealSecretSanta,
 });

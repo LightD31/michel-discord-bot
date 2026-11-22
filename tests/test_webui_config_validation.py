@@ -25,12 +25,15 @@ def test_a_valid_module_config_passes():
 
 def test_unknown_keys_are_refused():
     (error,) = xp_errors({"enabled": True, "leftover": 1})
-    assert error.startswith("leftover:")
+    assert error == "leftover : champ inconnu"
 
 
 def test_wrong_types_are_refused():
     errors = xp_errors({"levelRewards": ["not", "a", "map"], "xpPinMessage": [1]})
-    assert {e.split(":")[0] for e in errors} == {"levelRewards", "xpPinMessage"}
+    assert {e.split(" : ")[0] for e in errors} == {
+        "« Récompenses par niveau »",
+        "« Épingler le leaderboard »",
+    }
 
 
 def test_numeric_ids_are_accepted_for_string_fields():
@@ -41,7 +44,7 @@ def test_message_list_weights_must_be_numbers():
     """The SPA writes each weight back into an input: only a number may reach it."""
     hostile = [{"text": "Bravo {mention}", "weight": '1" autofocus onfocus="alert(1)'}]
     (error,) = xp_errors({"levelUpMessageList": hostile})
-    assert error.startswith("levelUpMessageList.0.weight:")
+    assert error.startswith("« Messages de level-up » › n°1 › weight : ")
     assert xp_errors({"levelUpMessageList": [{"text": "x", "weight": -1}]}) != []
     assert xp_errors({"levelUpMessageList": [{"text": "x", "extra": 1}]}) != []
     assert xp_errors({"levelUpMessageList": [{"text": "x", "weight": "2"}, {"text": "y"}]}) == []
@@ -54,12 +57,12 @@ def test_a_number_out_of_its_bounds_is_refused_in_french():
 
     starboard = schemas.module_model("moduleStarboard")
     (error,) = schemas.validation_errors(starboard, {"threshold": -3}, module=True)
-    assert error == "threshold: doit être supérieur ou égal à 1"
+    assert error == "« Seuil » : doit être supérieur ou égal à 1"
     moderation = schemas.module_model("moduleModeration")
     (error,) = schemas.validation_errors(moderation, {"spamThreshold": 1}, module=True)
-    assert error == "spamThreshold: doit être supérieur ou égal à 2"
+    assert error == "« Seuil anti-spam (messages) » : doit être supérieur ou égal à 2"
     (error,) = schemas.validation_errors(moderation, {"spamWindowSeconds": 10**6}, module=True)
-    assert error.startswith("spamWindowSeconds: doit être inférieur ou égal à ")
+    assert " : doit être inférieur ou égal à " in error
     backup = schemas.section_model("backup")
     assert schemas.validation_errors(backup, {"maxBackups": 0}, module=False) != []
     assert schemas.validation_errors(backup, {"backupHour": 24}, module=False) != []
@@ -143,7 +146,7 @@ def test_an_invalid_module_save_is_refused_and_nothing_is_written():
         asyncio.run(
             put(None, "1", "moduleXp", servers_routes.ConfigUpdate(config={"xpPinMessage": [1]}))
         )
-    assert exc.value.status_code == 422 and "xpPinMessage" in exc.value.detail
+    assert exc.value.status_code == 422 and "« Épingler le leaderboard »" in exc.value.detail
     assert ctx.written == []
 
     resp = asyncio.run(
@@ -171,3 +174,24 @@ def test_global_sections_are_validated_and_unknown_ones_refused():
 
     assert json.loads(save("discord", {"devGuildId": "1"}).body)["status"] == "ok"
     assert ctx.written[-1]["config"]["discord"] == {"devGuildId": "1"}
+
+
+def test_a_refused_save_names_the_field_as_the_form_shows_it():
+    """P15 (set aside in P1): « Seuil » rather than ``threshold``, in French."""
+    import extensions.starboard._common  # noqa: F401 — registers moduleStarboard
+    import extensions.twitch._common  # noqa: F401 — registers moduleTwitch
+
+    starboard = schemas.module_model("moduleStarboard")
+    (error,) = schemas.validation_errors(starboard, {"threshold": -3}, module=True)
+    assert error == "« Seuil » : doit être supérieur ou égal à 1"
+    (error,) = schemas.validation_errors(starboard, {"threshold": "beaucoup"}, module=True)
+    assert error == "« Seuil » : doit être un nombre entier"
+    twitch = schemas.module_model("moduleTwitch")
+    entry = {"twitchNotificationTemplate": "x" * 600}
+    (error,) = schemas.validation_errors(
+        twitch, {"twitchStreamerList": {"zerator": entry}}, module=True
+    )
+    assert error.startswith("« Streamers suivis » › zerator › twitchNotificationTemplate : ")
+    assert "500 caractères" in error
+    (error,) = schemas.validation_errors(starboard, {"oups": 1}, module=True)
+    assert error == "oups : champ inconnu"

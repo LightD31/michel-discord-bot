@@ -3462,3 +3462,17 @@ body.has-save-bar .toast-container { bottom: 88px; }
 .me-empty { color: var(--text-muted); font-size: 13px; margin: 0; }
 @media (max-width: 900px) { .me-grid { grid-template-columns: 1fr; } }
 @media (max-width: 480px) { .me-tile-value { font-size: 17px; } }
+
+/* Secret Santa reveal (P15): administrators only, on demand. */
+.santa-reveal { margin-top: 16px; display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+.santa-reveal-note { color: var(--text-muted); font-size: 13px; margin: 0; }
+.santa-pairs li { gap: 8px; }
+
+/* Reported messages on the Modération page (P15). */
+.report-item { border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; margin-bottom: 8px; display: flex; flex-direction: column; gap: 6px; }
+.report-item.report-done { opacity: 0.7; }
+.report-head { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.report-status { font-size: 13px; color: var(--text-muted); }
+.report-reasons { margin: 0; padding-left: 18px; font-size: 13px; }
+.report-who { font-weight: 600; }
+.report-meta { font-size: 12px; color: var(--text-muted); }
