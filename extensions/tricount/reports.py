@@ -7,6 +7,7 @@ from collections import defaultdict
 from interactions import (
     AutocompleteContext,
     Buckets,
+    Client,
     Embed,
     File,
     OptionType,
@@ -32,7 +33,7 @@ from src.core import logging as logutil
 from src.core.logging import log_failure
 from src.discord_ext.autocomplete import guild_group_autocomplete
 from src.discord_ext.look import card, sign
-from src.discord_ext.messages import fetch_user_safe, require_guild
+from src.discord_ext.messages import fetch_user_safe, guild_of, require_guild
 from src.discord_ext.scopes import guild_scopes
 
 from ._common import DEFAULT_CATEGORY, TRICOUNT, guild_currency
@@ -58,6 +59,8 @@ def _field_value(lines: list[str]) -> str:
 
 class ReportsMixin:
     """Query expense data: list, balance, and personal group overview."""
+
+    bot: Client
 
     @slash_command(
         name="tricount",
@@ -85,7 +88,7 @@ class ReportsMixin:
         if not await require_guild(ctx):
             return
 
-        repo = TricountRepository(ctx.guild.id)
+        repo = TricountRepository(guild_of(ctx).id)
         group = await repo.find_active_group(groupe)
         if not group:
             await ctx.send(f"❌ Aucun groupe actif trouvé avec le nom '{groupe}'.", ephemeral=True)
@@ -113,7 +116,7 @@ class ReportsMixin:
             title=f"📋 Dépenses du groupe {groupe}",
             description=f"Dernières {len(expenses)} dépense(s):",
         )
-        currency = guild_currency(ctx.guild.id)
+        currency = guild_currency(guild_of(ctx).id)
         for i, expense in enumerate(expenses, 1):
             payer_name, _ = await fetch_user_safe(self.bot, expense["payer"])
             added_by_name, _ = await fetch_user_safe(self.bot, expense["added_by"])
@@ -169,7 +172,7 @@ class ReportsMixin:
         if not await require_guild(ctx):
             return
 
-        repo = TricountRepository(ctx.guild.id)
+        repo = TricountRepository(guild_of(ctx).id)
         group = await repo.find_active_group(groupe)
         if not group:
             await ctx.send(f"❌ Aucun groupe actif trouvé avec le nom '{groupe}'.", ephemeral=True)
@@ -192,7 +195,7 @@ class ReportsMixin:
             await ctx.send(embed=embed)
             return
 
-        currency = guild_currency(ctx.guild.id)
+        currency = guild_currency(guild_of(ctx).id)
         paid: dict[int, int] = defaultdict(int)
         for expense in expenses:
             if not is_transfer(expense):
@@ -258,7 +261,7 @@ class ReportsMixin:
     async def tricount_graphique(self, ctx: SlashContext, groupe: str):
         if not await require_guild(ctx):
             return
-        repo = TricountRepository(ctx.guild.id)
+        repo = TricountRepository(guild_of(ctx).id)
         group = await repo.find_active_group(groupe)
         if not group:
             await ctx.send(f"❌ Aucun groupe actif trouvé avec le nom '{groupe}'.", ephemeral=True)
@@ -288,7 +291,7 @@ class ReportsMixin:
                 render_category_chart,
                 title=f"Dépenses du groupe {groupe}",
                 category_totals=dict(totals),
-                currency=guild_currency(ctx.guild.id),
+                currency=guild_currency(guild_of(ctx).id),
             )
         except Exception as e:
             log_failure(logger, "Could not render tricount chart: %s", e)
@@ -311,7 +314,7 @@ class ReportsMixin:
         if not await require_guild(ctx):
             return
 
-        repo = TricountRepository(ctx.guild.id)
+        repo = TricountRepository(guild_of(ctx).id)
         groups = await repo.list_member_groups(ctx.author.id)
 
         if not groups:
@@ -328,7 +331,7 @@ class ReportsMixin:
             title="📝 Mes groupes Tricount",
             description=f"Tu es membre de {len(groups)} groupe(s) :",
         )
-        currency = guild_currency(ctx.guild.id)
+        currency = guild_currency(guild_of(ctx).id)
         for group in groups[:10]:
             expenses_for_group = await repo.list_group_expenses(group["_id"])
             spending = [e for e in expenses_for_group if not is_transfer(e)]

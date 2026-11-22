@@ -27,8 +27,9 @@ from features.zerator247 import (
 )
 from src.core import clock
 from src.core.errors import DatabaseError
-from src.discord_ext.messages import fetch_user_safe
+from src.discord_ext.messages import fetch_user_safe, guild_id_of
 
+from ._base import ZuniversBase
 from ._common import ZUNIVERS, GuildState, logger, zunivers_cmd
 
 _REQUEST_GROUP = "247"
@@ -44,7 +45,7 @@ def _twitch_url(settings: dict) -> str | None:
     return f"https://twitch.tv/{login}" if login else None
 
 
-class Zerator247Mixin:
+class Zerator247Mixin(ZuniversBase):
     """Polls the 24/7 vote cycle and DMs subscribers when the requests window opens."""
 
     async def _load_request_subscriptions(self, guild_id: str) -> dict[str, RequestSubscription]:
@@ -134,7 +135,7 @@ class Zerator247Mixin:
             )
             return
         subscription = RequestSubscription(str(ctx.author.id), debut, fin)
-        state = await self._state(ctx.guild_id)
+        state = await self._state(guild_id_of(ctx))
         try:
             await RequestReminderRepository(state.guild_id).save(subscription)
         except DatabaseError as e:
@@ -161,7 +162,7 @@ class Zerator247Mixin:
     )
     async def request_remove(self, ctx: SlashContext):
         user_id = str(ctx.author.id)
-        state = await self._state(ctx.guild_id)
+        state = await self._state(guild_id_of(ctx))
         try:
             removed = await RequestReminderRepository(state.guild_id).delete(user_id)
         except DatabaseError as e:
@@ -190,7 +191,7 @@ class Zerator247Mixin:
         except Zerator247Error as e:
             await ctx.send(f"⚠️ {e}", ephemeral=True)
             return
-        state = await self._state(ctx.guild_id)
+        state = await self._state(guild_id_of(ctx))
         subscription = state.request_subscriptions.get(str(ctx.author.id))
         mine = (
             f"Tu es abonné aux rappels, {subscription.describe_hours()}."

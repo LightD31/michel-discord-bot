@@ -12,15 +12,18 @@ from src.core.text import clip
 MAX_CHOICES = 25
 CHOICE_NAME_LIMIT = 100
 
+# One autocomplete choice, as ``AutocompleteContext.send(choices=…)`` takes it.
+Choice = dict[str, str | int | float]
 
-def matching_choices(items: Iterable[tuple[str, str]], typed: str) -> list[dict[str, str]]:
+
+def matching_choices(items: Iterable[tuple[str, str]], typed: str) -> list[Choice]:
     """Choices for the ``(label, value)`` pairs whose label or value contains *typed*.
 
     The value is what the option receives (a message id, say), so a member who
     pastes an id still sees it offered. Labels are clipped to Discord's limit.
     """
     needle = typed.strip().lower()
-    choices = [
+    choices: list[Choice] = [
         {"name": clip(label, CHOICE_NAME_LIMIT), "value": value}
         for label, value in items
         if needle in label.lower() or needle in value
@@ -57,4 +60,10 @@ async def guild_group_autocomplete(
     await ctx.send(choices=filtered[:25])
 
 
-__all__ = ["CHOICE_NAME_LIMIT", "MAX_CHOICES", "guild_group_autocomplete", "matching_choices"]
+__all__ = [
+    "CHOICE_NAME_LIMIT",
+    "Choice",
+    "MAX_CHOICES",
+    "guild_group_autocomplete",
+    "matching_choices",
+]

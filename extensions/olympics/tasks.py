@@ -2,10 +2,10 @@
 
 import asyncio
 from functools import partial
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from curl_cffi import requests as cffi_requests
-from interactions import IntervalTrigger, Task
+from interactions import Client, Embed, IntervalTrigger, Task
 
 from features.olympics import OlympicsStateRepository
 from src.core.errors import IntegrationError
@@ -27,6 +27,22 @@ from ._common import (
 
 class TasksMixin:
     """Mixin providing background polling tasks and HTTP/persistence helpers."""
+
+    bot: Client
+
+    if TYPE_CHECKING:  # MedalsMixin's
+
+        async def _fetch_france_medals(self) -> list[dict[str, Any]]: ...
+        async def _fetch_medal_standings(self) -> list[dict[str, Any]]: ...
+        @staticmethod
+        def _medal_key(medal: dict[str, Any]) -> str: ...
+        @staticmethod
+        def _get_country_standing(
+            standings: list[dict[str, Any]], country_code: str
+        ) -> dict[str, Any] | None: ...
+        def _build_medal_alert_embed(
+            self, medal: dict[str, Any], france_standing: dict[str, Any] | None, logo_url: str = ""
+        ) -> Embed: ...
 
     # ─── HTTP Client dédié Olympics ──────────────────────────────────────────────
 

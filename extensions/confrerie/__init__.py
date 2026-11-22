@@ -101,7 +101,7 @@ class ConfrerieExtension(
             except Exception as e:
                 logger.warning(f"Failed to cache data source for {db_id}: {e}")
 
-    def _footer_icon(self, guild_id) -> str | None:
+    def _footer_icon(self, guild_id: str | int) -> str | None:
         """The server's icon, shown next to Michel's footer on stats and update embeds."""
         guild = self.bot.get_guild(guild_id) if guild_id else None
         return guild.icon.url if guild and guild.icon else None

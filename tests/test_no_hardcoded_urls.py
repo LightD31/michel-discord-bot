@@ -1,6 +1,6 @@
 """No URL in the code: links, icons and third-party endpoints come from config.
 
-CLAUDE.md, *No URLs in the code*: a user-facing link or an API the bot calls is
+docs/conventions/config.md, *No URLs in the code*: a user-facing link or an API the bot calls is
 a ``ui(..., "url")`` field read at use time, never a literal, so changing a
 host never takes a release. What stays in the code (T02):
 
@@ -83,7 +83,7 @@ def test_no_url_is_written_in_the_code():
         offenders += [f"{rel(path)}:{line}: {url}" for line, url in hardcoded_urls(tree, imports)]
     assert not offenders, (
         "declare the URL as a ui(..., 'url') field and read it at use time "
-        "(CLAUDE.md, No URLs in the code):\n" + "\n".join(offenders)
+        "(docs/conventions/config.md, No URLs in the code):\n" + "\n".join(offenders)
     )
 
 

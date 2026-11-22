@@ -21,9 +21,9 @@ from features.tricount import TricountRepository
 from src.core import clock
 from src.core import logging as logutil
 from src.core.logging import log_failure
-from src.discord_ext.autocomplete import guild_group_autocomplete
+from src.discord_ext.autocomplete import Choice, guild_group_autocomplete
 from src.discord_ext.look import card, sign
-from src.discord_ext.messages import require_guild
+from src.discord_ext.messages import guild_of, require_guild
 from src.discord_ext.scopes import guild_scopes
 
 from ._common import (
@@ -132,7 +132,7 @@ class RecurringMixin:
             await ctx.send("❌ Le montant doit être positif.", ephemeral=True)
             return
 
-        repo = TricountRepository(ctx.guild.id)
+        repo = TricountRepository(guild_of(ctx).id)
         group = await repo.find_active_group(groupe)
         if not group or ctx.author.id not in group["members"]:
             await ctx.send("❌ Groupe introuvable ou non membre.", ephemeral=True)
@@ -173,7 +173,7 @@ class RecurringMixin:
     @depense_recurrente_ajouter.autocomplete("categorie")
     async def _ajouter_categorie_ac(self, ctx: AutocompleteContext):
         query = (ctx.input_text or "").lower()
-        choices = [
+        choices: list[Choice] = [
             {"name": cat, "value": cat} for cat in DEFAULT_CATEGORIES if query in cat.lower()
         ]
         await ctx.send(choices=choices[:25])
@@ -194,7 +194,9 @@ class RecurringMixin:
     async def depense_recurrente_lister(self, ctx: SlashContext, groupe: str | None = None):
         if not await require_guild(ctx):
             return
-        docs = await TricountRepository(ctx.guild.id).list_active_recurring(ctx.author.id, groupe)
+        docs = await TricountRepository(guild_of(ctx).id).list_active_recurring(
+            ctx.author.id, groupe
+        )
         if not docs:
             await ctx.send("Aucune dépense récurrente active.", ephemeral=True)
             return
@@ -235,7 +237,7 @@ class RecurringMixin:
     async def depense_recurrente_arreter(self, ctx: SlashContext, recurrence_id: str):
         if not await require_guild(ctx):
             return
-        repo = TricountRepository(ctx.guild.id)
+        repo = TricountRepository(guild_of(ctx).id)
         doc = await repo.find_active_recurring(recurrence_id)
         if doc is None:
             await ctx.send("❌ Récurrence introuvable ou déjà arrêtée.", ephemeral=True)
@@ -257,7 +259,7 @@ class RecurringMixin:
             "Recurring expense %s stopped by %s in guild %s",
             doc["_id"],
             ctx.author.id,
-            ctx.guild.id,
+            guild_of(ctx).id,
         )
         await ctx.send("✅ Récurrence arrêtée.", ephemeral=True)
 

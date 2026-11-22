@@ -500,8 +500,8 @@ class StreamerInfo:
 
 
 def split_streamer_list(streamer_list: str, max_length: int = 1024) -> list[str]:
-    chunks = []
-    current_chunk = []
+    chunks: list[str] = []
+    current_chunk: list[str] = []
     current_length = 0
     for streamer in streamer_list.split(", "):
         if current_length + len(streamer) + 2 > max_length:

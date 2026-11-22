@@ -32,6 +32,7 @@ from src.discord_ext.messages import send_error
 from src.discord_ext.scopes import guild_scopes
 from src.integrations.notion import NotionAPIError
 
+from ._base import ConfrerieBase
 from ._common import CONFRERIE, autocomplete_options
 
 logger = logutil.init_logger(__name__)
@@ -47,7 +48,7 @@ _AUTOCOMPLETE_COLUMNS = {
 }
 
 
-class EditorsMixin:
+class EditorsMixin(ConfrerieBase):
     """Collect, validate, and persist new editor entries to the Notion DB."""
 
     _pending_editors: ExpiringMap[EditorInput]

@@ -18,11 +18,12 @@ from src.core.logging import log_failure
 from src.discord_ext.errors import failure_reply
 from src.discord_ext.messages import send_error
 
+from ._base import ZuniversBase
 from ._common import GuildState, logger, zunivers_api_url, zunivers_cmd
 from .embeds import create_event_embed, create_season_embed, set_event_embed_image
 
 
-class EventsMixin:
+class EventsMixin(ZuniversBase):
     """Hourly Zunivers event polling + hardcore season state transitions."""
 
     @Task.create(OrTrigger(*[TimeTrigger(hour=i, minute=1) for i in range(24)]))

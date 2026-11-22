@@ -1,0 +1,13 @@
+# Tests
+
+How the suite is laid out, and what each kind of test is for. Moved verbatim from `CLAUDE.md` (P12, D5); its one-line rules point here.
+
+## Notes
+
+- Real tests exist under `tests/` (core db/http/config, Web UI auth and config saving, giveaway draw, moderation, MDI client, RSS parser, weighted messages, Tricount balances, poll closing, reminder scheduling, birthdays, starboard rules, YouTube filters, welcome). Coverage is measured over `src`, `features`, `extensions` and `scripts` — when adding domain logic to `features/`, add a matching test. Extension handlers are tested by calling the command's callback with the fakes of `tests/discord_fakes.py` (`FakeCtx`, `FakeGuild`, `FakeMember`, `FakeChannel`, `run()`, `bare_extension()`) and an in-memory repository injected through `_repo()` (see `tests/test_giveaway_commands.py`). `pytest --cov` fails below `fail_under` in `[tool.coverage.report]` (all four together), and CI's test job also holds `src` + `features` at 81% on their own; raise those floors when coverage grows, never lower them to get a PR green. Keep them below the figures *without* MongoDB, so a local run without one still passes.
+
+- **Tests never touch the developer's setup.** `tests/conftest.py` points the config store at a `config.json` in an empty temporary directory and gives MongoDB no URL, for every test: one that needs settings uses `store_config`, one that needs a database uses `mongo`. A test that changes process-wide state (a registry, a module attribute) does it through `monkeypatch`, so the next test starts clean.
+
+- **Guards that scan the sources** (dates, layers, command scopes, failure logging, live config reads, the blocking Spotify client, the SPA's CSP, URLs) go through `tests/source_scan.py`: paths from the repository root, and calls resolved through each file's imports (`import datetime as dt; dt.datetime.now()` is `datetime.datetime.now`). Each guard has a parametrized test of the spellings it must catch; add one when you find a way around it. Allowlists name a command or a host, never a whole file.
+
+- **Repository tests run against a real MongoDB** (`tests/test_mongo_*.py`, `pytestmark = pytest.mark.mongo`). The `mongo` fixture (`tests/conftest.py`) points `mongo_manager` at `MONGO_TEST_URL`, on a guild database and a `global` database of its own (both dropped afterwards), and skips the test when the variable is unset. Use it for anything an in-memory fake would only pretend to check: aggregations, atomic updates (`$inc`, `find_one_and_update`, pipeline updates), unique and TTL indexes, dotted field paths. A new repository method gets a test there.

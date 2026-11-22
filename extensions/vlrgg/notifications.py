@@ -12,6 +12,7 @@ from src.discord_ext.messages import (
     forget_persistent_message,
 )
 
+from ._base import VlrggBase
 from ._common import (
     FINALIZE_MAX_ATTEMPTS,
     LIVE_UPDATE_INTERVAL_MINUTES,
@@ -22,7 +23,7 @@ from ._common import (
 )
 
 
-class NotificationsMixin:
+class NotificationsMixin(VlrggBase):
     """Mixin providing match notification background tasks."""
 
     # ── Scheduled tasks ───────────────────────────────────────────────────────

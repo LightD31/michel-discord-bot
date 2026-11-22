@@ -1,36 +1,27 @@
-"""The modules mypy still skips in extensions/ (pyproject.toml) exist (Q01).
+"""mypy checks every module (D4): no override skips one again.
 
-The list only shrinks: a module renamed or removed must leave it too, or its
-successor would be type-checked under a name nobody skips while the stale line
-hides the next file to take that name.
+The 64 extension modules mypy once skipped (``ignore_errors``) are all typed
+now; a new module with errors gets them fixed, not a line in pyproject.toml.
 """
 
 import tomllib
 
 from source_scan import ROOT
 
-EXCLUSION_NOTE = "extensions/ is checked too"
 
-
-def excluded_modules() -> list[str]:
+def mypy_overrides() -> list[dict]:
     config = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
-    overrides = config["tool"]["mypy"]["overrides"]
-    (skipped,) = [o for o in overrides if o.get("ignore_errors")]
-    return list(skipped["module"])
+    return config["tool"]["mypy"].get("overrides", [])
 
 
-def test_every_skipped_module_exists_and_is_listed_once():
-    modules = excluded_modules()
-    assert len(modules) == len(set(modules))
-    missing = [
-        m
-        for m in modules
-        if not (ROOT / (m.replace(".", "/") + ".py")).is_file()
-        and not (ROOT / m.replace(".", "/") / "__init__.py").is_file()
-    ]
-    assert missing == [], f"remove them from the mypy overrides: {missing}"
+def test_no_module_is_skipped():
+    skipping = [o.get("module") for o in mypy_overrides() if o.get("ignore_errors")]
+    assert skipping == [], f"fix the errors instead of skipping: {skipping}"
 
 
-def test_only_extensions_are_skipped():
-    assert all(m.startswith("extensions.") for m in excluded_modules())
-    assert len(excluded_modules()) <= 64  # when the list was made; lower it as it shrinks
+def test_no_extension_is_left_out_of_the_check():
+    config = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    excluded = config["tool"]["mypy"].get("exclude", [])
+    # Only the parked work-in-progress modules (extensions/_*) stay out.
+    assert [p for p in excluded if "extensions" in p] == ["^extensions/_"]
+    assert not [o for o in mypy_overrides() if o.get("follow_imports") == "skip"]

@@ -33,7 +33,7 @@ def channel_in_guild(channel: Any, guild_id: int | str) -> bool:
 async def fetch_guild_channel(
     bot: Client,
     guild_id: int | str,
-    channel_id: int | str,
+    channel_id: int | str | None,
     *,
     logger: logging.Logger | None = None,
     raise_outages: bool = False,
@@ -49,6 +49,10 @@ async def fetch_guild_channel(
     outage for a deleted channel, such as a poll or a giveaway that would
     close without its results.
     """
+    if channel_id is None:  # a setting left empty
+        if logger:
+            logger.warning("Guild %s: channel unavailable: not set", guild_id)
+        return None
     try:
         channel = await bot.fetch_channel(int(channel_id))
     except (NotFound, Forbidden, TypeError, ValueError) as e:

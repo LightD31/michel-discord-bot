@@ -15,6 +15,7 @@ from src.core.text import take_within_budget
 from src.discord_ext.look import card, sign
 from src.discord_ext.messages import edit_message_if_changed
 
+from ._base import ConfrerieBase
 from ._common import CONFRERIE, ConfrerieError
 
 logger = logutil.init_logger(__name__)
@@ -97,7 +98,7 @@ def build_statistics_embed(stats: ConfrerieStats) -> Embed:
     return embed
 
 
-class StatsMixin:
+class StatsMixin(ConfrerieBase):
     """Refresh and post the confrérie statistics recap embed."""
 
     @Task.create(OrTrigger(*[TimeTrigger(hour=h, utc=False) for h in range(24)]))

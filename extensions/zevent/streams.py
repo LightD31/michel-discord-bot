@@ -1,13 +1,15 @@
 """Twitch API helpers: categorise streamers by location and count viewers."""
 
 import os
-from datetime import datetime, timedelta
+from datetime import timedelta
+from typing import Any
 
 from features.zevent.stats import LAN, ONLINE, resolve_location
 from src.core import clock
 from src.core import logging as logutil
 from src.core.logging import log_failure
 
+from ._base import ZeventBase
 from ._common import UPDATE_INTERVAL, StreamerInfo
 
 logger = logutil.init_logger(__name__)
@@ -18,14 +20,8 @@ logger = logutil.init_logger(__name__)
 _SNAPSHOT_TTL = timedelta(seconds=max(UPDATE_INTERVAL / 2, 1))
 
 
-class StreamsMixin:
+class StreamsMixin(ZeventBase):
     """Resolve stream status via the Twitch API and aggregate viewer counts."""
-
-    # Declared here rather than inferred from ``Zevent.__init__`` so mypy sees
-    # the snapshot slots; this mixin owns them.
-    _live_logins: set[str]
-    _stream_viewers: dict[str, int]
-    _stream_snapshot_time: datetime | None
 
     def _get_stream_total_count(self, streams: dict, location: str) -> int:
         totals = streams.get("_totals", {})
@@ -47,6 +43,8 @@ class StreamsMixin:
 
         logins = list({stream.get("twitch", "") for stream in streams if stream.get("twitch")})
         viewers: dict[str, int] = {}
+        if self.twitch is None:  # the callers check first
+            return viewers
         batch_size = 100
         for i in range(0, len(logins), batch_size):
             batch = logins[i : i + batch_size]
@@ -60,8 +58,13 @@ class StreamsMixin:
         self._stream_snapshot_time = now
         return viewers
 
-    async def categorize_streams(self, streams: list[dict]) -> dict[str, dict[str, StreamerInfo]]:
-        categorized = {LAN: {}, ONLINE: {}, "_totals": {LAN: 0, ONLINE: 0}}
+    async def categorize_streams(self, streams: list[dict]) -> dict[str, dict[str, Any]]:
+        """The streamers by location (``StreamerInfo`` by name), plus ``_totals`` (counts)."""
+        categorized: dict[str, dict[str, Any]] = {
+            LAN: {},
+            ONLINE: {},
+            "_totals": {LAN: 0, ONLINE: 0},
+        }
 
         if not streams or not self.twitch:
             return categorized

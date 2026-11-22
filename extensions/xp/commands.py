@@ -30,7 +30,7 @@ from src.core import clock
 from src.core.errors import DatabaseError
 from src.discord_ext.look import card
 from src.discord_ext.mentions import NO_PINGS
-from src.discord_ext.messages import guild_id_of, send_error
+from src.discord_ext.messages import guild_id_of, guild_of, send_error
 from src.discord_ext.paginator import CustomPaginator
 from src.discord_ext.scopes import guild_scopes
 
@@ -58,7 +58,9 @@ class CommandsMixin:
     bot: Client
     _rank_cache: TTLCache
 
-    def _repo(self, guild_id: str) -> XpRepository: ...  # provided by LevelingMixin
+    if TYPE_CHECKING:  # LevelingMixin's
+
+        def _repo(self, guild_id: str) -> XpRepository: ...
 
     if TYPE_CHECKING:  # LeaderboardMixin, after this mixin in the MRO
 
@@ -95,9 +97,9 @@ class CommandsMixin:
         argument_name="utilisateur",
     )
     @cooldown(Buckets.USER, 3, 30)
-    async def rank(self, ctx: SlashContext, utilisateur: User = None):
+    async def rank(self, ctx: SlashContext, utilisateur: User | None = None):
         target_user = utilisateur or ctx.author
-        guild_id = str(ctx.guild.id)
+        guild_id = str(guild_of(ctx).id)
 
         try:
             stats = await self._repo(guild_id).get_user(str(target_user.id))
@@ -130,7 +132,7 @@ class CommandsMixin:
                 xp_to_next=xp_max,
                 total_xp=xp,
                 rank=rank,
-                member_count=ctx.guild.member_count,
+                member_count=guild_of(ctx).member_count,
                 message_count=stats.get("msg", 0),
             )
             await ctx.send(file=File(file=buffer, file_name="rank.png"))
@@ -139,7 +141,7 @@ class CommandsMixin:
             logger.warning("Falling back to embed rank card: %s", e)
 
         # Embed fallback when image rendering fails (e.g. missing fonts/Pillow).
-        rank_display = f"{rank}/{ctx.guild.member_count}" if rank else "N/A"
+        rank_display = f"{rank}/{guild_of(ctx).member_count}" if rank else "N/A"
         embed = card(
             "moduleXp",
             title=f"Statistiques de {target_user.username}",

@@ -1,5 +1,9 @@
 """`/inscription` (members) and `/lldap synchroniser` (admins)."""
 
+import asyncio
+from collections.abc import Iterable
+from typing import TYPE_CHECKING
+
 from interactions import (
     Embed,
     OptionType,
@@ -12,6 +16,7 @@ from interactions import (
 
 from features.lldap import (
     USERNAME_MAX_LENGTH,
+    SyncReport,
     describe_report,
     generate_temp_password,
     normalize_email,
@@ -22,9 +27,9 @@ from features.lldap import (
 from src.core import logging as logutil
 from src.discord_ext.errors import failure_reply
 from src.discord_ext.look import card
-from src.discord_ext.messages import require_guild, send_error
+from src.discord_ext.messages import guild_of, member_of, require_guild, send_error
 from src.discord_ext.scopes import guild_scopes
-from src.integrations.lldap import LldapError
+from src.integrations.lldap import LldapClient, LldapError
 
 from ._common import (
     ALREADY_LINKED,
@@ -55,14 +60,22 @@ class CommandsMixin:
     runtime enabled check stays as a backstop for a sync that failed.
     """
 
+    # Set up by the extension (__init__.py).
+    lldap: LldapClient
+    _register_lock: asyncio.Lock
+
+    if TYPE_CHECKING:
+
+        async def run_sync(self, guild_ids: Iterable[str] | None = None) -> SyncReport: ...
+
     async def _check_guild(self, ctx: SlashContext) -> str | None:
         """The guild id, or ``None`` after telling the user why the command can't run."""
         if not await require_guild(ctx):
             return None
-        if not LLDAP.enabled(ctx.guild.id):
+        if not LLDAP.enabled(guild_of(ctx).id):
             await send_error(ctx, NOT_ENABLED)
             return None
-        return str(ctx.guild.id)
+        return str(guild_of(ctx).id)
 
     @slash_command(
         name="inscription",
@@ -98,7 +111,7 @@ class CommandsMixin:
         if not mapping:
             await send_error(ctx, NO_MAPPING)
             return
-        member = ctx.author
+        member = member_of(ctx)
         groups = sorted({group for role, group in mapping.items() if member.has_role(role)})
         if not groups:
             roles = ", ".join(f"<@&{role}>" for role in mapping)

@@ -11,6 +11,7 @@ from src.core.errors import DatabaseError
 from src.core.http import http_client
 from src.core.logging import log_failure
 
+from ._base import TwitchBase
 from ._common import StreamerInfo
 
 logger = logutil.init_logger(__name__)
@@ -18,13 +19,13 @@ logger = logutil.init_logger(__name__)
 EMOTE_CACHE_DIR = "data/emote_cache"
 
 
-class EmotesMixin:
+class EmotesMixin(TwitchBase):
     """Detect new / replaced / deleted Twitch emotes and notify subscribed guilds."""
 
     async def download_emote_image(
         self,
         emote_id: str,
-        image_url: str,
+        image_url: str | None,
         streamer_id: str,
     ) -> str | None:
         """Download an emote PNG locally and return its path (or None on failure)."""
@@ -85,7 +86,10 @@ class EmotesMixin:
     async def _check_streamer_emotes(
         self, streamer_id: str, guild_streamers: list[StreamerInfo]
     ) -> None:
-        emotes = await self.twitch.get_channel_emotes(guild_streamers[0].user_id)
+        user_id = guild_streamers[0].user_id
+        if user_id is None:  # the caller keeps the resolved streamers only
+            return
+        emotes = list(await self._api().get_channel_emotes(user_id))
         repo = TwitchEmotesRepository(streamer_id)
         try:
             stored = await repo.load_all()

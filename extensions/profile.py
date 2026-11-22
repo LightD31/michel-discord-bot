@@ -46,7 +46,8 @@ from src.discord_ext.scopes import guild_scopes
 logger = logutil.init_logger(__name__)
 
 XP = ModuleConfig("moduleXp")
-# Each line of the card, by the module it needs (accessor names kept plain: see CLAUDE.md).
+# Each line of the card, by the module it needs (accessor names kept plain:
+# docs/conventions/config.md).
 SECTION_MODULES = {
     "stars": ModuleConfig("moduleStarboard"),
     "tracks": ModuleConfig("moduleSpotify"),

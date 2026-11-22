@@ -2,9 +2,11 @@
 
 import asyncio
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 from interactions import (
     BaseChannel,
+    Client,
     Embed,
     Guild,
     IntervalTrigger,
@@ -19,13 +21,20 @@ from features.minecraft import MinecraftSettings
 from src.core import clock
 from src.core.logging import log_failure
 from src.discord_ext.look import card
-from src.discord_ext.messages import edit_message_if_changed
+from src.discord_ext.messages import GuildMessages, edit_message_if_changed
 
 from ._common import MINECRAFT, build_stats_embed, logger
 
 
 class StatusMixin:
     """Live-server status task and embed rendering."""
+
+    # Set up by the extension (__init__.py); ``bot`` by interactions' Extension.
+    bot: Client
+    status_messages: GuildMessages
+    channel_edit_timestamps: dict[str, datetime]
+    scheduled_events: dict[str, Any]
+    _events_recovered: set[str]
 
     @Task.create(IntervalTrigger(seconds=30))
     async def status(self):
@@ -62,7 +71,7 @@ class StatusMixin:
             await self._recover_scheduled_event(guild_id, channel)
 
         try:
-            embed2_timestamp = message.embeds[1].timestamp
+            embed2_timestamp = message.embeds[1].timestamp or Timestamp.utcnow()
         except IndexError:
             embed2_timestamp = Timestamp.utcnow()
 
@@ -232,8 +241,12 @@ class StatusMixin:
                         name=event_name,
                         event_type=ScheduledEventType.EXTERNAL,
                         external_location=f"Serveur Minecraft : {settings.address}",
-                        start_time=clock.now().astimezone() + timedelta(seconds=5),
-                        end_time=clock.now().astimezone() + timedelta(days=1),
+                        start_time=Timestamp.fromdatetime(
+                            clock.now().astimezone() + timedelta(seconds=5)
+                        ),
+                        end_time=Timestamp.fromdatetime(
+                            clock.now().astimezone() + timedelta(days=1)
+                        ),
                         description=f"Des joueurs sont connectés sur le serveur Minecraft !\nAdresse : `{settings.address}`",
                     )
                     self.scheduled_events[guild_id] = event

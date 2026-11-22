@@ -25,6 +25,7 @@ from interactions import (
     ModalContext,
     OptionType,
     ParagraphText,
+    PollMedia,
     ShortText,
     SlashCommandChoice,
     SlashContext,
@@ -227,11 +228,12 @@ class PollsExtension(Extension, PollButtonsMixin):
         self, ctx, question: str, options: list[str], seconds: int | None, multi: bool
     ) -> None:
         """A Discord poll: Discord counts, shows and closes it; Michel keeps nothing."""
+        answers: list[PollMedia | str] = list(options)
         poll = DiscordPoll.create(
             question,
             duration=native_poll_hours(seconds),
             allow_multiselect=multi,
-            answers=options,
+            answers=answers,
         )
         await ctx.send(poll=poll)
         logger.debug(
@@ -386,11 +388,14 @@ class PollsExtension(Extension, PollButtonsMixin):
         return message
 
     async def _close_button_poll(self, guild_id: str, poll: Poll) -> None:
+        poll_id = poll.id
+        if poll_id is None:  # read back from the database: it has its id
+            return
         message = await self._fetch_due_poll(guild_id, poll)
         if message is RETRY:
             return
         if message is None:
-            await self._poll_repo(guild_id).mark_closed(poll.id)
+            await self._poll_repo(guild_id).mark_closed(poll_id)
             return
 
         poll.closed = True
@@ -399,8 +404,8 @@ class PollsExtension(Extension, PollButtonsMixin):
             if message.embeds
             else card("moduleUtils", title=f"📊 {poll.question}")
         )
-        if not embed.title.startswith("🔒"):
-            embed.title = f"🔒 {embed.title}"
+        if not (embed.title or "").startswith("🔒"):
+            embed.title = f"🔒 {embed.title or poll.question}"
         update_poll_embed(embed, poll)
         try:
             await edit_message_if_changed(
@@ -408,7 +413,7 @@ class PollsExtension(Extension, PollButtonsMixin):
             )
         except Exception as e:
             logger.warning("Could not edit closed poll %s: %s", poll.id, e)
-        await self._poll_repo(guild_id).mark_closed(poll.id)
+        await self._poll_repo(guild_id).mark_closed(poll_id)
 
 
 def setup(bot: Client) -> None:

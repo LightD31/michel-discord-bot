@@ -15,12 +15,12 @@ NO_RESULT = "Aucun résultat"
 UNAVAILABLE = "Spotify ne répond pas : réessaie dans un instant"
 
 
-def placeholder(message: str) -> list[dict[str, str]]:
+def placeholder(message: str) -> list[dict[str, str | int | float]]:
     """A single unpickable choice carrying *message*."""
     return [{"name": message, "value": NO_TRACK}]
 
 
-def track_choices(items: list[dict[str, Any]]) -> list[dict[str, str]]:
+def track_choices(items: list[dict[str, Any]]) -> list[dict[str, str | int | float]]:
     """Turn Spotify search items into ``{"name", "value"}`` autocomplete choices."""
     if not items:
         return placeholder(NO_RESULT)

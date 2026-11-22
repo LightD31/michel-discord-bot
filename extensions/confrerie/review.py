@@ -9,6 +9,7 @@ restart — and only an approval creates the page in the (public) Œuvres base.
 import asyncio
 import os
 import re
+from typing import Any
 
 from interactions import (
     ActionRow,
@@ -49,6 +50,7 @@ from src.discord_ext.channels import fetch_guild_channel
 from src.discord_ext.look import card
 from src.discord_ext.messages import fetch_user_safe
 
+from ._base import ConfrerieBase
 from ._common import CONFRERIE
 
 logger = logutil.init_logger(__name__)
@@ -141,14 +143,14 @@ def review_buttons(draft: Draft, *, disabled: bool = False) -> list[ActionRow]:
 
 def _prefilled(label: str, custom_id: str, value: str, *, required: bool = False) -> ShortText:
     """Short text input pre-filled with ``value`` (omitted when empty: Discord rejects null)."""
-    kwargs = {"value": value[:200]} if value else {}
+    kwargs: dict[str, Any] = {"value": value[:200]} if value else {}
     return ShortText(label=label, custom_id=custom_id, required=required, max_length=200, **kwargs)
 
 
-class ReviewMixin:
+class ReviewMixin(ConfrerieBase):
     """Store drafts, send them for review, and act on the owner's decision."""
 
-    def _drafts(self, guild_id) -> DraftRepository:
+    def _drafts(self, guild_id: str | int) -> DraftRepository:
         return DraftRepository(str(guild_id))
 
     async def _draft_guild(self, ctx, draft_id: str) -> str | None:
@@ -399,6 +401,8 @@ class ReviewMixin:
             return
         try:
             channel = await fetch_guild_channel(self.bot, draft.guild_id, draft.review_channel_id)
+            if channel is None:
+                raise LookupError(f"review channel {draft.review_channel_id} is gone")
             message = await channel.fetch_message(draft.review_message_id)
             await message.edit(
                 embed=review_embed(draft, status_line),

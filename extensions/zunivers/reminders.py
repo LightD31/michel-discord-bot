@@ -44,13 +44,14 @@ from features.coloc.constants import (
 from features.zunivers_ninja import build_web_url
 from src.core import clock
 from src.core.logging import log_failure
-from src.discord_ext.messages import fetch_user_safe
+from src.discord_ext.messages import fetch_user_safe, guild_id_of
 
+from ._base import ZuniversBase
 from ._common import GuildState, logger, ninja_config, zunivers_cmd, zunivers_web_url
 from .ninja import DEFAULT_STRATEGY_CHOICE, ninja_strategies, strategy_choices
 
 
-class RemindersMixin:
+class RemindersMixin(ZuniversBase):
     """Daily /journa + /bonus + /im premium reminders (set/remove/dispatch) + advent nudges."""
 
     # ==================== Daily Journa Check ====================
@@ -172,7 +173,7 @@ class RemindersMixin:
             remind_time = clock.at_local(today + timedelta(days=1), heure, minute)
 
         user_id = str(ctx.author.id)
-        state = await self._state(ctx.guild_id)
+        state = await self._state(guild_id_of(ctx))
 
         if type == "BOTH":
             state.reminders.add_reminder(remind_time, user_id, ReminderType.NORMAL)
@@ -217,7 +218,7 @@ class RemindersMixin:
     async def remove_reminder(self, ctx: SlashContext):
         """Remove a /journa reminder."""
         user_id = str(ctx.user.id)
-        state = await self._state(ctx.guild_id)
+        state = await self._state(guild_id_of(ctx))
         user_reminders = state.reminders.get_user_reminders(user_id)
 
         if not user_reminders:
@@ -247,7 +248,7 @@ class RemindersMixin:
 
         try:
             button_ctx: Component = await self.bot.wait_for_component(
-                components=list(by_custom_id),
+                components=buttons,
                 messages=message,
                 check=lambda component: str(component.ctx.author.id) == user_id,
                 timeout=60,

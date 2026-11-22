@@ -31,6 +31,7 @@ from src.core.logging import log_failure
 from src.discord_ext.messages import send_error
 from src.discord_ext.scopes import guild_scopes
 
+from ._base import ConfrerieBase
 from ._common import CONFRERIE, autocomplete_options
 
 logger = logutil.init_logger(__name__)
@@ -47,7 +48,7 @@ def _normalise_link(link: str) -> str:
     return link if link.startswith(("http://", "https://")) else f"https://{link}"
 
 
-class RequestsMixin:
+class RequestsMixin(ConfrerieBase):
     """Collect ``/demande`` submissions and hand them to the review flow."""
 
     _pending_demandes: ExpiringMap[dict]

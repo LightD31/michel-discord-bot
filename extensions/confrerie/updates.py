@@ -14,6 +14,7 @@ from src.core.text import format_discord_timestamp
 from src.discord_ext.channels import fetch_guild_channel
 from src.discord_ext.look import card
 
+from ._base import ConfrerieBase
 from ._common import CONFRERIE, ConfrerieError
 
 logger = logutil.init_logger(__name__)
@@ -73,7 +74,7 @@ def build_work_embed(
     return embed
 
 
-class UpdatesMixin:
+class UpdatesMixin(ConfrerieBase):
     """Post page-update announcements and keep the "Update" flag clean on Notion."""
 
     async def update(self, page_id: str, guild_id: str, settings: dict):

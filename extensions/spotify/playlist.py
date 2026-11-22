@@ -3,6 +3,7 @@
 import os
 import random
 from datetime import datetime
+from typing import Any
 
 import spotipy
 from interactions import (
@@ -40,6 +41,7 @@ from src.discord_ext.messages import (
 from src.discord_ext.scopes import guild_scopes
 from src.integrations.spotify import spotifymongoformat
 
+from ._base import SpotifyBase
 from ._common import (
     SERVERS,
     SPOTIFY,
@@ -55,7 +57,7 @@ from ._common import (
 logger = logutil.init_logger(__name__)
 
 
-class PlaylistMixin:
+class PlaylistMixin(SpotifyBase):
     """Slash commands + periodic tasks for playlist adds, info, and sync."""
 
     @slash_command(
@@ -147,7 +149,7 @@ class PlaylistMixin:
                     e,
                 )
 
-    async def _check_playlist_changes_for_server(self, server: ServerData):
+    async def _check_playlist_changes_for_server(self, server: ServerData) -> None:
         logger.debug("check_playlist_changes lancé pour le serveur %s", server.guild_id)
         await self.ensure_state(server)
 
@@ -245,7 +247,7 @@ class PlaylistMixin:
                 )
                 for track_id in removed_track_ids:
                     song = await server.repo.pop_playlist_item(track_id)
-                    if not skip_notifications:
+                    if song is not None and not skip_notifications:
                         track = await spotify_api.track(track_id, market="FR")
                         embed, file = await embed_song(
                             song=song,
@@ -416,6 +418,7 @@ class PlaylistMixin:
     async def autocomplete_from_db(self, ctx: AutocompleteContext):
         """Match name/artist against the local MongoDB playlist + vote archives."""
         server = self.get_server(ctx.guild_id)
+        choices: list[dict[str, Any]]
         if not ctx.input_text:
             choices = [{"name": "Tape le nom d'une chanson", "value": "error"}]
         else:
@@ -478,7 +481,7 @@ class PlaylistMixin:
         tracks.reverse()
 
         new_tracks = []
-        artists = set()
+        artists: set[str] = set()
         for i, track in enumerate(tracks, 1):
             track_artists = {artist["name"] for artist in track["track"]["artists"]}
 

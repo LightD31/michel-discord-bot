@@ -21,11 +21,12 @@ from src.core import clock
 from src.core.logging import log_failure
 from src.discord_ext.messages import send_error
 
+from ._base import ZuniversBase
 from ._common import logger, zunivers_api_url, zunivers_cmd, zunivers_web_url
 from .embeds import create_corporation_embed, create_corporation_logs_embed
 
 
-class CorporationMixin:
+class CorporationMixin(ZuniversBase):
     """Daily corporation recap + manual /zunivers corpo trigger."""
 
     @Task.create(TimeTrigger(23, 59, 45, utc=False))

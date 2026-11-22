@@ -108,6 +108,13 @@ def _discord_down():
     return HTTPException(SimpleNamespace(status=503, reason="Service Unavailable"), {})
 
 
+async def test_a_setting_left_empty_is_no_channel():
+    from src.discord_ext.channels import fetch_guild_channel
+
+    # Not asked of Discord at all: the bot would answer an outage.
+    assert await fetch_guild_channel(_Bot(_discord_down()), 1, None, raise_outages=True) is None
+
+
 async def test_an_outage_raises_only_when_asked():
     from src.discord_ext.channels import fetch_guild_channel
 

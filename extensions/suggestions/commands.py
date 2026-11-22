@@ -28,6 +28,7 @@ from interactions import (
     Permissions,
     ShortText,
     SlashContext,
+    Timestamp,
     component_callback,
     message_context_menu,
     modal_callback,
@@ -125,7 +126,7 @@ def _build_embed(suggestion: Suggestion, *, anonymous: bool) -> Embed:
             details.append(f"Motif : {suggestion.reason}")
         embed.add_field(name="​", value="\n".join(details), inline=False)
 
-    embed.timestamp = suggestion.created_at
+    embed.timestamp = Timestamp.fromdatetime(suggestion.created_at)
     return embed
 
 
@@ -281,7 +282,7 @@ class CommandsMixin:
     async def suggest(self, ctx: SlashContext) -> None:
         if not await require_guild(ctx):
             return
-        if not get_guild_settings(ctx.guild_id):
+        if not get_guild_settings(guild_id_of(ctx)):
             await send_error(ctx, module_off("suggestions"), icon="💡")
             return
         await ctx.send_modal(suggest_form(NEW_FORM))
@@ -357,7 +358,7 @@ class CommandsMixin:
 
         anonymous = bool(settings.get("anonymous", False))
         try:
-            sent = await channel.send(  # type: ignore[union-attr]
+            sent = await channel.send(
                 embeds=[_build_embed(suggestion, anonymous=anonymous)],
                 components=suggestion_components(suggestion),
             )
@@ -550,8 +551,8 @@ class CommandsMixin:
         if suggestion.reason:
             line += f" : {suggestion.reason}"
         try:
-            await thread.send(line, allowed_mentions=NO_PINGS)  # type: ignore[union-attr]
+            await thread.send(line, allowed_mentions=NO_PINGS)
             if suggestion.status in FINAL and hasattr(thread, "edit"):
-                await thread.edit(archived=True, locked=True)  # type: ignore[union-attr]
+                await thread.edit(archived=True, locked=True)
         except Exception as e:
             logger.warning("Could not post in suggestion #%s thread: %s", suggestion.id, e)

@@ -10,7 +10,7 @@ import re
 import secrets
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from interactions import (
     ActionRow,
@@ -18,6 +18,7 @@ from interactions import (
     Button,
     ButtonStyle,
     ChannelType,
+    Client,
     ComponentContext,
     OptionType,
     Permissions,
@@ -30,7 +31,7 @@ from interactions import (
     slash_option,
 )
 
-from features.reactionroles import RoleMenu, RoleMenuEntry
+from features.reactionroles import ReactionRolesRepository, RoleMenu, RoleMenuEntry
 from src.core import clock
 from src.discord_ext.channels import fetch_guild_channel
 from src.discord_ext.errors import failure_reply
@@ -39,6 +40,8 @@ from src.discord_ext.messages import (
     CAN_SEND,
     author_can,
     edit_message_if_changed,
+    guild_id_of,
+    member_of,
     require_guild,
     send_error,
     send_success,
@@ -148,7 +151,7 @@ async def _can_manage_menus(ctx: SlashContext) -> bool:
     (``entries_refusal``); deleting or editing one hands out nothing, so
     « Gérer les rôles » is enough, as in Discord.
     """
-    if ctx.author.has_permission(Permissions.MANAGE_ROLES):
+    if member_of(ctx).has_permission(Permissions.MANAGE_ROLES):
         return True
     await send_error(ctx, "Il faut la permission « Gérer les rôles ».")
     return False
@@ -156,6 +159,12 @@ async def _can_manage_menus(ctx: SlashContext) -> bool:
 
 class CommandsMixin:
     """Admin slash commands to create / list / edit / delete role menus."""
+
+    bot: Client
+
+    if TYPE_CHECKING:
+
+        def repository(self, guild_id: str | int) -> ReactionRolesRepository: ...
 
     @slash_command(
         name="menu-roles",
@@ -303,7 +312,7 @@ class CommandsMixin:
         repo = self.repository(draft.guild_id)
         menu_id = await repo.add(menu)
         try:
-            sent = await channel.send(**render_menu(menu, menu_id))  # type: ignore[union-attr]
+            sent = await channel.send(**render_menu(menu, menu_id))
         except Exception as e:
             await repo.delete(menu_id)
             await send_error(ctx, failure_reply("Je n'ai pas pu publier le menu", e, logger))
@@ -330,7 +339,7 @@ class CommandsMixin:
     async def rolemenu_list(self, ctx: SlashContext) -> None:
         if not await require_guild(ctx):
             return
-        menus = await self.repository(ctx.guild_id).list()
+        menus = await self.repository(guild_id_of(ctx)).list()
         if not menus:
             await ctx.send("Aucun menu de rôles enregistré.", ephemeral=True)
             return
@@ -364,12 +373,12 @@ class CommandsMixin:
     async def rolemenu_delete(self, ctx: SlashContext, menu_id: str) -> None:
         if not await require_guild(ctx) or not await _can_manage_menus(ctx):
             return
-        menu = await self.repository(ctx.guild_id).get(menu_id)
+        menu = await self.repository(guild_id_of(ctx)).get(menu_id)
         if not menu:
             await send_error(ctx, "Menu introuvable.")
             return
 
-        await self.repository(ctx.guild_id).delete(menu_id)
+        await self.repository(guild_id_of(ctx)).delete(menu_id)
 
         if menu.message_id:
             try:
@@ -422,14 +431,14 @@ class CommandsMixin:
             await send_error(ctx, "Indique au moins un titre ou une description à modifier.")
             return
 
-        menu = await self.repository(ctx.guild_id).get(menu_id)
+        menu = await self.repository(guild_id_of(ctx)).get(menu_id)
         if not menu:
             await send_error(ctx, "Menu introuvable.")
             return
 
         new_title = title if title is not None else menu.title
         new_description = description if description is not None else menu.description
-        await self.repository(ctx.guild_id).update(
+        await self.repository(guild_id_of(ctx)).update(
             menu_id, title=new_title, description=new_description
         )
 

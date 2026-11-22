@@ -30,12 +30,14 @@ from features.zunivers_ninja import (
     build_web_url,
 )
 from src.core.text import MESSAGE_LIMIT, clip
+from src.discord_ext.autocomplete import Choice
 from src.discord_ext.mentions import NO_PINGS
 
+from ._base import ZuniversBase
 from ._common import ninja_config, zunivers_cmd
 
 
-class NinjaMixin:
+class NinjaMixin(ZuniversBase):
     """On-demand /zunivers ninja command."""
 
     @zunivers_cmd.subcommand(
@@ -148,10 +150,10 @@ async def ninja_strategies() -> list[NinjaStrategy]:
         return []
 
 
-async def strategy_choices(typed: str, *, with_default: bool = False) -> list[dict[str, str]]:
+async def strategy_choices(typed: str, *, with_default: bool = False) -> list[Choice]:
     """Autocomplete choices for a strategy option, filtered by what the user typed."""
     typed = typed.lower()
-    choices = [
+    choices: list[Choice] = [
         {"name": _choice_name(st.label, st.description), "value": st.id}
         for st in await ninja_strategies()
         if typed in st.id.lower() or typed in st.label.lower()

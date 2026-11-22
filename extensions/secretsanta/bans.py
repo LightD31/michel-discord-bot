@@ -3,6 +3,7 @@
 import os
 
 from interactions import (
+    Client,
     Embed,
     Member,
     OptionType,
@@ -12,6 +13,7 @@ from interactions import (
     slash_option,
 )
 
+from features.secretsanta import SecretSantaRepository
 from src.core import logging as logutil
 from src.discord_ext.look import card
 from src.discord_ext.messages import fetch_user_safe, send_error
@@ -24,6 +26,9 @@ logger = logutil.init_logger(__name__)
 
 class BansMixin:
     """Manage forbidden giver/receiver pairs per context (the organiser only)."""
+
+    bot: Client
+    repository: SecretSantaRepository
 
     async def _organiser_check(self, ctx: SlashContext, context_id: str) -> bool:
         """Answer and return ``False`` unless the author may manage exclusions now.

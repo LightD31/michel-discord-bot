@@ -17,13 +17,17 @@ from features.minecraft.table import build_stats_table
 from src.core.images import create_dynamic_image
 from src.core.logging import log_failure
 from src.discord_ext.look import card
-from src.discord_ext.messages import edit_message_if_changed
+from src.discord_ext.messages import GuildMessages, edit_message_if_changed
 
 from ._common import MINECRAFT, build_stats_embed, logger
 
 
 class StatsMixin:
     """Hourly player-stat collection and rendering."""
+
+    # Set up by the extension (__init__.py).
+    status_messages: GuildMessages
+    _last_stats_tables: dict[str, str | None]
 
     @Task.create(OrTrigger(*[TimeTrigger(hour=i, minute=10) for i in range(24)]))
     async def stats(self):

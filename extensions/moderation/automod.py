@@ -8,13 +8,14 @@ mirrors it to the modlog, and DMs the author (when enabled).
 
 import time
 from datetime import datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from interactions import listen
 from interactions.api.events import MessageCreate
 
 from features.moderation import (
     Infraction,
+    ModerationRepository,
     SpamTracker,
     contains_invite,
     match_banned_word,
@@ -30,6 +31,21 @@ class AutomodMixin:
 
     # Per-(guild, user) sliding window of message timestamps for anti-spam.
     _spam: SpamTracker
+
+    if TYPE_CHECKING:
+        # __init__.py and logging_.py
+        def repository(self, guild_id: str | int) -> ModerationRepository: ...
+
+        async def log_case(
+            self,
+            settings: dict,
+            infraction: Infraction,
+            *,
+            target_name: str | None = None,
+            moderator_name: str | None = None,
+        ) -> None: ...
+
+        async def dm_target(self, settings: dict, target: Any, text: str) -> None: ...
 
     @listen(MessageCreate)
     async def on_message_automod(self, event: MessageCreate) -> None:

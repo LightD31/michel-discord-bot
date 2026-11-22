@@ -14,6 +14,7 @@ XP is only awarded when:
 import random
 import time
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING, Any
 
 from interactions import Client, IntervalTrigger, Task, listen
 from interactions.api.events import VoiceStateUpdate
@@ -38,21 +39,21 @@ class VoiceMixin:
     _rank_cache: TTLCache
     _voice_sessions: dict[tuple[str, str], float]  # (guild_id, user_id) -> last-award ts
 
-    def _repo(self, guild_id: str) -> XpRepository: ...  # provided by LevelingMixin
-    def _invalidate_rank_cache(self, guild_id: str) -> None: ...  # provided by LevelingMixin
+    if TYPE_CHECKING:  # LevelingMixin's
 
-    async def _handle_level_up(
-        self, guild_id: str, user_id: str, new_level: int, message
-    ) -> None: ...  # provided by LevelingMixin
-    async def _announce_level_up(
-        self, guild_id: str, member, new_level: int, here
-    ) -> None: ...  # provided by LevelingMixin
+        def _repo(self, guild_id: str) -> XpRepository: ...
+        def _invalidate_rank_cache(self, guild_id: str) -> None: ...
+        async def _handle_level_up(
+            self, guild_id: str, user_id: str, new_level: int, message
+        ) -> None: ...
+        async def _announce_level_up(self, guild_id: str, member, new_level: int, here) -> None: ...
 
     @listen()
     async def on_voice_state_update(self, event: VoiceStateUpdate):
         before = event.before
         after = event.after
-        member = (after or before).member if (after or before) else None
+        state = after or before
+        member = state.member if state else None
         if member is None or member.bot:
             return
         guild = member.guild
@@ -127,13 +128,7 @@ class VoiceMixin:
         # back to scanning all guild members if not present (older library).
         members = getattr(voice_channel, "voice_members", None)
         if members is None:
-            members = [
-                m
-                for m in guild.members
-                if getattr(m, "voice", None)
-                and getattr(m.voice, "channel", None)
-                and m.voice.channel.id == voice_channel.id
-            ]
+            members = [m for m in guild.members if _voice_channel_id(m) == voice_channel.id]
         non_bot_count = sum(1 for m in members if not getattr(m, "bot", False))
         if non_bot_count < 2:
             return  # solo in channel; don't award
@@ -187,3 +182,9 @@ class VoiceMixin:
         # "Là où le membre parlait": the chat of their voice channel.
         await self._announce_level_up(guild_id, member, new_level, voice_channel)
         await self._apply_level_rewards(guild_id, member, new_level)  # type: ignore[attr-defined]
+
+
+def _voice_channel_id(member: Any) -> Any:
+    """The id of the voice channel *member* is in, ``None`` when in none."""
+    channel = getattr(getattr(member, "voice", None), "channel", None)
+    return getattr(channel, "id", None)

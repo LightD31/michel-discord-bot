@@ -7,15 +7,16 @@ from interactions import Permissions, SlashContext, slash_command, slash_default
 from src.core import logging as logutil
 from src.core.http import fetch
 from src.core.logging import log_failure
-from src.discord_ext.messages import edit_message_if_changed
+from src.discord_ext.messages import edit_message_if_changed, member_of
 from src.discord_ext.scopes import guild_scopes
 
+from ._base import ZeventBase
 from ._common import API_URL, ZEVENT, ZeventGuild
 
 logger = logutil.init_logger(__name__)
 
 
-class CommandsMixin:
+class CommandsMixin(ZeventBase):
     """Admin command to freeze the guild's tracker message with the final recap."""
 
     @slash_command(
@@ -27,7 +28,7 @@ class CommandsMixin:
     async def end(self, ctx: SlashContext):
         # The default permission is only a default: a server can open the
         # command to everyone, and it ends the tracking and the scheduled event.
-        if not ctx.author.has_permission(Permissions.MANAGE_GUILD):
+        if not member_of(ctx).has_permission(Permissions.MANAGE_GUILD):
             await ctx.send("Il faut la permission « Gérer le serveur ».", ephemeral=True)
             return
         settings = ZEVENT.get(ctx.guild_id)
