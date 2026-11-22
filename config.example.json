@@ -233,7 +233,8 @@
                 "maxResponseTokens": 500,
                 "defaultModel": "",
                 "mentionReplies": false,
-                "mentionCooldownSeconds": 20
+                "mentionCooldownSeconds": 20,
+                "catchupChannelIds": []
             },
             "moduleLldap": {
                 "enabled": false,

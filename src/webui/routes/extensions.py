@@ -50,6 +50,11 @@ def available_extensions(ext_dir: str = EXTENSIONS_DIR) -> list[tuple[str, str]]
 # calls them. Each other one is named after the module it registers.
 WITHOUT_MODULE: dict[str, tuple[str, str, str]] = {
     "extensions.backup": ("💾", "Sauvegardes", "Sauvegarde MongoDB planifiée et /sauvegarde."),
+    "extensions.catchup": (
+        "📚",
+        "Rattrapage",
+        "/rattrapage : un salon résumé par l'IA depuis ton dernier message (module IA).",
+    ),
     "extensions.datapurge": (
         "🧹",
         "Purge des données",

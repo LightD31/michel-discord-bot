@@ -79,8 +79,9 @@ The Operator does not sell personal data. Data is sent to third parties only whe
   - the instructions and server description written by the server's administrators.
 
   - where the server's administrators turned it on, the text of the weekly Gazette (the display names of the members it lists), to write its opening lines.
+  - for `/rattrapage`, in the channels the server's administrators chose for it: the text of the messages since the asker's last one there (200 at most), with their authors' display names, and the asker's display name. The summary is shown to the asker alone and not stored.
 
-  This means **your messages can be sent when someone else asks a question in the same channel.** The AI features are off by default: server administrators must enable them, and replies to mentions are a separate option. `/ask` only exists on the servers that enabled them: not in direct messages, nor through a user install. The AI providers process this data under their own terms and policies. Do not share sensitive information in channels where the AI features are used.
+  This means **your messages can be sent when someone else asks a question, or asks for a catch-up, in the same channel.** The AI features are off by default: server administrators must enable them, and replies to mentions are a separate option. `/ask` only exists on the servers that enabled them: not in direct messages, nor through a user install. The AI providers process this data under their own terms and policies. Do not share sensitive information in channels where the AI features are used.
 - **Spotify:** what you type in the song search, and the playlist changes the Bot makes on the Operator's Spotify account.
 - **Notion**, for the book club: drafts and works are kept in a Notion workspace chosen by the server's administrators.
 - **A link-shortening service** chosen by the Operator: links in the Bot's posts are replaced by short links.
