@@ -49,6 +49,7 @@ import './pages/me.js';
 import './pages/module.js';
 import './pages/onboarding.js';
 import './pages/agenda.js';
+import './pages/incidents.js';
 import './pages/overview.js';
 import './pages/public.js';
 import './pages/server.js';

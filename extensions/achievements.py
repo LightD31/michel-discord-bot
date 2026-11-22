@@ -44,7 +44,7 @@ from features.achievements import (
     check_badges,
 )
 from features.achievements.badges import SENIORITY
-from src.core import clock
+from src.core import clock, log_context
 from src.core import logging as logutil
 from src.core.config import ModuleConfig
 from src.core.errors import DatabaseError
@@ -172,10 +172,12 @@ class AchievementsExtension(Extension):
     @Task.create(IntervalTrigger(hours=1))
     async def check_all(self) -> None:
         for guild_id, settings in ACHIEVEMENTS.items():
-            try:
-                await self.check_guild(guild_id, settings)
-            except Exception as e:
-                log_failure(logger, "Badges of guild %s not checked: %s", guild_id, e)
+            # Bound so a failure shows in this server's incidents (src.core.incidents).
+            with log_context.scope(guild_id=guild_id):
+                try:
+                    await self.check_guild(guild_id, settings)
+                except Exception as e:
+                    log_failure(logger, "Badges of guild %s not checked: %s", guild_id, e)
 
     async def check_guild(self, guild_id: str, settings: dict) -> list[tuple[str, Badge]]:
         """Award *guild_id*'s badges and announce the new ones; returns them."""

@@ -26,7 +26,7 @@ from interactions import (
 )
 
 from features.agenda import DEFAULT_DAYS, MAX_DAYS, MIN_DAYS, bounded_days
-from src.core import clock
+from src.core import clock, log_context
 from src.core import logging as logutil
 from src.core.config import ModuleConfig
 from src.core.logging import log_failure
@@ -115,10 +115,11 @@ class AgendaExtension(Extension):
         for guild_id, settings in AGENDA.items():
             if not settings.get("agendaChannelId"):
                 continue
-            try:
-                await self.refresh(guild_id, settings)
-            except Exception as e:
-                log_failure(logger, "Agenda of guild %s not refreshed: %s", guild_id, e)
+            with log_context.scope(guild_id=guild_id):
+                try:
+                    await self.refresh(guild_id, settings)
+                except Exception as e:
+                    log_failure(logger, "Agenda of guild %s not refreshed: %s", guild_id, e)
 
     async def refresh(self, guild_id: str, settings: dict) -> bool:
         """Bring the guild's agenda message up to date; ``True`` when it changed."""

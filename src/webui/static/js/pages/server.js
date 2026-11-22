@@ -13,6 +13,7 @@ import { toast } from '../ui/toast.js';
 import { renderAuditCard } from './audit.js';
 import { onboardingHtml } from './onboarding.js';
 import { agendaCardHtml } from './agenda.js';
+import { incidentsCardHtml } from './incidents.js';
 import { overviewHtml } from './overview.js';
 
 // ── Server Page ───────────────────────────────────
@@ -226,6 +227,8 @@ export function renderServerPage() {
                 </p>
                 <div id="health-report"><div class="loading"><div class="spinner"></div></div></div>
             </div>
+
+            ${incidentsCardHtml(sid)}
 
             ${raw(renderAuditCard())}
         `;

@@ -777,6 +777,17 @@ async def seed(bot: FakeBot, *, days: int = 60) -> None:
         }
     )
 
+    # Incidents (P21): what the server page's card lists after a few failures.
+    from src.core import incidents as incident_log
+
+    kept = incident_log.install()
+    for ago, ref, where, reason in [
+        (3600 * 5, "4f2a9c", "ScheduleMixin.update", incident_log.REASONS[4][1]),
+        (3600 * 2, "b71e03", "component:rolemenu:1300000000000000099", incident_log.REASONS[1][1]),
+        (600, "c0ffee", "/agenda", incident_log.UNEXPECTED),
+    ]:
+        kept.add(GA, incident_log.Incident(now.timestamp() - ago, ref, where, reason, True))
+
     # Coming up (P19): a giveaway and a poll that close this fortnight.
     await db["giveaways"].insert_one(
         {
