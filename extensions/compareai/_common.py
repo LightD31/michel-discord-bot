@@ -25,14 +25,16 @@ class IAConfig(SchemaBase):
     __label__ = "Intelligence Artificielle"
     __description__ = (
         "Réponses de Michel via OpenRouter ou NanoGPT : /ask (comparaison de modèles avec vote, "
-        "ou réponse rapide) et, en option, réponses quand on le mentionne."
+        "ou réponse rapide), en option réponses quand on le mentionne, et /rattrapage dans les "
+        "salons choisis."
     )
     __icon__ = "🤖"
     __category__ = "Outils"
     __help__ = ModuleHelp(
         "Pose une question à Michel : plusieurs modèles d'IA répondent, et le serveur vote pour la meilleure réponse.",
-        ("/ask", "/ask-stats"),
-        "En option, Michel répond aussi quand on le mentionne.",
+        ("/ask", "/ask-stats", "/rattrapage"),
+        "En option, Michel répond aussi quand on le mentionne, et /rattrapage résume un salon "
+        "depuis ton dernier message, là où les administrateurs l'ont activé.",
     )
 
     enabled: bool = enabled_field()
@@ -101,6 +103,13 @@ class IAConfig(SchemaBase):
         le=3600,
         default=DEFAULT_MENTION_COOLDOWN,
         description="Par utilisateur. Une mention pendant le délai reçoit la réaction ⏳.",
+    )
+    catchupChannelIds: list[str] = ui(
+        "Salons de /rattrapage",
+        "channellist",
+        description="Où /rattrapage peut résumer les messages depuis le dernier du membre (200 "
+        "au plus). Ces messages sont envoyés au fournisseur d'IA ; chaque résumé compte une "
+        "question dans le quota du membre. Vide : /rattrapage n'est disponible nulle part.",
     )
 
 

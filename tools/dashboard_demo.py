@@ -194,6 +194,7 @@ def demo_config(data_dir: str, port: int, mongo_url: str) -> dict[str, Any]:
                 "moduleGiveaway": {"enabled": True, "giveawayEmoji": "🎉"},
                 "moduleAchievements": {"enabled": True, "achievementsChannelId": CH["général"]},
                 "moduleAgenda": {"enabled": True, "agendaChannelId": CH["annonces"]},
+                "moduleIA": {"enabled": True, "catchupChannelIds": [CH["général"], CH["jeux"]]},
                 "moduleGazette": {
                     "enabled": True,
                     "gazetteChannelId": CH["général"],
