@@ -14,13 +14,13 @@ export function fmtEpoch(seconds) {
 }
 
 export function healthLine(ok, content) {
-    return html`<div class="message-status ${ok ? 'configured' : 'pending'}" style="margin-bottom:6px;">
+    return html`<div class="u-mb-6 message-status ${ok ? 'configured' : 'pending'}">
             <span class="status-icon">${ok ? '✅' : '⚠️'}</span><span class="status-text">${content}</span></div>`;
 }
 
 export function healthChannelsHtml(channels) {
-    if (channels === null) return html`<p style="color:var(--text-muted)">Bot non connecté : salons non vérifiés.</p>`;
-    if (!channels.length) return html`<p style="color:var(--text-muted)">Aucun salon configuré.</p>`;
+    if (channels === null) return html`<p class="u-c-text-muted">Bot non connecté : salons non vérifiés.</p>`;
+    if (!channels.length) return html`<p class="u-c-text-muted">Aucun salon configuré.</p>`;
     return html`${channels.map(c => {
         const mods = c.modules.map(moduleLabel).join(', ');
         const name = c.name ? `#${c.name}` : html`<code>${c.channelId}</code>`;
@@ -32,7 +32,7 @@ export function healthChannelsHtml(channels) {
 
 export function healthFeedsHtml(feeds) {
     if (!feeds) return html``;
-    if (!feeds.length) return html`<p style="color:var(--text-muted)">Aucun flux RSS.</p>`;
+    if (!feeds.length) return html`<p class="u-c-text-muted">Aucun flux RSS.</p>`;
     return html`${feeds.map(f => {
         const next = f.nextPollAt ? new Date(f.nextPollAt).toLocaleString('fr-FR') : 'au prochain cycle';
         if (f.failures) {
@@ -48,7 +48,7 @@ export function healthTasksHtml(tasks) {
     if (!tasks.length) return html``;
     return html`${tasks.map(t => {
         const failing = t.lastFailure && (!t.lastSuccess || t.lastFailure > t.lastSuccess);
-        const when = t.schedule && html` <span style="color:var(--text-muted)">(${t.schedule})</span>`;
+        const when = t.schedule && html` <span class="u-c-text-muted">(${t.schedule})</span>`;
         return healthLine(!failing, html`<strong title="${t.name}">${t.label || t.name}</strong>${when} : dernier succès ${fmtEpoch(t.lastSuccess)}
                 ${t.failures ? `, ${t.failures} échec(s) depuis le démarrage (dernier : ${fmtEpoch(t.lastFailure)})` : ''}`);
     })}`;
@@ -69,14 +69,14 @@ export async function loadHealth(serverId) {
     try {
         data = await api(`/api/servers/${encodeURIComponent(serverId)}/health`);
     } catch (e) {
-        container.innerHTML = html`<p style="color:var(--text-muted)">Diagnostic indisponible.</p>`;
+        container.innerHTML = html`<p class="u-c-text-muted">Diagnostic indisponible.</p>`;
         state.healthProblems = { ...(state.healthProblems || {}), [serverId]: null };
         refreshOverview(serverId);
         return;
     }
     state.healthProblems = { ...(state.healthProblems || {}), [serverId]: healthProblemCount(data) };
     refreshOverview(serverId);
-    const section = (title, body) => String(body) && html`<h4 style="margin:12px 0 6px;">${title}</h4>${body}`;
+    const section = (title, body) => String(body) && html`<h4 class="u-m-12-0-6">${title}</h4>${body}`;
     container.innerHTML = html`${section('Salons', healthChannelsHtml(data.channels))}${
         section('Flux RSS', healthFeedsHtml(data.feeds))}${
         section('Tâches (pour tous les serveurs)', healthTasksHtml(data.tasks || []))}`;

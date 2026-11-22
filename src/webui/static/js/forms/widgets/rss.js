@@ -1,88 +1,141 @@
 // The RSS feed list and its presets.
-import { registerActions } from '../../core/actions.js';
+import { EL, EVENT, actionArgs, registerActions } from '../../core/actions.js';
 import { api } from '../../core/api.js';
-import { escapeHtml } from '../../core/util.js';
+import { html } from '../../core/html.js';
 import { toast } from '../../ui/toast.js';
-import { populateChannelPickers } from '../pickers/channels.js';
+import { channelPickerHtml, channelPickerValue, populateChannelPickers } from '../pickers/channels.js';
+
+const RSS_VARIABLES = ['{title}', '{link}', '{summary}', '{label}', '{author}', '{image}', '{published_date}'];
 
 export function renderRssFeedEntry(feedId, cfg) {
-    const safeChannel = escapeHtml(cfg.channel_id || '');
     const mode = (cfg.mode === 'embed') ? 'embed' : 'text';
     // Discord brand-blue default; #RRGGBB format expected by <input type="color">.
     let color = (cfg.embed_color || '#5865F2').toString().trim();
     if (!color.startsWith('#')) color = '#' + color;
     if (!/^#[0-9a-fA-F]{6}$/.test(color)) color = '#5865F2';
-    const showImage = cfg.embed_show_image !== false;
-    const showLinkButton = !!cfg.embed_show_link_button;
     // Feeds that came from a known preset render locked/compact by default so
     // the curated embed templates can't be broken by accident. Advanced editing
     // stays one click away via the toggle.
     const isPreset = !!(typeof RSS_PRESETS !== 'undefined' && RSS_PRESETS[feedId]);
-    const advanced = isPreset ? 'off' : 'on';
-    const advancedLabel = isPreset ? '⚙️ Édition avancée' : '▾ Réduire';
-    const presetName = escapeHtml(cfg.label || feedId || '');
-    const banner = isPreset ? `
+    return html`
+            <div class="rssfeed-entry${isPreset ? ' preset' : ''}" data-mode="${mode}" data-advanced="${isPreset ? 'off' : 'on'}">
+                ${isPreset && html`
                 <div class="rssfeed-preset-banner">
                     <span class="rssfeed-preset-badge">🎮 Préréglage</span>
-                    <span class="rssfeed-preset-name">${presetName}</span>
+                    <span class="rssfeed-preset-name">${cfg.label || feedId || ''}</span>
                     <span class="rssfeed-preset-hint">Mise en forme gérée automatiquement — choisis le salon ci-dessous.</span>
-                </div>` : '';
-    return `
-            <div class="rssfeed-entry${isPreset ? ' preset' : ''}" data-mode="${mode}" data-advanced="${advanced}">${banner}
+                </div>`}
                 <div class="rssfeed-row">
-                    <input class="rssfeed-identity" type="text" data-rss-field="feed_id" value="${escapeHtml(feedId || '')}" placeholder="ex: epic-free">
-                    <input class="rssfeed-identity" type="text" data-rss-field="url" value="${escapeHtml(cfg.url || '')}" placeholder="https://exemple.com/feed.xml">
-                    <input class="rssfeed-identity" type="text" data-rss-field="label" value="${escapeHtml(cfg.label || '')}" placeholder="Libellé (optionnel)">
-                    <div class="channel-picker" data-rss-field="channel_id" data-current="${safeChannel}">
-                        <select class="form-input channel-picker-select">
-                            <option value="">— Salon par défaut —</option>
-                            ${cfg.channel_id ? `<option value="${safeChannel}" selected>${safeChannel}</option>` : ''}
-                        </select>
-                        <input type="text" class="form-input channel-picker-manual" value="${safeChannel}" placeholder="ID de salon" style="display:none;">
-                        <button type="button" class="btn-channel-toggle" data-click="toggleChannelPickerMode" data-click-args="[{&quot;$&quot;:&quot;el&quot;}]" title="Saisie manuelle" aria-label="Saisie manuelle">✎</button>
-                    </div>
-                    <select class="rssfeed-identity" data-rss-field="mode" data-change="onRssModeChange" data-change-args="[{&quot;$&quot;:&quot;el&quot;}]">
+                    <input class="rssfeed-identity" type="text" data-rss-field="feed_id" value="${feedId || ''}" placeholder="ex: epic-free">
+                    <input class="rssfeed-identity" type="text" data-rss-field="url" value="${cfg.url || ''}" placeholder="https://exemple.com/feed.xml">
+                    <input class="rssfeed-identity" type="text" data-rss-field="label" value="${cfg.label || ''}" placeholder="Libellé (optionnel)">
+                    ${channelPickerHtml(html`data-rss-field="channel_id"`, cfg.channel_id, { empty: '— Salon par défaut —' })}
+                    <select class="rssfeed-identity" data-rss-field="mode" data-change="onRssModeChange" data-change-args="${actionArgs(EL)}">
                         <option value="text" ${mode === 'text' ? 'selected' : ''}>Texte</option>
                         <option value="embed" ${mode === 'embed' ? 'selected' : ''}>Embed</option>
                     </select>
-                    <button type="button" class="btn-rss-advanced" data-click="toggleRssAdvanced" data-click-args="[{&quot;$&quot;:&quot;el&quot;}]" title="Afficher / masquer l'éditeur complet">${advancedLabel}</button>
-                    <button type="button" class="btn-rss-advanced" data-click="testRssFeed" data-click-args="[{&quot;$&quot;:&quot;el&quot;}]" title="Lire le flux maintenant et voir ses derniers articles comme Michel les posterait">🧪 Tester</button>
-                    <button class="btn-remove-entry" data-click="remove-closest" data-click-args="[&quot;.rssfeed-entry&quot;,{&quot;$&quot;:&quot;el&quot;}]" title="Supprimer" aria-label="Supprimer">✕</button>
+                    <button type="button" class="btn-rss-advanced" data-click="toggleRssAdvanced" data-click-args="${actionArgs(EL)}" title="Afficher / masquer l'éditeur complet">${isPreset ? '⚙️ Édition avancée' : '▾ Réduire'}</button>
+                    <button type="button" class="btn-rss-advanced" data-click="testRssFeed" data-click-args="${actionArgs(EL)}" title="Lire le flux maintenant et voir ses derniers articles comme Michel les posterait">🧪 Tester</button>
+                    <button class="btn-remove-entry" data-click="remove-closest" data-click-args="${actionArgs('.rssfeed-entry', EL)}" title="Supprimer" aria-label="Supprimer">✕</button>
                 </div>
                 <div class="rssfeed-advanced">
                     <div class="rssfeed-template-row">
                         <span class="rssfeed-field-label">Modèle texte</span>
-                        <textarea data-rss-field="template" rows="2" placeholder="ex: **{label}** — [{title}]({link})">${escapeHtml(cfg.template || '')}</textarea>
+                        <textarea data-rss-field="template" rows="2" placeholder="ex: **{label}** — [{title}]({link})">${cfg.template || ''}</textarea>
                     </div>
                     <div class="rssfeed-embed-panel">
                         <span class="rssfeed-field-label">Couleur</span>
                         <input type="color" data-rss-field="embed_color" value="${color}">
                         <span class="rssfeed-field-label">Image</span>
                         <label class="rssfeed-toggle">
-                            <input type="checkbox" data-rss-field="embed_show_image" ${showImage ? 'checked' : ''}>
+                            <input type="checkbox" data-rss-field="embed_show_image" ${cfg.embed_show_image !== false ? 'checked' : ''}>
                             <span>Afficher l'image détectée</span>
                         </label>
                         <span class="rssfeed-field-label">Titre embed</span>
-                        <input type="text" data-rss-field="embed_title" value="${escapeHtml(cfg.embed_title || '')}" placeholder="{title}">
+                        <input type="text" data-rss-field="embed_title" value="${cfg.embed_title || ''}" placeholder="{title}">
                         <span class="rssfeed-field-label">Description</span>
-                        <textarea data-rss-field="embed_description" rows="4" placeholder="{summary}">${escapeHtml(cfg.embed_description || '')}</textarea>
+                        <textarea data-rss-field="embed_description" rows="4" placeholder="{summary}">${cfg.embed_description || ''}</textarea>
                         <span class="rssfeed-field-label">Bouton lien</span>
                         <label class="rssfeed-toggle">
-                            <input type="checkbox" data-rss-field="embed_show_link_button" ${showLinkButton ? 'checked' : ''}>
+                            <input type="checkbox" data-rss-field="embed_show_link_button" ${cfg.embed_show_link_button ? 'checked' : ''}>
                             <span>Afficher un bouton vers l'article</span>
                         </label>
                         <span class="rssfeed-field-label">Libellé bouton</span>
-                        <input type="text" data-rss-field="embed_link_button_label" value="${escapeHtml(cfg.embed_link_button_label || '')}" placeholder="Voir l'article">
+                        <input type="text" data-rss-field="embed_link_button_label" value="${cfg.embed_link_button_label || ''}" placeholder="Voir l'article">
                     </div>
-                    <div class="messagelist-variables" style="margin-top:8px;">
+                    <div class="messagelist-variables rssfeed-variables">
                         <span>Variables : </span>
-                        ${['{title}','{link}','{summary}','{label}','{author}','{image}','{published_date}'].map(v =>
-                        `<button type="button" class="var-chip" data-var="${v}" data-mousedown="insertVariable" data-mousedown-args="[{&quot;$&quot;:&quot;event&quot;},{&quot;$&quot;:&quot;el&quot;}]">${v}</button>`
-                    ).join('')}
+                        ${RSS_VARIABLES.map(v => html`<button type="button" class="var-chip" data-var="${v}" data-mousedown="insertVariable" data-mousedown-args="${actionArgs(EVENT, EL)}">${v}</button>`)}
                     </div>
                 </div>
             </div>`;
 }
+
+// The presets offered under the list (the feeds are listed in RSS_PRESETS below).
+const PRESET_GROUPS = [
+    ['LootScraper — Bundles', [
+        ['lootscraper-all', 'Bundle classique (Epic + Amazon + itch.io + Steam)'],
+        ['lootscraper-all-pc', 'Bundle PC (Epic + GOG + Humble + itch.io + Amazon + Steam)'],
+        ['lootscraper-everything', 'Tout LootScraper (12 flux)'],
+    ]],
+    ['LootScraper — Jeux PC gratuits', [
+        ['lootscraper-epic', 'Epic Games'], ['lootscraper-gog', 'GOG'],
+        ['lootscraper-humble', 'Humble'], ['lootscraper-itch', 'itch.io'],
+    ]],
+    ['LootScraper — Amazon & Steam', [
+        ['lootscraper-amazon', 'Amazon Prime Gaming (jeux)'], ['lootscraper-amazon-loot', 'Amazon Prime Gaming (loot)'],
+        ['lootscraper-steam', 'Steam (jeux gratuits)'], ['lootscraper-steam-loot', 'Steam (loot)'],
+    ]],
+    ['LootScraper — Mobile', [
+        ['lootscraper-epic-android', 'Epic Games — Android'], ['lootscraper-epic-ios', 'Epic Games — iOS'],
+        ['lootscraper-apple', 'App Store (iOS)'], ['lootscraper-google', 'Google Play (Android)'],
+    ]],
+];
+
+export const rssFeedMapField = {
+    render: ({ key, value }) => {
+        const feeds = (value && typeof value === 'object' && !Array.isArray(value)) ? value : {};
+        return html`
+            <div class="rssfeed-list" data-field="${key}" data-type="rssfeedmap">
+                ${Object.entries(feeds).map(([feedId, cfg]) => renderRssFeedEntry(feedId, typeof cfg === 'string' ? { url: cfg } : (cfg || {})))}
+            </div>
+            <button type="button" class="btn-add-entry" data-click="addRssFeedEntry" data-click-args="${actionArgs(EL)}">+ Ajouter un flux</button>
+            <select class="rssfeed-preset-select" data-change="applyRssPreset" data-change-args="${actionArgs(EL)}" title="Préréglages prêts à l'emploi">
+                <option value="">+ Préréglage…</option>
+                ${PRESET_GROUPS.map(([label, options]) => html`<optgroup label="${label}">${options.map(([id, name]) => html`<option value="${id}">${name}</option>`)}</optgroup>`)}
+            </select>`;
+    },
+    collect: (list) => {
+        const feeds = {};
+        for (const entry of list.querySelectorAll('.rssfeed-entry')) {
+            const field = (name) => entry.querySelector(`[data-rss-field="${name}"]`);
+            const value = (name) => field(name)?.value?.trim() || '';
+            const feedId = value('feed_id');
+            const url = value('url');
+            if (!feedId || !url) continue;
+            const cfg = { url };
+            const label = value('label');
+            const channelId = channelPickerValue(field('channel_id'));
+            const template = value('template');
+            if (label) cfg.label = label;
+            if (channelId) cfg.channel_id = channelId;
+            if (template) cfg.template = template;
+            if ((field('mode')?.value || 'text') === 'embed') {
+                cfg.mode = 'embed';
+                for (const [name, keyName] of [['embed_color', 'embed_color'], ['embed_title', 'embed_title'], ['embed_description', 'embed_description']]) {
+                    if (value(name)) cfg[keyName] = value(name);
+                }
+                cfg.embed_show_image = field('embed_show_image')?.checked !== false;
+                if (field('embed_show_link_button')?.checked) {
+                    cfg.embed_show_link_button = true;
+                    if (value('embed_link_button_label')) cfg.embed_link_button_label = value('embed_link_button_label');
+                }
+            }
+            feeds[feedId] = cfg;
+        }
+        return feeds;
+    },
+};
 
 export function onRssModeChange(select) {
     const entry = select.closest('.rssfeed-entry');
@@ -101,7 +154,7 @@ export function addRssFeedEntry(btn) {
     const list = btn.previousElementSibling;
     if (!list || !list.classList.contains('rssfeed-list')) return;
     const wrapper = document.createElement('div');
-    wrapper.innerHTML = renderRssFeedEntry('', {}).trim();
+    wrapper.innerHTML = String(renderRssFeedEntry('', {})).trim();
     const entry = wrapper.firstElementChild;
     list.appendChild(entry);
     if (typeof populateChannelPickers === 'function') populateChannelPickers(entry);
@@ -230,7 +283,7 @@ export async function applyRssPreset(select) {
         if (!preset || existing.has(preset.feed_id)) continue;
         const wrapper = document.createElement('div');
         const { file, ...cfg } = preset;
-        wrapper.innerHTML = renderRssFeedEntry(preset.feed_id, { ...cfg, url: base + file }).trim();
+        wrapper.innerHTML = String(renderRssFeedEntry(preset.feed_id, { ...cfg, url: base + file })).trim();
         const entry = wrapper.firstElementChild;
         list.appendChild(entry);
         if (typeof populateChannelPickers === 'function') populateChannelPickers(entry);

@@ -48,6 +48,7 @@ _TYPE_PLACEHOLDERS: dict[str, Any] = {
     "list": [],
     "channellist": [],
     "rolelist": [],
+    "accountlist": [],
     "list:number": [],
     "messagelist": [],
     "embedlist": [],

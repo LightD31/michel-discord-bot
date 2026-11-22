@@ -98,7 +98,7 @@ Config and dashboard (`config.md`, `dashboard-security.md`, `dashboard-frontend.
 - Config writes go through `ctx.mutate_config` and are audited; secrets masked and restored — `tests/test_webui_save_config.py`, `tests/test_webui_secrets.py`
 - Bot work from a route goes through `ctx.call_bot` / `run_on_bot_loop` — `dashboard-security.md`
 - No inline script or handler in the SPA; actions in `registerActions` — `tests/test_spa_csp.py`
-- New markup uses the `html` tag; `escapeHtml(` only goes down — `tests/test_spa_html.py`
+- New markup uses the `html` tag; `escapeHtml(` only goes down; no static `style=`, `hidden` to toggle; form fields go in `FIELDS` — `tests/test_spa_html.py`
 - Contrast tokens at WCAG AA; no native dialog; the smoke test stays clean — `tests/test_spa_contrast.py`, `tests/test_spa_smoke.py`
 
 Async and I/O (`async-io.md`)

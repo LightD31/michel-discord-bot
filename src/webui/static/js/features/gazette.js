@@ -1,7 +1,7 @@
 // La Gazette: the preview of the week, and publishing it now.
+import { html, raw } from '../core/html.js';
 import { registerActions } from '../core/actions.js';
 import { api } from '../core/api.js';
-import { escapeHtml } from '../core/util.js';
 import { mdInline } from '../forms/schema-form.js';
 import { askConfirm } from '../ui/confirm.js';
 import { toast } from '../ui/toast.js';
@@ -16,17 +16,17 @@ export function gazetteText(text) {
 }
 
 export function gazetteHtml(data) {
-    const fields = (data.fields || []).map(f => `
+    const fields = (data.fields || []).map(f => String(html`
             <div class="gazette-field">
-                <div class="gazette-field-name">${escapeHtml(f.name)}</div>
-                <div class="gazette-field-value">${gazetteText(f.value)}</div>
-            </div>`).join('');
-    return `
+                <div class="gazette-field-name">${f.name}</div>
+                <div class="gazette-field-value">${raw(gazetteText(f.value))}</div>
+            </div>`)).join('');
+    return String(html`
             <div class="gazette-preview">
-                <div class="gazette-title">${escapeHtml(data.title || '')}</div>
-                <div class="gazette-intro">${gazetteText(data.intro)}</div>
-                ${fields}
-            </div>`;
+                <div class="gazette-title">${data.title || ''}</div>
+                <div class="gazette-intro">${raw(gazetteText(data.intro))}</div>
+                ${raw(fields)}
+            </div>`);
 }
 
 export async function loadGazette(serverId) {
@@ -37,7 +37,7 @@ export async function loadGazette(serverId) {
         const data = await api(`/api/servers/${encodeURIComponent(serverId)}/gazette`);
         container.innerHTML = gazetteHtml(data || {});
     } catch (e) {
-        container.innerHTML = `<div class="empty-state"><h3>Erreur</h3><p>${escapeHtml(String(e.message || e))}</p></div>`;
+        container.innerHTML = String(html`<div class="empty-state"><h3>Erreur</h3><p>${String(e.message || e)}</p></div>`);
     }
 }
 

@@ -2,8 +2,7 @@
 import { registerActions } from '../core/actions.js';
 import { api } from '../core/api.js';
 import { state } from '../core/state.js';
-import { html } from '../core/html.js';
-import { escapeHtml } from '../core/util.js';
+import { html, raw } from '../core/html.js';
 import { publicApi } from '../pages/public.js';
 import { applyChartTheme, cssVar, ensureChartJs, withAlpha } from '../ui/charts.js';
 
@@ -57,7 +56,7 @@ export async function loadXpStats(serverId) {
             : await api(`/api/servers/${sid}/xp/stats?days=${state.xpStatsDays}`);
     } catch (e) {
         if (!stale()) {
-            container.innerHTML = `<div class="empty-state"><h3>Erreur</h3><p>${escapeHtml(e.message || String(e))}</p></div>`;
+            container.innerHTML = String(html`<div class="empty-state"><h3>Erreur</h3><p>${e.message || String(e)}</p></div>`);
         }
         return;
     }
@@ -137,12 +136,12 @@ export function renderXpStats(data) {
     ];
     return `
             <div class="stats-grid xp-stats-cards">
-                ${cards.map(([label, value]) => `
+                ${cards.map(([label, value]) => String(html`
                     <div class="stat-card">
-                        <div class="stat-label">${escapeHtml(label)}</div>
-                        <div class="stat-value">${escapeHtml(value)}</div>
+                        <div class="stat-label">${label}</div>
+                        <div class="stat-value">${value}</div>
                     </div>
-                `).join('')}
+                `)).join('')}
             </div>
             <div class="xp-stats-grid">
                 <div class="xp-panel">
@@ -172,7 +171,7 @@ export function renderXpHeatmap(grid) {
     const rows = grid.map((row, d) => `
             <div class="xp-heatmap-day">${XP_WEEKDAYS[d]}</div>
             ${row.map((xp, h) => {
-            const title = escapeHtml(`${XP_WEEKDAYS[d]} ${h}h–${h + 1}h : ${fmtNum(xp)} XP`);
+            const title = String(html`${XP_WEEKDAYS[d]} ${h}h–${h + 1}h : ${fmtNum(xp)} XP`);
             if (!xp) return `<div class="xp-heatmap-cell zero" title="${title}"></div>`;
             const opacity = (0.15 + 0.85 * xp / max).toFixed(2);
             return `<div class="xp-heatmap-cell" style="opacity:${opacity}" title="${title}"></div>`;
@@ -185,22 +184,22 @@ export function renderXpTopTable(top) {
     const rows = top.map(m => {
         const pct = m.xp_to_next ? Math.min(100, Math.round(100 * m.xp_in_level / m.xp_to_next)) : 0;
         const handle = m.username && m.username !== m.display_name ? `@${m.username}` : '';
-        return `
+        return String(html`
                 <tr>
-                    <td class="num">${XP_MEDALS[m.rank - 1] || m.rank}</td>
+                    <td class="num">${raw(XP_MEDALS[m.rank - 1] || m.rank)}</td>
                     <td>
-                        <div class="xp-top-name">${escapeHtml(m.display_name)}</div>
-                        ${handle ? `<div class="xp-top-sub">${escapeHtml(handle)}</div>` : ''}
+                        <div class="xp-top-name">${m.display_name}</div>
+                        ${raw(handle ? String(html`<div class="xp-top-sub">${handle}</div>`) : '')}
                     </td>
-                    <td class="num">${fmtNum(m.level)}</td>
+                    <td class="num">${raw(fmtNum(m.level))}</td>
                     <td>
-                        <div class="xp-progress" title="${pct} %"><div style="width:${pct}%"></div></div>
-                        <div class="xp-top-sub">${fmtNum(m.xp_in_level)} / ${fmtNum(m.xp_to_next)} XP</div>
+                        <div class="xp-progress" title="${raw(pct)} %"><div style="width:${raw(pct)}%"></div></div>
+                        <div class="xp-top-sub">${raw(fmtNum(m.xp_in_level))} / ${raw(fmtNum(m.xp_to_next))} XP</div>
                     </td>
-                    <td class="num">${fmtNum(m.xp)}</td>
-                    <td class="num">${fmtNum(m.messages)}</td>
+                    <td class="num">${raw(fmtNum(m.xp))}</td>
+                    <td class="num">${raw(fmtNum(m.messages))}</td>
                 </tr>
-            `;
+            `);
     }).join('');
     return `
             <table class="xp-top-table">

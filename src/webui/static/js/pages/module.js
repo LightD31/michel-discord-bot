@@ -1,11 +1,11 @@
 // A module's page.
+import { html, raw } from '../core/html.js';
 import { CHECKED, EL, VALUE, actionArgs, registerActions } from '../core/actions.js';
 import { api } from '../core/api.js';
 import { isDeveloper, loadConfig, loadServers } from '../core/data.js';
 import { render } from '../core/render.js';
 import { routeHash } from '../core/router.js';
 import { state } from '../core/state.js';
-import { escapeHtml } from '../core/util.js';
 import { XP_STATS_RANGES } from '../features/xp.js';
 import { memberPickerHtml } from '../forms/pickers/members.js';
 import { commandSyncSuffix } from '../forms/save.js';
@@ -35,30 +35,30 @@ export function renderModulePage() {
         && Object.keys(schema.fields || {}).every(k => k === 'enabled')
         && Object.keys(modConfig).every(k => k === 'enabled');
 
-    return `
+    return String(html`
             <div class="breadcrumb">
-                <a href="${routeHash('server', sid)}" data-click="navigate" data-click-args="${actionArgs("server", sid)}" data-prevent>${escapeHtml(server.name || sid)}</a>
+                <a href="${raw(routeHash('server', sid))}" data-click="navigate" data-click-args="${actionArgs("server", sid)}" data-prevent>${server.name || sid}</a>
                 <span>›</span>
-                <span>${icon} ${label}</span>
+                <span>${raw(icon)} ${raw(label)}</span>
             </div>
 
             <div class="page-header">
-                <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px;">
+                <div class="u-d-flex u-ai-center u-jc-space-between u-wrap-wrap u-gap-12">
                     <div>
-                        <h2>${icon} ${label}</h2>
-                        <p>${escapeHtml(description || 'Configuration du module pour ' + (server.name || sid))}</p>
+                        <h2>${raw(icon)} ${raw(label)}</h2>
+                        <p>${description || 'Configuration du module pour ' + (server.name || sid)}</p>
                     </div>
-                    ${noToggle ? '' : `
-                    <label class="toggle" style="transform: scale(1.2);">
-                        <input type="checkbox" ${enabled ? 'checked' : ''} aria-label="Activer le module ${escapeHtml(label)}"
+                    ${raw(noToggle ? '' : String(html`
+                    <label class="u-tf-scale-1_2 toggle">
+                        <input type="checkbox" ${raw(enabled ? 'checked' : '')} aria-label="Activer le module ${label}"
                             data-change="toggleModule" data-change-args="${actionArgs(sid, mod, CHECKED)}">
                         <span class="toggle-slider"></span>
                     </label>
-                    `}
+                    `))}
                 </div>
             </div>
 
-            ${onlyToggle ? `
+            ${raw(onlyToggle ? `
             <p class="module-no-settings">Ce module n'a pas d'autre réglage que son interrupteur.</p>
             ` : `<div class="card">
                 <div class="card-header">
@@ -98,10 +98,10 @@ export function renderModulePage() {
                     : renderConfigPreview(modConfig)
                 )
             }
-            </div>`}
+            </div>`)}
 
-            ${mod === 'moduleReactionRoles' ? `
-            <div class="card" style="margin-top:16px;">
+            ${raw(mod === 'moduleReactionRoles' ? `
+            <div class="u-mt-16 card">
                 <div class="card-header">
                     <div>
                         <div class="card-title">Menus de rôles</div>
@@ -117,7 +117,7 @@ export function renderModulePage() {
                     <div class="loading"><div class="spinner"></div></div>
                 </div>
             </div>
-            <div class="card" id="rolemenu-builder-card" data-server-id="${sid}" style="margin-top:16px; display:none;">
+            <div class="u-mt-16 card" hidden id="rolemenu-builder-card" data-server-id="${sid}">
                 <div class="card-header">
                     <div>
                         <div class="card-title" id="rolemenu-builder-title">Nouveau menu</div>
@@ -130,10 +130,10 @@ export function renderModulePage() {
                 </div>
                 <div id="rolemenu-builder-body"></div>
             </div>
-            ` : ''}
+            ` : '')}
 
-            ${mod === 'moduleSecretSanta' ? `
-            <div class="card" style="margin-top:16px;">
+            ${raw(mod === 'moduleSecretSanta' ? `
+            <div class="u-mt-16 card">
                 <div class="card-header">
                     <div>
                         <div class="card-title">🎅 Session en cours</div>
@@ -147,10 +147,10 @@ export function renderModulePage() {
                     <div class="loading"><div class="spinner"></div></div>
                 </div>
             </div>
-            ` : ''}
+            ` : '')}
 
-            ${mod === 'moduleGazette' ? `
-            <div class="card" style="margin-top:16px;">
+            ${raw(mod === 'moduleGazette' ? `
+            <div class="u-mt-16 card">
                 <div class="card-header">
                     <div>
                         <div class="card-title">📰 Aperçu de cette semaine</div>
@@ -165,10 +165,10 @@ export function renderModulePage() {
                     <div class="loading"><div class="spinner"></div></div>
                 </div>
             </div>
-            ` : ''}
+            ` : '')}
 
-            ${mod === 'moduleModeration' ? `
-            <div class="card" style="margin-top:16px;">
+            ${raw(mod === 'moduleModeration' ? `
+            <div class="u-mt-16 card">
                 <div class="card-header">
                     <div>
                         <div class="card-title">Infractions</div>
@@ -177,7 +177,7 @@ export function renderModulePage() {
                 </div>
                 <div class="inf-filters">
                         <div class="inf-filter-member" aria-label="Filtrer par membre">${memberPickerHtml('', 'id="inf-filter-user"')}</div>
-                        <select id="inf-filter-type" class="form-input" style="width:150px;">
+                        <select id="inf-filter-type" class="u-w-150 form-input">
                             <option value="">Tous les types</option>
                             <option value="warn">Avertissement</option>
                             <option value="timeout">Timeout</option>
@@ -188,7 +188,7 @@ export function renderModulePage() {
                             <option value="automod">Automod</option>
                             <option value="note">Note</option>
                         </select>
-                        <select id="inf-filter-active" class="form-input" style="width:120px;">
+                        <select id="inf-filter-active" class="u-w-120 form-input">
                             <option value="">Tous</option>
                             <option value="true">Actifs</option>
                             <option value="false">Révoqués</option>
@@ -199,7 +199,7 @@ export function renderModulePage() {
                     <div class="loading"><div class="spinner"></div></div>
                 </div>
             </div>
-            <div class="card" style="margin-top:16px;">
+            <div class="u-mt-16 card">
                 <div class="card-header">
                     <div>
                         <div class="card-title">🚩 Signalements</div>
@@ -216,9 +216,9 @@ export function renderModulePage() {
                     <div class="loading"><div class="spinner"></div></div>
                 </div>
             </div>
-            ` : ''}
-            ${mod === 'moduleSpotify' ? `
-            <div class="card" style="margin-top:16px;">
+            ` : '')}
+            ${raw(mod === 'moduleSpotify' ? `
+            <div class="u-mt-16 card">
                 <div class="card-header">
                     <div>
                         <div class="card-title">📊 Statistiques de la playlist</div>
@@ -233,10 +233,10 @@ export function renderModulePage() {
                     <div class="loading"><div class="spinner"></div></div>
                 </div>
             </div>
-            ` : ''}
+            ` : '')}
 
-            ${mod === 'moduleXp' ? `
-            <div class="card" style="margin-top:16px;">
+            ${raw(mod === 'moduleXp' ? `
+            <div class="u-mt-16 card">
                 <div class="card-header">
                     <div>
                         <div class="card-title">📊 Statistiques</div>
@@ -244,7 +244,7 @@ export function renderModulePage() {
                     </div>
                     <div class="card-actions">
                         ${publicPageButton(sid, 'xp', modConfig)}
-                        <select id="xp-stats-range" class="form-input" style="width:150px;" data-change="setXpStatsRange" data-change-args="${actionArgs(sid, VALUE)}">
+                        <select id="xp-stats-range" class="u-w-150 form-input" data-change="setXpStatsRange" data-change-args="${actionArgs(sid, VALUE)}">
                             ${XP_STATS_RANGES.map(d => `<option value="${d}" ${state.xpStatsDays === d ? 'selected' : ''}>${d} jours</option>`).join('')}
                         </select>
                         <button class="btn btn-ghost btn-sm" data-click="loadXpStats" data-click-args="${actionArgs(sid)}">🔄 Actualiser</button>
@@ -254,9 +254,9 @@ export function renderModulePage() {
                     <div class="loading"><div class="spinner"></div></div>
                 </div>
             </div>
-            ` : ''}
-            ${schema && !schema.directValue ? renderExtraKeysCard(schema, modConfig) : ''}
-        `;
+            ` : '')}
+            ${raw(schema && !schema.directValue ? renderExtraKeysCard(schema, modConfig) : '')}
+        `);
 }
 
 export function renderExtraKeysCard(schema, config) {
@@ -264,7 +264,7 @@ export function renderExtraKeysCard(schema, config) {
     const extraKeys = Object.keys(config).filter(k => !schemaKeys.has(k));
     if (extraKeys.length === 0) return '';
     return `
-            <div class="card" style="margin-top:16px;">
+            <div class="u-mt-16 card">
                 <div class="card-header">
                     <div>
                         <div class="card-title">⚠️ Paramètres supplémentaires</div>
@@ -272,10 +272,10 @@ export function renderExtraKeysCard(schema, config) {
                     </div>
                 </div>
                 <div class="kv-grid">
-                    ${extraKeys.map(key => `
-                        <div class="kv-key" style="color:var(--warning)">${escapeHtml(key)}</div>
-                        <div class="kv-value"><input type="text" value="${escapeHtml(JSON.stringify(config[key]))}" readonly></div>
-                    `).join('')}
+                    ${extraKeys.map(key => String(html`
+                        <div class="u-c-warning kv-key">${key}</div>
+                        <div class="kv-value"><input type="text" value="${JSON.stringify(config[key])}" readonly></div>
+                    `)).join('')}
                 </div>
             </div>
         `;

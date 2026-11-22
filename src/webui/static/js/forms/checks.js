@@ -46,7 +46,7 @@ export async function testRssFeed(btn) {
     const items = (data?.entries || []).map(item => discordMessage(
         mode === 'embed' ? embedHtml(item) : discordMarkdown(item.text)));
     document.getElementById('modal-title').textContent = `🧪 ${label || 'Flux RSS'}`;
-    document.getElementById('modal-save-btn').style.display = 'none';
+    document.getElementById('modal-save-btn').hidden = true;
     document.getElementById('modal-overlay').querySelector('.modal-body').innerHTML = html`
         <p class="history-intro">${data.count} article(s) dans le flux. Les ${items.length} plus récents,
             comme Michel les posterait (${mode === 'embed' ? 'en embed' : 'en texte'}) :</p>

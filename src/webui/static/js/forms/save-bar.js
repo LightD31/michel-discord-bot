@@ -162,7 +162,7 @@ export async function openModuleHistory(sid, mod) {
         i === 0 ? current : versions[i - 1].settings, lookups));
     const label = state.moduleSchemas[mod]?.label || mod;
     document.getElementById('modal-title').textContent = `🕘 Historique — ${label}`;
-    document.getElementById('modal-save-btn').style.display = 'none';
+    document.getElementById('modal-save-btn').hidden = true;
     document.getElementById('modal-overlay').querySelector('.modal-body').innerHTML = html`
         <p class="history-intro">Les réglages que chaque enregistrement a remplacés, sur 90 jours.
             Les mots de passe et clés ne sont jamais gardés : une restauration garde les actuels.</p>

@@ -1,8 +1,8 @@
 // The member picker, searching through the server.
+import { html, raw } from '../../core/html.js';
 import { registerActions } from '../../core/actions.js';
 import { api } from '../../core/api.js';
 import { state } from '../../core/state.js';
-import { escapeHtml } from '../../core/util.js';
 import { refreshSpotifyMapListOptions } from '../widgets/spotify-users.js';
 
 // ── Member picker ─────────────────────────────────
@@ -53,17 +53,17 @@ export async function resolveServerMembers(serverId, ids) {
 }
 
 export function memberPickerHtml(currentId, fieldAttr) {
-    const safeId = escapeHtml(currentId || '');
-    return `
-            <div class="member-picker" data-current="${safeId}">
+    const id = currentId || '';
+    return String(html`
+            <div class="member-picker" data-current="${id}">
                 <input type="search" class="form-input member-picker-search" placeholder="🔍 Rechercher" maxlength="100" data-input="onMemberPickerSearch" data-input-args="[{&quot;$&quot;:&quot;el&quot;}]" aria-label="Rechercher un membre">
                 <select class="form-input member-picker-select" data-change="onMemberPickerChange" data-change-args="[{&quot;$&quot;:&quot;el&quot;}]">
                     <option value="">— Chargement des membres… —</option>
-                    ${currentId ? `<option value="${safeId}" selected>${safeId}</option>` : ''}
+                    ${id && html`<option value="${id}" selected>${id}</option>`}
                 </select>
-                <input type="text" class="form-input member-picker-manual" ${fieldAttr} value="${safeId}" placeholder="ex: 123456789012345678" style="display:none;">
+                <input type="text" class="form-input member-picker-manual" ${raw(fieldAttr)} value="${id}" placeholder="ex: 123456789012345678" hidden>
                 <button type="button" class="btn-member-toggle" data-click="toggleMemberPickerMode" data-click-args="[{&quot;$&quot;:&quot;el&quot;}]" title="Saisie manuelle" aria-label="Saisie manuelle">✎</button>
-            </div>`;
+            </div>`);
 }
 
 export function getDiscord2NameMap() {
@@ -83,7 +83,7 @@ export function memberOptionLabel(m) {
 export function getPickerSelectedId(picker) {
     const manual = picker.querySelector('.member-picker-manual');
     const select = picker.querySelector('.member-picker-select');
-    const manualVisible = manual && manual.style.display !== 'none';
+    const manualVisible = manual && !manual.hidden;
     const val = manualVisible ? (manual?.value ?? '') : (select?.value ?? '');
     return (val || picker.dataset.current || '').trim();
 }
@@ -116,13 +116,13 @@ export function refreshMemberPickerGroup(pickers) {
         const shown = new Set();
         if (ownId) {
             const m = store.byId.get(ownId);
-            opts += `<option value="${escapeHtml(ownId)}">${escapeHtml(m ? memberOptionLabel(m) : `ID inconnu: ${ownId}`)}</option>`;
+            opts += String(html`<option value="${ownId}">${m ? memberOptionLabel(m) : `ID inconnu: ${ownId}`}</option>`);
             shown.add(ownId);
         }
         for (const m of list) {
             if (shown.has(m.id) || excludeIds.has(m.id)) continue;
             shown.add(m.id);
-            opts += `<option value="${escapeHtml(m.id)}">${escapeHtml(memberOptionLabel(m))}</option>`;
+            opts += String(html`<option value="${m.id}">${memberOptionLabel(m)}</option>`);
         }
         if (total > list.length) {
             opts += `<option value="" disabled>… ${total - list.length} autre(s) : affine la recherche</option>`;
@@ -232,10 +232,10 @@ export function toggleMemberPickerMode(btn, forceManual) {
     const select = picker.querySelector('.member-picker-select');
     const manual = picker.querySelector('.member-picker-manual');
     const search = picker.querySelector('.member-picker-search');
-    const showManual = forceManual === true ? true : (manual.style.display === 'none');
-    manual.style.display = showManual ? '' : 'none';
-    select.style.display = showManual ? 'none' : '';
-    if (search) search.style.display = showManual ? 'none' : '';
+    const showManual = forceManual === true ? true : manual.hidden;
+    manual.hidden = !showManual;
+    select.hidden = showManual;
+    if (search) search.hidden = showManual;
     btn.textContent = showManual ? '☰' : '✎';
     btn.title = showManual ? 'Choisir dans la liste' : 'Saisie manuelle';
     const typed = manual.value.trim();
@@ -260,3 +260,12 @@ registerActions({
     removeNameMapEntry,
     toggleMemberPickerMode,
 });
+
+// The id a member picker holds: its list's choice, or the id typed by hand.
+export function memberPickerValue(picker) {
+    if (!picker) return '';
+    const manual = picker.querySelector('.member-picker-manual');
+    const select = picker.querySelector('.member-picker-select');
+    const manualVisible = manual && !manual.hidden;
+    return ((manualVisible ? manual?.value : select?.value) ?? '').trim();
+}

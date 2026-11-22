@@ -1,3 +1,4 @@
+[hidden] { display: none !important; }  /* P17: the hidden attribute, not inline styles */
 /* The dashboard's styles, served as /static/app.css. */
 :root {
     --bg-primary: #1a1b1e;
@@ -2983,6 +2984,10 @@ details.viz-data .viz-table-scroll { max-height: 240px; overflow-y: auto; }
     background: rgba(242,63,67,0.12); color: var(--danger);
     border: 1px solid rgba(242,63,67,0.3);
 }
+.status-dot.is-online { background: var(--success); }
+.status-dot.is-away { background: var(--warning); }
+.inf-row[data-revoked] { opacity: 0.55; }
+
 .status-dot-pulse {
     width: 8px; height: 8px; border-radius: 50%;
     background: currentColor;
@@ -3490,3 +3495,104 @@ body.has-save-bar .toast-container { bottom: 88px; }
 .me-row:has(.me-settle) { flex-wrap: wrap; }
 .me-row:has(.me-settle) .me-row-main { flex: 1 1 220px; }
 .me-settle-amount { width: 110px; }
+
+/* Settings previews (P17: what the inline styles of pages/global.js said). */
+.card-bordered { margin-bottom: 16px; border: 1px solid var(--border); }
+.preview-row-list { flex-direction: column; gap: 6px; }
+.preview-list { display: flex; flex-direction: column; gap: 4px; width: 100%; }
+.preview-item { display: flex; gap: 8px; align-items: center; padding: 4px 8px; background: var(--bg-primary); border-radius: var(--radius); font-size: 13px; }
+.preview-strong { font-weight: 600; color: var(--accent); }
+.preview-mono { color: var(--text-muted); font-family: Consolas, monospace; }
+.preview-muted { color: var(--text-muted); font-size: 13px; }
+.preview-grow { flex: 1; color: var(--text-primary); }
+.preview-mono.preview-grow { color: var(--text-muted); }
+.preview-badge { color: var(--accent); font-size: 11px; }
+.preview-unknown { color: var(--warning); }
+.w-80 { min-width: 80px; } .w-100 { min-width: 100px; } .w-120 { min-width: 120px; }
+.w-140 { min-width: 140px; } .w-180 { min-width: 180px; }
+.kv-section { grid-column: 1 / -1; color: var(--accent); margin-top: 8px; }
+
+/* Discord accounts named by id (P17). */
+.account-names { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.account-chip { font-size: 12px; padding: 2px 8px; border-radius: 999px; background: var(--bg-secondary); border: 1px solid var(--border); }
+.account-unknown { color: var(--warning); }
+
+.rssfeed-variables { margin-top: 8px; }
+
+.embedlist-field-label { font-size: 11px; color: var(--text-muted); }
+.form-empty { color: var(--text-muted); }
+.toggle-field { margin-top: 4px; }
+.secret-field { position: relative; }
+.template-test-btn { margin-top: 6px; }
+
+/* Utility classes: what inline style="…" attributes used to say (P17).
+   !important keeps the precedence the inline style had. */
+.u-ai-center { align-items: center !important; }
+.u-bd-1-solid-accent { border: 1px solid var(--accent) !important; }
+.u-bd-1-solid-border { border: 1px solid var(--border) !important; }
+.u-bdb-1-solid-border { border-bottom: 1px solid var(--border) !important; }
+.u-bg-0d1117 { background: #0d1117 !important; }
+.u-bg-bg-primary { background: var(--bg-primary) !important; }
+.u-bg-bg-secondary { background: var(--bg-secondary) !important; }
+.u-bg-bg-tertiary { background: var(--bg-tertiary) !important; }
+.u-br-6 { border-radius: 6px !important; }
+.u-br-8 { border-radius: 8px !important; }
+.u-br-radius { border-radius: var(--radius) !important; }
+.u-c-danger { color: var(--danger) !important; }
+.u-c-success { color: var(--success) !important; }
+.u-c-text-muted { color: var(--text-muted) !important; }
+.u-c-text-secondary { color: var(--text-secondary) !important; }
+.u-c-warning { color: var(--warning) !important; }
+.u-d-flex { display: flex !important; }
+.u-d-grid { display: grid !important; }
+.u-fd-column { flex-direction: column !important; }
+.u-fs-0_85em { font-size: 0.85em !important; }
+.u-fs-0_85rem { font-size: 0.85rem !important; }
+.u-fs-0_8rem { font-size: 0.8rem !important; }
+.u-fs-0_9rem { font-size: 0.9rem !important; }
+.u-fs-12 { font-size: 12px !important; }
+.u-fs-13 { font-size: 13px !important; }
+.u-fs-20 { font-size: 20px !important; }
+.u-fx-1 { flex: 1 !important; }
+.u-gap-12 { gap: 12px !important; }
+.u-gap-16 { gap: 16px !important; }
+.u-gap-4 { gap: 4px !important; }
+.u-gap-6 { gap: 6px !important; }
+.u-gap-8 { gap: 8px !important; }
+.u-grid-template-columns-1fr-80-1fr-36 { grid-template-columns: 1fr 80px 1fr 36px !important; }
+.u-h-48 { height: 48px !important; }
+.u-jc-center { justify-content: center !important; }
+.u-jc-flex-end { justify-content: flex-end !important; }
+.u-jc-space-between { justify-content: space-between !important; }
+.u-lh-1_6 { line-height: 1.6 !important; }
+.u-m-0 { margin: 0 !important; }
+.u-m-0-0-12 { margin: 0 0 12px !important; }
+.u-m-12-0-6 { margin: 12px 0 6px !important; }
+.u-m-16-0-8 { margin: 16px 0 8px !important; }
+.u-m-8-0-0 { margin: 8px 0 0 !important; }
+.u-mb-0 { margin-bottom: 0 !important; }
+.u-mb-12 { margin-bottom: 12px !important; }
+.u-mb-6 { margin-bottom: 6px !important; }
+.u-mb-8 { margin-bottom: 8px !important; }
+.u-minw-0 { min-width: 0 !important; }
+.u-minw-180 { min-width: 180px !important; }
+.u-minw-220 { min-width: 220px !important; }
+.u-ml-8 { margin-left: 8px !important; }
+.u-mr-8 { margin-right: 8px !important; }
+.u-mt-12 { margin-top: 12px !important; }
+.u-mt-16 { margin-top: 16px !important; }
+.u-mt-8 { margin-top: 8px !important; }
+.u-ov-hidden { overflow: hidden !important; }
+.u-p-12 { padding: 12px !important; }
+.u-p-2-8 { padding: 2px 8px !important; }
+.u-p-6-0 { padding: 6px 0 !important; }
+.u-p-8 { padding: 8px !important; }
+.u-p-8-12 { padding: 8px 12px !important; }
+.u-tf-scale-1_2 { transform: scale(1.2) !important; }
+.u-us-all { user-select: all !important; }
+.u-w-120 { width: 120px !important; }
+.u-w-150 { width: 150px !important; }
+.u-w-200 { width: 200px !important; }
+.u-w-48 { width: 48px !important; }
+.u-wb-break-all { word-break: break-all !important; }
+.u-wrap-wrap { flex-wrap: wrap !important; }

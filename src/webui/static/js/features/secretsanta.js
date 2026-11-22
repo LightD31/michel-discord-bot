@@ -1,8 +1,7 @@
 // Secret Santa: the session and its draw.
 import { EL, actionArgs, registerActions } from '../core/actions.js';
 import { api } from '../core/api.js';
-import { html } from '../core/html.js';
-import { escapeHtml } from '../core/util.js';
+import { html, raw } from '../core/html.js';
 import { askConfirm } from '../ui/confirm.js';
 import { toast } from '../ui/toast.js';
 
@@ -10,11 +9,11 @@ import { toast } from '../ui/toast.js';
 // Counts only once drawn: who sent or received a parcel would hint at pairs.
 export function santaProgress(label, done, total) {
     const pct = total ? Math.round(100 * done / total) : 0;
-    return `
+    return String(html`
             <div class="santa-progress">
-                <div class="santa-progress-label"><span>${label}</span><strong>${done}/${total}</strong></div>
-                <div class="santa-progress-bar" role="progressbar" aria-label="${escapeHtml(label)}" aria-valuemin="0" aria-valuemax="${total}" aria-valuenow="${done}"><span style="width:${pct}%"></span></div>
-            </div>`;
+                <div class="santa-progress-label"><span>${raw(label)}</span><strong>${raw(done)}/${raw(total)}</strong></div>
+                <div class="santa-progress-bar" role="progressbar" aria-label="${label}" aria-valuemin="0" aria-valuemax="${raw(total)}" aria-valuenow="${raw(done)}"><span style="width:${raw(pct)}%"></span></div>
+            </div>`);
 }
 
 export function secretSantaHtml(serverId, s) {
@@ -24,15 +23,15 @@ export function secretSantaHtml(serverId, s) {
     const withList = s.participants.filter(p => p.has_wishlist).length;
     const facts = [
         ['Statut', s.is_drawn ? '✅ Tirage effectué' : '⏳ Inscriptions ouvertes'],
-        ['Échange', s.exchange_label ? escapeHtml(s.exchange_label) : '<span style="color:var(--text-muted)">Pas de date</span>'],
-        ['Budget', s.budget ? escapeHtml(s.budget) : '<span style="color:var(--text-muted)">Non précisé</span>'],
+        ['Échange', s.exchange_label ? String(html`${s.exchange_label}`) : '<span class="u-c-text-muted">Pas de date</span>'],
+        ['Budget', s.budget ? String(html`${s.budget}`) : '<span class="u-c-text-muted">Non précisé</span>'],
         ['Remise', s.shipping ? '📦 Par colis (suivi et rappel)' : '🤝 En main propre'],
-        ['Organisé par', escapeHtml(s.created_by)],
+        ['Organisé par', String(html`${s.created_by}`)],
     ];
     const people = s.participants.length
-        ? `<ul class="santa-people">${s.participants.map(p => `
-                <li><span>${escapeHtml(p.name)}</span>${p.has_wishlist ? '<span class="santa-list" title="A laissé une liste d\'envies">📝 liste</span>' : ''}</li>`).join('')}</ul>`
-        : '<p style="color:var(--text-muted)">Personne n\'est encore inscrit.</p>';
+        ? `<ul class="santa-people">${s.participants.map(p => String(html`
+                <li><span>${p.name}</span>${raw(p.has_wishlist ? '<span class="santa-list" title="A laissé une liste d\'envies">📝 liste</span>' : '')}</li>`)).join('')}</ul>`
+        : '<p class="u-c-text-muted">Personne n\'est encore inscrit.</p>';
     const progress = s.is_drawn && s.shipping
         ? santaProgress('📦 Colis envoyés', s.sent || 0, s.total) + santaProgress('🎁 Colis reçus', s.received || 0, s.total)
         : (!s.is_drawn ? santaProgress('📝 Listes d\'envies', withList, s.total) : '');
@@ -50,7 +49,7 @@ export function secretSantaHtml(serverId, s) {
     return `
             <dl class="santa-facts">${facts.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join('')}</dl>
             ${progress}
-            <h4 style="margin:16px 0 8px;">Participants (${s.total})</h4>
+            <h4 class="u-m-16-0-8">Participants (${s.total})</h4>
             ${people}
             ${draw}
             ${reveal}`;
@@ -94,7 +93,7 @@ export async function loadSecretSanta(serverId) {
         const data = await api(`/api/servers/${encodeURIComponent(serverId)}/secretsanta`);
         container.innerHTML = secretSantaHtml(serverId, data?.session || null);
     } catch (e) {
-        container.innerHTML = `<div class="empty-state"><h3>Erreur</h3><p>${escapeHtml(String(e.message || e))}</p></div>`;
+        container.innerHTML = String(html`<div class="empty-state"><h3>Erreur</h3><p>${String(e.message || e)}</p></div>`);
     }
 }
 

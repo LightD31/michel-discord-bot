@@ -112,7 +112,7 @@ def demo_config(data_dir: str, port: int, mongo_url: str) -> dict[str, Any]:
     role = {name: rid for name, (rid, *_rest) in _roles().items()}
     return {
         "config": {
-            "discord": {"botToken": "demo", "devGuildId": GA},
+            "discord": {"botToken": "demo", "devGuildId": GA, "botId": BOT_ID, "ownerId": DEV},
             "mongodb": {"url": mongo_url},
             "misc": {"dataFolder": data_dir},
             "webui": {
@@ -465,7 +465,7 @@ class FakeBot:
         return next((m for g in self.guilds if (m := g.get_member(uid)) is not None), None)
 
     async def fetch_user(self, uid):
-        return self.get_user(uid)
+        return self.user if str(uid) == BOT_ID else self.get_user(uid)
 
     async def synchronise_interactions(self, *args, **kwargs):
         return None
@@ -869,6 +869,7 @@ def pages_for(who: str, module_names: list[str]) -> list[tuple[str, ...]]:
     pages += [("rss-test", f"#/module/{GA}/moduleRss", "feed")]
     if who == "developpeur":
         pages += [("config-globale", "#/global"), ("extensions", "#/extensions")]
+        pages += [("config-globale-discord", "#/global", "accounts")]
         pages += [("liens-courts", "#/links"), ("logs", "#/logs")]
         pages += [(f"module-{m}", f"#/module/{GA}/{m}") for m in module_names]
     return pages
@@ -912,7 +913,15 @@ def _feed(page) -> None:
     page.locator("#modal-overlay .dc-message").first.wait_for()
 
 
-STEPS = {"edit": _edit, "history": _history, "feed": _feed}
+def _accounts(page) -> None:
+    # The Discord section in edit mode: the bot, owner and developer ids named (P17).
+    section = page.locator(".card", has=page.locator(".card-title", has_text="Discord"))
+    section.get_by_role("button", name="✏️ Éditer").first.click()
+    page.locator(".account-chip:not(.account-unknown)").nth(1).wait_for()
+    page.wait_for_timeout(400)
+
+
+STEPS = {"edit": _edit, "history": _history, "feed": _feed, "accounts": _accounts}
 # Leaves the page unmodified, so the next one opens without "Abandonner ?".
 FORGET_EDITS = """async () => {
     document.activeElement?.blur?.();

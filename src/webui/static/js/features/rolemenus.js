@@ -1,11 +1,10 @@
 // The role menu builder.
 import { actionArgs, registerActions } from '../core/actions.js';
 import { api } from '../core/api.js';
-import { html } from '../core/html.js';
+import { html, raw } from '../core/html.js';
 import { discordButtons, discordEmbed, discordMessage, discordSelect } from '../ui/discord.js';
 import { confirmDiscard, setDirty } from '../core/dirty.js';
 import { state } from '../core/state.js';
-import { escapeHtml } from '../core/util.js';
 import { fetchServerChannels } from '../forms/pickers/channels.js';
 import { askConfirm } from '../ui/confirm.js';
 import { toast } from '../ui/toast.js';
@@ -43,28 +42,28 @@ export async function loadRoleMenus(serverId) {
                 ? `https://discord.com/channels/${m.guild_id}/${m.channel_id}/${m.message_id}`
                 : null;
             const entriesPreview = (m.entries || []).slice(0, 5).map(e =>
-                `<span style="margin-right:8px;">${escapeHtml(e.emoji)} ${escapeHtml(e.label)}</span>`
+                String(html`<span class="u-mr-8">${e.emoji} ${e.label}</span>`)
             ).join('');
-            const more = (m.entries?.length || 0) > 5 ? ` <span style="color:var(--text-muted)">+${m.entries.length - 5}</span>` : '';
-            return `
-                    <div style="border:1px solid var(--border); border-radius:var(--radius); padding:12px; margin-bottom:8px; display:flex; flex-direction:column; gap:6px;">
-                        <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap;">
+            const more = (m.entries?.length || 0) > 5 ? ` <span class="u-c-text-muted">+${m.entries.length - 5}</span>` : '';
+            return String(html`
+                    <div class="u-bd-1-solid-border u-br-radius u-p-12 u-mb-8 u-d-flex u-fd-column u-gap-6">
+                        <div class="u-d-flex u-ai-center u-jc-space-between u-gap-8 u-wrap-wrap">
                             <div>
-                                <strong>${escapeHtml(m.title || '(sans titre)')}</strong>
-                                <span style="color:var(--text-muted); margin-left:8px;">&lt;#${escapeHtml(m.channel_id)}&gt;</span>
-                                ${jumpUrl ? `<a href="${jumpUrl}" target="_blank" style="margin-left:8px;">↗ Discord</a>` : ''}
+                                <strong>${m.title || '(sans titre)'}</strong>
+                                <span class="u-c-text-muted u-ml-8">&lt;#${m.channel_id}&gt;</span>
+                                ${raw(jumpUrl ? `<a href="${jumpUrl}" target="_blank" class="u-ml-8">↗ Discord</a>` : '')}
                             </div>
-                            <div style="display:flex; gap:6px;">
+                            <div class="u-d-flex u-gap-6">
                                 <button class="btn btn-ghost btn-sm" data-click="openRoleMenuBuilder" data-click-args="${actionArgs(serverId, m.id)}">✏️ Modifier</button>
-                                <button class="btn btn-ghost btn-sm" style="color:var(--danger)" data-click="deleteRoleMenu" data-click-args="${actionArgs(serverId, m.id)}">🗑️ Supprimer</button>
+                                <button class="u-c-danger btn btn-ghost btn-sm" data-click="deleteRoleMenu" data-click-args="${actionArgs(serverId, m.id)}">🗑️ Supprimer</button>
                             </div>
                         </div>
-                        <div style="font-size:13px;">${entriesPreview}${more}</div>
+                        <div class="u-fs-13">${raw(entriesPreview)}${raw(more)}</div>
                     </div>
-                `;
+                `);
         }).join('');
     } catch (e) {
-        container.innerHTML = `<div class="empty-state"><h3>Erreur</h3><p>${escapeHtml(String(e))}</p></div>`;
+        container.innerHTML = String(html`<div class="empty-state"><h3>Erreur</h3><p>${String(e)}</p></div>`);
     }
 }
 
@@ -72,7 +71,7 @@ export function _renderRoleSelect(roles, currentRoleId) {
     let opts = '<option value="">— Choisir un rôle —</option>';
     for (const r of roles) {
         const sel = String(r.id) === String(currentRoleId) ? 'selected' : '';
-        opts += `<option value="${escapeHtml(r.id)}" ${sel}>@${escapeHtml(r.name)}</option>`;
+        opts += String(html`<option value="${r.id}" ${raw(sel)}>@${r.name}</option>`);
     }
     return opts;
 }
@@ -82,14 +81,14 @@ export function _renderEntryRow(roles, entry) {
     // its emoji: each missing field is an empty input, never "undefined".
     const e = { role_id: '', emoji: '', label: '', ...(entry || {}) };
     for (const k of ['role_id', 'emoji', 'label']) e[k] = e[k] ?? '';
-    return `
-            <div class="rolemenu-entry" style="display:grid; grid-template-columns: 1fr 80px 1fr 36px; gap:8px; align-items:center; margin-bottom:6px;">
-                <select class="form-input" data-rrf="role_id">${_renderRoleSelect(roles, e.role_id)}</select>
-                <input type="text" class="form-input" data-rrf="emoji" value="${escapeHtml(e.emoji)}" placeholder="🎮" maxlength="64">
-                <input type="text" class="form-input" data-rrf="label" value="${escapeHtml(e.label)}" placeholder="Libellé du bouton" maxlength="80">
+    return String(html`
+            <div class="u-d-grid u-grid-template-columns-1fr-80-1fr-36 u-gap-8 u-ai-center u-mb-6 rolemenu-entry">
+                <select class="form-input" data-rrf="role_id">${raw(_renderRoleSelect(roles, e.role_id))}</select>
+                <input type="text" class="form-input" data-rrf="emoji" value="${e.emoji}" placeholder="🎮" maxlength="64">
+                <input type="text" class="form-input" data-rrf="label" value="${e.label}" placeholder="Libellé du bouton" maxlength="80">
                 <button type="button" class="btn-remove-entry" data-click="remove-closest" data-click-args="[&quot;.rolemenu-entry&quot;,{&quot;$&quot;:&quot;el&quot;}]" title="Supprimer" aria-label="Supprimer">✕</button>
             </div>
-        `;
+        `);
 }
 
 export async function openRoleMenuBuilder(serverId, menuId) {
@@ -101,7 +100,7 @@ export async function openRoleMenuBuilder(serverId, menuId) {
     titleEl.textContent = menuId ? 'Modifier le menu' : 'Nouveau menu';
 
     body.innerHTML = `<div class="loading"><div class="spinner"></div></div>`;
-    card.style.display = 'block';
+    card.hidden = false;
     card.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
     const [roles, channelData, menus] = await Promise.all([
@@ -133,50 +132,50 @@ export async function openRoleMenuBuilder(serverId, menuId) {
         for (const [catId, catName] of orderedCats) {
             const list = grouped.get(catId);
             if (!list || list.length === 0) continue;
-            channelOpts += `<optgroup label="${escapeHtml(catName)}">`;
+            channelOpts += String(html`<optgroup label="${catName}">`);
             for (const ch of list) {
                 const sel = String(ch.id) === String(initial.channel_id) ? 'selected' : '';
-                channelOpts += `<option value="${escapeHtml(ch.id)}" ${sel}>#${escapeHtml(ch.name)}</option>`;
+                channelOpts += String(html`<option value="${ch.id}" ${raw(sel)}>#${ch.name}</option>`);
             }
             channelOpts += `</optgroup>`;
         }
     }
 
-    body.innerHTML = `
-            <div class="form-grid" style="display:flex; flex-direction:column; gap:12px;">
+    body.innerHTML = String(html`
+            <div class="u-d-flex u-fd-column u-gap-12 form-grid">
                 <div>
                     <label class="form-label">Salon</label>
-                    <select class="form-input" id="rrf-channel" ${menuId ? 'disabled title="Le salon est figé une fois le menu créé."' : ''}>
-                        ${channelOpts}
+                    <select class="form-input" id="rrf-channel" ${raw(menuId ? 'disabled title="Le salon est figé une fois le menu créé."' : '')}>
+                        ${raw(channelOpts)}
                     </select>
                 </div>
                 <div>
                     <label class="form-label">Titre</label>
-                    <input type="text" class="form-input" id="rrf-title" value="${escapeHtml(initial.title || '')}" maxlength="256" placeholder="Ex : Choisis tes rôles">
+                    <input type="text" class="form-input" id="rrf-title" value="${initial.title || ''}" maxlength="256" placeholder="Ex : Choisis tes rôles">
                 </div>
                 <div>
                     <label class="form-label">Description (optionnel)</label>
-                    <textarea class="form-textarea" id="rrf-description" rows="2" placeholder="Affichée au-dessus de la liste des rôles">${escapeHtml(initial.description || '')}</textarea>
+                    <textarea class="form-textarea" id="rrf-description" rows="2" placeholder="Affichée au-dessus de la liste des rôles">${initial.description || ''}</textarea>
                 </div>
                 <div class="rolemenu-style-row">
                     <div>
                         <label class="form-label" for="rrf-style">Présentation</label>
                         <select class="form-input" id="rrf-style">
-                            <option value="buttons" ${initial.style !== 'select' ? 'selected' : ''}>Un bouton par rôle</option>
-                            <option value="select" ${initial.style === 'select' ? 'selected' : ''}>Une liste déroulante</option>
+                            <option value="buttons" ${raw(initial.style !== 'select' ? 'selected' : '')}>Un bouton par rôle</option>
+                            <option value="select" ${raw(initial.style === 'select' ? 'selected' : '')}>Une liste déroulante</option>
                         </select>
                     </div>
                     <div>
                         <label class="form-label" for="rrf-max">Rôles par membre</label>
                         <input type="number" class="form-input" id="rrf-max" min="1" max="25" placeholder="Sans limite"
-                            value="${Number.isInteger(initial.max_roles) ? initial.max_roles : ''}">
+                            value="${raw(Number.isInteger(initial.max_roles) ? initial.max_roles : '')}">
                         <div class="form-description">Vide : autant qu'il veut. 1 : un seul, le nouveau remplace l'ancien (couleurs, équipes).</div>
                     </div>
                 </div>
                 <div>
                     <label class="form-label">Entrées (max 25)</label>
                     <div id="rrf-entries">
-                        ${initial.entries.map(e => _renderEntryRow(roles, e)).join('')}
+                        ${raw(initial.entries.map(e => _renderEntryRow(roles, e)).join(''))}
                     </div>
                     <button type="button" class="btn-add-entry" data-click="addRoleMenuEntry">+ Ajouter une entrée</button>
                 </div>
@@ -185,7 +184,7 @@ export async function openRoleMenuBuilder(serverId, menuId) {
                     <div id="rrf-preview" class="discord-preview" aria-live="polite" aria-label="Aperçu dans Discord"></div>
                 </div>
             </div>
-        `;
+        `);
     refreshRoleMenuPreview();
 }
 
@@ -240,7 +239,7 @@ export function addRoleMenuEntry() {
 export async function closeRoleMenuBuilder() {
     if (!(await confirmDiscard())) return;
     const card = document.getElementById('rolemenu-builder-card');
-    if (card) card.style.display = 'none';
+    if (card) card.hidden = true;
     _rolemenuEditing = null;
 }
 

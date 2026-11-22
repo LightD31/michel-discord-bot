@@ -1,4 +1,5 @@
 // The layout: login page, sidebar, and the current page.
+import { html, raw } from '../core/html.js';
 import { loadGazette } from '../features/gazette.js';
 import { loadInfractions, loadReports } from '../features/moderation.js';
 import { loadRoleMenus } from '../features/rolemenus.js';
@@ -57,7 +58,7 @@ export function render() {
     app.innerHTML = `
             <div class="mobile-header">
                 <button class="hamburger" data-click="toggleSidebar" aria-label="Menu">☰</button>
-                <div class="status-dot" style="background: ${state.botInfo?.status === 'online' ? 'var(--success)' : 'var(--warning)'}"></div>
+                <div class="status-dot ${state.botInfo?.status === 'online' ? 'is-online' : 'is-away'}"></div>
                 <h1>Michel Bot</h1>
             </div>
             <div class="sidebar-overlay" data-click="closeSidebar"></div>
@@ -165,37 +166,37 @@ export function renderSidebar() {
             const iconUrl = s.icon
                 ? `https://cdn.discordapp.com/icons/${id}/${s.icon}.png?size=64`
                 : null;
-            return `
-                    <a class="nav-item ${isActive ? 'active' : ''}" href="${routeHash('server', id)}" ${isActive ? 'aria-current="page"' : ''}
+            return String(html`
+                    <a class="nav-item ${raw(isActive ? 'active' : '')}" href="${raw(routeHash('server', id))}" ${raw(isActive ? 'aria-current="page"' : '')}
                        data-click="navigate" data-click-args="${actionArgs("server", id)}" data-prevent>
                         <div class="server-icon">
-                            ${iconUrl ? `<img src="${escapeHtml(iconUrl)}" alt="">` : escapeHtml(s.name?.charAt(0) || '?')}
+                            ${iconUrl ? html`<img src="${iconUrl}" alt="">` : (s.name?.charAt(0) || '?')}
                         </div>
                         <div class="nav-item-label">
-                            <span class="nav-item-name">${escapeHtml(s.name || id)}</span>
+                            <span class="nav-item-name">${s.name || id}</span>
                         </div>
                     </a>
-                `;
+                `);
         }).join('')
         : '<div class="loading"><div class="spinner"></div> Chargement...</div>';
 
-    return `
-            <div class="sidebar ${state.sidebarOpen ? 'open' : ''}">
+    return String(html`
+            <div class="sidebar ${raw(state.sidebarOpen ? 'open' : '')}">
                 <div class="sidebar-header">
-                    <div class="status-dot" style="background: ${state.botInfo?.status === 'online' ? 'var(--success)' : 'var(--warning)'}"></div>
+                    <div class="status-dot ${state.botInfo?.status === 'online' ? 'is-online' : 'is-away'}"></div>
                     <h1>Michel Bot</h1>
                 </div>
                 <div class="sidebar-nav">
                     <div class="nav-section">
                         <div class="nav-section-title">Général</div>
-                        ${isAdmin() ? `
+                        ${raw(isAdmin() ? `
                         <a class="nav-item ${state.currentPage === 'home' ? 'active' : ''}" href="${routeHash('home')}" ${state.currentPage === 'home' ? 'aria-current="page"' : ''} data-click="navigate" data-click-args="[&quot;home&quot;]" data-prevent>
                             <span class="icon">🏠</span> Accueil
-                        </a>` : ''}
-                        <a class="nav-item ${state.currentPage === 'me' ? 'active' : ''}" href="${routeHash('me')}" ${state.currentPage === 'me' ? 'aria-current="page"' : ''} data-click="navigate" data-click-args="[&quot;me&quot;]" data-prevent>
+                        </a>` : '')}
+                        <a class="nav-item ${raw(state.currentPage === 'me' ? 'active' : '')}" href="${raw(routeHash('me'))}" ${raw(state.currentPage === 'me' ? 'aria-current="page"' : '')} data-click="navigate" data-click-args="[&quot;me&quot;]" data-prevent>
                             <span class="icon">🙂</span> Mon espace
                         </a>
-                        ${isDeveloper() ? `
+                        ${raw(isDeveloper() ? `
                         <a class="nav-item ${state.currentPage === 'global' ? 'active' : ''}" href="${routeHash('global')}" ${state.currentPage === 'global' ? 'aria-current="page"' : ''} data-click="navigate" data-click-args="[&quot;global&quot;]" data-prevent>
                             <span class="icon">⚙️</span> Config globale
                         </a>
@@ -208,29 +209,28 @@ export function renderSidebar() {
                         <a class="nav-item ${state.currentPage === 'logs' ? 'active' : ''}" href="${routeHash('logs')}" ${state.currentPage === 'logs' ? 'aria-current="page"' : ''} data-click="navigate" data-click-args="[&quot;logs&quot;]" data-prevent>
                             <span class="icon">📋</span> Logs
                         </a>
-                        ` : ''}
+                        ` : '')}
                     </div>
-                    ${isAdmin() ? `
+                    ${raw(isAdmin() ? `
                     <div class="nav-section">
                         <div class="nav-section-title">Serveurs</div>
                         ${serverItems}
                     </div>
-                    ` : ''}
+                    ` : '')}
                 </div>
                 <div class="sidebar-footer">
                     <div class="user-info">
                         <div class="user-avatar">
                             ${state.user.avatar
-                            ? `<img src="https://cdn.discordapp.com/avatars/${encodeURIComponent(state.user.user_id)}/${encodeURIComponent(state.user.avatar)}.png?size=64" alt="">`
-                            : escapeHtml(state.user.username.charAt(0))
-                        }
+                            ? html`<img src="https://cdn.discordapp.com/avatars/${encodeURIComponent(state.user.user_id)}/${encodeURIComponent(state.user.avatar)}.png?size=64" alt="">`
+                            : state.user.username.charAt(0)}
                         </div>
-                        <span class="user-name">${escapeHtml(state.user.username)}</span>
+                        <span class="user-name">${state.user.username}</span>
                         <button class="logout-btn" data-click="logout" title="Déconnexion" aria-label="Déconnexion">🚪</button>
                     </div>
                 </div>
             </div>
-        `;
+        `);
 }
 
 export function renderPage() {

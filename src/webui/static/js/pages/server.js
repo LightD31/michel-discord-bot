@@ -172,8 +172,8 @@ export function renderServerPage() {
 
     return html`
             <div class="page-header">
-                <div style="display:flex; align-items:center; gap:16px; flex-wrap:wrap;">
-                    <div class="server-icon" style="width:48px;height:48px;font-size:20px;">
+                <div class="u-d-flex u-ai-center u-gap-16 u-wrap-wrap">
+                    <div class="u-w-48 u-h-48 u-fs-20 server-icon">
                         ${iconUrl ? html`<img src="${iconUrl}" alt="">` : server.name?.charAt(0) || '?'}
                     </div>
                     <div>
@@ -206,7 +206,7 @@ export function renderServerPage() {
                 <div class="card-header">
                     <div class="card-title">Messages du bot</div>
                 </div>
-                <p style="color:var(--text-muted); margin:0 0 12px;">
+                <p class="u-c-text-muted u-m-0-0-12">
                     Messages que le bot tient à jour dans ce serveur. « Republier » supprime le
                     message ; le module le reposte en bas de son salon à son prochain rafraîchissement.
                 </p>
@@ -217,7 +217,7 @@ export function renderServerPage() {
                 <div class="card-header">
                     <div class="card-title">Santé</div>
                 </div>
-                <p style="color:var(--text-muted); margin:0 0 12px;">
+                <p class="u-c-text-muted u-m-0-0-12">
                     Ce que le bot n'arrive pas à faire sur ce serveur : salons où il lui manque des
                     droits, flux RSS en échec, tâches qui échouent.
                 </p>

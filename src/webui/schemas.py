@@ -19,7 +19,8 @@ import the DSL without triggering a circular import.
 Recognised widget types (``type=`` on ``ui()``):
     string, number, boolean, channel, forum (a forum the bot reads), role,
     message, secret, url,
-    member (a member, picked by name), channellist, rolelist (several
+    member (a member, picked by name), account / accountlist (Discord accounts
+    by id, named back: the global settings' owner and developers), channellist, rolelist (several
     channels / roles, picked by name), choice (one of ``choices``, a list),
     list, list:number, dict, messagelist, embedlist, commandlist, keyvaluemap,
     spotifymap, streamermap, youtubechannelmap, rssfeedmap, teams,
@@ -622,10 +623,10 @@ class DiscordSection(SchemaBase):
     __label__ = "Discord"
     __icon__ = "💬"
 
-    botId: str | None = ui("Bot ID", "string", description="ID de l'application / bot Discord.")
+    botId: str | None = ui("Bot", "account", description="ID de l'application / bot Discord.")
     botToken: str = secret_field("Token du bot", required=True, description="Token du bot Discord.")
     ownerId: str | None = ui(
-        "ID propriétaire", "string", description="ID Discord du propriétaire du bot."
+        "Propriétaire", "account", description="Compte Discord du propriétaire du bot."
     )
     devGuildId: str | None = ui(
         "Serveur de développement", "string", description="ID du serveur de développement."
@@ -1075,8 +1076,8 @@ class WebuiSection(SchemaBase):
     clientId: str = ui("Client ID Discord", "string", required=True)
     clientSecret: str = secret_field("Client Secret Discord", required=True)
     developerUserIds: list[str] = ui(
-        "Developer User IDs",
-        "list",
+        "Développeurs",
+        "accountlist",
         required=False,
         description="IDs Discord autorisés à accéder aux pages Extensions et Logs (réservées au développeur).",
     )

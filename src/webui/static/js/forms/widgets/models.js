@@ -1,8 +1,8 @@
 // The AI model list widget and its catalogue.
-import { registerActions } from '../../core/actions.js';
+import { EL, actionArgs, registerActions } from '../../core/actions.js';
+import { html, raw } from '../../core/html.js';
 import { api } from '../../core/api.js';
 import { state } from '../../core/state.js';
-import { escapeHtml } from '../../core/util.js';
 import { toast } from '../../ui/toast.js';
 
 export const AI_APIS = [
@@ -12,17 +12,40 @@ export const AI_APIS = [
 
 export function modelEntryHtml(m, idx) {
     const apiName = m.api || 'openrouter';
-    const apiOptions = AI_APIS.map(a =>
-        `<option value="${a.id}" ${a.id === apiName ? 'selected' : ''}>${a.label}</option>`).join('');
-    return `
+    return html`
             <div class="model-entry" data-model-idx="${idx}">
-                <input type="text" data-model-field="provider" value="${escapeHtml(m.provider || '')}" placeholder="ex: gpt-4.1" data-input="refresh-ai-models" data-input-args="[{&quot;$&quot;:&quot;el&quot;}]">
-                <select data-model-field="api">${apiOptions}</select>
-                <input type="text" data-model-field="model_id" value="${escapeHtml(m.model_id || '')}" placeholder="ex: openai/gpt-4.1">
-                <input type="text" data-model-field="display_name" value="${escapeHtml(m.display_name || '')}" placeholder="ex: OpenAI GPT-4.1" data-input="refresh-ai-models" data-input-args="[{&quot;$&quot;:&quot;el&quot;}]">
-                <button class="btn-remove-model" data-click="remove-model-entry" data-click-args="[{&quot;$&quot;:&quot;el&quot;}]" title="Supprimer" aria-label="Supprimer">✕</button>
+                <input type="text" data-model-field="provider" value="${m.provider || ''}" placeholder="ex: gpt-4.1" data-input="refresh-ai-models" data-input-args="${actionArgs(EL)}">
+                <select data-model-field="api">${AI_APIS.map(a => html`<option value="${a.id}" ${a.id === apiName ? 'selected' : ''}>${a.label}</option>`)}</select>
+                <input type="text" data-model-field="model_id" value="${m.model_id || ''}" placeholder="ex: openai/gpt-4.1">
+                <input type="text" data-model-field="display_name" value="${m.display_name || ''}" placeholder="ex: OpenAI GPT-4.1" data-input="refresh-ai-models" data-input-args="${actionArgs(EL)}">
+                <button class="btn-remove-model" data-click="remove-model-entry" data-click-args="${actionArgs(EL)}" title="Supprimer" aria-label="Supprimer">✕</button>
             </div>`;
 }
+
+// The AI section's models: a key, its API, its id there, the name shown.
+export const modelsField = {
+    render: ({ key, value }) => html`
+            <div class="models-list" data-field="${key}" data-type="models">
+                <div class="models-header"><span>Clé</span><span>API</span><span>Identifiant du modèle</span><span>Nom d'affichage</span><span></span></div>
+                ${(Array.isArray(value) ? value : []).map((m, idx) => modelEntryHtml(m, idx))}
+            </div>
+            <div class="models-actions">
+                <button type="button" class="btn-add-model" data-click="addModelEntry" data-click-args="${actionArgs(EL)}">+ Ajouter un modèle</button>
+                <button type="button" class="btn-add-model" data-click="openModelCatalog" data-click-args="${actionArgs(EL)}">📚 Parcourir les modèles</button>
+            </div>`,
+    collect: (list) => {
+        const models = [];
+        for (const entry of list.querySelectorAll('.model-entry')) {
+            const value = (field) => entry.querySelector(`[data-model-field="${field}"]`)?.value?.trim();
+            const provider = value('provider');
+            const modelId = value('model_id');
+            if (provider && modelId) {
+                models.push({ provider, api: value('api') || 'openrouter', model_id: modelId, display_name: value('display_name') || provider });
+            }
+        }
+        return models.length ? models : undefined;
+    },
+};
 
 export function modelsListFor(btn) {
     return btn.closest('.form-field').querySelector('.models-list');
@@ -32,7 +55,7 @@ export function addModelEntry(btn, model = {}) {
     const list = btn.classList && btn.classList.contains('models-list') ? btn : modelsListFor(btn);
     const idx = list.querySelectorAll('.model-entry').length;
     const wrapper = document.createElement('div');
-    wrapper.innerHTML = modelEntryHtml(model, idx).trim();
+    wrapper.innerHTML = String(modelEntryHtml(model, idx)).trim();
     const entry = wrapper.firstElementChild;
     list.appendChild(entry);
     refreshAiModelSelects(list.closest('.schema-form'));
@@ -116,10 +139,10 @@ export async function openModelCatalog(btn) {
         if (res?.apis) apis = res.apis;
     } catch { /* toast already shown */ }
     const apisEl = overlay.querySelector('[data-ai-apis]');
-    apisEl.innerHTML = apis.map(a => `
-            <button type="button" class="btn btn-ghost btn-sm" data-ai-api="${a.id}" ${a.configured ? '' : 'disabled title="Clé API et URL à renseigner dans la section correspondante"'}>
-                ${escapeHtml(a.label)}${a.configured ? '' : ' (non configurée)'}
-            </button>`).join('');
+    apisEl.innerHTML = apis.map(a => String(html`
+            <button type="button" class="btn btn-ghost btn-sm" data-ai-api="${raw(a.id)}" ${raw(a.configured ? '' : 'disabled title="Clé API et URL à renseigner dans la section correspondante"')}>
+                ${a.label}${raw(a.configured ? '' : ' (non configurée)')}
+            </button>`)).join('');
     apisEl.addEventListener('click', e => {
         const b = e.target.closest('[data-ai-api]');
         if (b && !b.disabled) loadModelCatalog(picker, b.dataset.aiApi);
@@ -129,7 +152,7 @@ export async function openModelCatalog(btn) {
         loadModelCatalog(picker, first.id);
     } else {
         overlay.querySelector('[data-ai-list]').innerHTML =
-            '<p style="color:var(--text-muted);padding:12px">Aucune API configurée : renseigne la clé et l\'URL d\'OpenRouter ou de NanoGPT.</p>';
+            '<p class="u-c-text-muted u-p-12">Aucune API configurée : renseigne la clé et l\'URL d\'OpenRouter ou de NanoGPT.</p>';
     }
 }
 
@@ -144,7 +167,7 @@ export async function loadModelCatalog(picker, apiName) {
             const res = await api(`/api/ai/catalog?api=${encodeURIComponent(apiName)}`);
             _aiCatalogCache[apiName] = res?.models || [];
         } catch {
-            listEl.innerHTML = '<p style="color:var(--text-muted);padding:12px">Catalogue indisponible.</p>';
+            listEl.innerHTML = '<p class="u-c-text-muted u-p-12">Catalogue indisponible.</p>';
             return;
         }
     }
@@ -162,23 +185,23 @@ export function renderModelCatalog(picker) {
         !query || m.name.toLowerCase().includes(query) || m.id.toLowerCase().includes(query));
     const shown = matches.slice(0, 200);
     if (!shown.length) {
-        listEl.innerHTML = '<p style="color:var(--text-muted);padding:12px">Aucun modèle ne correspond.</p>';
+        listEl.innerHTML = '<p class="u-c-text-muted u-p-12">Aucun modèle ne correspond.</p>';
         return;
     }
     listEl.innerHTML = shown.map(m => {
         const isAdded = added.has(`${picker.apiName}|${m.id}`);
         const price = m.free ? '<span class="ai-catalog-badge">gratuit</span>'
             : `$${formatPerMillion(m.prompt_per_m)} / $${formatPerMillion(m.completion_per_m)} par M`;
-        return `
-                <button type="button" class="ai-catalog-row ${isAdded ? 'added' : ''}" data-ai-model="${escapeHtml(m.id)}" ${isAdded ? 'disabled' : ''}>
+        return String(html`
+                <button type="button" class="ai-catalog-row ${raw(isAdded ? 'added' : '')}" data-ai-model="${m.id}" ${raw(isAdded ? 'disabled' : '')}>
                     <div>
-                        <div>${escapeHtml(m.name)}${isAdded ? ' <span class="ai-catalog-badge">ajouté</span>' : ''}</div>
-                        <div class="ai-catalog-id">${escapeHtml(m.id)}</div>
+                        <div>${m.name}${raw(isAdded ? ' <span class="ai-catalog-badge">ajouté</span>' : '')}</div>
+                        <div class="ai-catalog-id">${m.id}</div>
                     </div>
-                    <div class="ai-catalog-meta">${price}<br>${formatContext(m.context_length)}</div>
-                </button>`;
+                    <div class="ai-catalog-meta">${raw(price)}<br>${raw(formatContext(m.context_length))}</div>
+                </button>`);
     }).join('') + (matches.length > shown.length
-        ? `<p style="color:var(--text-muted);padding:8px 12px;font-size:12px">${matches.length - shown.length} autres résultats — affine la recherche.</p>`
+        ? `<p class="u-c-text-muted u-p-8-12 u-fs-12">${matches.length - shown.length} autres résultats — affine la recherche.</p>`
         : '');
     listEl.querySelectorAll('[data-ai-model]').forEach(row => row.addEventListener('click', () => {
         const model = picker.catalog.find(m => m.id === row.dataset.aiModel);
@@ -224,8 +247,8 @@ export async function refreshAiModelSelects(root) {
         const current = select.value || select.dataset.current || '';
         const known = models.some(m => m.key === current);
         select.innerHTML = `<option value="">${emptyLabel}</option>`
-            + models.map(m => `<option value="${escapeHtml(m.key)}">${escapeHtml(m.display_name)} (${escapeHtml(m.key)})</option>`).join('')
-            + (current && !known ? `<option value="${escapeHtml(current)}">⚠️ ${escapeHtml(current)} (introuvable)</option>` : '');
+            + models.map(m => String(html`<option value="${m.key}">${m.display_name} (${m.key})</option>`)).join('')
+            + (current && !known ? String(html`<option value="${current}">⚠️ ${current} (introuvable)</option>`) : '');
         select.value = current;
     }
 }
