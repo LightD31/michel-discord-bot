@@ -1,8 +1,8 @@
 // The channel picker.
-import { registerActions } from '../../core/actions.js';
 import { api } from '../../core/api.js';
 import { state } from '../../core/state.js';
-import { escapeHtml } from '../../core/util.js';
+import { EL, actionArgs, registerActions } from '../../core/actions.js';
+import { html, raw } from '../../core/html.js';
 
 // ── Channel picker ────────────────────────────────
 export const _channelCache = {}; // serverId -> {channels, categories}
@@ -57,14 +57,14 @@ export function channelOptionsHtml(data, exclude, forums = false) {
     ];
     const renderThreadOption = (t) => {
         const prefix = t.archived ? '🗄️ ' : '🧵 ';
-        return `<option value="${escapeHtml(t.id)}">&nbsp;&nbsp;↳ ${prefix}${escapeHtml(t.name)}</option>`;
+        return String(html`<option value="${t.id}">&nbsp;&nbsp;↳ ${raw(prefix)}${t.name}</option>`);
     };
     for (const [catId, catName] of orderedCats) {
         const list = grouped.get(catId);
         if (!list || list.length === 0) continue;
-        opts += `<optgroup label="${escapeHtml(catName)}">`;
+        opts += String(html`<optgroup label="${catName}">`);
         for (const ch of list) {
-            opts += `<option value="${escapeHtml(ch.id)}">#${escapeHtml(ch.name)}</option>`;
+            opts += String(html`<option value="${ch.id}">#${ch.name}</option>`);
             const threads = threadsByParent.get(ch.id);
             if (threads && threads.length) {
                 for (const t of threads) {
@@ -84,7 +84,7 @@ export function channelOptionsHtml(data, exclude, forums = false) {
         opts += `<optgroup label="Fils (autres)">`;
         for (const t of orphanThreads) {
             const prefix = t.archived ? '🗄️ ' : '🧵 ';
-            opts += `<option value="${escapeHtml(t.id)}">${prefix}${escapeHtml(t.name)}</option>`;
+            opts += String(html`<option value="${t.id}">${raw(prefix)}${t.name}</option>`);
         }
         opts += '</optgroup>';
     }
@@ -137,9 +137,9 @@ export function toggleChannelPickerMode(btn, forceManual) {
     if (!picker) return;
     const select = picker.querySelector('.channel-picker-select');
     const manual = picker.querySelector('.channel-picker-manual');
-    const showManual = forceManual === true ? true : (manual.style.display === 'none');
-    manual.style.display = showManual ? '' : 'none';
-    select.style.display = showManual ? 'none' : '';
+    const showManual = forceManual === true ? true : manual.hidden;
+    manual.hidden = !showManual;
+    select.hidden = showManual;
     btn.textContent = showManual ? '☰' : '✎';
     btn.title = showManual ? 'Choisir dans la liste' : 'Saisie manuelle';
     if (showManual && select.value && !manual.value) {
@@ -154,3 +154,27 @@ export function toggleChannelPickerMode(btn, forceManual) {
 registerActions({
     toggleChannelPickerMode,
 });
+
+// The id a channel picker holds: its list's choice, or the id typed by hand.
+export function channelPickerValue(picker) {
+    if (!picker) return '';
+    if (picker.tagName === 'INPUT') return (picker.value || '').trim();
+    const manual = picker.querySelector('.channel-picker-manual');
+    const select = picker.querySelector('.channel-picker-select');
+    const manualVisible = manual && !manual.hidden;
+    return ((manualVisible ? manual?.value : select?.value) ?? '').trim();
+}
+
+// A channel picker: the list (filled by populateChannelPickers), the id typed by
+// hand behind ✎. *attrs* names it in its form (data-field, data-team-field…).
+export function channelPickerHtml(attrs, current = '', { type = '', empty = '— Chargement des salons… —' } = {}) {
+    const id = String(current || '').trim();
+    return html`<div class="channel-picker" ${attrs} ${type && html`data-type="${type}"`} data-current="${id}">
+            <select class="form-input channel-picker-select">
+                <option value="">${empty}</option>
+                ${id && html`<option value="${id}" selected>${id}</option>`}
+            </select>
+            <input type="text" class="form-input channel-picker-manual" value="${id}" placeholder="ID du salon" hidden>
+            <button type="button" class="btn-channel-toggle" data-click="toggleChannelPickerMode" data-click-args="${actionArgs(EL)}" title="Saisie manuelle" aria-label="Saisie manuelle">✎</button>
+        </div>`;
+}

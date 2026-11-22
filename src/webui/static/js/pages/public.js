@@ -1,9 +1,9 @@
 // The public XP and Spotify dashboards, and their links.
+import { html, raw } from '../core/html.js';
 import { EVENT, VALUE, actionArgs, registerActions } from '../core/actions.js';
 import { api } from '../core/api.js';
 import { render } from '../core/render.js';
 import { state } from '../core/state.js';
-import { escapeHtml } from '../core/util.js';
 import { XP_STATS_RANGES } from '../features/xp.js';
 import { askConfirm } from '../ui/confirm.js';
 import { showModal } from '../ui/modal.js';
@@ -78,9 +78,9 @@ export function renderPublicPage() {
     const { meta, kind, error } = state.publicView;
     if (error) {
         document.title = 'Michel Bot';
-        return `<div class="public-page"><div class="empty-state">
+        return String(html`<div class="public-page"><div class="empty-state">
                 <div class="icon">🔒</div><h3>Page indisponible</h3>
-                <p>${escapeHtml(error)}</p></div></div>`;
+                <p>${error}</p></div></div>`);
     }
     if (!meta) {
         return `<div class="public-page"><div class="loading"><div class="spinner"></div></div></div>`;
@@ -102,7 +102,7 @@ export function renderPublicPage() {
                         <div class="card-subtitle">Classement et activité du serveur, heures de Paris.</div>
                     </div>
                     <div class="card-actions">
-                        <select class="form-input" style="width:150px;" aria-label="Période" data-change="setXpStatsRange" data-change-args="${actionArgs(meta.id, VALUE)}">
+                        <select class="u-w-150 form-input" aria-label="Période" data-change="setXpStatsRange" data-change-args="${actionArgs(meta.id, VALUE)}">
                             ${XP_STATS_RANGES.map(d => `<option value="${d}" ${state.xpStatsDays === d ? 'selected' : ''}>${d} jours</option>`).join('')}
                         </select>
                     </div>
@@ -122,22 +122,22 @@ export function renderPublicPage() {
                     <div class="loading"><div class="spinner"></div></div>
                 </div>
             </div>`;
-    return `
+    return String(html`
             <div class="public-page">
                 <div class="public-header">
                     <div class="server-icon">
-                        ${iconUrl ? `<img src="${iconUrl}" alt="">` : escapeHtml(meta.name.charAt(0) || '?')}
+                        ${iconUrl ? html`<img src="${iconUrl}" alt="">` : (meta.name.charAt(0) || '?')}
                     </div>
                     <div>
-                        <h1>${escapeHtml(meta.name)}</h1>
-                        <p>${escapeHtml(dash.title)}</p>
+                        <h1>${meta.name}</h1>
+                        <p>${dash.title}</p>
                     </div>
                 </div>
-                ${meta.dashboards.length > 1 ? `<nav class="public-tabs">${tabs}</nav>` : ''}
-                ${body}
+                ${raw(meta.dashboards.length > 1 ? `<nav class="public-tabs">${tabs}</nav>` : '')}
+                ${raw(body)}
                 <div class="public-footer">Michel Bot · données actualisées toutes les 5 minutes</div>
             </div>
-        `;
+        `);
 }
 
 // Module page: the public link is a per-guild secret, fetched (and minted
@@ -158,22 +158,21 @@ export async function showPublicLink(serverId, kind, rotate = false) {
     const url = `${location.origin}/public/${encodeURIComponent(data.token)}/${encodeURIComponent(kind)}`;
     const overlay = document.getElementById('modal-overlay');
     document.getElementById('modal-title').textContent = `🌐 Page publique — ${PUBLIC_DASHBOARDS[kind].title}`;
-    document.getElementById('modal-save-btn').style.display = 'none';
-    overlay.querySelector('.modal-body').innerHTML = `
-            <p style="color:var(--text-secondary);font-size:13px;margin-bottom:12px;">
+    document.getElementById('modal-save-btn').hidden = true;
+    overlay.querySelector('.modal-body').innerHTML = String(html`
+            <p class="u-c-text-secondary u-fs-13 u-mb-12">
                 Toute personne disposant de ce lien peut consulter la page, sans connexion.
                 Régénérer le lien désactive immédiatement l'ancien (pour les deux pages publiques du serveur).
             </p>
-            <div style="display:flex;gap:8px;flex-wrap:wrap;">
-                <input id="public-link-url" class="form-input" readonly value="${escapeHtml(url)}"
-                       style="flex:1;min-width:220px;" data-click="select-self" data-click-args="[{&quot;$&quot;:&quot;el&quot;}]">
+            <div class="u-d-flex u-gap-8 u-wrap-wrap">
+                <input id="public-link-url" class="u-fx-1 u-minw-220 form-input" readonly value="${url}" data-click="select-self" data-click-args="[{&quot;$&quot;:&quot;el&quot;}]">
                 <button class="btn btn-primary btn-sm" data-click="copyPublicLink">📋 Copier</button>
-                <a class="btn btn-ghost btn-sm" href="${escapeHtml(url)}" target="_blank" rel="noopener">Ouvrir ↗</a>
+                <a class="btn btn-ghost btn-sm" href="${url}" target="_blank" rel="noopener">Ouvrir ↗</a>
             </div>
-            <div style="margin-top:16px;">
+            <div class="u-mt-16">
                 <button class="btn btn-ghost btn-sm" data-click="rotatePublicLink" data-click-args="${actionArgs(serverId, kind)}">🔄 Régénérer le lien</button>
             </div>
-        `;
+        `);
     showModal();
     if (rotate) toast('Nouveau lien généré : l\'ancien ne fonctionne plus.', 'success');
 }

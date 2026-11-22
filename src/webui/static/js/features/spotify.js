@@ -1,8 +1,8 @@
 // Spotify: playlist and vote statistics.
+import { html, raw } from '../core/html.js';
 import { registerActions } from '../core/actions.js';
 import { api } from '../core/api.js';
 import { state } from '../core/state.js';
-import { escapeHtml } from '../core/util.js';
 import { getDiscord2NameMap, resolveServerMembers } from '../forms/pickers/members.js';
 import { publicApi } from '../pages/public.js';
 import { applyChartTheme, cssVar, ensureChartJs } from '../ui/charts.js';
@@ -60,17 +60,17 @@ export function destroySpotifyCharts() {
 }
 
 export function vizPanel(title, sub, body, wide = false) {
-    return `<div class="viz-panel${wide ? ' viz-wide' : ''}">
-            <h4>${escapeHtml(title)}</h4>
-            ${sub ? `<div class="viz-sub">${escapeHtml(sub)}</div>` : ''}
-            ${body}
-        </div>`;
+    return String(html`<div class="viz-panel${raw(wide ? ' viz-wide' : '')}">
+            <h4>${title}</h4>
+            ${raw(sub ? String(html`<div class="viz-sub">${sub}</div>`) : '')}
+            ${raw(body)}
+        </div>`);
 }
 
 export function vizCanvas(id, height, label) {
-    return `<div class="viz-canvas" style="height:${height}px">
-            <canvas id="${id}" role="img" aria-label="${escapeHtml(label)}"></canvas>
-        </div>`;
+    return String(html`<div class="viz-canvas" style="height:${raw(height)}px">
+            <canvas id="${raw(id)}" role="img" aria-label="${label}"></canvas>
+        </div>`);
 }
 
 export function vizTable(headers, rows) {
@@ -78,8 +78,8 @@ export function vizTable(headers, rows) {
     const cls = i => headers[i].num ? ' class="num"' : '';
     return `<details class="viz-data"><summary>Voir les données</summary>
             <div class="viz-table-scroll"><table>
-                <thead><tr>${headers.map((h, i) => `<th${cls(i)}>${escapeHtml(h.label)}</th>`).join('')}</tr></thead>
-                <tbody>${rows.map(r => `<tr>${r.map((c, i) => `<td${cls(i)}>${escapeHtml(c)}</td>`).join('')}</tr>`).join('')}</tbody>
+                <thead><tr>${headers.map((h, i) => String(html`<th${raw(cls(i))}>${h.label}</th>`)).join('')}</tr></thead>
+                <tbody>${rows.map(r => `<tr>${r.map((c, i) => String(html`<td${raw(cls(i))}>${c}</td>`)).join('')}</tr>`).join('')}</tbody>
             </table></div>
         </details>`;
 }
@@ -157,7 +157,7 @@ export async function loadSpotifyStats(serverId, force = false) {
         if (stale()) return;
         container.classList.remove('viz-refreshing');
         if (!cached) {
-            container.innerHTML = `<div class="empty-state"><h3>Erreur</h3><p>${escapeHtml(e?.message || String(e))}</p></div>`;
+            container.innerHTML = String(html`<div class="empty-state"><h3>Erreur</h3><p>${e?.message || String(e)}</p></div>`);
         }
         return;
     }
@@ -209,12 +209,12 @@ export function renderSpotifyStats(d, nameOf) {
         ['Taux de suppression', fmtPct(v.removal_rate)],
         ['Participation', fmtDec(v.avg_participation), `votants par vote · max ${fmtNum(v.max_participation)}`],
     ] : [];
-    const tileRow = tiles => tiles.length ? `<div class="stats-grid">${tiles.map(([label, value, sub]) => `
+    const tileRow = tiles => tiles.length ? `<div class="stats-grid">${tiles.map(([label, value, sub]) => String(html`
                 <div class="stat-card">
-                    <div class="stat-label">${escapeHtml(label)}</div>
-                    <div class="stat-value">${escapeHtml(value)}</div>
-                    ${sub ? `<div class="stat-sub">${escapeHtml(sub)}</div>` : ''}
-                </div>`).join('')}
+                    <div class="stat-label">${label}</div>
+                    <div class="stat-value">${value}</div>
+                    ${raw(sub ? String(html`<div class="stat-sub">${sub}</div>`) : '')}
+                </div>`)).join('')}
             </div>` : '';
     const voteHeaders = [...VOTE_KEYS.map(k => ({ label: k.label, num: true })), { label: 'Total', num: true }];
     const voteCells = r => [...VOTE_KEYS.map(k => fmtNum(r[k.key])),
@@ -228,11 +228,11 @@ export function renderSpotifyStats(d, nameOf) {
             p.added_by ? `ajoutée par ${nameOf(p.added_by)}` : '',
         ].filter(Boolean).join(' · ');
         panels.push(vizPanel('Vote en cours', '',
-            `<div class="viz-poll-name">${escapeHtml(p.name)}</div>
-                 ${meta ? `<div class="viz-sub">${escapeHtml(meta)}</div>` : ''}
-                 <div class="viz-sub" style="margin:0;">${escapeHtml(p.voter_count
+            String(html`<div class="viz-poll-name">${p.name}</div>
+                 ${raw(meta ? String(html`<div class="viz-sub">${meta}</div>`) : '')}
+                 <div class="u-m-0 viz-sub">${p.voter_count
                  ? `${plural(p.voter_count, 'votant')} pour l'instant`
-                 : 'Pas encore de votes')} · résultats masqués jusqu'à la clôture du vote.</div>`, true));
+                 : 'Pas encore de votes'} · résultats masqués jusqu'à la clôture du vote.</div>`), true));
     } else if (p) {
         const total = p.conserver + p.menfou + p.supprimer;
         const meta = [
@@ -241,12 +241,12 @@ export function renderSpotifyStats(d, nameOf) {
         ].filter(Boolean).join(' · ');
         const body = total
             ? vizCanvas('spotify-chart-poll', 76, 'Répartition des votes en cours')
-              + `<div class="viz-sub" style="margin:8px 0 0;">${escapeHtml(`${plural(total, 'votant')} : ${p.voters.map(nameOf).join(', ')}`)}</div>`
+              + String(html`<div class="u-m-8-0-0 viz-sub">${`${plural(total, 'votant')} : ${p.voters.map(nameOf).join(', ')}`}</div>`)
               + vizTable(voteHeaders, [voteCells(p)])
-            : `<div class="viz-sub" style="margin:0;">Pas encore de votes.</div>`;
+            : `<div class="u-m-0 viz-sub">Pas encore de votes.</div>`;
         panels.push(vizPanel('Vote en cours', '',
-            `<div class="viz-poll-name">${escapeHtml(p.name)}</div>
-                 ${meta ? `<div class="viz-sub">${escapeHtml(meta)}</div>` : ''}${body}`, true));
+            String(html`<div class="viz-poll-name">${p.name}</div>
+                 ${raw(meta ? String(html`<div class="viz-sub">${meta}</div>`) : '')}${raw(body)}`), true));
     }
 
     if (d.additions_by_month.length) {

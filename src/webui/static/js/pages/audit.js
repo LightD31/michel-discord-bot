@@ -42,7 +42,7 @@ export function renderAuditCard() {
                 <div class="card-header">
                     <div class="card-title">Journal des modifications</div>
                 </div>
-                <p style="color:var(--text-muted); margin:0 0 12px;">
+                <p class="u-c-text-muted u-m-0-0-12">
                     Ce qui a été fait depuis le dashboard, par qui et quand (un an d'historique).
                     Seuls les noms des champs modifiés sont notés, jamais leurs valeurs.
                 </p>
@@ -67,10 +67,10 @@ export function auditEntryHtml(e) {
     const label = e.target ? (state.moduleSchemas[e.target]?.label || e.target) : '';
     const extra = auditDetails(e.details || {});
     const changes = (e.changes || []).length > 0
-        && html`<div style="color:var(--text-muted); font-size:0.85em;">Champs : ${e.changes.map((c, i) => html`${i ? ', ' : ''}<code>${c}</code>`)}</div>`;
+        && html`<div class="u-c-text-muted u-fs-0_85em">Champs : ${e.changes.map((c, i) => html`${i ? ', ' : ''}<code>${c}</code>`)}</div>`;
     return html`
-            <div class="audit-entry" style="padding:6px 0; border-bottom:1px solid var(--border);">
-                <div><span style="color:var(--text-muted)">${when}</span> ·
+            <div class="u-p-6-0 u-bdb-1-solid-border audit-entry">
+                <div><span class="u-c-text-muted">${when}</span> ·
                     <strong>${e.username || e.user_id || '?'}</strong>
                     ${what} ${label && html`<strong>${label}</strong>`}
                     ${extra && `(${extra})`}</div>
@@ -88,20 +88,20 @@ export async function loadAudit(serverId, before) {
         const data = await api(url);
         entries = data?.entries || [];
     } catch (e) {
-        container.innerHTML = html`<p style="color:var(--text-muted)">Journal indisponible.</p>`;
+        container.innerHTML = html`<p class="u-c-text-muted">Journal indisponible.</p>`;
         return;
     }
     container.querySelector('.audit-more')?.remove();
     if (!before) container.innerHTML = '';
     if (!before && entries.length === 0) {
-        container.innerHTML = html`<p style="color:var(--text-muted)">Aucune modification enregistrée.</p>`;
+        container.innerHTML = html`<p class="u-c-text-muted">Aucune modification enregistrée.</p>`;
         return;
     }
     container.insertAdjacentHTML('beforeend', html`${entries.map(auditEntryHtml)}`);
     if (entries.length >= 100) {
         const last = entries[entries.length - 1].id;
         container.insertAdjacentHTML('beforeend', html`
-                <button type="button" class="btn btn-ghost btn-sm audit-more" style="margin-top:8px;"
+                <button type="button" class="u-mt-8 btn btn-ghost btn-sm audit-more"
                         data-click="loadAudit" data-click-args="${actionArgs(serverId || null, last)}">Plus ancien…</button>`);
     }
 }

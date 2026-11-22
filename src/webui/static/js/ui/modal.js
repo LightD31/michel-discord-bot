@@ -61,7 +61,7 @@ export function closeModal() {
     document.getElementById('modal-overlay').classList.remove('active');
     modalReturnFocus?.focus?.();
     modalReturnFocus = null;
-    document.getElementById('modal-save-btn').style.display = '';
+    document.getElementById('modal-save-btn').hidden = false;
     modalSaveCallback = null;
     const body = document.getElementById('modal-overlay').querySelector('.modal-body');
     body.innerHTML = `

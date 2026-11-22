@@ -1,8 +1,8 @@
 // Channel and role lists (chips).
+import { html, raw } from '../../core/html.js';
 import { registerActions } from '../../core/actions.js';
 import { DIRTY_SCOPE, setDirty } from '../../core/dirty.js';
 import { state } from '../../core/state.js';
-import { escapeHtml } from '../../core/util.js';
 import { channelOptionsHtml, fetchServerChannels } from './channels.js';
 import { ROLE_COLOR, fetchRoleChoices, fillRolePicker, knownRole, roleOptionsHtml, roleRefusal } from './roles.js';
 
@@ -14,24 +14,24 @@ import { ROLE_COLOR, fetchRoleChoices, fillRolePicker, knownRole, roleOptionsHtm
 export function multiPickerHtml(key, type, ids, use) {
     const kind = type === 'rolelist' ? 'role' : 'channel';
     const chips = ids.map(id => chipHtml(String(id), String(id), '')).join('');
-    return `
-            <div class="multi-picker" ${key == null ? '' : `data-field="${escapeHtml(key)}"`} data-type="${type}" data-kind="${kind}" data-role-use="${escapeHtml(use || '')}">
-                <div class="multi-picker-chips">${chips}</div>
-                <select class="form-input multi-picker-add" aria-label="${kind === 'role' ? 'Ajouter un rôle' : 'Ajouter un salon'}"
+    return String(html`
+            <div class="multi-picker" ${raw(key == null ? '' : String(html`data-field="${key}"`))} data-type="${raw(type)}" data-kind="${raw(kind)}" data-role-use="${use || ''}">
+                <div class="multi-picker-chips">${raw(chips)}</div>
+                <select class="form-input multi-picker-add" aria-label="${raw(kind === 'role' ? 'Ajouter un rôle' : 'Ajouter un salon')}"
                         data-change="addMultiPickerChoice" data-change-args="[{&quot;$&quot;:&quot;el&quot;}]">
                     <option value="">— Chargement… —</option>
                 </select>
-                <input type="text" class="form-input multi-picker-manual" style="display:none;"
-                       placeholder="ID ${kind === 'role' ? 'du rôle' : 'du salon'}, puis Entrée"
+                <input type="text" class="form-input multi-picker-manual" hidden
+                       placeholder="ID ${raw(kind === 'role' ? 'du rôle' : 'du salon')}, puis Entrée"
                        data-keydown="onMultiPickerManualKey" data-keydown-args="[{&quot;$&quot;:&quot;el&quot;},{&quot;$&quot;:&quot;event&quot;}]">
                 <div class="picker-warning" role="status"></div>
-            </div>`;
+            </div>`);
 }
 
 export function chipHtml(id, label, color, extra = '') {
     const dot = ROLE_COLOR.test(color || '') ? `<span class="role-dot" style="background:${color}" aria-hidden="true"></span>` : '';
-    return `<span class="chip ${extra}" data-id="${escapeHtml(id)}">${dot}<span class="chip-label">${escapeHtml(label)}</span>`
-        + `<button type="button" class="chip-remove" data-click="removeMultiPickerChip" data-click-args="[{&quot;$&quot;:&quot;el&quot;}]" aria-label="Retirer ${escapeHtml(label)}" title="Retirer">✕</button></span>`;
+    return String(html`<span class="chip ${raw(extra)}" data-id="${id}">${raw(dot)}<span class="chip-label">${label}</span>`)
+        + String(html`<button type="button" class="chip-remove" data-click="removeMultiPickerChip" data-click-args="[{&quot;$&quot;:&quot;el&quot;}]" aria-label="Retirer ${label}" title="Retirer">✕</button></span>`);
 }
 
 export function multiPickerIds(picker) {
@@ -61,8 +61,8 @@ export function refreshMultiPicker(picker) {
     const isRole = picker.dataset.kind === 'role';
     const ids = multiPickerIds(picker);
     if (!source) {
-        select.style.display = 'none';
-        manual.style.display = '';
+        select.hidden = true;
+        manual.hidden = false;
         return;
     }
     const use = picker.dataset.roleUse;

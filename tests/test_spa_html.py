@@ -21,16 +21,57 @@ page = smoke.page
 
 # escapeHtml( calls left in js/, still to move to html`…`. Lower it as pages
 # move over; never raise it (a new page uses html`…`).
-ESCAPE_CALLS_CEILING = 255
+ESCAPE_CALLS_CEILING = 6  # P17: the helpers' own definitions, mdInline and the log search marks
 # Pages written with html`…` only.
 HTML_ONLY = [
+    "features/gazette.js",
+    "features/moderation.js",
+    "features/rolemenus.js",
+    "features/secretsanta.js",
+    "features/spotify-auth.js",
+    "features/spotify.js",
+    "features/xp.js",
+    "forms/checks.js",
+    "forms/fields.js",
+    "forms/pickers/channels.js",
+    "forms/pickers/lists.js",
+    "forms/pickers/members.js",
+    "forms/pickers/roles.js",
+    "forms/save-bar.js",
+    "forms/save.js",
+    "forms/template-test.js",
+    "forms/widgets/accounts.js",
+    "forms/widgets/commands.js",
+    "forms/widgets/embeds.js",
+    "forms/widgets/maps.js",
+    "forms/widgets/messages.js",
+    "forms/widgets/models.js",
+    "forms/widgets/rss.js",
+    "forms/widgets/spotify-users.js",
+    "forms/widgets/streamers.js",
+    "forms/widgets/teams.js",
+    "forms/widgets/youtube.js",
     "pages/audit.js",
+    "pages/bot-messages.js",
+    "pages/extensions.js",
+    "pages/global.js",
     "pages/health.js",
+    "pages/home.js",
+    "pages/links.js",
     "pages/me.js",
+    "pages/module.js",
     "pages/onboarding.js",
     "pages/overview.js",
+    "pages/public.js",
     "pages/server.js",
     "pages/setup.js",
+    "ui/charts.js",
+    "ui/confirm.js",
+    "ui/discord.js",
+    "ui/modal.js",
+    "ui/page-index.js",
+    "ui/sidebar.js",
+    "ui/toast.js",
 ]
 
 # The modules as the page loaded them (same ?v=), so they share one SafeHtml.
@@ -78,6 +119,16 @@ def test_hand_escaping_only_goes_down():
     assert calls <= ESCAPE_CALLS_CEILING, (
         f"{calls} escapeHtml( calls: build the new markup with html`…` (js/core/html.js)"
     )
+
+
+def test_inline_styles_only_carry_computed_values():
+    # Layout is in app.css (u-* utilities or a named class); a style="…" holds
+    # a value worked out at render time (a width in %, a role colour), and
+    # showing or hiding is the hidden attribute, not style.display.
+    for path, code in MODULES.items():
+        for attr in re.findall(r'style="([^"]*)"', code):
+            assert "${" in attr, f'{path}: static style="{attr}", use a class'
+        assert ".style.display" not in code, f"{path}: toggle el.hidden instead"
 
 
 RENDER = """async (texts) => {

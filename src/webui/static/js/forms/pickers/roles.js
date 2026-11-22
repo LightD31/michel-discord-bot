@@ -1,8 +1,8 @@
 // The role picker.
+import { html, raw } from '../../core/html.js';
 import { registerActions } from '../../core/actions.js';
 import { api } from '../../core/api.js';
 import { state } from '../../core/state.js';
-import { escapeHtml } from '../../core/util.js';
 
 // ── Role picker (P3) ──────────────────────────────
 // Roles are picked by name, with their Discord colour. /role-choices says,
@@ -49,21 +49,21 @@ export function paintDot(dot, color) {
 }
 
 export function rolePickerHtml(currentId, fieldAttr, use, selectId = '') {
-    const safeId = escapeHtml(currentId || '');
-    return `
-            <div class="role-picker" data-role-use="${escapeHtml(use || '')}">
+    const id = currentId || '';
+    return String(html`
+            <div class="role-picker" data-role-use="${use || ''}">
                 <div class="role-picker-row">
                     <span class="role-dot" aria-hidden="true"></span>
-                    <select class="form-input role-picker-select" ${selectId ? `id="${selectId}"` : 'aria-label="Choisir un rôle"'}
+                    <select class="form-input role-picker-select" ${raw(selectId ? `id="${selectId}"` : 'aria-label="Choisir un rôle"')}
                             data-change="onRolePickerChange" data-change-args="[{&quot;$&quot;:&quot;el&quot;}]">
                         <option value="">— Chargement des rôles… —</option>
-                        ${currentId ? `<option value="${safeId}" selected>${safeId}</option>` : ''}
+                        ${id && html`<option value="${id}" selected>${id}</option>`}
                     </select>
-                    <input type="text" class="form-input role-picker-manual" ${fieldAttr} value="${safeId}" placeholder="ID du rôle" style="display:none;">
+                    <input type="text" class="form-input role-picker-manual" ${raw(fieldAttr)} value="${id}" placeholder="ID du rôle" hidden>
                     <button type="button" class="btn-channel-toggle" data-click="toggleRolePickerMode" data-click-args="[{&quot;$&quot;:&quot;el&quot;}]" title="Saisie manuelle" aria-label="Saisie manuelle">✎</button>
                 </div>
                 <div class="picker-warning" role="status"></div>
-            </div>`;
+            </div>`);
 }
 
 export function roleOptionsHtml(roles, use, exclude) {
@@ -71,7 +71,7 @@ export function roleOptionsHtml(roles, use, exclude) {
     for (const r of roles) {
         if (exclude && exclude.has(r.id)) continue;
         const locked = roleRefusal(r, use) ? ' 🔒' : '';
-        opts += `<option value="${escapeHtml(r.id)}">${escapeHtml(r.name)}${locked}</option>`;
+        opts += String(html`<option value="${r.id}">${r.name}${raw(locked)}</option>`);
     }
     return opts;
 }
@@ -116,9 +116,9 @@ export function toggleRolePickerMode(btn, forceManual) {
     if (!picker) return;
     const select = picker.querySelector('.role-picker-select');
     const manual = picker.querySelector('.role-picker-manual');
-    const showManual = forceManual === true ? true : (manual.style.display === 'none');
-    manual.style.display = showManual ? '' : 'none';
-    select.style.display = showManual ? 'none' : '';
+    const showManual = forceManual === true ? true : manual.hidden;
+    manual.hidden = !showManual;
+    select.hidden = showManual;
     btn.textContent = showManual ? '☰' : '✎';
     btn.title = showManual ? 'Choisir dans la liste' : 'Saisie manuelle';
     if (!showManual) {

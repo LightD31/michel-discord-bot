@@ -1,7 +1,7 @@
 // The sticky index of a page with three cards or more.
+import { html, raw } from '../core/html.js';
 import { actionArgs, registerActions } from '../core/actions.js';
 import { state } from '../core/state.js';
-import { escapeHtml } from '../core/util.js';
 
 // ── Section index (P3) ────────────────────────────
 // A long page (a server, the global settings, a module with several cards)
@@ -18,7 +18,7 @@ export function buildPageIndex() {
     const links = cards.map((card, i) => {
         card.id = card.id || `section-${i}`;
         const title = card.querySelector(':scope > .card-header .card-title').textContent.trim();
-        return `<button type="button" class="page-index-link" data-click="scrollToSection" data-click-args="${actionArgs(card.id)}">${escapeHtml(title)}</button>`;
+        return String(html`<button type="button" class="page-index-link" data-click="scrollToSection" data-click-args="${actionArgs(card.id)}">${title}</button>`);
     }).join('');
     const header = main.querySelector('.page-header');
     const nav = `<nav class="page-index" aria-label="Sur cette page">${links}</nav>`;

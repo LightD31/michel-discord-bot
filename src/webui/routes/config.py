@@ -1,11 +1,14 @@
 """Global configuration + module schema endpoints."""
 
+from typing import Any
+
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from src.core import logging as logutil
 from src.core.config import global_config
+from src.discord_ext.messages import fetch_user_safe
 from src.webui import audit
 from src.webui.context import WebUIContext
 from src.webui.schemas import (
@@ -29,6 +32,19 @@ class GlobalConfigUpdate(BaseModel):
     config: dict
 
 
+async def account_names(bot: Any, ids: list[str]) -> dict[str, dict[str, str]]:
+    """``id → {name, username}`` of the accounts Discord knows (bot loop)."""
+    out: dict[str, dict[str, str]] = {}
+    for uid in ids:
+        _, user = await fetch_user_safe(bot, int(uid))
+        if user is None:
+            continue
+        username = str(getattr(user, "username", "") or "")
+        name = str(getattr(user, "global_name", None) or username)
+        out[uid] = {"name": name, "username": username}
+    return out
+
+
 def create_router(ctx: WebUIContext) -> APIRouter:
     router = APIRouter()
 
@@ -38,6 +54,22 @@ def create_router(ctx: WebUIContext) -> APIRouter:
         ctx.require_developer(request)
         data = ctx.get_full_config()
         return JSONResponse(mask_full_config(data))
+
+    @router.get("/api/accounts")
+    async def api_accounts(request: Request, ids: str = ""):
+        """The Discord accounts behind the ids a global setting names (P17, developer only).
+
+        No server's member search fits a bot's owner or the developers: an
+        account is named from its id, as Discord shows it. At most 25 ids.
+        """
+        ctx.require_developer(request)
+        wanted = [i for i in dict.fromkeys(ids.split(",")) if i.isdigit()][:25]
+        if not wanted or ctx.bot is None:
+            return JSONResponse({})
+        found = await ctx.call_bot(
+            account_names, ctx.bot, wanted, what="name the accounts of the global settings"
+        )
+        return JSONResponse(found)
 
     @router.get("/api/schemas/modules")
     async def api_module_schemas(request: Request):

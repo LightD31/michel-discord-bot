@@ -3,11 +3,12 @@ import { actionArgs, registerActions } from '../core/actions.js';
 import { api } from '../core/api.js';
 import { loadConfig, loadServers } from '../core/data.js';
 import { render } from '../core/render.js';
+import { html } from '../core/html.js';
 import { state } from '../core/state.js';
-import { escapeHtml } from '../core/util.js';
 import { renderSpotifyAuthPanel } from '../features/spotify-auth.js';
 import { _memberCache, getDiscord2NameMap } from '../forms/pickers/members.js';
 import { collectFormValues, renderSchemaForm } from '../forms/schema-form.js';
+import { populateAccountNames } from '../forms/widgets/accounts.js';
 import { _aiGuildModelsCache, refreshAiModelSelects } from '../forms/widgets/models.js';
 import { askConfirm } from '../ui/confirm.js';
 import { onModalSave, openModal, showModal } from '../ui/modal.js';
@@ -29,7 +30,7 @@ export function renderGlobalConfig() {
                 <p>Paramètres partagés entre tous les serveurs</p>
             </div>
 
-            <div class="card" style="margin-bottom:16px; border: 1px solid var(--border);">
+            <div class="card card-bordered">
                 <div class="card-header">
                     <div>
                         <div class="card-title">🗂️ Fichier de configuration</div>
@@ -84,91 +85,62 @@ export function renderGlobalConfig() {
         `;
 }
 
+// One row of a list setting, as the preview shows it: its parts, most telling first.
+function previewList(label, count, items, empty) {
+    return html`
+            <div class="preview-row preview-row-list">
+                <span class="preview-label">${label} (${count})</span>
+                <div class="preview-list">
+                    ${items.length ? items : html`<span class="preview-muted">${empty}</span>`}
+                </div>
+            </div>`;
+}
+
+function previewItem(...parts) {
+    return html`<div class="preview-item">${parts}</div>`;
+}
+
+const strong = (text, wide = '') => html`<span class="preview-strong ${wide}">${text}</span>`;
+const mono = (text, wide = '') => html`<span class="preview-mono ${wide}">${text}</span>`;
+const muted = (text) => html`<span class="preview-muted">${text}</span>`;
+
+// Each field of a settings section, read-only (C8: html`…`, no hand escaping, P17).
 export function renderSchemaPreview(schema, values) {
     const fields = schema.fields || {};
-    let html = '<div class="schema-preview">';
+    const rows = [];
     for (const [key, field] of Object.entries(fields)) {
         if (field.hidden) continue;
         const val = values[key];
         const hasVal = val !== undefined && val !== null;
-        const isSecret = field.secret || false;
-        const fieldType = field.type || 'string';
+        const label = field.label || key;
+        const type = field.type || 'string';
+        const isMap = typeof val === 'object' && val !== null && !Array.isArray(val);
 
-        if (fieldType === 'messagelist' && Array.isArray(val) && val.length > 0) {
-            html += `
-                    <div class="preview-row" style="flex-direction:column;gap:6px;">
-                        <span class="preview-label">${field.label || key} (${val.length})</span>
-                        <div style="display:flex;flex-direction:column;gap:4px;width:100%;">
-                            ${val.map((msg) => {
-                            const text = typeof msg === 'string' ? msg : String(msg?.text ?? '');
-                            const w = (msg && typeof msg === 'object' && msg.weight !== undefined) ? msg.weight : 1;
-                            return `
-                                <div style="display:flex;gap:8px;align-items:center;padding:4px 8px;background:var(--bg-primary);border-radius:var(--radius);font-size:13px;">
-                                    <span style="flex:1;color:var(--text-primary);">${escapeHtml(text)}</span>
-                                    <span style="color:var(--text-muted);font-size:12px;">×${escapeHtml(String(w))}</span>
-                                </div>`;
-                        }).join('')}
-                        </div>
-                    </div>
-                `;
+        if (type === 'messagelist' && Array.isArray(val) && val.length) {
+            rows.push(previewList(label, val.length, val.map((msg) => {
+                const text = typeof msg === 'string' ? msg : String(msg?.text ?? '');
+                const weight = (msg && typeof msg === 'object' && msg.weight !== undefined) ? msg.weight : 1;
+                return previewItem(html`<span class="preview-grow">${text}</span>`, muted(`×${weight}`));
+            })));
             continue;
         }
-
-        if (fieldType === 'models' && Array.isArray(val) && val.length > 0) {
-            html += `
-                    <div class="preview-row" style="flex-direction:column;gap:6px;">
-                        <span class="preview-label">${field.label || key} (${val.length})</span>
-                        <div style="display:flex;flex-direction:column;gap:4px;width:100%;">
-                            ${val.map(m => `
-                                <div style="display:flex;gap:8px;align-items:center;padding:4px 8px;background:var(--bg-primary);border-radius:var(--radius);font-size:13px;">
-                                    <span style="font-weight:600;color:var(--accent);min-width:80px;">${escapeHtml(m.provider || '')}</span>
-                                    <span style="color:var(--text-muted);font-family:Consolas,monospace;flex:1;">${escapeHtml(m.model_id || '')}</span>
-                                    <span style="color:var(--text-secondary);">${escapeHtml(m.display_name || '')}</span>
-                                </div>
-                            `).join('')}
-                        </div>
-                    </div>
-                `;
+        if (type === 'models' && Array.isArray(val) && val.length) {
+            rows.push(previewList(label, val.length, val.map(m => previewItem(
+                strong(m.provider || '', 'w-80'), mono(m.model_id || '', 'preview-grow'), html`<span>${m.display_name || ''}</span>`))));
             continue;
         }
-
-        if (fieldType === 'discord2name' && typeof val === 'object' && val !== null && !Array.isArray(val)) {
+        if (type === 'discord2name' && isMap) {
             const entries = Object.entries(val);
-            html += `
-                    <div class="preview-row" style="flex-direction:column;gap:6px;">
-                        <span class="preview-label">${field.label || key} (${entries.length})</span>
-                        <div style="display:flex;flex-direction:column;gap:4px;width:100%;">
-                            ${entries.length > 0 ? entries.map(([id, name]) => `
-                                <div style="display:flex;gap:8px;align-items:center;padding:4px 8px;background:var(--bg-primary);border-radius:var(--radius);font-size:13px;">
-                                    <span style="color:var(--text-muted);font-family:Consolas,monospace;min-width:180px;">${escapeHtml(id)}</span>
-                                    <span style="font-weight:600;color:var(--accent);">${escapeHtml(String(name))}</span>
-                                </div>
-                            `).join('') : '<span style="color:var(--text-muted);font-size:13px;">Aucun mapping configuré</span>'}
-                        </div>
-                    </div>
-                `;
+            rows.push(previewList(label, entries.length,
+                entries.map(([id, name]) => previewItem(mono(id, 'w-180'), strong(String(name)))), 'Aucun mapping configuré'));
             continue;
         }
-
-        if (fieldType === 'teams' && Array.isArray(val) && val.length > 0) {
-            html += `
-                    <div class="preview-row" style="flex-direction:column;gap:6px;">
-                        <span class="preview-label">${field.label || key} (${val.length})</span>
-                        <div style="display:flex;flex-direction:column;gap:4px;width:100%;">
-                            ${val.map(t => `
-                                <div style="display:flex;gap:8px;align-items:center;padding:4px 8px;background:var(--bg-primary);border-radius:var(--radius);font-size:13px;">
-                                    <span style="font-weight:600;color:var(--accent);min-width:120px;">${escapeHtml(t.name || '???')}</span>
-                                    <span style="color:var(--text-muted);min-width:100px;">${escapeHtml(t.game || 'valorant')}</span>
-                                    ${t.vlrTeamId ? `<span style="color:var(--text-secondary);font-family:Consolas,monospace;">VLR#${escapeHtml(t.vlrTeamId)}</span>` : ''}
-                                </div>
-                            `).join('')}
-                        </div>
-                    </div>
-                `;
+        if (type === 'teams' && Array.isArray(val) && val.length) {
+            rows.push(previewList(label, val.length, val.map(t => previewItem(
+                strong(t.name || '???', 'w-120'), muted(t.game || 'valorant'), t.vlrTeamId && mono(`VLR#${t.vlrTeamId}`)))));
             continue;
         }
-
-        if (fieldType === 'spotifymap' && Array.isArray(val) && val.length > 0) {
+        if (type === 'spotifymap' && Array.isArray(val) && val.length) {
             const nameMap = getDiscord2NameMap();
             const known = _memberCache[state.currentServerId]?.byId || new Map();
             const resolveName = (u) => {
@@ -177,139 +149,78 @@ export function renderSchemaPreview(schema, values) {
                 const m = known.get(String(u.discordId));
                 return m ? (m.display_name || m.username || '') : '';
             };
-            html += `
-                    <div class="preview-row" style="flex-direction:column;gap:6px;">
-                        <span class="preview-label">${field.label || key} (${val.length})</span>
-                        <div style="display:flex;flex-direction:column;gap:4px;width:100%;">
-                            ${val.map(u => `
-                                <div style="display:flex;gap:8px;align-items:center;padding:4px 8px;background:var(--bg-primary);border-radius:var(--radius);font-size:13px;">
-                                    <span style="color:var(--text-muted);font-family:Consolas,monospace;min-width:120px;">${escapeHtml(u.spotifyId || '???')}</span>
-                                    <span style="font-weight:600;color:var(--accent);min-width:100px;">${escapeHtml(resolveName(u))}</span>
-                                    <span style="color:var(--text-secondary);font-family:Consolas,monospace;">${escapeHtml(u.discordId || '')}</span>
-                                </div>
-                            `).join('')}
-                        </div>
-                    </div>
-                `;
+            rows.push(previewList(label, val.length, val.map(u => previewItem(
+                mono(u.spotifyId || '???', 'w-120'), strong(resolveName(u), 'w-100'), mono(u.discordId || '')))));
             continue;
         }
-
-        if (fieldType === 'rssfeedmap' && typeof val === 'object' && val !== null && !Array.isArray(val)) {
+        if (type === 'rssfeedmap' && isMap) {
             const feeds = Object.entries(val);
-            html += `
-                    <div class="preview-row" style="flex-direction:column;gap:6px;">
-                        <span class="preview-label">${field.label || key} (${feeds.length})</span>
-                        <div style="display:flex;flex-direction:column;gap:4px;width:100%;">
-                            ${feeds.length > 0 ? feeds.map(([feedId, cfg]) => {
-                            const c = (typeof cfg === 'string') ? { url: cfg } : (cfg || {});
-                            const label = c.label ? ` — ${escapeHtml(String(c.label))}` : '';
-                            const modeBadge = (c.mode === 'embed') ? ' <span style="color:var(--accent);font-size:11px;">[embed]</span>' : '';
-                            return `
-                                <div style="display:flex;gap:8px;align-items:center;padding:4px 8px;background:var(--bg-primary);border-radius:var(--radius);font-size:13px;">
-                                    <span style="font-weight:600;color:var(--accent);min-width:140px;">${escapeHtml(feedId)}${label}${modeBadge}</span>
-                                    <span style="color:var(--text-muted);font-family:Consolas,monospace;flex:1;">${escapeHtml(String(c.url || '—'))}</span>
-                                </div>`;
-                        }).join('') : '<span style="color:var(--text-muted);font-size:13px;">Aucun flux configuré</span>'}
-                        </div>
-                    </div>
-                `;
+            rows.push(previewList(label, feeds.length, feeds.map(([feedId, cfg]) => {
+                const c = (typeof cfg === 'string') ? { url: cfg } : (cfg || {});
+                return previewItem(
+                    html`<span class="preview-strong w-140">${feedId}${c.label && ` — ${c.label}`}${c.mode === 'embed' && html` <span class="preview-badge">[embed]</span>`}</span>`,
+                    mono(String(c.url || '—'), 'preview-grow'));
+            }), 'Aucun flux configuré'));
             continue;
         }
-
-        if (fieldType === 'youtubechannelmap' && typeof val === 'object' && val !== null && !Array.isArray(val)) {
+        if (type === 'youtubechannelmap' && isMap) {
             const channels = Object.entries(val);
-            html += `
-                    <div class="preview-row" style="flex-direction:column;gap:6px;">
-                        <span class="preview-label">${field.label || key} (${channels.length})</span>
-                        <div style="display:flex;flex-direction:column;gap:4px;width:100%;">
-                            ${channels.length > 0 ? channels.map(([handle, cfg]) => {
-                            const flags = [];
-                            if (cfg?.shorts) flags.push('Shorts');
-                            if (cfg?.live) flags.push('Live');
-                            if (cfg?.vod !== false) flags.push('VOD');
-                            const label = cfg?.label ? ` (${escapeHtml(String(cfg.label))})` : '';
-                            return `
-                                <div style="display:flex;gap:8px;align-items:center;padding:4px 8px;background:var(--bg-primary);border-radius:var(--radius);font-size:13px;">
-                                    <span style="font-weight:600;color:var(--accent);min-width:140px;">${escapeHtml(handle)}${label}</span>
-                                    <span style="color:var(--text-muted);font-family:Consolas,monospace;flex:1;">${flags.join(' · ') || '—'}</span>
-                                </div>`;
-                        }).join('') : '<span style="color:var(--text-muted);font-size:13px;">Aucune chaîne configurée</span>'}
-                        </div>
-                    </div>
-                `;
+            rows.push(previewList(label, channels.length, channels.map(([handle, cfg]) => {
+                const flags = [cfg?.shorts && 'Shorts', cfg?.live && 'Live', cfg?.vod !== false && 'VOD'].filter(Boolean);
+                return previewItem(strong(`${handle}${cfg?.label ? ` (${cfg.label})` : ''}`, 'w-140'),
+                    mono(flags.join(' · ') || '—', 'preview-grow'));
+            }), 'Aucune chaîne configurée'));
             continue;
         }
-
-        if (fieldType === 'streamermap' && typeof val === 'object' && val !== null && !Array.isArray(val)) {
+        if (type === 'streamermap' && isMap) {
             const streamers = Object.entries(val);
-            html += `
-                    <div class="preview-row" style="flex-direction:column;gap:6px;">
-                        <span class="preview-label">${field.label || key} (${streamers.length})</span>
-                        <div style="display:flex;flex-direction:column;gap:4px;width:100%;">
-                            ${streamers.length > 0 ? streamers.map(([login, cfg]) => {
-                            const pc = cfg?.twitchPlanningChannelId ? `planning #${escapeHtml(String(cfg.twitchPlanningChannelId))}` : '';
-                            const nc = cfg?.twitchNotificationChannelId ? `notif #${escapeHtml(String(cfg.twitchNotificationChannelId))}` : '';
-                            const extras = [pc, nc].filter(Boolean).join(' · ');
-                            return `
-                                <div style="display:flex;gap:8px;align-items:center;padding:4px 8px;background:var(--bg-primary);border-radius:var(--radius);font-size:13px;">
-                                    <span style="font-weight:600;color:var(--accent);min-width:120px;">${escapeHtml(login)}</span>
-                                    <span style="color:var(--text-muted);font-family:Consolas,monospace;flex:1;">${extras || '—'}</span>
-                                </div>`;
-                        }).join('') : '<span style="color:var(--text-muted);font-size:13px;">Aucun streamer configuré</span>'}
-                        </div>
-                    </div>
-                `;
+            rows.push(previewList(label, streamers.length, streamers.map(([login, cfg]) => {
+                const extras = [
+                    cfg?.twitchPlanningChannelId && `planning #${cfg.twitchPlanningChannelId}`,
+                    cfg?.twitchNotificationChannelId && `notif #${cfg.twitchNotificationChannelId}`,
+                ].filter(Boolean).join(' · ');
+                return previewItem(strong(login, 'w-120'), mono(extras || '—', 'preview-grow'));
+            }), 'Aucun streamer configuré'));
             continue;
         }
 
-        let displayVal = '—';
+        let shown = '—';
         if (hasVal) {
-            if (isSecret) displayVal = '••••••••';
-            else if (typeof val === 'boolean') displayVal = val ? '✅ Oui' : '❌ Non';
-            else if (Array.isArray(val)) displayVal = val.join(', ');
-            else if (typeof val === 'object') displayVal = JSON.stringify(val);
-            else displayVal = String(val);
+            if (field.secret) shown = '••••••••';
+            else if (typeof val === 'boolean') shown = val ? '✅ Oui' : '❌ Non';
+            else if (Array.isArray(val)) shown = val.join(', ');
+            else if (typeof val === 'object') shown = JSON.stringify(val);
+            else shown = String(val);
         }
-        html += `
+        rows.push(html`
                 <div class="preview-row">
-                    <span class="preview-label">${field.label || key}</span>
-                    <span class="preview-value ${!hasVal ? 'empty' : ''}">${escapeHtml(displayVal)}</span>
-                </div>
-            `;
+                    <span class="preview-label">${label}</span>
+                    <span class="preview-value ${hasVal ? '' : 'empty'}">${shown}</span>
+                </div>`);
     }
     for (const key of Object.keys(values)) {
-        if (!(key in fields)) {
-            html += `
-                    <div class="preview-row">
-                        <span class="preview-label" style="color:var(--warning)">${escapeHtml(key)} <small>(non défini dans le schéma)</small></span>
-                        <span class="preview-value">${escapeHtml(JSON.stringify(values[key]))}</span>
-                    </div>
-                `;
-        }
+        if (key in fields) continue;
+        rows.push(html`
+                <div class="preview-row">
+                    <span class="preview-label preview-unknown">${key} <small>(non défini dans le schéma)</small></span>
+                    <span class="preview-value">${JSON.stringify(values[key])}</span>
+                </div>`);
     }
-    html += '</div>';
-    return html;
+    return html`<div class="schema-preview">${rows}</div>`;
 }
 
+const SECRET_KEY = /token|secret|password/i;
+
 export function renderConfigPreview(obj, prefix = '') {
-    let html = '<div class="kv-grid">';
-    for (const [key, value] of Object.entries(obj)) {
+    const rows = Object.entries(obj).map(([key, value]) => {
         const fullKey = prefix ? `${prefix}.${key}` : key;
         if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
-            html += `<div class="kv-key" style="grid-column: 1 / -1; color: var(--accent); margin-top: 8px;">▸ ${escapeHtml(key)}</div>`;
-            html += renderConfigPreview(value, fullKey);
-        } else {
-            const displayValue = typeof value === 'string' && (key.toLowerCase().includes('token') || key.toLowerCase().includes('secret') || key.toLowerCase().includes('password'))
-                ? '••••••••'
-                : JSON.stringify(value);
-            html += `
-                    <div class="kv-key">${escapeHtml(key)}</div>
-                    <div class="kv-value"><input type="text" value="${escapeHtml(displayValue)}" readonly></div>
-                `;
+            return html`<div class="kv-key kv-section">▸ ${key}</div>${renderConfigPreview(value, fullKey)}`;
         }
-    }
-    html += '</div>';
-    return html;
+        const shown = typeof value === 'string' && SECRET_KEY.test(key) ? '••••••••' : JSON.stringify(value);
+        return html`<div class="kv-key">${key}</div><div class="kv-value"><input type="text" value="${shown}" readonly></div>`;
+    });
+    return html`<div class="kv-grid">${rows}</div>`;
 }
 
 export async function editGlobalSection(section) {
@@ -323,6 +234,7 @@ export async function editGlobalSection(section) {
         document.getElementById('modal-title').textContent = `${schema.label || section}`;
         document.getElementById('modal-overlay').querySelector('.modal-body').innerHTML = formHtml;
         refreshAiModelSelects(document.getElementById('modal-overlay'));
+        populateAccountNames(document.getElementById('modal-overlay'));
         const errEl = document.getElementById('json-error');
         if (errEl) errEl.textContent = '';
         onModalSave(async () => {

@@ -1,8 +1,7 @@
 // The infraction browser.
 import { actionArgs, registerActions } from '../core/actions.js';
 import { api } from '../core/api.js';
-import { html } from '../core/html.js';
-import { escapeHtml } from '../core/util.js';
+import { html, raw } from '../core/html.js';
 import { getDiscord2NameMap, memberOptionLabel, memberStore, resolveServerMembers } from '../forms/pickers/members.js';
 import { askConfirm } from '../ui/confirm.js';
 import { toast } from '../ui/toast.js';
@@ -41,11 +40,11 @@ export async function loadInfractions(serverId) {
         }
         const who = (id) => {
             const m = members.get(String(id));
-            if (!m) return `<span title="${escapeHtml(id)}">Ancien membre</span>`;
+            if (!m) return String(html`<span title="${id}">Ancien membre</span>`);
             const prenom = getDiscord2NameMap()[m.id];
             const name = prenom || m.display_name || m.username;
-            const uname = m.username && m.username !== name ? ` <span style="color:var(--text-muted)">(${escapeHtml(m.username)})</span>` : '';
-            return `${escapeHtml(name)}${uname}`;
+            const uname = m.username && m.username !== name ? String(html` <span class="u-c-text-muted">(${m.username})</span>`) : '';
+            return String(html`${name}${raw(uname)}`);
         };
         container.innerHTML = items.map(i => {
             const label = INFRACTION_TYPE_LABELS[i.type] || i.type;
@@ -53,25 +52,25 @@ export async function loadInfractions(serverId) {
             const dur = i.duration_seconds ? ` · ${Math.round(i.duration_seconds / 60)} min` : '';
             const by = i.moderator_id === 'automod' ? '🛡️ Automod' : who(i.moderator_id);
             const revokeBtn = i.active
-                ? `<button class="btn btn-ghost btn-sm" style="color:var(--danger)" data-click="revokeInfraction" data-click-args="${actionArgs(serverId, i.id)}">Révoquer</button>`
-                : `<span style="color:var(--text-muted); font-size:12px;">Révoqué</span>`;
-            return `
-                    <div style="border:1px solid var(--border); border-radius:var(--radius); padding:12px; margin-bottom:8px; ${i.active ? '' : 'opacity:0.55;'} display:flex; flex-direction:column; gap:6px;">
-                        <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap;">
+                ? `<button class="u-c-danger btn btn-ghost btn-sm" data-click="revokeInfraction" data-click-args="${actionArgs(serverId, i.id)}">Révoquer</button>`
+                : `<span class="u-c-text-muted u-fs-12">Révoqué</span>`;
+            return String(html`
+                    <div class="inf-row u-bd-1-solid-border u-br-radius u-p-12 u-mb-8 u-d-flex u-fd-column u-gap-6" ${raw(i.active ? '' : 'data-revoked')}>
+                        <div class="u-d-flex u-ai-center u-jc-space-between u-gap-8 u-wrap-wrap">
                             <div>
-                                <strong>#${i.id} · ${escapeHtml(label)}</strong>${dur}
-                                <a href="#" class="inf-member" style="margin-left:8px;" title="Voir l'historique de ce membre"
-                                   data-click="filterInfractionsByUser" data-click-args="${actionArgs(serverId, String(i.user_id))}" data-prevent>${who(i.user_id)}</a>
+                                <strong>#${raw(i.id)} · ${label}</strong>${raw(dur)}
+                                <a href="#" class="u-ml-8 inf-member" title="Voir l'historique de ce membre"
+                                   data-click="filterInfractionsByUser" data-click-args="${actionArgs(serverId, String(i.user_id))}" data-prevent>${raw(who(i.user_id))}</a>
                             </div>
-                            <div style="display:flex; gap:6px; align-items:center;">${revokeBtn}</div>
+                            <div class="u-d-flex u-gap-6 u-ai-center">${raw(revokeBtn)}</div>
                         </div>
-                        <div style="font-size:13px;">${escapeHtml(i.reason || 'Aucune raison')}</div>
-                        <div style="font-size:12px; color:var(--text-muted);">Par ${by} · ${escapeHtml(date)}</div>
+                        <div class="u-fs-13">${i.reason || 'Aucune raison'}</div>
+                        <div class="u-fs-12 u-c-text-muted">Par ${raw(by)} · ${date}</div>
                     </div>
-                `;
+                `);
         }).join('');
     } catch (e) {
-        container.innerHTML = `<div class="empty-state"><h3>Erreur</h3><p>${escapeHtml(String(e))}</p></div>`;
+        container.innerHTML = String(html`<div class="empty-state"><h3>Erreur</h3><p>${String(e)}</p></div>`);
     }
 }
 

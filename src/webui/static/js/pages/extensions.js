@@ -1,10 +1,10 @@
 // The developers' extensions page, and reloading them.
+import { html, raw } from '../core/html.js';
 import { CHECKED, actionArgs, registerActions } from '../core/actions.js';
 import { api } from '../core/api.js';
 import { loadBotInfo, loadExtensions } from '../core/data.js';
 import { render } from '../core/render.js';
 import { state } from '../core/state.js';
-import { escapeHtml } from '../core/util.js';
 import { commandSyncSuffix } from '../forms/save.js';
 import { askConfirm } from '../ui/confirm.js';
 import { toast } from '../ui/toast.js';
@@ -33,25 +33,25 @@ export function renderExtensionsPage() {
                         </div>
                     </div>
                     <div class="module-list">
-                        ${exts.map(ext => `
+                        ${exts.map(ext => String(html`
                                 <div class="module-item extension-item">
                                     <div class="module-info">
-                                        <span class="module-name">${escapeHtml(ext.icon || '📦')} ${escapeHtml(ext.label || ext.filename)}</span>
-                                        ${ext.description ? `<span class="module-description">${escapeHtml(ext.description)}</span>` : ''}
+                                        <span class="module-name">${ext.icon || '📦'} ${ext.label || ext.filename}</span>
+                                        ${raw(ext.description ? String(html`<span class="module-description">${ext.description}</span>`) : '')}
                                         <span class="module-status">
-                                            ${ext.loaded
-                                            ? '<span style="color:var(--success)">● chargée</span>'
-                                            : '<span style="color:var(--text-muted)">○ non chargée</span>'}
-                                            · <code title="Fichier">${escapeHtml(ext.filename)}</code>
+                                            ${raw(ext.loaded
+                                            ? '<span class="u-c-success">● chargée</span>'
+                                            : '<span class="u-c-text-muted">○ non chargée</span>')}
+                                            · <code title="Fichier">${ext.filename}</code>
                                         </span>
                                     </div>
                                     <label class="toggle" data-click="stop">
-                                        <input type="checkbox" ${ext.enabled ? 'checked' : ''} aria-label="Activer l'extension ${escapeHtml(ext.label || ext.path)}"
+                                        <input type="checkbox" ${raw(ext.enabled ? 'checked' : '')} aria-label="Activer l'extension ${ext.label || ext.path}"
                                             data-change="toggleExtension" data-change-args="${actionArgs(ext.path, CHECKED)}">
                                         <span class="toggle-slider"></span>
                                     </label>
                                 </div>
-                            `).join('')}
+                            `)).join('')}
                     </div>
                 </div>
             `}
