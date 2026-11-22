@@ -163,6 +163,12 @@
                 "badgeSeniority": true,
                 "badgeFeur": true
             },
+            "moduleAgenda": {
+                "enabled": false,
+                "agendaDays": 14,
+                "agendaChannelId": "",
+                "agendaPin": true
+            },
             "moduleBirthday": {
                 "enabled": false,
                 "birthdayChannelId": "",

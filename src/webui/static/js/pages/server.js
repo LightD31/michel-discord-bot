@@ -12,6 +12,7 @@ import { askConfirm } from '../ui/confirm.js';
 import { toast } from '../ui/toast.js';
 import { renderAuditCard } from './audit.js';
 import { onboardingHtml } from './onboarding.js';
+import { agendaCardHtml } from './agenda.js';
 import { overviewHtml } from './overview.js';
 
 // ── Server Page ───────────────────────────────────
@@ -191,6 +192,8 @@ export function renderServerPage() {
                 </div>
                 <div id="overview-body">${overviewHtml(sid)}</div>
             </div>
+
+            ${agendaCardHtml(sid)}
 
             <div class="card">
                 <div class="card-header">

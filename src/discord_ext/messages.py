@@ -120,6 +120,11 @@ def jump_url(guild_id: int | str, channel_id: int | str, message_id: int | str) 
     return f"https://discord.com/channels/{guild_id}/{channel_id}/{message_id}"
 
 
+def event_url(guild_id: int | str, event_id: int | str) -> str:
+    """The link that opens a scheduled event in Discord."""
+    return f"https://discord.com/events/{guild_id}/{event_id}"
+
+
 def channel_url(guild_id: int | str, channel_id: int | str) -> str:
     """The link that opens a channel in Discord."""
     return f"https://discord.com/channels/{guild_id}/{channel_id}"
@@ -633,6 +638,7 @@ __all__ = [
     "edit_message_if_changed",
     "cached_persistent_message",
     "fetch_or_create_persistent_message",
+    "event_url",
     "fetch_user_safe",
     "forget_persistent_message",
     "republish_persistent_message",

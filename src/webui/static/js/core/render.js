@@ -21,6 +21,7 @@ import { handleLogScroll, renderLogsPage } from '../pages/logs.js';
 import { loadMe, renderMePage } from '../pages/me.js';
 import { renderModulePage } from '../pages/module.js';
 import { loadOnboarding } from '../pages/onboarding.js';
+import { loadAgenda } from '../pages/agenda.js';
 import { loadOverview } from '../pages/overview.js';
 import { renderPublicPage } from '../pages/public.js';
 import { renderServerPage } from '../pages/server.js';
@@ -94,6 +95,7 @@ export function render() {
     // Server page: the messages the bot keeps up to date there.
     if (state.currentPage === 'server' && state.currentServerId) {
         loadOverview(state.currentServerId);
+        loadAgenda(state.currentServerId);
         loadOnboarding(state.currentServerId);
         loadBotMessages(state.currentServerId);
         loadHealth(state.currentServerId);
