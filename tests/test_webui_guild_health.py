@@ -177,8 +177,10 @@ def test_every_task_has_a_label_for_the_health_card():
     assert len(tasks) > 30  # the scan sees the extensions
     assert [
         f"{name} ({where})" for name, where in tasks.items() if name not in guild_health.TASK_LABELS
-    ] == []
-    assert sorted(set(guild_health.TASK_LABELS) - set(tasks)) == []  # no stale entry
+    ] == [], "give the new Task its French label in src/webui/guild_health.py TASK_LABELS"
+    assert sorted(set(guild_health.TASK_LABELS) - set(tasks)) == [], (
+        "drop the label of a Task that is gone"
+    )
 
 
 def test_the_route_without_a_bot_still_reports_the_feeds(monkeypatch, store_config):

@@ -22,7 +22,7 @@ from src.core import clock
 from src.core import logging as logutil
 from src.core.logging import log_failure
 from src.discord_ext.autocomplete import Choice, guild_group_autocomplete
-from src.discord_ext.look import card, sign
+from src.discord_ext.look import card, ok, oops, sign
 from src.discord_ext.messages import guild_of, require_guild
 from src.discord_ext.scopes import guild_scopes
 
@@ -129,13 +129,13 @@ class RecurringMixin:
         if not await require_guild(ctx):
             return
         if montant <= 0:
-            await ctx.send("❌ Le montant doit être positif.", ephemeral=True)
+            await ctx.send(oops("Le montant doit être positif."), ephemeral=True)
             return
 
         repo = TricountRepository(guild_of(ctx).id)
         group = await repo.find_active_group(groupe)
         if not group or ctx.author.id not in group["members"]:
-            await ctx.send("❌ Groupe introuvable ou non membre.", ephemeral=True)
+            await ctx.send(oops("Groupe introuvable ou non membre."), ephemeral=True)
             return
 
         category = (categorie or DEFAULT_CATEGORY).strip() or DEFAULT_CATEGORY
@@ -229,7 +229,8 @@ class RecurringMixin:
         sub_cmd_description="Désactiver une dépense récurrente",
     )
     @slash_option(
-        name="recurrence_id",
+        name="recurrence-id",
+        argument_name="recurrence_id",
         description="ID de la récurrence à arrêter",
         opt_type=OptionType.STRING,
         required=True,
@@ -240,20 +241,22 @@ class RecurringMixin:
         repo = TricountRepository(guild_of(ctx).id)
         doc = await repo.find_active_recurring(recurrence_id)
         if doc is None:
-            await ctx.send("❌ Récurrence introuvable ou déjà arrêtée.", ephemeral=True)
+            await ctx.send(oops("Récurrence introuvable ou déjà arrêtée."), ephemeral=True)
             return
         if ctx.author.id != doc["added_by"]:
             # The group's creator or a server manager may stop anyone's.
             group = await repo.find_active_group_by_id(doc["group_id"])
             if group is None or not may_manage_group(ctx, group):
                 await ctx.send(
-                    "❌ Seuls son auteur, le créateur du groupe ou un gestionnaire du serveur "
-                    "peuvent arrêter cette récurrence.",
+                    oops(
+                        "Seuls son auteur, le créateur du groupe ou un gestionnaire du serveur "
+                        "peuvent arrêter cette récurrence."
+                    ),
                     ephemeral=True,
                 )
                 return
         if not await repo.stop_recurring(doc["_id"]):
-            await ctx.send("❌ Récurrence introuvable ou déjà arrêtée.", ephemeral=True)
+            await ctx.send(oops("Récurrence introuvable ou déjà arrêtée."), ephemeral=True)
             return
         logger.info(
             "Recurring expense %s stopped by %s in guild %s",
@@ -261,7 +264,7 @@ class RecurringMixin:
             ctx.author.id,
             guild_of(ctx).id,
         )
-        await ctx.send("✅ Récurrence arrêtée.", ephemeral=True)
+        await ctx.send(ok("Récurrence arrêtée."), ephemeral=True)
 
     @Task.create(IntervalTrigger(minutes=5))
     async def recurring_tick(self):

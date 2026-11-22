@@ -184,7 +184,9 @@ def test_nothing_on_an_event_loop_calls_the_blocking_client():
         for path in python_files("extensions", "features", "src/webui", "src/discord_ext")
         for line in blocking_client_uses(path.read_text(encoding="utf-8"))
     ]
-    assert offenders == []
+    assert offenders == [], (
+        "spotipy blocks: go through spotify_api (a thread, with a timeout), never sp"
+    )
 
 
 @pytest.mark.parametrize(

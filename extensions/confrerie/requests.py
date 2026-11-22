@@ -28,6 +28,7 @@ from src.core import logging as logutil
 from src.core.cache import ExpiringMap
 from src.core.errors import ValidationError
 from src.core.logging import log_failure
+from src.discord_ext.look import ok
 from src.discord_ext.messages import send_error
 from src.discord_ext.scopes import guild_scopes
 
@@ -183,7 +184,7 @@ class RequestsMixin(ConfrerieBase):
             return
 
         await ctx.send(
-            "✅ Demande envoyée ! Tu recevras un message privé quand elle aura été traitée.",
+            ok("Demande envoyée ! Tu recevras un message privé quand elle aura été traitée."),
             ephemeral=True,
         )
         logger.info("Demande « %s » envoyée par %s", title, ctx.author)

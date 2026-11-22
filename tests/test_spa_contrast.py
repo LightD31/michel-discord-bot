@@ -75,4 +75,6 @@ def test_every_colour_the_css_names_is_defined():
     """
     used = set(re.findall(r"var\(--([a-z0-9-]+)\)", INDEX + CSS + SCRIPT))
     defined = set(re.findall(r"--([a-z0-9-]+):", CSS))
-    assert sorted(used - defined) == []
+    assert sorted(used - defined) == [], (
+        "define the token in app.css (light and dark), or add a var() fallback"
+    )

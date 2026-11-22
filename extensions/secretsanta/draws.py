@@ -43,7 +43,7 @@ class DrawsMixin:
         sub_cmd_description="Effectue le tirage au sort",
     )
     @slash_option(
-        name="sous_groupes",
+        name="sous-groupes",
         description="Autoriser plusieurs sous-groupes si une boucle unique est impossible",
         required=False,
         opt_type=OptionType.BOOLEAN,
@@ -87,7 +87,7 @@ class DrawsMixin:
             if outcome.error == IMPOSSIBLE:
                 if not allow_subgroups:
                     message += (
-                        "\n\n💡 **Astuce :** essaie avec l'option `sous_groupes: True` "
+                        "\n\n💡 **Astuce :** essaie avec l'option `sous-groupes: True` "
                         "pour autoriser plusieurs sous-groupes."
                     )
                 message += "\nVérifie les paires interdites avec `/secretsanta paires-exclues`."

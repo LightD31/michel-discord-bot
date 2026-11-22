@@ -1,7 +1,7 @@
 """Giveaway Discord extension — ``/concours`` slash command + draw scheduler.
 
 Slash commands:
-- ``/concours lancer [role_requis:] [niveau_min:] [organisateur_peut_gagner:]`` — a
+- ``/concours lancer [role-requis:] [niveau-min:] [organisateur-peut-gagner:]`` — a
   form asks for the lot, the duration (30m, 2h, 3j), the winners and a text, then
   the giveaway embed is posted with its "Participer" / "Se retirer" buttons. A
   required role or XP level is checked when a member enters.
@@ -365,14 +365,14 @@ class GiveawayExtension(Extension):
         scopes=guild_scopes(GIVEAWAY.guild_ids()),
     )
     @slash_option(
-        "role_requis",
+        "role-requis",
         "Réserver le giveaway aux membres qui ont ce rôle",
         opt_type=OptionType.ROLE,
         required=False,
         argument_name="role",
     )
     @slash_option(
-        "niveau_min",
+        "niveau-min",
         "Réserver le giveaway aux membres de ce niveau d'XP ou plus",
         opt_type=OptionType.INTEGER,
         required=False,
@@ -381,7 +381,7 @@ class GiveawayExtension(Extension):
         argument_name="min_level",
     )
     @slash_option(
-        "organisateur_peut_gagner",
+        "organisateur-peut-gagner",
         "Autoriser l'organisateur de ce giveaway à gagner",
         opt_type=OptionType.BOOLEAN,
         required=False,

@@ -227,7 +227,7 @@ class BirthdayExtension(Extension):
         argument_name="timezone",
     )
     @slash_option(
-        name="masquer_annee",
+        name="masquer-annee",
         description="Masquer l'année",
         opt_type=OptionType.BOOLEAN,
         required=False,

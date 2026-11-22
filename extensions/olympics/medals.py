@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Any, Optional
 
 from interactions import Embed, OptionType, SlashContext, Timestamp, slash_command, slash_option
 
-from src.discord_ext.look import card, sign
+from src.discord_ext.look import card, oops, sign
 from src.discord_ext.scopes import guild_scopes
 
 from ._common import (
@@ -325,7 +325,7 @@ class MedalsMixin:
             standings = await self._fetch_medal_standings()
             if not standings:
                 await ctx.send(
-                    "❌ Impossible de récupérer le tableau des médailles.", ephemeral=True
+                    oops("Impossible de récupérer le tableau des médailles."), ephemeral=True
                 )
                 return
 
@@ -333,7 +333,7 @@ class MedalsMixin:
             await ctx.send(embeds=[embed])
         except Exception as e:
             logger.exception(f"Erreur commande /jo medailles : {e}")
-            await ctx.send("❌ Une erreur est survenue.", ephemeral=True)
+            await ctx.send(oops("Une erreur est survenue."), ephemeral=True)
 
     @slash_command(
         name="jo",
@@ -354,7 +354,7 @@ class MedalsMixin:
             await ctx.send(embeds=[embed])
         except Exception as e:
             logger.exception(f"Erreur commande /jo france : {e}")
-            await ctx.send("❌ Une erreur est survenue.", ephemeral=True)
+            await ctx.send(oops("Une erreur est survenue."), ephemeral=True)
 
     @slash_command(
         name="jo",
@@ -385,7 +385,7 @@ class MedalsMixin:
 
             if not country_data:
                 await ctx.send(
-                    f"❌ Pays avec le code **{code}** non trouvé dans le tableau des médailles.",
+                    oops(f"Pays avec le code **{code}** non trouvé dans le tableau des médailles."),
                     ephemeral=True,
                 )
                 return
@@ -464,7 +464,7 @@ class MedalsMixin:
 
         except Exception as e:
             logger.exception(f"Erreur commande /jo pays : {e}")
-            await ctx.send("❌ Une erreur est survenue.", ephemeral=True)
+            await ctx.send(oops("Une erreur est survenue."), ephemeral=True)
 
     @slash_command(
         name="jo",
@@ -487,4 +487,4 @@ class MedalsMixin:
             await ctx.send(embeds=[embed_standings, embed_france])
         except Exception as e:
             logger.exception(f"Erreur commande /jo recap : {e}")
-            await ctx.send("❌ Une erreur est survenue.", ephemeral=True)
+            await ctx.send(oops("Une erreur est survenue."), ephemeral=True)

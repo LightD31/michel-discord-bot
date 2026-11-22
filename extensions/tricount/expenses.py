@@ -20,7 +20,7 @@ from src.core import clock
 from src.core import logging as logutil
 from src.core.errors import DatabaseError
 from src.discord_ext.autocomplete import Choice, guild_group_autocomplete
-from src.discord_ext.look import card
+from src.discord_ext.look import card, oops
 from src.discord_ext.messages import fetch_user_safe, guild_of, require_guild
 from src.discord_ext.scopes import guild_scopes
 
@@ -98,21 +98,23 @@ class ExpensesMixin:
             payeur = ctx.author
 
         if montant <= 0:
-            await ctx.send("❌ Le montant doit être positif.", ephemeral=True)
+            await ctx.send(oops("Le montant doit être positif."), ephemeral=True)
             return
 
         repo = TricountRepository(guild_of(ctx).id)
         group = await repo.find_active_group(groupe)
         if not group:
-            await ctx.send(f"❌ Aucun groupe actif trouvé avec le nom '{groupe}'.", ephemeral=True)
+            await ctx.send(
+                oops(f"Aucun groupe actif trouvé avec le nom '{groupe}'."), ephemeral=True
+            )
             return
         if ctx.author.id not in group["members"]:
             await ctx.send(
-                "❌ Il faut être membre du groupe pour ajouter une dépense.", ephemeral=True
+                oops("Il faut être membre du groupe pour ajouter une dépense."), ephemeral=True
             )
             return
         if payeur.id not in group["members"]:
-            await ctx.send("❌ Le payeur doit être membre du groupe.", ephemeral=True)
+            await ctx.send(oops("Le payeur doit être membre du groupe."), ephemeral=True)
             return
 
         from datetime import datetime
@@ -201,28 +203,32 @@ class ExpensesMixin:
         autocomplete=True,
     )
     @slash_option(
-        name="depense_id",
+        name="depense-id",
+        argument_name="depense_id",
         description="ID de la dépense à modifier",
         opt_type=OptionType.STRING,
         required=True,
         autocomplete=True,
     )
     @slash_option(
-        name="nouveau_montant",
+        name="nouveau-montant",
+        argument_name="nouveau_montant",
         description="Nouveau montant (vide : inchangé)",
         opt_type=OptionType.NUMBER,
         required=False,
         max_value=MAX_AMOUNT,
     )
     @slash_option(
-        name="nouvelle_description",
+        name="nouvelle-description",
+        argument_name="nouvelle_description",
         description="Nouvelle description (vide : inchangée)",
         opt_type=OptionType.STRING,
         required=False,
         max_length=100,
     )
     @slash_option(
-        name="nouveau_payeur",
+        name="nouveau-payeur",
+        argument_name="nouveau_payeur",
         description="Nouveau payeur (vide : inchangé)",
         opt_type=OptionType.USER,
         required=False,
@@ -240,24 +246,26 @@ class ExpensesMixin:
             return
 
         if nouveau_montant is not None and nouveau_montant <= 0:
-            await ctx.send("❌ Le montant doit être positif.", ephemeral=True)
+            await ctx.send(oops("Le montant doit être positif."), ephemeral=True)
             return
 
         repo = TricountRepository(guild_of(ctx).id)
         group = await repo.find_active_group(groupe)
         if not group:
-            await ctx.send(f"❌ Aucun groupe actif trouvé avec le nom '{groupe}'.", ephemeral=True)
+            await ctx.send(
+                oops(f"Aucun groupe actif trouvé avec le nom '{groupe}'."), ephemeral=True
+            )
             return
         expense = await self._editable_expense(ctx, repo, group, depense_id, "modifier")
         if expense is None:
             return
 
         if nouveau_payeur and nouveau_payeur.id not in group["members"]:
-            await ctx.send("❌ Le nouveau payeur doit être membre du groupe.", ephemeral=True)
+            await ctx.send(oops("Le nouveau payeur doit être membre du groupe."), ephemeral=True)
             return
         if nouveau_payeur and nouveau_payeur.id == expense.get("recipient"):
             await ctx.send(
-                "❌ Un remboursement ne peut pas avoir le même payeur et destinataire.",
+                oops("Un remboursement ne peut pas avoir le même payeur et destinataire."),
                 ephemeral=True,
             )
             return
@@ -282,11 +290,11 @@ class ExpensesMixin:
             changes_description.append(f"Payeur: {old_payer_name} → {nouveau_payeur.display_name}")
 
         if not modifications:
-            await ctx.send("❌ Aucune modification spécifiée.", ephemeral=True)
+            await ctx.send(oops("Aucune modification spécifiée."), ephemeral=True)
             return
 
         if not await repo.update_expense_fields(depense_id, modifications):
-            await ctx.send("❌ Dépense non trouvée dans ce groupe.", ephemeral=True)
+            await ctx.send(oops("Dépense non trouvée dans ce groupe."), ephemeral=True)
             return
 
         embed = card(
@@ -315,17 +323,19 @@ class ExpensesMixin:
         manager = may_manage_group(ctx, group)
         if ctx.author.id not in group["members"] and not manager:
             await ctx.send(
-                f"❌ Il faut être membre du groupe pour {verb} une dépense.", ephemeral=True
+                oops(f"Il faut être membre du groupe pour {verb} une dépense."), ephemeral=True
             )
             return None
         expense = await repo.find_expense_in_group(depense_id, group["_id"])
         if not expense:
-            await ctx.send("❌ Dépense non trouvée dans ce groupe.", ephemeral=True)
+            await ctx.send(oops("Dépense non trouvée dans ce groupe."), ephemeral=True)
             return None
         if not manager and ctx.author.id not in (expense["added_by"], expense["payer"]):
             await ctx.send(
-                f"❌ Tu ne peux {verb} que les dépenses que tu as ajoutées ou payées "
-                "(ou celles du groupe si tu l'as créé).",
+                oops(
+                    f"Tu ne peux {verb} que les dépenses que tu as ajoutées ou payées "
+                    "(ou celles du groupe si tu l'as créé)."
+                ),
                 ephemeral=True,
             )
             return None
@@ -346,7 +356,8 @@ class ExpensesMixin:
         autocomplete=True,
     )
     @slash_option(
-        name="depense_id",
+        name="depense-id",
+        argument_name="depense_id",
         description="ID de la dépense à supprimer",
         opt_type=OptionType.STRING,
         required=True,
@@ -358,13 +369,15 @@ class ExpensesMixin:
         repo = TricountRepository(guild_of(ctx).id)
         group = await repo.find_active_group(groupe)
         if not group:
-            await ctx.send(f"❌ Aucun groupe actif trouvé avec le nom '{groupe}'.", ephemeral=True)
+            await ctx.send(
+                oops(f"Aucun groupe actif trouvé avec le nom '{groupe}'."), ephemeral=True
+            )
             return
         expense = await self._editable_expense(ctx, repo, group, depense_id, "supprimer")
         if expense is None:
             return
         if not await repo.delete_expense(depense_id, group["_id"]):
-            await ctx.send("❌ Dépense non trouvée dans ce groupe.", ephemeral=True)
+            await ctx.send(oops("Dépense non trouvée dans ce groupe."), ephemeral=True)
             return
         currency = guild_currency(guild_of(ctx).id)
         logger.info(
@@ -392,7 +405,7 @@ class ExpensesMixin:
     async def supprimer_depense_groupe_autocomplete(self, ctx: AutocompleteContext):
         await guild_group_autocomplete(ctx, TricountRepository.groups_collection)
 
-    @supprimer_depense.autocomplete("depense_id")
+    @supprimer_depense.autocomplete("depense-id")
     async def supprimer_depense_id_autocomplete(self, ctx: AutocompleteContext):
         await self._expense_choices(ctx)
 
@@ -400,7 +413,7 @@ class ExpensesMixin:
     async def modifier_depense_groupe_autocomplete(self, ctx: AutocompleteContext):
         await guild_group_autocomplete(ctx, TricountRepository.groups_collection)
 
-    @modifier_depense.autocomplete("depense_id")
+    @modifier_depense.autocomplete("depense-id")
     async def modifier_depense_id_autocomplete(self, ctx: AutocompleteContext):
         await self._expense_choices(ctx)
 

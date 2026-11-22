@@ -23,7 +23,9 @@ def test_every_test_it_names_exists():
     named = set(re.findall(r"tests/(test_\w+\.py)", CLAUDE.read_text(encoding="utf-8")))
     assert named, "CLAUDE.md names no test"
     missing = sorted(n for n in named if not (ROOT / "tests" / n).is_file())
-    assert missing == []
+    assert missing == [], (
+        "CLAUDE.md names a test that no longer exists: point the rule at its new guard"
+    )
 
 
 def test_every_convention_file_is_named_and_exists():

@@ -28,7 +28,7 @@ from src.core import clock
 from src.core.logging import log_failure
 from src.core.text import pick_weighted_message
 from src.discord_ext.help_button import help_button
-from src.discord_ext.look import oops
+from src.discord_ext.look import ok, oops
 from src.discord_ext.mentions import NO_PINGS, everyone_if_written
 from src.discord_ext.messages import channel_url, guild_id_of
 from src.discord_ext.role_grants import grantable_role
@@ -196,7 +196,7 @@ class WelcomeExtension(Extension):
                 await ctx.send("😄 C'est toi qu'on accueille ! Bienvenue à toi.", ephemeral=True)
                 return
             if outcome == "already":
-                await ctx.send("✅ Tu lui as déjà souhaité la bienvenue.", ephemeral=True)
+                await ctx.send(ok("Tu lui as déjà souhaité la bienvenue."), ephemeral=True)
                 return
             if outcome == "expired":
                 await ctx.send(

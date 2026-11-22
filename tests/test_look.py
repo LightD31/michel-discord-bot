@@ -2,7 +2,8 @@
 
 Colours, embeds and footers are made in ``src/discord_ext/look.py`` only: a
 raw ``0x…`` colour, an ``interactions`` colour class, an ``Embed(...)`` or a
-``set_footer`` anywhere else fails here.
+``set_footer`` anywhere else fails here. A reply's ✅ / ❌ comes from ``ok()`` /
+``oops()``, never typed (P13).
 """
 
 import ast
@@ -216,6 +217,65 @@ def test_the_guard_catches(source):
 )
 def test_the_guard_lets_through(source):
     assert look_offenders(source) == []
+
+
+# ── Replies: the icon comes from ok() / oops() ──────────────────────
+
+REPLY_CALLS = {"send", "reply", "edit", "respond", "send_message"}
+REPLY_ICONS = ("✅ ", "❌ ")
+
+
+def _leading_text(node: ast.expr) -> str | None:
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return node.value
+    if isinstance(node, ast.JoinedStr) and node.values:
+        first = node.values[0]
+        if isinstance(first, ast.Constant) and isinstance(first.value, str):
+            return first.value
+    return None
+
+
+def reply_icon_offenders(source: str) -> list[int]:
+    """Lines sending a reply that types its ✅ / ❌ instead of calling ok() / oops()."""
+    lines = []
+    for node in ast.walk(ast.parse(source)):
+        if not (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr in REPLY_CALLS
+        ):
+            continue
+        texts = node.args[:1] + [k.value for k in node.keywords if k.arg == "content"]
+        if any((_leading_text(t) or "").startswith(REPLY_ICONS) for t in texts):
+            lines.append(node.lineno)
+    return lines
+
+
+def test_replies_take_their_icon_from_ok_and_oops():
+    offenders = [
+        f"{rel(file)}:{line}"
+        for file in python_files(*BOT_SOURCES)
+        for line in reply_icon_offenders(file.read_text(encoding="utf-8"))
+    ]
+    assert offenders == [], (
+        'start a reply with ok("…") (done) or oops("…") (refused), '
+        "not a typed ✅ / ❌: see docs/VOIX.md"
+    )
+
+
+@pytest.mark.parametrize(
+    ("source", "caught"),
+    [
+        ("await ctx.send('❌ Non.', ephemeral=True)", True),
+        ("await ctx.send(f'✅ {n} supprimés.')", True),
+        ("await msg.edit(content='✅ Fait.')", True),
+        ("await ctx.send(oops('Non.'), ephemeral=True)", False),
+        ("Button(emoji='✅', label='Approuver')", False),
+        ("STATUS = '✅ Approuvée'", False),
+    ],
+)
+def test_the_reply_guard(source, caught):
+    assert bool(reply_icon_offenders(source)) is caught
 
 
 def test_the_module_exports_what_it_defines():

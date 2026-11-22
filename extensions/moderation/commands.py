@@ -396,7 +396,7 @@ class CommandsMixin:
         argument_name="reason",
     )
     @slash_option(
-        "jours_messages",
+        "jours-messages",
         "Jours de messages à supprimer (0-7)",
         opt_type=OptionType.INTEGER,
         required=False,
@@ -455,7 +455,7 @@ class CommandsMixin:
         scopes=guild_scopes(MODERATION.guild_ids()),
     )
     @slash_option(
-        "utilisateur_id",
+        "utilisateur-id",
         "ID Discord de l'utilisateur à débannir",
         opt_type=OptionType.STRING,
         required=True,

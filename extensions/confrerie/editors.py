@@ -38,12 +38,12 @@ from ._common import CONFRERIE, autocomplete_options
 logger = logutil.init_logger(__name__)
 
 _AUTOCOMPLETE_COLUMNS = {
-    "genre_1": COL_GENRES,
-    "genre_2": COL_GENRES,
-    "genre_3": COL_GENRES,
-    "public_1": COL_PUBLICS,
-    "public_2": COL_PUBLICS,
-    "public_3": COL_PUBLICS,
+    "genre-1": COL_GENRES,
+    "genre-2": COL_GENRES,
+    "genre-3": COL_GENRES,
+    "public-1": COL_PUBLICS,
+    "public-2": COL_PUBLICS,
+    "public-3": COL_PUBLICS,
     "groupe": COL_GROUPE,
 }
 
@@ -67,25 +67,29 @@ class EditorsMixin(ConfrerieBase):
         argument_name="name",
     )
     @slash_option(
-        name="genre_1",
+        name="genre-1",
+        argument_name="genre_1",
         description="Genre",
         required=True,
         opt_type=OptionType.STRING,
     )
     @slash_option(
-        name="public_1",
+        name="public-1",
+        argument_name="public_1",
         description="Public visé",
         required=True,
         opt_type=OptionType.STRING,
     )
     @slash_option(
-        name="genre_2",
+        name="genre-2",
+        argument_name="genre_2",
         description="Genre",
         required=False,
         opt_type=OptionType.STRING,
     )
     @slash_option(
-        name="genre_3",
+        name="genre-3",
+        argument_name="genre_3",
         description="Genre",
         required=False,
         opt_type=OptionType.STRING,
@@ -103,13 +107,15 @@ class EditorsMixin(ConfrerieBase):
         opt_type=OptionType.STRING,
     )
     @slash_option(
-        name="public_2",
+        name="public-2",
+        argument_name="public_2",
         description="Public visé",
         required=False,
         opt_type=OptionType.STRING,
     )
     @slash_option(
-        name="public_3",
+        name="public-3",
+        argument_name="public_3",
         description="Public visé",
         required=False,
         opt_type=OptionType.STRING,
@@ -190,12 +196,12 @@ class EditorsMixin(ConfrerieBase):
         )
         await ctx.send_modal(modal)
 
-    @ajouterediteur.autocomplete("genre_1")
-    @ajouterediteur.autocomplete("genre_2")
-    @ajouterediteur.autocomplete("genre_3")
-    @ajouterediteur.autocomplete("public_1")
-    @ajouterediteur.autocomplete("public_2")
-    @ajouterediteur.autocomplete("public_3")
+    @ajouterediteur.autocomplete("genre-1")
+    @ajouterediteur.autocomplete("genre-2")
+    @ajouterediteur.autocomplete("genre-3")
+    @ajouterediteur.autocomplete("public-1")
+    @ajouterediteur.autocomplete("public-2")
+    @ajouterediteur.autocomplete("public-3")
     @ajouterediteur.autocomplete("groupe")
     async def ajouterediteur_autocomplete(self, ctx: AutocompleteContext):
         column = _AUTOCOMPLETE_COLUMNS.get(str(ctx.focussed_option.name), COL_GENRES)
