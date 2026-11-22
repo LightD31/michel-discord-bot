@@ -23,6 +23,7 @@ SHOWN_ITEMS = 5
 WEEK = timedelta(days=7)
 MIN_WEEKDAY, MAX_WEEKDAY = 1, 7  # lundi … dimanche
 MIN_HOUR, MAX_HOUR = 0, 23
+AI_INTRO_LIMIT = 600
 
 
 @dataclass
@@ -40,6 +41,8 @@ class Edition:
     top_dj: tuple[str, int] | None = None
     suggestions: list[tuple[int, str, str]] = field(default_factory=list)  # (#, status, text)
     giveaways: list[tuple[str, list[str]]] = field(default_factory=list)  # (prize, winners)
+    feur: tuple[str, int] | None = None  # (name, times answered « feur »)
+    ai_intro: str = ""  # a few lines the AI wrote, where the admins asked for them
 
 
 def week_key(moment: datetime) -> str:
@@ -141,12 +144,18 @@ def render(edition: Edition) -> tuple[str, str, list[tuple[str, str]]]:
             for prize, winners in edition.giveaways[:SHOWN_ITEMS]
         ]
         fields.append(("🎁 Giveaways", "\n".join(lines)))
+    if edition.feur:
+        name, times = edition.feur
+        fields.append(("🇫 Le feur de la semaine", f"{name}, tombé·e {times} fois dans le panneau."))
     if not fields:
         intro += "\nUne semaine calme : rien à raconter cette fois-ci."
+    elif edition.ai_intro:
+        intro += "\n\n" + clip(edition.ai_intro, AI_INTRO_LIMIT)
     return title, intro, [(name, clip(value, EMBED_FIELD_VALUE_LIMIT)) for name, value in fields]
 
 
 __all__ = [
+    "AI_INTRO_LIMIT",
     "MAX_HOUR",
     "MAX_WEEKDAY",
     "MIN_HOUR",

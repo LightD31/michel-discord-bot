@@ -53,7 +53,7 @@ class FeurRepo:
     def __init__(self, guild_id):
         self.guild_id = guild_id
 
-    async def record_event(self, user_id, kind):
+    async def record_event(self, user_id, kind, at):
         FeurRepo.events.append((self.guild_id, user_id, kind))
 
     async def get_guild_stats(self):

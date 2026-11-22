@@ -243,7 +243,7 @@ def demo_config(data_dir: str, port: int, mongo_url: str) -> dict[str, Any]:
                     },
                 },
                 "discord2name": {MEMBER: "Hugo"},
-                "publicDashboardToken": "demo-public-0123456789abcdef",
+                "publicDashboardToken": PUBLIC_TOKEN,
             },
             GB: {},
         },
@@ -810,12 +810,14 @@ class Demo:
 # ── Screenshots ──────────────────────────────────────────────────────
 
 VIEWPORTS = {"bureau": (1440, 900), "telephone": (390, 844)}
+PUBLIC_TOKEN = "demo-public-0123456789abcdef"  # pragma: allowlist secret — the demo's own
 
 
 def pages_for(who: str, module_names: list[str]) -> list[tuple[str, ...]]:
     """``(name, hash[, step])`` of every page *who* can open; *step* names a click in STEPS."""
     if who == "anonyme":
-        return [("connexion", "")]
+        # The public XP page as anyone with its link sees it (its season card, P14).
+        return [("connexion", ""), ("public-xp", f"public/{PUBLIC_TOKEN}/xp")]
     if who == "membre":
         return [("accueil", "")]
     pages = [("accueil", ""), ("serveur", f"#/server/{GA}"), ("serveur-neuf", f"#/server/{GB}")]

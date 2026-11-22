@@ -74,6 +74,7 @@ from src.discord_ext.messages import (
     edit_message_if_changed,
     guild_id_of,
     message_of,
+    module_off,
     require_guild,
     send_error,
     send_success,
@@ -644,7 +645,7 @@ class GiveawayExtension(Extension):
             return
 
         count = winners if winners is not None else giveaway.winners_count
-        new_winners = pick_winners(_eligible(giveaway), count, exclude=giveaway.winners)
+        new_winners = await self._pick_present(giveaway, count, exclude=giveaway.winners)
         if not new_winners:
             await send_error(ctx, "Pas assez de participants pour un nouveau tirage.")
             return
@@ -732,7 +733,7 @@ class GiveawayExtension(Extension):
     async def _change_entry(self, ctx: ComponentContext, *, entering: bool) -> None:
         """Enter or withdraw the member who clicked, then refresh the announcement."""
         if ctx.guild_id is None or not GIVEAWAY.enabled(ctx.guild_id):
-            await ctx.send("Les giveaways ne sont pas activés sur ce serveur.", ephemeral=True)
+            await send_error(ctx, module_off("Giveaways"))
             return
         repo = self._repo(ctx.guild_id)
         message_id, user_id = str(message_of(ctx).id), str(ctx.author.id)
@@ -764,6 +765,41 @@ class GiveawayExtension(Extension):
             self._refreshes.request(
                 int(message.id), lambda: self._refresh_participants(message, str(ctx.guild_id))
             )
+
+    async def _still_eligible(self, giveaway: Giveaway, user_id: str) -> bool:
+        """Whether *user_id* is still on the server, with the required role, at the draw.
+
+        Discord not answering keeps them in: an outage is no reason to lose a prize.
+        """
+        guild = self.bot.get_guild(int(giveaway.guild_id))
+        if guild is None:
+            return True
+        try:
+            member = guild.get_member(int(user_id)) or await guild.fetch_member(int(user_id))
+        except Exception as e:
+            logger.debug("Could not read entrant %s of %s: %s", user_id, giveaway.id, e)
+            return True
+        if member is None:
+            return False
+        role_id = giveaway.required_role_id
+        return not role_id or any(str(getattr(r, "id", r)) == role_id for r in member.roles or [])
+
+    async def _pick_present(
+        self, giveaway: Giveaway, count: int, *, exclude: list[str] | None = None
+    ) -> list[str]:
+        """Up to *count* winners among the entrants still eligible (P14).
+
+        The entrants are shuffled, then checked one by one until enough are
+        found: one member lookup per entrant drawn, not one per entrant.
+        """
+        shuffled = pick_winners(_eligible(giveaway), len(giveaway.entrants), exclude=exclude)
+        winners: list[str] = []
+        for uid in shuffled:
+            if len(winners) == count:
+                break
+            if await self._still_eligible(giveaway, uid):
+                winners.append(uid)
+        return winners
 
     async def _member_level(self, guild_id: str, user_id: str) -> int:
         stats = await XpRepository(guild_id).get_user(user_id)
@@ -870,7 +906,7 @@ class GiveawayExtension(Extension):
             return "drawn"
 
         entrants = _eligible(giveaway)
-        winners = pick_winners(entrants, giveaway.winners_count)
+        winners = await self._pick_present(giveaway, giveaway.winners_count)
         await repo.update_winners(giveaway.id, winners)
 
         mention = ", ".join(f"<@{w}>" for w in winners) if winners else None

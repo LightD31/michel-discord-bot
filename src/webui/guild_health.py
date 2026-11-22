@@ -136,6 +136,7 @@ TASK_LABELS: dict[str, str] = {
     "UpdatesMixin.autoupdate": "Mise à jour des fiches Notion",
     "DataPurgeExtension.purge_left_guilds": "Purge des serveurs quittés",
     "GiveawayExtension.check_giveaways": "Tirage des giveaways",
+    "WelcomeExtension.close_greetings": "Fin des 👋 de bienvenue",
     "SyncMixin.sync_roles": "Synchronisation des groupes LLDAP",
     "NotificationsMixin.schedule": "Programme des matchs",
     "NotificationsMixin.live_update": "Matchs en direct",

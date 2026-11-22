@@ -6,11 +6,20 @@ import sys
 from datetime import timedelta
 
 import pytest
-from discord_fakes import FakeChannel, FakeCtx, FakeGuild, FakeMember, FakeMessage, bare_extension
+from discord_fakes import (
+    FakeBot,
+    FakeChannel,
+    FakeCtx,
+    FakeGuild,
+    FakeMember,
+    FakeMessage,
+    bare_extension,
+)
+from interactions import ActionRow, Button, ButtonStyle
 
 from features.userdata import UserDataRepository
 from features.welcome import GreetingRepository
-from features.welcome.greetings import KEEP_FOR
+from features.welcome.greetings import KEEP_FOR, PURGE_GRACE
 from src.core import clock
 
 pytestmark = pytest.mark.mongo
@@ -91,3 +100,40 @@ async def test_mes_donnees_covers_both_sides_of_a_greeting(mongo):
     await UserDataRepository(NEWCOMER).forget([mongo.guild_id])
     assert await g.find_one({"_id": "900"}) is None  # their own welcome
     assert (await g.find_one({"_id": "901"}))["greeters"] == [LEA]  # out of Hugo's count
+
+
+async def test_after_seven_days_the_button_comes_off_and_the_rest_stays(mongo, store_config):
+    """P14: the hourly task takes 👋 off; the links stay; the record waits 2 days more."""
+    store_config({"servers": {mongo.guild_id: {"moduleWelcome": {"enabled": True}}}})
+    sys.modules.pop("extensions.welcome", None)
+    module = importlib.import_module("extensions.welcome")
+    guild = FakeGuild(int(mongo.guild_id), "Les Copains")
+    channel = guild.add_channel(FakeChannel(7, "bienvenue"))
+    channel._guild_id = mongo.guild_id  # the test guild's id keeps its leading zero
+    rules = Button(style=ButtonStyle.URL, label="Règles", url="https://discord.com/channels/1/2")
+    rows = [ActionRow(rules, module.greet_button())]
+    old = FakeMessage(900, content="Bienvenue !", channel=channel, components=rows)
+    recent = FakeMessage(901, content="Bienvenue !", channel=channel, components=list(rows))
+    channel.messages.update({900: old, 901: recent})
+    repo = GreetingRepository(mongo.guild_id)
+    col = mongo.guild_collection("welcome_greetings")
+    await col.create_index("expires_at", expireAfterSeconds=0, name="expires_ttl")  # before P14
+    await repo.ensure_indexes()
+    now = clock.now()
+    await repo.open("900", NEWCOMER, now - KEEP_FOR - timedelta(hours=1), "7")
+    await repo.open("901", LEA, now, "7")
+    await repo.open("902", HUGO, now - KEEP_FOR - timedelta(hours=1))  # opened before P14
+    ext = bare_extension(module.WelcomeExtension, bot=FakeBot(guild))
+
+    await module.WelcomeExtension.close_greetings.callback(ext)
+
+    assert [b.label for row in old.edits[-1]["components"] for b in row.components] == ["Règles"]
+    assert not recent.edits
+    closed = {d["_id"]: d["closed"] for d in await col.find().to_list()}
+    assert closed == {"900": True, "901": False, "902": True}
+    indexes = await col.index_information()
+    assert "expires_ttl" not in indexes
+    assert indexes["expires_grace_ttl"]["expireAfterSeconds"] == PURGE_GRACE.total_seconds()
+    await module.WelcomeExtension.close_greetings.callback(ext)  # nothing left to do
+    assert len(old.edits) == 1
+    sys.modules.pop("extensions.welcome", None)

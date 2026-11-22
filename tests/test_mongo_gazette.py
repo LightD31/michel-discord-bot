@@ -6,6 +6,7 @@ from datetime import UTC, date, datetime, timedelta
 import pytest
 from discord_fakes import FakeBot, FakeGuild, FakeMember
 
+from features.feur import FeurRepository
 from features.gazette import GazetteRepository
 from features.xp import XpRepository
 from src.core import clock
@@ -45,6 +46,7 @@ async def test_the_week_of_every_module_on(mongo, store_config):
                         "moduleSpotify",
                         "moduleSuggestions",
                         "moduleGiveaway",
+                        "moduleFeur",
                     )
                 }
             }
@@ -88,7 +90,13 @@ async def test_the_week_of_every_module_on(mongo, store_config):
         ]
     )  # fmt: skip
 
+    feur = FeurRepository(gid)
+    await feur.ensure_indexes()
+    for who, when in (("5", IN_WEEK), ("5", IN_WEEK), ("7", IN_WEEK), ("8", BEFORE), ("8", BEFORE)):
+        await feur.record_event(who, "feur", when)  # 5 left the server: 7 is the one named
+
     edition = await gather_edition(FakeBot(guild), gid, NOW)
+    assert edition.feur == ("camille", 1)
     assert edition.top_members == [("hugo", 80), ("camille", 50)]
     assert edition.star == ("camille", 4, f"https://discord.com/channels/{gid}/10/500")
     assert edition.birthdays == [("hugo", date(2026, 11, 24))]
@@ -106,3 +114,15 @@ async def test_a_module_switched_off_says_nothing(mongo, store_config):
     guild.add_member(FakeMember(7, "camille"))
     edition = await gather_edition(FakeBot(guild), gid, NOW)
     assert edition.top_members == []
+
+
+async def test_feur_events_count_by_week_and_expire(mongo):
+    repo = FeurRepository(mongo.guild_id)
+    await repo.ensure_indexes()
+    await repo.record_event("7", "feur", IN_WEEK)
+    await repo.record_event("7", "pour_feur", IN_WEEK)
+    await repo.record_event("8", "feur", BEFORE)
+    assert await repo.counts_between(NOW - timedelta(days=7), NOW) == {"7": 2}
+    assert (await repo.get_user_stats("7")).total == 2
+    indexes = await mongo.guild_collection("feur_events").index_information()
+    assert indexes["at_ttl"]["expireAfterSeconds"] == 8 * 24 * 3600

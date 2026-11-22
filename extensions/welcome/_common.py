@@ -73,7 +73,10 @@ class WelcomeConfig(SchemaBase):
         "Salon des rôles",
         "channel",
         linked_only=True,
-        description="Ajoute un bouton « 🎭 Choisir mes rôles » qui mène au menu de rôles.",
+        description=(
+            "Ajoute un bouton « 🎭 Choisir mes rôles ». S'il y a un menu de rôles dans ce "
+            "salon, le bouton ouvre directement le plus ancien ; sinon, le salon."
+        ),
     )
     welcomeHelpButton: bool = ui(
         "Bouton « ❓ Que faire ici ? »",

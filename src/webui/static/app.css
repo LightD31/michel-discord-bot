@@ -3139,6 +3139,8 @@ details.viz-data .viz-table-scroll { max-height: 240px; overflow-y: auto; }
 .xp-heatmap-cell { aspect-ratio: 1; border-radius: 3px; background: var(--accent); }
 .xp-heatmap-cell.zero { background: var(--bg-secondary); }
 .xp-top-table { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 520px; }
+/* Three columns: fits a phone without a scroll (the public season card, P14). */
+.xp-top-table.xp-season-table { min-width: 0; }
 .xp-top-table th {
     text-align: left; font-weight: 600; font-size: 11px; text-transform: uppercase;
     letter-spacing: 0.5px; color: var(--text-muted); padding: 6px 8px;

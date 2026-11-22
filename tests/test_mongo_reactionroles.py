@@ -49,3 +49,31 @@ async def test_an_outage_is_a_database_error_not_a_missing_menu(monkeypatch):
     monkeypatch.setattr(repo, "_col", lambda: Down())
     with pytest.raises(DatabaseError):
         await repo.get("a" * 24)
+
+
+async def test_the_welcome_links_the_oldest_menu_posted_in_a_channel(mongo):
+    from datetime import timedelta
+
+    from features.reactionroles.models import RoleMenu, RoleMenuEntry
+    from features.reactionroles.repository import ReactionRolesRepository
+    from src.core import clock
+
+    repo = ReactionRolesRepository(mongo.guild_id)
+    now = clock.now()
+    entry = [RoleMenuEntry(role_id="1", label="Rouge")]
+
+    def menu(channel, message, age):
+        return RoleMenu(
+            guild_id=mongo.guild_id, channel_id=channel, message_id=message, title="Rôles",
+            entries=entry, created_by="5", created_at=now - timedelta(days=age),
+        )  # fmt: skip
+
+    for m in (
+        menu("71", "802", 1),
+        menu("71", "801", 3),
+        menu("71", None, 9),
+        menu("72", "900", 5),
+    ):
+        await repo.add(m)
+    assert await repo.first_message_in("71") == "801"
+    assert await repo.first_message_in("73") is None

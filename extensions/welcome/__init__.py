@@ -3,7 +3,8 @@
 A newcomer gets the server's welcome message (its card, buttons to the rules,
 the role menu and ``/aide``), the arrival role, and optionally a copy by DM.
 Under the message, "👋 Souhaiter la bienvenue" lets the others greet them,
-each click adding a name (A8; ``features/welcome/greetings.py``).
+each click adding a name (A8; ``features/welcome/greetings.py``). After 7
+days the hourly task takes the button off (P14).
 """
 
 import asyncio
@@ -17,20 +18,24 @@ from interactions import (
     ComponentContext,
     Extension,
     File,
+    IntervalTrigger,
+    Task,
     component_callback,
     listen,
 )
 from interactions.api.events import MemberAdd, MemberRemove
 
 from extensions.welcome._common import WELCOME, WelcomeConfig, logger, message_values
+from features.reactionroles.repository import ReactionRolesRepository
 from features.welcome import GreetingRepository, greeting_line, render_welcome_card, with_greetings
 from src.core import clock
 from src.core.logging import log_failure
 from src.core.text import pick_weighted_message
+from src.discord_ext.channels import fetch_guild_channel
 from src.discord_ext.help_button import help_button
 from src.discord_ext.look import ok, oops
 from src.discord_ext.mentions import NO_PINGS, everyone_if_written
-from src.discord_ext.messages import channel_url, guild_id_of
+from src.discord_ext.messages import channel_url, edit_message_if_changed, guild_id_of, jump_url
 from src.discord_ext.role_grants import grantable_role
 
 GREET_BUTTON_ID = "bienvenue:saluer"
@@ -68,17 +73,42 @@ def _target_channel(guild, serv_config: dict):
     return guild.system_channel
 
 
-def link_buttons(guild_id: Any, settings: dict) -> list[Button]:
-    """The welcome message's links: the rules, the role menu (where configured)."""
-    links = (
-        ("welcomeRulesChannelId", "Règles", "📜"),
-        ("welcomeRolesChannelId", "Choisir mes rôles", "🎭"),
-    )
-    return [
-        Button(style=ButtonStyle.URL, label=label, emoji=emoji, url=channel_url(guild_id, cid))
-        for key, label, emoji in links
-        if str(cid := settings.get(key) or "").isdigit()
-    ]
+def link_buttons(
+    guild_id: Any, settings: dict, roles_message_id: str | None = None
+) -> list[Button]:
+    """The welcome message's links: the rules, the role menu (where configured).
+
+    With *roles_message_id*, a role menu posted in the roles channel, the link
+    opens that menu rather than the top of the channel (P14).
+    """
+    buttons = []
+    rules = str(settings.get("welcomeRulesChannelId") or "")
+    if rules.isdigit():
+        url = channel_url(guild_id, rules)
+        buttons.append(Button(style=ButtonStyle.URL, label="Règles", emoji="📜", url=url))
+    roles = str(settings.get("welcomeRolesChannelId") or "")
+    if roles.isdigit():
+        url = (
+            jump_url(guild_id, roles, roles_message_id)
+            if roles_message_id
+            else channel_url(guild_id, roles)
+        )
+        buttons.append(
+            Button(style=ButtonStyle.URL, label="Choisir mes rôles", emoji="🎭", url=url)
+        )
+    return buttons
+
+
+async def roles_menu_message(guild_id: Any, settings: dict) -> str | None:
+    """The role menu to link from the welcome, if one is posted in the roles channel."""
+    roles = str(settings.get("welcomeRolesChannelId") or "")
+    if not roles.isdigit():
+        return None
+    try:
+        return await ReactionRolesRepository(str(guild_id)).first_message_in(roles)
+    except Exception as e:  # the channel link is good enough
+        log_failure(logger, "Role menu of the welcome not read on %s: %s", guild_id, e)
+        return None
 
 
 def greet_button() -> Button:
@@ -90,15 +120,31 @@ def greet_button() -> Button:
     )
 
 
-def welcome_components(guild_id: Any, settings: dict, *, in_dm: bool = False) -> list[ActionRow]:
+def welcome_components(
+    guild_id: Any, settings: dict, *, in_dm: bool = False, roles_message_id: str | None = None
+) -> list[ActionRow]:
     """The buttons under a welcome message; in a DM, only the links."""
-    buttons = link_buttons(guild_id, settings)
+    buttons = link_buttons(guild_id, settings, roles_message_id)
     if not in_dm:
         if settings.get("welcomeHelpButton", True):
             buttons.append(help_button())
         if settings.get("welcomeGreetButton", True):
             buttons.append(greet_button())
     return [ActionRow(*buttons)] if buttons else []
+
+
+def without_greet_button(rows: list[Any]) -> list[ActionRow]:
+    """A message's rows, the greet button taken out (and a row left empty with it)."""
+    kept = []
+    for row in rows:
+        buttons = [
+            c
+            for c in getattr(row, "components", [])
+            if getattr(c, "custom_id", None) != GREET_BUTTON_ID
+        ]
+        if buttons:
+            kept.append(ActionRow(*buttons))
+    return kept
 
 
 class WelcomeExtension(Extension):
@@ -114,6 +160,42 @@ class WelcomeExtension(Extension):
         # The TTL that ends a welcome's greetings after 7 days (logged, never raised).
         for gid in WELCOME.guild_ids():
             await GreetingRepository(gid).ensure_indexes()
+        if not self.close_greetings.running:
+            self.close_greetings.start()
+
+    @Task.create(IntervalTrigger(hours=1))
+    async def close_greetings(self) -> None:
+        """Take the 👋 button off the welcomes whose 7 days are over."""
+        now = clock.now()
+        for gid in WELCOME.guild_ids():
+            repo = GreetingRepository(gid)
+            try:
+                due = await repo.due_to_close(now)
+            except Exception as e:
+                log_failure(logger, "Greetings to close not read on %s: %s", gid, e)
+                continue
+            for greeting in due:
+                try:
+                    if await self._take_greet_button_off(gid, greeting):
+                        await repo.mark_closed(greeting.message_id)
+                except Exception as e:  # an outage: the next run tries again
+                    log_failure(logger, "Greet button not removed on %s: %s", gid, e)
+
+    async def _take_greet_button_off(self, guild_id: str, greeting: Any) -> bool:
+        """``True`` once the message has no greet button (or is gone): nothing left to do."""
+        if not greeting.channel_id:  # opened before P14: the channel wasn't kept
+            return True
+        channel = await fetch_guild_channel(
+            self.bot, guild_id, greeting.channel_id, logger=logger, raise_outages=True
+        )
+        if channel is None or not hasattr(channel, "fetch_message"):
+            return True
+        message = await channel.fetch_message(int(greeting.message_id))
+        if message is None:
+            return True
+        rows = without_greet_button(message.components or [])
+        await edit_message_if_changed(message, components=rows, logger=logger)
+        return True
 
     @listen()
     async def on_member_add(self, event: MemberAdd):
@@ -141,22 +223,27 @@ class WelcomeExtension(Extension):
             title="Bienvenue",
             enabled=serv_config.get("welcomeImageEnabled", True),
         )
+        roles_message_id = await roles_menu_message(event.guild.id, serv_config)
         # The admins' template filled with a mention: it may ping @everyone.
         message = await channel.send(
             filled_message,
             files=files,
-            components=welcome_components(event.guild.id, serv_config),
+            components=welcome_components(
+                event.guild.id, serv_config, roles_message_id=roles_message_id
+            ),
             allowed_mentions=everyone_if_written(filled_message),
         )
         if serv_config.get("welcomeGreetButton", True) and message is not None:
             try:
                 await GreetingRepository(event.guild.id).open(
-                    str(message.id), str(event.member.id), clock.now()
+                    str(message.id), str(event.member.id), clock.now(), str(channel.id)
                 )
             except Exception as e:  # the welcome is out: a count lost is no reason to stop
                 log_failure(logger, "Greetings not opened on %s: %s", event.guild.id, e)
         if serv_config.get("welcomeDmCopy"):
-            await self._send_dm_copy(event.member, event.guild, serv_config, filled_message)
+            await self._send_dm_copy(
+                event.member, event.guild, serv_config, filled_message, roles_message_id
+            )
 
     async def _grant_arrival_role(self, member, guild, serv_config: dict) -> None:
         role_id = serv_config.get("welcomeArrivalRoleId")
@@ -172,11 +259,15 @@ class WelcomeExtension(Extension):
         except Exception as e:
             log_failure(logger, "Arrival role not given on %s: %s", guild.id, e)
 
-    async def _send_dm_copy(self, member, guild, serv_config: dict, text: str) -> None:
+    async def _send_dm_copy(
+        self, member, guild, serv_config: dict, text: str, roles_message_id: str | None = None
+    ) -> None:
         try:
             await member.send(
                 f"-# Depuis {guild.name}\n{text}",
-                components=welcome_components(guild.id, serv_config, in_dm=True),
+                components=welcome_components(
+                    guild.id, serv_config, in_dm=True, roles_message_id=roles_message_id
+                ),
                 allowed_mentions=NO_PINGS,
             )
         except Exception as e:  # closed DMs are the member's choice

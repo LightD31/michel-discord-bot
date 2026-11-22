@@ -73,6 +73,16 @@ class ReactionRolesRepository:
         return [self._doc_to_menu(d) for d in await cursor.to_list()]
 
     @translates_db_errors
+    async def first_message_in(self, channel_id: str) -> str | None:
+        """The message of the oldest menu posted in *channel_id* (the welcome links it)."""
+        doc = await self._col().find_one(
+            {"channel_id": str(channel_id), "message_id": {"$nin": [None, ""]}},
+            {"message_id": 1},
+            sort=[("created_at", pymongo.ASCENDING)],
+        )
+        return str(doc["message_id"]) if doc else None
+
+    @translates_db_errors
     async def update(self, menu_id: str, **fields: Any) -> int:
         oid = self._oid(menu_id)
         if not fields or oid is None:

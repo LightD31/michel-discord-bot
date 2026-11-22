@@ -82,6 +82,10 @@ class _FakeXpRepo:
     async def activity_heatmap(self, since, tz):
         return []
 
+    async def season_ranking(self, start, end, limit=None):
+        type(self).calls += 1
+        return [("7", 300), ("1", 120), ("5", 40)][:limit]
+
 
 class _FakeUserInfoRepo:
     def __init__(self, guild_id):
@@ -188,6 +192,7 @@ def http(monkeypatch, ctx):
     _FakeXpRepo.error = None
     _FakeSpotifyRepo.calls = 0
     monkeypatch.setattr(xp_routes, "XpRepository", _FakeXpRepo)
+    monkeypatch.setattr(public_routes, "XpRepository", _FakeXpRepo)
     monkeypatch.setattr(xp_routes, "UserInfoRepository", _FakeUserInfoRepo)
     monkeypatch.setattr(spotify_routes, "SpotifyRepository", _FakeSpotifyRepo)
     monkeypatch.setattr(public_routes, "UserInfoRepository", _FakeUserInfoRepo)
@@ -374,3 +379,30 @@ def test_playlist_stats_relabel_users_only():
     assert labelled.current_poll.added_by is None
     # The original is untouched.
     assert stats.top_contributors[0].key == "1"
+
+
+# --- XP season (P14) --------------------------------------------------------
+
+
+def test_the_season_tab_names_the_top_members_only(http, store):
+    assert http.get(f"/api/public/{TOKEN}/xp/season").status_code == 404  # no seasons yet
+    store.data["servers"][PUBLISHED]["moduleXp"].update(seasonsEnabled=True, seasonMonths=3)
+    resp = http.get(f"/api/public/{TOKEN}/xp/season")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["label"].startswith("T")  # a quarter: T1…T4
+    assert [(r["rank"], r["display_name"], r["xp"]) for r in body["top"]] == [
+        (1, "Seven", 300),
+        (2, "Alice", 120),
+        (3, "Membre inconnu", 40),
+    ]
+    assert '"7"' not in resp.text and '"5"' not in resp.text
+
+
+def test_the_season_tab_is_cached_and_private_pages_stay_hidden(http, store):
+    store.data["servers"][PUBLISHED]["moduleXp"]["seasonsEnabled"] = True
+    http.get(f"/api/public/{TOKEN}/xp/season")
+    http.get(f"/api/public/{TOKEN}/xp/season")
+    assert _FakeXpRepo.calls == 1
+    store.data["servers"][PRIVATE]["moduleXp"]["seasonsEnabled"] = True
+    assert http.get(f"/api/public/{PRIVATE_TOKEN}/xp/season").status_code == 404

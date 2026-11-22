@@ -6,7 +6,7 @@ the same deletion runs for one server 30 days after they leave it
 (:mod:`features.userdata.departures`). What happens to each store:
 
 * **deleted** — what is the member's alone: XP and its log, birthday,
-  reminders, ``!request`` reminders, "feur" counter, directory entry, AI quotas,
+  reminders, ``!request`` reminders, "feur" counter and its dated events, directory entry, AI quotas,
   Secret Santa wish lists and gift marks, their entry in a giveaway, who
   greeted them on arrival and their own greetings of others;
 * **anonymised** — what other members share: their votes stay counted under a
@@ -89,6 +89,7 @@ def _personal_filters(uid: str) -> list[tuple[str, dict[str, Any]]]:
         ("task_reminders", {"user_id": uid}),
         ("zerator247_reminders", {"_id": uid}),
         ("feur_stats", {"_id": f"user_{uid}"}),
+        ("feur_events", {"user_id": uid}),
         ("users", {"_id": uid}),
         # Secret Santa wish lists and gift marks: the member's own entries.
         ("secret_santa_participants", {"user_id": int(uid)}),

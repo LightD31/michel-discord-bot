@@ -4,7 +4,7 @@ import { loadInfractions } from '../features/moderation.js';
 import { loadRoleMenus } from '../features/rolemenus.js';
 import { loadSecretSanta } from '../features/secretsanta.js';
 import { destroySpotifyCharts, loadSpotifyStats } from '../features/spotify.js';
-import { destroyXpCharts, loadXpStats } from '../features/xp.js';
+import { destroyXpCharts, loadPublicSeason, loadXpStats } from '../features/xp.js';
 import { populateChannelPickers } from '../forms/pickers/channels.js';
 import { populateMultiPickers, populateRolePickers } from '../forms/pickers/lists.js';
 import { populateMemberPickers } from '../forms/pickers/members.js';
@@ -42,7 +42,10 @@ export function render() {
     if (state.publicView) {
         app.innerHTML = renderPublicPage();
         const { meta, kind } = state.publicView;
-        if (meta && kind === 'xp') loadXpStats(meta.id);
+        if (meta && kind === 'xp') {
+            loadPublicSeason(state.publicView.token);
+            loadXpStats(meta.id);
+        }
         if (meta && kind === 'spotify') loadSpotifyStats(meta.id);
         return;
     }

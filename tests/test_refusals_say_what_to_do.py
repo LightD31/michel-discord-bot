@@ -72,3 +72,20 @@ async def test_spotify_says_where_its_commands_run(command, typed):
     handler = getattr(SpotifyExtension, command)
     await run(handler, ext, ctx, "une chanson")
     assert ctx.last == f"🎵 /{typed} se lance dans <#42>."
+
+
+def test_a_module_switched_off_is_always_said_by_module_off():
+    """P14: no module writes its own « pas activé » that leaves the member stuck."""
+    import re
+
+    from source_scan import python_files, rel
+
+    typed = re.compile(r"n'est pas activé|ne sont pas activés")
+    offenders = [
+        f"{rel(path)}:{i}"
+        for path in python_files("extensions", "src/discord_ext")
+        if rel(path) != "src/discord_ext/messages.py"
+        for i, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1)
+        if typed.search(line)
+    ]
+    assert offenders == [], "say it with module_off(label): it names who can switch it on"

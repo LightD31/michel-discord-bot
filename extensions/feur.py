@@ -23,6 +23,7 @@ from features.feur import FeurRepository
 from src.core import clock
 from src.core import logging as logutil
 from src.core.config import ModuleConfig
+from src.core.logging import log_failure
 from src.core.text import sanitize_content
 from src.discord_ext.look import card
 from src.discord_ext.messages import require_guild
@@ -82,6 +83,15 @@ class FeurExtension(Extension):
     def __init__(self, bot):
         self.bot = bot
 
+    @listen()
+    async def on_startup(self) -> None:
+        # The TTL that keeps each dated feur a week (the Gazette's feur of the week).
+        for guild_id in FEUR.guild_ids():
+            try:
+                await FeurRepository(str(guild_id)).ensure_indexes()
+            except Exception as e:
+                log_failure(logger, "Feur indexes not created on %s: %s", guild_id, e)
+
     async def _add_reactions(self, message, emojis: list) -> None:
         try:
             for emoji in emojis:
@@ -105,14 +115,14 @@ class FeurExtension(Extension):
 
         if _should_respond(content, "pourquoi"):
             await self._add_reactions(event.message, POUR_FEUR_EMOJIS)
-            await repo.record_event(user_id, "pour_feur")
+            await repo.record_event(user_id, "pour_feur", clock.now())
             return
 
         if _should_respond(content, "quoi"):
             words = _extract_words(content)
             if words and words[-1] == "quoi" or ("quoi" in content and "pourquoi" not in content):
                 await self._add_reactions(event.message, FEUR_EMOJIS)
-                await repo.record_event(user_id, "feur")
+                await repo.record_event(user_id, "feur", clock.now())
 
     @slash_command(
         name="feur-stats",

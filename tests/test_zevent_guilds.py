@@ -203,8 +203,12 @@ class FakeCtx:
         # An organiser: /zevent-fin needs « Gérer le serveur ».
         self.author = SimpleNamespace(has_permission=lambda *perms: True)
 
-    async def send(self, content, ephemeral=False):
+    async def send(self, content, ephemeral=False, **_):
         self.replies.append(content)
+
+    @property
+    def last(self) -> str:
+        return self.replies[-1]
 
 
 @pytest.fixture
@@ -254,7 +258,7 @@ async def test_finishing_is_refused_where_the_module_is_off(ext, finishing):
     await Zevent.end.callback(ext, ctx)
 
     assert finishing["synced"] == [] and finishing["edited"] == []
-    assert ctx.replies == ["Le module Zevent n'est pas activé sur ce serveur."]
+    assert "Zevent n'est pas activé" in ctx.last and "tableau de bord" in ctx.last
 
 
 def test_the_tracker_no_longer_reloads_on_save():
