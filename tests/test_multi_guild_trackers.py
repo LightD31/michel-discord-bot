@@ -9,6 +9,7 @@ import threading
 from types import SimpleNamespace
 
 import pytest
+from interactions import MessageFlags
 
 
 class FakeMessages:
@@ -83,7 +84,8 @@ async def test_satisfactory_refreshes_each_guild_from_its_own_server(store_confi
     edits: list[tuple] = []
 
     async def fake_edit(message, **kwargs):
-        edits.append((message, kwargs["embed"]))
+        assert kwargs["flags"] & MessageFlags.IS_COMPONENTS_V2  # a V2 card (P22)
+        edits.append((message, kwargs["components"][0]))
 
     monkeypatch.setattr(sat, "build_api", FakeAPI)
     monkeypatch.setattr(sat, "edit_message_if_changed", fake_edit)
@@ -99,7 +101,8 @@ async def test_satisfactory_refreshes_each_guild_from_its_own_server(store_confi
     # One client per server, built off the loop and reused at the next refresh.
     assert clients == [("a:1234", "t1", False), ("b:7777", "t2", False)]
     assert [message for message, _ in edits] == ["message-1", "message-2"] * 2
-    assert "`a`" in edits[0][1].fields[0].value
+    texts = [part.content for part in edits[0][1].components if hasattr(part, "content")]
+    assert "IP : `a`" in texts[1] and "Joueurs connectés : 2" in texts[1]
 
 
 # ── Streamlabs ───────────────────────────────────────────────────────────

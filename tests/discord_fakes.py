@@ -136,9 +136,11 @@ class FakeMessage:
         author: Any = None,
         channel: FakeChannel | None = None,
         components: Any = None,
+        flags: Any = 0,
         **_: Any,
     ):
         self.id = mid if mid is not None else next(_ids)
+        self.flags = int(flags or 0)  # MessageFlags.IS_COMPONENTS_V2 for a V2 card
         self.content = content
         self.embeds = list(embeds or ([embed] if embed is not None else []))
         self.components = components
@@ -160,6 +162,10 @@ class FakeMessage:
             self.embeds = [kwargs["embed"]]
         if "content" in kwargs:
             self.content = kwargs["content"]
+        if "components" in kwargs:
+            self.components = kwargs["components"]
+        if "flags" in kwargs:
+            self.flags = int(kwargs["flags"] or 0)
         return self
 
     async def reply(self, content: str | None = None, **kwargs: Any) -> FakeMessage:

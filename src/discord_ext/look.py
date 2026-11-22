@@ -23,7 +23,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Literal
 
-from interactions import Embed
+from interactions import ContainerComponent, Embed, SeparatorComponent, TextDisplayComponent
 
 # Discord's embed backgrounds, dark and light themes.
 DARK_EMBED_BACKGROUND = 0x2B2D31
@@ -169,6 +169,47 @@ def recolour(embed: Embed, module: str, kind: Kind) -> Embed:
     return embed
 
 
+# Components V2 (P22, B11): Discord's limits for a message's text displays.
+V2_TEXT_LIMIT = 4000
+V2_MAX_TEXTS = 30  # a message holds 40 components at most, the frame included
+
+
+def v2_texts(blocks: list[str], limit: int = V2_TEXT_LIMIT) -> list[str]:
+    """*blocks* packed into as few texts as fit, a blank line between two blocks."""
+    texts: list[str] = []
+    for block in blocks:
+        block = block[:limit]
+        if texts and len(texts[-1]) + 2 + len(block) <= limit:
+            texts[-1] += "\n\n" + block
+        else:
+            texts.append(block)
+    return texts[:V2_MAX_TEXTS]
+
+
+def card_v2(
+    module: str,
+    kind: Kind = "info",
+    *,
+    title: str,
+    blocks: list[str],
+    footer: str | None = None,
+) -> ContainerComponent:
+    """A Components V2 card in Michel's look: the module's accent stripe, its name,
+    the *title*, the *blocks* (packed into as few texts as Discord allows), and
+    ``Michel · <module>`` at the bottom. Sent with ``MessageFlags.IS_COMPONENTS_V2``,
+    without ``content`` nor ``embeds``.
+    """
+    found = look_of(module)
+    parts: list[Any] = [TextDisplayComponent(f"-# {found.icon} {found.label}\n## {title}")]
+    body = v2_texts([b for b in blocks if b])
+    if body:
+        parts.append(SeparatorComponent(divider=True))
+        parts.extend(TextDisplayComponent(text) for text in body)
+    parts.append(SeparatorComponent(divider=False))
+    parts.append(TextDisplayComponent(f"-# {footer_text(module, footer)}"))
+    return ContainerComponent(*parts, accent_color=colour(module, kind))
+
+
 def custom(**fields: Any) -> Embed:
     """An embed whose look a server's admins chose (Embed manager, role menus): no branding."""
     return Embed(**fields)
@@ -199,7 +240,10 @@ __all__ = [
     "Look",
     "Palette",
     "ask",
+    "V2_MAX_TEXTS",
+    "V2_TEXT_LIMIT",
     "card",
+    "card_v2",
     "colour",
     "custom",
     "footer_text",
@@ -208,4 +252,5 @@ __all__ = [
     "oops",
     "recolour",
     "sign",
+    "v2_texts",
 ]

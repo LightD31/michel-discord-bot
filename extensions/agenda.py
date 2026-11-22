@@ -7,7 +7,8 @@ reminders are never listed.
 
 ``/agenda`` shows it to the member alone. Where the admins chose a channel,
 every 30 minutes the task keeps one message there up to date (the
-``agenda`` slot of ``bot_messages``), pinned if they asked. The dashboard's
+``agenda`` slot of ``bot_messages``), pinned if they asked: a Components V2
+card (P22), the days stacked in the module's colour. The dashboard's
 server page has the same days as a calendar.
 """
 
@@ -18,6 +19,7 @@ from interactions import (
     Client,
     Extension,
     IntervalTrigger,
+    MessageFlags,
     SlashContext,
     Task,
     cooldown,
@@ -30,7 +32,7 @@ from src.core import clock, log_context
 from src.core import logging as logutil
 from src.core.config import ModuleConfig
 from src.core.logging import log_failure
-from src.discord_ext.agenda import agenda_embed, gather_agenda
+from src.discord_ext.agenda import agenda_card, agenda_embed, gather_agenda
 from src.discord_ext.mentions import NO_PINGS
 from src.discord_ext.messages import (
     edit_message_if_changed,
@@ -132,6 +134,7 @@ class AgendaExtension(Extension):
             initial_content="🗓️ L'agenda arrive…",
             pin=bool(settings.get("agendaPin", True)),
             logger=logger,
+            v2=True,
         )
         if message is None:
             return False
@@ -141,8 +144,8 @@ class AgendaExtension(Extension):
         try:
             return await edit_message_if_changed(
                 message,
-                content="",
-                embeds=[agenda_embed(agenda)],
+                components=[agenda_card(agenda)],
+                flags=MessageFlags.IS_COMPONENTS_V2,
                 logger=logger,
             )
         except Exception:

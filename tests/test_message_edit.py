@@ -266,3 +266,44 @@ async def test_unchanged_copy_is_still_a_noop():
     embed = msgmod.copy_embed(message.embeds[0])
 
     assert await edit_message_if_changed(message, embeds=[embed]) is False
+
+
+# ── Components V2 (P22) ─────────────────────────────────────────────────
+
+
+def _v2_card(text: str):
+    from src.discord_ext.look import card_v2
+
+    return card_v2("moduleAgenda", title="Agenda", blocks=[text])
+
+
+async def test_a_v2_card_unchanged_is_a_noop_even_with_discords_ids():
+    from interactions import MessageFlags
+    from interactions.models.discord.components import process_components
+
+    sent = process_components([_v2_card("**Demain**\n📅 20:30 · Soirée")])
+    # Discord numbers every component on the message it gives back.
+    sent[0]["id"] = 1
+    for n, part in enumerate(sent[0]["components"], start=2):
+        part["id"] = n
+    message = FakeMessage(components=sent)
+    message.flags = MessageFlags.IS_COMPONENTS_V2
+    same = {
+        "components": [_v2_card("**Demain**\n📅 20:30 · Soirée")],
+        "flags": MessageFlags.IS_COMPONENTS_V2,
+    }
+    assert await edit_message_if_changed(message, **same) is False
+    other = {
+        "components": [_v2_card("**Demain**\n📅 21:00 · Soirée")],
+        "flags": MessageFlags.IS_COMPONENTS_V2,
+    }
+    assert await edit_message_if_changed(message, **other) is True
+
+
+async def test_a_message_that_is_not_v2_yet_differs():
+    from interactions import MessageFlags
+
+    message = FakeMessage(components=[])
+    message.flags = 0
+    payload = {"components": [], "flags": MessageFlags.IS_COMPONENTS_V2}
+    assert await edit_message_if_changed(message, **payload) is True

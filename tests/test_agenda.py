@@ -15,6 +15,7 @@ from discord_fakes import (
     run,
 )
 from fastapi import HTTPException
+from interactions import MessageFlags
 
 import extensions.agenda as agenda_module
 import src.discord_ext.agenda as gather_module
@@ -180,7 +181,15 @@ async def test_the_message_is_kept_up_to_date_and_pinned(world, monkeypatch):
     ext = bare_extension(AgendaExtension, world.bot)
     await AgendaExtension.refresh_all.callback(ext)
     assert asked["slot"] == "agenda" and asked["channel_id"] == "40" and asked["pin"] is True
-    assert message.embeds[0].title == "🗓️ Les 14 prochains jours" and message.content == ""
+    assert asked["v2"] is True
+    assert message.flags & MessageFlags.IS_COMPONENTS_V2
+    (container,) = message.components
+    texts = [c.content for c in container.components if hasattr(c, "content")]
+    assert texts[0] == "-# 🗓️ Agenda\n## 🗓️ Les 14 prochains jours"
+    assert texts[1].startswith(
+        "**Aujourd'hui**\n📅 18:00 · [En cours](https://discord.com/events/1/5)"
+    )
+    assert texts[-1] == "-# Michel · Agenda · mis à jour toutes les 30 minutes"
     settings = world.servers["1"]["moduleAgenda"]
     assert await ext.refresh("1", settings) is False  # nothing changed, no edit
 

@@ -110,7 +110,7 @@ Async and I/O (`async-io.md`)
 Discord messages (`discord-messages.md`)
 - Edit through `edit_message_if_changed()`; copy an embed with `copy_embed()` — `tests/test_message_edit.py`
 - Mentions: `everyone_if_written` / `mentions_written_in` / `NO_PINGS` — `tests/test_mention_policy.py`
-- Every embed is `card()` / `custom()`; replies start with `ok()` / `oops()` / `ask()` — `tests/test_look.py`
+- Every embed is `card()` / `custom()`, every V2 container `card_v2()`; replies start with `ok()` / `oops()` / `ask()` — `tests/test_look.py`
 - Michel says *tu*, in French — `tests/test_voice.py`, `docs/VOIX.md`
 - Refusals say what to do next — `tests/test_refusals_say_what_to_do.py`
 - Links go through the shortener; long text through forms — `discord-messages.md`

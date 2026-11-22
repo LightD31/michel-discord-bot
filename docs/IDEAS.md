@@ -571,6 +571,6 @@ Numbered **P1…P12** so they don't clash with the audit's lots 1–6. Each lot 
 | **P19 A5 Agenda** | The shared agenda: `/agenda`, a message kept up to date (pinned if asked), a calendar on the server page | Backlog |
 | **P20 A11 Rattrapage** | `/rattrapage`: an AI summary of a channel since your last message, opt-in per channel, under `/ask`'s quotas | Backlog |
 | **P21 C10 Incidents** | The server's incidents: the last 50 failures per server, by reference, on the server page | Backlog |
-| **P22 B11 Components V2** | Components V2 cards | Backlog |
+| **P22 B11 Components V2** | Components V2 cards: `card_v2()`, V2-aware edits and slots; the agenda and Satisfactory cards moved | Backlog |
 
 Not built, because Discord or the design rules them out: editing a native poll (Discord forbids it); a wish list changed after the draw (the Santa already holds it in their DM); group-DM Secret Santa sessions (commands are guild-only); packs filling in streamer and team names (a pack can't guess them); the welcome test using unsaved texts (the module page has its own test).

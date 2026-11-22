@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
-from interactions import Embed
+from interactions import ContainerComponent, Embed
 
 from features.agenda import AgendaRepository, Entry, by_day, timed, window
 from features.gazette import upcoming_birthdays
@@ -22,7 +22,7 @@ from src.core import logging as logutil
 from src.core.config import ModuleConfig
 from src.core.errors import DatabaseError
 from src.core.logging import log_failure
-from src.discord_ext.look import card
+from src.discord_ext.look import card, card_v2
 from src.discord_ext.messages import event_url, jump_url
 
 logger = logutil.init_logger(__name__)
@@ -152,4 +152,17 @@ def agenda_embed(agenda: Agenda) -> Embed:
     return embed
 
 
-__all__ = ["SOURCES", "Agenda", "agenda_embed", "gather_agenda"]
+def agenda_card(agenda: Agenda) -> ContainerComponent:
+    """The same days as a Components V2 card, for the message kept up to date (P22)."""
+    today = clock.to_local(agenda.now).date()
+    days = by_day(agenda.entries, today)
+    return card_v2(
+        "moduleAgenda",
+        title=f"🗓️ Les {agenda.days} prochains jours",
+        blocks=[f"**{label}**\n" + "\n".join(lines) for label, lines in days]
+        or ["Rien de prévu pour l'instant."],
+        footer="mis à jour toutes les 30 minutes",
+    )
+
+
+__all__ = ["SOURCES", "Agenda", "agenda_card", "agenda_embed", "gather_agenda"]
