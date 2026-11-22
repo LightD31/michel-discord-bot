@@ -181,6 +181,14 @@ def test_eventsub_is_dead_when_receive_loop_finished():
     assert ext.eventsub_is_alive() is False
 
 
+def test_eventsub_is_dead_after_a_failed_resubscribe():
+    """A reconnect that lost topics must let the watchdog rebuild the socket."""
+    ext = make_extension()
+    ext.eventsub = _fake_socket(receive_done=False)
+    ext.eventsub.resubscribe_failed = True
+    assert ext.eventsub_is_alive() is False
+
+
 def test_eventsub_is_dead_without_socket():
     ext = make_extension()
     assert ext.eventsub_is_alive() is False
@@ -257,6 +265,13 @@ async def test_start_eventsub_subscribes_a_shared_streamer_once(monkeypatch):
 
     socket = FakeEventSub()
     socket.start_async = _noop
+    purged: list[bool] = []
+
+    async def purge() -> int:
+        purged.append(True)
+        return 0
+
+    socket.purge_stale_subscriptions = purge
     monkeypatch.setattr(eventsub_module, "BoundedEventSubWebsocket", lambda *a, **kw: socket)
     monkeypatch.setattr(eventsub_module, "Twitch", _fake_twitch_factory())
     monkeypatch.setattr(eventsub_module, "UserAuthenticationStorageHelper", _FakeAuthHelper)
@@ -273,6 +288,8 @@ async def test_start_eventsub_subscribes_a_shared_streamer_once(monkeypatch):
     ]
     # Both guild entries still get their broadcaster id resolved.
     assert {s.user_id for s in ext.streamers.values()} == {"12345"}
+    # Old sessions' subscriptions are freed before subscribing again.
+    assert purged == [True]
 
 
 async def test_run_collapses_concurrent_calls():

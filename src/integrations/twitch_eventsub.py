@@ -45,6 +45,69 @@ class BoundedEventSubWebsocket(EventSubWebsocket):
     ``start()`` / ``stop()`` are left as they are and never called by the bot.
     """
 
+    # Set when a reconnect could not restore every subscription; the bot's
+    # liveness check reads it so the watchdog rebuilds the whole websocket.
+    resubscribe_failed: bool = False
+
+    async def purge_stale_subscriptions(self) -> int:
+        """Delete this user's websocket subscriptions bound to any other session.
+
+        Twitch caps a user's websocket subscriptions at a total cost of 10
+        across all sessions, and those left on a dropped or abandoned session
+        keep counting until Twitch notices. Re-creating them on a new session
+        then fails with "websocket transport subscriptions total cost exceeded".
+        Returns how many were deleted.
+        """
+        session = self.active_session
+        if session is None:
+            return 0
+        stale: list[str] = []
+        result = await self._twitch.get_eventsub_subscriptions(target_token=AuthType.USER)
+        async for sub in result:
+            transport = sub.transport or {}
+            if transport.get("method") != "websocket":
+                continue
+            if transport.get("session_id") != session.id:
+                stale.append(sub.id)
+        for sub_id in stale:
+            try:
+                await self._twitch.delete_eventsub_subscription(sub_id, target_token=AuthType.USER)
+            except Exception as e:  # noqa: BLE001 — one stuck deletion mustn't stop the rest
+                logger.warning("Could not delete stale EventSub subscription %s: %s", sub_id, e)
+        if stale:
+            logger.info("Deleted %d stale EventSub subscription(s) from old sessions", len(stale))
+        return len(stale)
+
+    async def _resubscribe(self) -> None:
+        """Restore every subscription on a fresh session after a reconnect.
+
+        Unlike the library, frees the old sessions' cost budget first and
+        retries each subscription on its own, so one failure no longer drops
+        every topic after it. Failures are still logged as exceptions and flag
+        the socket so the bot restarts it.
+        """
+        subs = self._active_subscriptions.copy()
+        self._active_subscriptions = {}
+        try:
+            await self.purge_stale_subscriptions()
+        except Exception:
+            logger.exception("Could not purge stale EventSub subscriptions before resubscribing")
+        failed: dict = {}
+        for old_id, sub in subs.items():
+            try:
+                await self._subscribe(**sub)
+            except Exception:
+                logger.exception(
+                    "exception while resubscribing %s (condition %s)",
+                    sub.get("sub_type"),
+                    sub.get("condition"),
+                )
+                failed[old_id] = sub
+        if failed:
+            # Keep them for the next reconnect, like the library does.
+            self._active_subscriptions.update(failed)
+            self.resubscribe_failed = True
+
     def _run_socket(self) -> None:
         """The library's thread body, made to end cleanly however it stops."""
         try:
@@ -86,6 +149,7 @@ class BoundedEventSubWebsocket(EventSubWebsocket):
         self._ready = False
         self._closing = False
         self._active_subscriptions = {}
+        self.resubscribe_failed = False
         thread = threading.Thread(target=self._run_socket, name="twitch-eventsub", daemon=True)
         self._socket_thread = thread  # type: ignore[assignment]  # the library types it None
         self._running = True

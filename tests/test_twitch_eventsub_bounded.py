@@ -104,3 +104,92 @@ async def test_a_welcomed_socket_starts_and_stops_within_its_deadline(unused_tcp
         assert socket._running is False
     finally:
         await runner.cleanup()
+
+
+# --------------------------------------------------------------------------
+# Reconnect resubscription (Twitch's websocket cost cap)
+# --------------------------------------------------------------------------
+
+
+class _Pages:
+    def __init__(self, items):
+        self._items = list(items)
+
+    def __aiter__(self):
+        return self._gen()
+
+    async def _gen(self):
+        for item in self._items:
+            yield item
+
+
+class SubscriptionTwitch(FakeTwitch):
+    def __init__(self, subs):
+        self.subs = subs
+        self.deleted: list[str] = []
+
+    async def get_eventsub_subscriptions(self, **kwargs):
+        return _Pages(self.subs)
+
+    async def delete_eventsub_subscription(self, subscription_id, target_token=None):
+        self.deleted.append(subscription_id)
+
+
+def _sub(sub_id, session_id, method="websocket"):
+    from types import SimpleNamespace
+
+    return SimpleNamespace(id=sub_id, transport={"method": method, "session_id": session_id})
+
+
+def _socket_on(twitch, session_id="new"):
+    from types import SimpleNamespace
+
+    socket = BoundedEventSubWebsocket(twitch, connection_url="ws://127.0.0.1:9/")
+    socket.active_session = SimpleNamespace(id=session_id)
+    return socket
+
+
+async def test_purge_deletes_only_other_sessions_websocket_subscriptions():
+    twitch = SubscriptionTwitch(
+        [_sub("old-1", "old"), _sub("cur-1", "new"), _sub("hook", None, method="webhook")]
+    )
+    assert await _socket_on(twitch).purge_stale_subscriptions() == 1
+    assert twitch.deleted == ["old-1"]
+
+
+async def test_resubscribe_frees_old_sessions_before_subscribing_again():
+    twitch = SubscriptionTwitch([_sub("old-1", "old"), _sub("old-2", "old")])
+    socket = _socket_on(twitch)
+    socket._active_subscriptions = {"old-1": {"sub_type": "a"}, "old-2": {"sub_type": "b"}}
+    seen: list[tuple[str, list[str]]] = []
+
+    async def subscribe(**sub):
+        seen.append((sub["sub_type"], list(twitch.deleted)))
+        socket._active_subscriptions[f"new-{sub['sub_type']}"] = sub
+        return f"new-{sub['sub_type']}"
+
+    socket._subscribe = subscribe
+    await socket._resubscribe()
+    assert seen == [("a", ["old-1", "old-2"]), ("b", ["old-1", "old-2"])]
+    assert set(socket._active_subscriptions) == {"new-a", "new-b"}
+    assert socket.resubscribe_failed is False
+
+
+async def test_one_failed_resubscription_keeps_the_others_and_flags_the_socket(caplog):
+    socket = _socket_on(SubscriptionTwitch([]))
+    socket._active_subscriptions = {
+        "old-1": {"sub_type": "a", "condition": {"broadcaster_user_id": "1"}},
+        "old-2": {"sub_type": "b", "condition": {"broadcaster_user_id": "1"}},
+    }
+
+    async def subscribe(**sub):
+        if sub["sub_type"] == "a":
+            raise RuntimeError("websocket transport subscriptions total cost exceeded")
+        socket._active_subscriptions["new-b"] = sub
+        return "new-b"
+
+    socket._subscribe = subscribe
+    await socket._resubscribe()
+    assert set(socket._active_subscriptions) == {"old-1", "new-b"}
+    assert socket.resubscribe_failed is True
+    assert "exception while resubscribing a" in caplog.text

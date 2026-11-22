@@ -64,6 +64,10 @@ class EventSubMixin(TwitchBase):
             return False
         if self.eventsub.active_session is None:
             return False
+        # A reconnect that couldn't restore every subscription leaves a live
+        # socket that silently misses some topics.
+        if getattr(self.eventsub, "resubscribe_failed", False):
+            return False
         tasks = getattr(self.eventsub, "_tasks", None) or []
         return not any(task.done() for task in tasks)
 
@@ -123,6 +127,12 @@ class EventSubMixin(TwitchBase):
         # Awaited with a deadline: the library's start() spins on time.sleep
         # until Twitch answers, which froze the whole bot during an outage.
         await self.eventsub.start_async()
+        # Subscriptions left by a previous (stopped or abandoned) socket still
+        # count against Twitch's cost cap; free them before subscribing again.
+        try:
+            await self.eventsub.purge_stale_subscriptions()
+        except Exception as e:
+            log_failure(logger, "Error purging stale EventSub subscriptions: %s", e)
 
         # Resolve every configured login, but subscribe once per broadcaster:
         # the same streamer can be followed by several guilds and Twitch
