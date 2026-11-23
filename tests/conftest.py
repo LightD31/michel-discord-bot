@@ -108,3 +108,30 @@ def store_config():
 
     yield serve
     config_store._data = saved
+
+
+@pytest.fixture(scope="module")
+def browser():
+    """Chromium for a browser test module (``tests/spa_harness.py``).
+
+    One per module, not per session: Playwright's sync API keeps its event loop
+    running in the main thread while the browser is open, and the async tests
+    that come after a browser module need that thread free.
+
+    Skipped when Playwright or a browser is missing: CI installs one
+    (``playwright install chromium``); elsewhere, point
+    ``PLAYWRIGHT_CHROMIUM_PATH`` at a Chromium binary.
+    """
+    playwright_sync = pytest.importorskip("playwright.sync_api")
+    try:
+        with playwright_sync.sync_playwright() as pw:
+            try:
+                launched = pw.chromium.launch(
+                    executable_path=os.environ.get("PLAYWRIGHT_CHROMIUM_PATH") or None
+                )
+            except Exception as e:  # noqa: BLE001 — no browser here: skip, don't fail
+                pytest.skip(f"no Chromium to drive: {e}")
+            yield launched
+            launched.close()
+    except RuntimeError as e:  # an event loop already running in this thread
+        pytest.skip(str(e))

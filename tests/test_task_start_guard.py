@@ -6,9 +6,8 @@ loop of the same task (interactions.py doesn't refuse it).
 """
 
 import ast
-from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+from source_scan import parse, python_files, rel
 
 
 def _unguarded_starts(tree: ast.AST) -> list[tuple[int, str]]:
@@ -43,13 +42,9 @@ def _unguarded_starts(tree: ast.AST) -> list[tuple[int, str]]:
 
 def test_task_starts_are_guarded():
     problems = []
-    for path in sorted((ROOT / "extensions").rglob("*.py")):
-        top = path.relative_to(ROOT / "extensions").parts[0]
-        if top.startswith("_") and top != "__init__.py":  # parked work, not loaded
-            continue
-        tree = ast.parse(path.read_text(encoding="utf-8"))
-        for line, target in _unguarded_starts(tree):
-            problems.append(f"{path.relative_to(ROOT)}:{line} {target}.start()")
+    for path in python_files("extensions"):
+        for line, target in _unguarded_starts(parse(path)[0]):
+            problems.append(f"{rel(path)}:{line} {target}.start()")
     assert not problems, "Task.start() without `if not <task>.running`:\n" + "\n".join(problems)
 
 

@@ -15,7 +15,6 @@ pytest.importorskip("playwright.sync_api")
 
 import test_spa_smoke as smoke  # noqa: E402
 
-browser = smoke.browser
 dashboard = smoke.dashboard
 page = smoke.page
 

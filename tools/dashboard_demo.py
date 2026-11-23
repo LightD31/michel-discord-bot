@@ -878,7 +878,10 @@ class Demo:
         self.bot = FakeBot()
         load_extension_stubs(self.bot)
         self.loop = asyncio.new_event_loop()
-        threading.Thread(target=self.loop.run_forever, daemon=True, name="demo-bot").start()
+        self._loop_thread = threading.Thread(
+            target=self.loop.run_forever, daemon=True, name="demo-bot"
+        )
+        self._loop_thread.start()
         asyncio.run_coroutine_threadsafe(seed(self.bot, days=days), self.loop).result(600)
         record_task_runs(self.bot)
 
@@ -927,6 +930,10 @@ class Demo:
 
     def stop(self) -> None:
         self.server.should_exit = True
+        # Stopped and closed: an open loop is a ResourceWarning (P27).
+        self.loop.call_soon_threadsafe(self.loop.stop)
+        self._loop_thread.join(timeout=5)
+        self.loop.close()
         self._tmp.cleanup()
 
 

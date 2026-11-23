@@ -10,6 +10,7 @@ designates, and paths start from the repository root.
 from __future__ import annotations
 
 import ast
+import functools
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -118,7 +119,12 @@ def _dynamic_import(call: ast.Call) -> str | None:
     return None
 
 
+@functools.cache
 def parse(path: Path) -> tuple[ast.Module, Imports, str]:
+    """A file's tree, its imports and its source, read once for every guard (P27).
+
+    Shared between the guards: none may change the tree it gets.
+    """
     source = path.read_text(encoding="utf-8")
     tree = ast.parse(source)
     return tree, Imports(tree, path), source

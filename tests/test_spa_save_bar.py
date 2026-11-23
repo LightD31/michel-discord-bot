@@ -13,7 +13,6 @@ pytest.importorskip("playwright.sync_api")
 import test_spa_smoke as smoke  # noqa: E402
 
 GUILD, MODULE = smoke.GUILD, smoke.MODULE
-browser = smoke.browser
 dashboard = smoke.dashboard
 page = smoke.page
 

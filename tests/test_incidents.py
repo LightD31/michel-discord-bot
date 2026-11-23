@@ -10,6 +10,7 @@ from types import SimpleNamespace
 
 import pytest
 from fastapi import HTTPException
+from source_scan import parse, python_files, rel
 
 from src.core import incidents, log_context
 from src.core.errors import DatabaseError
@@ -152,7 +153,7 @@ NOT_PER_GUILD = {
 
 
 def _task_loops(path: Path):
-    tree = ast.parse(path.read_text(encoding="utf-8"))
+    tree = parse(path)[0]
     for fn in ast.walk(tree):
         if not isinstance(fn, ast.AsyncFunctionDef | ast.FunctionDef):
             continue
@@ -178,18 +179,17 @@ def _binds_guild(loop: ast.For | ast.AsyncFor) -> bool:
 
 
 def test_a_task_looping_over_guilds_binds_each_guild():
-    root = Path(__file__).resolve().parent.parent
     offenders = []
-    for path in sorted((root / "extensions").rglob("*.py")):
-        rel = path.relative_to(root).as_posix()
-        if rel in NOT_PER_GUILD:
+    for path in python_files("extensions"):
+        where = rel(path)
+        if where in NOT_PER_GUILD:
             continue
         for loop in _task_loops(path):
             if not loop.body or not _binds_guild(loop):
                 # The paginators of guilds switched off: nothing to report there.
                 if "not in enabled" in ast.unparse(loop.iter):
                     continue
-                offenders.append(f"{rel}:{loop.lineno}")
+                offenders.append(f"{where}:{loop.lineno}")
     assert offenders == [], (
         "wrap each guild's turn in `with log_context.scope(guild_id=…):` so its failures "
         "show in that server's incidents (src/core/incidents.py)"
