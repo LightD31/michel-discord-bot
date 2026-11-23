@@ -3,11 +3,10 @@
 from __future__ import annotations
 
 from io import BytesIO
-from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
-_FONT_PATH = str(Path(__file__).resolve().parent.parent.parent / "src" / "assets" / "OpenSans.ttf")
+from src.core.images import SANS_FONT_PATH, circular_avatar
 
 CARD_WIDTH = 900
 CARD_HEIGHT = 280
@@ -21,15 +20,6 @@ _BAR_FG = (88, 196, 132)
 _TEXT_PRIMARY = (242, 243, 245)
 _TEXT_DIM = (170, 175, 185)
 _ACCENT = (88, 196, 132)
-
-
-def _circular_avatar(avatar_bytes: bytes, size: int) -> Image.Image:
-    img = Image.open(BytesIO(avatar_bytes)).convert("RGBA").resize((size, size))
-    mask = Image.new("L", (size, size), 0)
-    ImageDraw.Draw(mask).ellipse((0, 0, size, size), fill=255)
-    out = Image.new("RGBA", (size, size), (0, 0, 0, 0))
-    out.paste(img, (0, 0), mask=mask)
-    return out
 
 
 def _rounded_rect(
@@ -79,7 +69,7 @@ def render_rank_card(
     )
     if avatar_bytes:
         try:
-            avatar = _circular_avatar(avatar_bytes, AVATAR_SIZE)
+            avatar = circular_avatar(avatar_bytes, AVATAR_SIZE)
             card.paste(avatar, (avatar_x, avatar_y), avatar)
         except Exception:
             draw.ellipse(
@@ -93,10 +83,10 @@ def render_rank_card(
         )
 
     text_x = avatar_x + AVATAR_SIZE + PADDING
-    name_font = ImageFont.truetype(_FONT_PATH, 36)
-    sub_font = ImageFont.truetype(_FONT_PATH, 20)
-    big_font = ImageFont.truetype(_FONT_PATH, 30)
-    small_font = ImageFont.truetype(_FONT_PATH, 18)
+    name_font = ImageFont.truetype(SANS_FONT_PATH, 36)
+    sub_font = ImageFont.truetype(SANS_FONT_PATH, 20)
+    big_font = ImageFont.truetype(SANS_FONT_PATH, 30)
+    small_font = ImageFont.truetype(SANS_FONT_PATH, 18)
 
     # Top row: display name + (username) + rank chip.
     name_truncated = display_name if len(display_name) <= 18 else display_name[:17] + "…"
@@ -108,7 +98,7 @@ def render_rank_card(
         draw.text((text_x, 86), username_text, font=sub_font, fill=_TEXT_DIM)
 
     rank_text = f"#{rank}" + (f" / {member_count}" if member_count else "") if rank else "—"
-    rank_font = ImageFont.truetype(_FONT_PATH, 26)
+    rank_font = ImageFont.truetype(SANS_FONT_PATH, 26)
     rank_bbox = draw.textbbox((0, 0), rank_text, font=rank_font)
     rank_w = int(rank_bbox[2] - rank_bbox[0])
     chip_w = rank_w + 28

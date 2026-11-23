@@ -14,7 +14,7 @@ from src.discord_ext.messages import (
     send_error,
 )
 
-from ._common import VOTE_PREFIX, get_guild_settings, logger
+from ._common import SUGGESTIONS, VOTE_PREFIX, logger
 
 _CUSTOM_ID_RE = re.compile(rf"^{VOTE_PREFIX}:(\d+):(up|down)$")
 
@@ -34,7 +34,7 @@ class ButtonsMixin:
         sugg_id = int(match.group(1))
         direction: Literal["up", "down"] = "up" if match.group(2) == "up" else "down"
 
-        settings = get_guild_settings(guild_id_of(ctx))
+        settings = SUGGESTIONS.get(guild_id_of(ctx))
         if not settings:
             await send_error(ctx, "Le module suggestions n'est plus actif.")
             return

@@ -26,10 +26,9 @@ from features.moderation import (
     ModerationRepository,
     clamp_timeout,
     humanize_duration,
-    parse_duration,
 )
 from src.core import clock
-from src.core.text import format_discord_timestamp
+from src.core.text import format_discord_timestamp, parse_duration
 from src.discord_ext.errors import failure_reply
 from src.discord_ext.look import card
 from src.discord_ext.messages import (
@@ -46,7 +45,6 @@ from ._common import (
     MODERATION,
     TYPE_LABELS,
     can_moderate,
-    get_guild_settings,
     logger,
 )
 from .logging_ import build_case_embed
@@ -84,7 +82,7 @@ class CommandsMixin:
     # --- shared helpers ----------------------------------------------------
 
     async def _guild_settings_or_error(self, ctx: SlashContext) -> dict | None:
-        settings = get_guild_settings(guild_id_of(ctx))
+        settings = MODERATION.get(guild_id_of(ctx))
         if not settings:
             await send_error(ctx, module_off("modération"), icon="🛡️")
             return None

@@ -38,6 +38,31 @@ def milliseconds_to_string(duration_ms: float | str) -> str:
     )
 
 
+# Seconds per unit of a typed duration: ``j`` (jour) is ``d``, ``w`` a week.
+_DURATION_UNITS = {"s": 1, "m": 60, "h": 3600, "d": 86400, "j": 86400, "w": 604800}
+
+
+def parse_duration(text: str) -> int | None:
+    """Seconds in a typed duration (``"30m"``, ``"1h 30m"``, ``"3j"``, ``"2w"``, ``"45"``).
+
+    Shared by ``/sondage``, ``/concours`` and the moderation timeouts (P33). A
+    bare number is minutes and spaces are ignored. ``None`` for anything else,
+    a stray letter included, and for zero.
+    """
+    total, current = 0, ""
+    for ch in "".join((text or "").lower().split()):
+        if ch.isdigit():
+            current += ch
+        elif ch in _DURATION_UNITS and current:
+            total += int(current) * _DURATION_UNITS[ch]
+            current = ""
+        else:
+            return None
+    if current:
+        total += int(current) * 60  # bare number → minutes
+    return total or None
+
+
 def format_number(num: float) -> str:
     """Format a number with a k suffix for thousands."""
     if num >= 1000:

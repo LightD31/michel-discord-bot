@@ -9,8 +9,8 @@ from features.moderation import (
     contains_invite,
     humanize_duration,
     match_banned_word,
-    parse_duration,
 )
+from src.core.text import parse_duration
 
 
 @pytest.mark.parametrize(

@@ -78,8 +78,3 @@ class StarboardConfig(SchemaBase):
 
 
 STARBOARD = ModuleConfig("moduleStarboard")
-
-
-def get_guild_settings(guild_id: int | str) -> dict | None:
-    """Return per-guild module config dict, or None if disabled/missing."""
-    return STARBOARD.get(guild_id) or None

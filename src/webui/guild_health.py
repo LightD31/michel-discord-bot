@@ -18,13 +18,13 @@ reads stored state.
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Any
 
 from interactions import IntervalTrigger, OrTrigger, Permissions, Task, ThreadChannel, TimeTrigger
 
 from features.rss import RssFeedState
-from features.rss.scheduling import next_poll_at
+from features.rss.scheduling import next_poll_at, poll_interval
 from src.core.health import HealthSnapshot
 from src.discord_ext.channels import fetch_guild_channel
 from src.discord_ext.task_health import task_name
@@ -70,10 +70,6 @@ def module_permissions(modules: list[str], server: dict[str, Any]) -> list[tuple
             if needs_if is None or settings.get(needs_if[0], needs_if[1]):
                 needed[label] = (flag, label)
     return list(needed.values())
-
-
-DEFAULT_RSS_MINUTES = 15
-MIN_RSS_MINUTES = 5
 
 
 def missing_permissions(permissions: Permissions, *, thread: bool) -> list[str]:
@@ -135,17 +131,10 @@ async def channel_report(
     return report
 
 
-def _poll_minutes(settings: dict[str, Any]) -> int:
-    try:
-        return max(MIN_RSS_MINUTES, int(settings.get("rssPollMinutes", DEFAULT_RSS_MINUTES)))
-    except (TypeError, ValueError):
-        return DEFAULT_RSS_MINUTES
-
-
 def rss_report(settings: dict[str, Any], states: dict[str, RssFeedState]) -> list[dict]:
     """Each configured feed's last error, failures in a row and next poll."""
     feeds = settings.get("rssFeeds") if isinstance(settings, dict) else None
-    interval = timedelta(minutes=_poll_minutes(settings or {}))
+    interval = poll_interval(settings or {})
     report = []
     for feed_id, feed in (feeds or {}).items():
         if not isinstance(feed, dict):

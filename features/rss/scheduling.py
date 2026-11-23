@@ -8,12 +8,27 @@ less and less often: its interval doubles with each consecutive failure, up to
 from __future__ import annotations
 
 from datetime import datetime, timedelta
+from typing import Any
 
 from features.rss.models import RssFeedState
 
 #: Longest wait between two attempts on a failing feed. A guild interval above
 #: it is kept as is: the backoff never polls a feed more often than configured.
 BACKOFF_CAP = timedelta(hours=6)
+
+
+DEFAULT_POLL_MINUTES = 15
+MIN_POLL_MINUTES = 5
+MAX_POLL_MINUTES = 24 * 60
+
+
+def poll_interval(settings: dict[str, Any]) -> timedelta:
+    """A guild's ``rssPollMinutes``, clamped to the schema's bounds (``config.json`` may say anything)."""
+    try:
+        minutes = int(settings.get("rssPollMinutes", DEFAULT_POLL_MINUTES))
+    except (TypeError, ValueError):
+        minutes = DEFAULT_POLL_MINUTES
+    return timedelta(minutes=min(max(MIN_POLL_MINUTES, minutes), MAX_POLL_MINUTES))
 
 
 def poll_delay(interval: timedelta, failures: int) -> timedelta:

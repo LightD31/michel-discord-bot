@@ -1,43 +1,10 @@
-"""Duration parsing/formatting for moderation timeouts.
+"""Duration bounds and formatting for moderation timeouts (parsing: ``src.core.text``).
 
 Pure helpers — no Discord or DB imports — so they are trivially unit-testable.
 """
 
-import re
-
-# Seconds per supported unit suffix.
-_UNIT_SECONDS = {
-    "s": 1,
-    "m": 60,
-    "h": 3600,
-    "d": 86400,
-    "w": 604800,
-}
-
 # Discord caps member timeouts at 28 days.
 MAX_TIMEOUT_SECONDS = 28 * 86400
-
-_TOKEN_RE = re.compile(r"(\d+)\s*([smhdw])", re.IGNORECASE)
-
-
-def parse_duration(text: str) -> int | None:
-    """Parse a human duration like ``10m``, ``1h30m``, ``2d`` into seconds.
-
-    A bare integer is interpreted as minutes (``"10"`` → 600). Returns ``None``
-    when *text* contains no recognizable ``<number><unit>`` token. The result is
-    never negative; callers should still :func:`clamp_timeout` before use.
-    """
-    if not text:
-        return None
-    text = text.strip().lower()
-    if text.isdigit():
-        return int(text) * 60
-    total = 0
-    matched = False
-    for value, unit in _TOKEN_RE.findall(text):
-        matched = True
-        total += int(value) * _UNIT_SECONDS[unit.lower()]
-    return total if matched else None
 
 
 def clamp_timeout(seconds: int) -> int:

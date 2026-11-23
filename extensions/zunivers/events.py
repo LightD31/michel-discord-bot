@@ -170,24 +170,23 @@ class EventsMixin(ZuniversBase):
             )
             previous_season = state.event_state.hardcore_season
 
-            if previous_season is None and current_season is not None and current_data:
-                embed = create_season_embed(current_data, "start", settings)
+            if previous_season is None and current_season is not None:
+                embed = create_season_embed(current_season, "start", settings)
                 await channel.send(embed=embed)
                 logger.info(f"New hardcore season: Season {current_season.index}")
 
             elif previous_season is not None and current_season is None:
-                embed = create_season_embed(previous_season.to_dict(), "end", settings)
+                embed = create_season_embed(previous_season, "end", settings)
                 await channel.send(embed=embed)
                 logger.info(f"Hardcore season ended: Season {previous_season.index}")
 
             elif (
                 previous_season is not None
                 and current_season is not None
-                and current_data is not None
                 and previous_season.id != current_season.id
             ):
-                embed_end = create_season_embed(previous_season.to_dict(), "end", settings)
-                embed_start = create_season_embed(current_data, "start", settings)
+                embed_end = create_season_embed(previous_season, "end", settings)
+                embed_start = create_season_embed(current_season, "start", settings)
                 await channel.send(embeds=[embed_end, embed_start])
                 logger.info(
                     f"Season change: Season {previous_season.index} → {current_season.index}"

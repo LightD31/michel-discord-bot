@@ -335,20 +335,3 @@ async def get_minecraft_stats_with_retry(host, port, username, password, host_ke
                 await conn.wait_closed()
             except Exception as e:
                 logger.debug(f"Erreur lors de la fermeture de la connexion: {e}")
-
-
-def format_number(num):
-    if num >= 1000000:
-        return f"{num / 1000000:.2f}M"
-    elif num >= 1000:
-        return f"{num / 1000:.2f}k"
-    else:
-        return str(int(num))
-
-
-def calculate_level(xp):
-    level = 0
-    while xp >= 150 * (1.05 ** (1.55 * level)):
-        xp -= 150 * (1.05 ** (1.55 * level))
-        level += 1
-    return str(level)

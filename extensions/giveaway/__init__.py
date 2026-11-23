@@ -61,12 +61,11 @@ from interactions import (
 )
 
 from features.giveaway import MAX_WINNERS, Giveaway, GiveawayRepository, pick_winners
-from features.polls import parse_duration  # reused: same DSL as /sondage
 from features.xp import XpRepository, calculate_level
 from src.core import clock, log_context
 from src.core.debounce import Coalescer
 from src.core.logging import log_failure
-from src.core.text import EMBED_DESCRIPTION_LIMIT, clip, format_discord_timestamp
+from src.core.text import EMBED_DESCRIPTION_LIMIT, clip, format_discord_timestamp, parse_duration
 from src.discord_ext.autocomplete import MAX_CHOICES, matching_choices
 from src.discord_ext.channels import fetch_guild_channel
 from src.discord_ext.look import Kind, card

@@ -64,7 +64,6 @@ from ._common import (
     STATUS_LABELS,
     SUGGESTIONS,
     VOTE_PREFIX,
-    get_guild_settings,
     logger,
 )
 
@@ -280,7 +279,7 @@ class CommandsMixin:
         scopes=guild_scopes(SUGGESTIONS.guild_ids()),
     )
     async def suggest(self, ctx: SlashContext) -> None:
-        if not get_guild_settings(guild_id_of(ctx)):
+        if not SUGGESTIONS.get(guild_id_of(ctx)):
             await send_error(ctx, module_off("suggestions"), icon="💡")
             return
         await ctx.send_modal(suggest_form(NEW_FORM))
@@ -309,7 +308,7 @@ class CommandsMixin:
         self, ctx: Any, text: str, *, title: str = "", source_url: str | None = None
     ) -> None:
         """Post *text* as a suggestion in the configured channel, and open its thread."""
-        settings = get_guild_settings(guild_id_of(ctx))
+        settings = SUGGESTIONS.get(guild_id_of(ctx))
         if not settings:
             await send_error(ctx, module_off("suggestions"), icon="💡")
             return
@@ -394,7 +393,7 @@ class CommandsMixin:
         match = _DECIDE_RE.match(ctx.custom_id)
         if not match:
             return
-        settings = get_guild_settings(guild_id_of(ctx)) if guild_id_of(ctx) else None
+        settings = SUGGESTIONS.get(guild_id_of(ctx))
         if not settings:
             await send_error(ctx, module_off("suggestions"), icon="💡")
             return
@@ -458,7 +457,7 @@ class CommandsMixin:
     @suggestion_approve.autocomplete("id")
     async def open_suggestion_choices(self, ctx: AutocompleteContext) -> None:
         """The suggestions still to decide, newest first (approved ones, to implement them)."""
-        if not get_guild_settings(guild_id_of(ctx)):
+        if not SUGGESTIONS.get(guild_id_of(ctx)):
             await ctx.send(choices=[])
             return
         try:
@@ -470,7 +469,7 @@ class CommandsMixin:
 
     async def decide(self, ctx: Any, sugg_id: int, status: str, reason: str | None) -> None:
         """Take a staff decision, from a button's form or a command, once."""
-        settings = get_guild_settings(guild_id_of(ctx))
+        settings = SUGGESTIONS.get(guild_id_of(ctx))
         if not settings:
             await send_error(ctx, module_off("suggestions"), icon="💡")
             return

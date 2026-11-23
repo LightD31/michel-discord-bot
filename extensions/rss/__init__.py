@@ -49,7 +49,7 @@ from features.links import shorten_url
 from features.rss import RssEntry, RssFeedState, RssRepository
 from features.rss.network import fetch_feed
 from features.rss.render import DEFAULT_TEMPLATE, format_entry, render_text
-from features.rss.scheduling import is_due, next_poll_at
+from features.rss.scheduling import is_due, next_poll_at, poll_interval
 from src.core import clock
 from src.core.errors import DatabaseError, IntegrationError
 from src.core.http import BlockedUrlError
@@ -191,16 +191,6 @@ def _build_link_button(feed_cfg: dict, entry: RssEntry) -> list[ActionRow] | Non
         return None
 
 
-def _poll_minutes(srv_config: dict) -> int:
-    """Pull the configured poll interval, clamped to a sane floor of 5 minutes."""
-    raw = srv_config.get("rssPollMinutes", 15)
-    try:
-        value = int(raw)
-    except (TypeError, ValueError):
-        value = 15
-    return max(5, value)
-
-
 class RssExtension(Extension):
     MODULE_KEYS = ("moduleRss",)
 
@@ -258,7 +248,7 @@ class RssExtension(Extension):
             except DatabaseError as e:
                 logger.warning("Could not read the RSS state of guild %s: %s", guild_id, e)
                 continue
-            interval = timedelta(minutes=_poll_minutes(srv_cfg))
+            interval = poll_interval(srv_cfg)
             for feed_id, feed_cfg in feeds:
                 state = states.get(feed_id)
                 if not is_due(state, interval, now):
@@ -442,7 +432,7 @@ class RssExtension(Extension):
             await ctx.send("Aucun flux configuré.", ephemeral=True)
             return
         states = await self._repo(guild_id_of(ctx)).states()
-        interval = timedelta(minutes=_poll_minutes(srv_cfg))
+        interval = poll_interval(srv_cfg)
         lines: list[str] = []
         for feed_id, feed_cfg in feeds:
             state = states.get(feed_id)

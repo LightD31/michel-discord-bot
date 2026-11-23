@@ -365,3 +365,17 @@ async def test_a_feed_longer_than_the_seen_set_never_reposts(cycle, newest_first
     for _ in range(3):
         await cycle.run()
     assert [m.split("[")[1].split("]")[0] for m in cycle.channel.sent] == ["Titre 301"]
+
+
+@pytest.mark.parametrize(
+    ("stored", "minutes"),
+    [({}, 15), ({"rssPollMinutes": 30}, 30), ({"rssPollMinutes": 1}, 5),
+     ({"rssPollMinutes": 99999}, 1440), ({"rssPollMinutes": "abc"}, 15)],
+)  # fmt: skip
+def test_the_poll_interval_keeps_to_the_schemas_bounds(stored, minutes):
+    """P33: one reader for the poller and the health card, clamped both ways."""
+    from datetime import timedelta
+
+    from features.rss.scheduling import poll_interval
+
+    assert poll_interval(stored) == timedelta(minutes=minutes)

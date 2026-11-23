@@ -44,7 +44,6 @@ from features.polls import (
     Poll,
     PollRepository,
     native_poll_hours,
-    parse_duration,
     parse_options,
     poll_footer,
 )
@@ -52,7 +51,7 @@ from src.core import clock, log_context
 from src.core import logging as logutil
 from src.core.config import ModuleConfig
 from src.core.logging import log_failure
-from src.core.text import format_discord_timestamp
+from src.core.text import format_discord_timestamp, parse_duration
 from src.discord_ext.channels import fetch_guild_channel
 from src.discord_ext.look import card, ok
 from src.discord_ext.messages import copy_embed, edit_message_if_changed, guild_id_of, send_error

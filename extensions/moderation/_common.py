@@ -137,11 +137,6 @@ TYPE_KINDS: dict[str, Kind] = {
 }
 
 
-def get_guild_settings(guild_id: int | str) -> dict | None:
-    """Return the per-guild module config, or None if disabled/missing."""
-    return MODERATION.get(guild_id) or None
-
-
 def can_moderate(actor: Any, target: Any, me: Any) -> str | None:
     """Return a French error string if *actor* may not moderate *target*, else None.
 
