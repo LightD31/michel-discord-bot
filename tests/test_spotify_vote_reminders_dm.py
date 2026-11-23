@@ -53,6 +53,7 @@ def server_due(remind_time, user_ids):
         repo=FakeRepo(),
         vote_infos={"track_id": "t", "message_id": "m"},
         reminders={remind_time: set(user_ids)},
+        daily_vote=True,
     )
 
 
@@ -92,3 +93,31 @@ async def test_reminders_are_saved_even_when_the_vote_lookup_fails(users, votes_
     await ext._reminder_check_for_server(server)
     assert server.reminders == {due + timedelta(days=1): {2}}
     assert ext.saved
+
+
+async def test_without_a_daily_vote_no_reminder_goes_out_but_each_keeps_its_hour(
+    users, votes_module
+):
+    """P28: ``voteEnabled`` off, there is nothing to remind of; switched back on, they resume."""
+    due = datetime.now(UTC) - timedelta(minutes=1)
+    server = server_due(due, [2])
+    server.daily_vote = False
+    ext = mixin(votes_module)
+    await ext._reminder_check_for_server(server)
+    assert users[2].sent == []
+    assert server.reminders == {due + timedelta(days=1): {2}}
+
+
+async def test_a_reminder_cannot_be_set_without_a_daily_vote(votes_module):
+    from discord_fakes import FakeChannel, FakeCtx, FakeGuild, FakeMember, run
+
+    guild = FakeGuild(1)
+    ctx = FakeCtx(FakeMember(guild=guild), guild.add_channel(FakeChannel(2)))
+    server = server_due(datetime.now(UTC), [])
+    server.daily_vote = False
+    ext = mixin(votes_module)
+    ext.get_server = lambda guild_id: server
+    await run(votes_module.VotesMixin.setreminder, ext, ctx, heure=20, minute=0)
+    assert "pas de vote quotidien" in ctx.last and "tableau de bord" in ctx.last
+    assert all(not ids for ids in server.reminders.values())  # nobody was added
+    assert ext.saved == []

@@ -114,15 +114,6 @@ export async function reloadAllExtensions() {
     if (label && original) label.textContent = original;
 }
 
-export async function reloadExtension(extName) {
-    try {
-        const result = await api(`/api/reload/${extName}`, { method: 'POST' });
-        const syncSuffix = commandSyncSuffix(result);
-        const syncFailed = !!(result?.commandSync && !result.commandSync.synced);
-        toast(`${extName} rechargée — config appliquée !${syncSuffix}`, syncFailed ? 'warning' : 'success');
-    } catch (e) { /* handled by api() */ }
-}
-
 registerActions({
     reloadAllExtensions,
     toggleExtension,

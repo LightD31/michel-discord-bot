@@ -15,8 +15,6 @@ from src.discord_ext.channels import fetch_guild_channel
 
 from ._common import (
     COUNTRY_CODE,
-    EVENT_MEDALS_PATH,
-    MEDALLISTS_PATH,
     MEDALS_PATH,
     OLYMPICS,
     POLL_INTERVAL_MINUTES,
@@ -130,24 +128,6 @@ class TasksMixin:
             log_failure(logger, f"Erreur lors de l'initialisation des médailles : {e}")
 
     # ─── Récupération de données supplémentaires ──────────────────────────────
-
-    async def _fetch_all_medallists(self) -> list[dict[str, Any]]:
-        """Récupère la liste de tous les médaillés.
-
-        Returns:
-            Liste de tous les athlètes médaillés.
-        """
-        data = await self._olympics_fetch(MEDALLISTS_PATH)
-        return data.get("athletes", [])
-
-    async def _fetch_event_medals(self) -> dict[str, Any]:
-        """Récupère les médailles par épreuve.
-
-        Returns:
-            Données des médailles par discipline/épreuve.
-        """
-        data = await self._olympics_fetch(EVENT_MEDALS_PATH)
-        return data.get("eventMedals", {})
 
     async def _send_alerts(
         self,

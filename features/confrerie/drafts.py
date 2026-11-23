@@ -143,11 +143,6 @@ def resolve_author(user_id: int, display_name: str, author_map: dict[str, str]) 
     return (name, True) if name else (display_name, False)
 
 
-def first_url(text: str) -> str:
-    match = _URL.search(text)
-    return match.group(0).rstrip(").,>") if match else ""
-
-
 def tags_to_options(tags: Iterable[str], options: list[str]) -> list[str]:
     """Forum tag names that match a Notion option (canonical spelling)."""
     return np.dedupe(m for tag in tags if (m := np.canonical_option(tag, options)))

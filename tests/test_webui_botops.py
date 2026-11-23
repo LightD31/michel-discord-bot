@@ -134,14 +134,16 @@ class _DevCtx(WebUIContext):
         return SimpleNamespace(username="dev", user_id="1")
 
 
-async def test_reload_route_dispatches_and_syncs_once(bot_loop):
+async def test_reload_route_dispatches_and_syncs_once(bot_loop, monkeypatch):
+    monkeypatch.setattr(_FakeBot, "loaded", [SimpleNamespace(extension_name="extensions.xp")])
     bot = _FakeBot()
     app = FastAPI()
     app.include_router(create_router(_DevCtx(bot=bot, bot_loop=bot_loop, oauth=None)))  # type: ignore[arg-type]
 
     with TestClient(app) as client:
-        body = client.post("/api/reload/extensions.xp").json()
+        body = client.post("/api/reload").json()
 
+    assert body["reloaded"] == ["extensions.xp"]
     assert body["commandSync"] == {"synced": True, "error": None}
     assert [(action, name) for action, name, _, _ in bot.calls] == [("reload", "extensions.xp")]
     assert all(call[2] is bot_loop for call in bot.calls)
@@ -175,7 +177,6 @@ async def test_unknown_extensions_are_refused_before_any_import_or_write(bot_loo
     bot = _FakeBot()
     client, ctx = _extensions_client(bot, bot_loop)
     with client:
-        assert client.post(f"/api/reload/{name}").status_code == 404
         toggle = client.post(f"/api/extensions/{name}/toggle", json={"enabled": True})
         assert toggle.status_code == 404
     assert bot.calls == []
@@ -187,18 +188,19 @@ async def test_a_loaded_extension_is_known_even_if_not_on_disk(bot_loop, monkeyp
     bot = _FakeBot()
     client, _ = _extensions_client(bot, bot_loop)
     with client:
-        assert client.post("/api/reload/extensions._parked").status_code == 200
+        toggle = client.post("/api/extensions/extensions._parked/toggle", json={"enabled": False})
+        assert toggle.status_code == 200
 
 
-async def test_failed_reload_reports_the_error_type_only(bot_loop):
+async def test_failed_reload_reports_the_error_type_only(bot_loop, monkeypatch):
+    monkeypatch.setattr(_FakeBot, "loaded", [SimpleNamespace(extension_name="extensions.xp")])
     bot = _FakeBot()
     bot.fail = RuntimeError("mongodb://admin:hunter2@db:27017 unreachable")
     client, _ = _extensions_client(bot, bot_loop)
     with client:
-        one = client.post("/api/reload/extensions.xp")
-        assert one.status_code == 500
-        assert "hunter2" not in one.text
-        assert "RuntimeError" in one.json()["detail"]
+        response = client.post("/api/reload")
+    assert "hunter2" not in response.text
+    assert response.json()["failed"] == [{"name": "extensions.xp", "error": "RuntimeError"}]
 
 
 def test_available_extensions_matches_main_discovery(tmp_path):

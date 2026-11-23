@@ -53,7 +53,7 @@ def test_layer_imports(package: str, forbidden: set[str]):
         "import interactions.api.events as events",
         "from interactions import Client",
         "from src.discord_ext.look import card",
-        "from src.discord_ext import embeds",
+        "from src.discord_ext import look",
         "import importlib\nimportlib.import_module('interactions')",
         "__import__('src.webui.app')",
     ],

@@ -107,7 +107,10 @@ async def test_no_poll_opens_once_every_track_was_voted_on(votes_mod):
         harness, server
     )
     server = SimpleNamespace(
-        guild_id="1", repo=Repo(), vote_infos={"message_id": "9", "track_id": "a"}
+        guild_id="1",
+        repo=Repo(),
+        vote_infos={"message_id": "9", "track_id": "a"},
+        daily_vote=True,
     )
 
     await votes_mod.VotesMixin._start_new_vote(harness, server)
@@ -172,7 +175,7 @@ async def test_closing_the_daily_vote(votes_mod, monkeypatch, outcome, state):
 CLOSED = {"message_id": None, "track_id": None, "extensions": 0, "reminder_message_id": None}
 
 
-def daily_harness(votes_mod, *, song, start_fails=False):
+def daily_harness(votes_mod, *, song, start_fails=False, daily_vote=True):
     """A VotesMixin stand-in around one guild whose daily vote is due (B07)."""
     events: list = []
 
@@ -230,6 +233,7 @@ def daily_harness(votes_mod, *, song, start_fails=False):
         repo=Repo(),
         discord2name={},
         vote_infos={"message_id": "9", "track_id": "t", "extensions": 2},
+        daily_vote=daily_vote,
     )
     return harness, server, events
 
@@ -292,3 +296,29 @@ async def test_a_vote_on_a_poll_whose_record_is_gone_says_it_is_over(votes_mod, 
 
     assert len(ctx.replies) == 1 and ctx.replies[0].get("ephemeral")
     assert "terminé" in str(ctx.replies[0])
+
+
+async def test_without_a_daily_vote_none_opens(votes_mod):
+    """P28: ``voteEnabled`` off and no vote open: the daily run does nothing."""
+    harness, server, events = daily_harness(votes_mod, song={"added_by": "1"}, daily_vote=False)
+    server.vote_infos = {"message_id": None, "track_id": None}
+    await votes_mod.VotesMixin._randomvote_for_server(harness, server)
+    assert events == []
+
+
+async def test_switched_off_the_open_vote_ends_and_no_other_opens(votes_mod):
+    """The vote that was open goes to its end; ``_start_new_vote`` then opens nothing."""
+
+    class Repo:
+        async def playlist_track_ids(self):
+            raise AssertionError("no track is drawn without a daily vote")
+
+    server = SimpleNamespace(guild_id="1", repo=Repo(), vote_infos={}, daily_vote=False)
+    await votes_mod.VotesMixin._start_new_vote(SimpleNamespace(), server)
+
+
+@pytest.mark.parametrize(("stored", "expected"), [({"voteEnabled": True}, True), ({}, False)])
+def test_the_daily_vote_follows_its_switch(votes_mod, store_config, stored, expected):
+    store_config({"config": {}, "servers": {"1": {"moduleSpotify": {"enabled": True, **stored}}}})
+    common = importlib.import_module("extensions.spotify._common")
+    assert common.ServerData("1").daily_vote is expected

@@ -45,7 +45,7 @@ A modular, multi-guild Discord bot built with **interactions.py**. Michel ships 
 | **Reaction Roles** | Self-assignable roles via persistent buttons, with a menu builder in the Web UI. |
 | **Reminders** | `/rappel creer quand:"samedi 9h"` ("dans 2h", "demain 18h30", read back as you type) with optional recurrence (25 per member and server), `/rappel liste` to see them and when they next fire, `/rappel supprimer` (a menu, several at once). DM delivery to its author with a snooze button, persisted and restored across restarts. |
 | **Custom Commands** | Slash commands defined per server from the Web UI — a name, a description, and a pool of responses (GIF links or plain text) picked at random. New commands reach Discord without a restart. |
-| **Random** | `/pick` (random choice from a list) and `/dice` (configurable die roll) powered by Random.org. |
+| **Random** | `/pick` (a choice from a list), `/roll` (a die), `/coin` (heads or tails) and `/shuffle` (a list in random order). |
 | **User Info** | Per-user profile lookup and shared member-tracking stats. |
 | **Tricount** | Shared expense tracker — groups, expenses, recurring charges, balances, and chart reports. |
 
@@ -226,7 +226,7 @@ CI fails if the lockfile drifts from `pyproject.toml`.
 
 All configuration lives in `config/config.json`, with two top-level keys:
 
-- **`config`** — global sections: `discord` (token, IDs), `mongodb`, `webui`, `backup`, plus API credentials for integrations (Spotify, Twitch, YouTube, Notion, AI (OpenRouter, NanoGPT), Uptime Kuma, Random.org, Shlink…) and an optional `extensions` map of `"extensions.<name>": bool` to explicitly enable or disable discovered extensions.
+- **`config`** — global sections: `discord` (token, IDs), `mongodb`, `webui`, `backup`, plus API credentials for integrations (Spotify, Twitch, YouTube, Notion, AI (OpenRouter, NanoGPT), Uptime Kuma, Shlink…) and an optional `extensions` map of `"extensions.<name>": bool` to explicitly enable or disable discovered extensions.
 - **`servers`** — per-guild module configs keyed by guild ID (`moduleXp`, `moduleBirthday`, …, each with an `enabled` flag), plus a `discord2name` display-name mapping.
 
 Config is read through `src.core.config`. An extension declares `MODULE = ModuleConfig("moduleName")` and reads `MODULE.get(guild_id)` (that guild's settings), `MODULE.enabled(guild_id)` or `MODULE.items()` when it needs them; `global_config()` returns the global sections. Every call reads the in-memory store the dashboard writes to, so a saved setting applies on the next read, without reloading the extension. Only command scopes are taken at import, which is why switching a module on or off in a guild reloads its extensions.

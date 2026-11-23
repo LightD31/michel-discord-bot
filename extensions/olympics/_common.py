@@ -107,8 +107,6 @@ def olympics_headers() -> dict[str, str]:
 # ─── Constantes ───────────────────────────────────────────────────────────────
 # Endpoints, relative to the configured API (global « olympics » section).
 MEDALS_PATH = "medals"
-MEDALLISTS_PATH = "medallists"
-EVENT_MEDALS_PATH = "eventmedals"
 
 POLL_INTERVAL_MINUTES = 3
 COUNTRY_CODE = "FRA"

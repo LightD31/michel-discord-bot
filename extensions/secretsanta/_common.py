@@ -57,12 +57,6 @@ logger = logutil.init_logger(__name__)
 SANTA = ModuleConfig("moduleSecretSanta")
 
 
-def session_settings(context_id: str) -> dict[str, Any]:
-    """The module's settings for the session's guild (``{}`` for a group DM)."""
-    guild_id = context_guild_id(context_id)
-    return SANTA.get(guild_id) if guild_id else {}
-
-
 def relay_enabled(context_id: str) -> bool:
     """Whether the session's members may write to each other through the bot.
 

@@ -17,8 +17,7 @@ from features.coloc.constants import (
 )
 from features.coloc.utils import format_event_items, parse_zunivers_date
 from src.core.text import format_discord_timestamp
-from src.discord_ext.embeds import SPACER_FIELD
-from src.discord_ext.look import Kind, card
+from src.discord_ext.look import SPACER_FIELD, Kind, card
 
 
 def create_event_embed(

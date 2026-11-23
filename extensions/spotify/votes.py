@@ -93,6 +93,8 @@ class VotesMixin(SpotifyBase):
         message_id = server.vote_infos.get("message_id")
         track_id = server.vote_infos.get("track_id")
         if not message_id or not track_id:
+            if not server.daily_vote:
+                return  # switched off: no vote open, none to open
             logger.warning(
                 "Pas de vote en cours pour le serveur %s, lancement d'un nouveau vote",
                 server.guild_id,
@@ -281,8 +283,15 @@ class VotesMixin(SpotifyBase):
 
         Once every track of the playlist has been put to the vote, no poll
         opens: the previous one is forgotten, so the next run tries again (a
-        song added since then can be drawn).
+        song added since then can be drawn). A server whose daily vote is
+        switched off (``voteEnabled``) opens none: the vote that was open ran
+        to its end as usual.
         """
+        if not server.daily_vote:
+            logger.info(
+                "Serveur %s : vote quotidien désactivé, pas de nouveau vote", server.guild_id
+            )
+            return
         track_id = pick_vote_track(
             await server.repo.playlist_track_ids(), await server.repo.voted_track_ids()
         )
@@ -448,6 +457,14 @@ class VotesMixin(SpotifyBase):
     async def setreminder(self, ctx: SlashContext, heure, minute):
         """Schedule a recurring daily DM nudging the user to vote."""
         server = self.get_server(ctx.guild_id)
+        if not server.daily_vote:
+            await send_error(
+                ctx,
+                "Il n'y a pas de vote quotidien sur ce serveur : un administrateur peut "
+                "l'activer dans le tableau de bord (Spotify → Vote quotidien).",
+                icon="🗳️",
+            )
+            return
         await self.ensure_state(server)
         if str(ctx.channel_id) == str(server.channel_id):
             logger.info("%s a ajouté un rappel à %s:%s", ctx.user.display_name, heure, minute)
@@ -495,7 +512,10 @@ class VotesMixin(SpotifyBase):
                 for user_id in user_ids.copy():
                     # Rescheduled whatever the DM does: one member with closed
                     # DMs must not keep the others' reminders from going out.
-                    await self._send_vote_reminder(server, user_id)
+                    # Without a daily vote there is nothing to remind of, but the
+                    # reminder keeps its hour for when the vote is switched back on.
+                    if server.daily_vote:
+                        await self._send_vote_reminder(server, user_id)
                     server.reminders.setdefault(
                         clock.local_step(remind_time, timedelta(days=1)), set()
                     ).add(user_id)

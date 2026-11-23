@@ -91,20 +91,18 @@ export function channelOptionsHtml(data, exclude, forums = false) {
     return opts;
 }
 
-// *serverId*: the server whose channels to list, the current one by default
-// (the global settings pass the development server's: they have no current one).
-export async function populateChannelPickers(container, serverId = state.currentServerId, missing = '') {
-    if (!container) return;
+export async function populateChannelPickers(container) {
+    const serverId = state.currentServerId;
+    if (!serverId || !container) return;
     const pickers = container.querySelectorAll('.channel-picker');
     if (pickers.length === 0) return;
-    const data = serverId ? await fetchServerChannels(serverId) : null;
-    if (!serverId && !missing) return;
+    const data = await fetchServerChannels(serverId);
     if (!data) {
         // Fall back to manual text entry
         for (const picker of pickers) {
             toggleChannelPickerMode(picker.querySelector('.btn-channel-toggle'), true);
             const select = picker.querySelector('select');
-            if (select) select.innerHTML = String(html`<option value="">${serverId ? '— Bot hors ligne —' : missing}</option>`);
+            if (select) select.innerHTML = `<option value="">— Bot hors ligne —</option>`;
         }
         return;
     }

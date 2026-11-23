@@ -193,11 +193,6 @@ class MatchSnapshot:
     winner_team: TeamRef | None
     games: tuple[GameSnapshot, ...]
 
-    def involves_team_id(self, team_id: int) -> bool:
-        return (self.first_team is not None and self.first_team.id == team_id) or (
-            self.second_team is not None and self.second_team.id == team_id
-        )
-
     def involves_team_slug(self, slug: str) -> bool:
         slug_lower = slug.lower()
         return (self.first_team is not None and self.first_team.slug.lower() == slug_lower) or (

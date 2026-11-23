@@ -279,6 +279,10 @@ def embeds_to_v2(embeds: list[Embed], extra: int = 0) -> list[ContainerComponent
     return cards
 
 
+# A zero-width field, to leave a cell empty in a three-column embed.
+SPACER_FIELD: dict[str, Any] = {"name": "\u200b", "value": "\u200b", "inline": True}
+
+
 def custom(**fields: Any) -> Embed:
     """An embed whose look a server's admins chose (Embed manager, role menus): no branding."""
     return Embed(**fields)
@@ -304,6 +308,7 @@ __all__ = [
     "LIGHT_EMBED_BACKGROUND",
     "LOOKS",
     "MICHEL",
+    "SPACER_FIELD",
     "STATUS",
     "Kind",
     "Look",
