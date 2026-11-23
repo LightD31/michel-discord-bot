@@ -121,8 +121,10 @@ async def test_the_code_exchange_sends_the_secret_in_the_body(monkeypatch):
 
     monkeypatch.setattr(twitch_auth.http_client, "session", session)
     assert await twitch_auth.exchange_code("id", "secret", "c0de", "https://cb") == ("tok", "ref")
-    assert "secret" not in sent["url"] and sent["data"]["client_secret"] == "secret"
-    assert sent["data"]["grant_type"] == "authorization_code"
+    form = sent["data"]
+    assert "secret" not in sent["url"]
+    assert form["client_secret"] == "secret"  # pragma: allowlist secret
+    assert form["grant_type"] == "authorization_code"
 
 
 async def test_start_sets_a_secure_state_cookie_behind_https(configured):
