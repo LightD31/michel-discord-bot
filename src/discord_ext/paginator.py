@@ -8,8 +8,12 @@
 
 from __future__ import annotations
 
-from interactions import ComponentContext, Message
+from typing import Any
+
+from interactions import ComponentContext, Embed, Message, MessageFlags
 from interactions.ext import paginators
+
+from src.discord_ext.look import embeds_to_v2
 
 # ---------------------------------------------------------------------------
 # Custom paginator
@@ -17,7 +21,26 @@ from interactions.ext import paginators
 
 
 class CustomPaginator(paginators.Paginator):
-    """Custom paginator with overridden button handling."""
+    """Custom paginator with overridden button handling.
+
+    ``v2 = True`` (P26) renders each page as a Components V2 card, its buttons
+    under it: use :meth:`payload` to send or edit, and the buttons do the same.
+    """
+
+    v2: bool = False
+
+    def payload(self) -> dict[str, Any]:
+        """What to send or edit the message with: :meth:`to_dict`, or its V2 card."""
+        data = self.to_dict()
+        if not self.v2:
+            return data
+        rows = list(data.get("components") or [])
+        buttons = sum(1 + len(row.get("components", [])) for row in rows)
+        pages = [Embed.from_dict(e) for e in data.get("embeds") or []]
+        return {
+            "components": [*embeds_to_v2(pages, extra=buttons), *rows],
+            "flags": MessageFlags.IS_COMPONENTS_V2,
+        }
 
     def set_pages(self, pages: list, *, page_index: int | None = None) -> None:
         """Swap in freshly rendered pages, keeping this paginator's identity.
@@ -59,7 +82,7 @@ class CustomPaginator(paginators.Paginator):
                 if self.callback is not None:
                     return await self.callback(ctx)
 
-        await ctx.edit_origin(**self.to_dict())
+        await ctx.edit_origin(**self.payload())
         return None
 
 

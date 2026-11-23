@@ -23,7 +23,16 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Literal
 
-from interactions import ContainerComponent, Embed, SeparatorComponent, TextDisplayComponent
+from interactions import (
+    Color,
+    ContainerComponent,
+    Embed,
+    MediaGalleryComponent,
+    SectionComponent,
+    SeparatorComponent,
+    TextDisplayComponent,
+    ThumbnailComponent,
+)
 
 # Discord's embed backgrounds, dark and light themes.
 DARK_EMBED_BACKGROUND = 0x2B2D31
@@ -210,6 +219,66 @@ def card_v2(
     return ContainerComponent(*parts, accent_color=colour(module, kind))
 
 
+V2_MAX_COMPONENTS = 40  # Discord's limit for a whole message, nested ones included
+
+
+def _count(component: Any) -> int:
+    """*component* and everything nested in it, as Discord counts them."""
+    inner = list(getattr(component, "components", None) or [])
+    accessory = getattr(component, "accessory", None)
+    return 1 + sum(_count(c) for c in inner) + (1 if accessory is not None else 0)
+
+
+def _embed_card(embed: Embed, *, compact: bool) -> ContainerComponent:
+    head = []
+    if embed.author and embed.author.name:
+        head.append(f"-# {embed.author.name}")
+    if embed.title:
+        head.append(f"## [{embed.title}]({embed.url})" if embed.url else f"## {embed.title}")
+    blocks = [embed.description or ""] + [f"**{f.name}**\n{f.value}" for f in embed.fields or []]
+    blocks = [b for b in blocks if b and b.strip()]
+    footer = embed.footer.text if embed.footer and embed.footer.text else ""
+    parts: list[Any] = []
+    if compact:  # one text for the whole embed: Discord's 40 components were short
+        text = "\n".join(head)
+        body = v2_texts([text, *blocks, f"-# {footer}" if footer else ""], V2_TEXT_LIMIT)
+        parts.extend(TextDisplayComponent(t) for t in body[:1] if t)
+    else:
+        top = TextDisplayComponent("\n".join(head) or "\u200b")
+        thumbnail = embed.thumbnail.url if embed.thumbnail and embed.thumbnail.url else None
+        if thumbnail:
+            parts.append(
+                SectionComponent(components=[top], accessory=ThumbnailComponent(thumbnail))
+            )
+        elif head:
+            parts.append(top)
+        if blocks:
+            parts.append(SeparatorComponent(divider=True))
+            parts.extend(TextDisplayComponent(t) for t in v2_texts(blocks))
+        if embed.image and embed.image.url:
+            parts.append(MediaGalleryComponent(items=[embed.image.url]))
+        if footer:
+            parts.append(SeparatorComponent(divider=False))
+            parts.append(TextDisplayComponent(f"-# {footer}"))
+    accent = embed.color if isinstance(embed.color, Color | int | str) else None
+    return ContainerComponent(*parts, accent_color=accent)
+
+
+def embeds_to_v2(embeds: list[Embed], extra: int = 0) -> list[ContainerComponent]:
+    """Cards built with ``card()`` as Components V2 containers, one per embed (P26).
+
+    The title (a link when it has one), the author line, the thumbnail beside
+    the title, the description and each field as a text, the image, the footer
+    (the timestamp is left out: a refresher would differ every time). When the
+    whole would pass Discord's 40 components (*extra*: those sent beside, a row
+    of buttons), each embed becomes one text instead.
+    """
+    cards = [_embed_card(e, compact=False) for e in embeds]
+    if sum(_count(c) for c in cards) + extra > V2_MAX_COMPONENTS:
+        cards = [_embed_card(e, compact=True) for e in embeds]
+    return cards
+
+
 def custom(**fields: Any) -> Embed:
     """An embed whose look a server's admins chose (Embed manager, role menus): no branding."""
     return Embed(**fields)
@@ -245,6 +314,7 @@ __all__ = [
     "card",
     "card_v2",
     "colour",
+    "embeds_to_v2",
     "custom",
     "footer_text",
     "look_of",

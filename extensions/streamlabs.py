@@ -11,6 +11,7 @@ from interactions import (
     Embed,
     Extension,
     IntervalTrigger,
+    MessageFlags,
     Permissions,
     Task,
     listen,
@@ -28,7 +29,7 @@ from src.core.logging import log_failure
 from src.core.tasks import spawn
 from src.core.text import escape_md
 from src.discord_ext.links import shorten_embeds
-from src.discord_ext.look import card
+from src.discord_ext.look import card, embeds_to_v2
 from src.discord_ext.messages import (
     GuildMessages,
     edit_message_if_changed,
@@ -128,6 +129,7 @@ class StreamlabsCharityExtension(Extension):
             pin_key="streamlabsPinMessage",
             initial_content="Initialisation Streamlabs Charity…",
             logger=logger,
+            v2=True,
         )
 
     @listen()
@@ -246,7 +248,10 @@ class StreamlabsCharityExtension(Extension):
             tags=["streamlabs"],
         )
         await edit_message_if_changed(
-            message, content="", embeds=embeds, ignore_timestamp=True, logger=logger
+            message,
+            components=embeds_to_v2(embeds),
+            flags=MessageFlags.IS_COMPONENTS_V2,
+            logger=logger,
         )
 
     def categorize_members(self, members_dict):
@@ -372,7 +377,10 @@ class StreamlabsCharityExtension(Extension):
             tags=["streamlabs"],
         )
         await edit_message_if_changed(
-            message, content="", embeds=embeds, ignore_timestamp=True, logger=logger
+            message,
+            components=embeds_to_v2(embeds),
+            flags=MessageFlags.IS_COMPONENTS_V2,
+            logger=logger,
         )
 
     def list_members(self, members_dict):

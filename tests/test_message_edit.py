@@ -307,3 +307,25 @@ async def test_a_message_that_is_not_v2_yet_differs():
     message.flags = 0
     payload = {"components": [], "flags": MessageFlags.IS_COMPONENTS_V2}
     assert await edit_message_if_changed(message, **payload) is True
+
+
+async def test_an_uploaded_image_in_a_v2_card_compares_by_its_name():
+    from interactions import MessageFlags
+    from interactions.models.discord.components import process_components
+
+    from src.discord_ext.look import embeds_to_v2
+
+    embed = Embed(title="Stats")
+    embed.set_image("attachment://stats.png")
+    sent = process_components(embeds_to_v2([embed]))
+    gallery = sent[0]["components"][-1]
+    gallery["items"][0]["media"] = {
+        "url": "https://cdn.discordapp.com/attachments/1/2/stats.png?ex=abc",
+        "proxy_url": "https://media.discordapp.net/attachments/1/2/stats.png",
+        "width": 800,
+        "height": 400,
+    }
+    message = FakeMessage(components=sent)
+    message.flags = MessageFlags.IS_COMPONENTS_V2
+    payload = {"components": embeds_to_v2([embed]), "flags": MessageFlags.IS_COMPONENTS_V2}
+    assert await edit_message_if_changed(message, **payload) is False

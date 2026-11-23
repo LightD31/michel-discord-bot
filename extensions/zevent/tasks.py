@@ -5,7 +5,7 @@ import os
 from datetime import UTC, datetime
 from typing import Any
 
-from interactions import Embed, File, IntervalTrigger, Task, utils
+from interactions import Embed, File, IntervalTrigger, MessageFlags, Task, utils
 
 from features.zevent.history import compare_milestone, format_euros, record_message
 from features.zevent.repository import ZeventStateRepository
@@ -13,7 +13,7 @@ from src.core import clock, log_context
 from src.core import logging as logutil
 from src.core.http import fetch
 from src.core.logging import log_failure
-from src.discord_ext.look import card
+from src.discord_ext.look import card, embeds_to_v2
 from src.discord_ext.messages import edit_message_if_changed
 
 from ._base import ZeventBase
@@ -107,8 +107,8 @@ class TasksMixin(ZeventBase):
             try:
                 await edit_message_if_changed(
                     guild.message,
-                    embeds=embeds,
-                    content="",
+                    components=embeds_to_v2(embeds),
+                    flags=MessageFlags.IS_COMPONENTS_V2,
                     files=[File("data/Zevent_logo.png")],
                     logger=logger,
                 )
@@ -460,7 +460,10 @@ class TasksMixin(ZeventBase):
             for guild, _ in guilds:
                 if guild.message:
                     await edit_message_if_changed(
-                        guild.message, embeds=[simple_embed], content="", logger=logger
+                        guild.message,
+                        components=embeds_to_v2([simple_embed]),
+                        flags=MessageFlags.IS_COMPONENTS_V2,
+                        logger=logger,
                     )
         except Exception as e:
             log_failure(logger, f"Failed to send simplified update: {e}")

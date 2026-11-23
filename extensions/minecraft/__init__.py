@@ -38,6 +38,7 @@ class Minecraft(Extension, StatusMixin, StatsMixin):
             pin_key="minecraftPinMessage",
             initial_content="Initialisation du statut Minecraft…",
             logger=logger,
+            v2=True,
         )
         # Per guild: the last stats table shown, the last channel rename, and
         # the scheduled event announcing players online (looked up once).

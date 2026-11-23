@@ -313,3 +313,47 @@ def test_v2_blocks_are_packed_within_discords_limits():
     assert v2_texts(["x" * 3000, "y" * 3000]) == ["x" * 3000, "y" * 3000]
     assert len(v2_texts(["z" * 4000] * 50)) == V2_MAX_TEXTS
     assert v2_texts(["w" * 5000]) == ["w" * 4000]
+
+
+def test_an_embed_becomes_a_v2_card_with_its_parts():
+    from interactions.models.discord.components import process_components
+
+    from src.core import clock
+    from src.discord_ext.look import embeds_to_v2
+
+    embed = card(
+        "moduleZevent",
+        title="Zevent",
+        url="https://zevent.fr",
+        description="En direct",
+        timestamp=clock.now(),
+    )
+    embed.add_field(name="Total", value="150 000 €")
+    embed.set_thumbnail("attachment://Zevent_logo.png")
+    embed.set_image("https://example.com/banner.png")
+    (container,) = process_components(embeds_to_v2([embed]))
+    parts = container["components"]
+    assert container["accent_color"] == LOOKS["moduleZevent"].accent
+    assert (
+        parts[0]["type"] == 9
+        and parts[0]["accessory"]["media"]["url"] == "attachment://Zevent_logo.png"
+    )
+    assert parts[0]["components"][0]["content"] == "-# 🎉 Zevent\n## [Zevent](https://zevent.fr)"
+    assert parts[2]["content"] == "En direct\n\n**Total**\n150 000 €"
+    assert parts[3]["items"][0]["media"]["url"] == "https://example.com/banner.png"
+    assert parts[-1]["content"] == "-# Michel · Zevent"  # no timestamp: a refresh would differ
+
+
+def test_too_many_parts_fold_each_embed_into_one_text():
+    from src.discord_ext.look import V2_MAX_COMPONENTS, _count, embeds_to_v2
+
+    embeds = []
+    for i in range(6):
+        embed = card("moduleZevent", title=f"Lieu {i}", description="x")
+        embed.set_thumbnail("https://example.com/t.png")
+        embed.set_image("https://example.com/i.png")
+        embeds.append(embed)
+    cards = embeds_to_v2(embeds, extra=6)
+    assert sum(_count(c) for c in cards) + 6 <= V2_MAX_COMPONENTS
+    assert [len(c.components) for c in cards] == [1] * 6
+    assert cards[0].components[0].content.startswith("-# 🎉 Zevent\n## Lieu 0")

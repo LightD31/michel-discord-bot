@@ -205,6 +205,7 @@ class LeaderboardMixin:
                 initial_content="Initialisation du leaderboard…",
                 pin=bool(guild_config.get("xpPinMessage", False)),
                 logger=logger,
+                v2=True,
             )
             if message is None:
                 logger.warning("Could not get or create leaderboard message for %s", guild_id)
@@ -220,17 +221,10 @@ class LeaderboardMixin:
                 self._leaderboard_paginators[guild_id] = paginator
             # Refreshes always render page 1, as they did before this was reused.
             paginator.set_pages(embeds, page_index=0)
+            paginator.v2 = True  # a Components V2 card, its buttons under it (P26)
 
             logger.debug("Updating leaderboard for %s", guild.name)
-            paginator_dict = paginator.to_dict()
-            await edit_message_if_changed(
-                message,
-                content="",
-                embeds=paginator_dict["embeds"],
-                components=paginator_dict["components"],
-                ignore_timestamp=True,
-                logger=logger,
-            )
+            await edit_message_if_changed(message, logger=logger, **paginator.payload())
         except Exception as e:
             log_failure(
                 logger,

@@ -10,6 +10,7 @@ from interactions import (
     Embed,
     Guild,
     IntervalTrigger,
+    MessageFlags,
     ScheduledEventStatus,
     ScheduledEventType,
     Task,
@@ -20,7 +21,7 @@ from mcstatus import JavaServer
 from features.minecraft import MinecraftSettings
 from src.core import clock, log_context
 from src.core.logging import log_failure
-from src.discord_ext.look import card
+from src.discord_ext.look import card, embeds_to_v2
 from src.discord_ext.messages import GuildMessages, edit_message_if_changed
 
 from ._common import MINECRAFT, build_stats_embed, logger
@@ -96,7 +97,10 @@ class StatusMixin:
             embed1, name = self._create_sleeping_embed(message, settings)
 
         await edit_message_if_changed(
-            message, content="", embeds=[embed1, embed2], ignore_timestamp=True, logger=logger
+            message,
+            components=embeds_to_v2([embed1, embed2]),
+            flags=MessageFlags.IS_COMPONENTS_V2,
+            logger=logger,
         )
         await self._update_channel_name(guild_id, channel, name)
         await self._update_scheduled_event(guild_id, channel, players_online, settings)
