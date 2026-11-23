@@ -39,7 +39,7 @@ from features.birthday import (
     strip_year_from_format,
 )
 from features.secretsanta.dates import MONTH_NAMES
-from src.core import clock
+from src.core import clock, log_context
 from src.core import logging as logutil
 from src.core.config import ModuleConfig
 from src.core.errors import DatabaseError, ValidationError
@@ -415,20 +415,24 @@ class BirthdayExtension(Extension):
         logger.debug("Starting birthday check task")
         try:
             for guild_id in MODULE.guild_ids():
-                try:
-                    birthdays = await self._repo(guild_id).find_all()
-                    logger.debug(
-                        "Found %d birthdays to check for guild %s", len(birthdays), guild_id
-                    )
-                    for entry in birthdays:
-                        try:
-                            await self._process_birthday(entry, int(guild_id))
-                        except Exception as e:
-                            log_failure(
-                                logger, "Error processing birthday for user %s: %s", entry.user, e
-                            )
-                except Exception as e:
-                    log_failure(logger, "Error loading birthdays for guild %s: %s", guild_id, e)
+                with log_context.scope(guild_id=guild_id):
+                    try:
+                        birthdays = await self._repo(guild_id).find_all()
+                        logger.debug(
+                            "Found %d birthdays to check for guild %s", len(birthdays), guild_id
+                        )
+                        for entry in birthdays:
+                            try:
+                                await self._process_birthday(entry, int(guild_id))
+                            except Exception as e:
+                                log_failure(
+                                    logger,
+                                    "Error processing birthday for user %s: %s",
+                                    entry.user,
+                                    e,
+                                )
+                    except Exception as e:
+                        log_failure(logger, "Error loading birthdays for guild %s: %s", guild_id, e)
         except Exception as e:
             log_failure(logger, "Critical error in anniversaire_check task: %s", e)
 

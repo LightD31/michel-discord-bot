@@ -1,8 +1,11 @@
 """The server's incidents (P21, C10): what is kept, for whom, and what never is."""
 
+import ast
 import asyncio
 import json
 import logging
+import re
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -131,3 +134,63 @@ def test_the_route_is_for_the_guilds_admins_and_finds_a_reference(monkeypatch):
     assert len(json.loads(asyncio.run(endpoint(Ctx())(None, "1", ref="")).body)["incidents"]) == 2
     with pytest.raises(HTTPException):
         asyncio.run(endpoint(Ctx(admin_of=()))(None, "1", ref=""))
+
+
+# ── Every task looping over guilds says which guild it is on (P24) ────────
+
+GUILD_LOOP = re.compile(
+    r"([A-Z_]+\.(items|guild_ids)\(\)|\bguilds\b|_guilds\(\)|SERVERS\.values\(\)|_servers\.items\(\))"
+)
+# Loops whose items aren't one guild's: a streamer or a vote watched by several
+# guilds, guilds being purged after the bot left, paginators being dropped.
+NOT_PER_GUILD = {
+    "extensions/datapurge.py",
+    "extensions/twitch/emotes.py",
+    "extensions/twitch/schedule.py",
+    "extensions/compareai/voting.py",
+}
+
+
+def _task_loops(path: Path):
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    for fn in ast.walk(tree):
+        if not isinstance(fn, ast.AsyncFunctionDef | ast.FunctionDef):
+            continue
+        if not any(ast.unparse(d).startswith("Task.create") for d in fn.decorator_list):
+            continue
+        for loop in ast.walk(fn):
+            if isinstance(loop, ast.For | ast.AsyncFor) and GUILD_LOOP.search(
+                ast.unparse(loop.iter)
+            ):
+                yield loop
+
+
+def _binds_guild(loop: ast.For | ast.AsyncFor) -> bool:
+    """A statement of the loop's own body is ``with log_context.scope(guild_id=…)``."""
+    return any(
+        isinstance(statement, ast.With | ast.AsyncWith)
+        and any(
+            "log_context.scope(guild_id=" in ast.unparse(item.context_expr)
+            for item in statement.items
+        )
+        for statement in loop.body
+    )
+
+
+def test_a_task_looping_over_guilds_binds_each_guild():
+    root = Path(__file__).resolve().parent.parent
+    offenders = []
+    for path in sorted((root / "extensions").rglob("*.py")):
+        rel = path.relative_to(root).as_posix()
+        if rel in NOT_PER_GUILD:
+            continue
+        for loop in _task_loops(path):
+            if not loop.body or not _binds_guild(loop):
+                # The paginators of guilds switched off: nothing to report there.
+                if "not in enabled" in ast.unparse(loop.iter):
+                    continue
+                offenders.append(f"{rel}:{loop.lineno}")
+    assert offenders == [], (
+        "wrap each guild's turn in `with log_context.scope(guild_id=…):` so its failures "
+        "show in that server's incidents (src/core/incidents.py)"
+    )

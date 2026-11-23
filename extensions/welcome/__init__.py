@@ -28,7 +28,7 @@ from interactions.api.events import MemberAdd, MemberRemove
 from extensions.welcome._common import WELCOME, WelcomeConfig, logger, message_values
 from features.reactionroles.repository import ReactionRolesRepository
 from features.welcome import GreetingRepository, greeting_line, render_welcome_card, with_greetings
-from src.core import clock
+from src.core import clock, log_context
 from src.core.logging import log_failure
 from src.core.text import pick_weighted_message
 from src.discord_ext.channels import fetch_guild_channel
@@ -168,18 +168,19 @@ class WelcomeExtension(Extension):
         """Take the 👋 button off the welcomes whose 7 days are over."""
         now = clock.now()
         for gid in WELCOME.guild_ids():
-            repo = GreetingRepository(gid)
-            try:
-                due = await repo.due_to_close(now)
-            except Exception as e:
-                log_failure(logger, "Greetings to close not read on %s: %s", gid, e)
-                continue
-            for greeting in due:
+            with log_context.scope(guild_id=gid):
+                repo = GreetingRepository(gid)
                 try:
-                    if await self._take_greet_button_off(gid, greeting):
-                        await repo.mark_closed(greeting.message_id)
-                except Exception as e:  # an outage: the next run tries again
-                    log_failure(logger, "Greet button not removed on %s: %s", gid, e)
+                    due = await repo.due_to_close(now)
+                except Exception as e:
+                    log_failure(logger, "Greetings to close not read on %s: %s", gid, e)
+                    continue
+                for greeting in due:
+                    try:
+                        if await self._take_greet_button_off(gid, greeting):
+                            await repo.mark_closed(greeting.message_id)
+                    except Exception as e:  # an outage: the next run tries again
+                        log_failure(logger, "Greet button not removed on %s: %s", gid, e)
 
     async def _take_greet_button_off(self, guild_id: str, greeting: Any) -> bool:
         """``True`` once the message has no greet button (or is gone): nothing left to do."""

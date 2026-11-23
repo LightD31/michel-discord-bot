@@ -351,3 +351,21 @@ def test_a_feed_is_tested_from_its_row(page, dashboard):
     assert content.locator("strong").inner_text() == "Korben"
     assert content.locator("b").count() == 0  # the title's markup stays text
     assert content.locator("a").get_attribute("href") == "https://korben.info/1"
+
+
+def test_the_dev_channel_is_picked_from_the_dev_server(page, dashboard):
+    # A developer edits the global Discord section: its channel picker lists the
+    # development server's channels (there is no "current server" on that page).
+    config = json.loads(dashboard["config"].read_text(encoding="utf-8"))
+    config["config"]["webui"]["developerUserIds"] = [ADMIN]
+    config["config"]["discord"].update(devGuildId=GA, devGuildChannelId=CH["général"])
+    dashboard["config"].write_text(json.dumps(config), encoding="utf-8")
+    config_store._data = None
+    page.goto(f"{dashboard['base']}/#/global")
+    section = page.locator(".card", has=page.locator(".card-title", has_text="Discord"))
+    section.get_by_role("button", name="✏️ Éditer").first.click()
+    picker = page.locator('#modal-overlay .channel-picker[data-field="devGuildChannelId"]')
+    picker.locator("select option", has_text="#général").first.wait_for(
+        state="attached", timeout=5000
+    )
+    assert picker.locator("select option:checked").inner_text() == "#général"

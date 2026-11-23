@@ -31,7 +31,7 @@ from interactions import (
 from features.secretsanta import SecretSantaRepository, SecretSantaSession
 from features.secretsanta.dates import participant_expiry, reminder_due
 from features.secretsanta.relay import MAX_MESSAGE_LENGTH, TOO_MANY, RelayLimiter
-from src.core import clock
+from src.core import clock, log_context
 from src.core import logging as logutil
 from src.core.logging import log_failure
 from src.core.text import EMBED_DESCRIPTION_LIMIT, clip, format_discord_timestamp
@@ -387,10 +387,13 @@ class ExchangeMixin:
     async def parcel_reminders(self) -> None:
         now = clock.now()
         for guild_id, settings in SANTA.items():
-            try:
-                await self.remind_parcels(f"guild_{guild_id}", settings, now)
-            except Exception as e:
-                log_failure(logger, "Secret Santa reminder for guild %s failed: %s", guild_id, e)
+            with log_context.scope(guild_id=guild_id):
+                try:
+                    await self.remind_parcels(f"guild_{guild_id}", settings, now)
+                except Exception as e:
+                    log_failure(
+                        logger, "Secret Santa reminder for guild %s failed: %s", guild_id, e
+                    )
 
     async def remind_parcels(self, context_id: str, settings: dict, now: datetime) -> int:
         """DM every Santa whose parcel isn't marked sent, once per session; how many."""

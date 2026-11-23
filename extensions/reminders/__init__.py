@@ -64,7 +64,7 @@ from features.reminders import (
     snoozed_text,
 )
 from features.reminders.when import EXAMPLES, parse_when, reading
-from src.core import clock
+from src.core import clock, log_context
 from src.core import logging as logutil
 from src.core.config import ModuleConfig
 from src.core.logging import log_failure
@@ -416,26 +416,31 @@ class RemindersExtension(Extension):
     async def check_reminders(self):
         now = clock.now()
         for gid in UTILS.guild_ids():
-            repo = self._reminder_repo(gid)
-            try:
-                due = await repo.list_due(now)
-            except Exception as e:
-                log_failure(logger, "Failed to fetch due reminders for guild %s: %s", gid, e)
-                continue
-
-            for reminder in due:
-                if reminder.id is None:
-                    continue
-                next_time = next_after(reminder.remind_time, reminder.frequency, now)
+            with log_context.scope(guild_id=gid):
+                repo = self._reminder_repo(gid)
                 try:
-                    claimed = await repo.claim_due(reminder, next_time)
+                    due = await repo.list_due(now)
                 except Exception as e:
-                    log_failure(
-                        logger, "Failed to update reminder %s in guild %s: %s", reminder.id, gid, e
-                    )
+                    log_failure(logger, "Failed to fetch due reminders for guild %s: %s", gid, e)
                     continue
-                if claimed:
-                    await self._dispatch_reminder(gid, reminder)
+
+                for reminder in due:
+                    if reminder.id is None:
+                        continue
+                    next_time = next_after(reminder.remind_time, reminder.frequency, now)
+                    try:
+                        claimed = await repo.claim_due(reminder, next_time)
+                    except Exception as e:
+                        log_failure(
+                            logger,
+                            "Failed to update reminder %s in guild %s: %s",
+                            reminder.id,
+                            gid,
+                            e,
+                        )
+                        continue
+                    if claimed:
+                        await self._dispatch_reminder(gid, reminder)
 
     async def _dispatch_reminder(self, gid: str, reminder: Reminder) -> None:
         """DM the reminder to its author with a snooze button."""

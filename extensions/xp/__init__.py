@@ -17,7 +17,7 @@ guild, collections ``xp`` and ``xp_events``).
 from interactions import Client, Extension, Task, TimeTrigger, listen
 
 from features.xp import RANK_CACHE_TTL, USER_CACHE_TTL, TTLCache, XpRepository
-from src.core import clock
+from src.core import clock, log_context
 from src.core.errors import DatabaseError
 from src.core.logging import log_failure
 from src.discord_ext.paginator import CustomPaginator
@@ -93,13 +93,14 @@ class XpExtension(
         """Daily: fold XP events older than the retention into monthly totals."""
         now = clock.now()
         for guild_id in XP.guild_ids():
-            try:
-                months = await self._repo(guild_id).archive_old_events(now)
-            except DatabaseError as e:
-                logger.warning("XP events of guild %s not archived: %s", guild_id, e)
-                continue
-            if months:
-                logger.info("XP events archived for guild %s: %s", guild_id, ", ".join(months))
+            with log_context.scope(guild_id=guild_id):
+                try:
+                    months = await self._repo(guild_id).archive_old_events(now)
+                except DatabaseError as e:
+                    logger.warning("XP events of guild %s not archived: %s", guild_id, e)
+                    continue
+                if months:
+                    logger.info("XP events archived for guild %s: %s", guild_id, ", ".join(months))
 
     @Task.create(TimeTrigger(minute=30, utc=False))
     async def _cache_cleanup_task(self):

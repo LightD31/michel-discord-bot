@@ -18,7 +18,7 @@ from interactions import (
 )
 
 from features.tricount import TricountRepository
-from src.core import clock
+from src.core import clock, log_context
 from src.core import logging as logutil
 from src.core.logging import log_failure
 from src.discord_ext.autocomplete import Choice, guild_group_autocomplete
@@ -270,13 +270,16 @@ class RecurringMixin:
     async def recurring_tick(self):
         now = clock.now()
         for guild_id in TRICOUNT.guild_ids():
-            try:
-                due = await TricountRepository(guild_id).list_due_recurring(now)
-            except Exception as e:
-                log_failure(logger, "Could not list due recurring expenses for %s: %s", guild_id, e)
-                continue
-            for doc in due:
-                await self._materialise_recurring(guild_id, doc)
+            with log_context.scope(guild_id=guild_id):
+                try:
+                    due = await TricountRepository(guild_id).list_due_recurring(now)
+                except Exception as e:
+                    log_failure(
+                        logger, "Could not list due recurring expenses for %s: %s", guild_id, e
+                    )
+                    continue
+                for doc in due:
+                    await self._materialise_recurring(guild_id, doc)
 
     async def _materialise_recurring(self, guild_id: str, doc: dict) -> None:
         """Reschedule the recurrence, then create the expense it was due for.

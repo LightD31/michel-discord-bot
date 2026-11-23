@@ -8,7 +8,7 @@ from interactions import Embed, OrTrigger, Task, TimeTrigger
 from features.confrerie import notion_props as np
 from features.confrerie.stats import COL_DEFI, ConfrerieStats, aggregate
 from features.links import shorten_keyed
-from src.core import clock
+from src.core import clock, log_context
 from src.core import logging as logutil
 from src.core.logging import log_failure
 from src.core.text import take_within_budget
@@ -110,16 +110,17 @@ class StatsMixin(ConfrerieBase):
         # Guilds sharing a Notion database share one aggregation per run.
         stats_by_db: dict[str, ConfrerieStats] = {}
         for guild_id, settings in guilds:
-            db_id = settings.get("confrerieNotionDbOeuvresId")
-            if not db_id:
-                continue
-            try:
-                if db_id not in stats_by_db:
-                    stats_by_db[db_id] = await self._fetch_statistics(db_id)
-                await self._update_statistics_message(guild_id, settings, stats_by_db[db_id])
-                logger.debug("Statistiques de la confrérie mises à jour (serveur %s)", guild_id)
-            except Exception as e:
-                log_failure(logger, f"Erreur lors de la mise à jour des statistiques: {e}")
+            with log_context.scope(guild_id=guild_id):
+                db_id = settings.get("confrerieNotionDbOeuvresId")
+                if not db_id:
+                    continue
+                try:
+                    if db_id not in stats_by_db:
+                        stats_by_db[db_id] = await self._fetch_statistics(db_id)
+                    await self._update_statistics_message(guild_id, settings, stats_by_db[db_id])
+                    logger.debug("Statistiques de la confrérie mises à jour (serveur %s)", guild_id)
+                except Exception as e:
+                    log_failure(logger, f"Erreur lors de la mise à jour des statistiques: {e}")
 
     async def _fetch_statistics(self, db_id: str) -> ConfrerieStats:
         """Query every œuvre (all pages) of *db_id* and aggregate them."""

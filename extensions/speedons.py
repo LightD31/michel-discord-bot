@@ -12,7 +12,7 @@ from interactions import (
     utils,
 )
 
-from src.core import clock
+from src.core import clock, log_context
 from src.core import logging as logutil
 from src.core.config import ModuleConfig
 from src.core.http import fetch_untrusted
@@ -261,19 +261,20 @@ class SpeedonsExtension(Extension):
         # Guilds following the same campaign share one rendering per refresh.
         rendered: dict[tuple[str, str | None], tuple | None] = {}
         for guild_id, settings in guilds:
-            base_url = str(settings.get("speedonsApiUrl") or "").rstrip("/")
-            if not base_url:
-                logger.debug("Guild %s: Speedons API URL not configured; skipping", guild_id)
-                continue
-            icon_url = settings.get("speedonsIconUrl") or None
-            try:
-                key = (base_url, icon_url)
-                if key not in rendered:
-                    rendered[key] = await render_schedule(base_url, icon_url)
-                if rendered[key] is not None:
-                    await self._publish(guild_id, settings, *rendered[key])
-            except Exception as e:  # noqa: BLE001 — one guild's failure must not stop the others
-                log_failure(logger, "Guild %s: Speedons update failed: %s", guild_id, e)
+            with log_context.scope(guild_id=guild_id):
+                base_url = str(settings.get("speedonsApiUrl") or "").rstrip("/")
+                if not base_url:
+                    logger.debug("Guild %s: Speedons API URL not configured; skipping", guild_id)
+                    continue
+                icon_url = settings.get("speedonsIconUrl") or None
+                try:
+                    key = (base_url, icon_url)
+                    if key not in rendered:
+                        rendered[key] = await render_schedule(base_url, icon_url)
+                    if rendered[key] is not None:
+                        await self._publish(guild_id, settings, *rendered[key])
+                except Exception as e:  # noqa: BLE001 — one guild's failure must not stop the others
+                    log_failure(logger, "Guild %s: Speedons update failed: %s", guild_id, e)
 
     async def _publish(self, guild_id, settings, embeds, live_embed, page_index):
         schedule = await self.schedule_messages.get(guild_id, settings)

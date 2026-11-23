@@ -8,6 +8,7 @@ from curl_cffi import requests as cffi_requests
 from interactions import Client, Embed, IntervalTrigger, Task
 
 from features.olympics import OlympicsStateRepository
+from src.core import log_context
 from src.core.errors import IntegrationError
 from src.core.logging import log_failure
 from src.discord_ext.channels import fetch_guild_channel
@@ -209,7 +210,8 @@ class TasksMixin:
                 france_standing = self._get_country_standing(standings, COUNTRY_CODE)
 
                 for guild_id, settings in OLYMPICS.items():
-                    await self._send_alerts(guild_id, settings, new_medals, france_standing)
+                    with log_context.scope(guild_id=guild_id):
+                        await self._send_alerts(guild_id, settings, new_medals, france_standing)
             else:
                 logger.debug("Aucune nouvelle médaille pour la France")
 

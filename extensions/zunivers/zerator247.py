@@ -25,7 +25,7 @@ from features.zerator247 import (
     describe_cycle,
     should_notify,
 )
-from src.core import clock
+from src.core import clock, log_context
 from src.core.errors import DatabaseError
 from src.discord_ext.messages import fetch_user_safe, guild_id_of
 
@@ -61,20 +61,21 @@ class Zerator247Mixin(ZuniversBase):
         # Guilds following the same 24/7 site share one fetch of its cycle.
         cycles: dict[str, Cycle | None] = {}
         for state, settings in await self._guilds():
-            site = _site_url(settings)
-            if not state.request_subscriptions or not site:
-                continue
-            if site not in cycles:
-                try:
-                    cycles[site] = await Zerator247Client(site).get_cycle()
-                except Zerator247Error as e:
-                    logger.debug("ZeratoR 24/7 check skipped: %s", e)
-                    cycles[site] = None
-            cycle = cycles[site]
-            if cycle is None or not should_notify(cycle, state.last_request_cycle_end):
-                continue
-            state.last_request_cycle_end = cycle.ends_at
-            await self._announce_requests(state, settings, site, cycle)
+            with log_context.scope(guild_id=state.guild_id):
+                site = _site_url(settings)
+                if not state.request_subscriptions or not site:
+                    continue
+                if site not in cycles:
+                    try:
+                        cycles[site] = await Zerator247Client(site).get_cycle()
+                    except Zerator247Error as e:
+                        logger.debug("ZeratoR 24/7 check skipped: %s", e)
+                        cycles[site] = None
+                cycle = cycles[site]
+                if cycle is None or not should_notify(cycle, state.last_request_cycle_end):
+                    continue
+                state.last_request_cycle_end = cycle.ends_at
+                await self._announce_requests(state, settings, site, cycle)
 
     async def _announce_requests(
         self, state: GuildState, settings: dict, site: str, cycle: Cycle

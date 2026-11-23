@@ -42,7 +42,7 @@ from features.coloc.constants import (
     zunivers_link,
 )
 from features.zunivers_ninja import build_web_url
-from src.core import clock
+from src.core import clock, log_context
 from src.core.logging import log_failure
 from src.discord_ext.messages import fetch_user_safe, guild_id_of
 
@@ -60,10 +60,11 @@ class RemindersMixin(ZuniversBase):
     async def daily_journa_check(self):
         """In each guild, remind the role if nobody posted in the channel today."""
         for state, settings in await self._guilds():
-            try:
-                await self._journa_check(state.guild_id, settings)
-            except Exception as e:  # noqa: BLE001 — one guild's failure must not stop the others
-                log_failure(logger, "Daily journa check failed: %s", e)
+            with log_context.scope(guild_id=state.guild_id):
+                try:
+                    await self._journa_check(state.guild_id, settings)
+                except Exception as e:  # noqa: BLE001 — one guild's failure must not stop the others
+                    log_failure(logger, "Daily journa check failed: %s", e)
 
     async def _journa_check(self, guild_id: str, settings: dict) -> None:
         channel = await self._zunivers_channel(guild_id, settings)
@@ -278,10 +279,11 @@ class RemindersMixin(ZuniversBase):
         """Send the reminders due in each guild."""
         current_time = clock.now()
         for state, settings in await self._guilds():
-            try:
-                await self._send_due_reminders(state, settings, current_time)
-            except Exception as e:  # noqa: BLE001 — one guild's failure must not stop the others
-                log_failure(logger, "Reminders of guild %s failed: %s", state.guild_id, e)
+            with log_context.scope(guild_id=state.guild_id):
+                try:
+                    await self._send_due_reminders(state, settings, current_time)
+                except Exception as e:  # noqa: BLE001 — one guild's failure must not stop the others
+                    log_failure(logger, "Reminders of guild %s failed: %s", state.guild_id, e)
 
     async def _send_due_reminders(
         self, state: GuildState, settings: dict, current_time: datetime

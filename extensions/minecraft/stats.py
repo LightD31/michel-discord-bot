@@ -14,6 +14,7 @@ from interactions import (
 from features.minecraft import MinecraftSettings
 from features.minecraft import get_config as get_mc_config
 from features.minecraft.table import build_stats_table
+from src.core import log_context
 from src.core.images import create_dynamic_image
 from src.core.logging import log_failure
 from src.discord_ext.look import card
@@ -36,10 +37,15 @@ class StatsMixin:
         guilds = MINECRAFT.items()
         self._forget_disabled_guilds([guild_id for guild_id, _ in guilds])
         for guild_id, config in guilds:
-            try:
-                await self._update_stats(guild_id, config, MinecraftSettings.from_config(config))
-            except Exception as e:  # noqa: BLE001 — one server down must not stop the others
-                log_failure(logger, "Guild %s: failed to update Minecraft stats: %s", guild_id, e)
+            with log_context.scope(guild_id=guild_id):
+                try:
+                    await self._update_stats(
+                        guild_id, config, MinecraftSettings.from_config(config)
+                    )
+                except Exception as e:  # noqa: BLE001 — one server down must not stop the others
+                    log_failure(
+                        logger, "Guild %s: failed to update Minecraft stats: %s", guild_id, e
+                    )
 
     async def _update_stats(self, guild_id: str, config: dict, settings: MinecraftSettings):
         message = await self.status_messages.get(guild_id, config)

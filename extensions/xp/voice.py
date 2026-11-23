@@ -27,6 +27,7 @@ from features.xp import (
     XpRepository,
     calculate_level,
 )
+from src.core import log_context
 from src.core.errors import DatabaseError
 
 from ._common import XP, logger
@@ -102,7 +103,8 @@ class VoiceMixin:
     async def _voice_xp_tick(self):
         now = time.time()
         for key in list(self._voice_sessions.keys()):
-            await self._tick_voice_session(key, now)
+            with log_context.scope(guild_id=key[0]):
+                await self._tick_voice_session(key, now)
 
     async def _tick_voice_session(self, key: tuple[str, str], now: float) -> None:
         guild_id, user_id = key
