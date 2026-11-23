@@ -203,8 +203,8 @@ status stays off, until someone copies a token file in by hand.
   twice (Spotify, Twitch), so they move to `src/webui/oauth_flow.py`, shared
   by both. That is the −40.
 
-Per server or for the whole bot: see the table in P37. My recommendation is to
-keep Twitch bot-wide. Its token only reads public live status. It is tied to
+Twitch stays bot-wide (decided, see P37). Its token only reads public live
+status. It is tied to
 one EventSub websocket, and Twitch caps subscriptions per token. A token per
 server would mean a websocket per server.
 
@@ -341,8 +341,9 @@ per-extension reload (see P28). Read it through an accessor at use time.
   existed (`features/xp/repository.py:16`): one `update_many` in the PR notes,
   then drop the expression.
 
-`spotifyDashboardUrl` overrides the built-in public page per server; keep it
-or drop it, **your call**.
+**`moduleSpotify.spotifyDashboardUrl` is dropped** (decided). It overrode the
+built-in public page (`_common.py:259,355`). The recap and the embeds now link to
+that page when `publicDashboard` is on, and to nothing otherwise.
 
 **Config and database changes** are listed in the PR. **Lines** −70 / +40.
 **Risk** medium: the PR's list of `config.json` and database edits must be
@@ -373,12 +374,12 @@ AI key or Notion integration doesn't have to be typed again.
 - Account tokens (P29's Twitch, P36's Spotify) are not copied: the admin
   connects once more, one click.
 
-**Decision for you: who may copy secrets out of a server.** Today a
-`MANAGE_GUILD` co-admin of server A can't read A's secrets; with a copy, they
-could use them on a server B they run. My recommendation: copying a module
-that holds a secret requires the source's owner or `ADMINISTRATOR` there, read
-live, as the Secret Santa reveal does. Anything else copies without its
-secrets.
+**Who may copy secrets out of a server** (decided). Today a `MANAGE_GUILD`
+co-admin of server A can't read A's secrets; with a copy, they could use them
+on a server B they run. So copying a module's secrets requires the source's
+owner or `ADMINISTRATOR` there, read live, as the Secret Santa reveal does.
+Anyone else copies the settings without their secrets, and the form says which
+ones to enter.
 
 **Lines** +180 (tests extra). **Risk** medium: a new path that writes config,
 so a `mongo` test and the guild-boundary tests cover it.
@@ -445,16 +446,16 @@ the proposal:
 | Uptime Kuma, `uptimeKuma.*` | any server with Uptime on lists and alerts on **your** monitors | per server in `moduleUptime` (URL + key, `sent_to` the URL) |
 | Shlink, `shlink.*` | every server's links are shortened on your instance and domain | per server in a `moduleShlink`; unset = links posted as they are |
 | YouTube, `youtube.youtubeApiKey` | every server's channel checks spend your API quota | per server in `moduleYoutube` |
-| Twitch, `twitch.*` and P29's token | reads public live status only | **stays bot-wide** (see P29). Your call |
+| Twitch, `twitch.*` and P29's token | reads public live status only | **stays bot-wide** (see P29) |
 
 Every new per-server secret declares its `sent_to` (`test_module_registry.py`
 already requires it). The dashboard's "Vérifier la connexion" (`CHECKS`) reads
 the server's own settings, as it does for LLDAP.
 
-**Decision for you:** which rows to take. All of them except Twitch is my
-recommendation. They can also come one PR at a time.
+**Decided:** every row moves per server except Twitch, which stays bot-wide.
+The five rows can come one PR at a time if one gets too big.
 
-**Lines** −70 / +150 (all six rows). **Risk** medium: each service needs its
+**Lines** −70 / +150 (the five rows). **Risk** medium: each service needs its
 settings entered (or copied) per server at deploy. The PR lists them.
 
 ---
