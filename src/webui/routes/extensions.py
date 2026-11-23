@@ -1,4 +1,4 @@
-"""Extension management routes: list, toggle, reload."""
+"""Extension management routes: list, toggle, reload them all."""
 
 import ast
 import os
@@ -220,36 +220,6 @@ def create_router(ctx: WebUIContext) -> APIRouter:
         )
         return JSONResponse(
             {**results, "commandSync": {"synced": not sync_error, "error": sync_error}}
-        )
-
-    @router.post("/api/reload/{ext_name:path}")
-    async def api_reload_one(request: Request, ext_name: str):
-        """Reload a single extension by module path (e.g. ``extensions.tricount``)."""
-        session = ctx.require_developer(request)
-        if not ctx.bot:
-            raise HTTPException(status_code=503, detail="Bot non disponible")
-        _require_known_extension(ext_name)
-        try:
-            await run_extension_op(ctx, "reload", ext_name)
-            logger.info(
-                "Reloaded extension %s for %s (%s)", ext_name, session.username, session.user_id
-            )
-        except HTTPException:
-            raise
-        except Exception as e:
-            log_failure(logger, f"Failed to reload {ext_name}: {e}")
-            raise HTTPException(
-                status_code=500,
-                detail=f"Échec du rechargement ({type(e).__name__}). Voir les logs.",
-            ) from e
-        sync_error = await _sync_all_commands()
-        await audit.record(None, session, "extensions.reload", target=ext_name)
-        return JSONResponse(
-            {
-                "status": "ok",
-                "extension": ext_name,
-                "commandSync": {"synced": not sync_error, "error": sync_error},
-            }
         )
 
     @router.get("/api/extensions")

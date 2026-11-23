@@ -31,11 +31,9 @@
             "backupHour": 4
         },
         "discord": {
-            "botId": "",
             "botToken": "",
             "ownerId": "",
-            "devGuildId": "",
-            "devGuildChannelId": ""
+            "devGuildId": ""
         },
         "errorReporting": {
             "dsn": "",
@@ -61,9 +59,6 @@
         "raiderio": {
             "apiUrl": "",
             "webUrl": ""
-        },
-        "random": {
-            "randomOrgApiKey": ""
         },
         "rss": {
             "lootScraperBaseUrl": ""

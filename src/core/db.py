@@ -192,10 +192,6 @@ class MongoManager:
         """Return a database by name."""
         return self.client[name]
 
-    def get_collection(self, db_name: str, collection_name: str) -> Collection:
-        """Return a collection."""
-        return self.client[db_name][collection_name]
-
     async def guild_ids_with_data(self) -> list[str]:
         """The ids of the guilds that have a database (``guild_<id>``)."""
         names = await self.client.list_database_names()

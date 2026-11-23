@@ -113,7 +113,7 @@ def demo_config(data_dir: str, port: int, mongo_url: str) -> dict[str, Any]:
     role = {name: rid for name, (rid, *_rest) in _roles().items()}
     return {
         "config": {
-            "discord": {"botToken": "demo", "devGuildId": GA, "botId": BOT_ID, "ownerId": DEV},
+            "discord": {"botToken": "demo", "devGuildId": GA, "ownerId": DEV},
             "mongodb": {"url": mongo_url},
             "misc": {"dataFolder": data_dir},
             "webui": {

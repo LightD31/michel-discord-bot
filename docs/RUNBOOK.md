@@ -158,7 +158,6 @@ too, followed by a restart so every extension picks it up.
 | AI providers (OpenRouter, NanoGPT) | Provider dashboard | `OpenRouter.openrouterApiKey`, `NanoGPT.apiKey` |
 | Shlink | Shlink server: `shlink api-key:generate` | `shlink.shlinkApiKey` |
 | Uptime Kuma | Uptime Kuma → Settings → API Keys | `uptimeKuma.uptimeKumaApiKey`, `uptimeKuma.uptimeKumaToken` |
-| Random.org | random.org → API → your keys | `random.randomOrgApiKey` |
 | Sentry / GlitchTip DSN | Project → Settings → Client Keys | `errorReporting.dsn` |
 | LLDAP admin password (per server) | LLDAP web UI → the admin user | `moduleLldap.lldapAdminPassword` |
 | Minecraft SFTP password (per server) | Your host's panel | `moduleMinecraft.minecraftSftpsPassword` |

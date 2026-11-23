@@ -6,7 +6,6 @@ import { render } from '../core/render.js';
 import { html } from '../core/html.js';
 import { state } from '../core/state.js';
 import { renderSpotifyAuthPanel } from '../features/spotify-auth.js';
-import { populateChannelPickers } from '../forms/pickers/channels.js';
 import { _memberCache, getDiscord2NameMap } from '../forms/pickers/members.js';
 import { collectFormValues, renderSchemaForm } from '../forms/schema-form.js';
 import { populateAccountNames } from '../forms/widgets/accounts.js';
@@ -224,18 +223,6 @@ export function renderConfigPreview(obj, prefix = '') {
     return html`<div class="kv-grid">${rows}</div>`;
 }
 
-// The Discord section's "Salon de dev" lists the development server's channels:
-// the one typed above it, else the saved one (this page has no current server).
-function populateDevChannel(overlay, saved) {
-    const guildInput = overlay.querySelector('[data-field="devGuildId"]');
-    if (!overlay.querySelector('.channel-picker') || !guildInput) return;
-    const fill = () => populateChannelPickers(
-        overlay, guildInput.value.trim() || saved || null,
-        "— Renseigne d'abord le serveur de développement —");
-    fill();
-    guildInput.addEventListener('change', fill);
-}
-
 export async function editGlobalSection(section) {
     const globalConfig = state.config?.config || {};
     const sectionData = globalConfig[section] || {};
@@ -248,7 +235,6 @@ export async function editGlobalSection(section) {
         document.getElementById('modal-overlay').querySelector('.modal-body').innerHTML = formHtml;
         refreshAiModelSelects(document.getElementById('modal-overlay'));
         populateAccountNames(document.getElementById('modal-overlay'));
-        populateDevChannel(document.getElementById('modal-overlay'), sectionData.devGuildId);
         const errEl = document.getElementById('json-error');
         if (errEl) errEl.textContent = '';
         onModalSave(async () => {

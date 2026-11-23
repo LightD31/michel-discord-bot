@@ -16,8 +16,7 @@ from features.vlrgg import (
     veto_line,
 )
 from src.core.text import format_discord_timestamp
-from src.discord_ext.embeds import SPACER_FIELD
-from src.discord_ext.look import Kind, card, sign
+from src.discord_ext.look import SPACER_FIELD, Kind, card, sign
 
 from ._base import VlrggBase
 from ._common import (

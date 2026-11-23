@@ -194,14 +194,6 @@ body {
     text-overflow: ellipsis;
     white-space: nowrap;
 }
-.nav-item-sub {
-    font-size: 10px;
-    color: var(--text-muted);
-    font-family: var(--font-mono, monospace);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
 .nav-item .icon {
     font-size: 18px;
     width: 24px;
@@ -467,48 +459,6 @@ body {
 
 .toggle input:checked + .toggle-slider::before {
     transform: translateX(20px);
-}
-
-/* ── Config Editor ─────────────────────────── */
-.config-editor {
-    margin-top: 16px;
-}
-
-.config-field {
-    margin-bottom: 16px;
-}
-
-.config-field label {
-    display: block;
-    font-size: 13px;
-    font-weight: 600;
-    color: var(--text-secondary);
-    margin-bottom: 6px;
-}
-
-.config-field input[type="text"],
-.config-field input[type="number"],
-.config-field textarea {
-    width: 100%;
-    padding: 10px 12px;
-    background: var(--bg-primary);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    color: var(--text-primary);
-    font-size: 14px;
-    font-family: 'Consolas', 'Monaco', monospace;
-    outline: none;
-    transition: border-color 0.15s;
-}
-
-.config-field input:focus,
-.config-field textarea:focus {
-    border-color: var(--accent);
-}
-
-.config-field textarea {
-    min-height: 120px;
-    resize: vertical;
 }
 
 /* ── Buttons ───────────────────────────────── */
@@ -1168,19 +1118,6 @@ input[type="number"].form-input:invalid {
     border-color: var(--accent);
 }
 
-.schema-badge {
-    font-size: 11px;
-    padding: 2px 8px;
-    border-radius: 10px;
-    background: var(--accent);
-    color: #fff;
-    font-weight: 500;
-}
-.schema-badge.no-schema {
-    background: var(--bg-tertiary);
-    color: var(--text-muted);
-}
-
 .schema-preview {
     display: flex;
     flex-direction: column;
@@ -1330,15 +1267,6 @@ input[type="number"].form-input:invalid {
     color: #c9d1d9;
     flex: 1;
     min-width: 0;
-}
-
-.log-stats {
-    display: flex;
-    gap: 16px;
-    font-size: 12px;
-    color: var(--text-muted);
-    align-items: center;
-    flex-wrap: wrap;
 }
 
 .log-stat-badge {

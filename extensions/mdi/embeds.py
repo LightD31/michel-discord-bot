@@ -363,25 +363,6 @@ class EmbedsMixin:
         region = f" ({team.region_short})" if team.region_short else ""
         return f"{seed}**{team.name}**{region}"
 
-    def _scoreboard(self, match: MatchSnapshot) -> str:
-        first = match.first_team
-        second = match.second_team
-        first_name = first.name if first else "TBD"
-        second_name = second.name if second else "TBD"
-
-        first_wins = sum(1 for g in match.games if first and g.winner_team_id == first.id)
-        second_wins = sum(1 for g in match.games if second and g.winner_team_id == second.id)
-
-        first_bold = (
-            f"**{first_name}**" if first and match.winner_team_id == first.id else first_name
-        )
-        second_bold = (
-            f"**{second_name}**" if second and match.winner_team_id == second.id else second_name
-        )
-        first_score = f"**{first_wins}**" if first_wins > second_wins else f"{first_wins}"
-        second_score = f"**{second_wins}**" if second_wins > first_wins else f"{second_wins}"
-        return f"{first_bold} {first_score} — {second_score} {second_bold}"
-
     def _games_block(self, match: MatchSnapshot, team: TeamRef | None) -> str:
         lines: list[str] = []
         for game in match.games:

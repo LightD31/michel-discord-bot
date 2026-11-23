@@ -60,10 +60,14 @@ class SpotifyConfig(SchemaBase):
 
     enabled: bool = enabled_field()
     voteEnabled: bool = ui(
-        "Votes activés",
+        "Vote quotidien",
         "boolean",
         default=False,
-        description="Activer les votes sur les morceaux ajoutés.",
+        description=(
+            "Chaque jour à 20 h, un vote pour garder ou retirer une chanson de la playlist, "
+            "et les rappels qui vont avec. Éteint, le vote en cours va à son terme et aucun "
+            "autre ne s'ouvre ; `/musique proposer` n'en dépend pas."
+        ),
     )
     voteReminderEveryDays: int = ui(
         "Rappel si pas assez de votes (jours)",
@@ -308,6 +312,11 @@ class ServerData:
             if isinstance(user, dict) and user.get("spotifyId") and user.get("discordId"):
                 mapping[user["spotifyId"]] = user["discordId"]
         return mapping
+
+    @property
+    def daily_vote(self) -> bool:
+        """Whether the server holds the daily keep-or-remove vote (``voteEnabled``)."""
+        return self._config.get("voteEnabled") is True
 
     @property
     def channel_id(self) -> str | None:

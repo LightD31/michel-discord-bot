@@ -111,28 +111,6 @@ class StreamsMixin(ZeventBase):
 
         return categorized
 
-    async def get_total_viewers_from_twitch(self, streams: list[dict]) -> str:
-        """Cumulative viewer count across all live streams, formatted with spaces."""
-        try:
-            if not streams or not self.twitch:
-                return "N/A"
-
-            twitch_usernames = list(
-                {stream.get("twitch", "") for stream in streams if stream.get("twitch")}
-            )
-            total_viewers = 0
-
-            batch_size = 100
-            for i in range(0, len(twitch_usernames), batch_size):
-                batch = twitch_usernames[i : i + batch_size]
-                async for stream in self.twitch.get_streams(user_login=batch):
-                    total_viewers += stream.viewer_count
-
-            return f"{total_viewers:,}".replace(",", " ")
-        except Exception as e:
-            log_failure(logger, f"Error getting total viewers from Twitch: {e}")
-            return "N/A"
-
     async def get_viewers_by_location(self, streams: list[dict]) -> dict[str, str]:
         """Viewer counts split between LAN / Online participants."""
         try:

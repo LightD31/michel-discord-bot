@@ -623,16 +623,12 @@ class DiscordSection(SchemaBase):
     __label__ = "Discord"
     __icon__ = "💬"
 
-    botId: str | None = ui("Bot", "account", description="ID de l'application / bot Discord.")
     botToken: str = secret_field("Token du bot", required=True, description="Token du bot Discord.")
     ownerId: str | None = ui(
         "Propriétaire", "account", description="Compte Discord du propriétaire du bot."
     )
     devGuildId: str | None = ui(
         "Serveur de développement", "string", description="ID du serveur de développement."
-    )
-    devGuildChannelId: str | None = ui(
-        "Salon de dev", "channel", description="ID du salon de développement."
     )
 
 
@@ -916,14 +912,6 @@ class VlrggSection(SchemaBase):
             "un quota plus large au bot ; 0 = pas de limite côté bot."
         ),
     )
-
-
-@register_section("random")
-class RandomSection(SchemaBase):
-    __label__ = "Random.org"
-    __icon__ = "🎲"
-
-    randomOrgApiKey: str = secret_field("Clé API", required=True, description="Clé API Random.org.")
 
 
 @register_section("backup")

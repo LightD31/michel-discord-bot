@@ -192,33 +192,5 @@ class ApiMixin:
             if isinstance(match_id, int):
                 state.matches[match_id] = doc
 
-    async def _persist_match(
-        self,
-        state: GuildState,
-        *,
-        match_id: int,
-        bracket_slug: str,
-        channel_id: str,
-        message_id: str,
-        last_hash: str,
-        terminal: bool,
-    ) -> None:
-        doc = {
-            "_id": f"match:{match_id}",
-            "match_id": match_id,
-            "bracket_slug": bracket_slug,
-            "channel_id": channel_id,
-            "message_id": message_id,
-            "last_hash": last_hash,
-            "terminal": terminal,
-            "updated_at": datetime.now(UTC).isoformat(),
-        }
-        try:
-            await self._matches_repo(state.server_id).upsert(doc)
-        except Exception as e:
-            logger.warning("Guild %s: could not persist match %s: %s", state.server_id, match_id, e)
-            return
-        state.matches[match_id] = doc
-
     def _matches_repo(self, server_id: str) -> MdiMatchesRepository:
         return MdiMatchesRepository(server_id)

@@ -190,15 +190,6 @@ def adopt_library_logger(name: str, level: int = logging.WARNING) -> logging.Log
     return lgr
 
 
-def get_logger(name: str) -> logging.Logger:
-    """Return a configured logger by name.
-
-    Useful for modules that have already initialized a logger, e.g. the
-    interactions.py loggers we want to reformat.
-    """
-    return _configure_logger(name)
-
-
 def init_logger(name: str = "root") -> logging.Logger:
     """Create a designated logger for separate modules."""
     return _configure_logger(name)
