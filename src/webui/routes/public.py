@@ -41,7 +41,6 @@ from features.xp.seasons import KEPT_PER_SEASON, clamp_months, season_of
 from src.core import clock
 from src.core import logging as logutil
 from src.core.config import config_store
-from src.core.errors import DatabaseError
 from src.webui import audit
 from src.webui.context import WebUIContext
 from src.webui.public_links import (
@@ -236,13 +235,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
         async def compute() -> dict[str, Any]:
             return _public_xp_payload(await xp_routes.collect_xp_stats(server_id, days))
 
-        try:
-            stats = await cache.get_or_compute(f"xp:{server_id}:{days}", compute)
-        except DatabaseError as e:
-            logger.error("Public XP stats failed for %s: %s", server_id, e)
-            raise HTTPException(
-                status_code=503, detail="Statistiques momentanément indisponibles."
-            ) from e
+        stats = await cache.get_or_compute(f"xp:{server_id}:{days}", compute)
         return JSONResponse(stats)
 
     @router.get("/api/public/{token}/xp/season")
@@ -255,13 +248,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
         async def compute() -> dict[str, Any]:
             return await collect_public_season(server_id, server)
 
-        try:
-            found = await cache.get_or_compute(f"xp-season:{server_id}", compute)
-        except DatabaseError as e:
-            logger.error("Public XP season failed for %s: %s", server_id, e)
-            raise HTTPException(
-                status_code=503, detail="Statistiques momentanément indisponibles."
-            ) from e
+        found = await cache.get_or_compute(f"xp-season:{server_id}", compute)
         return JSONResponse(found)
 
     @router.get("/api/public/{token}/spotify/stats")
@@ -273,13 +260,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
             label_of = await _spotify_label_resolver(server_id, server, stats.user_ids())
             return _public_spotify_payload(stats.with_user_labels(label_of).to_dict())
 
-        try:
-            stats = await cache.get_or_compute(f"spotify:{server_id}", compute)
-        except DatabaseError as e:
-            logger.error("Public Spotify stats failed for %s: %s", server_id, e)
-            raise HTTPException(
-                status_code=503, detail="Statistiques momentanément indisponibles."
-            ) from e
+        stats = await cache.get_or_compute(f"spotify:{server_id}", compute)
         return JSONResponse(stats)
 
     return router

@@ -15,6 +15,7 @@ from fastapi.testclient import TestClient
 
 import src.webui.routes.xp as xp_routes
 from src.core.errors import DatabaseError
+from src.webui.errors import install_error_handlers
 
 
 @dataclass
@@ -94,6 +95,7 @@ def client(monkeypatch):
     monkeypatch.setattr(xp_routes, "UserInfoRepository", _FakeUserInfoRepo)
     ctx = _Ctx()
     app = FastAPI()
+    install_error_handlers(app)
     app.include_router(xp_routes.create_router(ctx))
     return TestClient(app), ctx
 

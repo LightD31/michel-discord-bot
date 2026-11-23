@@ -15,7 +15,6 @@ from fastapi.responses import JSONResponse
 from features.achievements import BADGES, AchievementsRepository
 from src.core import logging as logutil
 from src.core.config import ModuleConfig
-from src.core.errors import DatabaseError
 from src.discord_ext.look import look_of
 from src.webui.context import WebUIContext
 
@@ -42,13 +41,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
         if not ACHIEVEMENTS.enabled(server_id):
             raise HTTPException(status_code=404, detail="Le module Succès n'est pas activé ici.")
         settings = ACHIEVEMENTS.get(server_id)
-        try:
-            holders = await AchievementsRepository(server_id).holders()
-        except DatabaseError as e:
-            logger.warning("Badge holders of %s unreadable: %s", server_id, e)
-            raise HTTPException(
-                status_code=503, detail="Base de données injoignable, réessaie dans un instant."
-            ) from e
+        holders = await AchievementsRepository(server_id).holders()
         return JSONResponse(
             {
                 "badges": [

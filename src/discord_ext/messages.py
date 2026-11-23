@@ -500,8 +500,7 @@ async def _resolve(
     repo = MessageRefRepository(gid)
     try:
         ref = await repo.get(slot)
-    except (DatabaseError, RuntimeError) as e:
-        # RuntimeError: no ``mongodb.url`` at all, raised before the driver.
+    except DatabaseError as e:  # MongoDB down, or no ``mongodb.url`` at all
         if logger:
             logger.error("Guild %s: could not read where message %s lives: %s", gid, slot, e)
         return None
@@ -553,7 +552,7 @@ async def _resolve(
 
     try:
         await repo.save(slot, wanted, str(msg.id), label=label)
-    except (DatabaseError, RuntimeError) as e:
+    except DatabaseError as e:
         if logger:
             logger.error("Guild %s: could not store where message %s lives: %s", gid, slot, e)
     return msg

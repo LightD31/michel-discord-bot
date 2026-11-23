@@ -136,7 +136,8 @@ class MongoManager:
                     self._url = ""
 
             if not self._url:
-                raise RuntimeError(
+                # An outage like any other for its callers (the dashboard answers 503).
+                raise DatabaseError(
                     "MongoDB URL is not configured. Set 'mongodb.url' in your configuration."
                 )
 

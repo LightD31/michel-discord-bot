@@ -16,7 +16,6 @@ from fastapi.responses import JSONResponse
 from features.moderation import Infraction, InfractionType, ModerationRepository
 from features.moderation.reports import MessageReport, ReportRepository
 from src.core import logging as logutil
-from src.core.errors import DatabaseError
 from src.core.permissions import ADMINISTRATOR, MODERATE_MEMBERS, has_any
 from src.discord_ext.channels import fetch_guild_channel
 from src.discord_ext.mentions import NO_PINGS
@@ -25,8 +24,6 @@ from src.webui.auth import Session
 from src.webui.context import WebUIContext
 
 logger = logutil.init_logger("webui.routes.moderation")
-
-DB_UNAVAILABLE = "Base de données injoignable, réessaie dans un instant."
 
 
 def _infraction_to_dict(inf: Infraction) -> dict:
@@ -113,21 +110,12 @@ def create_router(ctx: WebUIContext) -> APIRouter:
         elif active in ("false", "0"):
             active_filter = False
         repo = ModerationRepository(server_id)
-        try:
-            items = await repo.list(
-                type=cast(InfractionType | None, type or None),
-                user_id=user_id or None,
-                active=active_filter,
-                limit=500,
-            )
-        except DatabaseError as e:
-            logger.warning("List infractions failed for %s: %s", server_id, e)
-            raise HTTPException(status_code=503, detail=DB_UNAVAILABLE) from e
-        except Exception as e:
-            logger.exception("List infractions failed for %s: %s", server_id, e)
-            raise HTTPException(
-                status_code=500, detail="Erreur interne — détails dans les logs du bot."
-            ) from e
+        items = await repo.list(
+            type=cast(InfractionType | None, type or None),
+            user_id=user_id or None,
+            active=active_filter,
+            limit=500,
+        )
         return JSONResponse({"infractions": [_infraction_to_dict(i) for i in items]})
 
     @router.get("/api/servers/{server_id}/reports")
@@ -136,11 +124,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
     ):
         session = await ctx.require_guild_admin(request, server_id)
         await _require_moderator(ctx, session, server_id, to="voir les signalements")
-        try:
-            items = await ReportRepository(server_id).list(open_only=status == "open")
-        except DatabaseError as e:
-            logger.warning("List reports failed for %s: %s", server_id, e)
-            raise HTTPException(status_code=503, detail=DB_UNAVAILABLE) from e
+        items = await ReportRepository(server_id).list(open_only=status == "open")
         return JSONResponse({"reports": [_report_to_dict(server_id, r) for r in items]})
 
     @router.delete("/api/servers/{server_id}/infractions/{case_id}")
@@ -148,27 +132,16 @@ def create_router(ctx: WebUIContext) -> APIRouter:
         session = await ctx.require_guild_admin(request, server_id)
         await _require_moderator(ctx, session, server_id)
         repo = ModerationRepository(server_id)
-        try:
-            existing = await repo.get(case_id)
-            if not existing:
-                raise HTTPException(status_code=404, detail="Cas introuvable")
-            if str(existing.user_id) == str(session.user_id):
-                raise HTTPException(
-                    status_code=403, detail="Tu ne peux pas révoquer un cas qui te vise."
-                )
-            if not existing.active:
-                raise HTTPException(status_code=400, detail="Cas déjà révoqué")
-            await repo.set_active(case_id, False)
-        except HTTPException:
-            raise
-        except DatabaseError as e:
-            logger.warning("Revoke infraction failed for %s/%s: %s", server_id, case_id, e)
-            raise HTTPException(status_code=503, detail=DB_UNAVAILABLE) from e
-        except Exception as e:
-            logger.exception("Revoke infraction failed for %s/%s: %s", server_id, case_id, e)
+        existing = await repo.get(case_id)
+        if not existing:
+            raise HTTPException(status_code=404, detail="Cas introuvable")
+        if str(existing.user_id) == str(session.user_id):
             raise HTTPException(
-                status_code=500, detail="Erreur interne — détails dans les logs du bot."
-            ) from e
+                status_code=403, detail="Tu ne peux pas révoquer un cas qui te vise."
+            )
+        if not existing.active:
+            raise HTTPException(status_code=400, detail="Cas déjà révoqué")
+        await repo.set_active(case_id, False)
 
         async def _post_note():
             cfg = ctx.get_full_config()

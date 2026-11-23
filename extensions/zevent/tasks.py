@@ -11,6 +11,7 @@ from features.zevent.history import compare_milestone, format_euros, record_mess
 from features.zevent.repository import ZeventStateRepository
 from src.core import clock, log_context
 from src.core import logging as logutil
+from src.core.errors import DatabaseError
 from src.core.http import fetch
 from src.core.logging import log_failure
 from src.discord_ext.look import card, embeds_to_v2
@@ -292,11 +293,9 @@ class TasksMixin(ZeventBase):
         """
         try:
             stored = await ZeventStateRepository(guild.guild_id).load_milestone(self._edition_id())
-        except Exception as e:
-            # Deliberately broad: a repository raises DatabaseError, but a
-            # deployment with no `mongodb.url` at all raises RuntimeError before
-            # the driver is ever reached. Neither is worth stalling the tracker
-            # for — the first reading becomes the baseline, as before.
+        except DatabaseError as e:
+            # MongoDB down, or no `mongodb.url` at all: not worth stalling the
+            # tracker for — the first reading becomes the baseline, as before.
             log_failure(logger, f"Palier de dons illisible en base : {e}")
             return
         if stored is not None:

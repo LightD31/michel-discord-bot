@@ -219,9 +219,8 @@ def test_an_unreachable_database_still_announces(store) -> None:
 
 
 def test_an_unconfigured_database_still_announces(store) -> None:
-    """No `mongodb.url` raises RuntimeError, not DatabaseError, before the
-    driver is ever reached — it must not break the refresh cycle either."""
-    store.error = RuntimeError("MongoDB URL is not configured")
+    """No `mongodb.url` is a DatabaseError too (P31): it must not break the refresh cycle."""
+    store.error = DatabaseError("MongoDB URL is not configured")
     store.failing = True
     tracker = Tracker()
 

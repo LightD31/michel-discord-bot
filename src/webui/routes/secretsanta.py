@@ -31,7 +31,6 @@ from features.secretsanta import SecretSantaRepository, SecretSantaSession
 from features.secretsanta.dates import format_exchange_date
 from src.core import logging as logutil
 from src.core.config import ModuleConfig, load_discord2name
-from src.core.errors import DatabaseError
 from src.core.permissions import ADMINISTRATOR, has_any
 from src.discord_ext.messages import fetch_user_safe
 from src.discord_ext.secretsanta import run_draw
@@ -42,7 +41,6 @@ from src.webui.context import WebUIContext
 logger = logutil.init_logger("webui.routes.secretsanta")
 
 SANTA = ModuleConfig("moduleSecretSanta")
-DB_UNAVAILABLE = "Base de données injoignable, réessaie dans un instant."
 # A draw DMs every participant: give it time, and never cut it short.
 DRAW_TIMEOUT_SECONDS = 120.0
 
@@ -147,11 +145,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
     router = APIRouter()
 
     async def _session(server_id: str) -> SecretSantaSession | None:
-        try:
-            return await SecretSantaRepository().get_session(f"guild_{server_id}")
-        except DatabaseError as e:
-            logger.warning("Secret Santa session read failed for %s: %s", server_id, e)
-            raise HTTPException(status_code=503, detail=DB_UNAVAILABLE) from e
+        return await SecretSantaRepository().get_session(f"guild_{server_id}")
 
     @router.get("/api/servers/{server_id}/secretsanta")
     async def api_secretsanta(request: Request, server_id: str):
@@ -163,11 +157,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
         names = await ctx.call_bot(
             member_names, ctx.bot, server_id, ids, what=f"name Secret Santa members of {server_id}"
         )
-        try:
-            data = await summary(SecretSantaRepository(), santa, names)
-        except DatabaseError as e:
-            logger.warning("Secret Santa summary failed for %s: %s", server_id, e)
-            raise HTTPException(status_code=503, detail=DB_UNAVAILABLE) from e
+        data = await summary(SecretSantaRepository(), santa, names)
         data["can_reveal"] = santa.is_drawn and await _is_administrator(ctx, session, server_id)
         return JSONResponse({"session": data})
 
@@ -210,11 +200,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
         santa = await _session(server_id)
         if santa is None:
             raise HTTPException(status_code=404, detail="Aucune session de Père Noël Secret.")
-        try:
-            pairs = await SecretSantaRepository().get_draw_results(santa.context_id)
-        except DatabaseError as e:
-            logger.warning("Secret Santa results read failed for %s: %s", server_id, e)
-            raise HTTPException(status_code=503, detail=DB_UNAVAILABLE) from e
+        pairs = await SecretSantaRepository().get_draw_results(santa.context_id)
         if not santa.is_drawn or not pairs:
             raise HTTPException(status_code=409, detail="Le tirage n'a pas encore été fait.")
         ids = list(dict.fromkeys(uid for pair in pairs for uid in pair))

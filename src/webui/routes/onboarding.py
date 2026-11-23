@@ -65,7 +65,7 @@ async def _audit_facts(server_id: str) -> tuple[bool, bool]:
     repo = AuditRepository(server_id)
     try:
         return await repo.has(TEMPLATE_TEST, WELCOME), await repo.has(ANNOUNCE)
-    except (DatabaseError, RuntimeError) as e:  # RuntimeError: no MongoDB configured
+    except DatabaseError as e:
         logger.warning("Onboarding facts of %s unreadable: %s", server_id, e)
         return False, False
 

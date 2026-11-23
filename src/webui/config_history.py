@@ -90,7 +90,7 @@ async def remember(guild_id: str, module: str, before: Any, schema: dict[str, An
         return  # nothing was set: nothing to go back to
     try:
         await ConfigHistoryRepository(guild_id).add(module, without_secrets(before, schema))
-    except (DatabaseError, RuntimeError) as e:  # RuntimeError: no MongoDB configured
+    except DatabaseError as e:
         logger.warning("Earlier %s settings of %s not kept: %s", module, guild_id, e)
 
 

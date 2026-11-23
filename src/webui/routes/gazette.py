@@ -17,7 +17,6 @@ from fastapi.responses import JSONResponse
 from src.core import clock
 from src.core import logging as logutil
 from src.core.config import ModuleConfig
-from src.core.errors import DatabaseError
 from src.discord_ext.channels import fetch_guild_channel, member_can
 from src.discord_ext.gazette import edition_json, gather_edition, post_edition
 from src.discord_ext.messages import CAN_SEND
@@ -27,14 +26,10 @@ from src.webui.context import WebUIContext
 logger = logutil.init_logger("webui.routes.gazette")
 
 GAZETTE = ModuleConfig("moduleGazette")
-DB_UNAVAILABLE = "Base de données injoignable, réessaie dans un instant."
 
 
 async def preview_on_bot(bot: Any, server_id: str) -> dict[str, Any]:
-    try:
-        edition = await gather_edition(bot, server_id, clock.now())
-    except DatabaseError as e:
-        raise HTTPException(status_code=503, detail=DB_UNAVAILABLE) from e
+    edition = await gather_edition(bot, server_id, clock.now())
     return edition_json(edition)
 
 
@@ -56,11 +51,8 @@ async def publish_on_bot(bot: Any, server_id: str, user_id: str) -> dict[str, An
             status_code=403,
             detail=f"Tu ne peux pas écrire dans #{getattr(channel, 'name', channel.id)}.",
         )
-    try:
-        edition = await gather_edition(bot, server_id, clock.now())
-        message = await post_edition(channel, edition)
-    except DatabaseError as e:
-        raise HTTPException(status_code=503, detail=DB_UNAVAILABLE) from e
+    edition = await gather_edition(bot, server_id, clock.now())
+    message = await post_edition(channel, edition)
     return {"channel": getattr(channel, "name", ""), "message_id": str(message.id)}
 
 
