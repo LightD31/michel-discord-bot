@@ -2,7 +2,7 @@
 
 What P1–P26 left half-done, duplicated or dead, and what the docs and guards
 say that the code no longer does. Since the first draft, four lots answer your
-review: a Spotify vote switch that works, Twitch connected from the browser, a
+review: a Spotify daily-vote switch that works, Twitch connected from the browser, a
 module's settings copied from another server, and service accounts per server.
 
 Each lot is one PR. The consolidation lots are ranked by value: the first ones
@@ -28,7 +28,7 @@ Measured on `master` at `1c1ecc1` (P26):
 | Lot | What | − | + | Risk |
 |---|---|---|---|---|
 | P27 | Tests: no leaked event loop, one SPA harness, faster guards | 140 | 70 | low |
-| P28 | Settings that do nothing: the Spotify vote switch wired, dead settings, a dead route, dead code and CSS | 300 | 40 | low (votes: member-visible) |
+| P28 | Settings that do nothing: the Spotify daily-vote switch wired, dead settings, a dead route, dead code and CSS | 300 | 40 | low (daily vote: member-visible) |
 | P29 | **new** Twitch connected from the browser | 40 | 230 | medium |
 | P30 | Finish the `guild_id_of()` migration, and guard it | 120 | 50 | low |
 | P31 | Dashboard: one answer for a database outage | 110 | 30 | low |
@@ -100,25 +100,31 @@ Put the two stray scans on `python_files()`, and close the demo's loop.
 
 ## P28 — Settings that do nothing
 
-**The Spotify vote switch, wired.** `moduleSpotify.voteEnabled` "Votes activés"
-(`extensions/spotify/_common.py:62`, default off) is read nowhere. The vote
-features all run on every Spotify server whatever it says:
+**The Spotify vote switch, wired, for the daily vote only.**
+`moduleSpotify.voteEnabled` "Votes activés" (`extensions/spotify/_common.py:62`,
+default off) is read nowhere: the daily vote runs on every Spotify server
+whatever it says.
 
-- the daily vote (`randomvote`, `votes.py:80`)
-- its reminders (`reminder_check`, `votes.py:475`) and `/musique activer` /
-  `/musique retirer`
-- the add-with-vote of `/musique proposer` (`votes.py:597`) and its hourly
-  close (`check_for_end`, `votes.py:826`)
+When the switch is off, the server has no daily vote (`randomvote`,
+`votes.py:80`): no song of the day is put to the vote, and the open one, if
+any, is closed as usual first. What only exists for that vote goes quiet with
+it:
 
-When the switch is off, none of these run: the tasks skip the server, and the
-three commands answer with a `module_off()`-style refusal that names the switch
-("🗳️ Les votes sont désactivés sur ce serveur : un administrateur peut les
-activer dans le tableau de bord").
+- the low-vote reminder (`voteReminderEveryDays`)
+- the members' DM reminders "voter pour la chanson du jour" (`reminder_check`,
+  `votes.py:475`)
+- `/musique rappel activer | retirer`, which answers that the daily vote is
+  switched off on this server, and who can switch it on
+
+Everything else is left alone, notably `/musique proposer`'s add-with-vote
+(`votes.py:597`) and its hourly close (`check_for_end`, `votes.py:826`). The
+field's label and help become "Vote quotidien" / "Chaque jour à 20 h, un vote
+pour garder ou retirer une chanson de la playlist."
 
 **Member-visible**, which is the point. **Deploy:** set
-`servers.<id>.moduleSpotify.voteEnabled: true` on every server that uses the
-votes today. The default stays off, as the dashboard already shows it, so a
-server where it is unset stops voting until it is switched on.
+`servers.<id>.moduleSpotify.voteEnabled: true` on every server that holds the
+daily vote today. The default stays off, as the dashboard already shows it, so
+a server where it is unset stops its daily vote until it is switched on.
 
 Settings an admin can change that nothing reads (searched for every field of
 every registered schema; history checked back to the import, `18663a6`):
@@ -153,7 +159,7 @@ Code nothing calls:
   473-490, 1171-1180, 1335`). About 60 lines.
 
 **Config changes** (one deployment, no migration): `voteEnabled: true` where
-the votes are wanted. Drop `config.discord.botId`,
+the daily vote is wanted. Drop `config.discord.botId`,
 `config.discord.devGuildChannelId` and `config.random`. Regenerate
 `config.example.json`.
 
