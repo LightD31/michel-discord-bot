@@ -8,6 +8,7 @@ and its own Discord scheduled event.
 from types import SimpleNamespace
 
 import pytest
+from interactions import MessageFlags
 
 import extensions.zevent.commands as commands
 import extensions.zevent.tasks as tasks
@@ -145,8 +146,10 @@ async def test_the_refresh_renders_once_and_publishes_in_each_guild(ext, monkeyp
         if message == "broken":
             raise RuntimeError("Discord refused the edit")
         edited.append(message)
-        assert kwargs["embeds"] == ["embeds"]
+        assert kwargs["components"] == ["embeds"]  # the render, as a V2 card (P26)
+        assert kwargs["flags"] & MessageFlags.IS_COMPONENTS_V2
 
+    monkeypatch.setattr(tasks, "embeds_to_v2", lambda embeds: embeds)
     monkeypatch.setattr(tasks, "fetch", fake_fetch)
     monkeypatch.setattr(tasks, "API_URL", "https://zevent.test/api/")
     monkeypatch.setattr(tasks, "STREAMLABS_API_URL", "")
@@ -227,6 +230,7 @@ def finishing(ext, monkeypatch):
     async def fake_edit(message, **kwargs):
         calls["edited"].append(message.name)
 
+    monkeypatch.setattr(commands, "embeds_to_v2", lambda embeds: embeds)
     monkeypatch.setattr(commands, "fetch", fake_fetch)
     monkeypatch.setattr(commands, "API_URL", "https://zevent.test/api/")
     monkeypatch.setattr(commands, "edit_message_if_changed", fake_edit)

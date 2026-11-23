@@ -5,6 +5,7 @@ import asyncio
 from interactions import (
     Embed,
     File,
+    MessageFlags,
     OrTrigger,
     Task,
     Timestamp,
@@ -17,7 +18,7 @@ from features.minecraft.table import build_stats_table
 from src.core import log_context
 from src.core.images import create_dynamic_image
 from src.core.logging import log_failure
-from src.discord_ext.look import card
+from src.discord_ext.look import card, embeds_to_v2
 from src.discord_ext.messages import GuildMessages, edit_message_if_changed
 
 from ._common import MINECRAFT, build_stats_embed, logger
@@ -80,15 +81,18 @@ class StatsMixin:
             logger.warning("Guild %s: no player statistics to display", guild_id)
         if table_string is None or unchanged:
             await edit_message_if_changed(
-                message, content="", embeds=[embed1, embed2], logger=logger
+                message,
+                components=embeds_to_v2([embed1, embed2]),
+                flags=MessageFlags.IS_COMPONENTS_V2,
+                logger=logger,
             )
             return
         # Pillow work, off the event loop.
         _, image_io = await asyncio.to_thread(create_dynamic_image, table_string)
         await edit_message_if_changed(
             message,
-            content="",
-            embeds=[embed1, embed2],
+            components=embeds_to_v2([embed1, embed2]),
+            flags=MessageFlags.IS_COMPONENTS_V2,
             file=File(image_io, "stats.png"),
             logger=logger,
         )

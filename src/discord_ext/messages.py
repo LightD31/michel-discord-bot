@@ -344,9 +344,14 @@ def is_v2(message: Any) -> bool:
 
 
 def _without_ids(value: Any) -> Any:
-    """Components as sent, minus the ``id`` Discord numbers each one with (P22)."""
+    """Components as sent, minus the ``id`` Discord numbers each one with (P22), and
+    their media back to ``attachment://name`` (P26: Discord answers with a CDN link)."""
     if isinstance(value, dict):
-        return {k: _without_ids(v) for k, v in value.items() if k != "id"}
+        return {
+            k: _canonical_attachment_url(v) if k == "url" else _without_ids(v)
+            for k, v in value.items()
+            if k not in ("id", "proxy_url", "width", "height", "content_type", "loading_state")
+        }
     if isinstance(value, list):
         return [_without_ids(v) for v in value]
     return value

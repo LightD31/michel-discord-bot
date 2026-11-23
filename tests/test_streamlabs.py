@@ -185,7 +185,16 @@ async def test_the_refresh_fetches_a_shared_team_once(api, monkeypatch, store_co
 
     assert api.count(campaign_api_url(TEAM)) == 1
     for message in posted.values():
-        assert [e.title for e in message.embeds] == [
+        # One Components V2 card per former embed (P26), titled as they were.
+        titles = [
+            card.components[0].components[0].content
+            if hasattr(card.components[0], "accessory")
+            else card.components[0].content
+            for card in message.components
+        ]
+        assert [
+            t.splitlines()[-1].removeprefix("## ").split("](")[0].lstrip("[") for t in titles
+        ] == [
             "Zevent des copains",
             "Action contre la Faim",
             "Participants",

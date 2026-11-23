@@ -2,11 +2,18 @@
 
 import os
 
-from interactions import Permissions, SlashContext, slash_command, slash_default_member_permission
+from interactions import (
+    MessageFlags,
+    Permissions,
+    SlashContext,
+    slash_command,
+    slash_default_member_permission,
+)
 
 from src.core import logging as logutil
 from src.core.http import fetch
 from src.core.logging import log_failure
+from src.discord_ext.look import embeds_to_v2
 from src.discord_ext.messages import edit_message_if_changed, member_of, module_off, send_error
 from src.discord_ext.scopes import guild_scopes
 
@@ -83,7 +90,12 @@ class CommandsMixin(ZeventBase):
 
             message = await self.messages.get(guild_id, settings)
             if message:
-                await edit_message_if_changed(message, embeds=embeds, content="", logger=logger)
+                await edit_message_if_changed(
+                    message,
+                    components=embeds_to_v2(embeds),
+                    flags=MessageFlags.IS_COMPONENTS_V2,
+                    logger=logger,
+                )
                 await ctx.send("Embed final créé avec succès", ephemeral=True)
             else:
                 await ctx.send("Erreur: Message non trouvé", ephemeral=True)
