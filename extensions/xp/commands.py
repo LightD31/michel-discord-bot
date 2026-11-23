@@ -28,6 +28,7 @@ from features.xp import (
 from features.xp.seasons import Season, season_of
 from src.core import clock
 from src.core.errors import DatabaseError
+from src.discord_ext.avatars import avatar_png
 from src.discord_ext.look import card
 from src.discord_ext.mentions import NO_PINGS
 from src.discord_ext.messages import guild_id_of, guild_of, send_error
@@ -35,23 +36,6 @@ from src.discord_ext.paginator import CustomPaginator
 from src.discord_ext.scopes import guild_scopes
 
 from ._common import TIMEZONE, XP, logger
-
-
-async def _fetch_avatar_bytes(target_user) -> bytes | None:
-    """Pull the user's avatar through interactions.py's Asset.fetch helper.
-
-    ``str(asset)`` returns the attrs repr, not the CDN URL — using
-    ``Asset.fetch()`` is the supported way and goes through the bot's HTTP
-    client, which knows how to handle CDN responses.
-    """
-    asset = getattr(target_user, "display_avatar", None) or getattr(target_user, "avatar", None)
-    if asset is None:
-        return None
-    try:
-        return await asset.fetch(extension=".png", size=256)
-    except Exception as e:
-        logger.warning("Could not fetch avatar for rank card: %s", e)
-        return None
 
 
 class CommandsMixin:
@@ -120,7 +104,7 @@ class CommandsMixin:
         lvl, xp_in_level, xp_max = calculate_level(xp)
         rank = await self._get_user_rank(guild_id, str(target_user.id))
 
-        avatar_bytes = await _fetch_avatar_bytes(target_user)
+        avatar_bytes = await avatar_png(target_user)
         try:
             buffer = await asyncio.to_thread(  # Pillow work, off the event loop
                 render_rank_card,
@@ -182,8 +166,8 @@ class CommandsMixin:
         settings = XP.get(guild_id_of(ctx))
         if settings.get("seasonsEnabled") and periode != "toujours":
             season = season_of(clock.now(), settings.get("seasonMonths", 1))
-            embeds = await self._build_season_embeds(ctx.guild, season)
+            embeds = await self._build_season_embeds(guild_of(ctx), season)
         else:
-            embeds = await self._build_leaderboard_embeds(ctx.guild)
+            embeds = await self._build_leaderboard_embeds(guild_of(ctx))
         paginator = CustomPaginator.create_from_embeds(self.bot, *embeds, timeout=3600)
         await paginator.send(ctx)

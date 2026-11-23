@@ -7,7 +7,20 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
 
-_DEFAULT_FONT_PATH = str(Path(__file__).resolve().parent.parent / "assets" / "Menlo-Regular.ttf")
+_ASSETS = Path(__file__).resolve().parent.parent / "assets"
+_DEFAULT_FONT_PATH = str(_ASSETS / "Menlo-Regular.ttf")
+# The font of the rank card, the welcome card and the Tricount chart.
+SANS_FONT_PATH = str(_ASSETS / "OpenSans.ttf")
+
+
+def circular_avatar(avatar_bytes: bytes, size: int) -> Image.Image:
+    """An avatar cropped to a circle of *size* pixels (the rank and welcome cards)."""
+    img = Image.open(BytesIO(avatar_bytes)).convert("RGBA").resize((size, size))
+    mask = Image.new("L", (size, size), 0)
+    ImageDraw.Draw(mask).ellipse((0, 0, size, size), fill=255)
+    out = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    out.paste(img, (0, 0), mask=mask)
+    return out
 
 
 def create_dynamic_image(

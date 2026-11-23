@@ -5,7 +5,7 @@ and an edition opens back at zero, so last year's markers must never gate this
 year's announcements.
 """
 
-from src.core.db import mongo_manager, translates_db_errors
+from src.core.db import GuildRepository, translates_db_errors
 
 COLLECTION = "zevent_state"
 # Document id for an edition the stats API could not identify. Guessing an
@@ -13,14 +13,10 @@ COLLECTION = "zevent_state"
 UNKNOWN_EDITION = "unknown"
 
 
-class ZeventStateRepository:
+class ZeventStateRepository(GuildRepository):
     """Stores the highest donation milestone and the record marker."""
 
-    def __init__(self, guild_id: str | int) -> None:
-        self.guild_id = guild_id
-
-    def _col(self):
-        return mongo_manager.get_guild_collection(self.guild_id, COLLECTION)
+    COLLECTION = COLLECTION
 
     @staticmethod
     def _doc_id(event_id: str | None) -> str:

@@ -87,35 +87,7 @@ def render_bar(count: int, total: int, length: int = 12) -> str:
     return "▰" * filled + "▱" * (length - filled)
 
 
-def parse_duration(text: str) -> int | None:
-    """Parse a duration string like ``"30m"``, ``"2h"``, ``"1d"``, ``"3j"``, ``"1h 30m"``, ``"45"``.
-
-    Returns total seconds or ``None`` on malformed input. Bare numbers are
-    minutes for backwards-friendliness with the slash-command UX. ``j`` (jour)
-    is ``d``, and spaces are ignored.
-    """
-    if not text:
-        return None
-    text = "".join(text.lower().split())
-    multipliers = {"s": 1, "m": 60, "h": 3600, "d": 86400, "j": 86400}
-    total = 0
-    current = ""
-    for ch in text:
-        if ch.isdigit():
-            current += ch
-            continue
-        if ch in multipliers and current:
-            total += int(current) * multipliers[ch]
-            current = ""
-            continue
-        return None
-    if current:
-        total += int(current) * 60  # bare number → minutes
-    return total if total > 0 else None
-
-
 __all__ = [
-    "parse_duration",
     "render_bar",
     "tally_first_past_post",
     "tally_ranked_choice",

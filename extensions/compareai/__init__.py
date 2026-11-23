@@ -50,10 +50,7 @@ class CompareAIExtension(AskMixin, MentionsMixin, VotingMixin, Extension):
                 await api.load_prices()
 
         for gid in enabled_guild_ids():
-            try:
-                await repo_for(gid).ensure_indexes()
-            except DatabaseError as e:
-                logger.error("Could not create AI indexes for %s: %s", gid, e)
+            await repo_for(gid).ensure_indexes()  # logs a failure, never raises
         try:
             await AiUsageRepository().ensure_indexes()
         except DatabaseError as e:

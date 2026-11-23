@@ -20,6 +20,7 @@ import src.webui.routes.spotify as spotify_routes
 import src.webui.routes.xp as xp_routes
 from features.spotify.stats import CurrentPoll, NamedCount, PlaylistStats, VoterTally
 from src.core.errors import DatabaseError
+from src.webui.errors import install_error_handlers
 from src.webui.public_links import (
     TOKEN_KEY,
     enabled_public_dashboards,
@@ -197,6 +198,7 @@ def http(monkeypatch, ctx):
     monkeypatch.setattr(spotify_routes, "SpotifyRepository", _FakeSpotifyRepo)
     monkeypatch.setattr(public_routes, "UserInfoRepository", _FakeUserInfoRepo)
     app = FastAPI()
+    install_error_handlers(app)
     app.include_router(public_routes.create_router(ctx))
     return TestClient(app)
 

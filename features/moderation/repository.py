@@ -8,8 +8,8 @@ import pymongo
 from pymongo import ReturnDocument
 
 from features.moderation.models import Infraction, InfractionType
-from src.core.db import mongo_manager, translates_db_errors
-from src.core.logging import init_logger, log_failure
+from src.core.db import GuildRepository, IndexSpec, translates_db_errors
+from src.core.logging import init_logger
 
 logger = init_logger(__name__)
 
@@ -18,26 +18,21 @@ META_COLLECTION = "infractions_meta"
 COUNTER_ID = "counter"
 
 
-class ModerationRepository:
+class ModerationRepository(GuildRepository):
     """Per-guild store for infractions + auto-incrementing case numbers."""
 
-    def __init__(self, guild_id: str | int) -> None:
-        self._guild_id = str(guild_id)
-
-    def _col(self):
-        return mongo_manager.get_guild_collection(self._guild_id, COLLECTION)
+    COLLECTION = COLLECTION
 
     def _meta_col(self):
-        return mongo_manager.get_guild_collection(self._guild_id, META_COLLECTION)
+        return self._col(META_COLLECTION)
 
-    async def ensure_indexes(self) -> None:
-        try:
-            await self._col().create_index([("id", pymongo.ASCENDING)], unique=True, name="id_idx")
-            await self._col().create_index([("user_id", pymongo.ASCENDING)], name="user_id_idx")
-            await self._col().create_index([("type", pymongo.ASCENDING)], name="type_idx")
-            await self._col().create_index([("active", pymongo.ASCENDING)], name="active_idx")
-        except Exception as e:
-            log_failure(logger, "Failed to create infraction indexes for %s: %s", self._guild_id, e)
+    def indexes(self) -> list[IndexSpec]:
+        return [
+            ("", [("id", pymongo.ASCENDING)], {"unique": True, "name": "id_idx"}),
+            ("", [("user_id", pymongo.ASCENDING)], {"name": "user_id_idx"}),
+            ("", [("type", pymongo.ASCENDING)], {"name": "type_idx"}),
+            ("", [("active", pymongo.ASCENDING)], {"name": "active_idx"}),
+        ]
 
     @translates_db_errors
     async def next_case_id(self) -> int:

@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
-from src.core.db import mongo_manager, translates_db_errors
+from src.core.db import GuildRepository, translates_db_errors
 
 COLLECTION = "bot_messages"
 
@@ -40,14 +40,10 @@ class MessageRef:
         )
 
 
-class MessageRefRepository:
+class MessageRefRepository(GuildRepository):
     """Per-guild accessor for the ``bot_messages`` collection."""
 
-    def __init__(self, guild_id: str | int) -> None:
-        self.guild_id = guild_id
-
-    def _col(self) -> Any:
-        return mongo_manager.get_guild_collection(self.guild_id, COLLECTION)
+    COLLECTION = COLLECTION
 
     @translates_db_errors
     async def get(self, slot: str) -> MessageRef | None:

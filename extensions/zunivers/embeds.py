@@ -15,6 +15,7 @@ from features.coloc.constants import (
     get_bonus_value_description,
     zunivers_link,
 )
+from features.coloc.models import HardcoreSeason
 from features.coloc.utils import format_event_items, parse_zunivers_date
 from src.core.text import format_discord_timestamp
 from src.discord_ext.look import SPACER_FIELD, Kind, card
@@ -97,12 +98,14 @@ def set_event_embed_image(
         embed.set_image(url=image_url)
 
 
-def create_season_embed(season: dict, season_type: str, settings: dict | None = None) -> Embed:
+def create_season_embed(
+    season: HardcoreSeason, season_type: str, settings: dict | None = None
+) -> Embed:
     """
     Create a Discord embed for a hardcore season start or end.
 
     Args:
-        season: Season data from the API
+        season: The season, as the API gave it or as it was stored
         season_type: "start" or "end"
         settings: The guild's ``moduleZunivers`` settings (season image, /journa link)
 
@@ -122,18 +125,13 @@ def create_season_embed(season: dict, season_type: str, settings: dict | None = 
     embed = card(
         "moduleZunivers",
         kind,
-        title=f"{emoji} {action} : Saison {season['index']}",
+        title=f"{emoji} {action} : Saison {season.index}",
         description=description,
     )
 
-    # Parse and format dates
-    # Handle both API format (camelCase) and internal storage format (snake_case)
-    begin_date_str = season.get("beginDate") or season.get("begin_date")
-    end_date_str = season.get("endDate") or season.get("end_date")
-
-    if begin_date_str and end_date_str:
-        begin_date = parse_zunivers_date(begin_date_str)
-        end_date = parse_zunivers_date(end_date_str)
+    if season.begin_date and season.end_date:
+        begin_date = parse_zunivers_date(season.begin_date)
+        end_date = parse_zunivers_date(season.end_date)
 
         embed.add_field(
             name="📅 Période de la saison",

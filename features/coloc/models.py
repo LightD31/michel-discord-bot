@@ -239,12 +239,11 @@ class HardcoreSeason:
         """Create a HardcoreSeason from a stored dictionary."""
         if data is None:
             return None
-        # Support both old format (beginDate) and new format (begin_date)
         return cls(
             id=data["id"],
             index=data["index"],
-            begin_date=data.get("begin_date") or data.get("beginDate", ""),
-            end_date=data.get("end_date") or data.get("endDate", ""),
+            begin_date=data.get("begin_date", ""),
+            end_date=data.get("end_date", ""),
         )
 
 

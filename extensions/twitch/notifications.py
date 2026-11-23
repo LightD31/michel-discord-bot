@@ -25,6 +25,7 @@ from src.discord_ext.live_alerts import (
 )
 from src.discord_ext.look import card
 from src.discord_ext.mentions import mentions_written_in
+from src.discord_ext.messages import guild_id_of
 
 logger = logutil.init_logger(__name__)
 
@@ -35,7 +36,7 @@ class NotificationsMixin(TwitchBase):
     @component_callback(alert_pattern(TWITCH_ALERT))
     async def on_live_alert(self, ctx: ComponentContext) -> None:
         """ "🔔 M'avertir des lives": the streamer's mention role, given or taken back."""
-        settings = TWITCH.get(ctx.guild_id) if ctx.guild_id else {}
+        settings = TWITCH.get(guild_id_of(ctx))
         roles = configured_alert_roles(settings.get("twitchStreamerList"), "twitchMentionRoleId")
         await toggle_alert_role(ctx, roles, what="des lives")
 

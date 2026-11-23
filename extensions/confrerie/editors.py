@@ -28,7 +28,7 @@ from features.confrerie.editors import (
 from src.core import logging as logutil
 from src.core.cache import ExpiringMap
 from src.core.errors import ValidationError
-from src.discord_ext.messages import send_error
+from src.discord_ext.messages import guild_id_of, send_error
 from src.discord_ext.scopes import guild_scopes
 from src.integrations.notion import NotionAPIError
 
@@ -143,7 +143,7 @@ class EditorsMixin(ConfrerieBase):
         date: str = "",
     ):
         """Validate the options, remember them for this user, then open the modal."""
-        db_id = CONFRERIE.get(ctx.guild_id).get("confrerieNotionDbIdEditorsId")
+        db_id = CONFRERIE.get(guild_id_of(ctx)).get("confrerieNotionDbIdEditorsId")
         if not db_id:
             await send_error(ctx, "La base Notion des éditeurs n'est pas configurée.")
             return
@@ -208,7 +208,7 @@ class EditorsMixin(ConfrerieBase):
         await autocomplete_options(
             ctx,
             self.notion_client,
-            CONFRERIE.get(ctx.guild_id).get("confrerieNotionDbIdEditorsId"),
+            CONFRERIE.get(guild_id_of(ctx)).get("confrerieNotionDbIdEditorsId"),
             column,
         )
 
@@ -232,7 +232,7 @@ class EditorsMixin(ConfrerieBase):
         editor.exemples = exemples
         editor.commentaire = commentaire
 
-        db_id = CONFRERIE.get(ctx.guild_id).get("confrerieNotionDbIdEditorsId")
+        db_id = CONFRERIE.get(guild_id_of(ctx)).get("confrerieNotionDbIdEditorsId")
         if not db_id:
             await send_error(ctx, "La base Notion des éditeurs n'est pas configurée.")
             return

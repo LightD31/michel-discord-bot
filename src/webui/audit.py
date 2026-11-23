@@ -130,7 +130,7 @@ async def record(
     }
     try:
         await AuditRepository(guild_id).add(entry)
-    except (DatabaseError, RuntimeError) as e:  # RuntimeError: no MongoDB configured
+    except DatabaseError as e:
         logger.warning("Audit entry %s (guild %s) not recorded: %s", action, guild_id, e)
 
 

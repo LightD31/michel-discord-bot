@@ -5,7 +5,6 @@ from datetime import UTC, datetime
 
 import pytest
 
-import features.uptime.repository as repository
 from features.uptime import (
     AlertEvent,
     AlertMode,
@@ -18,6 +17,7 @@ from features.uptime import (
     render_alert,
     transition,
 )
+from src.core import db
 from src.integrations.uptime_kuma import MonitorStatus
 
 DOWN, UP, PENDING, MAINT = (
@@ -218,9 +218,7 @@ def collection(monkeypatch):
             "bad": {"oops": True},
         }
     )
-    monkeypatch.setattr(
-        repository.mongo_manager, "get_guild_collection", lambda guild_id, name: col
-    )
+    monkeypatch.setattr(db.mongo_manager, "get_guild_collection", lambda guild_id, name: col)
     return col
 
 
@@ -250,9 +248,7 @@ async def test_status_update_never_resurrects_removed_alert(collection):
 
 async def test_save_into_empty_guild(monkeypatch):
     col = _FakeCollection()
-    monkeypatch.setattr(
-        repository.mongo_manager, "get_guild_collection", lambda guild_id, name: col
-    )
+    monkeypatch.setattr(db.mongo_manager, "get_guild_collection", lambda guild_id, name: col)
     repo = UptimeRepository("1")
     await repo.save(MonitorAlert(5, 200, AlertMode.DETAILED, None))
     assert await repo.load() == {5: MonitorAlert(5, 200)}

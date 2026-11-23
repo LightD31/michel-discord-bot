@@ -38,6 +38,7 @@ from src.discord_ext.live_alerts import (
     toggle_alert_role,
 )
 from src.discord_ext.mentions import everyone_if_written
+from src.discord_ext.messages import guild_id_of
 from src.integrations import youtube as youtube_api_client
 from src.webui.schemas import (
     ModuleHelp,
@@ -153,7 +154,7 @@ class YoutubeExtension(Extension):
     @component_callback(alert_pattern(YOUTUBE_ALERT))
     async def on_video_alert(self, ctx: ComponentContext) -> None:
         """ "🔔 M'avertir des vidéos": the channel's mention role, given or taken back."""
-        settings = YOUTUBE.get(ctx.guild_id) if ctx.guild_id else {}
+        settings = YOUTUBE.get(guild_id_of(ctx))
         roles = configured_alert_roles(settings.get("youtubeChannelList"), "mentionRoleId")
         await toggle_alert_role(ctx, roles, what="des nouvelles vidéos")
 

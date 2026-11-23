@@ -8,10 +8,8 @@ from features.minecraft.config import (
 from features.minecraft.settings import MinecraftSettings
 from features.minecraft.stats_sftp import (
     MinecraftStatsCache,
-    calculate_level,
     clear_stats_caches,
     create_optimized_sftp_connection,
-    format_number,
     get_all_player_stats_optimized,
     get_minecraft_stats_with_retry,
     get_player_stats_optimized,
@@ -29,10 +27,8 @@ __all__ = [
     "MinecraftSettings",
     "MinecraftStatsCache",
     "apply_optimization_config",
-    "calculate_level",
     "clear_stats_caches",
     "create_optimized_sftp_connection",
-    "format_number",
     "get_all_player_stats_optimized",
     "get_config",
     "get_minecraft_stats_with_retry",

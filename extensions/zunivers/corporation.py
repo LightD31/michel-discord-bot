@@ -19,7 +19,7 @@ from features.coloc.constants import (
 )
 from src.core import clock
 from src.core.logging import log_failure
-from src.discord_ext.messages import send_error
+from src.discord_ext.messages import guild_id_of, send_error
 
 from ._base import ZuniversBase
 from ._common import logger, zunivers_api_url, zunivers_cmd, zunivers_web_url
@@ -102,7 +102,7 @@ class CorporationMixin(ZuniversBase):
         if not zunivers_api_url():
             await send_error(ctx, "L'API ZUnivers n'est pas configurée (section globale ZUnivers).")
             return
-        await self._send_corporation_recap(date, only=str(ctx.guild_id))
+        await self._send_corporation_recap(date, only=guild_id_of(ctx))
         await ctx.send("Corporation recap envoyé !", ephemeral=True)
 
     def _parse_date(self, date_str: str | None = None) -> date_type | None:

@@ -2,15 +2,11 @@
 
 from typing import Any
 
-from src.core.db import mongo_manager, translates_db_errors
+from src.core.db import GuildRepository, translates_db_errors
 
 
-class MdiMatchesRepository:
-    def __init__(self, guild_id) -> None:
-        self._guild_id = str(guild_id)
-
-    def _col(self):
-        return mongo_manager.get_guild_collection(self._guild_id, "mdi_matches")
+class MdiMatchesRepository(GuildRepository):
+    COLLECTION = "mdi_matches"
 
     @translates_db_errors
     async def load_all(self) -> list[dict[str, Any]]:

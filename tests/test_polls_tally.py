@@ -9,11 +9,11 @@ filtered.
 import pytest
 
 from features.polls.tally import (
-    parse_duration,
     render_bar,
     tally_first_past_post,
     tally_ranked_choice,
 )
+from src.core.text import parse_duration
 
 # ---------------------------------------------------------------------------
 # First past the post
@@ -154,6 +154,7 @@ def test_bar_is_empty_when_nobody_voted():
         ("1h30m", 5400),
         (" 2H ", 7200),
         ("3j", 3 * 86400),  # French: jour
+        ("2w", 2 * 604800),  # weeks, as moderation timeouts always took
         ("1h 30m", 5400),
     ],
 )
@@ -161,7 +162,7 @@ def test_durations_parse(text, expected):
     assert parse_duration(text) == expected
 
 
-@pytest.mark.parametrize("text", ["", "bad", "m", "1x", "0m", "0"])
+@pytest.mark.parametrize("text", ["", "bad", "m", "1x", "0m", "0", "1h foo"])
 def test_malformed_durations_are_rejected(text):
     assert parse_duration(text) is None
 

@@ -6,17 +6,13 @@ which MongoDB would read as a nested path in an update, so the video would never
 be found again and would be re-posted on every poll.
 """
 
-from src.core.db import mongo_manager, translates_db_errors
+from src.core.db import GuildRepository, translates_db_errors
 
 DOCUMENT_ID = "last_videos"
 
 
-class YoutubeRepository:
-    def __init__(self, guild_id) -> None:
-        self._guild_id = str(guild_id)
-
-    def _col(self):
-        return mongo_manager.get_guild_collection(self._guild_id, "youtube")
+class YoutubeRepository(GuildRepository):
+    COLLECTION = "youtube"
 
     @translates_db_errors
     async def get_last_video_ids(self) -> dict[str, str] | None:

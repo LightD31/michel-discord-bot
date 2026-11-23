@@ -12,7 +12,6 @@ from features.polls.helpers import (
 from features.polls.models import Poll, PollMode
 from features.polls.repository import PollRepository
 from features.polls.tally import (
-    parse_duration,
     render_bar,
     tally_first_past_post,
     tally_ranked_choice,
@@ -28,7 +27,6 @@ __all__ = [
     "PollMode",
     "PollRepository",
     "native_poll_hours",
-    "parse_duration",
     "parse_options",
     "poll_footer",
     "render_bar",

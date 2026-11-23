@@ -23,7 +23,7 @@ from features.moderation import (
 )
 from src.core import clock
 
-from ._common import AUTOMOD_MODERATOR_ID, get_guild_settings, is_staff, logger
+from ._common import AUTOMOD_MODERATOR_ID, MODERATION, is_staff, logger
 
 
 class AutomodMixin:
@@ -63,7 +63,7 @@ class AutomodMixin:
         if author is None or getattr(author, "bot", False):
             return
 
-        settings = get_guild_settings(guild.id)
+        settings = MODERATION.get(guild.id)
         if not settings:  # the module is off in this guild
             return
         if is_staff(author, settings.get("staffRoleId")):

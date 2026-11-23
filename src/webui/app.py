@@ -17,6 +17,7 @@ from src.core import logging as logutil
 from src.core.config import config_write_error, global_config
 from src.webui.auth import DiscordOAuth
 from src.webui.context import WebUIContext
+from src.webui.errors import install_error_handlers
 from src.webui.log_handler import WebUILogHandler, install_log_handler
 from src.webui.mutation_limit import MutationRateLimitMiddleware
 from src.webui.ratelimit import TrustedProxies
@@ -203,6 +204,7 @@ def create_app(bot=None, bot_loop=None) -> FastAPI:
     )
     # The context, for what drives the app from outside (the browser smoke test).
     app.state.webui = ctx
+    install_error_handlers(app)
     app.add_middleware(MutationRateLimitMiddleware, trusted_proxies=ctx.trusted_proxies)
     app.add_middleware(RequestGuardMiddleware, trusted_proxies=ctx.trusted_proxies)
     app.add_middleware(SecurityHeadersMiddleware, trusted_proxies=ctx.trusted_proxies)

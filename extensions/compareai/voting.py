@@ -30,7 +30,7 @@ from src.core.errors import DatabaseError
 from src.discord_ext.channels import fetch_guild_channel
 from src.discord_ext.locale import en_fr_desc, en_fr_name
 from src.discord_ext.look import card, oops, sign
-from src.discord_ext.messages import edit_message_if_changed
+from src.discord_ext.messages import edit_message_if_changed, guild_id_of
 from src.discord_ext.scopes import guild_scopes
 
 from ._common import SCOPE_GUILD, enabled_guild_ids, logger, module_enabled, repo_for
@@ -52,10 +52,8 @@ class VotingMixin:
         match = _VOTE_RE.match(ctx.custom_id)
         if not match:
             return
-        if not ctx.guild_id:
-            return
         comparison_id, index = match.group(1), int(match.group(2))
-        repo = repo_for(ctx.guild_id)
+        repo = repo_for(guild_id_of(ctx))
 
         try:
             comparison = await repo.get(comparison_id)
@@ -167,10 +165,10 @@ class VotingMixin:
     )
     @auto_defer()
     async def ask_stats(self, ctx: SlashContext) -> None:
-        if not ctx.guild_id or not module_enabled(ctx.guild_id):
+        if not module_enabled(guild_id_of(ctx)):
             await ctx.send(MODULE_DISABLED, ephemeral=True)
             return
-        repo = repo_for(ctx.guild_id)
+        repo = repo_for(guild_id_of(ctx))
         try:
             comparisons = await repo.list_for_stats()
         except DatabaseError as e:

@@ -11,6 +11,7 @@ import threading
 
 import pytest
 
+from src.core import db
 from src.core.db import MongoManager, mongo_manager
 
 
@@ -92,3 +93,39 @@ def test_each_client_is_closed_on_its_own_loop(isolated_manager):
     assert webui_client.closed_on is other
     assert stopped_client.closed_on is None  # its loop is gone: only dropped
     assert not MongoManager._clients
+
+
+async def test_a_guild_repository_makes_each_index_and_only_logs_a_failure(monkeypatch, caplog):
+    """P32: one failing index neither stops the others nor reaches the extension."""
+    from src.core.db import GuildRepository
+
+    made: list[tuple[str, str]] = []
+
+    class Collection:
+        def __init__(self, name):
+            self.name = name
+
+        async def create_index(self, keys, **options):
+            if options.get("name") == "broken":
+                raise db.DatabaseError("down")
+            made.append((self.name, options["name"]))
+
+    class Manager:
+        def get_guild_collection(self, guild_id, name):
+            assert guild_id == "7"
+            return Collection(name)
+
+    class Repo(GuildRepository):
+        COLLECTION = "things"
+
+        def indexes(self):
+            return [
+                ("", "a", {"name": "first"}),
+                ("", "b", {"name": "broken"}),
+                ("other", "c", {"name": "last"}),
+            ]
+
+    monkeypatch.setattr(db, "mongo_manager", Manager())
+    await Repo(7).ensure_indexes()
+    assert made == [("things", "first"), ("other", "last")]
+    assert "broken" in caplog.text

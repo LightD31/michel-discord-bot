@@ -36,7 +36,15 @@ from src.core.errors import ConfigError
 from src.core.logging import log_failure
 from src.core.tasks import spawn
 from src.discord_ext.channels import fetch_guild_channel
-from src.discord_ext.messages import CAN_PIN, CAN_SEND, author_can, send_error, send_success
+from src.discord_ext.messages import (
+    CAN_PIN,
+    CAN_SEND,
+    author_can,
+    guild_id_of,
+    guild_of,
+    send_error,
+    send_success,
+)
 from src.discord_ext.scopes import guild_scopes
 
 from ._common import TWITCH, StreamerInfo, ensure_utc
@@ -338,10 +346,7 @@ class TwitchExtension(
         channel: BaseChannel,
         pin: bool = False,
     ):
-        if not ctx.guild:
-            await send_error(ctx, "Commande utilisable uniquement dans un serveur.")
-            return
-        streamer_key = self.get_streamer_key(int(ctx.guild.id), streamer)
+        streamer_key = self.get_streamer_key(int(guild_of(ctx).id), streamer)
         streamer_info = self.streamers.get(streamer_key)
         if streamer_info is None:
             await send_error(ctx, f"Streamer '{streamer}' non trouvé pour ce serveur.")
@@ -349,7 +354,7 @@ class TwitchExtension(
         # The bot posts (and pins) with its own rights: the author must be able to.
         if not await author_can(ctx, channel, (CAN_PIN | CAN_SEND) if pin else CAN_SEND):
             return
-        _save_streamer_planning(str(ctx.guild.id), streamer, str(channel.id), pin)
+        _save_streamer_planning(guild_id_of(ctx), streamer, str(channel.id), pin)
         streamer_info.planning_channel_id = int(channel.id)
         streamer_info.planning_pin = pin
         # The message already in that channel is kept; otherwise one is posted.
@@ -366,10 +371,7 @@ class TwitchExtension(
 
     @twitch_planning_setup.autocomplete("streamer")
     async def twitch_planning_setup_streamer_autocomplete(self, ctx: AutocompleteContext):
-        if not ctx.guild:
-            await ctx.send(choices=[])
-            return
-        guild_id = int(ctx.guild.id)
+        guild_id = int(guild_of(ctx).id)
         query = (ctx.input_text or "").lower()
         choices: list[dict[str, Any]] = [
             {"name": s.streamer_id, "value": s.streamer_id}

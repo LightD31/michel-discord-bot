@@ -23,7 +23,6 @@ from interactions import (
     Message,
     MessageFlags,
     Permissions,
-    SlashContext,
     ThreadChannel,
     User,
 )
@@ -139,20 +138,6 @@ async def send_success(ctx: InteractionContext, message: str) -> None:
 # ---------------------------------------------------------------------------
 # Guild check
 # ---------------------------------------------------------------------------
-
-
-async def require_guild(ctx: SlashContext) -> bool:
-    """Return True if the command is used inside a guild, else send an error.
-
-    Usage::
-
-        if not await require_guild(ctx):
-            return
-    """
-    if not ctx.guild:
-        await send_error(ctx, "Cette commande ne peut être utilisée que dans un serveur.")
-        return False
-    return True
 
 
 def guild_id_of(ctx: Any) -> str:
@@ -515,8 +500,7 @@ async def _resolve(
     repo = MessageRefRepository(gid)
     try:
         ref = await repo.get(slot)
-    except (DatabaseError, RuntimeError) as e:
-        # RuntimeError: no ``mongodb.url`` at all, raised before the driver.
+    except DatabaseError as e:  # MongoDB down, or no ``mongodb.url`` at all
         if logger:
             logger.error("Guild %s: could not read where message %s lives: %s", gid, slot, e)
         return None
@@ -568,7 +552,7 @@ async def _resolve(
 
     try:
         await repo.save(slot, wanted, str(msg.id), label=label)
-    except (DatabaseError, RuntimeError) as e:
+    except DatabaseError as e:
         if logger:
             logger.error("Guild %s: could not store where message %s lives: %s", gid, slot, e)
     return msg
@@ -692,7 +676,6 @@ __all__ = [
     "fetch_user_safe",
     "forget_persistent_message",
     "republish_persistent_message",
-    "require_guild",
     "send_error",
     "send_success",
     "unarchive_if_thread",

@@ -6,8 +6,8 @@ import pymongo
 from bson import ObjectId
 
 from features.reminders.models import Reminder
-from src.core.db import mongo_manager, translates_db_errors
-from src.core.logging import init_logger, log_failure
+from src.core.db import GuildRepository, IndexSpec, translates_db_errors
+from src.core.logging import init_logger
 
 logger = init_logger(__name__)
 
@@ -19,25 +19,16 @@ COLLECTION = "task_reminders"
 # guild), recurring ones included, instead of sending them late and moving on.
 
 
-class ReminderRepository:
+class ReminderRepository(GuildRepository):
     """Per-guild store for scheduled reminders."""
 
-    def __init__(self, guild_id: str | int) -> None:
-        self._guild_id = str(guild_id)
+    COLLECTION = COLLECTION
 
-    def _col(self):
-        return mongo_manager.get_guild_collection(self._guild_id, COLLECTION)
-
-    async def ensure_indexes(self) -> None:
-        try:
-            await self._col().create_index(
-                [("remind_time", pymongo.ASCENDING)], name="remind_time_idx"
-            )
-            await self._col().create_index([("user_id", pymongo.ASCENDING)], name="user_id_idx")
-        except Exception as e:
-            log_failure(
-                logger, "Failed to create reminder indexes for guild %s: %s", self._guild_id, e
-            )
+    def indexes(self) -> list[IndexSpec]:
+        return [
+            ("", [("remind_time", pymongo.ASCENDING)], {"name": "remind_time_idx"}),
+            ("", [("user_id", pymongo.ASCENDING)], {"name": "user_id_idx"}),
+        ]
 
     @staticmethod
     def _doc_to_reminder(doc: dict) -> Reminder:

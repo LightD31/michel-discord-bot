@@ -31,32 +31,21 @@ from features.welcome import GreetingRepository, greeting_line, render_welcome_c
 from src.core import clock, log_context
 from src.core.logging import log_failure
 from src.core.text import pick_weighted_message
+from src.discord_ext.avatars import avatar_png
 from src.discord_ext.channels import fetch_guild_channel
 from src.discord_ext.help_button import help_button
 from src.discord_ext.look import ok, oops
 from src.discord_ext.mentions import NO_PINGS, everyone_if_written
-from src.discord_ext.messages import channel_url, edit_message_if_changed, guild_id_of, jump_url
+from src.discord_ext.messages import (
+    channel_url,
+    edit_message_if_changed,
+    guild_id_of,
+    guild_of,
+    jump_url,
+)
 from src.discord_ext.role_grants import grantable_role
 
 GREET_BUTTON_ID = "bienvenue:saluer"
-
-
-async def _fetch_avatar_bytes(member) -> bytes | None:
-    """Best-effort download of the member's avatar as PNG bytes.
-
-    interactions.py exposes ``display_avatar`` as an :class:`Asset` whose
-    ``fetch()`` method talks to Discord's CDN through the bot's authenticated
-    HTTP client — the recommended path. We force the PNG extension so animated
-    avatars decode to a still frame.
-    """
-    asset = getattr(member, "display_avatar", None) or getattr(member, "avatar", None)
-    if asset is None:
-        return None
-    try:
-        return await asset.fetch(extension=".png", size=256)
-    except Exception as e:
-        logger.warning("Could not fetch avatar for %s: %s", getattr(member, "id", "?"), e)
-        return None
 
 
 def _server_name_subtitle(guild_name: str, member_count: int | None) -> str:
@@ -296,7 +285,7 @@ class WelcomeExtension(Extension):
                     ephemeral=True,
                 )
                 return
-            names = [_display_name(ctx.guild, uid) for uid in outcome.greeters]
+            names = [_display_name(guild_of(ctx), uid) for uid in outcome.greeters]
             line = greeting_line(names, len(outcome.greeters))
             await ctx.edit_origin(
                 content=with_greetings(message.content, line), allowed_mentions=NO_PINGS
@@ -334,7 +323,7 @@ class WelcomeExtension(Extension):
         if not enabled:
             return []
         try:
-            avatar = await _fetch_avatar_bytes(member)
+            avatar = await avatar_png(member)
             buffer = await asyncio.to_thread(  # Pillow work, off the event loop
                 render_welcome_card,
                 avatar_bytes=avatar,

@@ -23,10 +23,9 @@ from features.feur import FeurRepository
 from src.core import clock
 from src.core import logging as logutil
 from src.core.config import ModuleConfig
-from src.core.logging import log_failure
 from src.core.text import sanitize_content
 from src.discord_ext.look import card
-from src.discord_ext.messages import require_guild
+from src.discord_ext.messages import guild_id_of, guild_of
 from src.discord_ext.scopes import guild_scopes
 from src.webui.schemas import ModuleHelp, SchemaBase, enabled_field, register_module
 
@@ -87,10 +86,7 @@ class FeurExtension(Extension):
     async def on_startup(self) -> None:
         # The TTL that keeps each dated feur a week (the Gazette's feur of the week).
         for guild_id in FEUR.guild_ids():
-            try:
-                await FeurRepository(str(guild_id)).ensure_indexes()
-            except Exception as e:
-                log_failure(logger, "Feur indexes not created on %s: %s", guild_id, e)
+            await FeurRepository(str(guild_id)).ensure_indexes()  # logs a failure, never raises
 
     async def _add_reactions(self, message, emojis: list) -> None:
         try:
@@ -131,12 +127,10 @@ class FeurExtension(Extension):
     )
     @cooldown(Buckets.USER, 1, 30)
     async def feur_stats(self, ctx: SlashContext):
-        if not await require_guild(ctx):
-            return
         # One member fetch per leaderboard row can take longer than Discord's 3 s.
         await ctx.defer()
 
-        guild_id = str(ctx.guild_id)
+        guild_id = guild_id_of(ctx)
         user_id = str(ctx.author.id)
         repo = FeurRepository(guild_id)
 
@@ -144,20 +138,19 @@ class FeurExtension(Extension):
         user_stats = await repo.get_user_stats(user_id)
 
         top_users = []
-        if ctx.guild:
-            # Highest first, stopping at five members still in the guild: one
-            # member fetch per row of the leaderboard, not one per user ever counted.
-            user_totals = sorted(await repo.get_all_user_totals(), key=lambda x: x[1], reverse=True)
-            for uid, total in user_totals:
-                try:
-                    member = await ctx.guild.fetch_member(int(uid))
-                except Exception as e:  # noqa: BLE001 — a member who left is skipped
-                    logger.debug("Feur leaderboard: member %s unavailable: %s", uid, e)
-                    continue
-                if member:
-                    top_users.append((member.display_name, total))
-                if len(top_users) == 5:
-                    break
+        # Highest first, stopping at five members still in the guild: one
+        # member fetch per row of the leaderboard, not one per user ever counted.
+        user_totals = sorted(await repo.get_all_user_totals(), key=lambda x: x[1], reverse=True)
+        for uid, total in user_totals:
+            try:
+                member = await guild_of(ctx).fetch_member(int(uid))
+            except Exception as e:  # noqa: BLE001 — a member who left is skipped
+                logger.debug("Feur leaderboard: member %s unavailable: %s", uid, e)
+                continue
+            if member:
+                top_users.append((member.display_name, total))
+            if len(top_users) == 5:
+                break
 
         embed = card(
             "moduleFeur",

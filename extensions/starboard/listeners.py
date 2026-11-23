@@ -45,7 +45,7 @@ from src.discord_ext.messages import (
 )
 from src.discord_ext.scopes import guild_scopes
 
-from ._common import STARBOARD, get_guild_settings, logger
+from ._common import STARBOARD, logger
 
 STAR_MENU = "⭐ Mettre au starboard"
 Posted = Literal["posted", "no_board", "nsfw", "private", "failed"]
@@ -142,7 +142,7 @@ class ListenersMixin:
         if message is None or message.guild is None:
             return
 
-        settings = get_guild_settings(message.guild.id)
+        settings = STARBOARD.get(message.guild.id)
         if not settings:
             return
 
@@ -281,7 +281,7 @@ class ListenersMixin:
     async def star_menu(self, ctx: ContextMenuContext) -> None:
         message: Any = ctx.target
         guild_id = guild_id_of(ctx)
-        settings = get_guild_settings(guild_id) or {}
+        settings = STARBOARD.get(guild_id)
         board_id = str(settings.get("starboardChannelId") or "")
         if not board_id:
             await send_error(ctx, NOT_POSTED["no_board"], icon="⭐")

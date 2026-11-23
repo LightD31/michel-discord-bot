@@ -23,7 +23,7 @@ from src.core import logging as logutil
 from src.core.logging import log_failure
 from src.discord_ext.autocomplete import Choice, guild_group_autocomplete
 from src.discord_ext.look import card, ok, oops, sign
-from src.discord_ext.messages import guild_of, require_guild
+from src.discord_ext.messages import guild_of
 from src.discord_ext.scopes import guild_scopes
 
 from ._common import (
@@ -126,8 +126,6 @@ class RecurringMixin:
         frequence: str,
         categorie: str | None = None,
     ):
-        if not await require_guild(ctx):
-            return
         if montant <= 0:
             await ctx.send(oops("Le montant doit être positif."), ephemeral=True)
             return
@@ -192,8 +190,6 @@ class RecurringMixin:
         autocomplete=True,
     )
     async def depense_recurrente_lister(self, ctx: SlashContext, groupe: str | None = None):
-        if not await require_guild(ctx):
-            return
         docs = await TricountRepository(guild_of(ctx).id).list_active_recurring(
             ctx.author.id, groupe
         )
@@ -236,8 +232,6 @@ class RecurringMixin:
         required=True,
     )
     async def depense_recurrente_arreter(self, ctx: SlashContext, recurrence_id: str):
-        if not await require_guild(ctx):
-            return
         repo = TricountRepository(guild_of(ctx).id)
         doc = await repo.find_active_recurring(recurrence_id)
         if doc is None:

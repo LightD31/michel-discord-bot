@@ -16,7 +16,7 @@ from features.coloc.models import HardcoreSeason, ZuniversEvent
 from features.coloc.utils import image_url_needs_download
 from src.core.logging import log_failure
 from src.discord_ext.errors import failure_reply
-from src.discord_ext.messages import send_error
+from src.discord_ext.messages import guild_id_of, send_error
 
 from ._base import ZuniversBase
 from ._common import GuildState, logger, zunivers_api_url, zunivers_cmd
@@ -42,7 +42,7 @@ class EventsMixin(ZuniversBase):
             return
         await ctx.defer()
         try:
-            await self._check_zunivers_events(only=str(ctx.guild_id))
+            await self._check_zunivers_events(only=guild_id_of(ctx))
             await ctx.send("Vérification des événements Zunivers terminée ! 🎉", ephemeral=True)
         except Exception as e:
             await send_error(ctx, failure_reply("La vérification a échoué", e, logger))
@@ -170,24 +170,23 @@ class EventsMixin(ZuniversBase):
             )
             previous_season = state.event_state.hardcore_season
 
-            if previous_season is None and current_season is not None and current_data:
-                embed = create_season_embed(current_data, "start", settings)
+            if previous_season is None and current_season is not None:
+                embed = create_season_embed(current_season, "start", settings)
                 await channel.send(embed=embed)
                 logger.info(f"New hardcore season: Season {current_season.index}")
 
             elif previous_season is not None and current_season is None:
-                embed = create_season_embed(previous_season.to_dict(), "end", settings)
+                embed = create_season_embed(previous_season, "end", settings)
                 await channel.send(embed=embed)
                 logger.info(f"Hardcore season ended: Season {previous_season.index}")
 
             elif (
                 previous_season is not None
                 and current_season is not None
-                and current_data is not None
                 and previous_season.id != current_season.id
             ):
-                embed_end = create_season_embed(previous_season.to_dict(), "end", settings)
-                embed_start = create_season_embed(current_data, "start", settings)
+                embed_end = create_season_embed(previous_season, "end", settings)
+                embed_start = create_season_embed(current_season, "start", settings)
                 await channel.send(embeds=[embed_end, embed_start])
                 logger.info(
                     f"Season change: Season {previous_season.index} → {current_season.index}"

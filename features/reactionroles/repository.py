@@ -7,32 +7,23 @@ from bson import ObjectId
 from bson.errors import InvalidId
 
 from features.reactionroles.models import RoleMenu
-from src.core.db import mongo_manager, translates_db_errors
-from src.core.logging import init_logger, log_failure
+from src.core.db import GuildRepository, IndexSpec, translates_db_errors
+from src.core.logging import init_logger
 
 logger = init_logger(__name__)
 
 COLLECTION = "role_menus"
 
 
-class ReactionRolesRepository:
+class ReactionRolesRepository(GuildRepository):
     """Per-guild store for role menus."""
 
-    def __init__(self, guild_id: str | int) -> None:
-        self._guild_id = str(guild_id)
+    COLLECTION = COLLECTION
 
-    def _col(self):
-        return mongo_manager.get_guild_collection(self._guild_id, COLLECTION)
-
-    async def ensure_indexes(self) -> None:
-        try:
-            await self._col().create_index(
-                [("message_id", pymongo.ASCENDING)], name="message_id_idx"
-            )
-        except Exception as e:
-            log_failure(
-                logger, "Failed to create role_menus indexes for guild %s: %s", self._guild_id, e
-            )
+    def indexes(self) -> list[IndexSpec]:
+        return [
+            ("", [("message_id", pymongo.ASCENDING)], {"name": "message_id_idx"}),
+        ]
 
     @staticmethod
     def _doc_to_menu(doc: dict) -> RoleMenu:

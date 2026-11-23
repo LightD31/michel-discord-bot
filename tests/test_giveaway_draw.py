@@ -45,3 +45,13 @@ def test_no_repeat_winners_in_single_draw() -> None:
     for _ in range(20):
         winners = pick_winners(pool, 5)
         assert len(set(winners)) == len(winners) == 5
+
+
+async def test_a_malformed_giveaway_id_is_an_ordinary_not_found():
+    """P32: it raised a DatabaseError (bson's InvalidId) before reaching MongoDB."""
+    from features.giveaway.repository import GiveawayRepository
+
+    repo = GiveawayRepository("1")
+    assert await repo.claim_draw("not-an-id") is None
+    assert await repo.mark_cancelled("not-an-id") is False
+    await repo.release_draw("not-an-id")  # nothing to give back

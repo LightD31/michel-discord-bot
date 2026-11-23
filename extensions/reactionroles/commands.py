@@ -41,8 +41,8 @@ from src.discord_ext.messages import (
     author_can,
     edit_message_if_changed,
     guild_id_of,
+    guild_of,
     member_of,
-    require_guild,
     send_error,
     send_success,
 )
@@ -225,8 +225,6 @@ class CommandsMixin:
         style: str = "buttons",
         max_roles: int | None = None,
     ) -> None:
-        if not await require_guild(ctx):
-            return
         if not hasattr(channel, "send"):
             await send_error(ctx, "Ce salon ne permet pas l'envoi de messages.")
             return
@@ -237,7 +235,7 @@ class CommandsMixin:
         _forget_old_drafts(now)
         draft_id = secrets.token_hex(6)
         DRAFTS[draft_id] = Draft(
-            guild_id=str(ctx.guild_id),
+            guild_id=guild_id_of(ctx),
             channel_id=str(channel.id),
             author_id=str(ctx.author.id),
             title=title,
@@ -280,10 +278,10 @@ class CommandsMixin:
     async def _entries_problem(self, ctx: Any, entries: list[RoleMenuEntry]) -> str | None:
         """Why these roles can't go in a menu by this author (staff roles, hierarchy)."""
         return entries_refusal(
-            ctx.guild,
+            guild_of(ctx),
             entries,
-            author=menu_author(ctx.guild, ctx.author),
-            bot_position=await bot_top_position(self.bot, ctx.guild),
+            author=menu_author(guild_of(ctx), ctx.author),
+            bot_position=await bot_top_position(self.bot, guild_of(ctx)),
         )
 
     async def _publish(self, ctx: ComponentContext, draft_id: str, draft: Draft) -> None:
@@ -337,8 +335,6 @@ class CommandsMixin:
     )
     @slash_default_member_permission(Permissions.MANAGE_ROLES)
     async def rolemenu_list(self, ctx: SlashContext) -> None:
-        if not await require_guild(ctx):
-            return
         menus = await self.repository(guild_id_of(ctx)).list()
         if not menus:
             await ctx.send("Aucun menu de rôles enregistré.", ephemeral=True)
@@ -371,7 +367,7 @@ class CommandsMixin:
     )
     @slash_default_member_permission(Permissions.MANAGE_ROLES)
     async def rolemenu_delete(self, ctx: SlashContext, menu_id: str) -> None:
-        if not await require_guild(ctx) or not await _can_manage_menus(ctx):
+        if not await _can_manage_menus(ctx):
             return
         menu = await self.repository(guild_id_of(ctx)).get(menu_id)
         if not menu:
@@ -425,7 +421,7 @@ class CommandsMixin:
         title: str | None = None,
         description: str | None = None,
     ) -> None:
-        if not await require_guild(ctx) or not await _can_manage_menus(ctx):
+        if not await _can_manage_menus(ctx):
             return
         if title is None and description is None:
             await send_error(ctx, "Indique au moins un titre ou une description à modifier.")

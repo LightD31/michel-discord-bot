@@ -50,7 +50,7 @@ from src.discord_ext.mentions import everyone_if_written
 from src.discord_ext.messages import (
     edit_message_if_changed,
     fetch_user_safe,
-    require_guild,
+    guild_of,
     send_error,
 )
 from src.discord_ext.paginator import CustomPaginator
@@ -197,10 +197,7 @@ class BirthdayExtension(Extension):
     @listen()
     async def on_startup(self) -> None:
         for guild_id in MODULE.guild_ids():
-            try:
-                await self._repo(guild_id).ensure_indexes()
-            except Exception as e:
-                log_failure(logger, "Failed to create indexes for guild %s: %s", guild_id, e)
+            await self._repo(guild_id).ensure_indexes()  # logs a failure, never raises
         if not self.anniversaire_check.running:
             self.anniversaire_check.start()
 
@@ -240,12 +237,10 @@ class BirthdayExtension(Extension):
         timezone: str | None = None,
         hideyear: bool | None = False,
     ) -> None:
-        if not await require_guild(ctx) or ctx.guild is None:
-            return
         try:
             parsed_date = _validate_and_parse_date(date)
             validated_tz = _validate_timezone(timezone or clock.LOCAL_TZ.key)
-            repo = self._repo(ctx.guild.id)
+            repo = self._repo(guild_of(ctx).id)
             existing = await repo.find_one(ctx.author.id)
             entry = BirthdayEntry(
                 user=ctx.author.id,
@@ -261,7 +256,7 @@ class BirthdayExtension(Extension):
                 "Anniversaire de %s %s sur le serveur %s (%s)",
                 ctx.author.display_name,
                 verb,
-                ctx.guild.name,
+                guild_of(ctx).name,
                 parsed_date.strftime("%d/%m/%Y"),
             )
         except ValidationError as e:
@@ -289,14 +284,14 @@ class BirthdayExtension(Extension):
         sub_cmd_description="Supprime ton anniversaire sur ce serveur",
     )
     async def anniversaire_supprimer(self, ctx: SlashContext) -> None:
-        if not await require_guild(ctx) or ctx.guild is None:
-            return
         try:
-            deleted = await self._repo(ctx.guild.id).delete(ctx.author.id)
+            deleted = await self._repo(guild_of(ctx).id).delete(ctx.author.id)
             if deleted > 0:
                 await ctx.send("Anniversaire supprimé ✅", ephemeral=True)
                 logger.info(
-                    "Birthday removed for %s on server %s", ctx.author.display_name, ctx.guild.name
+                    "Birthday removed for %s on server %s",
+                    ctx.author.display_name,
+                    guild_of(ctx).name,
                 )
             else:
                 await ctx.send("Aucun anniversaire trouvé à supprimer.", ephemeral=True)
@@ -352,15 +347,13 @@ class BirthdayExtension(Extension):
         sub_cmd_description="Liste des anniversaires",
     )
     async def anniversaire_liste(self, ctx: SlashContext) -> None:
-        if not await require_guild(ctx) or ctx.guild is None:
-            return
         try:
-            birthdays = await self._repo(ctx.guild.id).find_all()
+            birthdays = await self._repo(guild_of(ctx).id).find_all()
             if not birthdays:
                 await ctx.send("Aucun anniversaire enregistré sur ce serveur.", ephemeral=True)
                 return
 
-            srv_cfg = self._server_config(ctx.guild.id)
+            srv_cfg = self._server_config(guild_of(ctx).id)
             locale = srv_cfg.get("birthdayGuildLocale") or DEFAULT_DATE_LOCALE
             raw_format = str(get_date_format("long", locale=locale))
             date_format = strip_year_from_format(raw_format)

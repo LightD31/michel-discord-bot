@@ -61,12 +61,11 @@ from interactions import (
 )
 
 from features.giveaway import MAX_WINNERS, Giveaway, GiveawayRepository, pick_winners
-from features.polls import parse_duration  # reused: same DSL as /sondage
 from features.xp import XpRepository, calculate_level
 from src.core import clock, log_context
 from src.core.debounce import Coalescer
 from src.core.logging import log_failure
-from src.core.text import EMBED_DESCRIPTION_LIMIT, clip, format_discord_timestamp
+from src.core.text import EMBED_DESCRIPTION_LIMIT, clip, format_discord_timestamp, parse_duration
 from src.discord_ext.autocomplete import MAX_CHOICES, matching_choices
 from src.discord_ext.channels import fetch_guild_channel
 from src.discord_ext.look import Kind, card
@@ -75,7 +74,6 @@ from src.discord_ext.messages import (
     guild_id_of,
     message_of,
     module_off,
-    require_guild,
     send_error,
     send_success,
 )
@@ -346,10 +344,7 @@ class GiveawayExtension(Extension):
     @listen()
     async def on_startup(self) -> None:
         for gid in GIVEAWAY.guild_ids():
-            try:
-                await self._repo(gid).ensure_indexes()
-            except Exception as e:
-                log_failure(logger, "Could not init giveaway indexes for %s: %s", gid, e)
+            await self._repo(gid).ensure_indexes()  # logs a failure, never raises
         if not self.check_giveaways.running:
             self.check_giveaways.start()
         logger.info("Giveaway extension ready (%d guild(s))", len(GIVEAWAY.guild_ids()))
@@ -396,9 +391,7 @@ class GiveawayExtension(Extension):
         min_level: int | None = None,
         allow_host_win: bool | None = None,
     ) -> None:
-        if not await require_guild(ctx):
-            return
-        if min_level and not XP.enabled(ctx.guild_id):
+        if min_level and not XP.enabled(guild_id_of(ctx)):
             await send_error(
                 ctx,
                 "Le système d'XP n'est pas actif sur ce serveur : sans lui, pas de niveau "
@@ -406,7 +399,7 @@ class GiveawayExtension(Extension):
                 icon="⭐",
             )
             return
-        role_id = "0" if role is None or str(role.id) == str(ctx.guild_id) else str(role.id)
+        role_id = "0" if role is None or str(role.id) == guild_id_of(ctx) else str(role.id)
         host = {None: "x", True: "1", False: "0"}[allow_host_win]
         await ctx.send_modal(start_form(f"{START_FORM}:{role_id}:{min_level or 0}:{host}"))
 
@@ -456,8 +449,6 @@ class GiveawayExtension(Extension):
         allow_host_win: bool | None,
     ) -> None:
         """Post the announcement and store the giveaway: the form's last step."""
-        if not await require_guild(ctx):
-            return
         if not prize:
             await send_error(ctx, "Indique le lot mis en jeu.")
             return
@@ -478,17 +469,17 @@ class GiveawayExtension(Extension):
 
         ends_at = clock.now() + timedelta(seconds=seconds)
         effective_allow_host_win = (
-            allow_host_win if allow_host_win is not None else guild_allow_host_win(ctx.guild_id)
+            allow_host_win if allow_host_win is not None else guild_allow_host_win(guild_id_of(ctx))
         )
 
         giveaway = Giveaway(
-            guild_id=str(ctx.guild_id),
+            guild_id=guild_id_of(ctx),
             channel_id=str(ctx.channel.id),
             message_id="0",  # placeholder until we have the real message id
             host_id=str(ctx.user.id),
             prize=prize,
             description=description,
-            emoji=guild_emoji(ctx.guild_id),
+            emoji=guild_emoji(guild_id_of(ctx)),
             allow_host_win=effective_allow_host_win,
             winners_count=winners,
             required_role_id=required_role_id,
@@ -506,7 +497,7 @@ class GiveawayExtension(Extension):
         giveaway.message_id = str(message.id)
 
         try:
-            giveaway.id = await self._repo(ctx.guild_id).add(giveaway)
+            giveaway.id = await self._repo(guild_id_of(ctx)).add(giveaway)
         except Exception as e:
             log_failure(logger, "Could not persist giveaway: %s", e)
             # Its buttons would answer nothing: take the announcement down.
@@ -541,8 +532,6 @@ class GiveawayExtension(Extension):
     )
     @slash_default_member_permission(Permissions.MANAGE_GUILD)
     async def giveaway_end(self, ctx: SlashContext, message_id: str) -> None:
-        if not await require_guild(ctx):
-            return
         await ctx.defer(ephemeral=True)
         giveaway = await self._repo(guild_id_of(ctx)).get_by_message(message_id)
         if not giveaway:
@@ -576,8 +565,6 @@ class GiveawayExtension(Extension):
     )
     @slash_default_member_permission(Permissions.MANAGE_GUILD)
     async def giveaway_cancel(self, ctx: SlashContext, message_id: str) -> None:
-        if not await require_guild(ctx):
-            return
         await ctx.defer(ephemeral=True)
         giveaway = await self._repo(guild_id_of(ctx)).get_by_message(message_id)
         if not giveaway or giveaway.id is None:
@@ -633,8 +620,6 @@ class GiveawayExtension(Extension):
         message_id: str,
         winners: int | None = None,
     ) -> None:
-        if not await require_guild(ctx):
-            return
         await ctx.defer(ephemeral=True)
         giveaway = await self._repo(guild_id_of(ctx)).get_by_message(message_id)
         if not giveaway or giveaway.id is None:
@@ -671,8 +656,6 @@ class GiveawayExtension(Extension):
         sub_cmd_description="Lister les giveaways en cours",
     )
     async def giveaway_list(self, ctx: SlashContext) -> None:
-        if not await require_guild(ctx):
-            return
         active = await self._repo(guild_id_of(ctx)).list_active()
         if not active:
             await ctx.send("Aucun giveaway en cours.", ephemeral=True)
@@ -696,10 +679,10 @@ class GiveawayExtension(Extension):
     @giveaway_cancel.autocomplete("concours")
     async def open_giveaway_choices(self, ctx: AutocompleteContext) -> None:
         """The server's open giveaways, soonest end first."""
-        if ctx.guild_id is None or not GIVEAWAY.enabled(ctx.guild_id):
+        if not GIVEAWAY.enabled(guild_id_of(ctx)):
             await ctx.send(choices=[])
             return
-        active = await self._repo(ctx.guild_id).list_active()
+        active = await self._repo(guild_id_of(ctx)).list_active()
         items = [
             (f"{g.prize} · fin le {clock.to_local(g.ends_at):%d/%m à %H:%M}", g.message_id)
             for g in active
@@ -709,10 +692,10 @@ class GiveawayExtension(Extension):
     @giveaway_reroll.autocomplete("concours")
     async def drawn_giveaway_choices(self, ctx: AutocompleteContext) -> None:
         """The server's most recently drawn giveaways."""
-        if ctx.guild_id is None or not GIVEAWAY.enabled(ctx.guild_id):
+        if not GIVEAWAY.enabled(guild_id_of(ctx)):
             await ctx.send(choices=[])
             return
-        drawn = await self._repo(ctx.guild_id).list_drawn(MAX_CHOICES)
+        drawn = await self._repo(guild_id_of(ctx)).list_drawn(MAX_CHOICES)
         items = [
             (f"{g.prize} · clos le {clock.to_local(g.ends_at):%d/%m}", g.message_id) for g in drawn
         ]
@@ -732,10 +715,10 @@ class GiveawayExtension(Extension):
 
     async def _change_entry(self, ctx: ComponentContext, *, entering: bool) -> None:
         """Enter or withdraw the member who clicked, then refresh the announcement."""
-        if ctx.guild_id is None or not GIVEAWAY.enabled(ctx.guild_id):
+        if not GIVEAWAY.enabled(guild_id_of(ctx)):
             await send_error(ctx, module_off("Giveaways"))
             return
-        repo = self._repo(ctx.guild_id)
+        repo = self._repo(guild_id_of(ctx))
         message_id, user_id = str(message_of(ctx).id), str(ctx.author.id)
         giveaway = await repo.get_by_message(message_id)
         if giveaway is None:
@@ -763,7 +746,7 @@ class GiveawayExtension(Extension):
         if was_in != entering:
             message = message_of(ctx)
             self._refreshes.request(
-                int(message.id), lambda: self._refresh_participants(message, str(ctx.guild_id))
+                int(message.id), lambda: self._refresh_participants(message, guild_id_of(ctx))
             )
 
     async def _still_eligible(self, giveaway: Giveaway, user_id: str) -> bool:

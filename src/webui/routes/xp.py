@@ -28,7 +28,6 @@ from features.xp import (
     top_members,
 )
 from src.core import logging as logutil
-from src.core.errors import DatabaseError
 from src.webui.context import WebUIContext
 
 logger = logutil.init_logger("webui.routes.xp")
@@ -98,13 +97,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
     async def api_xp_stats(request: Request, server_id: str, days: int = Query(default=30)):
         await ctx.require_guild_admin(request, server_id)
         validate_range(days)
-        try:
-            stats = await collect_xp_stats(server_id, days)
-        except DatabaseError as e:
-            logger.error("XP stats failed for %s: %s", server_id, e)
-            raise HTTPException(
-                status_code=503, detail="Statistiques momentanément indisponibles."
-            ) from e
+        stats = await collect_xp_stats(server_id, days)
         return JSONResponse(stats)
 
     return router

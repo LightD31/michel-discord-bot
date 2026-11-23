@@ -3,26 +3,19 @@
 import pymongo
 
 from features.birthday.models import BirthdayEntry
-from src.core.db import mongo_manager, translates_db_errors
-from src.core.logging import init_logger, log_failure
+from src.core.db import GuildRepository, IndexSpec, translates_db_errors
+from src.core.logging import init_logger
 
 logger = init_logger(__name__)
 
 
-class BirthdayRepository:
-    def __init__(self, guild_id) -> None:
-        self._guild_id = str(guild_id)
+class BirthdayRepository(GuildRepository):
+    COLLECTION = "birthday"
 
-    def _col(self):
-        return mongo_manager.get_guild_collection(self._guild_id, "birthday")
-
-    async def ensure_indexes(self) -> None:
-        try:
-            await self._col().create_index([("user", pymongo.ASCENDING)], unique=True)
-        except Exception as e:
-            log_failure(
-                logger, "Failed to create birthday index for guild %s: %s", self._guild_id, e
-            )
+    def indexes(self) -> list[IndexSpec]:
+        return [
+            ("", [("user", pymongo.ASCENDING)], {"unique": True}),
+        ]
 
     @translates_db_errors
     async def find_one(self, user_id: int) -> BirthdayEntry | None:

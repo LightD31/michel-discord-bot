@@ -16,18 +16,12 @@ import pymongo
 from pymongo.errors import DuplicateKeyError
 
 from features.spotify.stats import parse_timestamp
-from src.core.db import mongo_manager, translates_db_errors
+from src.core.db import GuildRepository, translates_db_errors
 
 EDITIONS = "gazette_editions"
 
 
-class GazetteRepository:
-    def __init__(self, guild_id: str | int) -> None:
-        self._guild_id = str(guild_id)
-
-    def _col(self, name: str):
-        return mongo_manager.get_guild_collection(self._guild_id, name)
-
+class GazetteRepository(GuildRepository):
     # --- The week's news -----------------------------------------------------
 
     @translates_db_errors

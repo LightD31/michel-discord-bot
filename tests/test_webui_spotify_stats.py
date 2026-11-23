@@ -13,6 +13,7 @@ from fastapi.testclient import TestClient
 
 import src.webui.routes.spotify as spotify_routes
 from src.core.errors import DatabaseError
+from src.webui.errors import install_error_handlers
 
 
 @dataclass
@@ -79,6 +80,7 @@ def client(monkeypatch):
     monkeypatch.setattr(spotify_routes, "SpotifyRepository", _FakeRepo)
     ctx = _Ctx()
     app = FastAPI()
+    install_error_handlers(app)
     app.include_router(spotify_routes.create_router(ctx))
     return TestClient(app), ctx
 
@@ -105,9 +107,10 @@ def test_stats_requires_guild_admin(client):
     assert _FakeRepo.guild_ids == []
 
 
-def test_stats_maps_database_errors_to_500(client):
+def test_stats_answer_an_outage_with_a_503(client):
+    """It was a 500 here and a 503 everywhere else (P31)."""
     http, _ = client
     _FakeRepo.error = DatabaseError("boom")
     resp = http.get("/api/servers/123/spotify/stats")
-    assert resp.status_code == 500
+    assert resp.status_code == 503
     assert "boom" not in resp.json()["detail"]

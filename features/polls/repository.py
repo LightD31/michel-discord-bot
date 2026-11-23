@@ -6,34 +6,28 @@ import pymongo
 from bson import ObjectId
 
 from features.polls.models import Poll
-from src.core.db import mongo_manager, translates_db_errors
-from src.core.logging import init_logger, log_failure
+from src.core.db import GuildRepository, IndexSpec, translates_db_errors
+from src.core.logging import init_logger
 
 logger = init_logger(__name__)
 
 COLLECTION = "polls"
 
 
-class PollRepository:
+class PollRepository(GuildRepository):
     """Per-guild store for button-based polls."""
 
-    def __init__(self, guild_id: str | int) -> None:
-        self._guild_id = str(guild_id)
+    COLLECTION = COLLECTION
 
-    def _col(self):
-        return mongo_manager.get_guild_collection(self._guild_id, COLLECTION)
-
-    async def ensure_indexes(self) -> None:
-        try:
-            await self._col().create_index(
-                [("message_id", pymongo.ASCENDING)], name="message_id_idx", unique=True
-            )
-            await self._col().create_index(
+    def indexes(self) -> list[IndexSpec]:
+        return [
+            ("", [("message_id", pymongo.ASCENDING)], {"name": "message_id_idx", "unique": True}),
+            (
+                "",
                 [("closed", pymongo.ASCENDING), ("closes_at", pymongo.ASCENDING)],
-                name="closes_at_idx",
-            )
-        except Exception as e:
-            log_failure(logger, "Failed to create poll indexes for guild %s: %s", self._guild_id, e)
+                {"name": "closes_at_idx"},
+            ),
+        ]
 
     @staticmethod
     def _doc_to_poll(doc: dict) -> Poll:

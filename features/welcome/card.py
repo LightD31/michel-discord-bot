@@ -3,11 +3,10 @@
 from __future__ import annotations
 
 from io import BytesIO
-from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
-_FONT_PATH = str(Path(__file__).resolve().parent.parent.parent / "src" / "assets" / "OpenSans.ttf")
+from src.core.images import SANS_FONT_PATH, circular_avatar
 
 CARD_WIDTH = 800
 CARD_HEIGHT = 250
@@ -18,16 +17,6 @@ _BG_COLOR = (30, 31, 34)
 _ACCENT_COLOR = (90, 110, 230)
 _TEXT_PRIMARY = (242, 243, 245)
 _TEXT_SECONDARY = (170, 175, 185)
-
-
-def _circular_avatar(avatar_bytes: bytes, size: int) -> Image.Image:
-    """Crop an avatar to a circle of *size* pixels."""
-    img = Image.open(BytesIO(avatar_bytes)).convert("RGBA").resize((size, size))
-    mask = Image.new("L", (size, size), 0)
-    ImageDraw.Draw(mask).ellipse((0, 0, size, size), fill=255)
-    out = Image.new("RGBA", (size, size), (0, 0, 0, 0))
-    out.paste(img, (0, 0), mask=mask)
-    return out
 
 
 def render_welcome_card(
@@ -59,7 +48,7 @@ def render_welcome_card(
     avatar_y = (CARD_HEIGHT - AVATAR_SIZE) // 2
     if avatar_bytes:
         try:
-            avatar = _circular_avatar(avatar_bytes, AVATAR_SIZE)
+            avatar = circular_avatar(avatar_bytes, AVATAR_SIZE)
             card.paste(avatar, (avatar_x, avatar_y), avatar)
         except Exception:
             draw.ellipse(
@@ -74,9 +63,9 @@ def render_welcome_card(
 
     # Text block right of the avatar.
     text_x = PADDING + AVATAR_SIZE + PADDING
-    title_font = ImageFont.truetype(_FONT_PATH, 36)
-    name_font = ImageFont.truetype(_FONT_PATH, 44)
-    sub_font = ImageFont.truetype(_FONT_PATH, 22)
+    title_font = ImageFont.truetype(SANS_FONT_PATH, 36)
+    name_font = ImageFont.truetype(SANS_FONT_PATH, 44)
+    sub_font = ImageFont.truetype(SANS_FONT_PATH, 22)
 
     draw.text((text_x, PADDING + 10), title, font=title_font, fill=_ACCENT_COLOR)
 

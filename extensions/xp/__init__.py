@@ -66,11 +66,7 @@ class XpExtension(
         # DatabaseError on its own, which each handler already turns into a
         # skipped grant or an error message, and recovers with MongoDB.
         for guild_id in XP.guild_ids():
-            try:
-                await self._repo(guild_id).ensure_indexes()
-                logger.debug("Ensured indexes for guild %s", guild_id)
-            except Exception as e:
-                log_failure(logger, "Failed to create indexes for guild %s: %s", guild_id, e)
+            await self._repo(guild_id).ensure_indexes()  # logs a failure, never raises
 
         resumed = self._resume_voice_sessions()
         if resumed:

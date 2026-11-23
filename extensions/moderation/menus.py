@@ -24,7 +24,13 @@ from interactions import (
 from interactions.client.errors import NotFound
 
 from src.discord_ext.menus import menu_help
-from src.discord_ext.messages import guild_id_of, permission_names, send_error, send_success
+from src.discord_ext.messages import (
+    guild_id_of,
+    guild_of,
+    permission_names,
+    send_error,
+    send_success,
+)
 from src.discord_ext.scopes import guild_scopes
 
 from ._common import MODERATION, can_moderate
@@ -123,7 +129,7 @@ class MenusMixin:
         match = _WARN_FORM_RE.match(ctx.custom_id)
         if not match:
             return
-        guild: Any = ctx.guild
+        guild: Any = guild_of(ctx)
         try:
             member = await guild.fetch_member(int(match.group(1)))
         except NotFound:
@@ -151,7 +157,7 @@ class MenusMixin:
             return NEEDS_MODERATE
         if getattr(member, "guild", None) is None and not hasattr(member, "roles"):
             return "Ce membre n'est plus sur le serveur."
-        return can_moderate(ctx.author, member, getattr(ctx.guild, "me", None))
+        return can_moderate(ctx.author, member, getattr(guild_of(ctx), "me", None))
 
 
 __all__ = ["MenusMixin"]

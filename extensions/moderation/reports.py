@@ -52,6 +52,7 @@ from src.discord_ext.messages import (
     edit_message_if_changed,
     fetch_user_safe,
     guild_id_of,
+    guild_of,
     jump_url,
     permission_names,
     send_error,
@@ -471,12 +472,12 @@ class ReportsMixin:
             return None, CAN_SANCTION
         member = None
         with contextlib.suppress(NotFound):
-            member = await ctx.guild.fetch_member(int(report.author_id))
+            member = await guild_of(ctx).fetch_member(int(report.author_id))
         if member is None:
             return None, (
                 "L'auteur n'est plus sur le serveur : supprime le message ou classe le signalement."
             )
-        guard = can_moderate(author, member, getattr(ctx.guild, "me", None))
+        guard = can_moderate(author, member, getattr(guild_of(ctx), "me", None))
         return member, guard
 
     async def _handle(
@@ -552,7 +553,7 @@ class ReportsMixin:
         return infraction
 
     async def _thank_reporters(self, ctx: Any, report: MessageReport) -> None:
-        guild_name = getattr(ctx.guild, "name", "le serveur")
+        guild_name = getattr(guild_of(ctx), "name", "le serveur")
         for reporter in report.reporters:
             if reporter.user_id == NOBODY:
                 continue

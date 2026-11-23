@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from src.core.db import mongo_manager, translates_db_errors
+from src.core.db import GuildRepository, translates_db_errors
 
 from .models import RequestSubscription
 
@@ -13,14 +13,10 @@ def _hour(value: Any) -> int | None:
     return value if isinstance(value, int) else None
 
 
-class RequestReminderRepository:
+class RequestReminderRepository(GuildRepository):
     """Per-guild accessor for the ``zerator247_reminders`` collection."""
 
-    def __init__(self, guild_id: str):
-        self.guild_id = guild_id
-
-    def _col(self):
-        return mongo_manager.get_guild_collection(self.guild_id, "zerator247_reminders")
+    COLLECTION = "zerator247_reminders"
 
     @translates_db_errors
     async def load(self) -> dict[str, RequestSubscription]:

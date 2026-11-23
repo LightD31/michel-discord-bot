@@ -3,11 +3,10 @@
 from __future__ import annotations
 
 from io import BytesIO
-from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
 
-_FONT_PATH = str(Path(__file__).resolve().parent.parent.parent / "src" / "assets" / "OpenSans.ttf")
+from src.core.images import SANS_FONT_PATH
 
 _BG = (24, 25, 28)
 _PANEL = (35, 37, 41)
@@ -48,9 +47,9 @@ def render_category_chart(
     draw = ImageDraw.Draw(img)
     draw.rounded_rectangle((10, 10, width - 10, height - 10), radius=18, fill=_PANEL)
 
-    title_font = ImageFont.truetype(_FONT_PATH, 28)
-    label_font = ImageFont.truetype(_FONT_PATH, 20)
-    value_font = ImageFont.truetype(_FONT_PATH, 18)
+    title_font = ImageFont.truetype(SANS_FONT_PATH, 28)
+    label_font = ImageFont.truetype(SANS_FONT_PATH, 20)
+    value_font = ImageFont.truetype(SANS_FONT_PATH, 18)
 
     draw.text((30, 28), title, font=title_font, fill=_TEXT_PRIMARY)
     total = sum(v for _, v in items)

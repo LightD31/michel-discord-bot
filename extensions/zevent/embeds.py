@@ -5,6 +5,7 @@ from datetime import UTC, datetime, timedelta
 
 from interactions import Embed, TimestampStyles, utils
 
+from features.zevent.history import format_euros
 from features.zevent.models import Participant, Show
 from features.zevent.stats import is_live, upcoming_goals, upcoming_shows
 from src.core import clock
@@ -50,11 +51,6 @@ def source_footer(*sources: str | None) -> str:
 EMBED_TOTAL_BUDGET = 5800
 
 logger = logutil.init_logger(__name__)
-
-
-def format_euros(amount: float) -> str:
-    """Format euros the way the rest of the tracker does: spaces, no decimals."""
-    return f"{amount:,.0f} €".replace(",", " ")
 
 
 def escape_markdown(text: str) -> str:

@@ -27,8 +27,8 @@ from pydantic import BaseModel, Field
 from pymongo import ReturnDocument
 from pymongo.errors import DuplicateKeyError
 
-from src.core.db import mongo_manager, translates_db_errors
-from src.core.logging import init_logger, log_failure
+from src.core.db import GuildRepository, IndexSpec, translates_db_errors
+from src.core.logging import init_logger
 
 logger = init_logger(__name__)
 
@@ -99,26 +99,21 @@ class ReportLimiter:
         self._recent(guild_id, user_id, now).append(now)
 
 
-class ReportRepository:
+class ReportRepository(GuildRepository):
     """Per-guild store of reported messages."""
 
-    def __init__(self, guild_id: str | int) -> None:
-        self._guild_id = str(guild_id)
+    COLLECTION = COLLECTION
 
-    def _col(self):
-        return mongo_manager.get_guild_collection(self._guild_id, COLLECTION)
-
-    async def ensure_indexes(self) -> None:
-        try:
-            await self._col().create_index(
-                [("expires_at", pymongo.ASCENDING)], expireAfterSeconds=0, name="expires_ttl"
-            )
-            await self._col().create_index([("author_id", pymongo.ASCENDING)], name="author_idx")
-            await self._col().create_index(
-                [("reporters.user_id", pymongo.ASCENDING)], name="reporter_idx"
-            )
-        except Exception as e:
-            log_failure(logger, "Failed to create report indexes for %s: %s", self._guild_id, e)
+    def indexes(self) -> list[IndexSpec]:
+        return [
+            (
+                "",
+                [("expires_at", pymongo.ASCENDING)],
+                {"expireAfterSeconds": 0, "name": "expires_ttl"},
+            ),
+            ("", [("author_id", pymongo.ASCENDING)], {"name": "author_idx"}),
+            ("", [("reporters.user_id", pymongo.ASCENDING)], {"name": "reporter_idx"}),
+        ]
 
     @staticmethod
     def _model(doc: dict | None) -> MessageReport | None:

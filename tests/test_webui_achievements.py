@@ -65,9 +65,8 @@ def test_off_module_unreadable_store_and_other_servers_are_refused(setup):
         call("2")
     assert caught.value.status_code == 403
     Repo.down = True
-    with pytest.raises(HTTPException) as caught:
+    with pytest.raises(DatabaseError):  # the app answers it 503 (src/webui/errors.py)
         call()
-    assert caught.value.status_code == 503
     setup["1"]["moduleAchievements"]["enabled"] = False
     with pytest.raises(HTTPException) as caught:
         call()

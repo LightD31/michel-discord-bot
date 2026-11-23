@@ -126,7 +126,7 @@ class Zerator247Mixin(ZuniversBase):
     async def request_set(
         self, ctx: SlashContext, debut: int | None = None, fin: int | None = None
     ):
-        if not _site_url(ZUNIVERS.get(ctx.guild_id)):
+        if not _site_url(ZUNIVERS.get(guild_id_of(ctx))):
             await ctx.send("ZeratoR 24/7 n'est pas configuré sur ce serveur.", ephemeral=True)
             return
         if (debut is None) != (fin is None):
@@ -183,7 +183,7 @@ class Zerator247Mixin(ZuniversBase):
         sub_cmd_description="Indique quand s'ouvrent les prochaines !request sur ZeratoR 24/7",
     )
     async def request_status(self, ctx: SlashContext):
-        site = _site_url(ZUNIVERS.get(ctx.guild_id))
+        site = _site_url(ZUNIVERS.get(guild_id_of(ctx)))
         if not site:
             await ctx.send("ZeratoR 24/7 n'est pas configuré sur ce serveur.", ephemeral=True)
             return

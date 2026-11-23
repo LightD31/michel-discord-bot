@@ -6,30 +6,23 @@ The original message id doubles as the document ``_id`` for O(1) lookup.
 import pymongo
 
 from features.starboard.models import StarEntry
-from src.core.db import mongo_manager, translates_db_errors
-from src.core.logging import init_logger, log_failure
+from src.core.db import GuildRepository, IndexSpec, translates_db_errors
+from src.core.logging import init_logger
 
 logger = init_logger(__name__)
 
 COLLECTION = "starboard"
 
 
-class StarboardRepository:
+class StarboardRepository(GuildRepository):
     """Per-guild store for starboard mappings."""
 
-    def __init__(self, guild_id: str | int) -> None:
-        self._guild_id = str(guild_id)
+    COLLECTION = COLLECTION
 
-    def _col(self):
-        return mongo_manager.get_guild_collection(self._guild_id, COLLECTION)
-
-    async def ensure_indexes(self) -> None:
-        try:
-            await self._col().create_index(
-                [("mirror_message_id", pymongo.ASCENDING)], name="mirror_message_id_idx"
-            )
-        except Exception as e:
-            log_failure(logger, "Failed to create starboard indexes for %s: %s", self._guild_id, e)
+    def indexes(self) -> list[IndexSpec]:
+        return [
+            ("", [("mirror_message_id", pymongo.ASCENDING)], {"name": "mirror_message_id_idx"}),
+        ]
 
     @staticmethod
     def _doc_to_entry(doc: dict) -> StarEntry:

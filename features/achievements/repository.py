@@ -24,7 +24,7 @@ from typing import Any
 import pymongo
 
 from features.achievements.badges import DJ_TRACKS, FEUR_COUNT, VOICE_TICKS
-from src.core.db import mongo_manager, translates_db_errors
+from src.core.db import GuildRepository, IndexSpec, translates_db_errors
 
 ACHIEVEMENTS = "achievements"
 STATE = "achievements_state"
@@ -40,16 +40,13 @@ def _member_ids(values: Iterable[Any]) -> set[str]:
     return ids
 
 
-class AchievementsRepository:
-    def __init__(self, guild_id: str | int) -> None:
-        self._guild_id = str(guild_id)
+class AchievementsRepository(GuildRepository):
+    COLLECTION = ACHIEVEMENTS
 
-    def _col(self, name: str = ACHIEVEMENTS):
-        return mongo_manager.get_guild_collection(self._guild_id, name)
-
-    @translates_db_errors
-    async def ensure_indexes(self) -> None:
-        await self._col().create_index([("user_id", pymongo.ASCENDING)], name="user_id")
+    def indexes(self) -> list[IndexSpec]:
+        return [
+            ("", [("user_id", pymongo.ASCENDING)], {"name": "user_id"}),
+        ]
 
     # --- Badges won ------------------------------------------------------------
 
@@ -68,7 +65,7 @@ class AchievementsRepository:
             for uid in ids
         ]
         result = await self._col().bulk_write(ops, ordered=False)
-        return [ids[index] for index in sorted(result.upserted_ids)]
+        return [ids[index] for index in sorted(result.upserted_ids or {})]
 
     @translates_db_errors
     async def badges_of(self, user_id: str) -> dict[str, datetime]:

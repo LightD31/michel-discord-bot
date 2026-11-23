@@ -162,10 +162,7 @@ class AchievementsExtension(Extension):
     @listen()
     async def on_startup(self) -> None:
         for guild_id in ACHIEVEMENTS.guild_ids():
-            try:
-                await self.repository(guild_id).ensure_indexes()
-            except DatabaseError as e:
-                logger.warning("Achievements indexes of guild %s not made: %s", guild_id, e)
+            await self.repository(guild_id).ensure_indexes()  # logs a failure, never raises
         if not self.check_all.running:
             self.check_all.start()
 

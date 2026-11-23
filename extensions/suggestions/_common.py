@@ -77,8 +77,3 @@ STATUS_LABELS: dict[str, str] = {
     "denied": "❌ Refusée",
     "implemented": "🚀 Implémentée",
 }
-
-
-def get_guild_settings(guild_id: int | str) -> dict | None:
-    """Return the per-guild module config, or None if disabled/missing."""
-    return SUGGESTIONS.get(guild_id) or None

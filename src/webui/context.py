@@ -20,6 +20,7 @@ from typing import Any
 from fastapi import HTTPException, Request
 
 from src.core import logging as logutil
+from src.core.errors import DatabaseError
 from src.webui.auth import DiscordOAuth, Session
 from src.webui.guild_access import GuildAccess, is_guild_id, read_guild_access
 from src.webui.ratelimit import TrustedProxies
@@ -93,15 +94,16 @@ class WebUIContext:
     ) -> Any:
         """:meth:`run_on_bot_loop` for route handlers, with HTTP-shaped failures.
 
-        An ``HTTPException`` raised by *func* passes through; a bot that doesn't
+        An ``HTTPException`` or a ``DatabaseError`` raised by *func* passes
+        through (the app answers the latter 503); a bot that doesn't
         answer within *timeout* is a 504; anything else is logged with *what*
         and becomes a 500 whose message stays generic — exception text can
         carry internals (hosts, ids, driver errors) and belongs in the logs.
         """
         try:
             return await self.run_on_bot_loop(func, *args, timeout=timeout, **kwargs)
-        except HTTPException:
-            raise
+        except (HTTPException, DatabaseError):
+            raise  # a DatabaseError is the app's 503 (src/webui/errors.py)
         except TimeoutError as e:
             logger.error("Bot call timed out after %.0fs: %s", timeout, what)
             raise HTTPException(status_code=504, detail="Le bot ne répond pas — réessaie.") from e

@@ -13,8 +13,8 @@ from pymongo import ReturnDocument
 
 from features.suggestions.models import Suggestion, SuggestionStatus, VoteDirection
 from src.core import clock
-from src.core.db import mongo_manager, translates_db_errors
-from src.core.logging import init_logger, log_failure
+from src.core.db import GuildRepository, IndexSpec, translates_db_errors
+from src.core.logging import init_logger
 
 logger = init_logger(__name__)
 
@@ -23,29 +23,20 @@ META_COLLECTION = "suggestions_meta"
 COUNTER_ID = "counter"
 
 
-class SuggestionsRepository:
+class SuggestionsRepository(GuildRepository):
     """Per-guild store for suggestions + auto-incrementing IDs."""
 
-    def __init__(self, guild_id: str | int) -> None:
-        self._guild_id = str(guild_id)
-
-    def _col(self):
-        return mongo_manager.get_guild_collection(self._guild_id, COLLECTION)
+    COLLECTION = COLLECTION
 
     def _meta_col(self):
-        return mongo_manager.get_guild_collection(self._guild_id, META_COLLECTION)
+        return self._col(META_COLLECTION)
 
-    async def ensure_indexes(self) -> None:
-        try:
-            await self._col().create_index([("id", pymongo.ASCENDING)], unique=True, name="id_idx")
-            await self._col().create_index(
-                [("message_id", pymongo.ASCENDING)], name="message_id_idx"
-            )
-            await self._col().create_index([("status", pymongo.ASCENDING)], name="status_idx")
-        except Exception as e:
-            log_failure(
-                logger, "Failed to create suggestions indexes for %s: %s", self._guild_id, e
-            )
+    def indexes(self) -> list[IndexSpec]:
+        return [
+            ("", [("id", pymongo.ASCENDING)], {"unique": True, "name": "id_idx"}),
+            ("", [("message_id", pymongo.ASCENDING)], {"name": "message_id_idx"}),
+            ("", [("status", pymongo.ASCENDING)], {"name": "status_idx"}),
+        ]
 
     @translates_db_errors
     async def next_id(self) -> int:

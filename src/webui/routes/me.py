@@ -26,7 +26,6 @@ writes go through the mutation limiter like every other.
 
 from __future__ import annotations
 
-from collections.abc import Awaitable
 from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException, Request
@@ -60,7 +59,6 @@ from src.webui.routes.secretsanta import member_names
 
 logger = logutil.init_logger("webui.routes.me")
 
-UNAVAILABLE = "Base de données injoignable : réessaie dans un instant."
 MODULE_OFF = "Ce module n'est pas activé sur ce serveur."
 WHEN_HINT = f"Pas encore compris, ou déjà passé. Exemples : {EXAMPLES}."
 
@@ -93,15 +91,6 @@ class DeleteBody(BaseModel):
     confirm: Literal[True]
 
 
-async def guarded[T](work: Awaitable[T]) -> T:
-    """*work*, with a database outage answered 503 rather than 500."""
-    try:
-        return await work
-    except (DatabaseError, RuntimeError) as e:  # RuntimeError: no MongoDB configured
-        logger.warning("Member space: database unreadable: %s", e)
-        raise HTTPException(status_code=503, detail=UNAVAILABLE) from e
-
-
 def require_section(server_id: str, section: str) -> None:
     if section not in member_space.sections_on(server_id):
         raise HTTPException(status_code=404, detail=MODULE_OFF)
@@ -130,7 +119,7 @@ async def server_overview(server_id: str, user_id: str) -> dict[str, Any]:
     for name in sections:
         try:
             out[name] = await readers[name](server_id, user_id)
-        except (DatabaseError, RuntimeError) as e:
+        except DatabaseError as e:
             logger.warning("Member space: %s of %s unreadable: %s", name, server_id, e)
             out[name] = None
             out["unavailable"].append(name)
@@ -218,7 +207,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
         require_section(server_id, "reminders")
         when = parse_reminder_time(body.when)
         repo = ReminderRepository(server_id)
-        if await guarded(repo.count_for_user(session.user_id)) >= MAX_REMINDERS_PER_MEMBER:
+        if await repo.count_for_user(session.user_id) >= MAX_REMINDERS_PER_MEMBER:
             raise HTTPException(
                 status_code=409,
                 detail=f"Tu as déjà {MAX_REMINDERS_PER_MEMBER} rappels sur ce serveur : "
@@ -230,7 +219,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
             remind_time=when,
             frequency=body.frequency,
         )
-        reminder_id = await guarded(repo.add(reminder))
+        reminder_id = await repo.add(reminder)
         logger.info("Reminder added from the member space by %s on %s", session.user_id, server_id)
         return JSONResponse({"status": "ok", "id": reminder_id})
 
@@ -241,14 +230,12 @@ def create_router(ctx: WebUIContext) -> APIRouter:
         session = await ctx.require_guild_member(request, server_id)
         require_section(server_id, "reminders")
         when = parse_reminder_time(body.when)
-        changed = await guarded(
-            ReminderRepository(server_id).update_mine(
-                session.user_id,
-                reminder_id,
-                message=body.message.strip(),
-                remind_time=when,
-                frequency=body.frequency,
-            )
+        changed = await ReminderRepository(server_id).update_mine(
+            session.user_id,
+            reminder_id,
+            message=body.message.strip(),
+            remind_time=when,
+            frequency=body.frequency,
         )
         if not changed:
             raise HTTPException(status_code=404, detail="Rappel introuvable.")
@@ -258,9 +245,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
     async def api_delete_reminder(request: Request, server_id: str, reminder_id: str):
         session = await ctx.require_guild_member(request, server_id)
         require_section(server_id, "reminders")
-        gone = await guarded(
-            ReminderRepository(server_id).delete_mine(session.user_id, [reminder_id])
-        )
+        gone = await ReminderRepository(server_id).delete_mine(session.user_id, [reminder_id])
         if not gone:
             raise HTTPException(status_code=404, detail="Rappel introuvable.")
         return JSONResponse({"status": "ok"})
@@ -283,14 +268,14 @@ def create_router(ctx: WebUIContext) -> APIRouter:
         entry = BirthdayEntry(
             user=int(session.user_id), date=day, timezone=body.timezone, hideyear=body.hideYear
         )
-        await guarded(BirthdayRepository(server_id).set_own(entry))
+        await BirthdayRepository(server_id).set_own(entry)
         return JSONResponse({"status": "ok"})
 
     @router.delete("/api/me/servers/{server_id}/birthday")
     async def api_delete_birthday(request: Request, server_id: str):
         session = await ctx.require_guild_member(request, server_id)
         require_section(server_id, "birthday")
-        await guarded(BirthdayRepository(server_id).delete(int(session.user_id)))
+        await BirthdayRepository(server_id).delete(int(session.user_id))
         return JSONResponse({"status": "ok"})
 
     # --- Tricount --------------------------------------------------------
@@ -308,10 +293,10 @@ def create_router(ctx: WebUIContext) -> APIRouter:
         uid, other = int(session.user_id), int(body.to)
         debtor, creditor = (uid, other) if body.direction == "paid" else (other, uid)
         repo = TricountRepository(server_id)
-        group = await guarded(repo.find_active_group_by_str(group_id))
+        group = await repo.find_active_group_by_str(group_id)
         if group is None:
             raise HTTPException(status_code=404, detail="Groupe introuvable.")
-        expenses = await guarded(repo.list_group_expenses(group["_id"]))
+        expenses = await repo.list_group_expenses(group["_id"])
         plan = settlement_plan(compute_balances(expenses, group["members"]))
         owed = next((n for d, c, n in plan if d == debtor and c == creditor), 0)
         if not owed or body.cents > owed:
@@ -319,21 +304,19 @@ def create_router(ctx: WebUIContext) -> APIRouter:
                 status_code=409,
                 detail="Le bilan du groupe a changé depuis : recharge la page pour voir ce qui reste.",
             )
-        await guarded(
-            repo.add_expense(
-                {
-                    "group_id": group["_id"],
-                    "group_name": group.get("name", ""),
-                    "kind": TRANSFER,
-                    "amount": round(body.cents / 100, 2),
-                    "description": "Remboursement",
-                    "payer": debtor,
-                    "recipient": creditor,
-                    "participants": [creditor],
-                    "added_by": uid,
-                    "date": clock.now(),
-                }
-            )
+        await repo.add_expense(
+            {
+                "group_id": group["_id"],
+                "group_name": group.get("name", ""),
+                "kind": TRANSFER,
+                "amount": round(body.cents / 100, 2),
+                "description": "Remboursement",
+                "payer": debtor,
+                "recipient": creditor,
+                "participants": [creditor],
+                "added_by": uid,
+                "date": clock.now(),
+            }
         )
         logger.info(
             "Tricount reimbursement (%s) recorded from the member space by %s in group %s of %s",
@@ -352,7 +335,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
         require_section(server_id, "santa")
         repo = SecretSantaRepository()
         context_id = f"guild_{server_id}"
-        santa = await guarded(repo.get_session(context_id))
+        santa = await repo.get_session(context_id)
         uid = int(session.user_id)
         if santa is None or uid not in santa.participants:
             raise HTTPException(
@@ -365,10 +348,8 @@ def create_router(ctx: WebUIContext) -> APIRouter:
                 detail="Le tirage est fait : ton Père Noël a déjà reçu ta liste.",
             )
         text = body.text.strip() or None
-        await guarded(
-            repo.set_wishlist(
-                context_id, uid, text, participant_expiry(santa.exchange_day, santa.created)
-            )
+        await repo.set_wishlist(
+            context_id, uid, text, participant_expiry(santa.exchange_day, santa.created)
         )
         return JSONResponse({"status": "ok"})
 
@@ -379,9 +360,9 @@ def create_router(ctx: WebUIContext) -> APIRouter:
         require_section(server_id, "santa")
         repo = SecretSantaRepository()
         context_id = f"guild_{server_id}"
-        updated = await guarded(repo.add_participant(context_id, int(session.user_id)))
+        updated = await repo.add_participant(context_id, int(session.user_id))
         if updated is None:
-            current = await guarded(repo.get_session(context_id))
+            current = await repo.get_session(context_id)
             if current is None:
                 raise HTTPException(status_code=404, detail="Pas de Père Noël Secret en cours ici.")
             if current.is_drawn:
@@ -400,15 +381,15 @@ def create_router(ctx: WebUIContext) -> APIRouter:
         repo = SecretSantaRepository()
         context_id = f"guild_{server_id}"
         uid = int(session.user_id)
-        updated = await guarded(repo.remove_participant(context_id, uid))
+        updated = await repo.remove_participant(context_id, uid)
         if updated is None:
-            current = await guarded(repo.get_session(context_id))
+            current = await repo.get_session(context_id)
             if current is not None and current.is_drawn:
                 raise HTTPException(
                     status_code=409, detail="Le tirage est fait : tu ne peux plus te retirer."
                 )
             return JSONResponse({"status": "ok"})  # not in (or no session): nothing to do
-        await guarded(repo.clear_wishlist(context_id, uid))
+        await repo.clear_wishlist(context_id, uid)
         await refresh_santa(server_id, updated)
         return JSONResponse({"status": "ok"})
 
@@ -432,8 +413,8 @@ def create_router(ctx: WebUIContext) -> APIRouter:
     async def api_export(request: Request):
         """Everything the bot keeps about the user, on every server: ``/mes-donnees exporter``."""
         session = ctx.require_session(request)
-        guild_ids = await guarded(mongo_manager.guild_ids_with_data())
-        data = await guarded(UserDataRepository(session.user_id).export(guild_ids))
+        guild_ids = await mongo_manager.guild_ids_with_data()
+        data = await UserDataRepository(session.user_id).export(guild_ids)
         payload = export_json(data)
         logger.info(
             "Data export from the dashboard for %s (%d bytes)", session.user_id, len(payload)
@@ -448,8 +429,8 @@ def create_router(ctx: WebUIContext) -> APIRouter:
     async def api_forget(request: Request, body: DeleteBody):  # noqa: ARG001 — the confirmation
         """``/mes-donnees supprimer``: forget the user on every server, and say what was kept."""
         session = ctx.require_session(request)
-        guild_ids = await guarded(mongo_manager.guild_ids_with_data())
-        report = await guarded(UserDataRepository(session.user_id).forget(guild_ids))
+        guild_ids = await mongo_manager.guild_ids_with_data()
+        report = await UserDataRepository(session.user_id).forget(guild_ids)
         logger.info(
             "Data of %s deleted from the dashboard: %d deleted, %d anonymised, kept %s",
             session.user_id,

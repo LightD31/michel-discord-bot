@@ -14,6 +14,7 @@ from fastapi import HTTPException
 from pydantic import BaseModel
 
 import src.webui.routes.me as me_routes
+from src.core.errors import DatabaseError
 
 ME = "42"
 
@@ -142,9 +143,8 @@ def test_who_i_owe_is_named(store_config, monkeypatch):
 def test_writes_answer_503_when_the_database_is_down(store_config):
     store_config({"servers": {"1": {"moduleBirthday": {"enabled": True}}}})
     put = endpoint(FakeCtx(), "PUT", "/api/me/servers/{server_id}/birthday")
-    with pytest.raises(HTTPException) as exc:
+    with pytest.raises(DatabaseError):  # the app answers it 503 (src/webui/errors.py)
         asyncio.run(put(None, "1", me_routes.BirthdayBody(date="12/03")))
-    assert exc.value.status_code == 503
 
 
 def test_the_deletion_needs_its_confirmation():

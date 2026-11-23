@@ -5,7 +5,6 @@ from types import SimpleNamespace
 
 import pytest
 
-import extensions.moderation.commands as commands_module
 from extensions.moderation.commands import CommandsMixin
 from features.moderation import Infraction
 
@@ -56,13 +55,8 @@ class FakeCtx:
 
 
 @pytest.fixture
-def ext(monkeypatch):
-    monkeypatch.setattr(commands_module, "get_guild_settings", lambda gid: {"dmOnAction": True})
-
-    async def ok(ctx):
-        return True
-
-    monkeypatch.setattr(commands_module, "require_guild", ok)
+def ext(store_config):
+    store_config({"servers": {"1": {"moduleModeration": {"enabled": True, "dmOnAction": True}}}})
 
     class Ext(CommandsMixin):
         async def dm_target(self, settings, target, text):

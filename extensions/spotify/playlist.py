@@ -36,6 +36,7 @@ from src.discord_ext.look import card
 from src.discord_ext.messages import (
     edit_message_if_changed,
     fetch_or_create_persistent_message,
+    guild_id_of,
     send_error,
 )
 from src.discord_ext.scopes import guild_scopes
@@ -77,7 +78,7 @@ class PlaylistMixin(SpotifyBase):
     )
     @cooldown(Buckets.USER, 1, 10)
     async def addsong(self, ctx: SlashContext, song):
-        server = self.get_server(ctx.guild_id)
+        server = self.get_server(guild_id_of(ctx))
         if str(ctx.channel_id) != str(server.channel_id):
             await send_error(
                 ctx, f"/musique ajouter se lance dans <#{server.channel_id}>.", icon="🎵"
@@ -117,7 +118,7 @@ class PlaylistMixin(SpotifyBase):
                 time=Timestamp.utcnow(),
                 person=ctx.author.username,
                 icon=ctx.author.avatar.url,
-                guild_id=ctx.guild_id,
+                guild_id=guild_id_of(ctx),
             )
             await ctx.send(
                 content=(
@@ -344,7 +345,7 @@ class PlaylistMixin(SpotifyBase):
     @cooldown(Buckets.USER, 1, 10)
     async def songinfo(self, ctx: SlashContext, song_id):
         """Show combined MongoDB + Spotify info (and any vote history) for a song."""
-        server = self.get_server(ctx.guild_id)
+        server = self.get_server(guild_id_of(ctx))
         # Spotify, MongoDB and the cover image can take longer than Discord's 3 s.
         await ctx.defer()
         embed = None
@@ -418,7 +419,7 @@ class PlaylistMixin(SpotifyBase):
     @songinfo.autocomplete("titre")
     async def autocomplete_from_db(self, ctx: AutocompleteContext):
         """Match name/artist against the local MongoDB playlist + vote archives."""
-        server = self.get_server(ctx.guild_id)
+        server = self.get_server(guild_id_of(ctx))
         choices: list[dict[str, Any]]
         if not ctx.input_text:
             choices = [{"name": "Tape le nom d'une chanson", "value": "error"}]

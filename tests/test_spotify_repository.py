@@ -4,12 +4,12 @@ import copy
 
 import pytest
 
-import features.spotify.repository as repository
 from features.spotify.repository import (
     ADDWITHVOTES_COLLECTION,
     PLAYLIST_COLLECTION,
     SpotifyRepository,
 )
+from src.core import db
 
 GUILD = "123"
 
@@ -67,7 +67,7 @@ def cols(monkeypatch):
             assert guild_id == GUILD
             return collections.setdefault(name, _FakeCollection())
 
-    monkeypatch.setattr(repository, "mongo_manager", _Manager())
+    monkeypatch.setattr(db, "mongo_manager", _Manager())  # GuildRepository reads it there
     return collections
 
 

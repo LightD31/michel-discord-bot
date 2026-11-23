@@ -65,14 +65,14 @@ def create_router(ctx: WebUIContext) -> APIRouter:
         if isinstance(xp, dict) and xp.get("enabled"):
             try:
                 out["activity"] = await week_activity(server_id)
-            except (DatabaseError, RuntimeError) as e:  # RuntimeError: no MongoDB
+            except DatabaseError as e:
                 logger.warning("Activity of %s unreadable: %s", server_id, e)
         log = AuditRepository(server_id)
         try:
             out["recent"] = [entry_to_json(e) for e in await log.list(limit=RECENT_CHANGES)]
             changes = await log.last_changes(MODULE_ACTIONS)
             out["lastChanges"] = {module: at.isoformat() for module, at in changes.items()}
-        except (DatabaseError, RuntimeError) as e:
+        except DatabaseError as e:
             logger.warning("Audit log of %s unreadable: %s", server_id, e)
         return JSONResponse(out)
 

@@ -26,17 +26,15 @@ from features.moderation import (
     ModerationRepository,
     clamp_timeout,
     humanize_duration,
-    parse_duration,
 )
 from src.core import clock
-from src.core.text import format_discord_timestamp
+from src.core.text import format_discord_timestamp, parse_duration
 from src.discord_ext.errors import failure_reply
 from src.discord_ext.look import card
 from src.discord_ext.messages import (
     guild_id_of,
     guild_of,
     module_off,
-    require_guild,
     send_error,
     send_success,
 )
@@ -47,7 +45,6 @@ from ._common import (
     MODERATION,
     TYPE_LABELS,
     can_moderate,
-    get_guild_settings,
     logger,
 )
 from .logging_ import build_case_embed
@@ -85,9 +82,7 @@ class CommandsMixin:
     # --- shared helpers ----------------------------------------------------
 
     async def _guild_settings_or_error(self, ctx: SlashContext) -> dict | None:
-        if not await require_guild(ctx):
-            return None
-        settings = get_guild_settings(guild_id_of(ctx))
+        settings = MODERATION.get(guild_id_of(ctx))
         if not settings:
             await send_error(ctx, module_off("modération"), icon="🛡️")
             return None
@@ -107,7 +102,7 @@ class CommandsMixin:
         case_id = await repo.next_case_id()
         infraction = Infraction(
             id=case_id,
-            guild_id=str(ctx.guild_id),
+            guild_id=guild_id_of(ctx),
             user_id=str(target_id),
             moderator_id=str(ctx.author.id),
             type=mtype,
@@ -150,7 +145,7 @@ class CommandsMixin:
         settings = await self._guild_settings_or_error(ctx)
         if settings is None:
             return
-        guard = can_moderate(ctx.author, member, getattr(ctx.guild, "me", None))
+        guard = can_moderate(ctx.author, member, getattr(guild_of(ctx), "me", None))
         if guard:
             await send_error(ctx, guard)
             return
@@ -219,7 +214,7 @@ class CommandsMixin:
         settings = await self._guild_settings_or_error(ctx)
         if settings is None:
             return
-        guard = can_moderate(ctx.author, member, getattr(ctx.guild, "me", None))
+        guard = can_moderate(ctx.author, member, getattr(guild_of(ctx), "me", None))
         if guard:
             await send_error(ctx, guard)
             return
@@ -303,7 +298,7 @@ class CommandsMixin:
             return
         # Lifting a timeout follows the same hierarchy as setting one: a
         # moderator can't undo a sanction on a member who outranks them.
-        guard = can_moderate(ctx.author, member, getattr(ctx.guild, "me", None))
+        guard = can_moderate(ctx.author, member, getattr(guild_of(ctx), "me", None))
         if guard:
             await send_error(ctx, guard)
             return
@@ -349,7 +344,7 @@ class CommandsMixin:
         settings = await self._guild_settings_or_error(ctx)
         if settings is None:
             return
-        guard = can_moderate(ctx.author, member, getattr(ctx.guild, "me", None))
+        guard = can_moderate(ctx.author, member, getattr(guild_of(ctx), "me", None))
         if guard:
             await send_error(ctx, guard)
             return
@@ -415,7 +410,7 @@ class CommandsMixin:
         settings = await self._guild_settings_or_error(ctx)
         if settings is None:
             return
-        guard = can_moderate(ctx.author, member, getattr(ctx.guild, "me", None))
+        guard = can_moderate(ctx.author, member, getattr(guild_of(ctx), "me", None))
         if guard:
             await send_error(ctx, guard)
             return

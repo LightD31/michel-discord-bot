@@ -5,7 +5,6 @@ from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
 import pytest
-from fastapi import HTTPException
 
 import src.webui.routes.moderation as moderation_routes
 from features.moderation import Infraction, ModerationRepository
@@ -85,7 +84,5 @@ async def test_an_outage_is_a_503_not_an_empty_list(monkeypatch):
             raise DatabaseError("down")
 
     monkeypatch.setattr(moderation_routes, "ModerationRepository", Down)
-    with pytest.raises(HTTPException) as refused:
+    with pytest.raises(DatabaseError):  # the app answers it 503 (src/webui/errors.py)
         await list_endpoint(Ctx())(None, "1", user_id=None, type=None, active=None)
-    assert refused.value.status_code == 503
-    assert refused.value.detail == moderation_routes.DB_UNAVAILABLE

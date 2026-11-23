@@ -136,7 +136,8 @@ class MongoManager:
                     self._url = ""
 
             if not self._url:
-                raise RuntimeError(
+                # An outage like any other for its callers (the dashboard answers 503).
+                raise DatabaseError(
                     "MongoDB URL is not configured. Set 'mongodb.url' in your configuration."
                 )
 
@@ -378,3 +379,44 @@ class MongoManager:
 
 # Global singleton — import this everywhere.
 mongo_manager = MongoManager()
+
+
+# (collection, keys, create_index options); "" is the repository's COLLECTION.
+type IndexSpec = tuple[str, str | list[tuple[str, Any]], dict[str, Any]]
+
+
+class GuildRepository:
+    """One guild's collections (P32): ``guild_id``, ``_col()`` and indexes made once.
+
+    A repository names its main collection in :attr:`COLLECTION` (``_col()``),
+    reaches the others by name (``_col("xp_events")``) and lists its indexes in
+    :meth:`indexes`. :meth:`ensure_indexes` creates them at startup and logs a
+    failure instead of raising it: a startup step must not stand between an
+    extension and its tasks (``docs/conventions/extension-lifecycle.md``), and
+    ``create_index`` is idempotent, so the next start tries again.
+    """
+
+    COLLECTION: ClassVar[str] = ""
+
+    def __init__(self, guild_id: str | int) -> None:
+        self.guild_id = str(guild_id)
+
+    def _col(self, name: str = "") -> Collection:
+        return mongo_manager.get_guild_collection(self.guild_id, name or self.COLLECTION)
+
+    def indexes(self) -> list[IndexSpec]:
+        return []
+
+    async def ensure_indexes(self) -> None:
+        for collection, keys, options in self.indexes():
+            try:
+                await self._col(collection).create_index(keys, **options)
+            except Exception as e:
+                log_failure(
+                    logger,
+                    "%s: index %s of guild %s not created: %s",
+                    type(self).__name__,
+                    options.get("name") or keys,
+                    self.guild_id,
+                    e,
+                )

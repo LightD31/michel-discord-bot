@@ -10,7 +10,6 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 
 from src.core import logging as logutil
-from src.core.errors import DatabaseError
 from src.webui.audit import PAGE_SIZE, AuditRepository, entry_to_json
 from src.webui.context import WebUIContext
 
@@ -26,11 +25,7 @@ def _before(value: str | None) -> ObjectId | None:
 
 
 async def _page(guild_id: str | None, limit: int, before: str | None) -> JSONResponse:
-    try:
-        entries = await AuditRepository(guild_id).list(limit=limit, before=_before(before))
-    except DatabaseError as e:
-        logger.warning("Audit log of %s unreadable: %s", guild_id or "the bot", e)
-        raise HTTPException(status_code=503, detail="Journal indisponible pour le moment") from e
+    entries = await AuditRepository(guild_id).list(limit=limit, before=_before(before))
     return JSONResponse({"entries": [entry_to_json(e) for e in entries]})
 
 

@@ -7,7 +7,6 @@ from features.moderation.duration import (
     MAX_TIMEOUT_SECONDS,
     clamp_timeout,
     humanize_duration,
-    parse_duration,
 )
 from features.moderation.filters import INVITE_RE, contains_invite, match_banned_word
 from features.moderation.models import Infraction, InfractionSource, InfractionType
@@ -36,6 +35,5 @@ __all__ = [
     "contains_invite",
     "humanize_duration",
     "match_banned_word",
-    "parse_duration",
     "spam_rule",
 ]

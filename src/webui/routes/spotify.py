@@ -24,7 +24,6 @@ from fastapi.responses import HTMLResponse, JSONResponse
 
 from features.spotify import PlaylistStats, SpotifyRepository, aggregate
 from src.core import logging as logutil
-from src.core.errors import DatabaseError
 from src.core.logging import log_failure
 from src.integrations.spotify import (
     build_oauth,
@@ -90,13 +89,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
     async def api_spotify_stats(request: Request, server_id: str):
         """Playlist and vote statistics for the guild's Spotify dashboard charts."""
         await ctx.require_guild_admin(request, server_id)
-        try:
-            stats = await collect_spotify_stats(server_id)
-        except DatabaseError as e:
-            logger.error("Spotify stats failed for %s: %s", server_id, e)
-            raise HTTPException(
-                status_code=500, detail="Lecture des statistiques Spotify impossible."
-            ) from e
+        stats = await collect_spotify_stats(server_id)
         return JSONResponse(stats.to_dict())
 
     @router.get("/spotify/auth/start")

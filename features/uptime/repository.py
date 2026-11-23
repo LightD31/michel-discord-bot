@@ -10,10 +10,8 @@ removes it and a status update never resurrects a removed one.
 
 from __future__ import annotations
 
-from typing import Any
-
 from features.uptime.models import MonitorAlert
-from src.core.db import mongo_manager, translates_db_errors
+from src.core.db import GuildRepository, translates_db_errors
 from src.core.logging import init_logger
 from src.integrations.uptime_kuma import MonitorStatus
 
@@ -23,14 +21,10 @@ COLLECTION = "uptime_monitors"
 DOC_ID = "config"
 
 
-class UptimeRepository:
+class UptimeRepository(GuildRepository):
     """Accessor for one guild's alerts."""
 
-    def __init__(self, guild_id: str | int) -> None:
-        self.guild_id = str(guild_id)
-
-    def _col(self) -> Any:
-        return mongo_manager.get_guild_collection(self.guild_id, COLLECTION)
+    COLLECTION = COLLECTION
 
     @translates_db_errors
     async def load(self) -> dict[int, MonitorAlert]:

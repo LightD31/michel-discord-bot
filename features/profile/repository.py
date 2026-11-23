@@ -11,7 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 
-from src.core.db import mongo_manager, translates_db_errors
+from src.core.db import GuildRepository, translates_db_errors
 
 SECTIONS = frozenset({"stars", "tracks", "suggestions", "giveaways", "birthday"})
 
@@ -29,13 +29,7 @@ class Footprint:
     birthday_hides_year: bool = False
 
 
-class ProfileRepository:
-    def __init__(self, guild_id: str | int) -> None:
-        self._guild_id = str(guild_id)
-
-    def _col(self, name: str):
-        return mongo_manager.get_guild_collection(self._guild_id, name)
-
+class ProfileRepository(GuildRepository):
     @translates_db_errors
     async def footprint(self, user_id: str, sections: frozenset[str] | set[str]) -> Footprint:
         uid = str(user_id)
