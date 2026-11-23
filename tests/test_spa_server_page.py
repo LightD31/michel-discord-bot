@@ -18,8 +18,7 @@ import extensions.xp._common  # noqa: E402, F401 — registers moduleXp, in the 
 
 GUILD = smoke.GUILD
 toasts = smoke.toasts
-# The smoke tests' fixtures: a browser, the app on a local port, a logged-in page.
-browser = smoke.browser
+# The smoke tests' fixtures: the app on a local port, a logged-in page.
 dashboard = smoke.dashboard
 page = smoke.page
 

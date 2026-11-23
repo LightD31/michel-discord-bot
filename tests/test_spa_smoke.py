@@ -8,22 +8,20 @@ CI installs one (``playwright install chromium``); elsewhere, point
 
 import json
 import logging
-import os
-import socket
-import threading
 import time
 from typing import Annotated
 
 import pytest
 from pydantic import StringConstraints
 
-playwright_sync = pytest.importorskip("playwright.sync_api")
+pytest.importorskip("playwright.sync_api")
+
+from spa_harness import free_port, logged_in_page, serve  # noqa: E402
 
 from src.core import config as core_config  # noqa: E402
 from src.core.config import config_store  # noqa: E402
 from src.webui import schemas  # noqa: E402
 from src.webui.auth import Session  # noqa: E402
-from src.webui.context import COOKIE_NAME  # noqa: E402
 from src.webui.schemas import SchemaBase, enabled_field, ui  # noqa: E402
 
 pytestmark = pytest.mark.browser
@@ -47,32 +45,8 @@ class SmokeConfig(SchemaBase):
     board: str | None = ui("Forum suivi", "forum")
 
 
-def free_port() -> int:
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
-
-
-@pytest.fixture(scope="module")
-def browser():
-    try:
-        with playwright_sync.sync_playwright() as pw:
-            try:
-                launched = pw.chromium.launch(
-                    executable_path=os.environ.get("PLAYWRIGHT_CHROMIUM_PATH") or None
-                )
-            except Exception as e:  # noqa: BLE001 — no browser here: skip, don't fail
-                pytest.skip(f"no Chromium to drive: {e}")
-            yield launched
-            launched.close()
-    except RuntimeError as e:  # an event loop already running in this thread
-        pytest.skip(str(e))
-
-
 @pytest.fixture
 def dashboard(tmp_path, monkeypatch):
-    import uvicorn
-
     from src.webui.app import create_app
 
     port = free_port()
@@ -114,54 +88,19 @@ def dashboard(tmp_path, monkeypatch):
     )
     ctx.oauth.sessions[session.token_hash] = session
 
-    server = uvicorn.Server(
-        uvicorn.Config(app, host="127.0.0.1", port=port, lifespan="off", log_level="warning")
-    )
-    thread = threading.Thread(target=server.run, daemon=True)
-    thread.start()
-    for _ in range(100):
-        if server.started:
-            break
-        time.sleep(0.05)
-    yield {"port": port, "session": session, "oauth": ctx.oauth, "config": config_path}
-    server.should_exit = True
-    thread.join(timeout=5)
+    with serve(app, port):
+        yield {"port": port, "session": session, "oauth": ctx.oauth, "config": config_path}
     schemas._MODULE_REGISTRY.pop(MODULE, None)
     config_store._data = None
 
 
 @pytest.fixture
 def page(browser, dashboard):
-    context = browser.new_context()
-    context.add_cookies(
-        [
-            {
-                "name": COOKIE_NAME,
-                "value": dashboard["session"].session_token,
-                "url": f"http://127.0.0.1:{dashboard['port']}",
-            }
-        ]
-    )
-    page = context.new_page()
-    errors: list[str] = []
-    page.on("pageerror", lambda e: errors.append(str(e)))
-    page.on("console", lambda m: script_error(m) and errors.append(m.text))
-    # The app asks with its own dialog: the browser's confirm() is never used.
-    page.on("dialog", lambda d: errors.append(f"boîte native : {d.message}") or d.dismiss())
-    page.goto(f"http://127.0.0.1:{dashboard['port']}/#/module/{GUILD}/{MODULE}")
-    page.wait_for_selector('[data-field="greeting"]')
-    yield page
-    assert errors == [], errors  # no uncaught script error along the way
-    context.close()
-
-
-def script_error(message) -> bool:
-    """A console error from the app: a module that didn't load, an unknown action.
-
-    A failed request (an API answering 503 on purpose) is logged too, as
-    "Failed to load resource": the test asserts on what the page shows instead.
-    """
-    return message.type == "error" and not message.text.startswith("Failed to load resource")
+    base = f"http://127.0.0.1:{dashboard['port']}"
+    with logged_in_page(browser, base, dashboard["session"].session_token) as page:
+        page.goto(f"{base}/#/module/{GUILD}/{MODULE}")
+        page.wait_for_selector('[data-field="greeting"]')
+        yield page
 
 
 def demote(dashboard):
@@ -500,7 +439,7 @@ def test_a_cancelled_draw_sends_nothing(page, dashboard, monkeypatch):
     card.get_by_text("🤝 En main propre").wait_for()
     card.get_by_role("button", name="🎲 Lancer le tirage").click()
     confirm_dialog(page).get_by_role("button", name="Annuler").click()
-    page.wait_for_timeout(300)
+    page.get_by_role("alertdialog").wait_for(state="hidden")
     assert posts == []
 
 
@@ -646,24 +585,9 @@ def member_page(browser, dashboard):
         expires_at=time.time() + 3600,
     )
     dashboard["oauth"].sessions[session.token_hash] = session
-    context = browser.new_context()
-    context.add_cookies(
-        [
-            {
-                "name": COOKIE_NAME,
-                "value": session.session_token,
-                "url": f"http://127.0.0.1:{dashboard['port']}",
-            }
-        ]
-    )
-    page = context.new_page()
-    errors: list[str] = []
-    page.on("pageerror", lambda e: errors.append(str(e)))
-    page.on("console", lambda m: script_error(m) and errors.append(m.text))
-    page.on("dialog", lambda d: errors.append(f"boîte native : {d.message}") or d.dismiss())
-    yield page
-    assert errors == [], errors
-    context.close()
+    base = f"http://127.0.0.1:{dashboard['port']}"
+    with logged_in_page(browser, base, session.session_token) as page:
+        yield page
 
 
 def test_a_member_lands_on_their_space_and_marks_a_debt_paid(member_page, dashboard):
@@ -766,11 +690,6 @@ def test_a_member_creates_a_reminder_and_reads_the_moment_back(member_page, dash
 
 def test_the_public_xp_page_shows_the_season_where_there_is_one(browser, dashboard):
     """P14: the current season's top members above the statistics; none, no card."""
-    context = browser.new_context()
-    page = context.new_page()
-    errors: list[str] = []
-    page.on("pageerror", lambda e: errors.append(str(e)))
-    page.on("console", lambda m: script_error(m) and errors.append(m.text))
     meta = {"id": GUILD, "name": "Les Copains", "icon": None, "dashboards": ["xp"]}
     season = {
         "label": "T4 2026",
@@ -778,27 +697,26 @@ def test_the_public_xp_page_shows_the_season_where_there_is_one(browser, dashboa
         "top": [{"rank": 1, "display_name": "<b>Camille</b>", "xp": 1200}],
     }
     answers = {"season": season}
-    page.route("**/api/public/tok", lambda r: r.fulfill(json=meta))
-    page.route("**/api/public/tok/xp/stats**", lambda r: r.fulfill(json={"summary": {}}))
-    page.route(
-        "**/api/public/tok/xp/season",
-        lambda r: (
-            r.fulfill(json=answers["season"])
-            if answers["season"]
-            else r.fulfill(status=404, json={"detail": "Pas de saison sur ce serveur."})
-        ),
-    )
     base = f"http://127.0.0.1:{dashboard['port']}"
-    page.goto(f"{base}/public/tok/xp")
-    card = page.locator("#xp-season")
-    card.get_by_text("🏆 Saison T4 2026").wait_for()
-    assert card.locator(".xp-top-name").inner_text() == "<b>Camille</b>"  # escaped, not markup
-    answers["season"] = None
-    page.reload()
-    page.get_by_text("Aucune donnée").wait_for()
-    assert not card.is_visible()
-    assert errors == [], errors
-    context.close()
+    with logged_in_page(browser, base, None) as page:  # an anonymous visitor
+        page.route("**/api/public/tok", lambda r: r.fulfill(json=meta))
+        page.route("**/api/public/tok/xp/stats**", lambda r: r.fulfill(json={"summary": {}}))
+        page.route(
+            "**/api/public/tok/xp/season",
+            lambda r: (
+                r.fulfill(json=answers["season"])
+                if answers["season"]
+                else r.fulfill(status=404, json={"detail": "Pas de saison sur ce serveur."})
+            ),
+        )
+        page.goto(f"{base}/public/tok/xp")
+        card = page.locator("#xp-season")
+        card.get_by_text("🏆 Saison T4 2026").wait_for()
+        assert card.locator(".xp-top-name").inner_text() == "<b>Camille</b>"  # escaped
+        answers["season"] = None
+        page.reload()
+        page.get_by_text("Aucune donnée").wait_for()
+        assert not card.is_visible()
 
 
 def test_a_forum_field_offers_the_forums_only(page, dashboard):
@@ -820,7 +738,7 @@ def test_a_forum_field_offers_the_forums_only(page, dashboard):
     assert "#textes" in options and "#général" not in options
     select.select_option("20")
     save(page)
-    page.wait_for_timeout(500)
+    page.locator("#toasts .toast", has_text="Configuration sauvegardée").first.wait_for()
     stored = json.loads(dashboard["config"].read_text(encoding="utf-8"))
     assert stored["servers"][GUILD][MODULE]["board"] == "20"
 

@@ -7,18 +7,14 @@ the fake bot of ``tools/dashboard_demo.py`` answers for Discord, and the
 reads that need a database are answered by ``page.route``.
 """
 
-import asyncio
 import json
-import os
-import socket
-import threading
 import time
 
 import pytest
 
 playwright_sync = pytest.importorskip("playwright.sync_api")
 
-from test_spa_smoke import script_error  # noqa: E402
+from spa_harness import bot_loop, free_port, logged_in_page, serve  # noqa: E402
 
 import extensions.moderation._common  # noqa: E402, F401 — registers moduleModeration
 import extensions.rss._common  # noqa: E402, F401 — registers moduleRss
@@ -28,7 +24,6 @@ from src.core import config as core_config  # noqa: E402
 from src.core.config import config_store  # noqa: E402
 from src.core.errors import DatabaseError  # noqa: E402
 from src.webui.auth import Session  # noqa: E402
-from src.webui.context import COOKIE_NAME  # noqa: E402
 from tools.dashboard_demo import ADMIN, CH, GA, FakeBot, _roles, demo_config  # noqa: E402
 
 pytestmark = pytest.mark.browser
@@ -46,32 +41,8 @@ class Xp:
     extension_name = "extensions.xp"
 
 
-def free_port() -> int:
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
-
-
-@pytest.fixture(scope="module")
-def browser():
-    try:
-        with playwright_sync.sync_playwright() as pw:
-            try:
-                launched = pw.chromium.launch(
-                    executable_path=os.environ.get("PLAYWRIGHT_CHROMIUM_PATH") or None
-                )
-            except Exception as e:  # noqa: BLE001 — no browser here: skip, don't fail
-                pytest.skip(f"no Chromium to drive: {e}")
-            yield launched
-            launched.close()
-    except RuntimeError as e:  # an event loop already running in this thread
-        pytest.skip(str(e))
-
-
 @pytest.fixture
 def dashboard(tmp_path, monkeypatch):
-    import uvicorn
-
     from src.webui.app import create_app
 
     port = free_port()
@@ -93,9 +64,6 @@ def dashboard(tmp_path, monkeypatch):
     monkeypatch.setattr(UserInfoRepository, "all_members", no_stored_members)
     bot = FakeBot()
     bot.ext = {"Moderation": Moderation(), "Xp": Xp()}
-    loop = asyncio.new_event_loop()
-    threading.Thread(target=loop.run_forever, daemon=True).start()
-    app = create_app(bot=bot, bot_loop=loop)
     session = Session(
         user_id=ADMIN,
         username="camille.b",
@@ -103,50 +71,26 @@ def dashboard(tmp_path, monkeypatch):
         guilds=[{"id": GA, "name": "Les Copains d'abord", "permissions": str(0x8)}],
         expires_at=time.time() + 3600,
     )
-    app.state.webui.oauth.sessions[session.token_hash] = session
-    server = uvicorn.Server(
-        uvicorn.Config(app, host="127.0.0.1", port=port, lifespan="off", log_level="warning")
-    )
-    thread = threading.Thread(target=server.run, daemon=True)
-    thread.start()
-    for _ in range(100):
-        if server.started:
-            break
-        time.sleep(0.05)
-    yield {"base": f"http://127.0.0.1:{port}", "session": session, "config": path}
-    server.should_exit = True
-    thread.join(timeout=5)
-    loop.call_soon_threadsafe(loop.stop)
+    with bot_loop() as loop:
+        app = create_app(bot=bot, bot_loop=loop)
+        app.state.webui.oauth.sessions[session.token_hash] = session
+        with serve(app, port) as base:
+            yield {"base": base, "session": session, "config": path}
     config_store._data = None
 
 
 @pytest.fixture
 def page(browser, dashboard):
-    context = browser.new_context()
-    context.add_cookies(
-        [
-            {
-                "name": COOKIE_NAME,
-                "value": dashboard["session"].session_token,
-                "url": dashboard["base"],
-            }
-        ]
-    )
-    page = context.new_page()
-    errors: list[str] = []
-    page.on("pageerror", lambda e: errors.append(str(e)))
-    page.on("console", lambda m: script_error(m) and errors.append(m.text))
-    page.on("dialog", lambda d: errors.append(f"boîte native : {d.message}") or d.dismiss())
-    # What MongoDB would answer: no case, no message, no audit entry.
-    page.route(
-        "**/api/servers/*/infractions**", lambda route: route.fulfill(json={"infractions": []})
-    )
-    page.route(
-        "**/api/servers/*/xp/stats**", lambda route: route.fulfill(status=503, json={"detail": "x"})
-    )
-    yield page
-    assert errors == [], errors
-    context.close()
+    with logged_in_page(browser, dashboard["base"], dashboard["session"].session_token) as page:
+        # What MongoDB would answer: no case, no message, no audit entry.
+        page.route(
+            "**/api/servers/*/infractions**", lambda route: route.fulfill(json={"infractions": []})
+        )
+        page.route(
+            "**/api/servers/*/xp/stats**",
+            lambda route: route.fulfill(status=503, json={"detail": "x"}),
+        )
+        yield page
 
 
 def open_module(page, dashboard, module):
@@ -227,10 +171,8 @@ def test_a_new_level_reward_picks_its_role(page, dashboard):
 
 def test_an_infraction_names_its_member_and_opens_their_history(page, dashboard):
     hugo = "200000000000000044"
-    asked: list[str] = []
 
     def answer(route):
-        asked.append(route.request.url)
         case = {
             "id": 7,
             "type": "warn",
@@ -249,10 +191,10 @@ def test_an_infraction_names_its_member_and_opens_their_history(page, dashboard)
     case.get_by_text("Spam").wait_for()
     text = case.inner_text()
     assert "Hugo" in text and "Par Camille" in text and hugo not in text
-    case.get_by_role("link", name="Hugo").click()
+    with page.expect_request(lambda r: "/infractions" in r.url and hugo in r.url) as request:
+        case.get_by_role("link", name="Hugo").click()
     page.wait_for_function(f"() => document.getElementById('inf-filter-user').value === '{hugo}'")
-    page.wait_for_timeout(200)
-    assert f"user_id={hugo}" in asked[-1]
+    assert f"user_id={hugo}" in request.value.url
 
 
 def test_a_switch_asks_in_the_apps_own_dialog(page, dashboard):
@@ -277,7 +219,11 @@ def test_a_long_page_has_an_index_of_its_sections(page, dashboard):
     names = index.get_by_role("button").all_inner_texts()
     assert "Journal des modifications" in names and len(names) >= 3
     index.get_by_role("button", name="Journal des modifications").click()
-    page.wait_for_timeout(800)
+    page.wait_for_function(  # the smooth scroll has brought the card on screen
+        "() => { const card = [...document.querySelectorAll('.card')]"
+        ".find(c => c.textContent.includes('Journal des modifications'));"
+        " const top = card.getBoundingClientRect().top; return top >= 0 && top < 700; }"
+    )
     box = page.locator(".card", has_text="Journal des modifications").first.bounding_box()
     assert box is not None and 0 <= box["y"] < 700
     assert index.bounding_box()["y"] < 120  # still on screen, under the header
