@@ -1,10 +1,14 @@
-# Consolidation round (P27–P38)
+# Consolidation round (P27–P42)
 
 What P1–P26 left half-done, duplicated or dead, and what the docs and guards
-say that the code no longer does. Each lot is one PR. The lots are ranked by
-value: the first ones make the suite trustworthy and take out the things that
-mislead (switches that do nothing, rules nothing checks), the last ones add
-code and come only if wanted.
+say that the code no longer does. Since the first draft, four lots answer your
+review: a Spotify vote switch that works, Twitch connected from the browser, a
+module's settings copied from another server, and service accounts per server.
+
+Each lot is one PR. The consolidation lots are ranked by value: the first ones
+make the suite trustworthy and take out what misleads (switches that do
+nothing, rules nothing checks). The new features are marked **new**; they add
+code and can be picked in any order.
 
 Line counts are rough: `−` is what goes, `+` what comes. "Risk" is the chance
 of breaking something a member or an admin would notice. No lot changes what
@@ -24,18 +28,23 @@ Measured on `master` at `1c1ecc1` (P26):
 | Lot | What | − | + | Risk |
 |---|---|---|---|---|
 | P27 | Tests: no leaked event loop, one SPA harness, faster guards | 140 | 70 | low |
-| P28 | Dead settings, a dead route, dead code and CSS | 320 | 15 | low |
-| P29 | Finish the `guild_id_of()` migration, and guard it | 120 | 50 | low |
-| P30 | Dashboard: one answer for a database outage | 110 | 30 | low |
-| P31 | Repositories: one base class, one error style | 220 | 45 | low |
-| P32 | Helpers written twice | 130 | 45 | low |
-| P33 | Settings in their place; compatibility shims gone | 90 | 70 | medium |
-| P34 | Docs and rules that match the code | 260 | 70 | none |
-| P35 | Test fakes in one place | 550 | 130 | low |
-| P36 | Components V2 for the last persistent cards | 20 | 40 | medium |
-| P37 | The server page's cards on one loader | 160 | 60 | low |
-| P38 | Features without a dashboard UI (Uptime first) | 60 | 260 | medium |
-| | **P27–P37** | **≈ 2120** | **≈ 625** | net ≈ −1500 |
+| P28 | Settings that do nothing: the Spotify vote switch wired, dead settings, a dead route, dead code and CSS | 300 | 40 | low (votes: member-visible) |
+| P29 | **new** Twitch connected from the browser | 40 | 230 | medium |
+| P30 | Finish the `guild_id_of()` migration, and guard it | 120 | 50 | low |
+| P31 | Dashboard: one answer for a database outage | 110 | 30 | low |
+| P32 | Repositories: one base class, one error style | 220 | 45 | low |
+| P33 | Helpers written twice | 130 | 45 | low |
+| P34 | Config: keys renamed, derived links, Zevent read live, compatibility shims gone | 70 | 40 | medium |
+| P35 | **new** Copy a module's settings from another server | 0 | 180 | medium |
+| P36 | **new** Spotify: each server connects its own account | 80 | 250 | high |
+| P37 | **new** The other service accounts per server | 70 | 150 | medium |
+| P38 | Docs and rules that match the code | 260 | 70 | none |
+| P39 | Test fakes in one place | 550 | 130 | low |
+| P40 | Components V2 for the last persistent cards | 20 | 40 | medium |
+| P41 | The server page's cards on one loader | 160 | 60 | low |
+| P42 | **new** Features without a dashboard UI (Uptime first) | 60 | 260 | medium |
+| | **Consolidation lots** (P27, P28, P30–P34, P38–P41) | **≈ 2080** | **≈ 620** | net ≈ −1460 |
+| | **New features** (P29, P35–P37, P42) | ≈ 250 | ≈ 1070 | net ≈ +820 |
 
 ---
 
@@ -89,14 +98,33 @@ Put the two stray scans on `python_files()`, and close the demo's loop.
 
 ---
 
-## P28 — Dead settings, a dead route, dead code and CSS
+## P28 — Settings that do nothing
+
+**The Spotify vote switch, wired.** `moduleSpotify.voteEnabled` "Votes activés"
+(`extensions/spotify/_common.py:62`, default off) is read nowhere. The vote
+features all run on every Spotify server whatever it says:
+
+- the daily vote (`randomvote`, `votes.py:80`)
+- its reminders (`reminder_check`, `votes.py:475`) and `/musique activer` /
+  `/musique retirer`
+- the add-with-vote of `/musique proposer` (`votes.py:597`) and its hourly
+  close (`check_for_end`, `votes.py:826`)
+
+When the switch is off, none of these run: the tasks skip the server, and the
+three commands answer with a `module_off()`-style refusal that names the switch
+("🗳️ Les votes sont désactivés sur ce serveur : un administrateur peut les
+activer dans le tableau de bord").
+
+**Member-visible**, which is the point. **Deploy:** set
+`servers.<id>.moduleSpotify.voteEnabled: true` on every server that uses the
+votes today. The default stays off, as the dashboard already shows it, so a
+server where it is unset stops voting until it is switched on.
 
 Settings an admin can change that nothing reads (searched for every field of
 every registered schema; history checked back to the import, `18663a6`):
 
 | Setting | Evidence | Fix |
 |---|---|---|
-| `moduleSpotify.voteEnabled` "Votes activés" (`extensions/spotify/_common.py:62`) | Read nowhere. It defaults to off, yet the daily vote (`votes.py:80`) runs anyway | remove the field |
 | `discord.devGuildChannelId` (`src/webui/schemas.py:634`) | Read nowhere. P24 still built a picker for it (`test_spa_pickers.py:356`) | remove the field, the picker case and its test |
 | `discord.botId` (`schemas.py:626`) | Read nowhere (`ownerId` is read, by the Confrérie) | remove |
 | global section `random`, `randomOrgApiKey` (`schemas.py:921`) | Read nowhere. `extensions/random_.py` uses Python's `random`, though `README.md:48` says "powered by Random.org" and `RUNBOOK.md:161` asks for the key | remove the section, fix both docs |
@@ -108,7 +136,7 @@ Code nothing calls:
   them, so they're the only route and the only exported JS function unused.
   Remove both, keeping the `run_extension_op` tests that go through
   `/api/reload`. The one reason to reload a single extension, Zevent's global
-  settings, goes away in P33.
+  settings, goes away in P34.
 - Functions with no caller (an AST pass over every name, checked by hand):
   `MdiApi._persist_match` (`extensions/mdi/api.py:195`, 27 lines),
   `_scoreboard` (`mdi/embeds.py:366`, 18), `get_total_viewers_from_twitch`
@@ -124,18 +152,64 @@ Code nothing calls:
   `.log-stats`, `.nav-item-sub`, `.schema-badge` / `.no-schema` (`app.css:197,
   473-490, 1171-1180, 1335`). About 60 lines.
 
-**Config changes** (one deployment, no migration): drop
-`servers.*.moduleSpotify.voteEnabled`, `config.discord.botId`,
+**Config changes** (one deployment, no migration): `voteEnabled: true` where
+the votes are wanted. Drop `config.discord.botId`,
 `config.discord.devGuildChannelId` and `config.random`. Regenerate
 `config.example.json`.
 
-**Lines** −320 / +15. **Risk** low: nothing that runs changes. Admins lose a
-Spotify switch that did nothing. Coverage goes up, since the removed code is
-mostly untested.
+**Lines** −300 / +40. **Risk** low; the votes change is deliberate. Coverage
+goes up, since the removed code is mostly untested.
 
 ---
 
-## P29 — Finish the `guild_id_of()` migration, and guard it
+## P29 — new: Twitch connected from the browser
+
+**Today the bot can't connect to Twitch by itself.** `extensions/twitch/eventsub.py:114`
+and `extensions/streamlabs.py:156` call twitchAPI's
+`UserAuthenticationStorageHelper(storage_path="./data/twitchcreds.json").bind()`.
+When that file is missing or its refresh token is dead, `bind()` falls back to
+`UserAuthenticator.authenticate()`. That starts a login server on the host's
+`localhost:17563` and asks the host to open a browser. In the read-only
+container nobody can reach it, so EventSub never starts, and Streamlabs' live
+status stays off, until someone copies a token file in by hand.
+(Zevent only uses the app token, `Twitch(id, secret)`, and isn't affected.)
+
+**Fix**, built like Spotify's flow (`src/webui/routes/spotify.py`):
+
+- In the global settings, the Twitch section gets a panel with the state
+  (connected as whom, scopes, refresh ok or not) and a "🔌 Connecter Twitch"
+  button. Developers only, like Spotify's.
+- `GET /twitch/auth/start` redirects to Twitch's authorize page with a CSRF
+  state cookie. The scope is `user:read:subscriptions`, as now.
+  `GET /twitch/auth/callback` checks the state, exchanges the code, and writes
+  `{token, refresh}` to `data/twitchcreds.json`, the format `bind()` already
+  reads. It then reloads `twitch` and `streamlabs` on the bot loop
+  (`run_extension_op`), and records `twitch.connect` in the audit log.
+- Twitch's URLs come from twitchAPI's own constants, not literals
+  (`test_no_hardcoded_urls`). The callback URL is built from `webui.baseUrl`,
+  as Spotify's is. Twitch's developer console must list
+  `{webui.baseUrl}/twitch/auth/callback`.
+- Both `bind()` calls pass an `auth_generator_func` that raises
+  `TwitchNotConnected` instead of opening a browser. The extension then logs
+  one line, and the health card says "Twitch n'est pas connecté : un
+  développeur peut le connecter depuis les réglages globaux".
+- The state cookie, callback URL and "back to the dashboard" page now exist
+  twice (Spotify, Twitch), so they move to `src/webui/oauth_flow.py`, shared
+  by both. That is the −40.
+
+Per server or for the whole bot: see the table in P37. My recommendation is to
+keep Twitch bot-wide. Its token only reads public live status. It is tied to
+one EventSub websocket, and Twitch caps subscriptions per token. A token per
+server would mean a websocket per server.
+
+**Lines** −40 / +230 (tests extra). **Risk** medium: an OAuth flow, so the
+state check, the developer tier and the token file mode (`0600`) get their
+own tests. No member-visible change, except that live notifications come back
+once it is connected.
+
+---
+
+## P30 — Finish the `guild_id_of()` migration, and guard it
 
 P12 added `guild_id_of` / `guild_of` / `member_of` / `message_of`, and
 `CLAUDE.md` says to use them, "enforced" by `tests/test_command_context.py`. That
@@ -165,7 +239,7 @@ member-visible change.
 
 ---
 
-## P30 — Dashboard: one answer for a database outage
+## P31 — Dashboard: one answer for a database outage
 
 - **17** route handlers catch `DatabaseError` by hand (`routes/moderation.py:123,
   141,164`, `public.py:241,260,278`, `secretsanta.py:152,168,215`, `gazette.py:36,62`,
@@ -193,7 +267,7 @@ public pages keep their own wording if you want; I'd unify it.
 
 ---
 
-## P31 — Repositories: one base class, one error style
+## P32 — Repositories: one base class, one error style
 
 - All 31 `features/*/repository.py` repeat `__init__(self, guild_id)` and
   `_col()` → `mongo_manager.get_guild_collection(self._guild_id, COLLECTION)`.
@@ -217,7 +291,7 @@ repository; the local run without MongoDB only loses lines both sides execute.
 
 ---
 
-## P32 — Helpers written twice
+## P33 — Helpers written twice
 
 | Twice | Where | Into |
 |---|---|---|
@@ -234,21 +308,16 @@ repository; the local run without MongoDB only loses lines both sides execute.
 
 ---
 
-## P33 — Settings in their place; compatibility shims gone
+## P34 — Config: keys renamed, derived links, Zevent read live, compatibility shims gone
 
-`config.md`: "A third-party API or site the whole bot shares goes in a global
-section named after the service". These per-server settings break that rule,
-or the "no raw ids" one:
+Out of this lot since your review: moving settings to global sections (the
+rule that asked for it is dropped, see P38 and P37), and the ZUnivers journa
+links, which stay typed URLs because they point into a server the bot isn't in.
 
-| Setting (per server) | Why it's misplaced | Becomes |
+| Setting | Why | Becomes |
 |---|---|---|
-| `moduleSpotify.spotifyIconUrl`, `moduleMDI.iconUrl`, `moduleOlympics.olympicsLogoUrl`, `moduleZunivers.zuniversHardcoreImageUrl` | the service's own logo or art, the same for every server, each named differently | `spotify.iconUrl`, `raiderio.iconUrl`, `olympics.logoUrl`, `zunivers.hardcoreImageUrl` |
-| `moduleZunivers.zerator247Url`, `zerator247TwitchLogin` | one site and one channel for the whole bot | a global `zerator247` section |
 | `moduleSpotify.spotifyPlaylistUrl`, `spotifyNewPlaylistUrl` | `open.spotify.com/playlist/{spotifyPlaylistId}` is derivable, and `open.spotify.com` is already in `DERIVED_HOSTS` | derived; two fields go |
-| `moduleZunivers.journaNormalLink`, `journaHardcoreLink` ("Lien Discord vers le salon") | a channel typed as a URL: a raw id in disguise that the save route can't check against the guild | `channel` fields, linked with `channel_url()` |
 | `moduleRss.ChannelId`, `moduleYoutube.ChannelId` | the only keys without the module prefix, with a capital C | `rssChannelId`, `youtubeChannelId` |
-
-Speedons stays as it is (archived).
 
 **Zevent reads its global section when the extension loads**
 (`extensions/zevent/_common.py:304`: `_cfg` and 20 constants). It's the only
@@ -266,23 +335,130 @@ per-extension reload (see P28). Read it through an accessor at use time.
   existed (`features/xp/repository.py:16`): one `update_many` in the PR notes,
   then drop the expression.
 
-**The other direction (global → per server):** nothing found worth moving. The
-AI budget, metrics, backups and the Zevent edition are bot-wide by nature.
 `spotifyDashboardUrl` overrides the built-in public page per server; keep it
 or drop it, **your call**.
 
-**Config and database changes** are listed in the PR. **Lines** −90 / +70.
+**Config and database changes** are listed in the PR. **Lines** −70 / +40.
 **Risk** medium: the PR's list of `config.json` and database edits must be
-applied at deploy. No member-visible change once the values are moved.
+applied at deploy.
 
 ---
 
-## P34 — Docs and rules that match the code
+## P35 — new: Copy a module's settings from another server
+
+An admin of several servers sets a module up once and copies it to the others.
+It matters most once accounts are per server (P36, P37): the same Spotify app,
+AI key or Notion integration doesn't have to be typed again.
+
+- On a module page: "📋 Copier depuis un autre serveur", with a list of the
+  servers where the editor is an admin, live (`require_guild_admin` on both),
+  that have settings for this module.
+- `POST /api/servers/{id}/modules/{module}/copy-from` with `{source}` reads the
+  source's settings **on the server**, so a secret never reaches the browser.
+- What names one guild's objects is left out: `channel`, `role`, `member` and
+  `forum` fields, the lists of them, and the per-entry keys of
+  `NESTED_CHANNEL_KEYS` / `NESTED_ROLE_KEYS`. The form then shows them empty,
+  to pick here.
+- The rest goes through `save_module_settings()`, the path every save takes:
+  schema, size, channel and role checks, the history, and the audit as
+  `module.copy`, naming the source by its name.
+- A secret is copied together with the fields its `sent_to` names, so the
+  "a placeholder doesn't follow a new host" rule still holds.
+- Account tokens (P29's Twitch, P36's Spotify) are not copied: the admin
+  connects once more, one click.
+
+**Decision for you: who may copy secrets out of a server.** Today a
+`MANAGE_GUILD` co-admin of server A can't read A's secrets; with a copy, they
+could use them on a server B they run. My recommendation: copying a module
+that holds a secret requires the source's owner or `ADMINISTRATOR` there, read
+live, as the Secret Santa reveal does. Anything else copies without its
+secrets.
+
+**Lines** +180 (tests extra). **Risk** medium: a new path that writes config,
+so a `mongo` test and the guild-boundary tests cover it.
+
+---
+
+## P36 — new: Spotify, each server connects its own account
+
+**Today one Spotify account serves every server.** The app's credentials are a
+global section (`spotify.spotifyClientId`, `spotifyClientSecret`,
+`spotifyRedirectUri`). The account token is one file (`data/.cache`,
+`src/integrations/spotify.py:35`), refreshed by a developer from the global
+settings (`routes/spotify.py:102`). So every server's playlist reads, adds,
+removals and duplicate cleanup go through your account: one `spotipy` client
+(`_LazySpotifyClient`) behind one worker thread, 27 call sites in
+`extensions/spotify/`.
+
+**Fix:**
+
+- The app's credentials move into `moduleSpotify` as secret fields. A server
+  can bring its own Spotify app, which also sidesteps Spotify's limit of 25
+  allowed users for an app in development mode. With P35, you copy yours to
+  your own servers.
+- The account connection is per server: "🔌 Connecter Spotify" on the module
+  page, for that server's admins (`require_guild_admin`). Its state cookie
+  names the guild, and the shared `oauth_flow.py` from P29 runs it.
+- The token is kept in `data/spotify/<guild>.json` (`0600`), one cache file per
+  guild.
+- `spotify_api` becomes `spotify_for(guild_id)`: one client per guild, built
+  lazily, all still on the single worker thread (ordered calls, race-free
+  refreshes, as `async-io.md` asks). A server with no connection gets
+  `module_off()`-style refusals and its tasks skip it, with a health-card line.
+- The developer-only token panel goes; the stats route stays.
+
+**Deploy:** enter the app's credentials for each server that uses Spotify
+(or copy them with P35), then connect once per server. Until then, that
+server's Spotify features are paused.
+
+**Lines** −80 / +250. **Risk** high: the client refactor touches every
+Spotify command and task. `test_spotify_async.py` and the vote tests carry
+over; per-guild isolation gets its own test.
+
+---
+
+## P37 — new: The other service accounts per server
+
+The rule "a third-party API or site the whole bot shares goes in a global
+section named after the service" (`config.md`) is dropped. In its place: **an
+account or key a service gives (credentials, a token, a paid quota) belongs to
+a server, never to a global section, so no server spends or reads another's
+account.** Global sections keep the bot's own infrastructure (`discord`,
+`mongodb`, `webui`, `backup`, `metrics`, `errorReporting`) and public endpoints
+that need no account (`zunivers`, `raiderio`, `olympics`, `vlrgg`, `zevent`);
+nothing moves there.
+
+Each global section holding an account, what a server gets from it today, and
+the proposal:
+
+| Service (global today) | What every server uses of it | Proposal |
+|---|---|---|
+| Spotify | your account | P36 |
+| AI, `OpenRouter.openrouterApiKey`, `NanoGPT.apiKey` | `/ask`, mentions, `/rattrapage` and the Gazette intro spend your credits, within the daily limits of `AI` | keys per server in `moduleIA`. The kill switch `AI.paused` and the model list stay global |
+| Notion, `notion.notionSecret` | the Confrérie reads and writes through your integration | per server in `moduleConfrerie` |
+| Uptime Kuma, `uptimeKuma.*` | any server with Uptime on lists and alerts on **your** monitors | per server in `moduleUptime` (URL + key, `sent_to` the URL) |
+| Shlink, `shlink.*` | every server's links are shortened on your instance and domain | per server in a `moduleShlink`; unset = links posted as they are |
+| YouTube, `youtube.youtubeApiKey` | every server's channel checks spend your API quota | per server in `moduleYoutube` |
+| Twitch, `twitch.*` and P29's token | reads public live status only | **stays bot-wide** (see P29). Your call |
+
+Every new per-server secret declares its `sent_to` (`test_module_registry.py`
+already requires it). The dashboard's "Vérifier la connexion" (`CHECKS`) reads
+the server's own settings, as it does for LLDAP.
+
+**Decision for you:** which rows to take. All of them except Twitch is my
+recommendation. They can also come one PR at a time.
+
+**Lines** −70 / +150 (all six rows). **Risk** medium: each service needs its
+settings entered (or copied) per server at deploy. The PR lists them.
+
+---
+
+## P38 — Docs and rules that match the code
 
 `CLAUDE.md` names a guard for rules that none checks:
 
 - "`guild_id_of` … — `tests/test_command_context.py`": unit tests of the helpers
-  only. P29 adds the guard.
+  only. P30 adds the guard.
 - "Edit through `edit_message_if_changed()` — `tests/test_message_edit.py`":
   tests of the function, nothing scans for a direct `Message.edit`. One is left,
   `extensions/confrerie/review.py:407`. Move it, and add a short guard
@@ -293,8 +469,11 @@ applied at deploy. No member-visible change once the values are moved.
 
 `docs/conventions/` paragraphs that no longer match:
 
+- `config.md`: delete "A third-party API or site the whole bot shares goes in a
+  global section named after the service…". Its replacement comes with P37, or
+  here if P37 isn't taken.
 - `architecture.md`: "~38k lines" (71.5k now), "39 entries" (46), and the
-  moderation example of P31.
+  moderation example of P32.
 - `extension-lifecycle.md`: "Six exist" (right-click menus). There are seven,
   since 📊 Profil.
 - `dashboard-frontend.md`, "Tester" buttons: "a module gets one … LLDAP today".
@@ -318,7 +497,7 @@ applied at deploy. No member-visible change once the values are moved.
 
 ---
 
-## P35 — Test fakes in one place
+## P39 — Test fakes in one place
 
 `tests/discord_fakes.py` exists (`FakeCtx`, `FakeGuild`, `FakeMember`,
 `FakeChannel`, `FakeBot`, `run()`, `bare_extension()`), yet test files carry
@@ -346,7 +525,7 @@ files. Easiest to review commit by commit, by area.
 
 ---
 
-## P36 — Components V2 for the last persistent cards
+## P40 — Components V2 for the last persistent cards
 
 P22 and P26 moved six slots: the agenda, Satisfactory, Minecraft, Streamlabs,
 the Zevent and the XP leaderboard. These persistent cards still post embeds:
@@ -373,7 +552,7 @@ as P22 advised: MDI's per-match fields and VLR's images.
 
 ---
 
-## P37 — The server page's cards on one loader
+## P41 — The server page's cards on one loader
 
 `js/pages/incidents.js`, `audit.js`, `bot-messages.js`, `health.js`, `agenda.js`,
 `overview.js`, `js/features/achievements.js` and `gazette.js` each hand-roll the
@@ -392,7 +571,7 @@ style (admin-visible, minor).
 
 ---
 
-## P38 — Features without a dashboard UI
+## P42 — new: Features without a dashboard UI
 
 This lot adds code; it's last, and optional.
 
@@ -402,10 +581,9 @@ This lot adds code; it's last, and optional.
   `uptime_monitors`, `_id: "config"`, with the monitor's `last_status` mixed in).
   The module's dashboard page has nothing but its switch. Move the alerts to
   `moduleUptime.alerts`: a list widget with a monitor picker (a route listing
-  Uptime Kuma's monitors), a `channel` field and a `choice` for the mode. That
-  puts them in `config.json`, checked by the save route, audited and in the
-  history. `last_status` stays in MongoDB. This is also an item-7 fix: config
-  stored as state.
+  the server's Uptime Kuma monitors, per P37), a `channel` field and a
+  `choice` for the mode. That puts them in `config.json`, checked by the save
+  route, audited and in the history. `last_status` stays in MongoDB.
 - **Secret Santa exclusions**: only `/secretsanta exclure-paire |
   autoriser-paire | paires-exclues`. The dashboard card draws and reveals but
   doesn't show them.
