@@ -782,3 +782,10 @@ def test_the_moderation_page_lists_the_reports(page, dashboard, monkeypatch):
     page.locator("#report-filter").select_option("")
     page.locator("#reports-list", has_text="Aucun signalement").wait_for()
     assert asked == ["status=open", "status="]
+
+
+def test_a_module_offers_to_copy_from_another_server(page):
+    """P35: the list of servers to copy from; here, none has set the module."""
+    page.get_by_role("button", name="📋 Copier depuis…").click()
+    modal = page.locator("#modal-overlay")
+    modal.get_by_text("Aucun autre serveur que tu gères n'a réglé ce module.").wait_for()

@@ -77,6 +77,9 @@ from src.webui.routes import (
     moderation as moderation_routes,
 )
 from src.webui.routes import (
+    module_copy as module_copy_routes,
+)
+from src.webui.routes import (
     onboarding as onboarding_routes,
 )
 from src.webui.routes import (
@@ -213,6 +216,7 @@ def create_app(bot=None, bot_loop=None) -> FastAPI:
     app.include_router(auth_routes.create_router(ctx))
     app.include_router(config_routes.create_router(ctx))
     app.include_router(servers_routes.create_router(ctx))
+    app.include_router(module_copy_routes.create_router(ctx))
     app.include_router(members_routes.create_router(ctx))
     app.include_router(rolemenus_routes.create_router(ctx))
     app.include_router(moderation_routes.create_router(ctx))

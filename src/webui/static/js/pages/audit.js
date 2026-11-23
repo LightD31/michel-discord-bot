@@ -13,6 +13,7 @@ export const AUDIT_ACTIONS = {
     'gazette.publish': 'a publié la Gazette',
     'module.toggle': 'a basculé le module',
     'module.restore': 'a restauré une version du module',
+    'module.copy': 'a copié les réglages du module depuis un autre serveur',
     'embeds.publish': 'a publié les embeds',
     'bot_message.republish': 'a republié le message',
     'public_dashboard.create': 'a créé le lien des pages publiques',
