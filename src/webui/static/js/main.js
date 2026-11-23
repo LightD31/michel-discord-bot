@@ -14,6 +14,7 @@ import './features/moderation.js';
 import './features/rolemenus.js';
 import './features/secretsanta.js';
 import './features/spotify-auth.js';
+import './features/twitch-auth.js';
 import './features/spotify.js';
 import './features/xp.js';
 import './forms/checks.js';
@@ -89,13 +90,14 @@ async function init() {
         await Promise.all(promises);
     }
 
-    // Handle redirect back from Spotify OAuth callback (hash-routed link).
+    // Handle the redirect back from an OAuth callback (Spotify, Twitch; a hash-routed link).
     const hashParams = new URLSearchParams((location.hash.split('?')[1]) || '');
     // Only the outcome comes back, never a text (a link could carry any),
     // and only a developer, who started the flow, is told about it.
-    if (hashParams.get('spotify_auth') && isDeveloper()) {
-        const ok = hashParams.get('spotify_auth') === 'ok';
-        toast(ok ? 'Spotify connecté.' : 'Échec de la connexion Spotify : voir les logs du bot.',
+    for (const [param, service] of [['spotify_auth', 'Spotify'], ['twitch_auth', 'Twitch']]) {
+        if (!hashParams.get(param) || !isDeveloper()) continue;
+        const ok = hashParams.get(param) === 'ok';
+        toast(ok ? `${service} connecté.` : `Échec de la connexion ${service} : voir les logs du bot.`,
             ok ? 'success' : 'error');
     }
     if (state.user) {

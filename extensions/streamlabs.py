@@ -19,7 +19,6 @@ from interactions import (
 )
 from twitchAPI.oauth import UserAuthenticationStorageHelper
 from twitchAPI.twitch import Twitch
-from twitchAPI.type import AuthScope
 
 from src.core import clock, log_context
 from src.core import logging as logutil
@@ -36,6 +35,12 @@ from src.discord_ext.messages import (
     send_error,
 )
 from src.discord_ext.scopes import guild_scopes
+from src.integrations.twitch_auth import (
+    SCOPES,
+    TOKEN_PATH,
+    TwitchNotConnected,
+    refuse_browser_login,
+)
 from src.webui.schemas import (
     ModuleHelp,
     SchemaBase,
@@ -155,10 +160,14 @@ class StreamlabsCharityExtension(Extension):
             )
             helper = UserAuthenticationStorageHelper(
                 twitch=self.twitch,
-                scopes=[AuthScope.USER_READ_SUBSCRIPTIONS],
-                storage_path="./data/twitchcreds.json",
+                scopes=SCOPES,
+                storage_path=TOKEN_PATH,
+                auth_generator_func=refuse_browser_login,
             )
             await helper.bind()
+        except TwitchNotConnected as e:
+            logger.warning("Live status disabled: %s", e)
+            await self.async_drop()  # closes the half-built client
         except Exception as e:
             log_failure(logger, f"Twitch init failed; live status disabled: {e}")
             self.twitch = None
