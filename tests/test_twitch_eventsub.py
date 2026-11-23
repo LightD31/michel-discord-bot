@@ -454,3 +454,49 @@ def test_a_channel_update_before_the_live_data_has_no_viewer_count():
     )
     info = ext.get_stream_info_from_data(SimpleNamespace(event=event), False, None)
     assert info == ("1", "Titre", "Joue à **Valorant**", "zerator")
+
+
+async def test_without_a_connected_account_run_stops_instead_of_retrying(monkeypatch):
+    """P29: no token is not an outage. Retrying every 30 s can't help; connecting reloads."""
+    from src.integrations.twitch_auth import TwitchNotConnected
+
+    ext = make_extension()
+    starts = []
+    shut = []
+
+    async def start():
+        starts.append(True)
+        raise TwitchNotConnected("pas connecté")
+
+    async def shutdown():
+        shut.append(True)
+
+    ext._start_eventsub = start
+    ext._shutdown_eventsub = shutdown
+    await asyncio.wait_for(ext.run(), timeout=1)
+    assert starts == [True] and shut == [True]
+
+
+def test_the_token_is_bound_without_ever_opening_a_browser(monkeypatch):
+    """The helper gets the dashboard's token file and a generator that refuses."""
+    from src.integrations import twitch_auth
+
+    seen = {}
+
+    class Helper:
+        def __init__(self, **kwargs):
+            seen.update(kwargs)
+
+        async def bind(self):
+            return None
+
+    monkeypatch.setattr(eventsub_module, "UserAuthenticationStorageHelper", Helper)
+    monkeypatch.setattr(eventsub_module, "Twitch", _fake_twitch_factory())
+    socket = SimpleNamespace(start_async=_noop, purge_stale_subscriptions=_noop)
+    monkeypatch.setattr(eventsub_module, "BoundedEventSubWebsocket", lambda *a, **kw: socket)
+    ext = make_extension(streamers=[])
+    ext.update = _noop
+    ext.client_id, ext.client_secret = "id", "x"  # pragma: allowlist secret
+    asyncio.run(ext._start_eventsub())
+    assert seen["storage_path"] == twitch_auth.TOKEN_PATH
+    assert seen["auth_generator_func"] is twitch_auth.refuse_browser_login

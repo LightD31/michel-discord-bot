@@ -19,16 +19,11 @@ module page: the playlist mirror and vote archive, aggregated by
 call and nothing dispatched to the bot loop.
 """
 
-import html
-import re
-import secrets
-
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 
 from features.spotify import PlaylistStats, SpotifyRepository, aggregate
 from src.core import logging as logutil
-from src.core.config import config_store
 from src.core.errors import DatabaseError
 from src.core.logging import log_failure
 from src.integrations.spotify import (
@@ -40,7 +35,13 @@ from src.integrations.spotify import (
 )
 from src.webui import audit
 from src.webui.context import WebUIContext
-from src.webui.ratelimit import request_is_https
+from src.webui.oauth_flow import (
+    callback_url,
+    error_word,
+    redirect_with_state,
+    result_page,
+    state_matches,
+)
 
 logger = logutil.init_logger("webui.routes.spotify")
 
@@ -49,15 +50,14 @@ CALLBACK_PATH = "/spotify/auth/callback"
 
 
 def _callback_url() -> str:
-    """Build the OAuth callback URL from ``webui.baseUrl``.
+    """The OAuth callback, from ``webui.baseUrl``: what Spotify's app must list."""
+    return callback_url(CALLBACK_PATH)
 
-    Single source of truth: avoids drift between the URL we send to Spotify
-    in ``/start`` and the one we declare in ``/callback`` for the token
-    exchange — both must match, and both must match what's registered in the
-    Spotify developer dashboard.
-    """
-    base = config_store.get().get("config", {}).get("webui", {}).get("baseUrl", "")
-    return f"{base.rstrip('/')}{CALLBACK_PATH}"
+
+def _result_page(*, ok: bool, message: str) -> HTMLResponse:
+    return result_page(
+        service="Spotify", ok=ok, message=message, back="section=spotify&spotify_auth"
+    )
 
 
 async def collect_spotify_stats(server_id: str) -> PlaylistStats:
@@ -104,14 +104,6 @@ def create_router(ctx: WebUIContext) -> APIRouter:
         """Begin Spotify OAuth: redirect the admin to Spotify's authorize page."""
         ctx.require_developer(request)
         redirect_uri = _callback_url()
-        if not redirect_uri.endswith(CALLBACK_PATH) or redirect_uri == CALLBACK_PATH:
-            raise HTTPException(
-                status_code=400,
-                detail=(
-                    "Configure d'abord webui.baseUrl (section « Dashboard Web ») "
-                    "pour que le callback OAuth pointe vers le dashboard."
-                ),
-            )
         try:
             oauth = build_oauth(redirect_uri=redirect_uri)
         except Exception as e:
@@ -128,19 +120,9 @@ def create_router(ctx: WebUIContext) -> APIRouter:
                     "section Spotify de la configuration globale."
                 ),
             )
-
-        state = secrets.token_urlsafe(24)
-        auth_url = oauth.get_authorize_url(state=state)
-        response = RedirectResponse(url=auth_url)
-        response.set_cookie(
-            STATE_COOKIE,
-            state,
-            httponly=True,
-            max_age=600,
-            samesite="lax",
-            secure=request_is_https(request, ctx.trusted_proxies),
+        return redirect_with_state(
+            ctx, request, lambda state: oauth.get_authorize_url(state=state), STATE_COOKIE
         )
-        return response
 
     @router.get("/spotify/auth/callback")
     async def spotify_auth_callback(
@@ -155,11 +137,11 @@ def create_router(ctx: WebUIContext) -> APIRouter:
         if error:
             # Spotify's error codes are short snake_case words (access_denied);
             # anything else in the query string isn't echoed onto our page.
-            code_word = error if re.fullmatch(r"[a-z_]{1,40}", error) else "inconnue"
-            return _result_page(ok=False, message=f"Spotify a refusé l'autorisation ({code_word}).")
+            return _result_page(
+                ok=False, message=f"Spotify a refusé l'autorisation ({error_word(error)})."
+            )
 
-        expected_state = request.cookies.get(STATE_COOKIE)
-        if not expected_state or expected_state != state:
+        if not state_matches(request, STATE_COOKIE, state):
             return _result_page(
                 ok=False,
                 message=("État OAuth invalide ou expiré. Relance le flux depuis le dashboard."),
@@ -200,42 +182,3 @@ def create_router(ctx: WebUIContext) -> APIRouter:
         return response
 
     return router
-
-
-def _result_page(*, ok: bool, message: str) -> HTMLResponse:
-    """Tiny self-closing page that bounces back to the dashboard."""
-    title = "Spotify connecté" if ok else "Échec de connexion Spotify"
-    color = "#1ed760" if ok else "#e53e3e"
-    safe_message_html = html.escape(message)
-    # Only the outcome goes back to the dashboard, never a text: a link carrying
-    # its own message would let anyone show any toast on the dashboard's origin.
-    status = "ok" if ok else "error"
-    body = f"""<!doctype html>
-<html lang="fr"><head>
-<meta charset="utf-8"><title>{title}</title>
-<style>
-body {{
-  font-family: system-ui, sans-serif;
-  background: #18181b; color: #e4e4e7;
-  display: flex; align-items: center; justify-content: center;
-  height: 100vh; margin: 0;
-}}
-.card {{
-  background: #27272a; padding: 2rem; border-radius: 12px;
-  border-left: 4px solid {color}; max-width: 480px; text-align: center;
-}}
-.card h1 {{ margin: 0 0 0.5rem; color: {color}; font-size: 1.2rem; }}
-.card p {{ margin: 0; color: #a1a1aa; font-size: 0.9rem; }}
-.card a {{
-  display: inline-block; margin-top: 1.5rem; padding: 0.5rem 1rem;
-  background: #3f3f46; color: #fafafa; border-radius: 6px;
-  text-decoration: none; font-size: 0.85rem;
-}}
-.card a:hover {{ background: #52525b; }}
-</style></head>
-<body><div class="card">
-<h1>{title}</h1>
-<p>{safe_message_html}</p>
-<a href="/#/global?section=spotify&spotify_auth={status}">Retour au dashboard</a>
-</div></body></html>"""
-    return HTMLResponse(content=body, status_code=200 if ok else 400)

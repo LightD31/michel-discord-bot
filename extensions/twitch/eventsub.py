@@ -3,7 +3,6 @@
 import asyncio
 import contextlib
 import os
-from pathlib import PurePath
 
 from interactions import IntervalTrigger, OrTrigger, Task, TimeTrigger
 from twitchAPI.helper import first
@@ -15,11 +14,17 @@ from twitchAPI.object.eventsub import (
     StreamOnlineEvent,
 )
 from twitchAPI.twitch import Twitch
-from twitchAPI.type import AuthScope, EventSubSubscriptionConflict
+from twitchAPI.type import EventSubSubscriptionConflict
 
 from src.core import logging as logutil
 from src.core.logging import log_failure
 from src.core.tasks import spawn
+from src.integrations.twitch_auth import (
+    SCOPES,
+    TOKEN_PATH,
+    TwitchNotConnected,
+    refuse_browser_login,
+)
 from src.integrations.twitch_eventsub import BoundedEventSubWebsocket
 
 from ._base import TwitchBase
@@ -111,10 +116,13 @@ class EventSubMixin(TwitchBase):
         await self._shutdown_eventsub()
 
         self.twitch = await Twitch(self.client_id, self.client_secret)
+        # The token a developer connected in the dashboard (P29); without one,
+        # TwitchNotConnected rather than a browser opened on the bot's machine.
         helper = UserAuthenticationStorageHelper(
             twitch=self.twitch,
-            scopes=[AuthScope.USER_READ_SUBSCRIPTIONS],
-            storage_path=PurePath("./data/twitchcreds.json"),
+            scopes=SCOPES,
+            storage_path=TOKEN_PATH,
+            auth_generator_func=refuse_browser_login,
         )
         await helper.bind()
 
@@ -177,6 +185,11 @@ class EventSubMixin(TwitchBase):
             while not self.stop:
                 try:
                     await self._start_eventsub()
+                except TwitchNotConnected as e:
+                    # Retrying can't help: connecting the account reloads this extension.
+                    logger.warning("EventSub not started: %s", e)
+                    await self._shutdown_eventsub()
+                    return
                 except Exception as e:
                     log_failure(logger, "Error starting EventSub: %s", e)
                 else:
