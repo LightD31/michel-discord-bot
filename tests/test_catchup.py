@@ -12,7 +12,7 @@ from features.ai.catchup import ChannelMessage, prompt, since_last, with_links
 from src.core.errors import DatabaseError
 
 MODELS = [
-    {"api": "openrouter", "model_id": "vendor/alpha", "provider": "alpha", "display_name": "Alpha"}
+    {"api": "openrouter", "model_id": "vendor/alpha", "key": "alpha", "display_name": "Alpha"}
 ]
 ME = "7"
 

@@ -194,3 +194,40 @@ async def sync_commands(
         return bot.synchronise_interactions(scopes=scopes)
 
     await ctx.run_on_bot_loop(_sync, timeout=timeout)
+
+
+async def reload_extensions(ctx: WebUIContext, ext_paths: list[str], why: str) -> dict:
+    """Reload *ext_paths* on the bot loop after a config change; *why* is for the log.
+
+    Never reloaded: the extensions disabled in the extension list. The library
+    *loads* an extension it is asked to reload, so a save racing an unload
+    would otherwise switch a disabled extension back on.
+
+    Returns ``{"reloaded": str|None, "error": str|None, "skipped": bool}``;
+    ``reloaded`` names the reloaded extensions, comma-separated.
+    """
+    if not ctx.bot or not ctx.bot_loop_alive():
+        return {"reloaded": None, "error": "Bot non disponible", "skipped": False}
+    # Same default as main.py: an extension missing from the list is enabled.
+    ext_enabled = ctx.get_full_config().get("config", {}).get("extensions", {})
+    ext_paths = [path for path in dict.fromkeys(ext_paths) if ext_enabled.get(path, True)]
+    if not ext_paths:
+        return {"reloaded": None, "error": None, "skipped": True}
+    reloaded: list[str] = []
+    failures: list[str] = []
+    for ext_path in ext_paths:
+        try:
+            await run_extension_op(ctx, "reload", ext_path)
+        except Exception as e:
+            log_failure(logger, f"Auto-reload failed for {ext_path}: {e}")
+            failures.append(f"{ext_path} ({type(e).__name__})")
+        else:
+            logger.info(f"Auto-reloaded {ext_path} after a change of {why}")
+            reloaded.append(ext_path)
+    return {
+        "reloaded": ", ".join(reloaded) or None,
+        "error": (
+            f"Échec du rechargement : {', '.join(failures)}. Voir les logs." if failures else None
+        ),
+        "skipped": False,
+    }

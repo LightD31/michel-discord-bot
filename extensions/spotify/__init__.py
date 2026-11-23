@@ -31,6 +31,7 @@ class SpotifyExtension(Extension, PlaylistMixin, VotesMixin):
     """Discord extension combining playlist and vote behaviours."""
 
     MODULE_KEYS = ("moduleSpotify",)
+    GLOBAL_SECTIONS = ("discord",)  # /nextvote is scoped to devGuildId at import
 
     def __init__(self, bot: Client):
         self.bot: Client = bot

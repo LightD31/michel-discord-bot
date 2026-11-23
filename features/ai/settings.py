@@ -17,7 +17,7 @@ from features.ai.models import (
     ModelConfig,
     parse_models,
 )
-from features.ai.prompt import DEFAULT_PERSONA, LEGACY_DEFAULT_PERSONAS, MAX_SERVER_CONTEXT_CHARS
+from features.ai.prompt import DEFAULT_PERSONA, MAX_SERVER_CONTEXT_CHARS
 from features.ai.quota import AiLimits
 
 DEFAULT_MODELS_TO_COMPARE = 3
@@ -80,7 +80,7 @@ class GuildAiSettings:
         """Parse a guild's ``moduleIA`` dict; missing or malformed values use the defaults."""
         raw = raw or {}
         persona = str(raw.get("persona") or "").strip()
-        if not persona or persona in LEGACY_DEFAULT_PERSONAS:
+        if not persona:
             persona = DEFAULT_PERSONA
         return cls(
             persona=persona,

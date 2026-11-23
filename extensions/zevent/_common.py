@@ -300,7 +300,7 @@ class ZeventSection(SchemaBase):
 
 ZEVENT = ModuleConfig("moduleZevent")
 # The tracked edition is one for the whole bot (global section ``zevent``),
-# read when the extension loads: reload it after changing these settings.
+# read when the extension loads; saving the section reloads it (GLOBAL_SECTIONS).
 _cfg = global_config().get("zevent") or {}
 
 

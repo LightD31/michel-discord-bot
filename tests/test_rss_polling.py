@@ -178,7 +178,7 @@ def seen(guild, feed, *ids, **fields):
 
 def guild(*feeds: tuple[str, str], minutes: int = 15) -> dict:
     return {
-        "ChannelId": "10",
+        "rssChannelId": "10",
         "rssPollMinutes": minutes,
         "rssFeeds": {fid: {"url": url} for fid, url in feeds},
     }

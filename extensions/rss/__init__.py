@@ -239,7 +239,7 @@ class RssExtension(Extension):
         """The feeds to fetch this cycle, grouped by URL."""
         jobs: dict[str, list[FeedJob]] = {}
         for guild_id, srv_cfg in RSS.items():
-            default_channel_id = srv_cfg.get("ChannelId")
+            default_channel_id = srv_cfg.get("rssChannelId")
             feeds = [(fid, cfg) for fid, cfg in _iter_feeds(srv_cfg) if cfg.get("url")]
             if not default_channel_id or not feeds:
                 continue

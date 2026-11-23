@@ -68,3 +68,12 @@ def test_turning_the_public_page_on_mints_its_token_on_first_use(spotify, monkey
 
     assert "tok" in (server.links.dashboard or "")
     assert minted == [GUILD]
+
+
+def test_the_playlist_links_come_from_their_ids():
+    """P34: no URL to keep in step with the id; an empty id shows no link."""
+    from extensions.spotify._common import SpotifyLinks
+
+    links = SpotifyLinks.from_config({"spotifyPlaylistId": "37i9dQ", "spotifyNewPlaylistId": " "})
+    assert links.playlist == "https://open.spotify.com/playlist/37i9dQ"
+    assert links.new_playlist == "" and links.dashboard == ""

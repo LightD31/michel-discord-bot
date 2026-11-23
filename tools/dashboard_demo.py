@@ -205,7 +205,7 @@ def demo_config(data_dir: str, port: int, mongo_url: str) -> dict[str, Any]:
                 "moduleFeur": {"enabled": True},
                 "moduleRss": {
                     "enabled": True,
-                    "ChannelId": CH["veille-tech"],
+                    "rssChannelId": CH["veille-tech"],
                     "rssPollMinutes": 15,
                     "rssFeeds": {
                         "korben": {"url": "https://korben.info/feed"},
@@ -248,7 +248,7 @@ def demo_config(data_dir: str, port: int, mongo_url: str) -> dict[str, Any]:
                 },
                 "moduleYoutube": {
                     "enabled": False,
-                    "ChannelId": CH["général"],
+                    "youtubeChannelId": CH["général"],
                     "youtubeChannelList": {
                         "@micode": {"vod": True, "mentionRoleId": role["Notifs streams"]}
                     },

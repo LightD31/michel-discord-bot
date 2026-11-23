@@ -328,6 +328,17 @@ class WebUIContext:
         """Return module paths (e.g. ``extensions.tricount``) for loaded extensions."""
         return [extension_path(ext) for ext in self._loaded_extensions()]
 
+    def section_extensions(self, section: str) -> list[str]:
+        """The loaded extensions that take the global *section* when they load.
+
+        They declare it in ``GLOBAL_SECTIONS``; saving the section reloads them.
+        """
+        return [
+            extension_path(ext)
+            for ext in self._loaded_extensions()
+            if section in getattr(ext, "GLOBAL_SECTIONS", ())
+        ]
+
     def module_extension_map(self, *, on_save: bool = False) -> dict[str, list[str]]:
         """Map each module key to the loaded extensions that declare it in ``MODULE_KEYS``.
 

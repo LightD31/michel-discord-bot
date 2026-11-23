@@ -9,9 +9,9 @@ import pytest
 from src.core.errors import HttpError
 
 GUILD_CONFIG = {
-    "A": {"ChannelId": "100", "youtubeChannelList": {"@alpha": {"vod": True}}},
+    "A": {"youtubeChannelId": "100", "youtubeChannelList": {"@alpha": {"vod": True}}},
     "B": {
-        "ChannelId": "200",
+        "youtubeChannelId": "200",
         "youtubeChannelList": {"@broken": {"vod": True}, "@bravo": {"vod": True}},
     },
 }

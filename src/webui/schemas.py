@@ -700,7 +700,7 @@ class AiModelEntry(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    provider: str | None = None
+    key: str | None = None
     api: Literal["openrouter", "nanogpt"] = "openrouter"
     model_id: str = Field(min_length=1)
     display_name: str | None = None

@@ -71,6 +71,7 @@ class BackupExtension(Extension):
     """Daily MongoDB backup extension."""
 
     MODULE_KEYS = ()
+    GLOBAL_SECTIONS = ("discord",)  # /sauvegarde is scoped to devGuildId at import
     HELP_LABEL = "💾 Sauvegardes"  # heading in /aide (dev guild only)
     HELP = ModuleHelp(
         "Les sauvegardes de la base de données du bot.",

@@ -18,7 +18,7 @@ from src.discord_ext.embedmanager import MODULE_KEY as EMBED_MANAGER_MODULE
 from src.discord_ext.embedmanager import build_embeds, publish_embeds
 from src.discord_ext.role_grants import role_choices, settings_refusal
 from src.webui import audit, config_history
-from src.webui.botops import run_extension_op, sync_commands
+from src.webui.botops import reload_extensions, sync_commands
 from src.webui.channels import list_channels
 from src.webui.context import WebUIContext
 from src.webui.secrets import SecretRebindError, mask_server_config, restore_section
@@ -186,10 +186,8 @@ async def reload_for_modules(
     it was only reloads the extensions declaring ``RELOAD_ON_SAVE``, which
     take their config when they load; the others read it live.
 
-    Never reloaded: the extensions disabled in the extension list. The
-    library *loads* an extension it is asked to reload, so a module save
-    racing an unload would otherwise switch a disabled extension back on.
-    A module no loaded extension reads (such as ``discord2name``, read on
+    Never reloaded: the extensions disabled in the extension list
+    (:func:`~src.webui.botops.reload_extensions`). A module no loaded extension reads (such as ``discord2name``, read on
     demand) has nothing to reload.
 
     No command sync here; the callers sync their guild when the module's
@@ -203,35 +201,10 @@ async def reload_for_modules(
     # An extension reading several of the modules (moduleUtils backs three) is
     # reloaded once.
     extension_map = ctx.module_extension_map(on_save=not enabled_changed)
-    ext_paths = list(
-        dict.fromkeys(path for name in module_names for path in extension_map.get(name) or ())
-    )
+    ext_paths = [path for name in module_names for path in extension_map.get(name) or ()]
     if not ext_paths:
         return {"reloaded": None, "error": None, "skipped": True}
-    # Same default as main.py: an extension missing from the list is enabled.
-    ext_enabled = ctx.get_full_config().get("config", {}).get("extensions", {})
-    ext_paths = [path for path in ext_paths if ext_enabled.get(path, True)]
-    if not ext_paths:
-        return {"reloaded": None, "error": None, "skipped": True}
-
-    reloaded: list[str] = []
-    failures: list[str] = []
-    for ext_path in ext_paths:
-        try:
-            await run_extension_op(ctx, "reload", ext_path)
-        except Exception as e:
-            log_failure(logger, f"Auto-reload failed for {ext_path}: {e}")
-            failures.append(f"{ext_path} ({type(e).__name__})")
-        else:
-            logger.info(f"Auto-reloaded {ext_path} after config change for {module_names}")
-            reloaded.append(ext_path)
-    return {
-        "reloaded": ", ".join(reloaded) or None,
-        "error": (
-            f"Échec du rechargement : {', '.join(failures)}. Voir les logs." if failures else None
-        ),
-        "skipped": False,
-    }
+    return await reload_extensions(ctx, ext_paths, ", ".join(module_names))
 
 
 def reload_succeeded(reload_result: dict) -> bool:

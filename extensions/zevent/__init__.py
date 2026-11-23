@@ -58,6 +58,9 @@ class Zevent(
     """
 
     MODULE_KEYS = ("moduleZevent",)
+    # The edition (and the Twitch app for viewer counts) are taken at load:
+    # saving either section reloads the tracker.
+    GLOBAL_SECTIONS = ("zevent", "twitch")
 
     def __init__(self, client: Client):
         self.client: Client = client

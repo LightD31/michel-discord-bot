@@ -41,8 +41,8 @@ def setup():
         "config": {
             "AI": {
                 "models": [
-                    {"provider": "gpt", "model_id": "openai/gpt-4.1", "display_name": "GPT"},
-                    {"provider": "nano", "api": "nanogpt", "model_id": "x/y", "display_name": "Y"},
+                    {"key": "gpt", "model_id": "openai/gpt-4.1", "display_name": "GPT"},
+                    {"key": "nano", "api": "nanogpt", "model_id": "x/y", "display_name": "Y"},
                 ],
                 "defaultModel": "nano",
             },

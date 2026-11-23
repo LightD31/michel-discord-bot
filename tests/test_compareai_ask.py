@@ -17,8 +17,8 @@ from features.ai.quota import QUOTA_UNAVAILABLE
 from src.core.errors import DatabaseError
 
 MODELS = [
-    {"api": "openrouter", "model_id": "vendor/alpha", "provider": "alpha", "display_name": "Alpha"},
-    {"api": "openrouter", "model_id": "vendor/beta", "provider": "beta", "display_name": "Beta"},
+    {"api": "openrouter", "model_id": "vendor/alpha", "key": "alpha", "display_name": "Alpha"},
+    {"api": "openrouter", "model_id": "vendor/beta", "key": "beta", "display_name": "Beta"},
 ]
 
 
