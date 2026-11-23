@@ -15,6 +15,7 @@ from __future__ import annotations
 from typing import Any
 
 from features.achievements import AchievementsRepository, active_badges
+from features.agenda import bounded_days
 from features.birthday import BirthdayRepository, has_year
 from features.reminders import MAX_REMINDERS_PER_MEMBER, ReminderRepository, schedule_label
 from features.secretsanta import SecretSantaRepository
@@ -34,6 +35,7 @@ SECTIONS: dict[str, str] = {
     "tricount": "moduleTricount",
     "santa": "moduleSecretSanta",
     "badges": "moduleAchievements",
+    "agenda": "moduleAgenda",
 }
 DEFAULT_CURRENCY = "€"
 
@@ -177,8 +179,15 @@ async def badges(guild_id: str, user_id: str) -> list[dict[str, Any]]:
     ]
 
 
+async def agenda(guild_id: str, user_id: str) -> dict[str, Any]:  # noqa: ARG001 — same shape
+    """The agenda is gathered on the bot loop (``GET /api/me/servers/{id}/agenda``); the
+    overview only says how many days it covers."""
+    return {"days": bounded_days(ModuleConfig("moduleAgenda").get(guild_id).get("agendaDays"))}
+
+
 __all__ = [
     "SECTIONS",
+    "agenda",
     "badges",
     "birthday",
     "currency",

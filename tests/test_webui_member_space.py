@@ -152,3 +152,28 @@ def test_the_deletion_needs_its_confirmation():
         me_routes.DeleteBody(confirm=False)
     with pytest.raises(ValueError):
         me_routes.SettleBody(to="0123", cents=100)
+
+
+def test_my_agenda_is_the_servers_and_only_where_it_is_on(store_config):
+    store_config({"servers": {"1": {"moduleAgenda": {"enabled": True, "agendaDays": 7}}}})
+
+    class Ctx(FakeCtx):
+        async def call_bot(self, func, *args, what: str, **kwargs):  # noqa: ARG002
+            self.bot_calls.append((func.__name__, args[1]))
+            return {"days": 7, "today": "2026-11-23", "entries": [], "unavailable": []}
+
+    ctx = Ctx()
+    route = endpoint(ctx, "GET", "/api/me/servers/{server_id}/agenda")
+    out = json.loads(asyncio.run(route(None, "1")).body)
+    assert out["days"] == 7 and ctx.bot_calls == [("agenda_on_bot", "1")]
+    overview = json.loads(
+        asyncio.run(endpoint(ctx, "GET", "/api/me/servers/{server_id}")(None, "1")).body
+    )
+    assert overview["sections"] == ["agenda"] and overview["agenda"] == {"days": 7}
+
+    store_config({"servers": {"1": {}}})
+    with pytest.raises(HTTPException) as caught:
+        asyncio.run(route(None, "1"))
+    assert caught.value.status_code == 404
+    with pytest.raises(HTTPException):
+        asyncio.run(route(None, "2"))  # not my server

@@ -1,5 +1,6 @@
 // The layout: login page, sidebar, and the current page.
 import { html, raw } from '../core/html.js';
+import { loadAchievements } from '../features/achievements.js';
 import { loadGazette } from '../features/gazette.js';
 import { loadInfractions, loadReports } from '../features/moderation.js';
 import { loadRoleMenus } from '../features/rolemenus.js';
@@ -118,6 +119,10 @@ export function render() {
     // Secret Santa: the session and its draw button.
     if (state.currentPage === 'module' && state.currentModule === 'moduleSecretSanta' && state.currentServerId) {
         loadSecretSanta(state.currentServerId);
+    }
+    // Succès: each badge and how many won it (P25).
+    if (state.currentPage === 'module' && state.currentModule === 'moduleAchievements' && state.currentServerId) {
+        loadAchievements(state.currentServerId);
     }
     // The Gazette: this week's edition so far, and "Publier maintenant".
     if (state.currentPage === 'module' && state.currentModule === 'moduleGazette' && state.currentServerId) {

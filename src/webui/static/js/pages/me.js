@@ -10,6 +10,7 @@ import { navigate, routeHash } from '../core/router.js';
 import { state } from '../core/state.js';
 import { askConfirm } from '../ui/confirm.js';
 import { toast } from '../ui/toast.js';
+import { agendaGridHtml } from './agenda.js';
 
 const FREQUENCIES = {
     '': 'Une seule fois',
@@ -86,6 +87,7 @@ function serverHtml(sid) {
     const cards = [
         data.sections.includes('xp') && xpCardHtml(server, data),
         data.sections.includes('badges') && badgesCardHtml(data),
+        data.sections.includes('agenda') && agendaCardHtml(data),
         data.sections.includes('reminders') && remindersCardHtml(sid, data),
         data.sections.includes('birthday') && birthdayCardHtml(sid, data),
         data.sections.includes('tricount') && tricountCardHtml(sid, data),
@@ -121,6 +123,30 @@ function xpCardHtml(server, data) {
             <div class="progress-fill" style="width:${Math.min(100, Math.round((xp.xpInLevel / Math.max(1, xp.xpToNext)) * 100))}%"></div>
         </div>`;
     return html`<div class="card me-card" id="me-xp"><div class="card-title">${server.name}</div>${inner}</div>`;
+}
+
+// ── Agenda (P25) ──────────────────────────────────
+// Gathered on the bot loop by its own route: the card fills itself once shown.
+const _agendas = {};  // sid -> the agenda last read, so a re-render keeps it
+
+function agendaCardHtml(data) {
+    const cached = _agendas[state.currentServerId];
+    return html`<div class="card me-card me-agenda" id="me-agenda"><div class="card-title">🗓️ Les ${data.agenda?.days ?? 14} prochains jours</div>
+        <div id="me-agenda-body">${cached ? agendaGridHtml(cached) : html`<div class="loading"><div class="spinner"></div></div>`}</div></div>`;
+}
+
+export async function loadMeAgenda(sid) {
+    const el = document.getElementById('me-agenda-body');
+    if (!el) return;
+    let data;
+    try {
+        data = await api(`${base(sid)}/agenda`);
+    } catch (e) {
+        el.innerHTML = String(html`<p class="me-empty">Indisponible pour le moment : réessaie dans un instant.</p>`);
+        return;
+    }
+    _agendas[sid] = data;
+    if (document.getElementById('me-agenda-body') === el) el.innerHTML = String(agendaGridHtml(data));
 }
 
 // ── Badges (P18) ──────────────────────────────────
@@ -342,6 +368,7 @@ async function loadMeServer(sid) {
     }
     me().data[sid] = data;
     if (state.currentServerId === sid) refreshBody();
+    if (data?.sections?.includes('agenda')) loadMeAgenda(sid);
 }
 
 async function write(btn, url, options, success) {

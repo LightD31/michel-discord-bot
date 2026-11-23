@@ -406,3 +406,14 @@ def test_the_season_tab_is_cached_and_private_pages_stay_hidden(http, store):
     assert _FakeXpRepo.calls == 1
     store.data["servers"][PRIVATE]["moduleXp"]["seasonsEnabled"] = True
     assert http.get(f"/api/public/{PRIVATE_TOKEN}/xp/season").status_code == 404
+
+
+def test_the_season_tab_carries_the_badges_where_the_succes_are_on(http, store, monkeypatch):
+    store.data["servers"][PUBLISHED]["moduleXp"].update(seasonsEnabled=True, seasonMonths=3)
+
+    async def labels(server_id, ids):
+        return {uid: ([{"emoji": "⭐", "name": "Étoilé·e"}] if uid == "7" else []) for uid in ids}
+
+    monkeypatch.setattr(public_routes, "badge_labels", labels)
+    top = http.get(f"/api/public/{TOKEN}/xp/season").json()["top"]
+    assert top[0]["badges"] == [{"emoji": "⭐", "name": "Étoilé·e"}] and top[1]["badges"] == []

@@ -32,6 +32,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 
+from features.achievements import badge_labels
 from features.userinfo.labels import member_label_resolver
 from features.userinfo.repository import UserInfoRepository
 from features.xp import XpRepository
@@ -103,19 +104,20 @@ async def collect_public_season(server_id: str, server: dict[str, Any]) -> dict[
     ranking = await XpRepository(server_id).season_ranking(
         season.start, season.end, KEPT_PER_SEASON
     )
-    names = await UserInfoRepository(server_id).get_names([uid for uid, _ in ranking])
-    return {
-        "label": season.label,
-        "ends_at": season.end.isoformat(),
-        "top": [
-            {
-                "rank": i + 1,
-                "display_name": (names.get(uid) or {}).get("display_name") or UNKNOWN_MEMBER,
-                "xp": xp_gained,
-            }
-            for i, (uid, xp_gained) in enumerate(ranking)
-        ],
-    }
+    ids = [uid for uid, _ in ranking]
+    names = await UserInfoRepository(server_id).get_names(ids)
+    badges = await badge_labels(server_id, ids)  # P25: as in the all-time leaderboard
+    top = []
+    for i, (uid, xp_gained) in enumerate(ranking):
+        row: dict[str, Any] = {
+            "rank": i + 1,
+            "display_name": (names.get(uid) or {}).get("display_name") or UNKNOWN_MEMBER,
+            "xp": xp_gained,
+        }
+        if badges is not None:
+            row["badges"] = badges.get(str(uid), [])
+        top.append(row)
+    return {"label": season.label, "ends_at": season.end.isoformat(), "top": top}
 
 
 def _public_spotify_payload(stats: dict[str, Any]) -> dict[str, Any]:

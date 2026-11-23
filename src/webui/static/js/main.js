@@ -48,6 +48,7 @@ import './pages/logs.js';
 import './pages/me.js';
 import './pages/module.js';
 import './pages/onboarding.js';
+import './features/achievements.js';
 import './pages/agenda.js';
 import './pages/incidents.js';
 import './pages/overview.js';

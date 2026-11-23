@@ -1,4 +1,5 @@
 // A module's page.
+import { achievementsCardHtml } from '../features/achievements.js';
 import { html, raw } from '../core/html.js';
 import { CHECKED, EL, VALUE, actionArgs, registerActions } from '../core/actions.js';
 import { api } from '../core/api.js';
@@ -148,6 +149,8 @@ export function renderModulePage() {
                 </div>
             </div>
             ` : '')}
+
+            ${mod === 'moduleAchievements' ? achievementsCardHtml(sid) : ''}
 
             ${raw(mod === 'moduleGazette' ? `
             <div class="u-mt-16 card">

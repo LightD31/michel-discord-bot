@@ -104,7 +104,7 @@ export function renderPublicSeason(season) {
     const rows = season.top.map(m => html`
                 <tr>
                     <td class="num">${XP_MEDALS[m.rank - 1] || m.rank}</td>
-                    <td><div class="xp-top-name">${m.display_name}</div></td>
+                    <td><div class="xp-top-name">${m.display_name}${badgesHtml(m)}</div></td>
                     <td class="num">${fmtNum(m.xp)}</td>
                 </tr>`);
     return String(html`
@@ -180,6 +180,13 @@ export function renderXpHeatmap(grid) {
     return `<div class="xp-heatmap"><div></div>${hours}${rows}</div>`;
 }
 
+// A member's badges (P18), next to their name: the emoji, the badge's name on hover.
+function badgesHtml(m) {
+    return m.badges?.length
+        ? html` <span class="xp-badges">${m.badges.map(b => html`<span title="${b.name}" aria-label="${b.name}">${b.emoji}</span>`)}</span>`
+        : '';
+}
+
 export function renderXpTopTable(top) {
     const rows = top.map(m => {
         const pct = m.xp_to_next ? Math.min(100, Math.round(100 * m.xp_in_level / m.xp_to_next)) : 0;
@@ -188,7 +195,7 @@ export function renderXpTopTable(top) {
                 <tr>
                     <td class="num">${raw(XP_MEDALS[m.rank - 1] || m.rank)}</td>
                     <td>
-                        <div class="xp-top-name">${m.display_name}${m.badges?.length ? html` <span class="xp-badges">${m.badges.map(b => html`<span title="${b.name}" aria-label="${b.name}">${b.emoji}</span>`)}</span>` : ''}</div>
+                        <div class="xp-top-name">${m.display_name}${badgesHtml(m)}</div>
                         ${raw(handle ? String(html`<div class="xp-top-sub">${handle}</div>`) : '')}
                     </td>
                     <td class="num">${raw(fmtNum(m.level))}</td>

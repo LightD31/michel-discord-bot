@@ -88,6 +88,13 @@ class AchievementsRepository:
             found[doc["user_id"]].append(doc["badge"])
         return found
 
+    @translates_db_errors
+    async def holders(self) -> dict[str, int]:
+        """How many members won each badge (P25: the Succès page for admins)."""
+        pipeline: list[dict[str, Any]] = [{"$group": {"_id": "$badge", "count": {"$sum": 1}}}]
+        rows = await (await self._col().aggregate(pipeline)).to_list()
+        return {row["_id"]: int(row["count"]) for row in rows}
+
     # --- First check of a badge -----------------------------------------------
 
     @translates_db_errors
