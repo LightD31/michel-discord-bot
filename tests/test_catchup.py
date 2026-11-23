@@ -162,3 +162,18 @@ async def test_a_failed_answer_says_to_try_again(world):
     world.ext.ai_client = Client(content="", error="HTTP 500")
     await run(CatchupExtension.rattrapage, world.ext, world.ctx)
     assert "réessaie" in world.ctx.last
+
+
+async def test_a_thread_follows_its_channel_only_when_the_admins_say_so(world):
+    thread = FakeChannel(11, "fil")
+    thread.guild = world.ctx.guild
+    thread.parent_id = 10
+    thread.fetch_messages = world.channel.fetch_messages
+    ctx = FakeCtx(world.ctx.author, thread)
+    await run(CatchupExtension.rattrapage, world.ext, ctx)
+    assert "pas ouvert" in ctx.last and Usage.calls == []
+
+    world.servers["1"]["moduleIA"]["catchupThreads"] = True
+    ctx = FakeCtx(world.ctx.author, thread)
+    await run(CatchupExtension.rattrapage, world.ext, ctx)
+    assert ctx.replies[0]["embeds"][0].title == "📚 Rattrapage de #fil"

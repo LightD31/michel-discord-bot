@@ -6,7 +6,8 @@ server they share with Michel:
 
 - ``GET /api/me/servers`` — the servers, and the sections each one has on;
 - ``GET /api/me/servers/{id}`` — their XP card, reminders, birthday, Tricount
-  balances, Secret Santa and badges (:mod:`src.webui.member_space`);
+  balances, Secret Santa, badges and the agenda's length (:mod:`src.webui.member_space`);
+- ``GET /api/me/servers/{id}/agenda`` — the coming days, as ``/agenda`` shows them;
 - reminders created, changed and deleted; the birthday set or removed; a
   Tricount repayment recorded, in full or in part, paid or received; the Secret
   Santa joined or left, and its wish list;
@@ -54,6 +55,7 @@ from src.discord_ext.secretsanta import WISHLIST_LIMIT, refresh_announcement
 from src.webui import member_space
 from src.webui.auth import Session
 from src.webui.context import WebUIContext
+from src.webui.routes.agenda import agenda_on_bot
 from src.webui.routes.secretsanta import member_names
 
 logger = logutil.init_logger("webui.routes.me")
@@ -122,6 +124,7 @@ async def server_overview(server_id: str, user_id: str) -> dict[str, Any]:
         "tricount": member_space.tricount,
         "santa": member_space.santa,
         "badges": member_space.badges,
+        "agenda": member_space.agenda,
     }
     out: dict[str, Any] = {"sections": sections, "unavailable": []}
     for name in sections:
@@ -186,6 +189,14 @@ def create_router(ctx: WebUIContext) -> APIRouter:
         ids |= {line["from"] for g in out.get("tricount") or [] for line in g["owed"]}
         out["names"] = await names_of(server_id, ids)
         return JSONResponse(out)
+
+    @router.get("/api/me/servers/{server_id}/agenda")
+    async def api_my_agenda(request: Request, server_id: str):
+        """The server's agenda, as /agenda shows it to a member (P25)."""
+        await ctx.require_guild_member(request, server_id)
+        require_section(server_id, "agenda")
+        data = await ctx.call_bot(agenda_on_bot, ctx.bot, server_id, what=f"agenda of {server_id}")
+        return JSONResponse(data)
 
     @router.get("/api/me/when")
     async def api_when(request: Request, q: str = ""):

@@ -43,9 +43,15 @@ AI = ModuleConfig("moduleIA")
 PAGE = 100  # Discord's most messages per fetch
 
 
-def catchup_on(guild_id: str, channel_id: Any) -> bool:
-    channels = AI.get(guild_id).get("catchupChannelIds") or []
-    return str(channel_id) in {str(c) for c in channels}
+def catchup_on(guild_id: str, channel: Any, channel_id: Any = None) -> bool:
+    """Whether /rattrapage works in *channel*: listed itself, or a thread of a listed
+    channel where the admins let threads follow their channel (P25)."""
+    settings = AI.get(guild_id)
+    listed = {str(c) for c in settings.get("catchupChannelIds") or []}
+    if str(channel_id if channel_id is not None else getattr(channel, "id", "")) in listed:
+        return True
+    parent = getattr(channel, "parent_id", None)
+    return bool(settings.get("catchupThreads")) and parent is not None and str(parent) in listed
 
 
 def _names(guild: Any, content: str) -> str:
@@ -90,7 +96,7 @@ class CatchupExtension(Extension):
     @cooldown(Buckets.USER, 1, 60)
     async def rattrapage(self, ctx: SlashContext) -> None:
         guild_id = guild_id_of(ctx)
-        if not catchup_on(guild_id, ctx.channel_id):
+        if not catchup_on(guild_id, ctx.channel, ctx.channel_id):
             await send_error(
                 ctx,
                 "Le rattrapage n'est pas ouvert dans ce salon : un administrateur peut l'ajouter "

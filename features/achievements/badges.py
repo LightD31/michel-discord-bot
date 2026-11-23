@@ -94,6 +94,23 @@ def active_badges(guild_id: object) -> list[Badge]:
     ]
 
 
+async def badge_labels(
+    guild_id: object, user_ids: list[str]
+) -> dict[str, list[dict[str, str]]] | None:
+    """Each member's active badges as ``{emoji, name}``, for a leaderboard; ``None`` when
+    the server plays with none (the rows then carry no ``badges`` key)."""
+    from features.achievements.repository import AchievementsRepository
+
+    playing = active_badges(guild_id)
+    if not playing:
+        return None
+    won = await AchievementsRepository(str(guild_id)).badges_of_many(user_ids)
+    return {
+        uid: [{"emoji": b.emoji, "name": b.name} for b in playing if b.key in set(keys)]
+        for uid, keys in won.items()
+    }
+
+
 __all__ = [
     "BADGES",
     "BY_KEY",
@@ -104,5 +121,6 @@ __all__ = [
     "VOICE_TICKS",
     "Badge",
     "active_badges",
+    "badge_labels",
     "badge_of",
 ]

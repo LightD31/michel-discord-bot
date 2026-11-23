@@ -234,7 +234,8 @@
                 "defaultModel": "",
                 "mentionReplies": false,
                 "mentionCooldownSeconds": 20,
-                "catchupChannelIds": []
+                "catchupChannelIds": [],
+                "catchupThreads": false
             },
             "moduleLldap": {
                 "enabled": false,

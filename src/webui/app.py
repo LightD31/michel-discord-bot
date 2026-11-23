@@ -22,6 +22,9 @@ from src.webui.mutation_limit import MutationRateLimitMiddleware
 from src.webui.ratelimit import TrustedProxies
 from src.webui.request_guard import RequestGuardMiddleware
 from src.webui.routes import (
+    achievements as achievements_routes,
+)
+from src.webui.routes import (
     agenda as agenda_routes,
 )
 from src.webui.routes import (
@@ -211,6 +214,7 @@ def create_app(bot=None, bot_loop=None) -> FastAPI:
     app.include_router(secretsanta_routes.create_router(ctx))
     app.include_router(gazette_routes.create_router(ctx))
     app.include_router(agenda_routes.create_router(ctx))
+    app.include_router(achievements_routes.create_router(ctx))
     app.include_router(incidents_routes.create_router(ctx))
     app.include_router(audit_routes.create_router(ctx))
     app.include_router(health_routes.create_router(ctx))

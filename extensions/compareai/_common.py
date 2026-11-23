@@ -111,6 +111,13 @@ class IAConfig(SchemaBase):
         "au plus). Ces messages sont envoyés au fournisseur d'IA ; chaque résumé compte une "
         "question dans le quota du membre. Vide : /rattrapage n'est disponible nulle part.",
     )
+    catchupThreads: bool = ui(
+        "/rattrapage dans les fils de ces salons",
+        "boolean",
+        default=False,
+        description="Les fils et posts de forum d'un salon de la liste en profitent aussi. "
+        "Leurs messages partent alors chez le fournisseur d'IA comme ceux du salon.",
+    )
 
 
 logger = logutil.init_logger(__name__)

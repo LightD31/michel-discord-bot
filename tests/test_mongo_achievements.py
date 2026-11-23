@@ -22,6 +22,8 @@ async def test_a_badge_is_awarded_once_and_keeps_its_day(mongo):
     assert await repo.award("star", [ME, "0123", "abc", ""], later) == []  # nobody else
     assert await repo.badges_of(ME) == {"star": NOW}
     assert await repo.badges_of(OTHER) == {"star": NOW}
+    await repo.award("dj", [OTHER], NOW)
+    assert await repo.holders() == {"star": 2, "dj": 1}
 
 
 async def test_badges_of_many_answers_for_each_member(mongo):
