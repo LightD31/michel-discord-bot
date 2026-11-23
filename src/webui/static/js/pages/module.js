@@ -72,6 +72,8 @@ export function renderModulePage() {
                             <button class="btn btn-ghost btn-sm" data-click="openModuleHistory" data-click-args="${actionArgs(sid, mod)}">
                                 🕘 Historique
                             </button>
+                            <button class="btn btn-ghost btn-sm" data-click="openModuleCopy" data-click-args="${actionArgs(sid, mod)}"
+                                title="Reprendre les réglages d'un autre serveur que tu gères">📋 Copier depuis…</button>
                             ${(state.connectionChecks || []).includes(mod) ? `
                             <button class="btn btn-ghost btn-sm" data-click="checkModuleConnection" data-click-args="${actionArgs(sid, mod, EL)}"
                                 title="Essaie les réglages enregistrés">🔌 Vérifier la connexion</button>` : ''}
