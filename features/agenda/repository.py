@@ -13,16 +13,10 @@ from typing import Any
 
 from features.gazette.repository import GazetteRepository
 from features.secretsanta import SecretSantaRepository
-from src.core.db import mongo_manager, translates_db_errors
+from src.core.db import GuildRepository, translates_db_errors
 
 
-class AgendaRepository:
-    def __init__(self, guild_id: str | int) -> None:
-        self._guild_id = str(guild_id)
-
-    def _col(self, name: str):
-        return mongo_manager.get_guild_collection(self._guild_id, name)
-
+class AgendaRepository(GuildRepository):
     @translates_db_errors
     async def giveaways_ending(self, start: datetime, end: datetime) -> list[dict[str, Any]]:
         """The giveaways still open that end in the window."""
@@ -43,11 +37,11 @@ class AgendaRepository:
 
     async def birth_dates(self) -> list[tuple[int, date]]:
         """Every member's birth date: ``(member, date)``."""
-        return await GazetteRepository(self._guild_id).birth_dates()
+        return await GazetteRepository(self.guild_id).birth_dates()
 
     async def santa_exchange(self) -> date | None:
         """The day of the server's Secret Santa exchange, if one is set."""
-        session = await SecretSantaRepository().get_session(f"guild_{self._guild_id}")
+        session = await SecretSantaRepository().get_session(f"guild_{self.guild_id}")
         return session.exchange_day if session else None
 
 

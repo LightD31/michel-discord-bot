@@ -206,9 +206,7 @@ async def test_xp_works_after_a_startup_with_mongodb_down(setup):
     ext, repo, member, channel, _ = setup
 
     async def mongo_down():
-        from src.core.errors import DatabaseError
-
-        raise DatabaseError("mongo down")
+        return None  # what GuildRepository.ensure_indexes does then: log, never raise
 
     repo.ensure_indexes = mongo_down
     for task in (

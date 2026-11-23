@@ -2,7 +2,7 @@
 
 import pymongo.errors
 
-from src.core.db import mongo_manager, translates_db_errors
+from src.core.db import GuildRepository, translates_db_errors
 from src.core.logging import init_logger
 
 from .drafts import STATUS_PENDING, STATUS_PROCESSING, Draft
@@ -10,14 +10,10 @@ from .drafts import STATUS_PENDING, STATUS_PROCESSING, Draft
 logger = init_logger(__name__)
 
 
-class DraftRepository:
+class DraftRepository(GuildRepository):
     """Per-guild ``confrerie_drafts`` collection. A draft's id is its dedupe key."""
 
-    def __init__(self, guild_id: str) -> None:
-        self._guild_id = str(guild_id)
-
-    def _col(self):
-        return mongo_manager.get_guild_collection(self._guild_id, "confrerie_drafts")
+    COLLECTION = "confrerie_drafts"
 
     @translates_db_errors
     async def insert_if_new(self, draft: Draft) -> bool:

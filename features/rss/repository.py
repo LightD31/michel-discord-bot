@@ -2,7 +2,7 @@
 
 from features.rss.models import RssFeedState
 from src.core import clock
-from src.core.db import mongo_manager, translates_db_errors
+from src.core.db import GuildRepository, translates_db_errors
 
 COLLECTION = "rss"
 # How many seen entry ids to keep per feed, at least. Larger = more dedupe
@@ -25,14 +25,10 @@ def seen_capacity(feed_size: int) -> int:
     return min(max(MAX_SEEN_IDS, 2 * feed_size), SEEN_IDS_CEILING)
 
 
-class RssRepository:
+class RssRepository(GuildRepository):
     """Per-guild store for RSS feed state."""
 
-    def __init__(self, guild_id: str | int) -> None:
-        self._guild_id = str(guild_id)
-
-    def _col(self):
-        return mongo_manager.get_guild_collection(self._guild_id, COLLECTION)
+    COLLECTION = COLLECTION
 
     @translates_db_errors
     async def get(self, feed_id: str) -> RssFeedState | None:

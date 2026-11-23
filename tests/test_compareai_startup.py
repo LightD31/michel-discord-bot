@@ -79,13 +79,14 @@ async def test_startup_loads_prices_builds_indexes_and_starts_the_task(startup):
     assert task.started == 1
 
 
-async def test_a_failing_index_stops_neither_the_others_nor_the_task(startup):
-    Repo.failing = {"1", None}
+async def test_a_failing_usage_index_stops_neither_the_guilds_nor_the_task(startup):
+    """The usage counters are global and still raise; a guild's indexes never do (P32)."""
+    Repo.failing = {None}
     ext, task = startup.make()
 
     await CompareAIExtension.on_startup.callback(ext)
 
-    assert Repo.indexed == ["2"]
+    assert Repo.indexed == ["1", "2"]
     assert task.started == 1
 
 

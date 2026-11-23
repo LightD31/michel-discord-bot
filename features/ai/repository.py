@@ -8,7 +8,6 @@ only runs where the AI module is enabled). Public methods raise
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
 
 import pymongo
 from bson import ObjectId
@@ -16,7 +15,7 @@ from bson.errors import InvalidId
 from pymongo import ReturnDocument
 
 from features.ai.models import Comparison
-from src.core.db import mongo_manager, translates_db_errors
+from src.core.db import GuildRepository, IndexSpec, translates_db_errors
 
 COLLECTION = "ai_comparisons"
 # The leaderboard only needs keys, names and votes — not the answer texts.
@@ -30,21 +29,20 @@ def _object_id(comparison_id: str) -> ObjectId | None:
         return None
 
 
-class AiComparisonRepository:
+class AiComparisonRepository(GuildRepository):
     """Accessor for one guild's comparisons, or the global ones when ``guild_id`` is None."""
 
-    def __init__(self, guild_id: str | int) -> None:
-        self.guild_id = str(guild_id)
+    COLLECTION = COLLECTION
 
-    def _col(self) -> Any:
-        return mongo_manager.get_guild_collection(self.guild_id, COLLECTION)
-
-    @translates_db_errors
-    async def ensure_indexes(self) -> None:
-        await self._col().create_index([("message_ids", pymongo.ASCENDING)], name="message_ids")
-        await self._col().create_index(
-            [("closed", pymongo.ASCENDING), ("closes_at", pymongo.ASCENDING)], name="closes_at"
-        )
+    def indexes(self) -> list[IndexSpec]:
+        return [
+            ("", [("message_ids", pymongo.ASCENDING)], {"name": "message_ids"}),
+            (
+                "",
+                [("closed", pymongo.ASCENDING), ("closes_at", pymongo.ASCENDING)],
+                {"name": "closes_at"},
+            ),
+        ]
 
     @translates_db_errors
     async def create(self, comparison: Comparison) -> str:

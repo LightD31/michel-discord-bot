@@ -6,7 +6,7 @@ from typing import Any
 from bson import ObjectId
 from bson.errors import InvalidId
 
-from src.core.db import mongo_manager, translates_db_errors
+from src.core.db import GuildRepository, mongo_manager, translates_db_errors
 
 GROUPS_COLLECTION = "tricount_groups"
 EXPENSES_COLLECTION = "tricount_expenses"
@@ -23,7 +23,7 @@ def _as_object_id(value: str | ObjectId) -> ObjectId | None:
         return None
 
 
-class TricountRepository:
+class TricountRepository(GuildRepository):
     """Per-guild data access for tricount groups, expenses, and recurring templates.
 
     Methods are thin pass-throughs to MongoDB: query filters, update documents,
@@ -36,12 +36,6 @@ class TricountRepository:
     ordinary "not found" rather than an ``InvalidId`` escaping into a command
     handler.
     """
-
-    def __init__(self, guild_id) -> None:
-        self._guild_id = str(guild_id)
-
-    def _col(self, name: str):
-        return mongo_manager.get_guild_collection(self._guild_id, name)
 
     # --- Groups -------------------------------------------------------
 

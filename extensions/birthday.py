@@ -197,10 +197,7 @@ class BirthdayExtension(Extension):
     @listen()
     async def on_startup(self) -> None:
         for guild_id in MODULE.guild_ids():
-            try:
-                await self._repo(guild_id).ensure_indexes()
-            except Exception as e:
-                log_failure(logger, "Failed to create indexes for guild %s: %s", guild_id, e)
+            await self._repo(guild_id).ensure_indexes()  # logs a failure, never raises
         if not self.anniversaire_check.running:
             self.anniversaire_check.start()
 

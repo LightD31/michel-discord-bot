@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 import pymongo
 
 from features.feur.models import FeurStats
-from src.core.db import mongo_manager, translates_db_errors
+from src.core.db import GuildRepository, IndexSpec, translates_db_errors
 from src.core.logging import init_logger
 
 logger = init_logger(__name__)
@@ -20,24 +20,21 @@ EVENTS = "feur_events"
 EVENTS_KEPT = timedelta(days=8)  # a week, and a day for a late Gazette
 
 
-class FeurRepository:
-    def __init__(self, guild_id: str) -> None:
-        self._guild_id = str(guild_id)
-
-    def _col(self):
-        return mongo_manager.get_guild_collection(self._guild_id, "feur_stats")
+class FeurRepository(GuildRepository):
+    COLLECTION = "feur_stats"
 
     def _events(self):
-        return mongo_manager.get_guild_collection(self._guild_id, EVENTS)
+        return self._col(EVENTS)
 
-    @translates_db_errors
-    async def ensure_indexes(self) -> None:
+    def indexes(self) -> list[IndexSpec]:
         """The TTL that drops a feur's dated record after :data:`EVENTS_KEPT`."""
-        await self._events().create_index(
-            [("at", pymongo.ASCENDING)],
-            expireAfterSeconds=int(EVENTS_KEPT.total_seconds()),
-            name="at_ttl",
-        )
+        return [
+            (
+                EVENTS,
+                [("at", pymongo.ASCENDING)],
+                {"expireAfterSeconds": int(EVENTS_KEPT.total_seconds()), "name": "at_ttl"},
+            ),
+        ]
 
     @translates_db_errors
     async def get_guild_stats(self) -> FeurStats:

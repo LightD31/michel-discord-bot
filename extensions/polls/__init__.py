@@ -149,10 +149,7 @@ class PollsExtension(Extension, PollButtonsMixin):
     @listen()
     async def on_startup(self) -> None:
         for guild_id in UTILS.guild_ids():
-            try:
-                await self._poll_repo(guild_id).ensure_indexes()
-            except Exception as e:
-                log_failure(logger, "Could not init poll indexes for %s: %s", guild_id, e)
+            await self._poll_repo(guild_id).ensure_indexes()  # logs a failure, never raises
         if not self.check_closing_polls.running:
             self.check_closing_polls.start()
 

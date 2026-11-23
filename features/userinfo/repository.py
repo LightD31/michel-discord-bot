@@ -3,18 +3,14 @@
 import pymongo
 import pymongo.errors
 
-from src.core.db import mongo_manager, translates_db_errors
+from src.core.db import GuildRepository, translates_db_errors
 from src.core.logging import init_logger
 
 logger = init_logger(__name__)
 
 
-class UserInfoRepository:
-    def __init__(self, guild_id: str) -> None:
-        self._guild_id = str(guild_id)
-
-    def _col(self):
-        return mongo_manager.get_guild_collection(self._guild_id, "users")
+class UserInfoRepository(GuildRepository):
+    COLLECTION = "users"
 
     @translates_db_errors
     async def bulk_upsert(self, members_data: list[dict]) -> None:
@@ -31,9 +27,9 @@ class UserInfoRepository:
         ]
         try:
             await self._col().bulk_write(ops, ordered=False)
-            logger.info("Synced %d users for guild %s", len(ops), self._guild_id)
+            logger.info("Synced %d users for guild %s", len(ops), self.guild_id)
         except pymongo.errors.PyMongoError as e:
-            logger.warning("Failed to bulk-sync users for guild %s: %s", self._guild_id, e)
+            logger.warning("Failed to bulk-sync users for guild %s: %s", self.guild_id, e)
 
     @translates_db_errors
     async def upsert(self, user_id: str, username: str, display_name: str) -> None:
@@ -44,7 +40,7 @@ class UserInfoRepository:
                 upsert=True,
             )
         except pymongo.errors.PyMongoError as e:
-            logger.warning("Failed to upsert user %s in guild %s: %s", user_id, self._guild_id, e)
+            logger.warning("Failed to upsert user %s in guild %s: %s", user_id, self.guild_id, e)
 
     @translates_db_errors
     async def get_names(self, user_ids: list[str]) -> dict[str, dict[str, str]]:
@@ -86,4 +82,4 @@ class UserInfoRepository:
         try:
             await self._col().delete_one({"_id": user_id})
         except pymongo.errors.PyMongoError as e:
-            logger.warning("Failed to delete user %s in guild %s: %s", user_id, self._guild_id, e)
+            logger.warning("Failed to delete user %s in guild %s: %s", user_id, self.guild_id, e)

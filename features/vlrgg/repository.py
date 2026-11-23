@@ -3,15 +3,11 @@
 from datetime import UTC, datetime
 from typing import Any
 
-from src.core.db import mongo_manager, translates_db_errors
+from src.core.db import GuildRepository, translates_db_errors
 
 
-class VlrggLiveRepository:
-    def __init__(self, guild_id) -> None:
-        self._guild_id = str(guild_id)
-
-    def _col(self):
-        return mongo_manager.get_guild_collection(self._guild_id, "vlrgg_live")
+class VlrggLiveRepository(GuildRepository):
+    COLLECTION = "vlrgg_live"
 
     @translates_db_errors
     async def load_all(self) -> list[dict[str, Any]]:
@@ -26,14 +22,10 @@ class VlrggLiveRepository:
         await self._col().delete_one({"_id": match_id})
 
 
-class VlrggReminderRepository:
+class VlrggReminderRepository(GuildRepository):
     """Matchs pour lesquels le rappel d'avant-match a déjà été envoyé (un par serveur)."""
 
-    def __init__(self, guild_id) -> None:
-        self._guild_id = str(guild_id)
-
-    def _col(self):
-        return mongo_manager.get_guild_collection(self._guild_id, "vlrgg_reminders")
+    COLLECTION = "vlrgg_reminders"
 
     @translates_db_errors
     async def was_sent(self, match_id: str) -> bool:

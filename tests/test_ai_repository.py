@@ -6,8 +6,8 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from bson import ObjectId
 
-import features.ai.repository as repository
 from features.ai import AiComparisonRepository, Comparison, ComparisonAnswer
+from src.core import db
 
 NOW = datetime(2026, 10, 10, 12, tzinfo=UTC)
 
@@ -108,7 +108,7 @@ def col(monkeypatch):
         def get_global_collection(self, name):
             return collections.setdefault(("global", name), _FakeCollection())
 
-    monkeypatch.setattr(repository, "mongo_manager", _Manager())
+    monkeypatch.setattr(db, "mongo_manager", _Manager())  # GuildRepository reads it there
     return collections
 
 

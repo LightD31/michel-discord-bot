@@ -23,7 +23,7 @@ from bson.errors import InvalidId
 
 from src.core import clock
 from src.core import logging as logutil
-from src.core.db import mongo_manager, translates_db_errors
+from src.core.db import GuildRepository, IndexSpec, translates_db_errors
 from src.core.errors import DatabaseError
 from src.webui.secrets import secret_field_names
 
@@ -44,22 +44,16 @@ def without_secrets(settings: Any, schema: dict[str, Any] | None) -> dict[str, A
     return {k: copy.deepcopy(v) for k, v in settings.items() if k not in secrets}
 
 
-class ConfigHistoryRepository:
+class ConfigHistoryRepository(GuildRepository):
     """One guild's earlier module settings."""
 
-    def __init__(self, guild_id: str) -> None:
-        self.guild_id = guild_id
+    COLLECTION = COLLECTION
 
-    def _col(self) -> Any:
-        return mongo_manager.get_guild_collection(self.guild_id, COLLECTION)
-
-    @translates_db_errors
-    async def ensure_indexes(self) -> None:
-        col = self._col()
-        await col.create_index(
-            "at", name="at_ttl", expireAfterSeconds=int(RETENTION.total_seconds())
-        )
-        await col.create_index([("module", pymongo.ASCENDING), ("_id", pymongo.DESCENDING)])
+    def indexes(self) -> list[IndexSpec]:
+        return [
+            ("", "at", {"name": "at_ttl", "expireAfterSeconds": int(RETENTION.total_seconds())}),
+            ("", [("module", pymongo.ASCENDING), ("_id", pymongo.DESCENDING)], {}),
+        ]
 
     @translates_db_errors
     async def add(self, module: str, settings: dict[str, Any]) -> None:

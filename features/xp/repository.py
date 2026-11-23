@@ -11,7 +11,7 @@ from typing import Any
 import pymongo
 
 from features.xp.constants import XpSource
-from src.core.db import mongo_manager, translates_db_errors
+from src.core.db import GuildRepository, IndexSpec, mongo_manager, translates_db_errors
 
 # Legacy events predate the ``source`` field; they were all message awards.
 _SOURCE_EXPR = {"$ifNull": ["$source", "message"]}
@@ -52,43 +52,38 @@ class UserXpStats:
         )
 
 
-class XpRepository:
+class XpRepository(GuildRepository):
     """Per-guild accessor for the ``xp`` and ``xp_events`` collections."""
 
-    def __init__(self, guild_id: str):
-        self.guild_id = guild_id
-
     def _xp(self):
-        return mongo_manager.get_guild_collection(self.guild_id, "xp")
+        return self._col("xp")
 
     def _events(self):
-        return mongo_manager.get_guild_collection(self.guild_id, "xp_events")
+        return self._col("xp_events")
 
     def _totals(self):
         """One counter per source (``_id``), kept by :meth:`log_event`."""
-        return mongo_manager.get_guild_collection(self.guild_id, "xp_totals")
+        return self._col("xp_totals")
 
     def _monthly(self):
         """Events past :data:`EVENT_RETENTION_DAYS`, summed per month, member and source."""
-        return mongo_manager.get_guild_collection(self.guild_id, "xp_monthly")
+        return self._col("xp_monthly")
 
     def _seasons(self):
         """Each finished season's top 10 (``_id`` = the season's key)."""
-        return mongo_manager.get_guild_collection(self.guild_id, "xp_seasons")
+        return self._col("xp_seasons")
 
     def _rollups(self):
         """The months already summed into ``xp_monthly`` (``_id`` = ``YYYY-MM``)."""
-        return mongo_manager.get_guild_collection(self.guild_id, "xp_rollups")
+        return self._col("xp_rollups")
 
-    @translates_db_errors
-    async def ensure_indexes(self) -> None:
-        await self._xp().create_index([("xp", pymongo.DESCENDING)], background=True)
-        await self._xp().create_index([("time", pymongo.DESCENDING)], background=True)
-        await self._events().create_index(
-            [("user_id", pymongo.ASCENDING), ("ts", pymongo.ASCENDING)], background=True
-        )
-        # Date-range scans for the dashboard stats.
-        await self._events().create_index([("ts", pymongo.ASCENDING)], background=True)
+    def indexes(self) -> list[IndexSpec]:
+        return [
+            ("xp", [("xp", pymongo.DESCENDING)], {}),
+            ("xp", [("time", pymongo.DESCENDING)], {}),
+            ("xp_events", [("user_id", pymongo.ASCENDING), ("ts", pymongo.ASCENDING)], {}),
+            ("xp_events", [("ts", pymongo.ASCENDING)], {}),
+        ]
 
     @translates_db_errors
     async def ensure_collection(self, guild_name: str | None = None) -> bool:

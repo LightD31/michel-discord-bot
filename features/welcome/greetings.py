@@ -23,8 +23,8 @@ import pymongo
 from pydantic import BaseModel, Field
 from pymongo import ReturnDocument
 
-from src.core.db import mongo_manager, translates_db_errors
-from src.core.logging import init_logger, log_failure
+from src.core.db import GuildRepository, IndexSpec, translates_db_errors
+from src.core.logging import init_logger
 
 logger = init_logger(__name__)
 
@@ -83,30 +83,21 @@ def with_greetings(content: str, line: str) -> str:
     return f"{base}\n\n{line}" if base else line
 
 
-class GreetingRepository:
+class GreetingRepository(GuildRepository):
     """Per-guild store of who greeted each newcomer."""
 
-    def __init__(self, guild_id: str | int) -> None:
-        self._guild_id = str(guild_id)
+    COLLECTION = COLLECTION
 
-    def _col(self):
-        return mongo_manager.get_guild_collection(self._guild_id, COLLECTION)
-
-    async def ensure_indexes(self) -> None:
-        try:
-            # Until P14 the TTL deleted a document as it closed: no time to take
-            # its button off. The old index goes; the new one waits PURGE_GRACE.
-            if "expires_ttl" in await self._col().index_information():
-                await self._col().drop_index("expires_ttl")
-            await self._col().create_index(
+    def indexes(self) -> list[IndexSpec]:
+        return [
+            (
+                "",
                 [("expires_at", pymongo.ASCENDING)],
-                expireAfterSeconds=int(PURGE_GRACE.total_seconds()),
-                name=TTL_INDEX,
-            )
-            await self._col().create_index([("member_id", pymongo.ASCENDING)], name="member_idx")
-            await self._col().create_index([("greeters", pymongo.ASCENDING)], name="greeters_idx")
-        except Exception as e:
-            log_failure(logger, "Failed to create greeting indexes for %s: %s", self._guild_id, e)
+                {"expireAfterSeconds": int(PURGE_GRACE.total_seconds()), "name": TTL_INDEX},
+            ),
+            ("", [("member_id", pymongo.ASCENDING)], {"name": "member_idx"}),
+            ("", [("greeters", pymongo.ASCENDING)], {"name": "greeters_idx"}),
+        ]
 
     @translates_db_errors
     async def open(
