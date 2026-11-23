@@ -9,6 +9,7 @@ from interactions import AllowedMentions, IntervalTrigger, Task
 
 from features.links import shorten_url
 from features.mdi import MatchSnapshot
+from src.core import log_context
 from src.discord_ext.channels import fetch_guild_channel
 from src.discord_ext.messages import (
     edit_message_if_changed,
@@ -106,10 +107,11 @@ class NotificationsMixin:
                 logger.warning("No Raider.IO API URL (raiderio.apiUrl): MDI tracking is paused")
             return
         for server_id, state in list(self._servers.items()):
-            try:
-                await self._run_cycle(state, force=True)
-            except Exception as e:
-                logger.exception("MDI schedule cycle failed for guild %s: %s", server_id, e)
+            with log_context.scope(guild_id=server_id):
+                try:
+                    await self._run_cycle(state, force=True)
+                except Exception as e:
+                    logger.exception("MDI schedule cycle failed for guild %s: %s", server_id, e)
 
     @Task.create(IntervalTrigger(minutes=LIVE_INTERVAL_MINUTES))
     async def live_update(self) -> None:
@@ -117,10 +119,11 @@ class NotificationsMixin:
         if not raiderio_api_url():
             return  # the slow ticker says why
         for server_id, state in list(self._servers.items()):
-            try:
-                await self._run_cycle(state, force=False)
-            except Exception as e:
-                logger.exception("MDI live cycle failed for guild %s: %s", server_id, e)
+            with log_context.scope(guild_id=server_id):
+                try:
+                    await self._run_cycle(state, force=False)
+                except Exception as e:
+                    logger.exception("MDI live cycle failed for guild %s: %s", server_id, e)
 
     # ── Cycle ────────────────────────────────────────────────────────────────
 

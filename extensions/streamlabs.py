@@ -20,7 +20,7 @@ from twitchAPI.oauth import UserAuthenticationStorageHelper
 from twitchAPI.twitch import Twitch
 from twitchAPI.type import AuthScope
 
-from src.core import clock
+from src.core import clock, log_context
 from src.core import logging as logutil
 from src.core.config import ModuleConfig, global_config
 from src.core.http import fetch, fetch_untrusted
@@ -168,25 +168,26 @@ class StreamlabsCharityExtension(Extension):
         # A team followed by several guilds is fetched once per refresh.
         teams: dict[str, tuple[dict, dict]] = {}
         for guild_id, settings in guilds:
-            url = _team_url(settings)
-            if not url:
-                logger.debug("Guild %s: Streamlabs team URL not configured; skipping", guild_id)
-                continue
-            try:
-                message = await self.messages.get(guild_id, settings)
-                if message is None:
-                    logger.debug("Guild %s: Streamlabs message not configured yet", guild_id)
+            with log_context.scope(guild_id=guild_id):
+                url = _team_url(settings)
+                if not url:
+                    logger.debug("Guild %s: Streamlabs team URL not configured; skipping", guild_id)
                     continue
-                if url not in teams:
-                    teams[url] = await self.fetch_team(url)
-                campaign_data, members_dict = teams[url]
-                await self.update_message(message, url, campaign_data, members_dict)
-            except ClientError as e:
-                logger.error("Guild %s: failed to fetch Streamlabs data: %s", guild_id, e)
-            except KeyError as e:
-                logger.error("Guild %s: unexpected Streamlabs data (%s)", guild_id, e)
-            except Exception as e:  # noqa: BLE001 — one guild's failure must not stop the others
-                log_failure(logger, "Guild %s: Streamlabs update failed: %s", guild_id, e)
+                try:
+                    message = await self.messages.get(guild_id, settings)
+                    if message is None:
+                        logger.debug("Guild %s: Streamlabs message not configured yet", guild_id)
+                        continue
+                    if url not in teams:
+                        teams[url] = await self.fetch_team(url)
+                    campaign_data, members_dict = teams[url]
+                    await self.update_message(message, url, campaign_data, members_dict)
+                except ClientError as e:
+                    logger.error("Guild %s: failed to fetch Streamlabs data: %s", guild_id, e)
+                except KeyError as e:
+                    logger.error("Guild %s: unexpected Streamlabs data (%s)", guild_id, e)
+                except Exception as e:  # noqa: BLE001 — one guild's failure must not stop the others
+                    log_failure(logger, "Guild %s: Streamlabs update failed: %s", guild_id, e)
 
     async def fetch_team(self, url: str) -> tuple[dict, dict]:
         """The team's campaign and its members, with their live status."""

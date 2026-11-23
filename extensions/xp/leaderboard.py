@@ -14,6 +14,7 @@ from features.xp import (
     get_rank_display,
 )
 from features.xp.seasons import Season, thousands
+from src.core import log_context
 from src.core.errors import DatabaseError
 from src.core.logging import log_failure
 from src.core.text import format_discord_timestamp, format_number
@@ -179,7 +180,8 @@ class LeaderboardMixin:
     @Task.create(TimeTrigger(utc=False))
     async def leaderboardpermanent(self):
         for guild_id in XP.guild_ids():
-            await self._update_permanent_leaderboard(guild_id)
+            with log_context.scope(guild_id=guild_id):
+                await self._update_permanent_leaderboard(guild_id)
 
     async def _update_permanent_leaderboard(self, guild_id: str) -> None:
         guild_config = XP.get(guild_id)

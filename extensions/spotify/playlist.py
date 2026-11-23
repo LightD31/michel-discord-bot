@@ -27,7 +27,7 @@ from features.links import shorten_keyed
 from features.messages import finishList, startList
 from features.spotify import plan_duplicate_removal
 from features.spotify.votes import tally_daily_votes
-from src.core import clock
+from src.core import clock, log_context
 from src.core import logging as logutil
 from src.core.logging import log_failure
 from src.core.text import milliseconds_to_string
@@ -139,15 +139,16 @@ class PlaylistMixin(SpotifyBase):
     async def check_playlist_changes(self):
         """Reconcile MongoDB with the live Spotify playlist, sending adds/removes."""
         for server in SERVERS.values():
-            try:
-                await self._check_playlist_changes_for_server(server)
-            except Exception as e:
-                log_failure(
-                    logger,
-                    "Error in check_playlist_changes for server %s: %s",
-                    server.guild_id,
-                    e,
-                )
+            with log_context.scope(guild_id=server.guild_id):
+                try:
+                    await self._check_playlist_changes_for_server(server)
+                except Exception as e:
+                    log_failure(
+                        logger,
+                        "Error in check_playlist_changes for server %s: %s",
+                        server.guild_id,
+                        e,
+                    )
 
     async def _check_playlist_changes_for_server(self, server: ServerData) -> None:
         logger.debug("check_playlist_changes lancé pour le serveur %s", server.guild_id)
@@ -456,15 +457,16 @@ class PlaylistMixin(SpotifyBase):
     async def new_titles_playlist(self):
         """Rebuild the ‘découvertes’ playlist: 100 most-recent distinct-artist tracks."""
         for server in SERVERS.values():
-            try:
-                await self._new_titles_playlist_for_server(server)
-            except Exception as e:
-                log_failure(
-                    logger,
-                    "Error in new_titles_playlist for server %s: %s",
-                    server.guild_id,
-                    e,
-                )
+            with log_context.scope(guild_id=server.guild_id):
+                try:
+                    await self._new_titles_playlist_for_server(server)
+                except Exception as e:
+                    log_failure(
+                        logger,
+                        "Error in new_titles_playlist for server %s: %s",
+                        server.guild_id,
+                        e,
+                    )
 
     async def _new_titles_playlist_for_server(self, server: ServerData):
         logger.debug("new_titles_playlist lancé pour le serveur %s", server.guild_id)

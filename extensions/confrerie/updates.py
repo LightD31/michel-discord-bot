@@ -7,7 +7,7 @@ from interactions import Embed, OrTrigger, Task, TimeTrigger
 
 from features.confrerie.works import Work, parse_work
 from features.links import shorten_url
-from src.core import clock
+from src.core import clock, log_context
 from src.core import logging as logutil
 from src.core.logging import log_failure
 from src.core.text import format_discord_timestamp
@@ -121,9 +121,10 @@ class UpdatesMixin(ConfrerieBase):
         """Scheduled sweep of pages marked with ``Update=True``, in each enabled guild's base."""
         logger.debug("Début de la tâche de mise à jour automatique")
         for guild_id, settings in CONFRERIE.items():
-            db_id = settings.get("confrerieNotionDbOeuvresId")
-            if db_id:
-                await self._autoupdate_guild(guild_id, settings, db_id)
+            with log_context.scope(guild_id=guild_id):
+                db_id = settings.get("confrerieNotionDbOeuvresId")
+                if db_id:
+                    await self._autoupdate_guild(guild_id, settings, db_id)
 
     async def _autoupdate_guild(self, guild_id: str, settings: dict, db_id: str) -> None:
         try:

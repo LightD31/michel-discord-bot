@@ -11,7 +11,7 @@ from interactions import (
 )
 from pyfactorybridge import API
 
-from src.core import clock
+from src.core import clock, log_context
 from src.core import logging as logutil
 from src.core.config import ModuleConfig
 from src.core.logging import log_failure
@@ -157,12 +157,13 @@ class Satisfactory(Extension):
         guilds = SATISFACTORY.items()
         self.messages.keep_only([guild_id for guild_id, _ in guilds])
         for guild_id, settings in guilds:
-            try:
-                await self._refresh(guild_id, settings)
-            except Exception as e:  # noqa: BLE001 — one server down must not stop the others
-                log_failure(
-                    logger, "Failed to update Satisfactory status for guild %s: %s", guild_id, e
-                )
+            with log_context.scope(guild_id=guild_id):
+                try:
+                    await self._refresh(guild_id, settings)
+                except Exception as e:  # noqa: BLE001 — one server down must not stop the others
+                    log_failure(
+                        logger, "Failed to update Satisfactory status for guild %s: %s", guild_id, e
+                    )
 
     async def _refresh(self, guild_id: str, settings: dict) -> None:
         connection = connection_of(settings)

@@ -9,7 +9,7 @@ from interactions import Embed, File, IntervalTrigger, Task, utils
 
 from features.zevent.history import compare_milestone, format_euros, record_message
 from features.zevent.repository import ZeventStateRepository
-from src.core import clock
+from src.core import clock, log_context
 from src.core import logging as logutil
 from src.core.http import fetch
 from src.core.logging import log_failure
@@ -147,9 +147,10 @@ class TasksMixin(ZeventBase):
             # Kept in step with the same payload the embeds render, so a
             # guild's scheduled event never contradicts its tracker message.
             for guild, settings in guilds:
-                await self.sync_scheduled_event(
-                    guild, settings, data, streamlabs_data, concert_active
-                )
+                with log_context.scope(guild_id=guild.guild_id):
+                    await self.sync_scheduled_event(
+                        guild, settings, data, streamlabs_data, concert_active
+                    )
 
             if not self._is_event_started():
                 await self._publish(guilds, await self._pre_event_embeds(data, planning_data))

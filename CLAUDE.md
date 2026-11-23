@@ -126,6 +126,7 @@ Errors and logs (`observability.md`)
 - In a broad `except`, `log_failure()` — `tests/test_failure_logging.py`
 - Don't wrap a command in `try/except Exception` to apologise; let `extensions/errors.py` answer — `discord-messages.md`
 - Metrics in the extension's own registry; health in `src/core/health.py`; a new `Task` gets its label — `tests/test_webui_guild_health.py`
+- A `Task` looping over guilds binds each one with `log_context.scope(guild_id=…)` — `tests/test_incidents.py`
 
 Tests and tooling (`testing.md`, `tooling.md`)
 - Tests use `store_config` / `mongo`, never the developer's setup — `testing.md`

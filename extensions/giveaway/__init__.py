@@ -63,7 +63,7 @@ from interactions import (
 from features.giveaway import MAX_WINNERS, Giveaway, GiveawayRepository, pick_winners
 from features.polls import parse_duration  # reused: same DSL as /sondage
 from features.xp import XpRepository, calculate_level
-from src.core import clock
+from src.core import clock, log_context
 from src.core.debounce import Coalescer
 from src.core.logging import log_failure
 from src.core.text import EMBED_DESCRIPTION_LIMIT, clip, format_discord_timestamp
@@ -846,16 +846,17 @@ class GiveawayExtension(Extension):
     async def check_giveaways(self) -> None:
         now = clock.now()
         for gid in GIVEAWAY.guild_ids():
-            try:
-                due = await self._repo(gid).list_due(now)
-            except Exception as e:
-                log_failure(logger, "Could not fetch due giveaways for %s: %s", gid, e)
-                continue
-            for giveaway in due:
+            with log_context.scope(guild_id=gid):
                 try:
-                    await self._draw(giveaway)
+                    due = await self._repo(gid).list_due(now)
                 except Exception as e:
-                    logger.exception("Unhandled error drawing giveaway %s: %s", giveaway.id, e)
+                    log_failure(logger, "Could not fetch due giveaways for %s: %s", gid, e)
+                    continue
+                for giveaway in due:
+                    try:
+                        await self._draw(giveaway)
+                    except Exception as e:
+                        logger.exception("Unhandled error drawing giveaway %s: %s", giveaway.id, e)
 
     async def _fetch_message(self, giveaway: Giveaway) -> Message | None:
         """The announcement, or None when it (or its channel) no longer exists.

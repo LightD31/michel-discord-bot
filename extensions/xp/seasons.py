@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING, Any
 from interactions import Client, Embed, Task, TimeTrigger
 
 from features.xp.seasons import KEPT_PER_SEASON, Season, podium_lines, previous_season
-from src.core import clock
+from src.core import clock, log_context
 from src.core.errors import DatabaseError
 from src.core.logging import log_failure
 from src.discord_ext.channels import fetch_guild_channel
@@ -63,12 +63,13 @@ class SeasonsMixin:
     async def _close_seasons(self) -> None:
         now = clock.now()
         for guild_id, settings in XP.items():
-            if not settings.get("seasonsEnabled"):
-                continue
-            try:
-                await self.close_season(guild_id, settings, now)
-            except Exception as e:
-                log_failure(logger, "Season of guild %s not closed: %s", guild_id, e)
+            with log_context.scope(guild_id=guild_id):
+                if not settings.get("seasonsEnabled"):
+                    continue
+                try:
+                    await self.close_season(guild_id, settings, now)
+                except Exception as e:
+                    log_failure(logger, "Season of guild %s not closed: %s", guild_id, e)
 
     async def close_season(self, guild_id: str, settings: dict, now: Any) -> bool:
         """Close the season that just ended in *guild_id*; ``True`` when this run did it."""

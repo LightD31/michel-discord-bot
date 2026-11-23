@@ -31,7 +31,7 @@ from interactions.api.events import MemberAdd, MemberRemove
 
 from features.userdata import DeparturesRepository, UserDataRepository, export_json
 from features.userdata.summary import summary
-from src.core import clock
+from src.core import clock, log_context
 from src.core import logging as logutil
 from src.core.db import mongo_manager
 from src.core.errors import DatabaseError
@@ -155,18 +155,19 @@ class MyDataExtension(Extension):
         """Daily: forget, on that server, the members who left it 30 days ago."""
         departures = DeparturesRepository()
         for guild_id, user_id in await departures.due(clock.now()):
-            guild = self.bot.get_guild(int(guild_id))
-            if guild is not None and guild.get_member(int(user_id)) is not None:
-                await departures.cancel(guild_id, user_id)  # back without an event we saw
-                continue
-            report = await UserDataRepository(user_id).forget([guild_id], include_global=False)
-            await departures.done(guild_id, user_id)
-            logger.info(
-                "Member %s forgotten on guild %s, 30 days after leaving (%d items)",
-                user_id,
-                guild_id,
-                report.total,
-            )
+            with log_context.scope(guild_id=guild_id):
+                guild = self.bot.get_guild(int(guild_id))
+                if guild is not None and guild.get_member(int(user_id)) is not None:
+                    await departures.cancel(guild_id, user_id)  # back without an event we saw
+                    continue
+                report = await UserDataRepository(user_id).forget([guild_id], include_global=False)
+                await departures.done(guild_id, user_id)
+                logger.info(
+                    "Member %s forgotten on guild %s, 30 days after leaving (%d items)",
+                    user_id,
+                    guild_id,
+                    report.total,
+                )
 
 
 def setup(bot: Client) -> None:

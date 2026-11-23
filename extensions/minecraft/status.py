@@ -18,7 +18,7 @@ from interactions import (
 from mcstatus import JavaServer
 
 from features.minecraft import MinecraftSettings
-from src.core import clock
+from src.core import clock, log_context
 from src.core.logging import log_failure
 from src.discord_ext.look import card
 from src.discord_ext.messages import GuildMessages, edit_message_if_changed
@@ -42,16 +42,20 @@ class StatusMixin:
         guilds = MINECRAFT.items()
         self._forget_disabled_guilds([guild_id for guild_id, _ in guilds])
         for guild_id, config in guilds:
-            settings = MinecraftSettings.from_config(config)
-            if not settings.has_server:
-                logger.debug("Guild %s: no Minecraft server configured; skipping", guild_id)
-                continue
-            try:
-                await self._update_status(guild_id, config, settings)
-            except Exception as e:  # noqa: BLE001 — one server down must not stop the others
-                log_failure(
-                    logger, "Guild %s: failed to update Minecraft server status: %s", guild_id, e
-                )
+            with log_context.scope(guild_id=guild_id):
+                settings = MinecraftSettings.from_config(config)
+                if not settings.has_server:
+                    logger.debug("Guild %s: no Minecraft server configured; skipping", guild_id)
+                    continue
+                try:
+                    await self._update_status(guild_id, config, settings)
+                except Exception as e:  # noqa: BLE001 — one server down must not stop the others
+                    log_failure(
+                        logger,
+                        "Guild %s: failed to update Minecraft server status: %s",
+                        guild_id,
+                        e,
+                    )
 
     async def _server(self, settings: MinecraftSettings) -> JavaServer:
         # mcstatus' lookup and status are blocking socket calls: off the loop.

@@ -35,7 +35,7 @@ from features.spotify.votes import (
     pick_vote_track,
     tally_daily_votes,
 )
-from src.core import clock
+from src.core import clock, log_context
 from src.core import logging as logutil
 from src.core.logging import log_failure
 from src.discord_ext.channels import fetch_guild_channel
@@ -81,10 +81,11 @@ class VotesMixin(SpotifyBase):
     async def randomvote(self):
         """Daily keep/remove poll — closes the previous one and opens the next."""
         for server in SERVERS.values():
-            try:
-                await self._randomvote_for_server(server)
-            except Exception as e:
-                log_failure(logger, "Error in randomvote for server %s: %s", server.guild_id, e)
+            with log_context.scope(guild_id=server.guild_id):
+                try:
+                    await self._randomvote_for_server(server)
+                except Exception as e:
+                    log_failure(logger, "Error in randomvote for server %s: %s", server.guild_id, e)
 
     async def _randomvote_for_server(self, server: ServerData):
         logger.info("Tache randomvote lancée pour le serveur %s", server.guild_id)
@@ -474,10 +475,13 @@ class VotesMixin(SpotifyBase):
     @Task.create(IntervalTrigger(minutes=1))
     async def reminder_check(self):
         for server in SERVERS.values():
-            try:
-                await self._reminder_check_for_server(server)
-            except Exception as e:
-                log_failure(logger, "Error in reminder_check for server %s: %s", server.guild_id, e)
+            with log_context.scope(guild_id=server.guild_id):
+                try:
+                    await self._reminder_check_for_server(server)
+                except Exception as e:
+                    log_failure(
+                        logger, "Error in reminder_check for server %s: %s", server.guild_id, e
+                    )
 
     async def _reminder_check_for_server(self, server: ServerData):
         logger.debug("reminder_check lancé pour le serveur %s", server.guild_id)
@@ -823,26 +827,29 @@ class VotesMixin(SpotifyBase):
     async def check_for_end(self):
         """Hourly sweep: close any add-with-vote poll whose deadline has passed."""
         for server in SERVERS.values():
-            try:
-                data = await server.vote_manager.load_data()
-            except Exception as e:
-                log_failure(logger, "Error in check_for_end for server %s: %s", server.guild_id, e)
-                continue
-            # One try per poll, so a failing poll doesn't keep the others open.
-            for song_id in data:
+            with log_context.scope(guild_id=server.guild_id):
                 try:
-                    if not await server.vote_manager.check_deadline(song_id):
-                        continue
-                    if await self.endvote(song_id, server):
-                        await server.vote_manager.delete(song_id)
+                    data = await server.vote_manager.load_data()
                 except Exception as e:
                     log_failure(
-                        logger,
-                        "Error in check_for_end for server %s, song %s: %s",
-                        server.guild_id,
-                        song_id,
-                        e,
+                        logger, "Error in check_for_end for server %s: %s", server.guild_id, e
                     )
+                    continue
+                # One try per poll, so a failing poll doesn't keep the others open.
+                for song_id in data:
+                    try:
+                        if not await server.vote_manager.check_deadline(song_id):
+                            continue
+                        if await self.endvote(song_id, server):
+                            await server.vote_manager.delete(song_id)
+                    except Exception as e:
+                        log_failure(
+                            logger,
+                            "Error in check_for_end for server %s, song %s: %s",
+                            server.guild_id,
+                            song_id,
+                            e,
+                        )
 
     async def _nextvote(self, ctx: SlashContext):
         """Dev-only: force an immediate close+restart of the daily vote cycle.

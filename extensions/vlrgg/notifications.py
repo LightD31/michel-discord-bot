@@ -5,6 +5,7 @@ from typing import Any
 from interactions import IntervalTrigger, Task
 
 from features.vlrgg import fetch_live_matches, fetch_match_details, is_final, match_id_of
+from src.core import log_context
 from src.discord_ext.links import shorten_embeds
 from src.discord_ext.messages import (
     edit_message_if_changed,
@@ -33,25 +34,29 @@ class NotificationsMixin(VlrggBase):
         """Tâche planifiée pour mettre à jour les plannings de toutes les équipes."""
         logger.debug("Exécution de la tâche schedule")
         for server_id, server_state in self._servers.items():
-            for team_name, team_state in server_state.teams.items():
-                try:
-                    await self._update_team_schedule(team_state)
-                except Exception as e:
-                    logger.exception(f"Erreur schedule pour {team_name} (serveur {server_id}): {e}")
+            with log_context.scope(guild_id=server_id):
+                for team_name, team_state in server_state.teams.items():
+                    try:
+                        await self._update_team_schedule(team_state)
+                    except Exception as e:
+                        logger.exception(
+                            f"Erreur schedule pour {team_name} (serveur {server_id}): {e}"
+                        )
 
     @Task.create(IntervalTrigger(minutes=LIVE_UPDATE_INTERVAL_MINUTES))
     async def live_update(self) -> None:
         """Tâche planifiée pour mettre à jour les scores des matchs en cours."""
         for server_id, server_state in self._servers.items():
-            for team_name, team_state in server_state.teams.items():
-                if not team_state.ongoing_matches and not team_state.ending_matches:
-                    continue
-                try:
-                    await self._update_team_live(team_state)
-                except Exception as e:
-                    logger.exception(
-                        f"Erreur live_update pour {team_name} (serveur {server_id}): {e}"
-                    )
+            with log_context.scope(guild_id=server_id):
+                for team_name, team_state in server_state.teams.items():
+                    if not team_state.ongoing_matches and not team_state.ending_matches:
+                        continue
+                    try:
+                        await self._update_team_live(team_state)
+                    except Exception as e:
+                        logger.exception(
+                            f"Erreur live_update pour {team_name} (serveur {server_id}): {e}"
+                        )
 
     # ── Per-team update logic ─────────────────────────────────────────────────
 

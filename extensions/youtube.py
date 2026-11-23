@@ -25,6 +25,7 @@ from features.youtube import (
     short_max_seconds,
     wanted,
 )
+from src.core import log_context
 from src.core import logging as logutil
 from src.core.config import ModuleConfig
 from src.core.logging import log_failure
@@ -167,10 +168,11 @@ class YoutubeExtension(Extension):
         # One read of every guild's last-seen videos per tick, not one per guild.
         youtube_data = await self.get_youtube_data()
         for server in YOUTUBE.guild_ids():
-            try:
-                await self._check_server(str(server), youtube_data)
-            except Exception as e:  # noqa: BLE001 — one guild's failure must not stop the others
-                log_failure(logger, "YouTube check failed for server %s: %s", server, e)
+            with log_context.scope(guild_id=server):
+                try:
+                    await self._check_server(str(server), youtube_data)
+                except Exception as e:  # noqa: BLE001 — one guild's failure must not stop the others
+                    log_failure(logger, "YouTube check failed for server %s: %s", server, e)
 
     async def _check_server(self, server: str, youtube_data: dict) -> None:
         """Notify one guild of its channels' new videos and save what it has seen.

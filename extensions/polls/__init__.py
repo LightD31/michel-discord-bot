@@ -48,7 +48,7 @@ from features.polls import (
     parse_options,
     poll_footer,
 )
-from src.core import clock
+from src.core import clock, log_context
 from src.core import logging as logutil
 from src.core.config import ModuleConfig
 from src.core.logging import log_failure
@@ -336,18 +336,19 @@ class PollsExtension(Extension, PollButtonsMixin):
     async def check_closing_polls(self) -> None:
         now = clock.now()
         for gid in UTILS.guild_ids():
-            try:
-                due = await self._poll_repo(gid).list_due(now)
-            except Exception as e:
-                log_failure(logger, "Failed to fetch due polls for guild %s: %s", gid, e)
-                continue
-            for poll in due:
-                if poll.id is None:
-                    continue
-                try:  # one poll failing to close doesn't hold back the others
-                    await self._close_button_poll(gid, poll)
+            with log_context.scope(guild_id=gid):
+                try:
+                    due = await self._poll_repo(gid).list_due(now)
                 except Exception as e:
-                    log_failure(logger, "Could not close poll %s: %s", poll.id, e)
+                    log_failure(logger, "Failed to fetch due polls for guild %s: %s", gid, e)
+                    continue
+                for poll in due:
+                    if poll.id is None:
+                        continue
+                    try:  # one poll failing to close doesn't hold back the others
+                        await self._close_button_poll(gid, poll)
+                    except Exception as e:
+                        log_failure(logger, "Could not close poll %s: %s", poll.id, e)
 
     async def _fetch_due_poll(self, guild_id: str, poll: Poll):
         """The message of a poll due to close, ``None`` when it's gone, or :data:`RETRY`.
