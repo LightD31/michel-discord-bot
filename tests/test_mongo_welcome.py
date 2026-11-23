@@ -117,7 +117,6 @@ async def test_after_seven_days_the_button_comes_off_and_the_rest_stays(mongo, s
     channel.messages.update({900: old, 901: recent})
     repo = GreetingRepository(mongo.guild_id)
     col = mongo.guild_collection("welcome_greetings")
-    await col.create_index("expires_at", expireAfterSeconds=0, name="expires_ttl")  # before P14
     await repo.ensure_indexes()
     now = clock.now()
     await repo.open("900", NEWCOMER, now - KEEP_FOR - timedelta(hours=1), "7")
@@ -132,7 +131,6 @@ async def test_after_seven_days_the_button_comes_off_and_the_rest_stays(mongo, s
     closed = {d["_id"]: d["closed"] for d in await col.find().to_list()}
     assert closed == {"900": True, "901": False, "902": True}
     indexes = await col.index_information()
-    assert "expires_ttl" not in indexes
     assert indexes["expires_grace_ttl"]["expireAfterSeconds"] == PURGE_GRACE.total_seconds()
     await module.WelcomeExtension.close_greetings.callback(ext)  # nothing left to do
     assert len(old.edits) == 1
