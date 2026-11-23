@@ -41,7 +41,7 @@ from src.core.errors import DatabaseError
 from src.discord_ext.look import card
 from src.discord_ext.mentions import NO_PINGS
 from src.discord_ext.menus import menu_help
-from src.discord_ext.messages import guild_id_of, send_error
+from src.discord_ext.messages import guild_id_of, guild_of, send_error
 from src.discord_ext.scopes import guild_scopes
 
 logger = logutil.init_logger(__name__)
@@ -192,7 +192,7 @@ class ProfileExtension(Extension):
                     xp_to_next=xp_max,
                     total_xp=xp,
                     rank=rank,
-                    member_count=getattr(ctx.guild, "member_count", None),
+                    member_count=getattr(guild_of(ctx), "member_count", None),
                     message_count=int(stats.get("msg", 0)),
                 )
                 files.append(File(file=image, file_name="profil.png"))

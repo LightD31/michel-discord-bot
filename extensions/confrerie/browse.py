@@ -88,7 +88,7 @@ class BrowseMixin(ConfrerieBase):
     @_private_option()
     async def texte(self, ctx: SlashContext, titre: str = "", prive: bool = False):
         await ctx.defer(ephemeral=prive)
-        works = top_level_works(await self._oeuvres_pages(ctx.guild_id))
+        works = top_level_works(await self._oeuvres_pages(guild_id_of(ctx)))
         if titre:
             work = find_work(works, titre)
         else:
@@ -112,7 +112,7 @@ class BrowseMixin(ConfrerieBase):
     @texte.autocomplete("titre")
     async def texte_autocomplete(self, ctx: AutocompleteContext):
         try:
-            works = top_level_works(await self._oeuvres_pages(ctx.guild_id))
+            works = top_level_works(await self._oeuvres_pages(guild_id_of(ctx)))
         except Exception as e:  # noqa: BLE001 — an empty list beats a failed interaction
             logger.warning("Liste des œuvres indisponible: %s", e)
             works = []
@@ -142,7 +142,7 @@ class BrowseMixin(ConfrerieBase):
     @_private_option()
     async def auteur(self, ctx: SlashContext, nom: str, prive: bool = False):
         await ctx.defer(ephemeral=prive)
-        profile = author_profile(await self._oeuvres_pages(ctx.guild_id), nom)
+        profile = author_profile(await self._oeuvres_pages(guild_id_of(ctx)), nom)
         if profile is None:
             await send_error(ctx, "Aucun·e auteur·ice de ce nom dans la base.")
             return
@@ -165,7 +165,7 @@ class BrowseMixin(ConfrerieBase):
             kept, _ = take_within_budget(lines, 1024, separator="\n")
             embed.add_field(name="Dernières œuvres", value="\n".join(kept), inline=False)
 
-        membres_db = CONFRERIE.get(ctx.guild_id).get("confrerieNotionDbMembresId")
+        membres_db = CONFRERIE.get(guild_id_of(ctx)).get("confrerieNotionDbMembresId")
         if membres_db:
             try:
                 rows = await self.notion_client.query_data_source(database_id=membres_db)
@@ -189,7 +189,7 @@ class BrowseMixin(ConfrerieBase):
         await autocomplete_options(
             ctx,
             self.notion_client,
-            CONFRERIE.get(ctx.guild_id).get("confrerieNotionDbOeuvresId"),
+            CONFRERIE.get(guild_id_of(ctx)).get("confrerieNotionDbOeuvresId"),
             COL_AUTHOR,
         )
 
@@ -217,7 +217,7 @@ class BrowseMixin(ConfrerieBase):
     async def outil(
         self, ctx: SlashContext, theme: str = "", recherche: str = "", prive: bool = False
     ):
-        db_id = CONFRERIE.get(ctx.guild_id).get("confrerieNotionDbOutilsId")
+        db_id = CONFRERIE.get(guild_id_of(ctx)).get("confrerieNotionDbOutilsId")
         if not db_id:
             await send_error(ctx, "La boîte à outils n'est pas configurée.")
             return
@@ -264,6 +264,6 @@ class BrowseMixin(ConfrerieBase):
         await autocomplete_options(
             ctx,
             self.notion_client,
-            CONFRERIE.get(ctx.guild_id).get("confrerieNotionDbOutilsId"),
+            CONFRERIE.get(guild_id_of(ctx)).get("confrerieNotionDbOutilsId"),
             COL_TOOL_THEME,
         )

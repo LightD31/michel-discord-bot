@@ -32,6 +32,7 @@ from src.discord_ext.look import card, embeds_to_v2
 from src.discord_ext.messages import (
     GuildMessages,
     edit_message_if_changed,
+    guild_id_of,
     send_error,
 )
 from src.discord_ext.scopes import guild_scopes
@@ -364,12 +365,12 @@ class StreamlabsCharityExtension(Extension):
     )
     async def endcharitycount(self, ctx):
         await ctx.send("Fin de la collecte de fond", ephemeral=True)
-        settings = STREAMLABS.get(ctx.guild_id)
+        settings = STREAMLABS.get(guild_id_of(ctx))
         url = _team_url(settings)
         if not url:
             await send_error(ctx, "URL de la team Streamlabs non configurée.")
             return
-        message = await self.messages.get(ctx.guild_id, settings)
+        message = await self.messages.get(guild_id_of(ctx), settings)
         if message is None:
             await send_error(ctx, "Message Streamlabs non configuré.")
             return

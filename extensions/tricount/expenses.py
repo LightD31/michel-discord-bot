@@ -21,7 +21,7 @@ from src.core import logging as logutil
 from src.core.errors import DatabaseError
 from src.discord_ext.autocomplete import Choice, guild_group_autocomplete
 from src.discord_ext.look import card, oops
-from src.discord_ext.messages import fetch_user_safe, guild_of, require_guild
+from src.discord_ext.messages import fetch_user_safe, guild_of
 from src.discord_ext.scopes import guild_scopes
 
 from ._common import (
@@ -91,9 +91,6 @@ class ExpensesMixin:
         payeur: User | Member | None = None,
         categorie: str | None = None,
     ):
-        if not await require_guild(ctx):
-            return
-
         if payeur is None:
             payeur = ctx.author
 
@@ -164,24 +161,23 @@ class ExpensesMixin:
         query = (ctx.input_text or "").lower()
         seen: set[str] = set()
         choices: list[Choice] = []
-        for cat in guild_categories(ctx.guild.id) if ctx.guild else []:
+        for cat in guild_categories(guild_of(ctx).id):
             if query in cat.lower() and cat not in seen:
                 seen.add(cat)
                 choices.append({"name": cat, "value": cat})
         # Surface previously used custom categories from this guild.
-        if ctx.guild:
-            try:
-                used = await TricountRepository(ctx.guild.id).distinct_categories()
-                for cat in used:
-                    if not cat or cat in seen:
-                        continue
-                    if query in cat.lower():
-                        seen.add(cat)
-                        choices.append({"name": cat, "value": cat})
-                    if len(choices) >= 25:
-                        break
-            except DatabaseError as e:
-                logger.warning("Tricount categories unavailable for autocomplete: %s", e)
+        try:
+            used = await TricountRepository(guild_of(ctx).id).distinct_categories()
+            for cat in used:
+                if not cat or cat in seen:
+                    continue
+                if query in cat.lower():
+                    seen.add(cat)
+                    choices.append({"name": cat, "value": cat})
+                if len(choices) >= 25:
+                    break
+        except DatabaseError as e:
+            logger.warning("Tricount categories unavailable for autocomplete: %s", e)
         await ctx.send(choices=choices[:25])
 
     @depense.autocomplete("groupe")
@@ -242,9 +238,6 @@ class ExpensesMixin:
         nouvelle_description: str | None = None,
         nouveau_payeur: User | Member | None = None,
     ):
-        if not await require_guild(ctx):
-            return
-
         if nouveau_montant is not None and nouveau_montant <= 0:
             await ctx.send(oops("Le montant doit être positif."), ephemeral=True)
             return
@@ -364,8 +357,6 @@ class ExpensesMixin:
         autocomplete=True,
     )
     async def supprimer_depense(self, ctx: SlashContext, groupe: str, depense_id: str):
-        if not await require_guild(ctx):
-            return
         repo = TricountRepository(guild_of(ctx).id)
         group = await repo.find_active_group(groupe)
         if not group:
@@ -419,13 +410,9 @@ class ExpensesMixin:
 
     async def _expense_choices(self, ctx: AutocompleteContext) -> None:
         """The member's expenses in their groups, matching what they typed."""
-        if not ctx.guild:
-            await ctx.send(choices=[])
-            return
-
         input_text = ctx.input_text.lower()
 
-        repo = TricountRepository(ctx.guild.id)
+        repo = TricountRepository(guild_of(ctx).id)
         user_groups = await repo.list_member_groups(ctx.author.id)
         if not user_groups:
             await ctx.send(choices=[])
@@ -445,7 +432,7 @@ class ExpensesMixin:
             payer = self.bot.get_user(expense["payer"])
             payer_name = payer.display_name if payer else f"ID:{expense['payer']}"
 
-            currency = guild_currency(ctx.guild.id)
+            currency = guild_currency(guild_of(ctx).id)
             display_name = f"[{group_name}] {expense['amount']:.2f}{currency} - {expense['description']} (par {payer_name})"
             if len(display_name) > 80:
                 display_name = display_name[:77] + "..."

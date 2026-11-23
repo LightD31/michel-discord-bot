@@ -35,7 +35,13 @@ from src.discord_ext.channels import fetch_guild_channel
 from src.discord_ext.help_button import help_button
 from src.discord_ext.look import ok, oops
 from src.discord_ext.mentions import NO_PINGS, everyone_if_written
-from src.discord_ext.messages import channel_url, edit_message_if_changed, guild_id_of, jump_url
+from src.discord_ext.messages import (
+    channel_url,
+    edit_message_if_changed,
+    guild_id_of,
+    guild_of,
+    jump_url,
+)
 from src.discord_ext.role_grants import grantable_role
 
 GREET_BUTTON_ID = "bienvenue:saluer"
@@ -296,7 +302,7 @@ class WelcomeExtension(Extension):
                     ephemeral=True,
                 )
                 return
-            names = [_display_name(ctx.guild, uid) for uid in outcome.greeters]
+            names = [_display_name(guild_of(ctx), uid) for uid in outcome.greeters]
             line = greeting_line(names, len(outcome.greeters))
             await ctx.edit_origin(
                 content=with_greetings(message.content, line), allowed_mentions=NO_PINGS

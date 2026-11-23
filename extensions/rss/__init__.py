@@ -67,7 +67,7 @@ from src.core.urls import redact_url
 from src.discord_ext.channels import fetch_guild_channel
 from src.discord_ext.look import card, sign
 from src.discord_ext.mentions import mentions_written_in
-from src.discord_ext.messages import guild_id_of, require_guild, send_error, send_success
+from src.discord_ext.messages import guild_id_of, send_error, send_success
 from src.discord_ext.scopes import guild_scopes
 
 from ._common import (
@@ -391,8 +391,6 @@ class RssExtension(Extension):
     )
     @slash_default_member_permission(Permissions.MANAGE_GUILD)
     async def rss_test(self, ctx: SlashContext, url: str) -> None:
-        if not await require_guild(ctx):
-            return
         await ctx.defer(ephemeral=True)
         try:
             entries = await fetch_feed(url)
@@ -438,9 +436,7 @@ class RssExtension(Extension):
     )
     @slash_default_member_permission(Permissions.MANAGE_GUILD)
     async def rss_list(self, ctx: SlashContext) -> None:
-        if not await require_guild(ctx):
-            return
-        srv_cfg = RSS.get(ctx.guild_id)
+        srv_cfg = RSS.get(guild_id_of(ctx))
         feeds = list(_iter_feeds(srv_cfg))
         if not feeds:
             await ctx.send("Aucun flux configuré.", ephemeral=True)
@@ -485,8 +481,6 @@ class RssExtension(Extension):
     )
     @slash_default_member_permission(Permissions.MANAGE_GUILD)
     async def rss_reset(self, ctx: SlashContext, feed_id: str) -> None:
-        if not await require_guild(ctx):
-            return
         deleted = await self._repo(guild_id_of(ctx)).delete(feed_id)
         if deleted == 0:
             await send_error(ctx, "Aucun état trouvé pour ce flux.")

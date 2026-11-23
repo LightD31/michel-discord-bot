@@ -29,7 +29,7 @@ from src.core.cache import ExpiringMap
 from src.core.errors import ValidationError
 from src.core.logging import log_failure
 from src.discord_ext.look import ok
-from src.discord_ext.messages import send_error
+from src.discord_ext.messages import guild_id_of, send_error
 from src.discord_ext.scopes import guild_scopes
 
 from ._base import ConfrerieBase
@@ -80,7 +80,7 @@ class RequestsMixin(ConfrerieBase):
     )
     async def demande(self, ctx: SlashContext, type_: str = "", genre: str = "", defi: str = ""):
         # The modal is the interaction response: leave room in Discord's 3 s.
-        schema = await self._oeuvres_schema(CONFRERIE.get(ctx.guild_id), timeout=2.0)
+        schema = await self._oeuvres_schema(CONFRERIE.get(guild_id_of(ctx)), timeout=2.0)
         try:
             choices = {
                 "types": np.canonical_choices(
@@ -132,7 +132,7 @@ class RequestsMixin(ConfrerieBase):
         await autocomplete_options(
             ctx,
             self.notion_client,
-            CONFRERIE.get(ctx.guild_id).get("confrerieNotionDbOeuvresId"),
+            CONFRERIE.get(guild_id_of(ctx)).get("confrerieNotionDbOeuvresId"),
             column,
         )
 
@@ -154,13 +154,13 @@ class RequestsMixin(ConfrerieBase):
         author, mapped = resolve_author(
             int(ctx.author.id),
             ctx.author.display_name,
-            CONFRERIE.get(ctx.guild_id).get("confrerieAuthorMap") or {},
+            CONFRERIE.get(guild_id_of(ctx)).get("confrerieAuthorMap") or {},
         )
         defi = choices.get("defi") or []
         draft = Draft(
             id=demande_draft_id(),
             source=SOURCE_DEMANDE,
-            guild_id=str(ctx.guild_id),
+            guild_id=guild_id_of(ctx),
             submitter_id=int(ctx.author.id),
             title=title[:100],
             authors=[author],

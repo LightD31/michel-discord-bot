@@ -55,7 +55,7 @@ from src.core.logging import log_failure
 from src.core.text import format_discord_timestamp
 from src.discord_ext.channels import fetch_guild_channel
 from src.discord_ext.look import card, ok
-from src.discord_ext.messages import copy_embed, edit_message_if_changed, send_error
+from src.discord_ext.messages import copy_embed, edit_message_if_changed, guild_id_of, send_error
 from src.discord_ext.scopes import guild_scopes
 
 from .buttons import (
@@ -218,7 +218,7 @@ class PollsExtension(Extension, PollButtonsMixin):
                 )
                 return
         else:
-            seconds = _default_poll_seconds(ctx.guild_id)
+            seconds = _default_poll_seconds(guild_id_of(ctx))
         if mode == "public":
             await self._post_native_poll(ctx, question, choices, seconds, multi == "1")
         else:
@@ -248,9 +248,6 @@ class PollsExtension(Extension, PollButtonsMixin):
         seconds: int | None,
         mode: str,
     ) -> None:
-        if not ctx.guild_id:
-            await send_error(ctx, "Cette commande est réservée aux serveurs.")
-            return
         closes_at: datetime | None = clock.now() + timedelta(seconds=seconds) if seconds else None
         mode_label = "anonyme" if mode == "anonymous" else "classement"
         embed = card(
@@ -273,7 +270,7 @@ class PollsExtension(Extension, PollButtonsMixin):
             mode=mode,  # type: ignore[arg-type]
             closes_at=closes_at,
         )
-        poll.id = await self._poll_repo(ctx.guild_id).add(poll)
+        poll.id = await self._poll_repo(guild_id_of(ctx)).add(poll)
 
         name, value = render_results_field(poll)
         embed.add_field(name=name, value=value, inline=False)
@@ -287,9 +284,9 @@ class PollsExtension(Extension, PollButtonsMixin):
     ) -> None:
         """The author's "✏️ Modifier" form: the new question, and the options if nobody voted."""
         match = EDIT_FORM_RE.match(ctx.custom_id)
-        if not match or not ctx.guild_id:
+        if not match:
             return
-        repo = self._poll_repo(ctx.guild_id)
+        repo = self._poll_repo(guild_id_of(ctx))
         new_options = None
         if options is not None:
             try:
@@ -312,7 +309,7 @@ class PollsExtension(Extension, PollButtonsMixin):
         if edited is None:
             await send_error(ctx, "Ce sondage est fermé.")
             return
-        await self._show_edit(ctx.guild_id, edited)
+        await self._show_edit(guild_id_of(ctx), edited)
         await ctx.send(ok("Sondage modifié."), ephemeral=True)
 
     async def _show_edit(self, guild_id, poll: Poll) -> None:

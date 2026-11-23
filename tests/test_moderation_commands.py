@@ -59,11 +59,6 @@ class FakeCtx:
 def ext(monkeypatch):
     monkeypatch.setattr(commands_module, "get_guild_settings", lambda gid: {"dmOnAction": True})
 
-    async def ok(ctx):
-        return True
-
-    monkeypatch.setattr(commands_module, "require_guild", ok)
-
     class Ext(CommandsMixin):
         async def dm_target(self, settings, target, text):
             target.sent.append(text)

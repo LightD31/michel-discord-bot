@@ -38,7 +38,7 @@ from features.links import shorten_text
 from src.core.config import ModuleConfig
 from src.discord_ext.look import card, oops
 from src.discord_ext.mentions import NO_PINGS, mentions_written_in
-from src.discord_ext.messages import guild_id_of
+from src.discord_ext.messages import guild_id_of, guild_of
 from src.discord_ext.scopes import guild_scopes
 
 CUSTOM_COMMANDS = ModuleConfig(MODULE_KEY)
@@ -152,7 +152,7 @@ def _build_callback(command: CustomCommand):
             template,
             author=ctx.author.mention,
             target=target.mention if target is not None else None,
-            server=str(getattr(ctx.guild, "name", "") or ""),
+            server=str(getattr(guild_of(ctx), "name", "") or ""),
         )
         # What the admins wrote may ping what it names (@everyone included);
         # the member aimed at is pinged, never the one who ran it.

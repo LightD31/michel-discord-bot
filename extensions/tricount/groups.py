@@ -25,7 +25,7 @@ from src.core import clock
 from src.core import logging as logutil
 from src.discord_ext.autocomplete import guild_group_autocomplete
 from src.discord_ext.look import card, oops
-from src.discord_ext.messages import guild_of, require_guild
+from src.discord_ext.messages import guild_of
 from src.discord_ext.scopes import guild_scopes
 
 from ._common import MAX_AMOUNT, TRICOUNT, guild_currency
@@ -63,9 +63,6 @@ class GroupsMixin:
         nom: str,
         description: str | None = None,
     ):
-        if not await require_guild(ctx):
-            return
-
         repo = TricountRepository(guild_of(ctx).id)
         existing_group = await repo.find_group_by_name(nom)
         if existing_group:
@@ -115,9 +112,6 @@ class GroupsMixin:
         autocomplete=True,
     )
     async def tricount_rejoindre(self, ctx: SlashContext, nom: str):
-        if not await require_guild(ctx):
-            return
-
         repo = TricountRepository(guild_of(ctx).id)
         group = await repo.find_active_group(nom)
         if not group:
@@ -161,9 +155,6 @@ class GroupsMixin:
         autocomplete=True,
     )
     async def tricount_quitter(self, ctx: SlashContext, nom: str):
-        if not await require_guild(ctx):
-            return
-
         repo = TricountRepository(guild_of(ctx).id)
         group = await repo.find_active_group(nom)
         if not group:
@@ -243,8 +234,6 @@ class GroupsMixin:
         montant: float,
         payeur: User | Member | None = None,
     ):
-        if not await require_guild(ctx):
-            return
         payeur = payeur or ctx.author
         if montant <= 0:
             await ctx.send(oops("Le montant doit être positif."), ephemeral=True)

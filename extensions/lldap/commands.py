@@ -27,7 +27,7 @@ from features.lldap import (
 from src.core import logging as logutil
 from src.discord_ext.errors import failure_reply
 from src.discord_ext.look import card
-from src.discord_ext.messages import guild_of, member_of, require_guild, send_error
+from src.discord_ext.messages import guild_of, member_of, send_error
 from src.discord_ext.scopes import guild_scopes
 from src.integrations.lldap import LldapClient, LldapError
 
@@ -70,8 +70,6 @@ class CommandsMixin:
 
     async def _check_guild(self, ctx: SlashContext) -> str | None:
         """The guild id, or ``None`` after telling the user why the command can't run."""
-        if not await require_guild(ctx):
-            return None
         if not LLDAP.enabled(guild_of(ctx).id):
             await send_error(ctx, NOT_ENABLED)
             return None

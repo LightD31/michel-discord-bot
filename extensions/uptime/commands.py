@@ -23,9 +23,9 @@ from src.discord_ext.look import card, sign
 from src.discord_ext.messages import (
     CAN_SEND,
     author_can,
+    guild_id_of,
     guild_of,
     module_off,
-    require_guild,
     send_error,
     send_success,
 )
@@ -64,8 +64,6 @@ class CommandsMixin:
 
     async def _check_guild(self, ctx: SlashContext) -> str | None:
         """The guild id, or ``None`` after telling the user why the command can't run."""
-        if not await require_guild(ctx):
-            return None
         if not UPTIME.enabled(guild_of(ctx).id):
             await send_error(ctx, module_off("Uptime"))
             return None
@@ -223,13 +221,10 @@ class CommandsMixin:
     @remove_maintenance_alert.autocomplete("capteur")
     async def remove_sensor_autocomplete(self, ctx: AutocompleteContext):
         """This guild's alerts, including monitors since deleted from Kuma."""
-        if not ctx.guild:
-            await ctx.send(choices=[])
-            return
         query = (ctx.input_text or "").lower()
         names = {
             monitor_id: self.monitor_name(monitor_id)
-            for monitor_id in self.alerts.get(str(ctx.guild.id), {})
+            for monitor_id in self.alerts.get(guild_id_of(ctx), {})
         }
         choices: list[dict[str, Any]] = [
             {"name": _choice_name(name), "value": str(monitor_id)}

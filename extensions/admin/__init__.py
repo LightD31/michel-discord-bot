@@ -43,6 +43,7 @@ from src.discord_ext.messages import (
     CAN_PURGE,
     CAN_SEND,
     author_can,
+    guild_of,
     send_error,
     send_success,
 )
@@ -338,12 +339,9 @@ class AdminExtension(Extension):
         raison: str | None = None,
     ):
         target = channel or ctx.channel
-        if not ctx.guild:
-            await send_error(ctx, "Cette commande ne peut être utilisée que dans un serveur.")
-            return
         if not await author_can(ctx, target, CAN_MANAGE):
             return
-        everyone = ctx.guild.default_role
+        everyone = guild_of(ctx).default_role
         try:
             await cast(GuildChannel, target).add_permission(
                 everyone,
@@ -387,12 +385,9 @@ class AdminExtension(Extension):
         channel: BaseChannel | None = None,
     ):
         target = channel or ctx.channel
-        if not ctx.guild:
-            await send_error(ctx, "Cette commande ne peut être utilisée que dans un serveur.")
-            return
         if not await author_can(ctx, target, CAN_MANAGE):
             return
-        everyone = ctx.guild.default_role
+        everyone = guild_of(ctx).default_role
         try:
             # Clear the deny mask we set in /verrouiller by passing an empty Permissions flag.
             await cast(GuildChannel, target).add_permission(

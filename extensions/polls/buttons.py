@@ -25,7 +25,13 @@ from features.polls import (
 )
 from src.core import logging as logutil
 from src.discord_ext.look import recolour
-from src.discord_ext.messages import copy_embed, edit_message_if_changed, message_of, send_error
+from src.discord_ext.messages import (
+    copy_embed,
+    edit_message_if_changed,
+    guild_id_of,
+    message_of,
+    send_error,
+)
 
 logger = logutil.init_logger(__name__)
 
@@ -170,11 +176,11 @@ class PollButtonsMixin:
     @component_callback(_VOTE_RE)
     async def on_poll_vote(self, ctx: ComponentContext) -> None:
         match = _VOTE_RE.match(ctx.custom_id)
-        if not match or not ctx.guild_id:
+        if not match:
             return
         poll_id, option_idx = match.group(1), int(match.group(2))
 
-        repo = self._poll_repo(ctx.guild_id)
+        repo = self._poll_repo(guild_id_of(ctx))
         poll = await repo.get_by_message(str(message_of(ctx).id))
         if poll is None or poll.id != poll_id:
             await ctx.send("Sondage introuvable.", ephemeral=True)
@@ -233,9 +239,9 @@ class PollButtonsMixin:
     async def on_poll_edit(self, ctx: ComponentContext) -> None:
         """Open the edit form, for the poll's author only."""
         match = _EDIT_RE.match(ctx.custom_id)
-        if not match or not ctx.guild_id:
+        if not match:
             return
-        poll = await self._poll_repo(ctx.guild_id).get_by_message(str(message_of(ctx).id))
+        poll = await self._poll_repo(guild_id_of(ctx)).get_by_message(str(message_of(ctx).id))
         if poll is None or poll.id != match[1] or poll.closed:
             await send_error(ctx, "Ce sondage est fermé.")
             return
@@ -249,10 +255,10 @@ class PollButtonsMixin:
     @component_callback(_RESET_RE)
     async def on_poll_reset(self, ctx: ComponentContext) -> None:
         match = _RESET_RE.match(ctx.custom_id)
-        if not match or not ctx.guild_id:
+        if not match:
             return
         poll_id = match.group(1)
-        repo = self._poll_repo(ctx.guild_id)
+        repo = self._poll_repo(guild_id_of(ctx))
         poll = await repo.get_by_message(str(message_of(ctx).id))
         if poll is None or poll.id != poll_id or poll.closed:
             await ctx.send("Sondage introuvable ou fermé.", ephemeral=True)

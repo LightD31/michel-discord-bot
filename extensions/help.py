@@ -62,7 +62,7 @@ from src.core.text import EMBED_FIELD_VALUE_LIMIT, clip
 from src.discord_ext.help_button import HELP_BUTTON_ID
 from src.discord_ext.look import card
 from src.discord_ext.menus import MENU_HELP
-from src.discord_ext.messages import guild_id_of, require_guild
+from src.discord_ext.messages import guild_id_of
 from src.discord_ext.paginator import CustomPaginator
 from src.webui.schemas import ModuleHelp, module_model
 
@@ -426,8 +426,6 @@ class HelpExtension(Extension):
         argument_name="search",
     )
     async def aide(self, ctx: SlashContext, search: str | None = None) -> None:
-        if not await require_guild(ctx):
-            return
         entries = matching(self._entries(ctx), search)
         if not entries:
             await ctx.send(

@@ -36,7 +36,7 @@ from src.core.text import format_discord_timestamp
 from src.discord_ext.autocomplete import Choice
 from src.discord_ext.links import shorten_embed
 from src.discord_ext.look import card, sign
-from src.discord_ext.messages import send_error
+from src.discord_ext.messages import guild_id_of, send_error
 from src.discord_ext.scopes import guild_scopes
 
 from ._base import VlrggBase
@@ -117,7 +117,7 @@ class CommandsMixin(VlrggBase):
         choices: list[Choice] = []
         seen: set[str] = set()
 
-        server = self._servers.get(str(ctx.guild_id)) if ctx.guild_id else None
+        server = self._servers.get(guild_id_of(ctx))
         for team_state in server.teams.values() if server else []:
             tc = team_state.team_config
             if tc.vlr_team_id and (not text or text.casefold() in tc.name.casefold()):

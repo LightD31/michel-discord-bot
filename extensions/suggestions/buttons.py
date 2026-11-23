@@ -28,10 +28,6 @@ class ButtonsMixin:
 
     @component_callback(_CUSTOM_ID_RE)
     async def on_vote_button(self, ctx: ComponentContext) -> None:
-        if not ctx.guild:
-            await send_error(ctx, "Cette action n'est disponible qu'en serveur.")
-            return
-
         match = _CUSTOM_ID_RE.match(ctx.custom_id)
         if not match:
             return

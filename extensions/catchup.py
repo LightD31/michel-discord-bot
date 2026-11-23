@@ -33,7 +33,7 @@ from src.core.config import ModuleConfig
 from src.core.errors import DatabaseError
 from src.discord_ext.look import card
 from src.discord_ext.mentions import NO_PINGS
-from src.discord_ext.messages import guild_id_of, jump_url, send_error
+from src.discord_ext.messages import guild_id_of, guild_of, jump_url, send_error
 from src.discord_ext.scopes import guild_scopes
 from src.integrations import llm
 
@@ -128,7 +128,7 @@ class CatchupExtension(Extension):
                     id=str(m.id),
                     author_id=str(m.author.id),
                     author=str(m.author.display_name),
-                    content=_names(ctx.guild, m.content or ""),
+                    content=_names(guild_of(ctx), m.content or ""),
                     is_bot=bool(getattr(m.author, "bot", False)),
                 )
                 for m in raw
@@ -162,7 +162,7 @@ class CatchupExtension(Extension):
                 persona=settings.persona,
                 member=str(ctx.author.display_name),
                 channel=channel_name,
-                server=str(getattr(ctx.guild, "name", "") or "ce serveur"),
+                server=str(getattr(guild_of(ctx), "name", "") or "ce serveur"),
             ),
             SUMMARY_TOKENS,
         )

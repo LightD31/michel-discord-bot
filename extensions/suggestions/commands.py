@@ -50,9 +50,9 @@ from src.discord_ext.messages import (
     edit_message_if_changed,
     fetch_user_safe,
     guild_id_of,
+    guild_of,
     jump_url,
     module_off,
-    require_guild,
     send_error,
     send_success,
 )
@@ -280,8 +280,6 @@ class CommandsMixin:
         scopes=guild_scopes(SUGGESTIONS.guild_ids()),
     )
     async def suggest(self, ctx: SlashContext) -> None:
-        if not await require_guild(ctx):
-            return
         if not get_guild_settings(guild_id_of(ctx)):
             await send_error(ctx, module_off("suggestions"), icon="💡")
             return
@@ -311,7 +309,7 @@ class CommandsMixin:
         self, ctx: Any, text: str, *, title: str = "", source_url: str | None = None
     ) -> None:
         """Post *text* as a suggestion in the configured channel, and open its thread."""
-        settings = get_guild_settings(ctx.guild_id)
+        settings = get_guild_settings(guild_id_of(ctx))
         if not settings:
             await send_error(ctx, module_off("suggestions"), icon="💡")
             return
@@ -342,11 +340,11 @@ class CommandsMixin:
 
         await ctx.defer(ephemeral=True)
 
-        repo = self.repository(ctx.guild_id)
+        repo = self.repository(guild_id_of(ctx))
         sugg_id = await repo.next_id()
         suggestion = Suggestion(
             id=sugg_id,
-            guild_id=str(ctx.guild_id),
+            guild_id=guild_id_of(ctx),
             channel_id=str(channel.id),
             author_id=str(ctx.author.id),
             title=title[:MAX_TITLE_LENGTH] or None,
@@ -371,7 +369,10 @@ class CommandsMixin:
         if settings.get("discussionThreads", True):
             await self._open_thread(repo, suggestion, sent)
         logger.info(
-            "Suggestion #%s created by %s in guild %s", sugg_id, ctx.author.username, ctx.guild_id
+            "Suggestion #%s created by %s in guild %s",
+            sugg_id,
+            ctx.author.username,
+            guild_id_of(ctx),
         )
         await send_success(ctx, f"Suggestion **#{sugg_id}** publiée dans <#{channel.id}>.")
 
@@ -393,7 +394,7 @@ class CommandsMixin:
         match = _DECIDE_RE.match(ctx.custom_id)
         if not match:
             return
-        settings = get_guild_settings(ctx.guild_id) if ctx.guild_id else None
+        settings = get_guild_settings(guild_id_of(ctx)) if guild_id_of(ctx) else None
         if not settings:
             await send_error(ctx, module_off("suggestions"), icon="💡")
             return
@@ -457,11 +458,11 @@ class CommandsMixin:
     @suggestion_approve.autocomplete("id")
     async def open_suggestion_choices(self, ctx: AutocompleteContext) -> None:
         """The suggestions still to decide, newest first (approved ones, to implement them)."""
-        if ctx.guild_id is None or not get_guild_settings(ctx.guild_id):
+        if not get_guild_settings(guild_id_of(ctx)):
             await ctx.send(choices=[])
             return
         try:
-            found = await self.repository(ctx.guild_id).list_in(["pending", "approved"], 100)
+            found = await self.repository(guild_id_of(ctx)).list_in(["pending", "approved"], 100)
         except Exception as e:
             logger.warning("Could not list the open suggestions: %s", e)
             found = []
@@ -469,9 +470,7 @@ class CommandsMixin:
 
     async def decide(self, ctx: Any, sugg_id: int, status: str, reason: str | None) -> None:
         """Take a staff decision, from a button's form or a command, once."""
-        if not await require_guild(ctx):
-            return
-        settings = get_guild_settings(ctx.guild_id)
+        settings = get_guild_settings(guild_id_of(ctx))
         if not settings:
             await send_error(ctx, module_off("suggestions"), icon="💡")
             return
@@ -480,7 +479,7 @@ class CommandsMixin:
             await send_error(ctx, staff_only(staff_role), icon="🔒")
             return
 
-        repo = self.repository(ctx.guild_id)
+        repo = self.repository(guild_id_of(ctx))
         suggestion = await repo.get(sugg_id)
         if not suggestion:
             await send_error(ctx, f"Suggestion #{sugg_id} introuvable.")
@@ -507,7 +506,7 @@ class CommandsMixin:
             sugg_id,
             status,
             ctx.author.username,
-            ctx.guild_id,
+            guild_id_of(ctx),
         )
         await send_success(ctx, f"Suggestion **#{sugg_id}** {STATUS_LABELS[status]}.")
 
@@ -535,7 +534,7 @@ class CommandsMixin:
         if suggestion.thread_id:
             await self._tell_thread(ctx, guild_id, suggestion)
         if suggestion.author_id != str(ctx.author.id):
-            guild_name = getattr(ctx.guild, "name", None) or "le serveur"
+            guild_name = getattr(guild_of(ctx), "name", None) or "le serveur"
             try:
                 _, author = await fetch_user_safe(self.bot, suggestion.author_id)
                 if author is not None:

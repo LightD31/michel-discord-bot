@@ -30,9 +30,6 @@ class ButtonsMixin:
         def repository(self, guild_id: str | int) -> Any: ...
 
     async def _menu_for(self, ctx: ComponentContext, menu_id: str) -> Any:
-        if not ctx.guild:
-            await send_error(ctx, "Cette action n'est disponible qu'en serveur.")
-            return None
         menu = await self.repository(guild_id_of(ctx)).get(menu_id)
         if not menu:
             await send_error(ctx, "Ce menu n'existe plus.")
@@ -92,13 +89,13 @@ class ButtonsMixin:
             # Re-checked on every pick: a role can gain moderation permissions
             # after the menu was posted. Removing one is always allowed.
             role = guild_of(ctx).get_role(int(role_id))
-            refusal = self_assign_refusal(role_info(role, ctx.guild_id)) if role else None
+            refusal = self_assign_refusal(role_info(role, guild_id_of(ctx))) if role else None
             if refusal:
                 logger.warning(
                     "Refused self-assigning privileged role %s to %s in guild %s (menu %s)",
                     role_id,
                     ctx.author.id,
-                    ctx.guild_id,
+                    guild_id_of(ctx),
                     menu_id,
                 )
                 await send_error(ctx, refusal)
@@ -128,5 +125,5 @@ class ButtonsMixin:
             plan.add,
             plan.remove,
             member.id,
-            ctx.guild_id,
+            guild_id_of(ctx),
         )

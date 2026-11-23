@@ -43,6 +43,7 @@ from src.discord_ext.messages import (
     copy_embed,
     edit_message_if_changed,
     fetch_user_safe,
+    guild_id_of,
     send_error,
 )
 from src.discord_ext.scopes import guild_scopes
@@ -383,7 +384,7 @@ class VotesMixin(SpotifyBase):
         logger.debug("ctx.custom_id : %s", ctx.custom_id)
         if ctx.custom_id not in ["conserver", "supprimer", "menfou", "annuler"]:
             return
-        server = self.get_server(ctx.guild_id)
+        server = self.get_server(guild_id_of(ctx))
         await self.ensure_state(server)
         user_id = str(ctx.user.id)
         if await vote_cooldown.is_on_cooldown(user_id):
@@ -456,7 +457,7 @@ class VotesMixin(SpotifyBase):
     )
     async def setreminder(self, ctx: SlashContext, heure, minute):
         """Schedule a recurring daily DM nudging the user to vote."""
-        server = self.get_server(ctx.guild_id)
+        server = self.get_server(guild_id_of(ctx))
         if not server.daily_vote:
             await send_error(
                 ctx,
@@ -555,7 +556,7 @@ class VotesMixin(SpotifyBase):
         sub_cmd_description="Enlève un rappel de vote pour la chanson du jour",
     )
     async def deletereminder(self, ctx: SlashContext):
-        server = self.get_server(ctx.guild_id)
+        server = self.get_server(guild_id_of(ctx))
         await self.ensure_state(server)
         user_id = ctx.user.id
         reminders_list = sorted(
@@ -628,7 +629,7 @@ class VotesMixin(SpotifyBase):
     )
     @cooldown(Buckets.USER, 1, 10)
     async def addwithvote(self, ctx: SlashContext, song):
-        server = self.get_server(ctx.guild_id)
+        server = self.get_server(guild_id_of(ctx))
         if str(ctx.channel_id) == str(server.channel_id):
             # Spotify and MongoDB can take longer than Discord's 3 s.
             await ctx.defer()
@@ -682,7 +683,7 @@ class VotesMixin(SpotifyBase):
                     time=time_deadline,
                     person=str(ctx.author.id),
                     icon=ctx.author.avatar.url,
-                    guild_id=ctx.guild_id,
+                    guild_id=guild_id_of(ctx),
                 )
                 message = await ctx.send(
                     content=(
@@ -721,7 +722,7 @@ class VotesMixin(SpotifyBase):
     async def on_button2(self, event: Component):
         if not event.ctx.custom_id.startswith("addwithvote"):
             return
-        server = self.get_server(event.ctx.guild_id)
+        server = self.get_server(guild_id_of(event.ctx))
         song_id = event.ctx.custom_id.split("_")[1]
         vote = event.ctx.custom_id.split("_")[2]
         user_id = str(event.ctx.user.id)

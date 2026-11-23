@@ -14,7 +14,13 @@ from src.core import logging as logutil
 from src.core.http import fetch
 from src.core.logging import log_failure
 from src.discord_ext.look import embeds_to_v2
-from src.discord_ext.messages import edit_message_if_changed, member_of, module_off, send_error
+from src.discord_ext.messages import (
+    edit_message_if_changed,
+    guild_id_of,
+    member_of,
+    module_off,
+    send_error,
+)
 from src.discord_ext.scopes import guild_scopes
 
 from ._base import ZeventBase
@@ -38,7 +44,7 @@ class CommandsMixin(ZeventBase):
         if not member_of(ctx).has_permission(Permissions.MANAGE_GUILD):
             await ctx.send("Il faut la permission « Gérer le serveur ».", ephemeral=True)
             return
-        settings = ZEVENT.get(ctx.guild_id)
+        settings = ZEVENT.get(guild_id_of(ctx))
         if not settings:
             await send_error(ctx, module_off("Zevent"))
             return
@@ -47,7 +53,7 @@ class CommandsMixin(ZeventBase):
                 "L'API Zevent n'est pas configurée (section globale Zevent).", ephemeral=True
             )
             return
-        guild_id = str(ctx.guild_id)
+        guild_id = guild_id_of(ctx)
         guild = self.guilds.setdefault(guild_id, ZeventGuild(guild_id))
         try:
             data = await fetch(API_URL, return_type="json")

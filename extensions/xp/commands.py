@@ -182,8 +182,8 @@ class CommandsMixin:
         settings = XP.get(guild_id_of(ctx))
         if settings.get("seasonsEnabled") and periode != "toujours":
             season = season_of(clock.now(), settings.get("seasonMonths", 1))
-            embeds = await self._build_season_embeds(ctx.guild, season)
+            embeds = await self._build_season_embeds(guild_of(ctx), season)
         else:
-            embeds = await self._build_leaderboard_embeds(ctx.guild)
+            embeds = await self._build_leaderboard_embeds(guild_of(ctx))
         paginator = CustomPaginator.create_from_embeds(self.bot, *embeds, timeout=3600)
         await paginator.send(ctx)

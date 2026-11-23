@@ -16,7 +16,7 @@ from features.coloc.models import HardcoreSeason, ZuniversEvent
 from features.coloc.utils import image_url_needs_download
 from src.core.logging import log_failure
 from src.discord_ext.errors import failure_reply
-from src.discord_ext.messages import send_error
+from src.discord_ext.messages import guild_id_of, send_error
 
 from ._base import ZuniversBase
 from ._common import GuildState, logger, zunivers_api_url, zunivers_cmd
@@ -42,7 +42,7 @@ class EventsMixin(ZuniversBase):
             return
         await ctx.defer()
         try:
-            await self._check_zunivers_events(only=str(ctx.guild_id))
+            await self._check_zunivers_events(only=guild_id_of(ctx))
             await ctx.send("Vérification des événements Zunivers terminée ! 🎉", ephemeral=True)
         except Exception as e:
             await send_error(ctx, failure_reply("La vérification a échoué", e, logger))

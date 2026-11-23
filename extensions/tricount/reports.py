@@ -33,7 +33,7 @@ from src.core import logging as logutil
 from src.core.logging import log_failure
 from src.discord_ext.autocomplete import guild_group_autocomplete
 from src.discord_ext.look import card, oops, sign
-from src.discord_ext.messages import fetch_user_safe, guild_of, require_guild
+from src.discord_ext.messages import fetch_user_safe, guild_of
 from src.discord_ext.scopes import guild_scopes
 
 from ._common import DEFAULT_CATEGORY, TRICOUNT, guild_currency
@@ -85,9 +85,6 @@ class ReportsMixin:
         max_value=20,
     )
     async def liste_depenses(self, ctx: SlashContext, groupe: str, limite: int | None = 10):
-        if not await require_guild(ctx):
-            return
-
         repo = TricountRepository(guild_of(ctx).id)
         group = await repo.find_active_group(groupe)
         if not group:
@@ -171,9 +168,6 @@ class ReportsMixin:
         autocomplete=True,
     )
     async def bilan(self, ctx: SlashContext, groupe: str):
-        if not await require_guild(ctx):
-            return
-
         repo = TricountRepository(guild_of(ctx).id)
         group = await repo.find_active_group(groupe)
         if not group:
@@ -265,8 +259,6 @@ class ReportsMixin:
     )
     @cooldown(Buckets.USER, 1, 15)
     async def tricount_graphique(self, ctx: SlashContext, groupe: str):
-        if not await require_guild(ctx):
-            return
         repo = TricountRepository(guild_of(ctx).id)
         group = await repo.find_active_group(groupe)
         if not group:
@@ -319,9 +311,6 @@ class ReportsMixin:
         scopes=guild_scopes(TRICOUNT.guild_ids()),
     )
     async def mes_groupes(self, ctx: SlashContext):
-        if not await require_guild(ctx):
-            return
-
         repo = TricountRepository(guild_of(ctx).id)
         groups = await repo.list_member_groups(ctx.author.id)
 
