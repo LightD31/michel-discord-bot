@@ -20,7 +20,9 @@ Read it through the live accessors, at use time:
 
 - `MODULE = ModuleConfig("moduleXp")` next to the schema (in `_common.py`), then `MODULE.get(guild_id)` (the guild's settings, `{}` where the module is off), `MODULE.enabled(guild_id)`, `MODULE.items()` / `MODULE.guild_ids()` for the guilds where it is on. Each call reads the store, so a dashboard save is seen on the next read without reloading the extension.
 
-- `global_config()` for the global sections, read at use time (as YouTube's API key is). An extension that takes a section when it loads (a client built once, a command scoped to `devGuildId`) declares it in `GLOBAL_SECTIONS`: saving that section in the dashboard reloads it and syncs the commands (`WebUIContext.section_extensions()`, P34).
+- `global_config()` for the global sections, read at use time (as the bot's Uptime Kuma push is). An extension that takes a section when it loads (a client built once, a command scoped to `devGuildId`) declares it in `GLOBAL_SECTIONS`: saving that section in the dashboard reloads it and syncs the commands (`WebUIContext.section_extensions()`, P34).
+
+- **A service's account belongs to a server.** Credentials, a token or a paid quota that a service gives go in the module that uses them, as `secret_field(sent_to=…)`, never in a global section: no server spends or reads another's account (P36, P37). A server without its own pauses that module: its tasks skip it, a member is told an admin sets it (`NotConnected`, `src/core/errors.py`), and the health card's "Comptes" line names it (`ACCOUNTS`, `src/webui/routes/health.py`). Global sections keep the bot's own infrastructure (`discord`, `mongodb`, `webui`, `backup`, `metrics`, `errorReporting`, the bot's Twitch account, its Uptime Kuma push) and public endpoints that need no account.
 
 - Command scopes are the one read taken at import, `scopes=guild_scopes(MODULE.guild_ids())`, which is why switching a module on or off reloads its extensions.
 

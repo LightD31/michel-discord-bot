@@ -15,7 +15,7 @@ from src.discord_ext.channels import fetch_guild_channel
 from src.discord_ext.look import card
 
 from ._base import ConfrerieBase
-from ._common import CONFRERIE, ConfrerieError
+from ._common import CONFRERIE, ConfrerieError, notion_secret
 
 logger = logutil.init_logger(__name__)
 
@@ -79,7 +79,7 @@ class UpdatesMixin(ConfrerieBase):
 
     async def update(self, page_id: str, guild_id: str, settings: dict):
         """Fetch ``page_id`` from Notion and send its embed to the guild's right channel."""
-        page = await self.notion_client.retrieve_page(page_id)
+        page = await self.notion(settings).retrieve_page(page_id)
         work = parse_work(page)
 
         if work.defi:
@@ -123,12 +123,12 @@ class UpdatesMixin(ConfrerieBase):
         for guild_id, settings in CONFRERIE.items():
             with log_context.scope(guild_id=guild_id):
                 db_id = settings.get("confrerieNotionDbOeuvresId")
-                if db_id:
+                if db_id and notion_secret(settings):  # its own Notion token (P37)
                     await self._autoupdate_guild(guild_id, settings, db_id)
 
     async def _autoupdate_guild(self, guild_id: str, settings: dict, db_id: str) -> None:
         try:
-            updated_pages = await self.notion_client.query_data_source(
+            updated_pages = await self.notion(settings).query_data_source(
                 database_id=db_id,
                 filter_params={"property": "Update", "checkbox": {"equals": True}},
             )
@@ -142,7 +142,7 @@ class UpdatesMixin(ConfrerieBase):
             for page in updated_pages:
                 try:
                     await self.update(page["id"], guild_id, settings)
-                    await self.notion_client.update_page_properties(
+                    await self.notion(settings).update_page_properties(
                         page_id=page["id"], properties={"Update": {"checkbox": False}}
                     )
                     logger.debug(f"Page {page['id']} mise à jour avec succès")

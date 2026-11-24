@@ -134,14 +134,11 @@ async def check_minecraft(settings: dict[str, Any]) -> str:
     )
 
 
-async def check_uptime(settings: dict[str, Any]) -> str:  # noqa: ARG001 — Kuma is global
-    """Read Uptime Kuma's monitors with the bot's URL and key (P16)."""
-    kuma = UptimeKumaSettings.load()
+async def check_uptime(settings: dict[str, Any]) -> str:
+    """Read the server's Uptime Kuma monitors with its URL and key (P16, P37)."""
+    kuma = UptimeKumaSettings.from_section(settings)
     if not kuma.metrics_configured:
-        raise HTTPException(
-            status_code=422,
-            detail="Uptime Kuma n'est pas configuré : un développeur doit renseigner son URL et sa clé d'API.",
-        )
+        raise _incomplete("l'URL et la clé API d'Uptime Kuma")
     try:
         states = await fetch_monitor_states(kuma)
     except UptimeKumaError as e:
@@ -155,18 +152,17 @@ YOUTUBE_CHECKED_CHANNELS = 5
 
 async def check_youtube(settings: dict[str, Any]) -> str:
     """The API key, and the latest video of the first followed channels (P16)."""
-    if not youtube.api_key() or not youtube.api_url():
-        raise HTTPException(
-            status_code=422,
-            detail="L'API YouTube n'est pas configurée : un développeur doit renseigner sa clé.",
-        )
+    if not youtube.configured(settings):
+        raise _incomplete("la clé et l'URL de l'API YouTube")
     handles = list(settings.get("youtubeChannelList") or {})[:YOUTUBE_CHECKED_CHANNELS]
     if not handles:
         raise _incomplete("au moins une chaîne à suivre")
     lines = []
     for handle in handles:
         try:
-            latest = await youtube.latest_upload(await youtube.uploads_playlist(handle))
+            latest = await youtube.latest_upload(
+                settings, await youtube.uploads_playlist(settings, handle)
+            )
             lines.append(f"{handle} : « {latest.get('title', '?')} »")
         except Exception as e:  # noqa: BLE001 — one channel wrong is said, the rest checked
             logger.info("YouTube check of %s failed: %s", handle, e)

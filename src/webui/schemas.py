@@ -651,35 +651,6 @@ class TwitchSection(SchemaBase):
     twitchClientSecret: str = secret_field("Client Secret", required=True)
 
 
-@register_section("youtube")
-class YoutubeSection(SchemaBase):
-    __label__ = "YouTube"
-    __icon__ = "▶️"
-
-    youtubeApiKey: str = secret_field(
-        "Clé API", required=True, description="Clé API YouTube Data v3."
-    )
-    youtubeApiUrl: str = ui(
-        "URL de l'API",
-        "url",
-        required=True,
-        description=(
-            "Base de l'API YouTube Data v3 (https://www.googleapis.com/youtube/v3). "
-            "Vide : aucune vérification des chaînes."
-        ),
-    )
-
-
-@register_section("notion")
-class NotionSection(SchemaBase):
-    __label__ = "Notion"
-    __icon__ = "📝"
-
-    notionSecret: str = secret_field(
-        "Token secret", required=True, description="Token d'intégration Notion."
-    )
-
-
 class AiModelEntry(BaseModel):
     """One entry of the ``models`` widget (``AI.models``), as the SPA writes it.
 
@@ -800,22 +771,13 @@ class UptimeKumaSection(SchemaBase):
     __label__ = "Uptime Kuma"
     __icon__ = "📡"
 
-    uptimeKumaUrl: str = ui(
+    uptimeKumaUrl: str | None = ui(
         "URL",
         "url",
-        required=True,
         description=(
-            "URL de l'instance Uptime Kuma (un nom d'hôte seul est joint en HTTPS). Le bot "
-            "n'utilise que /metrics et /api/push : un proxy d'authentification devant Kuma "
-            "doit les laisser passer."
-        ),
-    )
-    uptimeKumaApiKey: str = secret_field(
-        "Clé API",
-        required=True,
-        description=(
-            "Clé API Uptime Kuma (Paramètres → Clés API). Elle ne permet que de lire /metrics, "
-            "d'où le bot tire l'état des capteurs toutes les 30 secondes."
+            "L'instance Uptime Kuma où le bot signale qu'il tourne (un nom d'hôte seul est "
+            "joint en HTTPS ; /api/push doit passer un éventuel proxy). Les alertes de chaque "
+            "serveur lisent leur propre instance, dans le module Uptime."
         ),
     )
     uptimeKumaToken: str | None = secret_field(

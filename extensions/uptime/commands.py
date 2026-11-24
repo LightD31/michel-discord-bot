@@ -52,15 +52,15 @@ class CommandsMixin:
 
     # Set up by the extension (__init__.py).
     alerts: dict[str, dict[int, MonitorAlert]]
-    monitors: dict[int, MonitorState]
-    kuma_ok: bool
+    monitors: dict[str, dict[int, MonitorState]]
+    kuma_ok: set[str]
     _state_lock: asyncio.Lock
 
     if TYPE_CHECKING:
 
-        def current_status(self, monitor_id: int) -> MonitorStatus | None: ...
+        def current_status(self, guild_id: str, monitor_id: int) -> MonitorStatus | None: ...
 
-        def monitor_name(self, monitor_id: int) -> str: ...
+        def monitor_name(self, guild_id: str, monitor_id: int) -> str: ...
 
     async def _check_guild(self, ctx: SlashContext) -> str | None:
         """The guild id, or ``None`` after telling the user why the command can't run."""
@@ -123,11 +123,12 @@ class CommandsMixin:
         guild_id = await self._check_guild(ctx)
         if guild_id is None:
             return
-        if not self.kuma_ok:
+        if guild_id not in self.kuma_ok:
             await send_error(ctx, KUMA_UNREACHABLE)
             return
         monitor_id = self._parse_monitor_id(sensor)
-        monitor = self.monitors.get(monitor_id) if monitor_id is not None else None
+        monitors = self.monitors.get(guild_id, {})
+        monitor = monitors.get(monitor_id) if monitor_id is not None else None
         if monitor is None:
             await send_error(ctx, "Capteur introuvable : choisis-le dans la liste proposée.")
             return
@@ -170,7 +171,9 @@ class CommandsMixin:
     async def setup_sensor_autocomplete(self, ctx: AutocompleteContext):
         """Every Kuma monitor whose name (with its group) matches the input."""
         query = (ctx.input_text or "").lower()
-        monitors = sorted(self.monitors.values(), key=lambda m: m.name.lower())
+        monitors = sorted(
+            self.monitors.get(guild_id_of(ctx), {}).values(), key=lambda m: m.name.lower()
+        )
         choices: list[dict[str, Any]] = [
             {"name": _choice_name(m.name), "value": str(m.id)}
             for m in monitors
@@ -215,16 +218,17 @@ class CommandsMixin:
             monitor_id,
         )
         await send_success(
-            ctx, f"Alerte supprimée pour le capteur **{self.monitor_name(monitor_id)}**."
+            ctx, f"Alerte supprimée pour le capteur **{self.monitor_name(guild_id, monitor_id)}**."
         )
 
     @remove_maintenance_alert.autocomplete("capteur")
     async def remove_sensor_autocomplete(self, ctx: AutocompleteContext):
         """This guild's alerts, including monitors since deleted from Kuma."""
         query = (ctx.input_text or "").lower()
+        guild_id = guild_id_of(ctx)
         names = {
-            monitor_id: self.monitor_name(monitor_id)
-            for monitor_id in self.alerts.get(guild_id_of(ctx), {})
+            monitor_id: self.monitor_name(guild_id, monitor_id)
+            for monitor_id in self.alerts.get(guild_id, {})
         }
         choices: list[dict[str, Any]] = [
             {"name": _choice_name(name), "value": str(monitor_id)}
@@ -243,7 +247,7 @@ class CommandsMixin:
             return
         alerts = sorted(
             self.alerts.get(guild_id, {}).values(),
-            key=lambda a: self.monitor_name(a.monitor_id).lower(),
+            key=lambda a: self.monitor_name(guild_id, a.monitor_id).lower(),
         )
         if not alerts:
             await send_error(ctx, "Aucune alerte de maintenance configurée sur ce serveur.")
@@ -252,11 +256,11 @@ class CommandsMixin:
         embed = card("moduleUptime", title="📋 Alertes de maintenance configurées")
         for alert in alerts[:MAX_EMBED_FIELDS]:
             # Not ``or``: DOWN is 0.
-            status = self.current_status(alert.monitor_id)
+            status = self.current_status(guild_id, alert.monitor_id)
             if status is None:
                 status = alert.last_status
             embed.add_field(
-                name=f"Capteur : {self.monitor_name(alert.monitor_id)}",
+                name=f"Capteur : {self.monitor_name(guild_id, alert.monitor_id)}",
                 value=(
                     f"Canal : <#{alert.channel_id}>\n"
                     f"Mode : {alert.mode.label}\n"
@@ -268,6 +272,6 @@ class CommandsMixin:
             sign(
                 embed, "moduleUptime", f"{len(alerts) - MAX_EMBED_FIELDS} alerte(s) non affichée(s)"
             )
-        if not self.kuma_ok:
+        if guild_id not in self.kuma_ok:
             embed.description = "⚠️ Uptime Kuma est injoignable : les états peuvent être anciens."
         await ctx.send(embed=embed, ephemeral=True)

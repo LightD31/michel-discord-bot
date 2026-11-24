@@ -215,37 +215,41 @@ def test_minecraft_answers_with_its_players(monkeypatch):
     assert incomplete.value.status_code == 422
 
 
-def test_uptime_kuma_uses_the_global_settings(monkeypatch, store_config):
+def test_uptime_kuma_reads_the_servers_own_instance(monkeypatch, store_config):
+    """P37: the server's URL and key, not the bot's (whose section only pushes its heartbeat)."""
     store_config({"config": {"uptimeKuma": {"uptimeKumaUrl": "https://kuma.example.com"}}})
     with pytest.raises(HTTPException) as unset:
         check(Ctx({"moduleUptime": {"enabled": True}}), "moduleUptime")
     assert unset.value.status_code == 422
 
     async def states(settings):
+        assert (settings.base_url, settings.api_key) == ("https://kuma.ici", "k")
         return {1: object(), 2: object()}
 
-    monkeypatch.setattr(checks, "UptimeKumaSettings", SimpleNamespace(
-        load=lambda: SimpleNamespace(metrics_configured=True)
-    ))  # fmt: skip
     monkeypatch.setattr(checks, "fetch_monitor_states", states)
-    out = check(Ctx({"moduleUptime": {"enabled": True}}), "moduleUptime")
+    own = {"enabled": True, "uptimeKumaUrl": "https://kuma.ici", "uptimeKumaApiKey": "k"}
+    out = check(Ctx({"moduleUptime": own}), "moduleUptime")
     assert out["message"] == "Uptime Kuma répond : 2 sonde(s) visible(s)."
 
 
-def test_youtube_names_each_channel_s_latest_video(monkeypatch, store_config):
-    store_config({"config": {"youtube": {"youtubeApiKey": "k", "youtubeApiUrl": "https://yt/v3"}}})
-
-    async def uploads(handle):
+def test_youtube_names_each_channel_s_latest_video(monkeypatch):
+    async def uploads(settings, handle):
+        assert settings["youtubeApiKey"] == "k"  # the server's own key (P37)
         if handle == "@perdu":
             raise KeyError("items")
         return f"UU-{handle}"
 
-    async def latest(playlist):
+    async def latest(settings, playlist):
         return {"title": f"Vidéo de {playlist}"}
 
     monkeypatch.setattr(checks.youtube, "uploads_playlist", uploads)
     monkeypatch.setattr(checks.youtube, "latest_upload", latest)
-    settings = {"enabled": True, "youtubeChannelList": {"@chaine": {}, "@perdu": {}}}
+    settings = {
+        "enabled": True,
+        "youtubeApiKey": "k",
+        "youtubeApiUrl": "https://yt/v3",
+        "youtubeChannelList": {"@chaine": {}, "@perdu": {}},
+    }
     out = check(Ctx({"moduleYoutube": settings}), "moduleYoutube")
     assert "@chaine : « Vidéo de UU-@chaine »" in out["message"]
     assert "@perdu : introuvable" in out["message"]

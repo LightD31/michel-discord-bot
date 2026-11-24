@@ -54,11 +54,11 @@ export function healthTasksHtml(tasks) {
     })}`;
 }
 
-// The accounts the server's modules run on (P36): Spotify's, to connect on its page.
+// The accounts the server's modules run on (P36, P37): each set on its module's page.
 export function healthAccountsHtml(accounts) {
     return html`${(accounts || []).map(a => a.connected
-        ? healthLine(true, html`<strong>${a.service}</strong> : compte connecté.`)
-        : healthLine(false, html`<strong>${a.service}</strong> : aucun compte connecté, le module est en pause. Connecte-le depuis la page du module.`))}`;
+        ? healthLine(true, html`<strong>${a.service}</strong> : compte du serveur prêt.`)
+        : healthLine(false, html`<strong>${a.service}</strong> : pas de compte à ce serveur (clé ou connexion manquante), le module est en pause. Renseigne-le sur la page du module.`))}`;
 }
 
 // What the overview's "Santé" tile counts: each channel, feed, task or account in trouble.

@@ -16,7 +16,7 @@ from src.discord_ext.look import card, sign
 from src.discord_ext.messages import edit_message_if_changed
 
 from ._base import ConfrerieBase
-from ._common import CONFRERIE, ConfrerieError
+from ._common import CONFRERIE, ConfrerieError, notion_secret
 
 logger = logutil.init_logger(__name__)
 
@@ -107,26 +107,28 @@ class StatsMixin(ConfrerieBase):
         logger.debug("Début de la tâche de statistiques de la confrérie")
         guilds = CONFRERIE.items()
         self.recap_messages.keep_only([guild_id for guild_id, _ in guilds])
-        # Guilds sharing a Notion database share one aggregation per run.
-        stats_by_db: dict[str, ConfrerieStats] = {}
+        # Guilds reading one Notion database with one integration share an aggregation.
+        stats_by_db: dict[tuple[str, str], ConfrerieStats] = {}
         for guild_id, settings in guilds:
             with log_context.scope(guild_id=guild_id):
                 db_id = settings.get("confrerieNotionDbOeuvresId")
-                if not db_id:
-                    continue
+                if not db_id or not notion_secret(settings):
+                    continue  # no database, or no Notion token of its own yet (P37)
+                key = (notion_secret(settings), db_id)
                 try:
-                    if db_id not in stats_by_db:
-                        stats_by_db[db_id] = await self._fetch_statistics(db_id)
-                    await self._update_statistics_message(guild_id, settings, stats_by_db[db_id])
+                    if key not in stats_by_db:
+                        stats_by_db[key] = await self._fetch_statistics(settings, db_id)
+                    await self._update_statistics_message(guild_id, settings, stats_by_db[key])
                     logger.debug("Statistiques de la confrérie mises à jour (serveur %s)", guild_id)
                 except Exception as e:
                     log_failure(logger, f"Erreur lors de la mise à jour des statistiques: {e}")
 
-    async def _fetch_statistics(self, db_id: str) -> ConfrerieStats:
+    async def _fetch_statistics(self, settings: dict, db_id: str) -> ConfrerieStats:
         """Query every œuvre (all pages) of *db_id* and aggregate them."""
-        pages = await self.notion_client.query_data_source(database_id=db_id)
+        notion = self.notion(settings)
+        pages = await notion.query_data_source(database_id=db_id)
         try:
-            schema = await self.notion_client.get_properties_schema(db_id)
+            schema = await notion.get_properties_schema(db_id)
             defi_options = np.schema_options(schema, COL_DEFI)
         except Exception as e:  # noqa: BLE001 — the options only refine "dernier défi"
             logger.warning("Schéma Notion des œuvres indisponible: %s", e)

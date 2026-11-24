@@ -44,16 +44,20 @@ def _to_embed(message: AlertMessage) -> Embed:
 
 
 class NotificationsMixin:
-    """Apply each /metrics read to every guild's alerts."""
+    """Apply each guild's /metrics read to its alerts."""
 
     # Set up by the extension (__init__.py).
     bot: Client
     alerts: dict[str, dict[int, MonitorAlert]]
     _state_lock: asyncio.Lock
 
-    async def apply_states(self, states: dict[int, MonitorState]) -> None:
+    async def apply_states(self, guild_id: str, states: dict[int, MonitorState]) -> None:
+        """Advance the guild's alerts with a read of its own Kuma."""
         async with self._state_lock:
-            changes = apply_statuses(self.alerts, {i: s.status for i, s in states.items()})
+            changes = apply_statuses(
+                {guild_id: self.alerts.get(guild_id, {})},
+                {i: s.status for i, s in states.items()},
+            )
             for change in changes:
                 try:
                     await UptimeRepository(change.guild_id).set_last_status(

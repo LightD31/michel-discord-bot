@@ -154,10 +154,11 @@ too, followed by a restart so every extension picks it up.
 | Dashboard OAuth secret | Developer Portal → OAuth2 → Reset Secret | `webui.clientSecret` |
 | MongoDB credentials | Your MongoDB server | `mongodb.url` |
 | Spotify | Spotify's developer console | each server's `moduleSpotify` (Client ID / Secret) |
-| Twitch, YouTube, Notion | Each provider's developer console | `twitch`, `youtube`, `notion` sections |
+| YouTube, Notion, Uptime Kuma | The provider's console, or the server's own Kuma | each server's `moduleYoutube`, `moduleConfrerie`, `moduleUptime` |
+| Twitch | Twitch's developer console | `twitch` section |
 | AI providers (OpenRouter, NanoGPT) | Provider dashboard | `OpenRouter.openrouterApiKey`, `NanoGPT.apiKey` |
 | Shlink | Shlink server: `shlink api-key:generate` | `shlink.shlinkApiKey` |
-| Uptime Kuma | Uptime Kuma → Settings → API Keys | `uptimeKuma.uptimeKumaApiKey`, `uptimeKuma.uptimeKumaToken` |
+| Uptime Kuma | Uptime Kuma → Settings → API Keys / the push monitor | each server's `moduleUptime.uptimeKumaApiKey`; the bot's `uptimeKuma.uptimeKumaToken` |
 | Sentry / GlitchTip DSN | Project → Settings → Client Keys | `errorReporting.dsn` |
 | LLDAP admin password (per server) | LLDAP web UI → the admin user | `moduleLldap.lldapAdminPassword` |
 | Minecraft SFTP password (per server) | Your host's panel | `moduleMinecraft.minecraftSftpsPassword` |
