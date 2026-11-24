@@ -194,7 +194,7 @@ class StreamlabsCharityExtension(Extension):
                     if url not in teams:
                         teams[url] = await self.fetch_team(url)
                     campaign_data, members_dict = teams[url]
-                    await self.update_message(message, url, campaign_data, members_dict)
+                    await self.update_message(guild_id, message, url, campaign_data, members_dict)
                 except ClientError as e:
                     logger.error("Guild %s: failed to fetch Streamlabs data: %s", guild_id, e)
                 except KeyError as e:
@@ -245,7 +245,7 @@ class StreamlabsCharityExtension(Extension):
                     members_dict[stream.user_login]["is_live"] = True
                     members_dict[stream.user_login]["title"] = stream.title
 
-    async def update_message(self, message, url, campaign_data, members_dict):
+    async def update_message(self, guild_id: str, message, url, campaign_data, members_dict):
         members_dict = dict(sorted(members_dict.items()))
         online_members, offline_members = self.categorize_members(members_dict)
         members_str_online = self.split_members(online_members)
@@ -256,6 +256,7 @@ class StreamlabsCharityExtension(Extension):
                 self.create_cause_embed(campaign_data),
                 self.create_streamers_embed(members_str_online, members_str_offline, members_dict),
             ],
+            guild_id=guild_id,
             tags=["streamlabs"],
         )
         await edit_message_if_changed(
@@ -385,6 +386,7 @@ class StreamlabsCharityExtension(Extension):
                 self.create_cause_embed(campaign_data),
                 self.create_final_members_embed(members_str),
             ],
+            guild_id=guild_id_of(ctx),
             tags=["streamlabs"],
         )
         await edit_message_if_changed(

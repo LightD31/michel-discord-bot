@@ -102,6 +102,7 @@ LOOKS: dict[str, Look] = {
     "moduleRss": Look("📰", "Flux RSS", Palette.ORANGE),
     "moduleSatisfactory": Look("🏭", "Satisfactory", Palette.TEAL),
     "moduleSecretSanta": Look("🎁", "Secret Santa", Palette.RED),
+    "moduleShlink": Look("🔗", "Liens courts", Palette.BLUE),
     "moduleSpeedons": Look("🏃", "Speedons", Palette.LIME),
     "moduleSpotify": Look("🎵", "Spotify", Palette.SPOTIFY),
     "moduleStarboard": Look("⭐", "Starboard", Palette.AMBER),

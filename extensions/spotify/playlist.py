@@ -282,6 +282,7 @@ class PlaylistMixin(SpotifyBase):
                 dashboard = await shorten_keyed(
                     f"spotify-dashboard-{server.guild_id}",
                     server.links.dashboard,
+                    guild_id=server.guild_id,
                     title="Dashboard playlist",
                     tags=["spotify"],
                 )

@@ -147,6 +147,9 @@ out["numbers"] = numbers_without_bounds(schemas)
 out["choices"] = choices_unlike_their_literal(schemas)
 out["fields"] = {key: list(cls.model_fields) for key, cls in schemas._MODULE_REGISTRY.items()}
 out["module_schemas"] = schemas.MODULE_SCHEMAS
+out["section_fields"] = {
+    key: list(cls.model_fields) for key, cls in schemas._SECTION_REGISTRY.items()
+}
 with open(sys.argv[1], "w", encoding="utf-8") as f:
     json.dump(out, f)
 """
@@ -188,8 +191,16 @@ def test_module_secrets_name_where_they_are_sent(probe):
     """A guild admin who re-points a secret must type it again (``secret_field(sent_to=…)``).
 
     Without ``sent_to``, the masked placeholder would carry the stored secret to
-    whatever host a co-admin just entered.
+    whatever host a co-admin just entered. A target may be a global section's
+    field (``"OpenRouter.baseUrl"``, P37): the bot's own endpoint, which only a
+    developer edits.
     """
+    sections = probe["section_fields"]
+
+    def known(target: str, fields: dict) -> bool:
+        section, _, field = target.partition(".")
+        return target in fields or field in sections.get(section, ())
+
     offenders = []
     for key, schema in probe["module_schemas"].items():
         fields = schema["fields"]
@@ -202,7 +213,7 @@ def test_module_secrets_name_where_they_are_sent(probe):
             offenders.extend(
                 f"{key}.{name}: sent_to names unknown field {target}"
                 for target in targets
-                if target not in fields
+                if not known(target, fields)
             )
     assert offenders == [], (
         "declare secret_field(sent_to=[…]) with the fields naming where the secret goes"

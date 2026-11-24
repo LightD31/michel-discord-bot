@@ -12,7 +12,7 @@ import { state } from './state.js';
 // ── Routing ───────────────────────────────────────
 // Each page has a hash URL (#/server/<id>, #/module/<id>/<module>, #/logs…),
 // so a link opens it, a reload stays on it and the back button goes back.
-export const ROUTED_PAGES = ['global', 'extensions', 'logs', 'links'];
+export const ROUTED_PAGES = ['global', 'extensions', 'logs'];
 
 export function routeHash(page, serverId = null, moduleName = null) {
     if (page === 'server' && serverId) return `#/server/${encodeURIComponent(serverId)}`;
@@ -60,7 +60,7 @@ export async function navigate(page, serverId = null, moduleName = null, { fromH
     if (page === 'home' && !isAdmin()) page = 'me';
     // Restrict admin-only pages for non-admin users
     const adminPages = ['server', 'module', 'setup'];
-    const developerPages = ['global', 'extensions', 'logs', 'links'];
+    const developerPages = ['global', 'extensions', 'logs'];
     if (adminPages.includes(page) && !isAdmin()) {
         page = 'me';
         serverId = null;
@@ -95,8 +95,9 @@ export async function navigate(page, serverId = null, moduleName = null, { fromH
         loadTwitchAuth().then(() => render());
     }
 
-    if (page === 'links') {
-        state.shlink.editing = null;
+    // Liens courts: the server's own Shlink, on its module page (P37).
+    if (page === 'module' && moduleName === 'moduleShlink') {
+        Object.assign(state.shlink, { serverId, editing: null, page: 1, search: '', status: null, items: [] });
         loadShortLinks().then(() => render());
     }
 

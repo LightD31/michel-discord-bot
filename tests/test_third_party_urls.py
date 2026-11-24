@@ -106,10 +106,10 @@ async def test_the_mdi_event_link_follows_the_configured_site(store_config, monk
     monkeypatch.setattr(notifications, "shorten_url", no_shortener)
 
     store_config({"config": {"raiderio": {"webUrl": "https://rio.test/"}}})
-    assert await notifications._event_url("mdi-s1") == "https://rio.test/events/mdi-s1"
+    assert await notifications._event_url("1", "mdi-s1") == "https://rio.test/events/mdi-s1"
 
     store_config({"config": {"raiderio": {"apiUrl": "https://rio.test/api"}}})
-    assert await notifications._event_url("mdi-s1") is None
+    assert await notifications._event_url("1", "mdi-s1") is None
 
 
 # ── olympics.com ─────────────────────────────────────────────────────────

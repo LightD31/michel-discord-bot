@@ -3,6 +3,8 @@
 - ``GET /api/ai/catalog?api=…`` (developer): a provider's live model catalog,
   so the global ``AI.models`` list can be filled by picking instead of typing
   ids. Read-only, proxied through :mod:`src.integrations.llm` (memoized there).
+  The catalogs are public: only the API's base URL is needed, no server's key
+  (each server brings its own, in ``moduleIA``; P37).
 - ``GET /api/servers/{id}/ai/models`` (guild admin): the *configured* models'
   keys and names, for the per-guild default-model dropdown. Exposes nothing
   else from the developer-only global config.
@@ -29,10 +31,10 @@ def create_router(ctx: WebUIContext) -> APIRouter:
         ctx.require_developer(request)
         if api not in llm.SUPPORTED_APIS:
             raise HTTPException(status_code=400, detail="API inconnue")
-        if not llm.get_api_settings(api).configured:
+        if not llm.get_api_settings(api).base_url:
             raise HTTPException(
                 status_code=400,
-                detail=f"{llm.API_LABELS[api]} non configurée (clé API et URL requises)",
+                detail=f"{llm.API_LABELS[api]} non configurée (URL de l'API requise)",
             )
         try:
             models = await llm.fetch_catalog(api)
@@ -49,10 +51,13 @@ def create_router(ctx: WebUIContext) -> APIRouter:
     @router.get("/api/ai/apis")
     async def api_ai_apis(request: Request):
         ctx.require_developer(request)
-        configured = set(llm.configured_apis())
         return {
             "apis": [
-                {"id": name, "label": llm.API_LABELS[name], "configured": name in configured}
+                {
+                    "id": name,
+                    "label": llm.API_LABELS[name],
+                    "configured": bool(llm.get_api_settings(name).base_url),
+                }
                 for name in llm.SUPPORTED_APIS
             ]
         }

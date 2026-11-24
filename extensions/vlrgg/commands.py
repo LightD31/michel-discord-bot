@@ -109,7 +109,9 @@ class CommandsMixin(VlrggBase):
                 ctx, f"Équipe « {equipe} » introuvable, ou API VLR.gg indisponible pour le moment."
             )
             return
-        await ctx.send(embeds=[await shorten_embed(embed, tags=["vlrgg"])])
+        await ctx.send(
+            embeds=[await shorten_embed(embed, guild_id=guild_id_of(ctx), tags=["vlrgg"])]
+        )
 
     @vlr_equipe.autocomplete("equipe")
     async def vlr_equipe_autocomplete(self, ctx: AutocompleteContext) -> None:
@@ -310,7 +312,9 @@ class CommandsMixin(VlrggBase):
             await send_error(ctx, f"Match VLR.gg {match_id} introuvable.")
             return
         embed = self._build_match_summary_embed(match_id, details)
-        await ctx.send(embeds=[await shorten_embed(embed, tags=["vlrgg"])])
+        await ctx.send(
+            embeds=[await shorten_embed(embed, guild_id=guild_id_of(ctx), tags=["vlrgg"])]
+        )
 
     def _build_match_summary_embed(self, match_id: str, details: dict[str, Any]) -> Embed:
         t1, t2 = details["teams"][0], details["teams"][1]

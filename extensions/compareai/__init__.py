@@ -41,15 +41,16 @@ class CompareAIExtension(AskMixin, MentionsMixin, VotingMixin, Extension):
         settings = global_settings()
         for problem in settings.problems:
             logger.warning("AI config: %s", problem)
-        apis = llm.configured_apis()
-        if not apis:
-            logger.warning("No AI API configured (OpenRouter/NanoGPT baseUrl + key): /ask disabled")
-        for name in apis:
-            api = await llm.get_api(name)
-            if api is not None:
-                await api.load_prices()
-
         for gid in enabled_guild_ids():
+            # Each server's own keys (P37); without one, /ask says who sets it.
+            apis = llm.configured_apis(gid)
+            if not apis:
+                logger.info("Guild %s has no AI key of its own: /ask off there", gid)
+            for name in apis:
+                api = await llm.get_api(name, gid)
+                if api is not None:
+                    await api.load_prices()
+
             await repo_for(gid).ensure_indexes()  # logs a failure, never raises
         try:
             await AiUsageRepository().ensure_indexes()

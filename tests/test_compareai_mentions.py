@@ -65,7 +65,7 @@ def harness(*, answer="Bonjour !", models=("m",), over_quota=False):
     ext.mention_cooldown = Cooldown()
     ext.calls = []
 
-    async def usable_models():
+    async def usable_models(guild_id):
         return list(models)
 
     async def reserve_calls(user_id, count, limits):
@@ -80,7 +80,7 @@ def harness(*, answer="Bonjour !", models=("m",), over_quota=False):
         ext.calls.append(("build", parts["question"], parts["server"], parts["author"]))
         return ["prompt"]
 
-    async def answer_once(candidates, settings, messages, *, user_id, limits):
+    async def answer_once(candidates, settings, messages, *, user_id, limits, guild_id):
         return SimpleNamespace(content=answer) if answer else None
 
     ext._usable_models = usable_models

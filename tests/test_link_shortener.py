@@ -119,7 +119,7 @@ def test_replace_urls_leaves_unmapped_urls_alone():
 
 
 class _FakeClient:
-    """Stand-in for ``shlink_client`` recording the calls it received."""
+    """Stand-in for a server's ``ShlinkClient`` recording the calls it received."""
 
     def __init__(self, result="https://exemple.link/xyz", error: Exception | None = None):
         self.result = result
@@ -149,48 +149,55 @@ class _FakeClient:
 
 
 def _patch(monkeypatch, client, settings):
-    monkeypatch.setattr(links, "shlink_client", client)
-    monkeypatch.setattr(links, "get_settings", lambda: settings)
+    """Server "1" has *settings* and *client*; any other server has no Shlink."""
+    monkeypatch.setattr(links, "shlink_for", lambda guild_id: client)
+    monkeypatch.setattr(
+        links,
+        "get_settings",
+        lambda guild_id: settings if guild_id == "1" else _settings(enabled=False),
+    )
 
 
 async def test_shorten_url_passthrough_when_disabled(monkeypatch):
     client = _FakeClient()
     _patch(monkeypatch, client, _settings(enabled=False))
-    assert await links.shorten_url("https://example.com/a") == "https://example.com/a"
+    assert await links.shorten_url("https://example.com/a", guild_id="1") == "https://example.com/a"
     assert client.calls == []
 
 
 async def test_shorten_url_passthrough_when_unconfigured(monkeypatch):
     client = _FakeClient()
     _patch(monkeypatch, client, _settings(shlinkApiKey=""))
-    assert await links.shorten_url("https://example.com/a") == "https://example.com/a"
+    assert await links.shorten_url("https://example.com/a", guild_id="1") == "https://example.com/a"
     assert client.calls == []
 
 
 async def test_shorten_url_shortens_external_link(monkeypatch):
     client = _FakeClient()
     _patch(monkeypatch, client, _settings())
-    assert await links.shorten_url("https://example.com/a") == "https://exemple.link/xyz"
+    assert (
+        await links.shorten_url("https://example.com/a", guild_id="1") == "https://exemple.link/xyz"
+    )
     assert client.calls == ["https://example.com/a"]
 
 
 async def test_shorten_url_skips_excluded_link(monkeypatch):
     client = _FakeClient()
     _patch(monkeypatch, client, _settings(shlinkExcludedDomains=["example.com"]))
-    assert await links.shorten_url("https://example.com/a") == "https://example.com/a"
+    assert await links.shorten_url("https://example.com/a", guild_id="1") == "https://example.com/a"
     assert client.calls == []
 
 
 async def test_shorten_url_falls_back_on_api_error(monkeypatch):
     client = _FakeClient(error=ShlinkError("boom", status=500))
     _patch(monkeypatch, client, _settings())
-    assert await links.shorten_url("https://example.com/a") == "https://example.com/a"
+    assert await links.shorten_url("https://example.com/a", guild_id="1") == "https://example.com/a"
 
 
 async def test_shorten_url_falls_back_on_unexpected_error(monkeypatch):
     client = _FakeClient(error=RuntimeError("kaboom"))
     _patch(monkeypatch, client, _settings())
-    assert await links.shorten_url("https://example.com/a") == "https://example.com/a"
+    assert await links.shorten_url("https://example.com/a", guild_id="1") == "https://example.com/a"
 
 
 async def test_shorten_url_reuses_stale_short_url_on_failure(monkeypatch):
@@ -198,14 +205,16 @@ async def test_shorten_url_reuses_stale_short_url_on_failure(monkeypatch):
     client = _FakeClient(error=ShlinkError("down"))
     client.cache["https://example.com/a"] = "https://exemple.link/old"
     _patch(monkeypatch, client, _settings())
-    assert await links.shorten_url("https://example.com/a") == "https://exemple.link/old"
+    assert (
+        await links.shorten_url("https://example.com/a", guild_id="1") == "https://exemple.link/old"
+    )
 
 
 async def test_shorten_text_rewrites_only_candidates(monkeypatch):
     client = _FakeClient()
     _patch(monkeypatch, client, _settings())
     text = "Nouvelle vidéo https://www.youtube.com/watch?v=abc — aperçu https://example.com/i.png"
-    out = await links.shorten_text(text)
+    out = await links.shorten_text(text, guild_id="1")
     assert out == "Nouvelle vidéo https://exemple.link/xyz — aperçu https://example.com/i.png"
     assert client.calls == ["https://www.youtube.com/watch?v=abc"]
 
@@ -214,13 +223,13 @@ async def test_shorten_text_noop_when_disabled(monkeypatch):
     client = _FakeClient()
     _patch(monkeypatch, client, _settings(enabled=False))
     text = "https://example.com/a"
-    assert await links.shorten_text(text) == text
+    assert await links.shorten_text(text, guild_id="1") == text
 
 
 async def test_shorten_keyed_uses_the_slot_slug(monkeypatch):
     client = _FakeClient()
     _patch(monkeypatch, client, _settings())
-    short = await links.shorten_keyed("Spotify dashboard 42", "https://example.com/a")
+    short = await links.shorten_keyed("Spotify dashboard 42", "https://example.com/a", guild_id="1")
     assert short == "https://exemple.link/spotify-dashboard-42"
     assert client.slots["spotify-dashboard-42"] == "https://example.com/a"
 
@@ -229,8 +238,10 @@ async def test_shorten_keyed_keeps_the_link_when_the_target_changes(monkeypatch)
     """Editing the configured URL must retarget the slot, not mint a new link."""
     client = _FakeClient()
     _patch(monkeypatch, client, _settings())
-    first = await links.shorten_keyed("spotify-dashboard-42", "https://example.com/a")
-    second = await links.shorten_keyed("spotify-dashboard-42", "https://example.com/b")
+    first = await links.shorten_keyed("spotify-dashboard-42", "https://example.com/a", guild_id="1")
+    second = await links.shorten_keyed(
+        "spotify-dashboard-42", "https://example.com/b", guild_id="1"
+    )
     assert first == second == "https://exemple.link/spotify-dashboard-42"
     assert client.slots["spotify-dashboard-42"] == "https://example.com/b"
 
@@ -238,9 +249,9 @@ async def test_shorten_keyed_keeps_the_link_when_the_target_changes(monkeypatch)
 async def test_shorten_keyed_falls_back_to_the_known_slot_url(monkeypatch):
     client = _FakeClient()
     _patch(monkeypatch, client, _settings())
-    await links.shorten_keyed("slot-a", "https://example.com/a")
+    await links.shorten_keyed("slot-a", "https://example.com/a", guild_id="1")
     client.error = ShlinkError("down")
-    assert await links.shorten_keyed("slot-a", "https://example.com/b") == (
+    assert await links.shorten_keyed("slot-a", "https://example.com/b", guild_id="1") == (
         "https://exemple.link/slot-a"
     )
 
@@ -248,14 +259,20 @@ async def test_shorten_keyed_falls_back_to_the_known_slot_url(monkeypatch):
 async def test_shorten_keyed_returns_original_on_unusable_key(monkeypatch):
     client = _FakeClient()
     _patch(monkeypatch, client, _settings())
-    assert await links.shorten_keyed("///", "https://example.com/a") == "https://example.com/a"
+    assert (
+        await links.shorten_keyed("///", "https://example.com/a", guild_id="1")
+        == "https://example.com/a"
+    )
     assert client.calls == []
 
 
 async def test_shorten_keyed_passthrough_when_disabled(monkeypatch):
     client = _FakeClient()
     _patch(monkeypatch, client, _settings(enabled=False))
-    assert await links.shorten_keyed("slot", "https://example.com/a") == "https://example.com/a"
+    assert (
+        await links.shorten_keyed("slot", "https://example.com/a", guild_id="1")
+        == "https://example.com/a"
+    )
     assert client.calls == []
 
 
@@ -280,7 +297,7 @@ def test_settings_unconfigured_without_base_url():
 
 
 def test_client_cache_roundtrip_and_clear():
-    client = ShlinkClient()
+    client = ShlinkClient("1")
     client.cache_put("https://example.com/a", "https://exemple.link/aa")
     assert client.cache_get("https://example.com/a") == "https://exemple.link/aa"
     client.cache_clear()
@@ -290,7 +307,7 @@ def test_client_cache_roundtrip_and_clear():
 def test_client_cache_expires(monkeypatch):
     import src.integrations.shlink as shlink_module
 
-    client = ShlinkClient()
+    client = ShlinkClient("1")
     client.cache_put("https://example.com/a", "https://exemple.link/aa")
     monkeypatch.setattr(shlink_module, "_CACHE_TTL_SECONDS", -1)
     assert client.cache_get("https://example.com/a") is None
@@ -299,9 +316,9 @@ def test_client_cache_expires(monkeypatch):
 async def test_client_request_requires_configuration(monkeypatch):
     import src.integrations.shlink as shlink_module
 
-    monkeypatch.setattr(shlink_module, "get_settings", lambda: _settings(shlinkApiKey=""))
+    monkeypatch.setattr(shlink_module, "get_settings", lambda guild_id: _settings(shlinkApiKey=""))
     with pytest.raises(ShlinkError):
-        await ShlinkClient().list_short_urls()
+        await ShlinkClient("1").list_short_urls()
 
 
 def test_error_detail_uses_api_message():
@@ -331,7 +348,7 @@ class _RecordingClient(ShlinkClient):
     """Real client with the transport stubbed, to exercise the slot logic."""
 
     def __init__(self, existing: dict | None = None):
-        super().__init__()
+        super().__init__("1")
         self.existing = existing
         self.requests: list[tuple[str, str, dict | None]] = []
 
@@ -387,3 +404,14 @@ async def test_retarget_or_create_skips_the_api_when_the_target_is_unchanged():
     short = await client.retarget_or_create("slot-a", "https://example.com/a")
     assert short == "https://exemple.link/slot-a"
     assert client.requests == []
+
+
+async def test_a_link_is_shortened_on_the_server_it_is_posted_in(monkeypatch):
+    """P37: another server's instance is never used, and a DM posts the link as it is."""
+    client = _FakeClient()
+    _patch(monkeypatch, client, _settings())
+    assert await links.shorten_url("https://example.com/a", guild_id="2") == "https://example.com/a"
+    assert (
+        await links.shorten_url("https://example.com/a", guild_id=None) == "https://example.com/a"
+    )
+    assert client.calls == []

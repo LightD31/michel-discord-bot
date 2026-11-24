@@ -229,7 +229,9 @@ class YoutubeExtension(Extension):
                     )
                     # Shortens every link the template rendered — the video URL
                     # and any extra link the guild added to its template.
-                    rendered = await shorten_text(rendered, tags=["youtube", handle])
+                    rendered = await shorten_text(
+                        rendered, guild_id=server, tags=["youtube", handle]
+                    )
                     # @everyone pings only when the template writes it, not
                     # through a value (a handle) it is filled with.
                     role_id = str(channel_cfg.get("mentionRoleId") or "").strip()

@@ -18,7 +18,6 @@ import { renderExtensionsPage } from '../pages/extensions.js';
 import { renderGlobalConfig } from '../pages/global.js';
 import { loadHealth } from '../pages/health.js';
 import { renderHomePage } from '../pages/home.js';
-import { renderShortLinksPage } from '../pages/links.js';
 import { handleLogScroll, renderLogsPage } from '../pages/logs.js';
 import { loadMe, renderMePage } from '../pages/me.js';
 import { renderModulePage } from '../pages/module.js';
@@ -214,9 +213,6 @@ export function renderSidebar() {
                         <a class="nav-item ${state.currentPage === 'extensions' ? 'active' : ''}" href="${routeHash('extensions')}" ${state.currentPage === 'extensions' ? 'aria-current="page"' : ''} data-click="navigate" data-click-args="[&quot;extensions&quot;]" data-prevent>
                             <span class="icon">🧩</span> Extensions
                         </a>
-                        <a class="nav-item ${state.currentPage === 'links' ? 'active' : ''}" href="${routeHash('links')}" ${state.currentPage === 'links' ? 'aria-current="page"' : ''} data-click="navigate" data-click-args="[&quot;links&quot;]" data-prevent>
-                            <span class="icon">🔗</span> Liens courts
-                        </a>
                         <a class="nav-item ${state.currentPage === 'logs' ? 'active' : ''}" href="${routeHash('logs')}" ${state.currentPage === 'logs' ? 'aria-current="page"' : ''} data-click="navigate" data-click-args="[&quot;logs&quot;]" data-prevent>
                             <span class="icon">📋</span> Logs
                         </a>
@@ -252,7 +248,6 @@ export function renderPage() {
         case 'server': return renderServerPage();
         case 'setup': return renderSetupPage();
         case 'module': return renderModulePage();
-        case 'links': return renderShortLinksPage();
         case 'logs': return renderLogsPage();
         case 'me': return renderMePage();
         default: return renderHomePage();

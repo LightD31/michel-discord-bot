@@ -164,7 +164,9 @@ def _build_callback(command: CustomCommand):
             embed = card(MODULE_KEY, author=False)
             embed.set_image(url=response.image_url)
             embeds.append(embed)
-        content = await shorten_text(response.text) if response.text else None
+        content = (
+            await shorten_text(response.text, guild_id=guild_id_of(ctx)) if response.text else None
+        )
         await ctx.send(content, embeds=embeds, allowed_mentions=allowed)
 
     return respond

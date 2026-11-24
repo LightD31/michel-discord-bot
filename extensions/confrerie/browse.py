@@ -102,7 +102,7 @@ class BrowseMixin(ConfrerieBase):
             )
             return
 
-        notion_url, links = await shorten_work_links(work)
+        notion_url, links = await shorten_work_links(guild_id_of(ctx), work)
         embed = build_work_embed(
             work,
             "📖 Fiche du texte" if titre else "📖 Un texte de la confrérie au hasard",
@@ -160,7 +160,9 @@ class BrowseMixin(ConfrerieBase):
         )
         lines = []
         for work in profile.latest:
-            url = await shorten_url(work.url, title=work.title, tags=["confrerie"])
+            url = await shorten_url(
+                work.url, guild_id=guild_id_of(ctx), title=work.title, tags=["confrerie"]
+            )
             label = f"[{work.title}]({url})" if url else work.title
             detail = work.type_genre or work.status or ""
             lines.append(label + (f" — {detail}" if detail else ""))
@@ -176,7 +178,7 @@ class BrowseMixin(ConfrerieBase):
                 )
                 links = [
                     f"[{link.site or link.label}]"
-                    f"({await shorten_url(link.url, title=link.label, tags=['confrerie'])})"
+                    f"({await shorten_url(link.url, guild_id=guild_id_of(ctx), title=link.label, tags=['confrerie'])})"
                     for link in member_links(rows, profile.name)
                 ]
             except Exception as e:  # noqa: BLE001 — the profile is useful without links
@@ -238,7 +240,9 @@ class BrowseMixin(ConfrerieBase):
 
         entries = []
         for tool in tools:
-            url = await shorten_url(tool.url, title=tool.name, tags=["confrerie"])
+            url = await shorten_url(
+                tool.url, guild_id=guild_id_of(ctx), title=tool.name, tags=["confrerie"]
+            )
             entry = f"**[{tool.name}]({url})**" if url else f"**{tool.name}**"
             if tool.tested:
                 entry += " ✅"

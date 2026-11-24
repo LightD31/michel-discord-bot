@@ -150,7 +150,7 @@ def cycle(monkeypatch):
     async def fetch_guild_channel(bot, guild_id, channel_id, **_):
         return channel  # every guild of these tests posts in the same channel
 
-    async def no_shortening(e, feed_id):
+    async def no_shortening(guild_id, e, feed_id):
         return e
 
     monkeypatch.setattr(rss_ext, "RssRepository", FakeRepo)

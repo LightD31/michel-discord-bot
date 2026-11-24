@@ -24,7 +24,7 @@ class Client:
     def __init__(self, content="Bonjour @everyone,\n une   belle semaine !", error=None):
         self.content, self.error, self.calls = content, error, []
 
-    async def complete(self, model, messages, max_tokens):
+    async def complete(self, model, messages, max_tokens, *, guild_id):
         self.calls.append(messages)
         return ModelAnswer(model=model, content=self.content, error=self.error)
 
@@ -45,7 +45,7 @@ def setup(store_config, monkeypatch):
         )
 
     configure()
-    monkeypatch.setattr(intro_mod.llm, "configured_apis", lambda: ["openrouter"])
+    monkeypatch.setattr(intro_mod.llm, "configured_apis", lambda guild_id: ["openrouter"])
     reserved = []
 
     async def reserve(key, calls, limits, now):

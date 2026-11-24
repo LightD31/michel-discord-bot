@@ -6,6 +6,8 @@ Thin async layer over :mod:`src.integrations.shlink` and the pure helpers in
 - **Never lose a post.** Every entry point degrades to the original URL when
   Shlink is disabled, unconfigured, or unreachable — a shortener outage must
   not swallow an RSS entry or a go-live notification.
+- **The server's own instance** (P37). Every entry point takes the
+  ``guild_id`` the link is posted in; ``None`` (a DM) posts it as it is.
 - **Stable output.** Shlink is asked to reuse an existing short URL for a long
   URL it already knows (``findIfExists``), and the client memoizes the mapping,
   so re-rendering the same message yields the same short URL and periodic
@@ -23,24 +25,37 @@ from features.links.shortener import (
     slot_slug,
 )
 from src.core import logging as logutil
-from src.integrations.shlink import ShlinkError, get_settings, shlink_client
+from src.integrations.shlink import ShlinkError, ShlinkSettings, get_settings, shlink_for
 
 logger = logutil.init_logger(__name__)
 
 
-def shortening_enabled() -> bool:
-    """True when automatic shortening is switched on *and* usable."""
-    settings = get_settings()
-    return settings.enabled and settings.configured
+GuildId = str | int | None
 
 
-async def shorten_url(url: str, *, title: str | None = None, tags: list[str] | None = None) -> str:
+def _active(guild_id: GuildId) -> ShlinkSettings | None:
+    """The server's settings when it shortens automatically, else ``None``."""
+    if guild_id is None:
+        return None
+    settings = get_settings(guild_id)
+    return settings if settings.enabled and settings.configured else None
+
+
+def shortening_enabled(guild_id: GuildId) -> bool:
+    """True when the server's automatic shortening is switched on *and* usable."""
+    return _active(guild_id) is not None
+
+
+async def shorten_url(
+    url: str, *, guild_id: GuildId, title: str | None = None, tags: list[str] | None = None
+) -> str:
     """Shorten a single URL, returning it unchanged on any failure or opt-out."""
     if not url:
         return url
-    settings = get_settings()
-    if not (settings.enabled and settings.configured):
+    settings = _active(guild_id)
+    if settings is None:
         return url
+    client = shlink_for(guild_id)
     if not should_shorten(
         url,
         short_hosts=settings.short_hosts,
@@ -48,7 +63,7 @@ async def shorten_url(url: str, *, title: str | None = None, tags: list[str] | N
     ):
         return url
     try:
-        return await shlink_client.shorten(url, title=title, tags=tags)
+        return await client.shorten(url, title=title, tags=tags)
     except ShlinkError as e:
         logger.warning("Shlink shortening failed for %s: %s", url, e)
     except Exception as e:  # noqa: BLE001 — a shortener outage must not lose the post
@@ -57,13 +72,14 @@ async def shorten_url(url: str, *, title: str | None = None, tags: list[str] | N
     # one: a periodically refreshed embed must keep rendering the same URL
     # through a Shlink outage instead of flipping back to the long one and
     # churning an edit on every cycle.
-    return shlink_client.cache_get(url, allow_stale=True) or url
+    return client.cache_get(url, allow_stale=True) or url
 
 
 async def shorten_keyed(
     key: str,
     url: str,
     *,
+    guild_id: GuildId,
     title: str | None = None,
     tags: list[str] | None = None,
 ) -> str:
@@ -81,9 +97,10 @@ async def shorten_keyed(
     """
     if not url:
         return url
-    settings = get_settings()
-    if not (settings.enabled and settings.configured):
+    settings = _active(guild_id)
+    if settings is None:
         return url
+    client = shlink_for(guild_id)
     if not should_shorten(
         url,
         short_hosts=settings.short_hosts,
@@ -96,17 +113,17 @@ async def shorten_keyed(
         logger.warning("%s — lien non raccourci", e)
         return url
     try:
-        return await shlink_client.retarget_or_create(slug, url, title=title, tags=tags)
+        return await client.retarget_or_create(slug, url, title=title, tags=tags)
     except ShlinkError as e:
         logger.warning("Shlink slot %s failed for %s: %s", slug, url, e)
     except Exception as e:  # noqa: BLE001 — a shortener outage must not lose the post
         logger.warning("Unexpected Shlink error for slot %s: %s", slug, e)
     # Same reasoning as shorten_url: prefer the slot's last known short URL so
     # a refreshed message keeps rendering the same payload.
-    return shlink_client.slot_get(slug) or shlink_client.cache_get(url, allow_stale=True) or url
+    return client.slot_get(slug) or client.cache_get(url, allow_stale=True) or url
 
 
-async def shorten_text(text: str, *, tags: list[str] | None = None) -> str:
+async def shorten_text(text: str, *, guild_id: GuildId, tags: list[str] | None = None) -> str:
     """Replace every shortenable URL found in *text* with its short URL.
 
     Markdown-safe: only the URL span is rewritten, so ``[titre](https://…)``
@@ -114,8 +131,8 @@ async def shorten_text(text: str, *, tags: list[str] | None = None) -> str:
     """
     if not text:
         return text
-    settings = get_settings()
-    if not (settings.enabled and settings.configured):
+    settings = _active(guild_id)
+    if settings is None:
         return text
     urls = extract_urls(
         text,
@@ -126,7 +143,7 @@ async def shorten_text(text: str, *, tags: list[str] | None = None) -> str:
         return text
     mapping: dict[str, str] = {}
     for url in urls:
-        short = await shorten_url(url, tags=tags)
+        short = await shorten_url(url, guild_id=guild_id, tags=tags)
         if short != url:
             mapping[url] = short
     return replace_urls(text, mapping)

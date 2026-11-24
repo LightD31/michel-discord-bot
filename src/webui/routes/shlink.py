@@ -1,12 +1,13 @@
 """Short-link management endpoints (Shlink).
 
-Developer-only CRUD over the configured Shlink instance so the links the bot
-posts — and any link created by hand — can be listed, retargeted, retagged or
-deleted from the dashboard instead of Shlink's own admin UI.
+CRUD over a server's own Shlink instance (P37), for that server's admins, so
+the links the bot posts there — and any link created by hand — can be listed,
+retargeted, retagged or deleted from its Shlink module page instead of
+Shlink's own admin UI.
 
 Shlink is the source of truth: nothing is mirrored into MongoDB. Every call
-hits the API through :mod:`src.integrations.shlink`, which reads the global
-``shlink`` config section on each request, so a credential change in the
+hits the API through :mod:`src.integrations.shlink`, which reads the server's
+``moduleShlink`` settings on each request, so a credential change in the
 dashboard applies immediately.
 """
 
@@ -17,7 +18,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from src.core import logging as logutil
-from src.integrations.shlink import ShlinkError, get_settings, shlink_client
+from src.integrations.shlink import ShlinkError, get_settings, shlink_for
 from src.webui import audit
 from src.webui.context import WebUIContext
 
@@ -90,11 +91,13 @@ def _shlink_error(e: ShlinkError) -> HTTPException:
 def create_router(ctx: WebUIContext) -> APIRouter:
     router = APIRouter()
 
-    @router.get("/api/shlink/status")
-    async def api_shlink_status(request: Request):
-        """Report whether Shlink is reachable and whether auto-shortening is on."""
-        ctx.require_developer(request)
-        settings = get_settings()
+    base = "/api/servers/{server_id}/shlink"
+
+    @router.get(f"{base}/status")
+    async def api_shlink_status(request: Request, server_id: str):
+        """Report whether the server's Shlink is set and whether auto-shortening is on."""
+        await ctx.require_guild_admin(request, server_id)
+        settings = get_settings(server_id)
         return JSONResponse(
             {
                 "configured": settings.configured,
@@ -106,20 +109,21 @@ def create_router(ctx: WebUIContext) -> APIRouter:
             }
         )
 
-    @router.get("/api/shlink/short-urls")
+    @router.get(f"{base}/short-urls")
     async def api_list_short_urls(
         request: Request,
+        server_id: str,
         page: int = 1,
         items_per_page: int = 25,
         search: str = "",
         tags: str = "",
     ):
-        ctx.require_developer(request)
+        await ctx.require_guild_admin(request, server_id)
         page = max(1, page)
         items_per_page = max(1, min(items_per_page, MAX_ITEMS_PER_PAGE))
         tag_list = _clean_tags(tags.split(",")) if tags else None
         try:
-            result = await shlink_client.list_short_urls(
+            result = await shlink_for(server_id).list_short_urls(
                 page=page,
                 items_per_page=items_per_page,
                 search_term=search.strip() or None,
@@ -134,12 +138,12 @@ def create_router(ctx: WebUIContext) -> APIRouter:
             }
         )
 
-    @router.post("/api/shlink/short-urls")
-    async def api_create_short_url(request: Request, payload: ShortUrlCreate):
-        session = ctx.require_developer(request)
+    @router.post(f"{base}/short-urls")
+    async def api_create_short_url(request: Request, server_id: str, payload: ShortUrlCreate):
+        session = await ctx.require_guild_admin(request, server_id)
         long_url = _validate_long_url(payload.long_url)
         try:
-            created = await shlink_client.create_short_url(
+            created = await shlink_for(server_id).create_short_url(
                 long_url,
                 title=payload.title,
                 tags=_clean_tags(payload.tags),
@@ -156,15 +160,17 @@ def create_router(ctx: WebUIContext) -> APIRouter:
             session.user_id,
         )
         result = _short_url_to_dict(created)
-        await audit.record(None, session, "short_url.create", target=str(result["short_code"]))
+        await audit.record(server_id, session, "short_url.create", target=str(result["short_code"]))
         return JSONResponse(result)
 
-    @router.patch("/api/shlink/short-urls/{short_code}")
-    async def api_update_short_url(request: Request, short_code: str, payload: ShortUrlUpdate):
-        session = ctx.require_developer(request)
+    @router.patch(f"{base}/short-urls/{{short_code}}")
+    async def api_update_short_url(
+        request: Request, server_id: str, short_code: str, payload: ShortUrlUpdate
+    ):
+        session = await ctx.require_guild_admin(request, server_id)
         long_url = _validate_long_url(payload.long_url) if payload.long_url else None
         try:
-            updated = await shlink_client.update_short_url(
+            updated = await shlink_for(server_id).update_short_url(
                 short_code,
                 long_url=long_url,
                 title=payload.title,
@@ -176,7 +182,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
             "Short URL %s updated by %s (%s)", short_code, session.username, session.user_id
         )
         await audit.record(
-            None,
+            server_id,
             session,
             "short_url.update",
             target=short_code,
@@ -184,17 +190,17 @@ def create_router(ctx: WebUIContext) -> APIRouter:
         )
         return JSONResponse(_short_url_to_dict(updated))
 
-    @router.delete("/api/shlink/short-urls/{short_code}")
-    async def api_delete_short_url(request: Request, short_code: str):
-        session = ctx.require_developer(request)
+    @router.delete(f"{base}/short-urls/{{short_code}}")
+    async def api_delete_short_url(request: Request, server_id: str, short_code: str):
+        session = await ctx.require_guild_admin(request, server_id)
         try:
-            await shlink_client.delete_short_url(short_code)
+            await shlink_for(server_id).delete_short_url(short_code)
         except ShlinkError as e:
             raise _shlink_error(e) from e
         logger.info(
             "Short URL %s deleted by %s (%s)", short_code, session.username, session.user_id
         )
-        await audit.record(None, session, "short_url.delete", target=short_code)
+        await audit.record(server_id, session, "short_url.delete", target=short_code)
         return JSONResponse({"success": True})
 
     return router

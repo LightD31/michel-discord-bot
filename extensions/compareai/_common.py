@@ -15,7 +15,14 @@ from features.ai.settings import (
 )
 from src.core import logging as logutil
 from src.core.config import config_store
-from src.webui.schemas import ModuleHelp, SchemaBase, enabled_field, register_module, ui
+from src.webui.schemas import (
+    ModuleHelp,
+    SchemaBase,
+    enabled_field,
+    register_module,
+    secret_field,
+    ui,
+)
 
 MODULE_KEY = "moduleIA"
 
@@ -38,6 +45,20 @@ class IAConfig(SchemaBase):
     )
 
     enabled: bool = enabled_field()
+    openrouterApiKey: str | None = secret_field(
+        "Clé API OpenRouter",
+        description=(
+            "La clé du serveur : ses questions sont payées sur son compte OpenRouter. "
+            "Il faut au moins une clé, OpenRouter ou NanoGPT, pour que Michel réponde."
+        ),
+        # The URL is the bot's (global): no admin of this server can re-point it.
+        sent_to=("OpenRouter.baseUrl",),
+    )
+    nanogptApiKey: str | None = secret_field(
+        "Clé API NanoGPT",
+        description="La clé NanoGPT du serveur (sk-nano-…), pour les modèles servis par NanoGPT.",
+        sent_to=("NanoGPT.baseUrl",),
+    )
     persona: str = ui(
         "Personnalité",
         "text",

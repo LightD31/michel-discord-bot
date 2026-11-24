@@ -14,6 +14,7 @@ import { renderSchemaForm } from '../forms/schema-form.js';
 import { openModal } from '../ui/modal.js';
 import { toast } from '../ui/toast.js';
 import { renderConfigPreview } from './global.js';
+import { renderShortLinksCards } from './links.js';
 import { publicPageButton } from './public.js';
 
 // ── Module Detail Page ────────────────────────────
@@ -222,6 +223,7 @@ export function renderModulePage() {
                 </div>
             </div>
             ` : '')}
+            ${raw(mod === 'moduleShlink' ? renderShortLinksCards() : '')}
             ${raw(mod === 'moduleSpotify' ? `
             <div class="u-mt-16 card">
                 <div class="card-header">
