@@ -6,17 +6,15 @@ from types import SimpleNamespace
 
 import pytest
 from fastapi import HTTPException
+from webui_fakes import FakeWebUI
 
 import extensions.achievements  # noqa: F401 — registers moduleAchievements
 from src.core.errors import DatabaseError
 from src.webui.routes import achievements as routes
 
 
-class Ctx:
-    async def require_guild_admin(self, request, guild_id):  # noqa: ARG002
-        if guild_id != "1":
-            raise HTTPException(status_code=403, detail="no")
-        return SimpleNamespace(user_id="42")
+def fake_ctx() -> FakeWebUI:
+    return FakeWebUI(session=SimpleNamespace(user_id="42"), manages=["1"])
 
 
 class Repo:
@@ -32,7 +30,7 @@ class Repo:
 
 
 def call(server_id="1"):
-    router = routes.create_router(Ctx())
+    router = routes.create_router(fake_ctx())
     endpoint = next(r.endpoint for r in router.routes if r.path.endswith("/achievements"))
     return json.loads(asyncio.run(endpoint(None, server_id)).body)
 

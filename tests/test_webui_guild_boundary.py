@@ -7,12 +7,12 @@ to (``secret_field(sent_to=…)``).
 """
 
 import asyncio
-import copy
 import json
 from types import SimpleNamespace
 
 import pytest
 from fastapi import HTTPException
+from webui_fakes import FakeWebUI
 
 import extensions.lldap._common  # noqa: F401 — registers moduleLldap
 import extensions.moderation._common  # noqa: F401 — registers moduleModeration
@@ -54,36 +54,13 @@ class FakeBot:
         return FakeChannel(int(cid), owner)
 
 
-class FakeCtx:
-    def __init__(self, stored: dict | None = None) -> None:
-        self.bot = FakeBot()
-        self.data = {"config": {}, "servers": {GUILD: stored or {}}}
-        self.writes = 0
-
-    async def require_guild_admin(self, request, guild_id):  # noqa: ARG002 — signature parity
-        return SimpleNamespace(username="admin", user_id="9")
-
-    async def call_bot(self, func, *args, what: str, **kwargs):  # noqa: ARG002
-        return await func(*args, **kwargs)
-
-    def get_full_config(self):
-        return copy.deepcopy(self.data)
-
-    def mutate_config(self, mutator):
-        data = copy.deepcopy(self.data)
-        mutator(data)  # raising here means nothing is written
-        self.data = data
-        self.writes += 1
-        return data
-
-    def bot_loop_alive(self):
-        return False
-
-    def module_extension_map(self, *, on_save: bool = False):  # noqa: ARG002
-        return {}
+def fake_ctx(stored: dict | None = None) -> FakeWebUI:
+    return FakeWebUI.with_server(
+        GUILD, stored, session=SimpleNamespace(username="admin", user_id="9"), bot=FakeBot()
+    )
 
 
-def save(ctx: FakeCtx, module: str, config: dict):
+def save(ctx: FakeWebUI, module: str, config: dict):
     router = servers_routes.create_router(ctx)
     put = next(
         r.endpoint
@@ -97,7 +74,7 @@ def save(ctx: FakeCtx, module: str, config: dict):
 
 
 def test_a_channel_of_the_guild_is_accepted():
-    ctx = FakeCtx()
+    ctx = fake_ctx()
     resp = save(ctx, "moduleXp", {"enabled": True, "xpChannelId": "11"})
     assert json.loads(resp.body)["status"] == "ok"
     assert ctx.data["servers"][GUILD]["moduleXp"]["xpChannelId"] == "11"
@@ -105,7 +82,7 @@ def test_a_channel_of_the_guild_is_accepted():
 
 @pytest.mark.parametrize("channel", ["21", "99", "not-an-id"])
 def test_another_guilds_or_an_unknown_channel_is_refused(channel):
-    ctx = FakeCtx()
+    ctx = fake_ctx()
     with pytest.raises(HTTPException) as exc:
         save(ctx, "moduleXp", {"enabled": True, "xpChannelId": channel})
     assert exc.value.status_code == 422 and channel in exc.value.detail
@@ -113,7 +90,7 @@ def test_another_guilds_or_an_unknown_channel_is_refused(channel):
 
 
 def test_nested_channels_are_checked_too():
-    ctx = FakeCtx()
+    ctx = fake_ctx()
     feeds = {"news": {"url": "https://example.com/rss", "channel_id": "21"}}
     with pytest.raises(HTTPException) as exc:
         save(ctx, "moduleRss", {"enabled": True, "rssChannelId": "11", "rssFeeds": feeds})
@@ -122,7 +99,7 @@ def test_nested_channels_are_checked_too():
 
 
 def test_a_channel_list_is_checked_entry_by_entry():
-    ctx = FakeCtx()
+    ctx = fake_ctx()
     with pytest.raises(HTTPException) as exc:
         save(ctx, "moduleModeration", {"enabled": True, "ignoredChannelIds": ["11", "21"]})
     assert exc.value.status_code == 422 and "21" in exc.value.detail
@@ -133,7 +110,7 @@ def test_a_channel_list_is_checked_entry_by_entry():
 
 def test_only_channels_the_save_adds_are_checked():
     # A channel deleted since the last save doesn't block an unrelated edit.
-    ctx = FakeCtx({"moduleXp": {"enabled": True, "xpChannelId": "99"}})
+    ctx = fake_ctx({"moduleXp": {"enabled": True, "xpChannelId": "99"}})
     save(ctx, "moduleXp", {"enabled": True, "xpChannelId": "99", "xpPinMessage": True})
     assert ctx.bot.fetched == []
     assert ctx.writes == 1
@@ -191,14 +168,14 @@ def _lldap(url: str, password: str) -> dict:
 
 
 def test_a_masked_secret_is_kept_while_its_host_stays():
-    ctx = FakeCtx({"moduleLldap": _lldap("https://lldap.example", STORED_PASSWORD)})
+    ctx = fake_ctx({"moduleLldap": _lldap("https://lldap.example", STORED_PASSWORD)})
     edited = {**_lldap("https://lldap.example", SECRET_PLACEHOLDER), "lldapBaseDn": "dc=other"}
     save(ctx, "moduleLldap", edited)
     assert ctx.data["servers"][GUILD]["moduleLldap"]["lldapAdminPassword"] == STORED_PASSWORD
 
 
 def test_a_masked_secret_does_not_follow_a_new_host():
-    ctx = FakeCtx({"moduleLldap": _lldap("https://lldap.example", STORED_PASSWORD)})
+    ctx = fake_ctx({"moduleLldap": _lldap("https://lldap.example", STORED_PASSWORD)})
     with pytest.raises(HTTPException) as exc:
         save(ctx, "moduleLldap", _lldap("https://attacker.example", SECRET_PLACEHOLDER))
     assert exc.value.status_code == 422 and "Mot de passe administrateur" in exc.value.detail

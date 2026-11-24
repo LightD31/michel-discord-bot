@@ -344,17 +344,22 @@ class FakeCtx:
 
     def __init__(
         self,
-        author: FakeMember | FakeUser,
+        author: FakeMember | FakeUser | None = None,
         channel: FakeChannel | None = None,
         *,
         bot: FakeBot | None = None,
-        message: FakeMessage | None = None,
+        message: Any = None,
         custom_id: str = "",
+        guild_id: int | None = None,
+        locale: str | None = None,
     ):
-        self.author = self.user = author
+        """*author* defaults to a plain member (id 7); *guild_id* places a context
+        with no channel in a guild, *locale* is the member's Discord language."""
+        self.author = self.user = author if author is not None else FakeUser(7, "membre")
         self.channel = channel
         self.guild = channel.guild if channel is not None else None
-        self.guild_id = self.guild.id if self.guild is not None else None
+        self.guild_id = self.guild.id if self.guild is not None else guild_id
+        self.locale = locale
         self.channel_id = channel.id if channel is not None else None
         self.bot = self.client = bot or FakeBot(self.guild)
         self.message = message
@@ -393,6 +398,14 @@ class FakeCtx:
     @property
     def last(self) -> str:
         return self.texts[-1] if self.replies else ""
+
+    @property
+    def sent(self) -> list[tuple[str | None, dict[str, Any]]]:
+        """Each reply as ``(content, the other arguments)``."""
+        return [
+            (reply.get("content"), {k: v for k, v in reply.items() if k != "content"})
+            for reply in self.replies
+        ]
 
 
 async def run(command: Any, ext: Any, ctx: FakeCtx, *args: Any, **options: Any) -> Any:

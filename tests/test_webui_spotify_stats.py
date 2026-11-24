@@ -8,8 +8,9 @@ repository, so the tests exercise the auth hook, the wiring into
 from dataclasses import dataclass
 
 import pytest
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from webui_fakes import FakeWebUI
 
 import src.webui.routes.spotify as spotify_routes
 from src.core.errors import DatabaseError
@@ -22,18 +23,8 @@ class _Session:
     user_id: str = "42"
 
 
-class _Ctx:
-    """Minimal stand-in for WebUIContext — only the per-guild auth hook is used."""
-
-    def __init__(self):
-        self.checked: list[str] = []
-        self.allowed = True
-
-    async def require_guild_admin(self, request, guild_id):  # noqa: ARG002 — signature parity
-        self.checked.append(str(guild_id))
-        if not self.allowed:
-            raise HTTPException(status_code=403, detail="nope")
-        return _Session()
+def _ctx() -> FakeWebUI:
+    return FakeWebUI(session=_Session())
 
 
 class _FakeRepo:
@@ -78,7 +69,7 @@ def client(monkeypatch):
     _FakeRepo.error = None
     _FakeRepo.guild_ids = []
     monkeypatch.setattr(spotify_routes, "SpotifyRepository", _FakeRepo)
-    ctx = _Ctx()
+    ctx = _ctx()
     app = FastAPI()
     install_error_handlers(app)
     app.include_router(spotify_routes.create_router(ctx))
@@ -101,7 +92,7 @@ def test_stats_aggregates_the_guild_collections(client):
 
 def test_stats_requires_guild_admin(client):
     http, ctx = client
-    ctx.allowed = False
+    ctx.manages = set()
     resp = http.get("/api/servers/123/spotify/stats")
     assert resp.status_code == 403
     assert _FakeRepo.guild_ids == []

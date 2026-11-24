@@ -6,6 +6,7 @@ from datetime import timedelta
 from types import SimpleNamespace
 
 import pytest
+from webui_fakes import FakeWebUI
 
 import src.webui.routes.overview as overview_routes
 from features.xp import XpRepository
@@ -47,28 +48,16 @@ async def test_the_weeks_activity_counts_members_and_messages(mongo):
     assert activity == {"days": 7, "activeMembers": 2, "messages": 2}
 
 
-class FakeCtx:
-    def __init__(self, server):
-        self.server = server
-
-    async def require_guild_admin(self, request, guild_id):  # noqa: ARG002
-        return ADMIN
-
-    def get_full_config(self):
-        return {"servers": {self.gid: self.server}}
-
-
 async def test_the_overview_route(mongo):
     gid = mongo.guild_id
     await record(gid, ADMIN, "module.save", target="moduleXp")
-    ctx = FakeCtx({"moduleXp": {"enabled": False}})
-    ctx.gid = gid
+    ctx = FakeWebUI.with_server(gid, {"moduleXp": {"enabled": False}}, session=ADMIN)
     router = overview_routes.create_router(ctx)
     get = next(r.endpoint for r in router.routes if r.path.endswith("/overview"))
     data = json.loads((await get(None, gid)).body)
     assert data["activity"] is None  # XP off: no activity to show
     assert [e["target"] for e in data["recent"]] == ["moduleXp"]
     assert set(data["lastChanges"]) == {"moduleXp"}
-    ctx.server = {"moduleXp": {"enabled": True}}
+    ctx.data["servers"][gid] = {"moduleXp": {"enabled": True}}
     data = json.loads((await get(None, gid)).body)
     assert data["activity"] == {"days": 7, "activeMembers": 0, "messages": 0}

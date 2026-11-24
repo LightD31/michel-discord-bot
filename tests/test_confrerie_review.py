@@ -2,6 +2,8 @@
 
 import pytest
 from confrerie_fixtures import OEUVRES_SCHEMA
+from discord_fakes import FakeCtx as SharedCtx
+from discord_fakes import FakeUser as SharedUser
 
 from extensions.confrerie.review import ReviewMixin, review_buttons
 from features.confrerie.drafts import (
@@ -107,28 +109,9 @@ class FakeBot:
         return self.channel
 
 
-class FakeCtx:
-    def __init__(self, custom_id: str, author_id: int = OWNER_ID) -> None:
-        self.custom_id = custom_id
-        self.author = FakeUser(author_id)
-        # A DM to the owner: the draft's guild is found from the draft itself.
-        self.guild = None
-        self.guild_id = None
-        self.replies: list[str] = []
-        self.origin_edits: list[dict] = []
-        self.modals: list = []
-
-    async def send(self, content=None, **kwargs):
-        self.replies.append(content)
-
-    async def defer(self, **kwargs):
-        pass
-
-    async def edit_origin(self, **kwargs):
-        self.origin_edits.append(kwargs)
-
-    async def send_modal(self, modal):
-        self.modals.append(modal)
+def FakeCtx(custom_id: str, author_id: int = OWNER_ID) -> SharedCtx:  # noqa: N802
+    """A button or modal in a DM to the owner: the draft's guild comes from the draft itself."""
+    return SharedCtx(SharedUser(author_id), custom_id=custom_id)
 
 
 class Harness(ReviewMixin):
@@ -180,7 +163,7 @@ async def _click(harness, action, draft_id, author_id=OWNER_ID):
 async def test_only_the_owner_can_review():
     harness = Harness(FakeRepo(_draft()), FakeNotion())
     ctx = await _click(harness, "approve", "defi-1-2", author_id=MEMBER_ID)
-    assert "propriétaire" in ctx.replies[0]
+    assert "propriétaire" in ctx.texts[0]
     assert harness.repo.status("defi-1-2") == STATUS_PENDING
     assert harness.notion_client.created == []
 
@@ -202,7 +185,7 @@ async def test_approval_creates_one_page_and_replies_in_the_thread():
 
     # A second click (or a click on a stale copy of the message) is a no-op.
     again = await _click(harness, "approve", "defi-1-2")
-    assert "déjà été traitée" in again.replies[0]
+    assert "déjà été traitée" in again.texts[0]
     assert len(harness.notion_client.created) == 1
 
 
@@ -211,7 +194,7 @@ async def test_notion_failure_puts_the_draft_back_up_for_review():
     ctx = await _click(harness, "approve", "defi-1-2")
     assert harness.repo.status("defi-1-2") == STATUS_PENDING
     assert ctx.origin_edits == []
-    assert "réessaie" in ctx.replies[0]
+    assert "réessaie" in ctx.texts[0]
 
 
 async def test_rejected_demande_tells_the_member():

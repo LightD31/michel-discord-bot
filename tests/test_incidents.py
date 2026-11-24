@@ -11,6 +11,7 @@ from types import SimpleNamespace
 import pytest
 from fastapi import HTTPException
 from source_scan import parse, python_files, rel
+from webui_fakes import FakeWebUI
 
 from src.core import incidents, log_context
 from src.core.errors import DatabaseError
@@ -99,14 +100,8 @@ def test_buttons_and_tasks_are_named_without_their_ids():
     assert routes.where_label("Unknown.task") == "Tâche de fond"
 
 
-class Ctx:
-    def __init__(self, admin_of=("1",)):
-        self.admin_of = set(admin_of)
-
-    async def require_guild_admin(self, request, guild_id):
-        if guild_id not in self.admin_of:
-            raise HTTPException(status_code=403, detail="no")
-        return SimpleNamespace(user_id="42")
+def fake_ctx(admin_of=("1",)) -> FakeWebUI:
+    return FakeWebUI(session=SimpleNamespace(user_id="42"), manages=admin_of)
 
 
 def endpoint(ctx):
@@ -121,7 +116,7 @@ def test_the_route_is_for_the_guilds_admins_and_finds_a_reference(monkeypatch):
         "1", Incident(20.0, "ef56ab", "component:rolemenu:1", "Un service externe a échoué.", True)
     )
     monkeypatch.setattr(incidents, "_handler", kept)
-    out = json.loads(asyncio.run(endpoint(Ctx())(None, "1", ref="AB12")).body)
+    out = json.loads(asyncio.run(endpoint(fake_ctx())(None, "1", ref="AB12")).body)
     assert out == {
         "incidents": [
             {
@@ -132,9 +127,11 @@ def test_the_route_is_for_the_guilds_admins_and_finds_a_reference(monkeypatch):
             }
         ]
     }
-    assert len(json.loads(asyncio.run(endpoint(Ctx())(None, "1", ref="")).body)["incidents"]) == 2
+    assert (
+        len(json.loads(asyncio.run(endpoint(fake_ctx())(None, "1", ref="")).body)["incidents"]) == 2
+    )
     with pytest.raises(HTTPException):
-        asyncio.run(endpoint(Ctx(admin_of=()))(None, "1", ref=""))
+        asyncio.run(endpoint(fake_ctx(admin_of=()))(None, "1", ref=""))
 
 
 # ── Every task looping over guilds says which guild it is on (P24) ────────

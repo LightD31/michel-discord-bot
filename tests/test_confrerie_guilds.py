@@ -95,7 +95,7 @@ async def test_a_review_from_a_dm_finds_the_draft_in_its_guild(store_config):
     # Guild 8's owner can't decide on guild 9's draft…
     refused = FakeCtx("confrerie_draft:approve:defi-1-2", other_owner)
     await ReviewMixin.on_draft_button.callback(harness, refused)
-    assert "propriétaire" in refused.replies[0]
+    assert "propriétaire" in refused.texts[0]
 
     # …guild 9's owner can, and the page goes to guild 9's base.
     await ReviewMixin.on_draft_button.callback(

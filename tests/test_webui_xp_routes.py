@@ -10,8 +10,9 @@ from datetime import UTC, datetime
 from zoneinfo import ZoneInfo
 
 import pytest
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from webui_fakes import FakeWebUI
 
 import src.webui.routes.xp as xp_routes
 from src.core.errors import DatabaseError
@@ -24,18 +25,8 @@ class _Session:
     user_id: str = "42"
 
 
-class _Ctx:
-    """Minimal stand-in for WebUIContext — the router only needs the auth hook."""
-
-    def __init__(self):
-        self.allowed = True
-        self.checked: list[str] = []
-
-    async def require_guild_admin(self, request, guild_id):  # noqa: ARG002 — signature parity
-        self.checked.append(str(guild_id))
-        if not self.allowed:
-            raise HTTPException(status_code=403, detail="Accès refusé")
-        return _Session()
+def _ctx() -> FakeWebUI:
+    return FakeWebUI(session=_Session())
 
 
 class _FakeXpRepo:
@@ -93,7 +84,7 @@ def client(monkeypatch):
     _FakeXpRepo.since = None
     monkeypatch.setattr(xp_routes, "XpRepository", _FakeXpRepo)
     monkeypatch.setattr(xp_routes, "UserInfoRepository", _FakeUserInfoRepo)
-    ctx = _Ctx()
+    ctx = _ctx()
     app = FastAPI()
     install_error_handlers(app)
     app.include_router(xp_routes.create_router(ctx))
@@ -147,7 +138,7 @@ def test_rejects_unsupported_range(client):
 
 def test_requires_guild_admin(client):
     http, ctx = client
-    ctx.allowed = False
+    ctx.manages = set()
     assert http.get("/api/servers/123/xp/stats").status_code == 403
 
 

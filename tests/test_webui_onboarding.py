@@ -1,13 +1,13 @@
 """A new server's first steps: packs, the checklist, the announcement."""
 
 import asyncio
-import copy
 import json
 from types import SimpleNamespace
 
 import pytest
 from fastapi import HTTPException
 from interactions import Permissions
+from webui_fakes import FakeWebUI
 
 import extensions.birthday  # noqa: F401 — registers moduleBirthday
 import extensions.feur  # noqa: F401 — registers moduleFeur
@@ -257,32 +257,10 @@ class FakeBot:
         return SimpleNamespace(id=int(cid), _guild_id=owner)
 
 
-class FakeCtx:
-    def __init__(self, stored: dict | None = None) -> None:
-        self.bot = FakeBot()
-        self.data = {"config": {}, "servers": {GUILD: stored or {}}}
-        self.oauth = SimpleNamespace(is_developer=lambda _session: False)
-
-    async def require_guild_admin(self, request, guild_id):  # noqa: ARG002
-        return SimpleNamespace(username="admin", user_id="9")
-
-    async def call_bot(self, func, *args, what: str, **kwargs):  # noqa: ARG002
-        return await func(*args, **kwargs)
-
-    def get_full_config(self):
-        return copy.deepcopy(self.data)
-
-    def mutate_config(self, mutator):
-        data = copy.deepcopy(self.data)
-        mutator(data)
-        self.data = data
-        return data
-
-    def bot_loop_alive(self):
-        return False
-
-    def module_extension_map(self, *, on_save: bool = False):  # noqa: ARG002
-        return {}
+def fake_ctx(stored: dict | None = None) -> FakeWebUI:
+    return FakeWebUI.with_server(
+        GUILD, stored, session=SimpleNamespace(username="admin", user_id="9"), bot=FakeBot()
+    )
 
 
 def endpoint(ctx, path):
@@ -297,7 +275,7 @@ def apply(ctx, pack, answers):
 
 
 def test_applying_a_pack_writes_the_new_modules_only():
-    ctx = FakeCtx({"moduleFeur": {"enabled": False}})
+    ctx = fake_ctx({"moduleFeur": {"enabled": False}})
     result = apply(ctx, "potes", {"moduleWelcome": {"welcomeChannelId": "11"}})
     server = ctx.data["servers"][GUILD]
     assert server["moduleFeur"] == {"enabled": False}
@@ -307,7 +285,7 @@ def test_applying_a_pack_writes_the_new_modules_only():
 
 
 def test_a_pack_with_another_guilds_channel_writes_nothing():
-    ctx = FakeCtx()
+    ctx = fake_ctx()
     with pytest.raises(HTTPException) as exc:
         apply(ctx, "potes", {"moduleWelcome": {"welcomeChannelId": "21"}})
     assert exc.value.status_code == 422
@@ -316,12 +294,12 @@ def test_a_pack_with_another_guilds_channel_writes_nothing():
 
 def test_an_unknown_pack_is_a_404():
     with pytest.raises(HTTPException) as exc:
-        apply(FakeCtx(), "inconnu", {})
+        apply(fake_ctx(), "inconnu", {})
     assert exc.value.status_code == 404
 
 
 def test_hiding_the_list_is_stored_and_undone():
-    ctx = FakeCtx()
+    ctx = fake_ctx()
     dismiss = endpoint(ctx, "/api/servers/{server_id}/onboarding/dismiss")
     asyncio.run(dismiss(None, GUILD, onboarding_routes.DismissBody(dismissed=True)))
     assert ctx.data["servers"][GUILD]["onboardingDismissed"] is True
@@ -335,7 +313,7 @@ def test_the_dismissed_flag_is_not_a_module():
 
 
 def test_the_onboarding_view_without_a_bot_or_database():
-    ctx = FakeCtx({"onboardingDismissed": True})
+    ctx = fake_ctx({"onboardingDismissed": True})
     ctx.bot = None
     get = endpoint(ctx, "/api/servers/{server_id}/onboarding")
     data = json.loads(asyncio.run(get(None, GUILD)).body)
@@ -347,7 +325,7 @@ def test_the_onboarding_view_without_a_bot_or_database():
 def test_the_overview_without_a_database_shows_nothing_rather_than_failing():
     import src.webui.routes.overview as overview_routes
 
-    ctx = FakeCtx({"moduleXp": {"enabled": True}})
+    ctx = fake_ctx({"moduleXp": {"enabled": True}})
     router = overview_routes.create_router(ctx)
     get = next(r.endpoint for r in router.routes if r.path.endswith("/overview"))
     data = json.loads(asyncio.run(get(None, GUILD)).body)
