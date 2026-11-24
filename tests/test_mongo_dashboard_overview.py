@@ -58,6 +58,6 @@ async def test_the_overview_route(mongo):
     assert data["activity"] is None  # XP off: no activity to show
     assert [e["target"] for e in data["recent"]] == ["moduleXp"]
     assert set(data["lastChanges"]) == {"moduleXp"}
-    ctx.server = {"moduleXp": {"enabled": True}}
+    ctx.data["servers"][gid] = {"moduleXp": {"enabled": True}}
     data = json.loads((await get(None, gid)).body)
     assert data["activity"] == {"days": 7, "activeMembers": 0, "messages": 0}
