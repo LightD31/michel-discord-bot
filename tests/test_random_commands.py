@@ -3,17 +3,10 @@
 import random
 
 import pytest
+from discord_fakes import FakeCtx
 
 from extensions.random_ import NO_PINGS, RandomExtension
 from src.discord_ext.locale import is_french
-
-
-class FakeCtx:
-    def __init__(self):
-        self.sent = []
-
-    async def send(self, content=None, **kwargs):
-        self.sent.append((content, kwargs))
 
 
 async def test_pick_echoes_without_pinging():
@@ -34,10 +27,8 @@ async def test_shuffle_stays_within_a_message():
 # Localised for whoever installs them --------------------------------------
 
 
-class LocaleCtx(FakeCtx):
-    def __init__(self, locale):
-        super().__init__()
-        self.locale = locale
+def LocaleCtx(locale):  # noqa: N802 — reads as the context it builds
+    return FakeCtx(locale=locale)
 
 
 @pytest.mark.parametrize(("locale", "french"), [("fr", True), (None, True), ("en-US", False)])

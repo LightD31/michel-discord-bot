@@ -12,6 +12,7 @@ from types import SimpleNamespace
 import pytest
 from fastapi import HTTPException
 from pydantic import BaseModel
+from webui_fakes import FakeWebUI, member_session
 
 import src.webui.routes.me as me_routes
 from src.core.errors import DatabaseError
@@ -19,31 +20,22 @@ from src.core.errors import DatabaseError
 ME = "42"
 
 
-class FakeCtx:
+class FakeCtx(FakeWebUI):
+    """The member tier, with members' names answered by the bot (``bot_calls``)."""
+
     def __init__(self, bot=None, member_of=("1",), guilds=None):
-        self.bot = bot
-        self.member_of = set(member_of)
-        self.session = SimpleNamespace(
-            user_id=ME,
-            username="moi",
-            guilds=guilds
+        guilds = (
+            guilds
             if guilds is not None
-            else [{"id": "1", "name": "Les Copains"}, {"id": "2", "name": "Ailleurs"}],
+            else [
+                {"id": "1", "name": "Les Copains"},
+                {"id": "2", "name": "Ailleurs"},
+            ]
         )
+        super().__init__(session=member_session(ME, guilds), bot=bot, member_of=member_of)
         self.bot_calls = []
 
-    def require_session(self, request):  # noqa: ARG002
-        return self.session
-
-    async def user_is_member(self, session, guild_id):  # noqa: ARG002
-        return guild_id in self.member_of
-
-    async def require_guild_member(self, request, guild_id):  # noqa: ARG002
-        if guild_id not in self.member_of:
-            raise HTTPException(status_code=403, detail="Tu n'es pas membre de ce serveur.")
-        return self.session
-
-    async def call_bot(self, func, *args, what: str, **kwargs):  # noqa: ARG002
+    async def call_bot(self, func, *args, what: str = "", **kwargs):  # noqa: ARG002
         self.bot_calls.append(args)
         return {str(i): f"nom-{i}" for i in args[2]}
 

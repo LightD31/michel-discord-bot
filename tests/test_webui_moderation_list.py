@@ -5,6 +5,7 @@ from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
 import pytest
+from webui_fakes import FakeWebUI
 
 import src.webui.routes.moderation as moderation_routes
 from features.moderation import Infraction, ModerationRepository
@@ -13,16 +14,8 @@ from src.core.errors import DatabaseError
 START = datetime(2026, 1, 1, tzinfo=UTC)
 
 
-class Ctx:
-    bot = None
-    oauth = SimpleNamespace(is_developer=lambda session: False)
-
-    def __init__(self):
-        self.checked: list[str] = []
-
-    async def require_guild_admin(self, request, guild_id):  # noqa: ARG002
-        self.checked.append(guild_id)
-        return SimpleNamespace(username="alice", user_id="7", guilds=[])
+def fake_ctx() -> FakeWebUI:
+    return FakeWebUI(session=SimpleNamespace(username="alice", user_id="7", guilds=[]))
 
 
 def list_endpoint(ctx):
@@ -52,7 +45,7 @@ async def test_cases_are_listed_with_their_filters(mongo):
                 expires_at=START + timedelta(hours=1) if kind == "ban" else None,
             )
         )
-    ctx = Ctx()
+    ctx = fake_ctx()
     endpoint = list_endpoint(ctx)
 
     async def ids(**filters):
@@ -85,4 +78,4 @@ async def test_an_outage_is_a_503_not_an_empty_list(monkeypatch):
 
     monkeypatch.setattr(moderation_routes, "ModerationRepository", Down)
     with pytest.raises(DatabaseError):  # the app answers it 503 (src/webui/errors.py)
-        await list_endpoint(Ctx())(None, "1", user_id=None, type=None, active=None)
+        await list_endpoint(fake_ctx())(None, "1", user_id=None, type=None, active=None)

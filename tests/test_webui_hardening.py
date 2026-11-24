@@ -8,6 +8,7 @@ import pytest
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.testclient import TestClient
+from webui_fakes import FakeWebUI
 
 import extensions.xp._common  # noqa: F401  (registers moduleXp's schema: the save test needs it)
 import src.core.config as core_config
@@ -73,26 +74,8 @@ def test_route_headers_win():
 # ── Module saves: known module names, bounded size ──────────────────────
 
 
-class FakeCtx:
-    bot = None
-
-    def __init__(self):
-        self.mutations = 0
-
-    async def require_guild_admin(self, request, guild_id):  # noqa: ARG002 — signature parity
-        return SimpleNamespace(username="admin", user_id="1")
-
-    def mutate_config(self, mutator):
-        self.mutations += 1
-        data = {"servers": {}}
-        mutator(data)
-        return data
-
-    def bot_loop_alive(self):
-        return False
-
-    def get_full_config(self):
-        return {"config": {}, "servers": {}}
+def fake_ctx():
+    return FakeWebUI()
 
 
 def module_endpoint(ctx, method: str, suffix: str = ""):
@@ -103,7 +86,7 @@ def module_endpoint(ctx, method: str, suffix: str = ""):
 
 def test_unknown_module_names_are_rejected():
     """servers.<id>.<anything> must not be writable (e.g. the public dashboard token)."""
-    ctx = FakeCtx()
+    ctx = fake_ctx()
     put = module_endpoint(ctx, "PUT")
     toggle = module_endpoint(ctx, "POST", "/toggle")
     with pytest.raises(HTTPException) as exc:
@@ -121,23 +104,23 @@ def test_unknown_module_names_are_rejected():
             )
         )
     assert exc.value.status_code == 404
-    assert ctx.mutations == 0
+    assert ctx.writes == 0
 
 
 def test_known_module_saves_and_oversized_config_is_refused():
-    ctx = FakeCtx()
+    ctx = fake_ctx()
     put = module_endpoint(ctx, "PUT")
     resp = asyncio.run(
         put(None, "1", "moduleXp", servers_routes.ConfigUpdate(config={"enabled": False}))
     )
     assert json.loads(resp.body)["status"] == "ok"
-    assert ctx.mutations == 1
+    assert ctx.writes == 1
 
     huge = {"blob": "x" * (servers_routes.MAX_MODULE_CONFIG_BYTES + 1)}
     with pytest.raises(HTTPException) as exc:
         asyncio.run(put(None, "1", "moduleXp", servers_routes.ConfigUpdate(config=huge)))
     assert exc.value.status_code == 413
-    assert ctx.mutations == 1
+    assert ctx.writes == 1
 
 
 # ── Backups ─────────────────────────────────────────────────────────────

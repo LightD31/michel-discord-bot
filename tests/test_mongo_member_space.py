@@ -8,10 +8,10 @@ OTHER's reminder, or a debt that isn't ME's, changes nothing.
 
 import json
 from datetime import timedelta
-from types import SimpleNamespace
 
 import pytest
 from fastapi import HTTPException
+from webui_fakes import FakeWebUI, member_session
 
 import src.webui.routes.me as me_routes
 from features.achievements import AchievementsRepository
@@ -30,31 +30,15 @@ ME, OTHER = "7001", "7002"
 MODULES = ("moduleXp", "moduleUtils", "moduleBirthday", "moduleTricount", "moduleSecretSanta")
 
 
-class FakeCtx:
+def fake_ctx(gid: str) -> FakeWebUI:
     """The member tier as the routes see it: ME, a member of the test guild only."""
-
-    bot = None
-
-    def __init__(self, gid: str) -> None:
-        self.gid = gid
-        self.session = SimpleNamespace(
-            user_id=ME, username="moi", guilds=[{"id": gid, "name": "Les Copains"}]
-        )
-
-    def require_session(self, request):  # noqa: ARG002
-        return self.session
-
-    async def user_is_member(self, session, guild_id):  # noqa: ARG002
-        return guild_id == self.gid
-
-    async def require_guild_member(self, request, guild_id):  # noqa: ARG002
-        if guild_id != self.gid:
-            raise HTTPException(status_code=403, detail="Tu n'es pas membre de ce serveur.")
-        return self.session
+    return FakeWebUI(
+        session=member_session(ME, [{"id": gid, "name": "Les Copains"}]), member_of=[gid]
+    )
 
 
 def endpoint(gid: str, method: str, path: str):
-    router = me_routes.create_router(FakeCtx(gid))
+    router = me_routes.create_router(fake_ctx(gid))
     return next(r.endpoint for r in router.routes if r.path == path and method in r.methods)
 
 

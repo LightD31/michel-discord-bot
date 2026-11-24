@@ -7,6 +7,7 @@ from types import SimpleNamespace
 
 import pytest
 from fastapi import HTTPException
+from webui_fakes import FakeWebUI
 
 import extensions.xp._common  # noqa: F401 — registers the moduleXp schema
 import src.webui.routes.audit as audit_routes
@@ -44,27 +45,8 @@ def test_an_unreadable_database_never_fails_the_action(monkeypatch, caplog):
     assert any("not recorded" in r.getMessage() for r in caplog.records)
 
 
-class FakeCtx:
-    bot = None
-
-    def __init__(self, stored=None):
-        self.data = {"config": {}, "servers": {"1": {"moduleXp": stored or {}}}}
-
-    async def require_guild_admin(self, request, guild_id):  # noqa: ARG002
-        return ADMIN
-
-    def require_developer(self, request):  # noqa: ARG002
-        raise HTTPException(status_code=403, detail="no")
-
-    def mutate_config(self, mutator):
-        mutator(self.data)
-        return self.data
-
-    def bot_loop_alive(self):
-        return False
-
-    def get_full_config(self):
-        return self.data
+def fake_ctx(stored=None):
+    return FakeWebUI.with_server("1", {"moduleXp": stored or {}}, session=ADMIN)
 
 
 def endpoint(module, ctx, method, path):
@@ -84,7 +66,7 @@ def recorded(monkeypatch):
 
 
 def test_a_module_save_records_the_changed_field_names_not_their_values(recorded):
-    ctx = FakeCtx({"enabled": True, "xpChannelId": "111"})
+    ctx = fake_ctx({"enabled": True, "xpChannelId": "111"})
     put = endpoint(servers_routes, ctx, "PUT", "/api/servers/{server_id}/modules/{module_name}")
     body = servers_routes.ConfigUpdate(config={"enabled": True, "xpChannelId": "222"})
     asyncio.run(put(None, "1", "moduleXp", body))
@@ -95,7 +77,7 @@ def test_a_module_save_records_the_changed_field_names_not_their_values(recorded
 
 
 def test_a_toggle_records_the_new_state(recorded):
-    ctx = FakeCtx({"enabled": False})
+    ctx = fake_ctx({"enabled": False})
     post = endpoint(
         servers_routes, ctx, "POST", "/api/servers/{server_id}/modules/{module_name}/toggle"
     )
@@ -107,14 +89,14 @@ def test_a_toggle_records_the_new_state(recorded):
 
 
 def test_the_bot_log_is_for_developers_only():
-    get = endpoint(audit_routes, FakeCtx(), "GET", "/api/audit")
+    get = endpoint(audit_routes, fake_ctx(), "GET", "/api/audit")
     with pytest.raises(HTTPException) as refused:
         asyncio.run(get(None, limit=10, before=None))
     assert refused.value.status_code == 403
 
 
 def test_a_bad_before_parameter_is_refused():
-    get = endpoint(audit_routes, FakeCtx(), "GET", "/api/servers/{server_id}/audit")
+    get = endpoint(audit_routes, fake_ctx(), "GET", "/api/servers/{server_id}/audit")
     with pytest.raises(HTTPException) as refused:
         asyncio.run(get(None, "1", limit=10, before="hier"))
     assert refused.value.status_code == 422
@@ -143,7 +125,7 @@ async def test_entries_are_kept_a_year_and_read_newest_first(mongo):
 @pytest.mark.mongo
 async def test_the_route_returns_json_entries(mongo):
     await audit.record(mongo.guild_id, ADMIN, "module.save", target="moduleXp")
-    get = endpoint(audit_routes, FakeCtx(), "GET", "/api/servers/{server_id}/audit")
+    get = endpoint(audit_routes, fake_ctx(), "GET", "/api/servers/{server_id}/audit")
     body = json.loads((await get(None, mongo.guild_id, limit=10, before=None)).body)
     (entry,) = body["entries"]
     assert entry["action"] == "module.save" and entry["at"] <= clock.now().isoformat()

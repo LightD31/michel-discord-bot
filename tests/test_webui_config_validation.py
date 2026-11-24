@@ -2,10 +2,10 @@
 
 import asyncio
 import json
-from types import SimpleNamespace
 
 import pytest
 from fastapi import HTTPException
+from webui_fakes import FakeWebUI
 
 import extensions.xp._common  # noqa: F401 — registers the moduleXp schema
 import src.webui.routes.config as config_routes
@@ -109,29 +109,8 @@ def test_config_problems_is_empty_for_a_valid_config():
 # ── The save routes ─────────────────────────────────────────────────────
 
 
-class FakeCtx:
-    bot = None
-
-    def __init__(self):
-        self.written: list[dict] = []
-
-    async def require_guild_admin(self, request, guild_id):  # noqa: ARG002 — signature parity
-        return SimpleNamespace(username="admin", user_id="1")
-
-    def require_developer(self, request):  # noqa: ARG002 — signature parity
-        return SimpleNamespace(username="dev", user_id="2")
-
-    def mutate_config(self, mutator):
-        data = {"config": {}, "servers": {}}
-        mutator(data)  # raising here means nothing is written
-        self.written.append(data)
-        return data
-
-    def bot_loop_alive(self):
-        return False
-
-    def get_full_config(self):
-        return {"config": {}, "servers": {}}
+def fake_ctx():
+    return FakeWebUI(developer=True)
 
 
 def endpoint(module, ctx, method, path):
@@ -140,7 +119,7 @@ def endpoint(module, ctx, method, path):
 
 
 def test_an_invalid_module_save_is_refused_and_nothing_is_written():
-    ctx = FakeCtx()
+    ctx = fake_ctx()
     put = endpoint(servers_routes, ctx, "PUT", "/api/servers/{server_id}/modules/{module_name}")
     with pytest.raises(HTTPException) as exc:
         asyncio.run(
@@ -157,7 +136,7 @@ def test_an_invalid_module_save_is_refused_and_nothing_is_written():
 
 
 def test_global_sections_are_validated_and_unknown_ones_refused():
-    ctx = FakeCtx()
+    ctx = fake_ctx()
     put = endpoint(config_routes, ctx, "PUT", "/api/global-config/{section}")
 
     def save(section, value):
@@ -210,7 +189,7 @@ def test_saving_a_global_section_reloads_what_took_it_at_load(monkeypatch):
 
     monkeypatch.setattr(config_routes, "reload_extensions", reload)
     monkeypatch.setattr(config_routes, "sync_commands", sync)
-    ctx = FakeCtx()
+    ctx = fake_ctx()
     ctx.bot = object()
     ctx.section_extensions = lambda section: ["extensions.backup"] if section == "discord" else []
     put = endpoint(config_routes, ctx, "PUT", "/api/global-config/{section}")

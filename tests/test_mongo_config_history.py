@@ -5,6 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 from fastapi import HTTPException
+from webui_fakes import FakeWebUI
 
 import extensions.lldap._common  # noqa: F401 — registers moduleLldap (a secret bound to URLs)
 import extensions.xp._common  # noqa: F401 — registers moduleXp
@@ -27,25 +28,10 @@ LLDAP = {
 }
 
 
-class FakeCtx:
-    bot = None
-
-    def __init__(self, gid, server):
-        self.gid = gid
-        self.data = {"config": {}, "servers": {gid: server}}
-
-    async def require_guild_admin(self, request, guild_id):  # noqa: ARG002
-        return ADMIN
-
-    def mutate_config(self, mutator):
-        mutator(self.data)
-        return self.data
-
-    def bot_loop_alive(self):
-        return False
-
-    def get_full_config(self):
-        return self.data
+def fake_ctx(gid, server):
+    ctx = FakeWebUI.with_server(gid, server, session=ADMIN)
+    ctx.gid = gid
+    return ctx
 
 
 def endpoint(module, ctx, method, path):
@@ -87,7 +73,7 @@ async def restore(ctx, module, version_id):
 
 
 async def test_each_save_keeps_the_settings_it_replaced(mongo, actions):  # noqa: ARG001
-    ctx = FakeCtx(mongo.guild_id, {"moduleXp": {"enabled": True, "xpChannelId": "111"}})
+    ctx = fake_ctx(mongo.guild_id, {"moduleXp": {"enabled": True, "xpChannelId": "111"}})
     await save(ctx, "moduleXp", {"enabled": True, "xpChannelId": "222"})
     await save(ctx, "moduleXp", {"enabled": True, "xpChannelId": "222"})  # no change: no version
     await save(ctx, "moduleXp", {"enabled": False, "xpChannelId": "222"})
@@ -103,7 +89,7 @@ async def test_each_save_keeps_the_settings_it_replaced(mongo, actions):  # noqa
 
 
 async def test_a_restore_is_a_save_that_keeps_todays_secrets(mongo, actions):
-    ctx = FakeCtx(mongo.guild_id, {"moduleLldap": dict(LLDAP)})
+    ctx = fake_ctx(mongo.guild_id, {"moduleLldap": dict(LLDAP)})
     await save(
         ctx,
         "moduleLldap",
@@ -125,7 +111,7 @@ async def test_a_restore_is_a_save_that_keeps_todays_secrets(mongo, actions):
 
 
 async def test_an_old_url_never_gets_todays_password(mongo, actions):  # noqa: ARG001
-    ctx = FakeCtx(mongo.guild_id, {"moduleLldap": dict(LLDAP)})
+    ctx = fake_ctx(mongo.guild_id, {"moduleLldap": dict(LLDAP)})
     moved = dict(LLDAP, lldapUrl="https://new.example.com")
     moved["lldapAdminPassword"] = "s3cret"  # pragma: allowlist secret
     await save(ctx, "moduleLldap", moved)
@@ -138,7 +124,7 @@ async def test_an_old_url_never_gets_todays_password(mongo, actions):  # noqa: A
 
 
 async def test_a_restore_is_checked_like_a_save(mongo, actions):  # noqa: ARG001
-    ctx = FakeCtx(mongo.guild_id, {"moduleXp": {"enabled": True, "xpChannelId": "111"}})
+    ctx = fake_ctx(mongo.guild_id, {"moduleXp": {"enabled": True, "xpChannelId": "111"}})
     await save(ctx, "moduleXp", {"enabled": True, "xpChannelId": "222"})
     (version,) = await history(ctx, "moduleXp")
     # A hand edit put an invalid value in the stored version.
@@ -153,14 +139,14 @@ async def test_a_restore_is_checked_like_a_save(mongo, actions):  # noqa: ARG001
 
 @pytest.mark.parametrize("version_id", ["ab" * 12, "nope"])
 async def test_an_unknown_version_is_a_404(mongo, actions, version_id):  # noqa: ARG001
-    ctx = FakeCtx(mongo.guild_id, {"moduleXp": {"enabled": True}})
+    ctx = fake_ctx(mongo.guild_id, {"moduleXp": {"enabled": True}})
     with pytest.raises(HTTPException) as missing:
         await restore(ctx, "moduleXp", version_id)
     assert missing.value.status_code == 404
 
 
 async def test_a_version_of_another_module_is_not_found(mongo, actions):  # noqa: ARG001
-    ctx = FakeCtx(mongo.guild_id, {"moduleXp": {"enabled": True, "xpChannelId": "111"}})
+    ctx = fake_ctx(mongo.guild_id, {"moduleXp": {"enabled": True, "xpChannelId": "111"}})
     await save(ctx, "moduleXp", {"enabled": True, "xpChannelId": "222"})
     (version,) = await history(ctx, "moduleXp")
     with pytest.raises(HTTPException) as missing:

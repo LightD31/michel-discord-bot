@@ -131,7 +131,7 @@ Errors and logs (`observability.md`)
 
 Tests and tooling (`testing.md`, `tooling.md`)
 - Tests use `store_config` / `mongo`, never the developer's setup — `testing.md`
-- Handlers are tested with `tests/discord_fakes.py`; repository methods against MongoDB — `testing.md`
+- Handlers are tested with `tests/discord_fakes.py`, routes with `tests/webui_fakes.py`; repository methods against MongoDB — `testing.md`
 - Raise coverage floors, never lower them; keep them below the figures without MongoDB — `pyproject.toml`
 - `uv.lock` from `pyproject.toml`; Actions pinned by SHA; Python 3.12 syntax only — `tooling.md`
 - This file stays under 12 KB, and its links resolve — `tests/test_claude_md.py`
