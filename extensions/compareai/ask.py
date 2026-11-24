@@ -218,11 +218,12 @@ class AskMixin:
     # Answering
     # =========================================================================
 
-    async def _usable_models(self) -> list[ModelConfig]:
+    async def _usable_models(self, guild_id: str) -> list[ModelConfig]:
+        """The global models the server's own keys can reach (P37)."""
         settings = global_settings()
         for problem in settings.problems:
             logger.warning("AI config: %s", problem)
-        return usable_models(settings.models, llm.configured_apis())
+        return usable_models(settings.models, llm.configured_apis(guild_id))
 
     async def _reserve_calls(self, user_id: str, calls: int, limits: AiLimits) -> str | None:
         """Count *calls* model calls for *user_id* today; the refusal message if over a limit.
@@ -247,6 +248,7 @@ class AskMixin:
         *,
         user_id: str,
         limits: AiLimits,
+        guild_id: str,
     ) -> ModelAnswer | None:
         """One answer from the default model, retrying once on another model if it fails.
 
@@ -257,14 +259,18 @@ class AskMixin:
         )
         if first is None:
             return None
-        answer = await self.ai_client.complete(first, messages, settings.max_tokens)
+        answer = await self.ai_client.complete(
+            first, messages, settings.max_tokens, guild_id=guild_id
+        )
         if answer.ok:
             return answer
         logger.warning("Default model %s failed (%s), trying another", first.key, answer.error)
         others = [m for m in candidates if m.key != first.key]
         if not others or await self._reserve_calls(user_id, 1, limits):
             return None
-        answer = await self.ai_client.complete(random.choice(others), messages, settings.max_tokens)
+        answer = await self.ai_client.complete(
+            random.choice(others), messages, settings.max_tokens, guild_id=guild_id
+        )
         return answer if answer.ok else None
 
     async def _send_chunks(
@@ -329,10 +335,11 @@ class AskMixin:
             await send_error(ctx, "Une erreur inattendue s'est produite")
 
     async def _handle_ask(self, ctx: SlashContext, question: str, mode: str | None) -> None:
-        candidates = await self._usable_models()
+        candidates = await self._usable_models(guild_id_of(ctx))
         if not candidates:
             await send_error(
-                ctx, "IA non configurée : aucune API (OpenRouter, NanoGPT) n'est prête"
+                ctx,
+                "IA non configurée sur ce serveur : un administrateur peut renseigner une clé OpenRouter ou NanoGPT dans le module IA du tableau de bord.",
             )
             return
 
@@ -387,7 +394,12 @@ class AskMixin:
         limits: AiLimits,
     ) -> None:
         answer = await self._answer_once(
-            candidates, settings, messages, user_id=str(ctx.author.id), limits=limits
+            candidates,
+            settings,
+            messages,
+            user_id=str(ctx.author.id),
+            limits=limits,
+            guild_id=guild_id_of(ctx),
         )
         if answer is None:
             await send_error(ctx, "Aucun modèle n'a pu répondre, réessaie dans un instant")
@@ -420,7 +432,9 @@ class AskMixin:
         selected = pick_compare_models(candidates, count)
         answers = [
             a
-            for a in await self.ai_client.complete_many(selected, messages, settings.max_tokens)
+            for a in await self.ai_client.complete_many(
+                selected, messages, settings.max_tokens, guild_id=guild_id_of(ctx)
+            )
             if a.ok
         ]
         if not answers:

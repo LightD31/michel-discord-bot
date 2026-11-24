@@ -249,8 +249,25 @@ def request_timeout(config: dict[str, Any] | None = None) -> float:
     return min(max(value, 5.0), 300.0)
 
 
-def get_api_settings(name: str) -> ApiSettings:
-    """Read *name*'s credentials and URLs from the reactive config store."""
+# The key each server brings for each API, in its ``moduleIA`` settings (P37).
+KEY_FIELDS: dict[str, str] = {API_OPENROUTER: "openrouterApiKey", API_NANOGPT: "nanogptApiKey"}
+
+
+def server_key(name: str, guild_id: object) -> str:
+    """The server's own key for *name*, read even while the module is off."""
+    if guild_id is None or name not in KEY_FIELDS:
+        return ""
+    server = config_store.get().get("servers", {}).get(str(guild_id)) or {}
+    settings = server.get("moduleIA") if isinstance(server, dict) else None
+    return str((settings or {}).get(KEY_FIELDS[name]) or "").strip()
+
+
+def get_api_settings(name: str, guild_id: object = None) -> ApiSettings:
+    """*name*'s URLs (the bot's, global) with *guild_id*'s own key (P37).
+
+    Without a server (the dashboard's model catalog), no key: the catalogs
+    are public, and nothing is spent.
+    """
     config = config_store.get().get("config", {})
     timeout = request_timeout(config)
     if name == API_OPENROUTER:
@@ -264,7 +281,7 @@ def get_api_settings(name: str) -> ApiSettings:
             headers.append(("X-Title", title))
         return ApiSettings(
             name=name,
-            api_key=str(section.get("openrouterApiKey") or "").strip(),
+            api_key=server_key(name, guild_id),
             base_url=str(section.get("baseUrl") or "").strip().rstrip("/"),
             headers=tuple(headers),
             timeout=timeout,
@@ -273,7 +290,7 @@ def get_api_settings(name: str) -> ApiSettings:
         section = _section(config, "NanoGPT")
         return ApiSettings(
             name=name,
-            api_key=str(section.get("apiKey") or "").strip(),
+            api_key=server_key(name, guild_id),
             base_url=str(section.get("baseUrl") or "").strip().rstrip("/"),
             timeout=timeout,
         )
@@ -288,7 +305,9 @@ _PARSERS = {API_OPENROUTER: parse_openrouter_catalog, API_NANOGPT: parse_nanogpt
 _catalog_cache: dict[ApiSettings, tuple[float, list[CatalogModel]]] = {}
 
 
-async def fetch_catalog(name: str, *, max_age: float = _CATALOG_TTL_SECONDS) -> list[CatalogModel]:
+async def fetch_catalog(
+    name: str, settings: ApiSettings | None = None, *, max_age: float = _CATALOG_TTL_SECONDS
+) -> list[CatalogModel]:
     """Return *name*'s model catalog, memoized for *max_age* seconds.
 
     Raises :class:`LlmError` when the API isn't configured or the catalog
@@ -297,8 +316,8 @@ async def fetch_catalog(name: str, *, max_age: float = _CATALOG_TTL_SECONDS) -> 
     """
     if name not in _PARSERS:
         raise LlmError(f"API inconnue : {name}")
-    settings = get_api_settings(name)
-    if not settings.configured:
+    settings = settings or get_api_settings(name)
+    if not settings.base_url:
         raise LlmError(f"API {name} non configurée")
 
     cached = _catalog_cache.get(settings)
@@ -309,7 +328,10 @@ async def fetch_catalog(name: str, *, max_age: float = _CATALOG_TTL_SECONDS) -> 
         data = await fetch(
             settings.catalog_url,
             return_type="json",
-            headers={"Authorization": f"Bearer {settings.api_key}", **dict(settings.headers)},
+            headers={
+                **({"Authorization": f"Bearer {settings.api_key}"} if settings.api_key else {}),
+                **dict(settings.headers),
+            },
             params=settings.catalog_params,
             retries=2,
         )
@@ -394,7 +416,7 @@ class LlmApi:
         """(Re)load the price table from the catalog; failures only log."""
         self._prices_loaded_at = time.monotonic()
         try:
-            catalog = await fetch_catalog(self.name)
+            catalog = await fetch_catalog(self.name, self.settings)
         except LlmError as e:
             logger.warning("Could not load %s prices: %s", self.name, e)
             return
@@ -417,27 +439,29 @@ class LlmApi:
         await self.client.close()
 
 
-_apis: dict[str, LlmApi] = {}
+_apis: dict[tuple[str, str], LlmApi] = {}
 
 
-async def get_api(name: str) -> LlmApi | None:
-    """The client for *name*, rebuilt when its settings changed; ``None`` if unconfigured.
+async def get_api(name: str, guild_id: object) -> LlmApi | None:
+    """The server's client for *name*, rebuilt when its settings changed; ``None`` if unset.
 
-    A replaced client is closed so its connection pool doesn't leak.
+    Each server spends its own key (P37). A replaced client is closed so its
+    connection pool doesn't leak.
     """
-    settings = get_api_settings(name)
-    current = _apis.get(name)
+    settings = get_api_settings(name, guild_id)
+    slot = (str(guild_id), name)
+    current = _apis.get(slot)
     if current is not None and current.settings == settings:
         return current
     if current is not None:
-        _apis.pop(name, None)
+        _apis.pop(slot, None)
         await _close_quietly(current)
     if not settings.configured:
         return None
     api = LlmApi(settings)
-    _apis[name] = api
+    _apis[slot] = api
     if current is not None:
-        logger.info("%s settings changed, client rebuilt", name)
+        logger.info("%s settings of %s changed, client rebuilt", name, guild_id)
     return api
 
 
@@ -448,9 +472,9 @@ async def _close_quietly(api: LlmApi) -> None:
         logger.debug("Error closing %s client: %s", api.name, e)
 
 
-def configured_apis() -> list[str]:
-    """Names of the APIs that currently have a key and a base URL."""
-    return [name for name in SUPPORTED_APIS if get_api_settings(name).configured]
+def configured_apis(guild_id: object) -> list[str]:
+    """The APIs the server can use now: its own key, and the bot's base URL."""
+    return [name for name in SUPPORTED_APIS if get_api_settings(name, guild_id).configured]
 
 
 async def close_all() -> None:

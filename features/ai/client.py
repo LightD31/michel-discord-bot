@@ -14,19 +14,27 @@ from src.integrations import llm
 
 logger = logutil.init_logger(__name__)
 
-ApiGetter = Callable[[str], Awaitable[llm.LlmApi | None]]
+ApiGetter = Callable[[str, str], Awaitable[llm.LlmApi | None]]
 
 
 class AiClient:
-    """Routes each model to its API and turns every failure into an error answer."""
+    """Routes each model to the server's API and turns every failure into an error answer.
+
+    Every call names the server it answers in: its own key pays (P37).
+    """
 
     def __init__(self, get_api: ApiGetter = llm.get_api) -> None:
         self._get_api = get_api
 
     async def complete(
-        self, model: ModelConfig, messages: list[dict[str, str]], max_tokens: int
+        self,
+        model: ModelConfig,
+        messages: list[dict[str, str]],
+        max_tokens: int,
+        *,
+        guild_id: str,
     ) -> ModelAnswer:
-        api = await self._get_api(model.api)
+        api = await self._get_api(model.api, guild_id)
         if api is None:
             return ModelAnswer(model, error=f"API {model.api} non configurée")
         start = time.monotonic()
@@ -61,10 +69,17 @@ class AiClient:
         return answer
 
     async def complete_many(
-        self, models: Sequence[ModelConfig], messages: list[dict[str, str]], max_tokens: int
+        self,
+        models: Sequence[ModelConfig],
+        messages: list[dict[str, str]],
+        max_tokens: int,
+        *,
+        guild_id: str,
     ) -> list[ModelAnswer]:
         """All *models* in parallel; the result keeps *models*' order."""
-        answers = await asyncio.gather(*(self.complete(m, messages, max_tokens) for m in models))
+        answers = await asyncio.gather(
+            *(self.complete(m, messages, max_tokens, guild_id=guild_id) for m in models)
+        )
         total = sum(a.cost or 0.0 for a in answers)
         logger.info("Total command cost: $%.5f", total)
         return list(answers)

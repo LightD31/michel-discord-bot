@@ -226,7 +226,7 @@ CI fails if the lockfile drifts from `pyproject.toml`.
 
 All configuration lives in `config/config.json`, with two top-level keys:
 
-- **`config`** — global sections: `discord` (token, IDs), `mongodb`, `webui`, `backup`, plus the bot's own accounts (Twitch, the Uptime Kuma push) and the API credentials still shared by every server (AI: OpenRouter, NanoGPT); YouTube, Notion, Uptime Kuma and Shlink are per server, in their module and an optional `extensions` map of `"extensions.<name>": bool` to explicitly enable or disable discovered extensions.
+- **`config`** — global sections: `discord` (token, IDs), `mongodb`, `webui`, `backup`, plus the bot's own accounts (Twitch, the Uptime Kuma push) and the AI APIs' base URLs; every service key (YouTube, Notion, Uptime Kuma, Shlink, the OpenRouter / NanoGPT keys) is per server, in its module and an optional `extensions` map of `"extensions.<name>": bool` to explicitly enable or disable discovered extensions.
 - **`servers`** — per-guild module configs keyed by guild ID (`moduleXp`, `moduleBirthday`, …, each with an `enabled` flag), plus a `discord2name` display-name mapping.
 
 Config is read through `src.core.config`. An extension declares `MODULE = ModuleConfig("moduleName")` and reads `MODULE.get(guild_id)` (that guild's settings), `MODULE.enabled(guild_id)` or `MODULE.items()` when it needs them; `global_config()` returns the global sections. Every call reads the in-memory store the dashboard writes to, so a saved setting applies on the next read, without reloading the extension. Only command scopes are taken at import, which is why switching a module on or off in a guild reloads its extensions.

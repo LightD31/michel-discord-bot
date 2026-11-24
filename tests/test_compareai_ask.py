@@ -36,10 +36,10 @@ class Client:
             return ModelAnswer(model=model, error="HTTP 500")
         return ModelAnswer(model=model, content=TEXTS[model.key])
 
-    async def complete(self, model, messages, max_tokens):
+    async def complete(self, model, messages, max_tokens, *, guild_id):
         return self._answer(model)
 
-    async def complete_many(self, models, messages, max_tokens):
+    async def complete_many(self, models, messages, max_tokens, *, guild_id):
         return [self._answer(m) for m in models]
 
 
@@ -90,7 +90,7 @@ def setup(monkeypatch, store_config):
     repo = Repo()
     monkeypatch.setattr(ask_mod, "repo_for", lambda gid: repo)
     monkeypatch.setattr(ask_mod, "AiUsageRepository", Usage)
-    monkeypatch.setattr(ask_mod.llm, "configured_apis", lambda: ["openrouter"])
+    monkeypatch.setattr(ask_mod.llm, "configured_apis", lambda guild_id: ["openrouter"])
     guild = FakeGuild(1)
     channel = guild.add_channel(FakeChannel(10))
     ext = object.__new__(AskMixin)
@@ -162,7 +162,7 @@ async def test_a_comparison_the_database_refuses_is_posted_without_votes(monkeyp
 
 
 async def test_nothing_is_asked_without_a_configured_api(monkeypatch, setup):
-    monkeypatch.setattr(ask_mod.llm, "configured_apis", lambda: [])
+    monkeypatch.setattr(ask_mod.llm, "configured_apis", lambda guild_id: [])
     said = await ask(setup)
     assert "IA non configurée" in said
     assert Usage.calls == [] and setup.ext.ai_client.asked == []

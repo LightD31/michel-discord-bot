@@ -49,10 +49,10 @@ def startup(monkeypatch):
     apis = {"openrouter": Api(), "nanogpt": Api()}
     Repo.indexed, Repo.failing = [], set()
 
-    async def get_api(name):
+    async def get_api(name, guild_id):
         return apis.get(name)
 
-    monkeypatch.setattr(compareai.llm, "configured_apis", lambda: list(apis))
+    monkeypatch.setattr(compareai.llm, "configured_apis", lambda guild_id: list(apis))
     monkeypatch.setattr(compareai.llm, "get_api", get_api)
     monkeypatch.setattr(compareai, "global_settings", lambda: SimpleNamespace(problems=[]))
     monkeypatch.setattr(compareai, "enabled_guild_ids", lambda: ["1", "2"])
@@ -97,9 +97,9 @@ async def test_a_reload_does_not_start_the_task_twice(startup):
 
 
 async def test_without_an_api_nothing_is_priced(startup, monkeypatch, caplog):
-    monkeypatch.setattr(compareai.llm, "configured_apis", lambda: [])
+    monkeypatch.setattr(compareai.llm, "configured_apis", lambda guild_id: [])
     ext, task = startup.make()
     await CompareAIExtension.on_startup.callback(ext)
     assert not any(api.priced for api in startup.apis.values())
-    assert "No AI API configured" in caplog.text
+    assert "has no AI key of its own" in caplog.text
     assert task.started == 1

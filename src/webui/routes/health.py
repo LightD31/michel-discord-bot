@@ -40,6 +40,13 @@ ACCOUNTS = {
     "moduleYoutube": ("YouTube", _has("moduleYoutube", "youtubeApiKey", "youtubeApiUrl")),
     "moduleConfrerie": ("Notion", _has("moduleConfrerie", "notionSecret")),
     "moduleUptime": ("Uptime Kuma", _has("moduleUptime", "uptimeKumaUrl", "uptimeKumaApiKey")),
+    "moduleIA": (
+        "IA (OpenRouter ou NanoGPT)",
+        lambda guild_id: (
+            _has("moduleIA", "openrouterApiKey")(guild_id)
+            or _has("moduleIA", "nanogptApiKey")(guild_id)
+        ),
+    ),
 }
 
 

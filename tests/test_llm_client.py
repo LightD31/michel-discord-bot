@@ -94,34 +94,44 @@ def test_resolve_pricing_tolerates_routes_and_dates():
 # ── Settings ────────────────────────────────────────────────────────────
 
 
-def test_settings_need_key_and_url(ai_config):
-    assert not llm.get_api_settings("openrouter").configured
-    assert llm.configured_apis() == []
+def keys(**fields):
+    """Server 1's ``moduleIA``: its own keys (P37)."""
+    config_store._data["servers"]["1"] = {"moduleIA": {"enabled": True, **fields}}
+    return config_store._data["servers"]["1"]["moduleIA"]
+
+
+def test_settings_need_the_servers_key_and_the_bots_url(ai_config):
+    assert not llm.get_api_settings("openrouter", "1").configured
+    assert llm.configured_apis("1") == []
 
     ai_config["OpenRouter"] = {
-        "openrouterApiKey": "k",
         "baseUrl": "https://router.example/api/v1/",
         "appUrl": "https://bot.example",
     }
-    ai_config["NanoGPT"] = {"apiKey": "n"}  # no baseUrl: stays off
     ai_config["AI"] = {"requestTimeoutSeconds": 1, "appTitle": "Michel"}
-    settings = llm.get_api_settings("openrouter")
-    assert settings.configured
+    keys(openrouterApiKey="k", nanogptApiKey="n")  # NanoGPT has no baseUrl: stays off
+    settings = llm.get_api_settings("openrouter", "1")
+    assert settings.configured and settings.api_key == "k"
     assert settings.base_url == "https://router.example/api/v1"
     assert dict(settings.headers) == {"HTTP-Referer": "https://bot.example", "X-Title": "Michel"}
     assert settings.timeout == 5.0  # clamped
-    assert llm.configured_apis() == ["openrouter"]
+    assert llm.configured_apis("1") == ["openrouter"]
+    # Another server, or no server (the catalog), spends nobody's key.
+    assert llm.configured_apis("2") == []
+    assert llm.get_api_settings("openrouter").api_key == ""
 
 
 async def test_get_api_rebuilds_on_change_and_closes(ai_config):
-    ai_config["NanoGPT"] = {"apiKey": "n", "baseUrl": "https://nano.example/api/v1"}
-    first = await llm.get_api("nanogpt")
-    assert first is not None and await llm.get_api("nanogpt") is first
-    ai_config["NanoGPT"]["apiKey"] = "rotated"  # pragma: allowlist secret
-    second = await llm.get_api("nanogpt")
+    ai_config["NanoGPT"] = {"baseUrl": "https://nano.example/api/v1"}
+    server = keys(nanogptApiKey="n")
+    first = await llm.get_api("nanogpt", "1")
+    assert first is not None and await llm.get_api("nanogpt", "1") is first
+    assert await llm.get_api("nanogpt", "2") is None  # no key of its own
+    server["nanogptApiKey"] = "rotated"  # pragma: allowlist secret
+    second = await llm.get_api("nanogpt", "1")
     assert second is not first and first.client.is_closed()
     ai_config["NanoGPT"]["baseUrl"] = ""
-    assert await llm.get_api("nanogpt") is None
+    assert await llm.get_api("nanogpt", "1") is None
     assert second.client.is_closed()
     await llm.close_all()
 
@@ -137,7 +147,7 @@ async def test_fetch_catalog_requires_configuration(ai_config):
 
 
 async def test_fetch_catalog_is_memoized_and_uses_detailed_listing(ai_config, monkeypatch):
-    ai_config["NanoGPT"] = {"apiKey": "n", "baseUrl": "https://nano.example/api/v1"}
+    ai_config["NanoGPT"] = {"baseUrl": "https://nano.example/api/v1"}
     calls = []
 
     async def fake_fetch(url, **kwargs):
@@ -152,11 +162,11 @@ async def test_fetch_catalog_is_memoized_and_uses_detailed_listing(ai_config, mo
     url, kwargs = calls[0]
     assert url == "https://nano.example/api/v1/models"
     assert kwargs["params"] == {"detailed": "true"}
-    assert kwargs["headers"]["Authorization"] == "Bearer n"
+    assert "Authorization" not in kwargs["headers"]  # public: no server's key (P37)
 
 
 async def test_fetch_catalog_wraps_upstream_errors(ai_config, monkeypatch):
-    ai_config["OpenRouter"] = {"openrouterApiKey": "k", "baseUrl": "https://r.example"}
+    ai_config["OpenRouter"] = {"baseUrl": "https://r.example"}
 
     async def failing_fetch(url, **kwargs):
         raise RuntimeError("boom")
@@ -200,14 +210,17 @@ async def test_complete_many_runs_in_parallel_and_isolates_failures():
         "nanogpt": _FakeApi("nanogpt", {"d/m": "<response></response>"}),
     }
 
-    async def get_api(name):
+    async def get_api(name, guild_id):
+        assert guild_id == "1"
         return apis.get(name)
 
     client = AiClient(get_api)
     models = [_model("a"), _model("b"), _model("c"), _model("d", "nanogpt"), _model("e", "other")]
     loop = asyncio.get_running_loop()
     start = loop.time()
-    answers = await client.complete_many(models, [{"role": "user", "content": "q"}], 100)
+    answers = await client.complete_many(
+        models, [{"role": "user", "content": "q"}], 100, guild_id="1"
+    )
     assert loop.time() - start < 0.15  # 4 calls of 50 ms ran concurrently
 
     assert [a.model.key for a in answers] == ["a", "b", "c", "d", "e"]

@@ -140,7 +140,7 @@ class Harness(AskMixin):
         self.compare_count = None
         self.quick = False
 
-    async def _usable_models(self):
+    async def _usable_models(self, guild_id):
         return self.candidates
 
     async def _reserve_calls(self, user_id, calls, limits):
@@ -247,7 +247,7 @@ def test_retry_on_another_model_needs_its_own_quota(monkeypatch):
     calls: list[str] = []
 
     class Client:
-        async def complete(self, m, messages, max_tokens):
+        async def complete(self, m, messages, max_tokens, *, guild_id):
             calls.append(m.key)
             return SimpleNamespace(ok=False, error="boom", model=m)
 
@@ -258,7 +258,9 @@ def test_retry_on_another_model_needs_its_own_quota(monkeypatch):
     )
     settings = SimpleNamespace(default_model="", max_tokens=100)
     answer = asyncio.run(
-        harness._answer_once(harness.candidates, settings, [], user_id="7", limits=AiLimits())
+        harness._answer_once(
+            harness.candidates, settings, [], user_id="7", limits=AiLimits(), guild_id="1"
+        )
     )
     assert answer is None
     assert calls == ["a"]  # the fallback model was never called
@@ -292,7 +294,7 @@ def test_mentions_respect_the_kill_switch_and_quota(monkeypatch):
             self.reactions: list[str] = []
             self.answered = False
 
-        async def _usable_models(self):
+        async def _usable_models(self, guild_id):
             return [model("a")]
 
         async def _reserve_calls(self, user_id, calls, limits):

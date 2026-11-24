@@ -737,7 +737,6 @@ class OpenRouterSection(SchemaBase):
     __label__ = "OpenRouter"
     __icon__ = "🤖"
 
-    openrouterApiKey: str = secret_field("Clé API", description="Clé API OpenRouter.")
     baseUrl: str | None = ui(
         "URL de l'API",
         "url",
@@ -757,7 +756,6 @@ class NanoGPTSection(SchemaBase):
     __label__ = "NanoGPT"
     __icon__ = "🔹"
 
-    apiKey: str = secret_field("Clé API", description="Clé API NanoGPT (sk-nano-…).")
     baseUrl: str | None = ui(
         "URL de l'API",
         "url",

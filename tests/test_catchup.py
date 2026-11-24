@@ -60,7 +60,7 @@ class Client:
         self.content, self.error = content, error
         self.asked = []
 
-    async def complete(self, model, messages, max_tokens):
+    async def complete(self, model, messages, max_tokens, *, guild_id):
         self.asked.append(messages)
         return ModelAnswer(model=model, content=self.content, error=self.error)
 
@@ -87,7 +87,7 @@ def world(store_config, monkeypatch):
     store_config({"config": {"AI": {"models": MODELS}}, "servers": servers})
     Usage.calls, Usage.hit, Usage.down = [], None, False
     monkeypatch.setattr(catchup_mod, "AiUsageRepository", Usage)
-    monkeypatch.setattr(catchup_mod.llm, "configured_apis", lambda: ["openrouter"])
+    monkeypatch.setattr(catchup_mod.llm, "configured_apis", lambda guild_id: ["openrouter"])
     guild = FakeGuild(1, "Les Copains")
     channel = guild.add_channel(FakeChannel(10, "général"))
     lea = guild.add_member(FakeMember(7, "Léa"))
