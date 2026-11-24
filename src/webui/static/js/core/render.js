@@ -6,6 +6,7 @@ import { loadInfractions, loadReports } from '../features/moderation.js';
 import { loadRoleMenus } from '../features/rolemenus.js';
 import { loadSecretSanta } from '../features/secretsanta.js';
 import { destroySpotifyCharts, loadSpotifyStats } from '../features/spotify.js';
+import { loadSpotifyAuth } from '../features/spotify-auth.js';
 import { destroyXpCharts, loadPublicSeason, loadXpStats } from '../features/xp.js';
 import { populateChannelPickers } from '../forms/pickers/channels.js';
 import { populateMultiPickers, populateRolePickers } from '../forms/pickers/lists.js';
@@ -135,6 +136,7 @@ export function render() {
     }
     // Spotify: draw the playlist / vote charts when on its module page.
     if (state.currentPage === 'module' && state.currentModule === 'moduleSpotify' && state.currentServerId) {
+        loadSpotifyAuth(state.currentServerId);
         loadSpotifyStats(state.currentServerId);
     }
     // XP: load activity stats and draw the charts when on its module page.

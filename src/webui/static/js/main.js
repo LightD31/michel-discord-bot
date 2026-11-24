@@ -93,10 +93,11 @@ async function init() {
 
     // Handle the redirect back from an OAuth callback (Spotify, Twitch; a hash-routed link).
     const hashParams = new URLSearchParams((location.hash.split('?')[1]) || '');
-    // Only the outcome comes back, never a text (a link could carry any),
-    // and only a developer, who started the flow, is told about it.
-    for (const [param, service] of [['spotify_auth', 'Spotify'], ['twitch_auth', 'Twitch']]) {
-        if (!hashParams.get(param) || !isDeveloper()) continue;
+    // Only the outcome comes back, never a text (a link could carry any), and
+    // only who could start the flow is told about it: a server's admins for
+    // its Spotify account (P36), a developer for the bot's Twitch account.
+    for (const [param, service, may] of [['spotify_auth', 'Spotify', isAdmin], ['twitch_auth', 'Twitch', isDeveloper]]) {
+        if (!hashParams.get(param) || !may()) continue;
         const ok = hashParams.get(param) === 'ok';
         toast(ok ? `${service} connecté.` : `Échec de la connexion ${service} : voir les logs du bot.`,
             ok ? 'success' : 'error');

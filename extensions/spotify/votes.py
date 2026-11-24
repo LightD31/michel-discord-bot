@@ -62,7 +62,6 @@ from ._common import (
     embed_message_vote,
     embed_message_vote_add,
     embed_song,
-    spotify_api,
 )
 
 logger = logutil.init_logger(__name__)
@@ -82,6 +81,8 @@ class VotesMixin(SpotifyBase):
     async def randomvote(self):
         """Daily keep/remove poll — closes the previous one and opens the next."""
         for server in SERVERS.values():
+            if not server.connected:
+                continue  # no Spotify account connected here yet (P36)
             with log_context.scope(guild_id=server.guild_id):
                 try:
                     await self._randomvote_for_server(server)
@@ -123,7 +124,7 @@ class VotesMixin(SpotifyBase):
             await self._forget_daily_vote(server)
             await self._start_new_vote(server)
             return
-        track = await spotify_api.track(track_id, market="FR")
+        track = await server.spotify.track(track_id, market="FR")
         tally = tally_daily_votes(votes["votes"], server.discord2name)
         outcome = daily_outcome(tally)
         total_votes = tally.total
@@ -206,7 +207,7 @@ class VotesMixin(SpotifyBase):
             logger=logger,
         )
         if removed:
-            await spotify_api.playlist_remove_all_occurrences_of_items(
+            await server.spotify.playlist_remove_all_occurrences_of_items(
                 server.playlist_id, [track_id]
             )
             await server.repo.delete_playlist_item(track_id)
@@ -307,7 +308,7 @@ class VotesMixin(SpotifyBase):
         song = await server.repo.get_playlist_item(track_id)
         if song is None:  # removed from the playlist since the draw: the next run draws again
             return
-        track = await spotify_api.track(song["_id"], market="FR")
+        track = await server.spotify.track(song["_id"], market="FR")
         channel = await fetch_guild_channel(self.bot, server.guild_id, server.channel_id)
         if channel is None:
             logger.warning("Spotify: le salon du serveur %s est introuvable", server.guild_id)
@@ -641,7 +642,7 @@ class VotesMixin(SpotifyBase):
                 ctx.author_id,
             )
             try:
-                track = await spotify_api.track(song, market="FR")
+                track = await server.spotify.track(song, market="FR")
                 song = spotifymongoformat(
                     track, ctx.author_id, spotify2discord=server.spotify2discord
                 )
@@ -758,7 +759,7 @@ class VotesMixin(SpotifyBase):
 
     @addwithvote.autocomplete("titre")
     async def autocomplete_from_spotify_addwithvote(self, ctx: AutocompleteContext):
-        await ctx.send(choices=await autocomplete_track_choices(ctx.input_text))
+        await ctx.send(choices=await autocomplete_track_choices(guild_id_of(ctx), ctx.input_text))
 
     async def endvote(self, song_id: str, server: ServerData) -> bool:
         """Close an add-with-vote poll once its deadline is reached.
@@ -779,7 +780,7 @@ class VotesMixin(SpotifyBase):
             logger.info("Vote pour %s déjà clos, suppression", song_id)
             return True
         try:
-            track = await spotify_api.track(song_id, market="FR")
+            track = await server.spotify.track(song_id, market="FR")
             song = spotifymongoformat(
                 track, data[song_id]["author_id"], spotify2discord=server.spotify2discord
             )
@@ -790,7 +791,7 @@ class VotesMixin(SpotifyBase):
             logger.debug("song : %s", song)
             if await server.repo.add_playlist_item(song):
                 try:
-                    await spotify_api.playlist_add_items(server.playlist_id, [song["_id"]])
+                    await server.spotify.playlist_add_items(server.playlist_id, [song["_id"]])
                 except Exception:
                     # Undo the mirror entry so the next sweep retries the whole add.
                     await server.repo.delete_playlist_item(song["_id"])
@@ -848,6 +849,8 @@ class VotesMixin(SpotifyBase):
     async def check_for_end(self):
         """Hourly sweep: close any add-with-vote poll whose deadline has passed."""
         for server in SERVERS.values():
+            if not server.connected:
+                continue  # no Spotify account connected here yet (P36)
             with log_context.scope(guild_id=server.guild_id):
                 try:
                     data = await server.vote_manager.load_data()

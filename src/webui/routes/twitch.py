@@ -40,7 +40,9 @@ USERS_OF_THE_TOKEN = ("extensions.twitch", "extensions.streamlabs")
 
 
 def _result_page(*, ok: bool, message: str) -> HTMLResponse:
-    return result_page(service="Twitch", ok=ok, message=message, back="section=twitch&twitch_auth")
+    return result_page(
+        service="Twitch", ok=ok, message=message, back="global?section=twitch&twitch_auth"
+    )
 
 
 async def reload_token_users(ctx: WebUIContext) -> list[str]:

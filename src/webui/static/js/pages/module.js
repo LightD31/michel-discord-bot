@@ -226,6 +226,17 @@ export function renderModulePage() {
             <div class="u-mt-16 card">
                 <div class="card-header">
                     <div>
+                        <div class="card-title">🔌 Compte Spotify</div>
+                        <div class="card-subtitle">Le compte qui gère la playlist de ce serveur, avec l'application Spotify des réglages ci-dessus.</div>
+                    </div>
+                </div>
+                <div id="spotify-auth" data-server-id="${sid}">
+                    <div class="loading"><div class="spinner"></div></div>
+                </div>
+            </div>
+            <div class="u-mt-16 card">
+                <div class="card-header">
+                    <div>
                         <div class="card-title">📊 Statistiques de la playlist</div>
                         <div class="card-subtitle">Playlist et votes tels que le bot les a enregistrés.</div>
                     </div>

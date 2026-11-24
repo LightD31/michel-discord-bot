@@ -1,17 +1,18 @@
-"""Spotify OAuth status + re-authorization endpoints.
+"""Spotify: each server connects its own account (P36), and its playlist statistics.
 
-Replaces the legacy ``/updatetoken`` slash command. The flow:
+The flow, for a server's admins, from the Spotify module page:
 
-1. Admin visits the dashboard's Spotify panel, sees current token status
-   from ``GET /api/spotify/status``.
-2. Clicks "Re-authoriser" → browser hits ``GET /spotify/auth/start`` which
-   redirects to Spotify's authorize URL with a CSRF state cookie.
-3. Spotify redirects back to ``GET /spotify/auth/callback`` which exchanges
-   the code for a token, writes it to the spotipy file cache, and bounces
-   the user back to the dashboard.
+1. The panel reads ``GET /api/servers/{id}/spotify/status``.
+2. "Connecter Spotify" opens ``GET /spotify/auth/start?guild={id}``, which
+   redirects to Spotify's authorize page with the server's own app. The state,
+   kept in a cookie, starts with the guild id.
+3. Spotify comes back to ``GET /spotify/auth/callback``. The state names the
+   server; the cookie proves this browser started the flow; the admin check runs
+   again. The code is exchanged and the token is written to
+   ``data/spotify/<guild>.json``.
 
-The Spotify app must list ``{webui.baseUrl}/spotify/auth/callback`` as an
-allowed redirect URI, and ``spotify.spotifyRedirectUri`` in config must match.
+Each server's app must list ``{webui.baseUrl}/spotify/auth/callback`` as an
+allowed redirect URI; the panel shows it.
 
 ``GET /api/servers/{id}/spotify/stats`` feeds the charts on a guild's Spotify
 module page: the playlist mirror and vote archive, aggregated by
@@ -26,6 +27,7 @@ from features.spotify import PlaylistStats, SpotifyRepository, aggregate
 from src.core import logging as logutil
 from src.core.logging import log_failure
 from src.integrations.spotify import (
+    CALLBACK_PATH,
     build_oauth,
     fetch_account_summary,
     get_token_status,
@@ -34,6 +36,7 @@ from src.integrations.spotify import (
 )
 from src.webui import audit
 from src.webui.context import WebUIContext
+from src.webui.guild_access import is_guild_id
 from src.webui.oauth_flow import (
     callback_url,
     error_word,
@@ -45,7 +48,6 @@ from src.webui.oauth_flow import (
 logger = logutil.init_logger("webui.routes.spotify")
 
 STATE_COOKIE = "spotify_oauth_state"
-CALLBACK_PATH = "/spotify/auth/callback"
 
 
 def _callback_url() -> str:
@@ -53,10 +55,15 @@ def _callback_url() -> str:
     return callback_url(CALLBACK_PATH)
 
 
-def _result_page(*, ok: bool, message: str) -> HTMLResponse:
-    return result_page(
-        service="Spotify", ok=ok, message=message, back="section=spotify&spotify_auth"
-    )
+def _result_page(guild_id: str | None, *, ok: bool, message: str) -> HTMLResponse:
+    page = f"module/{guild_id}/moduleSpotify?" if guild_id else "?"
+    return result_page(service="Spotify", ok=ok, message=message, back=page + "spotify_auth")
+
+
+def _state_guild(state: str) -> str | None:
+    """The guild the flow's state names (``<guild>.<token>``), when it is one."""
+    guild, _, token = state.partition(".")
+    return guild if token and is_guild_id(guild) else None
 
 
 async def collect_spotify_stats(server_id: str) -> PlaylistStats:
@@ -75,14 +82,14 @@ async def collect_spotify_stats(server_id: str) -> PlaylistStats:
 def create_router(ctx: WebUIContext) -> APIRouter:
     router = APIRouter()
 
-    @router.get("/api/spotify/status")
-    async def api_spotify_status(request: Request):
-        """Report whether the Spotify token cache is populated and valid."""
-        ctx.require_developer(request)
-        status = get_token_status()
+    @router.get("/api/servers/{server_id}/spotify/status")
+    async def api_spotify_status(request: Request, server_id: str):
+        """The server's Spotify app and account, from its token file."""
+        await ctx.require_guild_admin(request, server_id)
+        status = get_token_status(server_id)
         status["callback_url"] = _callback_url()
         if status.get("authorized"):
-            status["account"] = await fetch_account_summary()
+            status["account"] = await fetch_account_summary(server_id)
         return JSONResponse(status)
 
     @router.get("/api/servers/{server_id}/spotify/stats")
@@ -93,28 +100,25 @@ def create_router(ctx: WebUIContext) -> APIRouter:
         return JSONResponse(stats.to_dict())
 
     @router.get("/spotify/auth/start")
-    async def spotify_auth_start(request: Request):
-        """Begin Spotify OAuth: redirect the admin to Spotify's authorize page."""
-        ctx.require_developer(request)
-        redirect_uri = _callback_url()
-        try:
-            oauth = build_oauth(redirect_uri=redirect_uri)
-        except Exception as e:
-            log_failure(logger, "Spotify OAuth setup failed: %s", e)
-            raise HTTPException(
-                status_code=500,
-                detail="Configuration Spotify invalide (détail dans les logs du bot).",
-            ) from e
+    async def spotify_auth_start(request: Request, guild: str = ""):
+        """Begin connecting *guild*'s account: redirect to Spotify's authorize page."""
+        await ctx.require_guild_admin(request, guild)
+        _callback_url()  # 400 while webui.baseUrl isn't set: Spotify couldn't come back
+        oauth = build_oauth(guild)
         if not oauth.client_id or not oauth.client_secret:
             raise HTTPException(
                 status_code=400,
                 detail=(
-                    "Client ID et Client Secret doivent être renseignés dans la "
-                    "section Spotify de la configuration globale."
+                    "Renseigne d'abord le Client ID et le Client Secret de l'application "
+                    "Spotify dans les réglages du module, puis enregistre."
                 ),
             )
         return redirect_with_state(
-            ctx, request, lambda state: oauth.get_authorize_url(state=state), STATE_COOKIE
+            ctx,
+            request,
+            lambda state: oauth.get_authorize_url(state=state),
+            STATE_COOKIE,
+            prefix=f"{guild}.",
         )
 
     @router.get("/spotify/auth/callback")
@@ -124,46 +128,55 @@ def create_router(ctx: WebUIContext) -> APIRouter:
         state: str = "",
         error: str = "",
     ):
-        """Receive Spotify's redirect and exchange the code for a token."""
-        session = ctx.require_developer(request)
-
+        """Receive Spotify's redirect and exchange the code for the server's token."""
+        guild = _state_guild(state)
         if error:
             # Spotify's error codes are short snake_case words (access_denied);
             # anything else in the query string isn't echoed onto our page.
             return _result_page(
-                ok=False, message=f"Spotify a refusé l'autorisation ({error_word(error)})."
+                guild, ok=False, message=f"Spotify a refusé l'autorisation ({error_word(error)})."
             )
-
-        if not state_matches(request, STATE_COOKIE, state):
+        if guild is None or not state_matches(request, STATE_COOKIE, state):
             return _result_page(
+                guild,
                 ok=False,
-                message=("État OAuth invalide ou expiré. Relance le flux depuis le dashboard."),
+                message="État OAuth invalide ou expiré. Relance le flux depuis le dashboard.",
             )
+        # Still an admin there: the flow may have started before a demotion.
+        session = await ctx.require_guild_admin(request, guild)
         if not code:
-            return _result_page(ok=False, message="Code d'autorisation manquant.")
+            return _result_page(guild, ok=False, message="Code d'autorisation manquant.")
 
         try:
-            oauth = build_oauth(redirect_uri=_callback_url())
-            # Blocking HTTP + token cache write: on the Spotify worker, never the loop.
+            oauth = build_oauth(guild)
+            # Blocking HTTP + token file write: on the Spotify worker, never the loop.
             await run_spotify(oauth.get_access_token, code=code, as_dict=False, check_cache=False)
         except Exception as e:
-            log_failure(logger, "Spotify token exchange failed: %s", e)
+            log_failure(logger, "Spotify token exchange failed for %s: %s", guild, e)
             return _result_page(
+                guild,
                 ok=False,
                 message="Échec de l'échange du code. Voir les logs du bot pour le détail.",
             )
 
-        reset_client()
-        account = await fetch_account_summary()
+        reset_client(guild)
+        account = await fetch_account_summary(guild)
         logger.info(
-            "Spotify re-authorized via WebUI (account=%s, by %s/%s)",
+            "Spotify connected for %s (account=%s, by %s/%s)",
+            guild,
             account.get("id") if account else "?",
             session.username,
             session.user_id,
         )
-        await audit.record(None, session, "spotify.authorize")
+        await audit.record(
+            guild,
+            session,
+            "spotify.authorize",
+            details={"account": account.get("id")} if account else None,
+        )
 
         response = _result_page(
+            guild,
             ok=True,
             message=(
                 f"Connecté en tant que {account['display_name']} ({account['id']})."

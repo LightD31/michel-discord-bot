@@ -143,11 +143,6 @@ async def test_closing_the_daily_vote(votes_mod, monkeypatch, outcome, state):
     monkeypatch.setattr(votes_mod, "embed_song", fake_embed_song)
     monkeypatch.setattr(votes_mod, "embed_message_vote", fake_vote_embed)
     monkeypatch.setattr(votes_mod, "edit_message_if_changed", fake_edit)
-    monkeypatch.setattr(
-        votes_mod,
-        "spotify_api",
-        SimpleNamespace(playlist_remove_all_occurrences_of_items=remove_from_spotify),
-    )
 
     class Repo:
         async def delete_playlist_item(self, track_id):
@@ -160,7 +155,12 @@ async def test_closing_the_daily_vote(votes_mod, monkeypatch, outcome, state):
         calls.append(("check",))
 
     harness = SimpleNamespace(_check_playlist_changes_for_server=check_playlist)
-    server = SimpleNamespace(guild_id="1", playlist_id="p", repo=Repo())
+    server = SimpleNamespace(
+        guild_id="1",
+        playlist_id="p",
+        repo=Repo(),
+        spotify=SimpleNamespace(playlist_remove_all_occurrences_of_items=remove_from_spotify),
+    )
     tally = tally_daily_votes({"1": "supprimer"}, {})
 
     await votes_mod.VotesMixin._close_daily_vote(
@@ -175,7 +175,7 @@ async def test_closing_the_daily_vote(votes_mod, monkeypatch, outcome, state):
 CLOSED = {"message_id": None, "track_id": None, "extensions": 0, "reminder_message_id": None}
 
 
-def daily_harness(votes_mod, *, song, start_fails=False, daily_vote=True):
+def daily_harness(votes_mod, *, song, start_fails=False, daily_vote=True, spotify=None):
     """A VotesMixin stand-in around one guild whose daily vote is due (B07)."""
     events: list = []
 
@@ -231,6 +231,7 @@ def daily_harness(votes_mod, *, song, start_fails=False, daily_vote=True):
         guild_id="1",
         channel_id="5",
         repo=Repo(),
+        spotify=spotify,
         discord2name={},
         vote_infos={"message_id": "9", "track_id": "t", "extensions": 2},
         daily_vote=daily_vote,
@@ -238,14 +239,15 @@ def daily_harness(votes_mod, *, song, start_fails=False, daily_vote=True):
     return harness, server, events
 
 
-async def test_a_failed_opening_leaves_no_closed_vote_behind(votes_mod, monkeypatch):
+async def test_a_failed_opening_leaves_no_closed_vote_behind(votes_mod):
     """The closed vote stayed recorded: every later day read a deleted song and stopped."""
 
     async def track(track_id, market):
         return {}
 
-    monkeypatch.setattr(votes_mod, "spotify_api", SimpleNamespace(track=track))
-    harness, server, events = daily_harness(votes_mod, song={"added_by": "1"}, start_fails=True)
+    harness, server, events = daily_harness(
+        votes_mod, song={"added_by": "1"}, start_fails=True, spotify=SimpleNamespace(track=track)
+    )
 
     with pytest.raises(RuntimeError):
         await votes_mod.VotesMixin._randomvote_for_server(harness, server)

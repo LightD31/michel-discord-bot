@@ -1,5 +1,4 @@
 // Hash routes and navigation between pages.
-import { loadSpotifyAuth } from '../features/spotify-auth.js';
 import { loadTwitchAuth } from '../features/twitch-auth.js';
 import { loadShortLinks } from '../pages/links.js';
 import { startLogStream, stopLogStream } from '../pages/logs.js';
@@ -93,7 +92,7 @@ export async function navigate(page, serverId = null, moduleName = null, { fromH
     }
 
     if (page === 'global') {
-        Promise.all([loadSpotifyAuth(), loadTwitchAuth()]).then(() => render());
+        loadTwitchAuth().then(() => render());
     }
 
     if (page === 'links') {
