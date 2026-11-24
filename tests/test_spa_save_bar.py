@@ -1,4 +1,4 @@
-"""The save bar, Ctrl+S and a module's history in a real browser (C5).
+"""The save bar, Ctrl+S and a module's history in a real browser.
 
 Same app as ``test_spa_smoke.py`` (no bot, no MongoDB), whose fixtures this
 reuses; the history the page reads is answered by ``page.route``.

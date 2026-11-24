@@ -73,7 +73,7 @@ async def test_only_open_polls_past_their_deadline_are_due(mongo):
 
 
 async def test_the_author_edits_the_options_only_until_a_vote(mongo):
-    """ "✏️ Modifier" (B4): votes point at an option's place, so a vote freezes the options."""
+    """ "✏️ Modifier": votes point at an option's place, so a vote freezes the options."""
     repo = PollRepository(mongo.guild_id)
     pid = await repo.add(poll())
     assert await repo.edit(pid, "9", "Pas à toi ?") is None  # someone else's poll

@@ -1,4 +1,4 @@
-"""``/profil`` and the "📊 Profil" right-click menu: a member's card (P5, A2).
+"""``/profil`` and the "📊 Profil" right-click menu: a member's card (P5).
 
 The rank card of ``/niveau`` (level, rank, XP), with what the member left
 across the server underneath: the XP of the current season, messages on the

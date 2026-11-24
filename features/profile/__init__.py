@@ -1,4 +1,4 @@
-"""A member's footprint across modules, for ``/profil`` (P5, A2)."""
+"""A member's footprint across modules, for ``/profil`` (P5)."""
 
 from features.profile.repository import Footprint, ProfileRepository
 

@@ -3152,7 +3152,7 @@ a.nav-item, a.module-name { color: inherit; text-decoration: none; }
 .gazette-field-name { font-weight: 600; margin-bottom: 2px; }
 .gazette-field-value { color: var(--text-secondary); overflow-wrap: anywhere; }
 
-/* ── Server page (C2) and first steps (C1) ── */
+/* ── Server page and first steps ── */
 .sr-only {
     position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
     overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
@@ -3256,7 +3256,7 @@ a.btn { text-decoration: none; }
     .checklist-item { flex-wrap: wrap; }
 }
 
-/* The save bar of a module page (C5): on screen while edits aren't saved. */
+/* The save bar of a module page: on screen while edits aren't saved. */
 .save-bar {
     position: fixed;
     left: 50%;
@@ -3281,7 +3281,7 @@ a.btn { text-decoration: none; }
 body.has-save-bar .main { padding-bottom: 96px; }
 body.has-save-bar .toast-container { bottom: 88px; }
 
-/* A module's history (C5). */
+/* A module's history. */
 .history-intro, .history-empty { color: var(--text-secondary); font-size: 13px; margin-bottom: 12px; }
 .copy-sources { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
 .copy-source { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius); }
@@ -3292,7 +3292,7 @@ body.has-save-bar .toast-container { bottom: 88px; }
 .history-before { color: var(--text-muted); }
 .history-after { color: var(--text-primary); }
 
-/* A message as Discord shows it: the live preview of a template (C4). */
+/* A message as Discord shows it: the live preview of a template. */
 .discord-preview { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
 .discord-preview:empty { display: none; }
 .dc-empty { color: var(--text-muted); font-size: 13px; }
@@ -3372,7 +3372,7 @@ body.has-save-bar .toast-container { bottom: 88px; }
 .rolemenu-style-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 @media (max-width: 600px) { .rolemenu-style-row { grid-template-columns: 1fr; } }
 
-/* ── The member space, "Mon espace" (C6) ───────── */
+/* ── The member space, "Mon espace" ───────── */
 .me-tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
 .me-tab {
     padding: 6px 14px; border: 1px solid var(--border); border-radius: 999px;

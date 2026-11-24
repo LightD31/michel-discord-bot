@@ -1,4 +1,4 @@
-"""XP seasons against a real MongoDB: the ranking of a period, a podium kept once (A4)."""
+"""XP seasons against a real MongoDB: the ranking of a period, a podium kept once."""
 
 import asyncio
 from datetime import UTC, datetime, timedelta

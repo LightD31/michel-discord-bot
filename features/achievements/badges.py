@@ -1,4 +1,4 @@
-"""The badges (succès) a member can unlock, and what each one asks for (P18, A3).
+"""The badges (succès) a member can unlock, and what each one asks for (P18).
 
 Each badge reads what one module already keeps (the starboard's mirrors, the
 voice XP ticks, the playlist, suggestions, the feur counter) or the date the

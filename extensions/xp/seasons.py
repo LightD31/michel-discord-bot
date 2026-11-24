@@ -1,4 +1,4 @@
-"""SeasonsMixin — the end of an XP season: its podium, its champion role (A4).
+"""SeasonsMixin — the end of an XP season: its podium, its champion role.
 
 Every night at 00:07 (Paris), each guild with ``seasonsEnabled`` looks at the
 season that just ended. Its top 10 is recorded first (``record_season``, once:

@@ -1,4 +1,4 @@
-// The save bar of a module page, Ctrl+S, and the module's history (C5).
+// The save bar of a module page, Ctrl+S, and the module's history.
 //
 // While a module's form has unsaved edits, a bar stays at the bottom of the
 // screen: how many fields changed, Annuler, Tester (when a message template

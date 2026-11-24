@@ -1,4 +1,4 @@
-"""The dashboard's audit log, read back (F09).
+"""The dashboard's audit log, read back.
 
 A guild's log is open to every admin of that guild, so co-admins see each
 other's changes; the bot's own log (global sections, extensions, short links)

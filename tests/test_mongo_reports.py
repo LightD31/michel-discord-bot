@@ -1,4 +1,4 @@
-"""Reports of a message against a real MongoDB: one card per message, handled once (A7)."""
+"""Reports of a message against a real MongoDB: one card per message, handled once."""
 
 import asyncio
 from datetime import UTC, datetime, timedelta

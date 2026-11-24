@@ -1,4 +1,4 @@
-"""⭐ Mettre au starboard: staff put a message there by hand, under the same rules (B1)."""
+"""⭐ Mettre au starboard: staff put a message there by hand, under the same rules."""
 
 import asyncio
 from types import SimpleNamespace

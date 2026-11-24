@@ -282,7 +282,7 @@ async def save_module_settings(
     The checks, in order: size, the channels and roles the settings add (on
     the bot loop), then, inside the config lock, the secrets put back and the
     schema. What the settings were just before is kept in the module's history
-    (C5, :mod:`src.webui.config_history`). Returns the response's ``reload``
+    (:mod:`src.webui.config_history`). Returns the response's ``reload``
     (and ``commandSync``) entries.
     """
     from src.webui import schemas

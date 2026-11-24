@@ -1,4 +1,4 @@
-"""A burst of reactions folds into a few refreshes (B10)."""
+"""A burst of reactions folds into a few refreshes."""
 
 import asyncio
 

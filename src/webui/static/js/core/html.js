@@ -1,4 +1,4 @@
-// HTML built from a template, escaped by default (C8).
+// HTML built from a template, escaped by default.
 //
 //     html`<p title="${name}">${text}</p>`
 //

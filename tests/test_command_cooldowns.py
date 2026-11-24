@@ -1,4 +1,4 @@
-"""Global and heavy commands carry a cooldown (F04).
+"""Global and heavy commands carry a cooldown.
 
 The global ones can be installed by anyone, in any server; the heavy ones
 read a whole server's data or call Spotify. A cooldown is answered with a

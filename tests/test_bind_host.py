@@ -1,4 +1,4 @@
-"""Where the dashboard and /metrics listen when the config doesn't say (S12)."""
+"""Where the dashboard and /metrics listen when the config doesn't say."""
 
 from src.core.config import bind_host
 

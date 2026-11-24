@@ -1,4 +1,4 @@
-"""Members who left a server, forgotten there 30 days later (F10).
+"""Members who left a server, forgotten there 30 days later.
 
 When a member leaves, their data on that server is scheduled for deletion
 (``global.member_purges``, one document per guild and member): what is theirs

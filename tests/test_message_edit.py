@@ -329,3 +329,32 @@ async def test_an_uploaded_image_in_a_v2_card_compares_by_its_name():
     message.flags = MessageFlags.IS_COMPONENTS_V2
     payload = {"components": embeds_to_v2([embed]), "flags": MessageFlags.IS_COMPONENTS_V2}
     assert await edit_message_if_changed(message, **payload) is False
+
+
+def test_no_message_is_edited_around_the_helper():
+    """P38: a direct ``message.edit(...)`` skips the diff and the thread unarchive.
+
+    Scans for ``.edit(`` on a name that holds a message (``message``, ``msg``,
+    ``recap_message``…) outside the helper itself; channels, threads and events
+    are edited directly.
+    """
+    import ast
+
+    from source_scan import parse, python_files, rel
+
+    offenders = []
+    for path in python_files("extensions", "features", "src"):
+        if rel(path) == "src/discord_ext/messages.py":
+            continue
+        for node in ast.walk(parse(path)[0]):
+            if (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr == "edit"
+            ):
+                target = ast.unparse(node.func.value).rsplit(".", 1)[-1].lower()
+                if "message" in target or target in ("msg", "origin"):
+                    offenders.append(f"{rel(path)}:{node.lineno}")
+    assert offenders == [], (
+        "edit messages with edit_message_if_changed() (src/discord_ext/messages.py)"
+    )

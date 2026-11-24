@@ -1,4 +1,4 @@
-"""What is wrong on a guild, for its admins to see (F08).
+"""What is wrong on a guild, for its admins to see.
 
 An admin whose RSS feed went silent, or whose channel lost the bot's rights,
 used to see nothing: only a developer reading the logs could tell. The

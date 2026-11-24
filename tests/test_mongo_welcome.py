@@ -1,4 +1,4 @@
-"""Greeting a newcomer (A8) against a real MongoDB: once each, never oneself, for 7 days."""
+"""Greeting a newcomer against a real MongoDB: once each, never oneself, for 7 days."""
 
 import asyncio
 import importlib

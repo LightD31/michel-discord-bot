@@ -1,4 +1,4 @@
-"""The server page's "Incidents" card (P21, C10).
+"""The server page's "Incidents" card (P21).
 
 ``GET /api/servers/{id}/incidents`` gives the guild's admins its last failed
 interactions and tasks (:mod:`src.core.incidents`): the reference a member was

@@ -1,4 +1,4 @@
-"""``/menu-roles creer``: pick the roles in Discord, see the preview, publish (B3)."""
+"""``/menu-roles creer``: pick the roles in Discord, see the preview, publish."""
 
 import pytest
 from discord_fakes import FakeChannel, FakeCtx, FakeGuild, FakeMember, FakeRole, bare_extension, run

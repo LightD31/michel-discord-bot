@@ -1,4 +1,4 @@
-"""A member's data, exported or forgotten on request, and when they leave a server (F10)."""
+"""A member's data, exported or forgotten on request, and when they leave a server."""
 
 from features.userdata.departures import PURGE_DELAY, DeparturesRepository
 from features.userdata.repository import (

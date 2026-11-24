@@ -1,4 +1,4 @@
-"""The server page and the first-steps wizard in a real browser (C1, C2).
+"""The server page and the first-steps wizard in a real browser.
 
 Same app as ``test_spa_smoke.py`` (no bot, no MongoDB), whose fixtures this
 reuses: the modules filed under Actifs / Disponibles, the search, hiding the

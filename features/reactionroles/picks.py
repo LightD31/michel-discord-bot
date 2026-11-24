@@ -1,4 +1,4 @@
-"""What a click or a pick in a role menu changes: the roles to add and to remove (B3).
+"""What a click or a pick in a role menu changes: the roles to add and to remove.
 
 Pure: the extension reads the member's roles, applies the plan, and checks
 each role it adds against :func:`features.reactionroles.permissions.self_assign_refusal`.

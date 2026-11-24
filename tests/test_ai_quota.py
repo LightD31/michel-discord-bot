@@ -50,7 +50,7 @@ def test_global_settings_carry_the_limits():
 
 
 def test_access_rules():
-    """/ask answers only where the AI module is on: no external use any more (S07)."""
+    """/ask answers only where the AI module is on: no external use any more."""
     assert access_refusal(AiLimits(), in_enabled_guild=True) is None
     assert access_refusal(AiLimits(), in_enabled_guild=False) == MODULE_DISABLED
     assert access_refusal(AiLimits(paused=True), in_enabled_guild=True) == PAUSED

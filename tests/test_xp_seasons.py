@@ -1,4 +1,4 @@
-"""XP seasons (A4): bounds on the Paris clock, the podium and the champion role."""
+"""XP seasons: bounds on the Paris clock, the podium and the champion role."""
 
 from datetime import date, timedelta
 

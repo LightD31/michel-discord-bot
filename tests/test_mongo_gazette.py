@@ -1,4 +1,4 @@
-"""La Gazette against a real MongoDB: one week of each module, members named (A1)."""
+"""La Gazette against a real MongoDB: one week of each module, members named."""
 
 import asyncio
 from datetime import UTC, date, datetime, timedelta

@@ -1,4 +1,4 @@
-"""A new server's first steps (C1): the packs, the checklist, the announcement.
+"""A new server's first steps: the packs, the checklist, the announcement.
 
 See :mod:`src.webui.onboarding`. Applying a pack goes through the module save
 route's own checks (``routes/servers.py``), module by module, then reloads

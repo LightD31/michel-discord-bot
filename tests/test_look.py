@@ -1,4 +1,4 @@
-"""One look for Michel's embeds (P6, B8): the palette, the cards, and the guard.
+"""One look for Michel's embeds (P6): the palette, the cards, and the guard.
 
 Colours, embeds and footers are made in ``src/discord_ext/look.py`` only: a
 raw ``0x…`` colour, an ``interactions`` colour class, an ``Embed(...)`` or a

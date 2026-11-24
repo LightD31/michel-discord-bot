@@ -1,4 +1,4 @@
-"""/rattrapage (P20, A11): which messages, the prompt, the links, and the guards it shares with /ask."""
+"""/rattrapage (P20): which messages, the prompt, the links, and the guards it shares with /ask."""
 
 from types import SimpleNamespace
 

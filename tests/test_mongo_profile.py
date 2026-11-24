@@ -1,4 +1,4 @@
-"""/profil's counts against a real MongoDB: each module's own collection, by member (A2)."""
+"""/profil's counts against a real MongoDB: each module's own collection, by member."""
 
 from datetime import UTC, datetime
 

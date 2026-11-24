@@ -1,4 +1,4 @@
-"""L'agenda: what's coming up on the server, in ``/agenda`` and a message kept up to date (P19, A5).
+"""L'agenda: what's coming up on the server, in ``/agenda`` and a message kept up to date (P19).
 
 The next days of the server in one place: Discord's scheduled events
 (including those Twitch and the Zevent manage), birthdays, giveaways and polls

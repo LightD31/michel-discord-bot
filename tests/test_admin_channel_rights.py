@@ -1,4 +1,4 @@
-"""Admin commands acting on another channel check the author's rights there (S02).
+"""Admin commands acting on another channel check the author's rights there.
 
 Discord checks a command's default permissions in the channel it is run from;
 the bot then acts on the target channel with its own rights.

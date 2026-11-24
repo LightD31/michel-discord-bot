@@ -1,4 +1,4 @@
-// A message drawn as Discord shows it (C4): the Markdown it reads, mentions
+// A message drawn as Discord shows it: the Markdown it reads, mentions
 // by name, the author line. The text comes from the server, rendered by the
 // bot's own function (POST …/template-preview); this only draws it.
 //

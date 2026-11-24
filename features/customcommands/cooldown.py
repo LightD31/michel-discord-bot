@@ -1,4 +1,4 @@
-"""How long a member waits before running a custom command again (A9).
+"""How long a member waits before running a custom command again.
 
 Kept in memory: a restart lets everyone run every command once more, which is
 harmless for a GIF. Keyed by guild, command and member.

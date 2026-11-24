@@ -1,4 +1,4 @@
-"""A refusal says what to do next (B9): the right channel, the right, who can fix it."""
+"""A refusal says what to do next: the right channel, the right, who can fix it."""
 
 from types import SimpleNamespace
 

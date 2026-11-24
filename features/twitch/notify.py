@@ -1,4 +1,4 @@
-"""The text above a "live started" notification (A10).
+"""The text above a "live started" notification.
 
 Per streamer, a server may name a role to ping and write a message:
 ``{streamer}`` is the streamer's name, ``{titre}`` the live's title, ``{jeu}``

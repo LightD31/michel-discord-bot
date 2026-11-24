@@ -4,7 +4,7 @@ Each guild declares its own commands from the dashboard (module
 "Commandes personnalisées"): a name, a description, and one or more responses
 — a GIF link or a plain text — one of which is picked at random on every use.
 A command may aim at a member (a "cible" option), wait between two uses by
-one member, and be kept to some roles (A9).
+one member, and be kept to some roles.
 Nothing is hardcoded here; the extension only turns that config into real
 guild-scoped slash commands.
 

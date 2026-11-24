@@ -1,4 +1,4 @@
-"""``/aide`` — what Michel does on this server, module by module (P6, B7), built from what is loaded.
+"""``/aide`` — what Michel does on this server, module by module (P6), built from what is loaded.
 
 ``/aide`` opens on the server's modules: one line each, and a list to pick one
 from. A module's page says what it is for, the commands to know and what
@@ -253,7 +253,7 @@ def render_pages(entries: list[HelpEntry], search: str | None = None) -> list[Em
     return pages
 
 
-# The module pages (B7): one list entry per module, 25 per menu, 4 menus at most.
+# The module pages: one list entry per module, 25 per menu, 4 menus at most.
 MENU_PREFIX = "aide"
 OPTIONS_PER_MENU = 25
 MAX_MENUS = 4
@@ -282,7 +282,7 @@ def dashboard_url() -> str | None:
 
 
 def member_space_line(base: str | None) -> str:
-    """Where a member finds their own things in the dashboard (C6), when there is one."""
+    """Where a member finds their own things in the dashboard, when there is one."""
     if not base:
         return ""
     return (

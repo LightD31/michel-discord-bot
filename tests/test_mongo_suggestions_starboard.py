@@ -81,7 +81,7 @@ async def test_suggestions_are_listed_newest_first_and_by_status(mongo):
 
 
 async def test_two_moderators_deciding_at_once_decide_once(mongo):
-    """Two clicks on ✅ / ❌ at the same moment: one decision, the other told it's taken (B5)."""
+    """Two clicks on ✅ / ❌ at the same moment: one decision, the other told it's taken."""
     repo = SuggestionsRepository(mongo.guild_id)
     s = await new_suggestion(repo)
     results = await asyncio.gather(

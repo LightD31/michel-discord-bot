@@ -1,4 +1,4 @@
-"""A guild's "Santé" card: channels the bot can't use, failing feeds, task runs (F08),
+"""A guild's "Santé" card: channels the bot can't use, failing feeds, task runs,
 and the accounts the server hasn't connected (P36)."""
 
 from functools import partial

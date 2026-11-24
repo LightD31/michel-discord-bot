@@ -1,4 +1,4 @@
-"""La Gazette du dimanche (P5, A1): what happened on the server this week.
+"""La Gazette du dimanche (P5): what happened on the server this week.
 
 Pure: :class:`Edition` holds the week's sections, already gathered and named
 (``src/discord_ext/gazette.py`` does that on the bot loop), and

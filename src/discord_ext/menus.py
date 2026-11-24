@@ -1,4 +1,4 @@
-"""What ``/aide`` says about a right-click menu (P4, B1).
+"""What ``/aide`` says about a right-click menu (P4).
 
 A context menu has a name but no description on Discord, so each one states
 its own next to its decorator::

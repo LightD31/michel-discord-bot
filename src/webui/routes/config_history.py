@@ -1,4 +1,4 @@
-"""A module's earlier settings, and putting one back (C5).
+"""A module's earlier settings, and putting one back.
 
 See :mod:`src.webui.config_history`. A restore is a save: it goes through
 :func:`save_module_settings`, so the channels and roles it brings back are

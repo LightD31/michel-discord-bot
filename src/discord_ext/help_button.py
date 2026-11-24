@@ -1,4 +1,4 @@
-"""The "❓ Que faire ici ?" button a module can put under a message (A8).
+"""The "❓ Que faire ici ?" button a module can put under a message.
 
 It opens ``/aide``'s overview for whoever clicks it, privately; the help
 extension answers it, so a module only needs the button.

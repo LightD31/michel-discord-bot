@@ -1,4 +1,4 @@
-"""/mes-donnees against a real MongoDB: what is deleted, anonymised and kept (F10)."""
+"""/mes-donnees against a real MongoDB: what is deleted, anonymised and kept."""
 
 import json
 from datetime import UTC, datetime, timedelta

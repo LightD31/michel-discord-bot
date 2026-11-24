@@ -112,7 +112,7 @@ class RecordingRefreshes:
 
 
 async def start(ext, ctx, *, prize, duration, winners="1", description="", **options):
-    """``/concours lancer`` opens its form (B2); the host fills it in."""
+    """``/concours lancer`` opens its form; the host fills it in."""
     await run(GiveawayExtension.giveaway_start, ext, ctx, **options)
     if not ctx.modals:
         return
@@ -396,7 +396,7 @@ async def test_the_form_refuses_a_winner_count_it_cannot_use(setup, winners):
 
 
 async def test_a_giveaway_for_a_role_and_a_level(setup, store_config):
-    """B3: the conditions show on the announcement and are checked when a member enters."""
+    """The conditions show on the announcement and are checked when a member enters."""
     from discord_fakes import FakeRole
 
     ext, ctx, repo, channel = setup

@@ -1,4 +1,4 @@
-"""Right-click a member: 🛡️ Historique and ⚠️ Avertir… (B1), for moderators.
+"""Right-click a member: 🛡️ Historique and ⚠️ Avertir…, for moderators.
 
 Both are hidden from members without "Exclure temporairement des membres"
 (``default_member_permissions``) and check it again when they run, since a

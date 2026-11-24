@@ -1,6 +1,6 @@
 # Async and I/O
 
-Never block the loop; who may be fetched, and how. Moved verbatim from `CLAUDE.md` (P12, D5); its one-line rules point here.
+Never block the loop; who may be fetched, and how. The one-line rules of `CLAUDE.md` point here.
 
 ## Async everywhere
 

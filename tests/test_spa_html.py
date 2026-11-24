@@ -1,4 +1,4 @@
-"""html`…` escapes what it interpolates, in a real browser (C8).
+"""html`…` escapes what it interpolates, in a real browser.
 
 The SPA builds its markup with the ``html`` tag of ``js/core/html.js``: a
 value is escaped unless it is itself ``html`…``` or ``raw()``. The pages moved
@@ -140,7 +140,7 @@ RENDER = """async (texts) => {
 
 
 def test_the_discord_preview_draws_markdown_and_never_markup(page):
-    """C4: what an admin writes is shown as Discord would, and stays text."""
+    """What an admin writes is shown as Discord would, and stays text."""
     out = page.evaluate(
         RENDER,
         [

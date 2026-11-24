@@ -1,4 +1,4 @@
-"""Template tests: rendered like the bot does, DMed to the admin, warnings said (F11)."""
+"""Template tests: rendered like the bot does, DMed to the admin, warnings said."""
 
 import asyncio
 import json
@@ -147,7 +147,7 @@ def preview(ctx, body):
 
 
 def test_the_preview_renders_each_text_and_sends_nothing():
-    """The live preview (C4): the production renderer, per text, no DM."""
+    """The live preview: the production renderer, per text, no DM."""
     user = User()
     texts = ["GG {mention}, niveau {lvl} !", "{nope} @everyone", "{0.__class__}", ""]
     body = {"module": "moduleXp", "field": "levelUpMessageList", "texts": texts}

@@ -298,7 +298,7 @@ class WebUIContext:
         return (await self.guild_access(session, guild_id)).is_member
 
     async def require_guild_member(self, request: Request, guild_id: str | int) -> Session:
-        """The member tier (C6): the session's user is a member of *guild_id*, read live.
+        """The member tier: the session's user is a member of *guild_id*, read live.
 
         One tier below :meth:`require_guild_admin`. A route behind it acts on
         the session's own user id only, never on an id from the request.

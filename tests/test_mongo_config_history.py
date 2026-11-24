@@ -1,4 +1,4 @@
-"""A module's earlier settings, and putting one back, against a real MongoDB (C5)."""
+"""A module's earlier settings, and putting one back, against a real MongoDB."""
 
 import json
 from types import SimpleNamespace

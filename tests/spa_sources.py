@@ -1,4 +1,4 @@
-"""The dashboard SPA's sources, for the tests that read them (C8).
+"""The dashboard SPA's sources, for the tests that read them.
 
 ``index.html`` holds the markup, ``app.css`` the styles, and ``js/`` the ES
 modules (``js/main.js`` imports the others).

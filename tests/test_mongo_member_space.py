@@ -1,4 +1,4 @@
-"""The member space's routes against a real MongoDB (C6): each one sees and changes the
+"""The member space's routes against a real MongoDB: each one sees and changes the
 session's own data only.
 
 Every test seeds the same data for two members, ME and OTHER, then calls the

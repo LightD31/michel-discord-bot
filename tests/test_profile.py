@@ -1,4 +1,4 @@
-"""/profil and "📊 Profil": a member's card across modules (A2)."""
+"""/profil and "📊 Profil": a member's card across modules."""
 
 from datetime import UTC, datetime
 

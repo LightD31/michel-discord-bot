@@ -421,7 +421,7 @@ class CommandsMixin:
     )
     @_id_option()
     @_reason_option()
-    # Hidden from members (B9); the staff role is checked when it runs. A staff
+    # Hidden from members; the staff role is checked when it runs. A staff
     # role without "Gérer les messages" gets it back in the server's
     # Intégrations settings (the schema says so).
     @slash_default_member_permission(Permissions.MANAGE_MESSAGES)

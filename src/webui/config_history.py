@@ -1,4 +1,4 @@
-"""A module's earlier settings, to see what a save changed and put it back (C5).
+"""A module's earlier settings, to see what a save changed and put it back.
 
 The audit log says who saved a module and which fields changed, never the
 values. This keeps the values: each save from the dashboard stores the

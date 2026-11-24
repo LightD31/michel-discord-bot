@@ -1,4 +1,4 @@
-"""La Gazette (A1): its week, its sections, and the weekly post made once."""
+"""La Gazette: its week, its sections, and the weekly post made once."""
 
 from datetime import date, timedelta
 

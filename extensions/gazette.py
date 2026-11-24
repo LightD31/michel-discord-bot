@@ -1,4 +1,4 @@
-"""La Gazette du dimanche: the week of the server, posted once a week (P5, A1).
+"""La Gazette du dimanche: the week of the server, posted once a week (P5).
 
 Every 15 minutes the task looks at the guilds where the Gazette is on: on the
 configured day, from the configured hour (Paris), the week's edition is

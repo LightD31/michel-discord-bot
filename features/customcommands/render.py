@@ -1,4 +1,4 @@
-"""What a custom command answers: its text filled in, and the image it shows (A9).
+"""What a custom command answers: its text filled in, and the image it shows.
 
 A response is free text an admin wrote. ``{auteur}`` is the member who ran the
 command, ``{cible}`` the member they aimed it at (``tout le monde`` when the

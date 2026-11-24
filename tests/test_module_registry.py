@@ -269,7 +269,7 @@ def test_choice_fields_offer_what_the_save_accepts(probe):
 
 
 def test_every_module_has_its_look(probe):
-    """Each module's cards say what the dashboard calls it, with the same icon (P6, B8)."""
+    """Each module's cards say what the dashboard calls it, with the same icon (P6)."""
     from src.discord_ext.look import LOOKS
 
     for key, schema in probe["module_schemas"].items():

@@ -1,4 +1,4 @@
-"""Commands that make the bot post in a channel check the author could post there (S13)."""
+"""Commands that make the bot post in a channel check the author could post there."""
 
 from types import SimpleNamespace
 

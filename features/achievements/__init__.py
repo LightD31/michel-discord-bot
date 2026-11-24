@@ -1,4 +1,4 @@
-"""Badges (succès) won across modules (P18, A3)."""
+"""Badges (succès) won across modules (P18)."""
 
 from features.achievements.badges import (
     BADGES,

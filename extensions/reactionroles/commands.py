@@ -1,7 +1,7 @@
 """Slash commands for managing role menus.
 
 ``/menu-roles creer salon: titre:`` answers with an ephemeral builder: a role
-picker (Discord's own), the menu's preview and "Publier" (B3). Each role is
+picker (Discord's own), the menu's preview and "Publier". Each role is
 checked as the dashboard builder checks it (staff roles refused, below the
 author's highest role and the bot's).
 """

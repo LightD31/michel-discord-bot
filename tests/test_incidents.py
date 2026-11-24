@@ -1,4 +1,4 @@
-"""The server's incidents (P21, C10): what is kept, for whom, and what never is."""
+"""The server's incidents (P21): what is kept, for whom, and what never is."""
 
 import ast
 import asyncio

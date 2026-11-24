@@ -1,4 +1,4 @@
-"""What the agenda reads, against a real MongoDB (P19, A5)."""
+"""What the agenda reads, against a real MongoDB (P19)."""
 
 from datetime import UTC, datetime, timedelta
 

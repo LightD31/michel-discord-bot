@@ -2,7 +2,7 @@
 
 Every ``POST`` / ``PUT`` / ``PATCH`` / ``DELETE`` under ``/api/`` counts
 against one budget per session (per client IP without a session cookie).
-The live preview of a message template (C4) is a ``POST`` that changes
+The live preview of a message template is a ``POST`` that changes
 nothing and is sent as the admin types: it has a budget of its own
 (:data:`PREVIEW_RATE_LIMIT`), so typing never uses up the one saves need.
 Saves reload extensions and sync commands on the bot loop, and some routes

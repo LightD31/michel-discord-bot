@@ -56,7 +56,7 @@ export async function navigate(page, serverId = null, moduleName = null, { fromH
         }
         return;
     }
-    // A member who manages no server lands on their own space (C6).
+    // A member who manages no server lands on their own space.
     if (page === 'home' && !isAdmin()) page = 'me';
     // Restrict admin-only pages for non-admin users
     const adminPages = ['server', 'module', 'setup'];

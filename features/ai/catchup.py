@@ -1,4 +1,4 @@
-"""``/rattrapage``: what a channel said since a member's last message, summed up by the AI (P20, A11).
+"""``/rattrapage``: what a channel said since a member's last message, summed up by the AI (P20).
 
 Pure parts only: which messages to read (since the member's last one, at
 most :data:`MAX_MESSAGES`), the prompt that numbers them, and the answer's

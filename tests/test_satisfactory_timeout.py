@@ -1,4 +1,4 @@
-"""A Satisfactory server that never answers can't hold the refresh (B11)."""
+"""A Satisfactory server that never answers can't hold the refresh."""
 
 import socket
 import time

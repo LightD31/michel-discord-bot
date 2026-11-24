@@ -177,7 +177,7 @@ async def test_staff_decide_and_votes_close(setup):
     assert all(b.disabled for b in votes.components)
     # Approved, it can still be marked implemented.
     assert [b.custom_id for b in staff_row.components] == ["suggdecide:1:implemented"]
-    # The author hears it by DM; the channel isn't pinged (B5).
+    # The author hears it by DM; the channel isn't pinged.
     assert ctx.author.dms[-1].startswith(
         "💡 Ta suggestion **#1** « Musique » sur **Serveur** est approuvée."
     )
@@ -239,7 +239,7 @@ async def test_only_staff_decide(setup):
     ext, ctx, repo, _, _, _ = setup
     await suggest(ext, ctx)
     await run(SuggestionsExtension.suggestion_deny, ext, ctx, 1)
-    # Says who can (B9): the staff role, named, and the administrators.
+    # Says who can: the staff role, named, and the administrators.
     assert ctx.last == (
         f"🔒 Seuls le rôle <@&{STAFF_ROLE}> et les administrateurs peuvent trancher une suggestion."
     )

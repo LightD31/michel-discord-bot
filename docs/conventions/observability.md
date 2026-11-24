@@ -1,6 +1,6 @@
 # Logging and metrics
 
-What is logged, reported and measured. Moved verbatim from `CLAUDE.md` (P12, D5); its one-line rules point here.
+What is logged, reported and measured. The one-line rules of `CLAUDE.md` point here.
 
 ## Notes
 

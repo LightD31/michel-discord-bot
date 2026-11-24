@@ -1,4 +1,4 @@
-"""CLAUDE.md stays short, and what it points to exists (D5).
+"""CLAUDE.md stays short, and what it points to exists.
 
 It is read in full at the start of every session: one line per rule, each
 naming the test that enforces it or the file under docs/conventions/ that

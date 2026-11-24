@@ -1,4 +1,4 @@
-// The server page: header, module cards, search and filters (C2).
+// The server page: header, module cards, search and filters.
 import { CHECKED, VALUE, actionArgs, registerActions } from '../core/actions.js';
 import { api } from '../core/api.js';
 import { isDeveloper, loadConfig, loadServers } from '../core/data.js';
@@ -17,7 +17,7 @@ import { incidentsCardHtml } from './incidents.js';
 import { overviewHtml } from './overview.js';
 
 // ── Server Page ───────────────────────────────────
-// ── Server page (C2) ──────────────────────────────
+// ── Server page ──────────────────────────────
 // The server first: how the week went, what needs fixing, what changed;
 // then the modules as cards, searched and filtered (Actifs / Disponibles /
 // Archivés). A module of an event that is over (schema.archived) shows

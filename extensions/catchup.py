@@ -1,4 +1,4 @@
-"""``/rattrapage``: the AI sums up what a channel said since your last message (P20, A11).
+"""``/rattrapage``: the AI sums up what a channel said since your last message (P20).
 
 Opt-in twice: the AI module on, and the channel listed by the admins in its
 ``catchupChannelIds``. The kill switch and the daily quotas of ``/ask``

@@ -81,7 +81,7 @@ async def test_set_stores_a_reminder_at_the_paris_hour_typed(setup):
 
 
 async def test_set_reads_quand_like_the_message_form(setup):
-    """« quand » is the same French reading as "⏰ Me le rappeler" (B2)."""
+    """« quand » is the same French reading as "⏰ Me le rappeler"."""
     ext, ctx, repo, _ = setup
     await run(RemindersExtension.reminder_set, ext, ctx, "Noël", "24/12 9h")
     (stored,) = repo.items.values()
@@ -215,7 +215,7 @@ async def test_remove_without_reminders(setup):
     assert "aucun rappel" in ctx.last
 
 
-# ── "⏰ Me le rappeler": a reminder made from a message (B1) ──────────────
+# ── "⏰ Me le rappeler": a reminder made from a message ──────────────
 
 
 async def test_a_message_becomes_a_reminder_that_links_back(setup):

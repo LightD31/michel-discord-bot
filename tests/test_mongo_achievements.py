@@ -1,4 +1,4 @@
-"""The badges' store and who qualifies, against a real MongoDB (P18, A3)."""
+"""The badges' store and who qualifies, against a real MongoDB (P18)."""
 
 from datetime import UTC, datetime, timedelta
 

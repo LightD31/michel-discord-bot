@@ -1,4 +1,4 @@
-// The "✉️ Tester en MP" button under a message template, and its live preview (C4).
+// The "✉️ Tester en MP" button under a message template, and its live preview.
 import { registerActions } from '../core/actions.js';
 import { api } from '../core/api.js';
 import { html } from '../core/html.js';
@@ -8,7 +8,7 @@ import { toast } from '../ui/toast.js';
 import { fetchServerChannels } from './pickers/channels.js';
 import { fetchRoleChoices } from './pickers/roles.js';
 
-// ── Template test (F11) ───────────────────────────
+// ── Template test ───────────────────────────
 // The texts currently in the field, saved or not, rendered by the bot and DMed to you.
 export function templateTexts(fieldEl) {
     if (!fieldEl) return [];
@@ -40,7 +40,7 @@ export async function testTemplate(serverId, moduleName, field, btn) {
     finally { if (btn) btn.disabled = false; }
 }
 
-// ── Live preview (C4) ─────────────────────────────
+// ── Live preview ─────────────────────────────
 // Under each template field, its messages as Discord will show them. The
 // server renders them with the bot's own function (the admin stands in for
 // the member); discord.js draws the result, mentions by name.

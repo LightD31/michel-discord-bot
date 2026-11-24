@@ -1,6 +1,6 @@
-"""🚩 Signaler: a member reports a message, a moderator handles it from the card (A7).
+"""🚩 Signaler: a member reports a message, a moderator handles it from the card.
 
-And the moderators' right-click menus on a member (B1), which show the reports.
+And the moderators' right-click menus on a member, which show the reports.
 
 The extension runs on the fakes of ``discord_fakes`` with in-memory stores;
 ``test_mongo_reports.py`` checks the real repository's updates.
@@ -339,7 +339,7 @@ def test_more_than_five_reporters_are_summed_up():
     assert value.count("<@") == 5 and value.endswith("… et 2 autres")
 
 
-# ── Right-click a member: 🛡️ Historique and ⚠️ Avertir… (B1) ────────────────
+# ── Right-click a member: 🛡️ Historique and ⚠️ Avertir… ────────────────
 
 
 async def test_history_lists_cases_and_reports(world):
