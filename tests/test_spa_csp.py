@@ -4,7 +4,7 @@
 dashboard's own files only, so an ``onclick="…"`` attribute or an inline
 ``<script>`` would simply not run. These checks keep the markup that way and
 make sure every action a control names exists in the SPA's allowlist, which
-each module fills with ``registerActions({…})`` (C8).
+each module fills with ``registerActions({…})``.
 """
 
 import re

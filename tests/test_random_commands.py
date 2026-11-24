@@ -31,7 +31,7 @@ async def test_shuffle_stays_within_a_message():
     assert len(content) <= 2000 and kwargs["allowed_mentions"] is NO_PINGS
 
 
-# Localised for whoever installs them (F05) --------------------------------------
+# Localised for whoever installs them --------------------------------------
 
 
 class LocaleCtx(FakeCtx):

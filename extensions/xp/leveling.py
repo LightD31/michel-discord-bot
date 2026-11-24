@@ -165,7 +165,7 @@ class LevelingMixin:
         await self._apply_level_rewards(guild_id, message.author, new_level)
 
     async def _announce_level_up(self, guild_id: str, member, new_level: int, here) -> None:
-        """Announce *new_level* where the guild wants it (B10): *here*, a channel, a DM, nowhere.
+        """Announce *new_level* where the guild wants it: *here*, a channel, a DM, nowhere.
 
         *here* is where the member was talking: the message's channel, or the
         chat of their voice channel. Every ``levelUpEvery`` levels only, but a

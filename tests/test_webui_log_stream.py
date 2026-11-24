@@ -1,4 +1,4 @@
-"""The live log stream ends once its viewer is no longer a developer (S11)."""
+"""The live log stream ends once its viewer is no longer a developer."""
 
 import asyncio
 

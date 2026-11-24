@@ -1,4 +1,4 @@
-"""XP seasons (P5, A4): the leaderboard of the month or the quarter.
+"""XP seasons (P5): the leaderboard of the month or the quarter.
 
 A season is ``months`` calendar months long, counted from January (1: every
 month, 3: quarters, 12: the year), on the community's wall clock. A season's

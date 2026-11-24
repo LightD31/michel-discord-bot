@@ -1,4 +1,4 @@
-"""What the agenda lists, and how it reads day by day (P19, A5).
+"""What the agenda lists, and how it reads day by day (P19).
 
 An :class:`Entry` is one thing coming up on the server: a Discord scheduled
 event, a birthday, a giveaway or a poll closing, the Secret Santa exchange.

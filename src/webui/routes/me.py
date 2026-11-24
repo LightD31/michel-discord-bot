@@ -1,4 +1,4 @@
-"""The member space (C6): what Michel keeps about a member, and what they can set themselves.
+"""The member space: what Michel keeps about a member, and what they can set themselves.
 
 Any Discord account can log in to the dashboard; a member who manages no
 server used to land on a dead end. These routes are their space, for each

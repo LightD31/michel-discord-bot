@@ -1,4 +1,4 @@
-"""/mes-donnees and the purge of members who left, with in-memory stores (F10)."""
+"""/mes-donnees and the purge of members who left, with in-memory stores."""
 
 import json
 from types import SimpleNamespace

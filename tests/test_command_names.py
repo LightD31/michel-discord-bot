@@ -1,4 +1,4 @@
-"""Commands speak French (P6, B6): ``/niveau``, ``/sondage``, ``/musique ajouter titre:``.
+"""Commands speak French (P6): ``/niveau``, ``/sondage``, ``/musique ajouter titre:``.
 
 Every guild command, subcommand group, subcommand and option is named in
 French, without accents, words joined by hyphens (``/mes-donnees``,
@@ -202,7 +202,7 @@ def test_commands_and_options_are_named_in_french(commands):
 
 
 def test_every_module_explains_itself_in_aide(probe):
-    """Each module's schema has a ``__help__``: /aide shows it when the module is picked (B7)."""
+    """Each module's schema has a ``__help__``: /aide shows it when the module is picked."""
     assert probe["without_help"] == [], "give the schema a __help__ = ModuleHelp(…): /aide shows it"
 
 

@@ -1,4 +1,4 @@
-"""The dashboard's "Tester" buttons (C9): a feed read now, a connection tried now.
+"""The dashboard's "Tester" buttons: a feed read now, a connection tried now.
 
 - "Tester ce flux" (``POST …/rss/test``): the feed's latest entries, each
   rendered as the bot would post it in text mode (``features.rss.render``),

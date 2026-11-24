@@ -1,4 +1,4 @@
-"""The shared agenda: what's coming up on the server (P19, A5)."""
+"""The shared agenda: what's coming up on the server (P19)."""
 
 from features.agenda.entries import (
     DEFAULT_DAYS,

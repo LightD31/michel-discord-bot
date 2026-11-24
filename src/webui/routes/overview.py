@@ -1,4 +1,4 @@
-"""The top of a server page (C2): the week's activity, the latest changes, each module's last edit.
+"""The top of a server page: the week's activity, the latest changes, each module's last edit.
 
 Each module card also says when the module last did its own work in the
 background (``lastRuns``, P15): the latest success of its tasks, from the bot's

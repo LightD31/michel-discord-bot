@@ -1,4 +1,4 @@
-"""The agenda gathered on the bot loop, and its card (P19, A5).
+"""The agenda gathered on the bot loop, and its card (P19).
 
 Shared by ``/agenda``, the message the agenda keeps up to date and the
 dashboard's calendar (``routes/agenda.py``). Each source is read only where its

@@ -41,7 +41,7 @@ class StreamerEntry(BaseModel):
     notifyStreamEnd: bool = False
     notifyEmoteChanges: bool = False
     manageDiscordEvents: bool = False
-    # A10: the role the "live started" notification pings, which its 🔔
+    # The role the "live started" notification pings, which its 🔔
     # button hands out, and the text above it.
     twitchMentionRoleId: str | None = None
     twitchNotificationTemplate: str = Field("", max_length=MAX_LIVE_TEMPLATE_LENGTH)

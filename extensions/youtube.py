@@ -63,7 +63,7 @@ class YoutubeChannelEntry(BaseModel):
     live: bool = False
     vod: bool = True
     label: str | None = None
-    # A10: the role each new video pings, which its 🔔 button hands out.
+    # The role each new video pings, which its 🔔 button hands out.
     mentionRoleId: str | None = None
 
 

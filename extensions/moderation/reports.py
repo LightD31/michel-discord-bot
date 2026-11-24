@@ -1,4 +1,4 @@
-"""🚩 Signaler: members report a message, moderators handle it from one card (A7).
+"""🚩 Signaler: members report a message, moderators handle it from one card.
 
 Right-click a message → Applications → "🚩 Signaler" opens a form asking why.
 The report lands on a card in the mod-log channel: the message quoted (its

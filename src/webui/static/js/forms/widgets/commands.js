@@ -6,7 +6,7 @@ import { multiPickerHtml, multiPickerIds, populateMultiPickers } from '../picker
 const TARGETS = { none: 'Aucune', optional: 'Facultative', required: 'Obligatoire' };
 const MAX_COOLDOWN = 3600;
 
-// A command's target, cooldown and roles (A9), under its name.
+// A command's target, cooldown and roles, under its name.
 export function commandOptionsHtml(cmd = {}) {
     const target = TARGETS[cmd.target] ? cmd.target : 'none';
     const cooldown = Number.isInteger(cmd.cooldown) ? cmd.cooldown : 0;

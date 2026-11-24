@@ -1,4 +1,4 @@
-"""The "🔔 M'avertir" button under a live or video notification (A10).
+"""The "🔔 M'avertir" button under a live or video notification.
 
 A streamer (or a YouTube channel) may name a role its notification pings; the
 button under the notification hands that role out, or takes it back, to

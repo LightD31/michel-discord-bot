@@ -1,4 +1,4 @@
-"""A new server's first steps (C1): packs, the checklist, the announcement."""
+"""A new server's first steps: packs, the checklist, the announcement."""
 
 import asyncio
 import copy

@@ -1,4 +1,4 @@
-"""Who won which badge (``achievements``), and who qualifies for one (P18, A3).
+"""Who won which badge (``achievements``), and who qualifies for one (P18).
 
 ``achievements`` holds one document per badge won: ``_id`` ``"<user>:<badge>"``,
 ``user_id``, ``badge`` and ``earned_at``. A badge is never taken back: the

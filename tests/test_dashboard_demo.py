@@ -1,4 +1,4 @@
-"""``tools/dashboard_demo.py`` keeps up with the code it demonstrates (P3, D8).
+"""``tools/dashboard_demo.py`` keeps up with the code it demonstrates (P3).
 
 The demo is how every later UI change gets its before/after screenshots, so a
 schema change that makes its config invalid, or a repository change that breaks

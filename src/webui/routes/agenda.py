@@ -1,4 +1,4 @@
-"""The agenda's calendar on the server page (P19, A5).
+"""The agenda's calendar on the server page (P19).
 
 ``GET /api/servers/{id}/agenda`` gathers the next days on the bot loop
 (:func:`src.discord_ext.agenda.gather_agenda`, as ``/agenda`` does) for the

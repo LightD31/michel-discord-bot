@@ -1,10 +1,10 @@
 # Tests
 
-How the suite is laid out, and what each kind of test is for. Moved verbatim from `CLAUDE.md` (P12, D5); its one-line rules point here.
+How the suite is laid out, and what each kind of test is for. The one-line rules of `CLAUDE.md` point here.
 
 ## Notes
 
-- Real tests exist under `tests/` (core db/http/config, Web UI auth and config saving, giveaway draw, moderation, MDI client, RSS parser, weighted messages, Tricount balances, poll closing, reminder scheduling, birthdays, starboard rules, YouTube filters, welcome). Coverage is measured over `src`, `features`, `extensions` and `scripts` — when adding domain logic to `features/`, add a matching test. Extension handlers are tested by calling the command's callback with the fakes of `tests/discord_fakes.py` (`FakeCtx`, `FakeGuild`, `FakeMember`, `FakeChannel`, `run()`, `bare_extension()`) and an in-memory repository injected through `_repo()` (see `tests/test_giveaway_commands.py`). `pytest --cov` fails below `fail_under` in `[tool.coverage.report]` (all four together), and CI's test job also holds `src` + `features` at 81% on their own; raise those floors when coverage grows, never lower them to get a PR green. Keep them below the figures *without* MongoDB, so a local run without one still passes.
+- Every layer is tested: domain logic in `features/` gets a matching test, and coverage is measured over `src`, `features`, `extensions` and `scripts` (`[tool.coverage.run]`). Extension handlers are tested by calling the command's callback with the fakes of `tests/discord_fakes.py` (`FakeCtx`, `FakeGuild`, `FakeMember`, `FakeChannel`, `run()`, `bare_extension()`) and an in-memory repository injected through `_repo()` (see `tests/test_giveaway_commands.py`). `pytest --cov` fails below `fail_under` in `[tool.coverage.report]` (all four together), and CI's test job also holds `src` + `features` at 81% on their own; raise those floors when coverage grows, never lower them to get a PR green. Keep them below the figures *without* MongoDB, so a local run without one still passes.
 
 - **Tests never touch the developer's setup.** `tests/conftest.py` points the config store at a `config.json` in an empty temporary directory and gives MongoDB no URL, for every test: one that needs settings uses `store_config`, one that needs a database uses `mongo`. A test that changes process-wide state (a registry, a module attribute) does it through `monkeypatch`, so the next test starts clean.
 

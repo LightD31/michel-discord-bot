@@ -26,7 +26,7 @@ class Giveaway(BaseModel):
     emoji: str = "🎉"
     allow_host_win: bool | None = None
     winners_count: int = 1
-    # Who may enter (B3): holders of this role, members at this XP level or above.
+    # Who may enter: holders of this role, members at this XP level or above.
     required_role_id: str | None = None
     min_level: int | None = None
     ends_at: datetime

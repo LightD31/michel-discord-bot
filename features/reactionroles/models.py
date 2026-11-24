@@ -6,7 +6,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 # "buttons": one button per role, a click gives or takes it. "select": one
-# drop-down where the member ticks the roles they want (B3).
+# drop-down where the member ticks the roles they want.
 MenuStyle = Literal["buttons", "select"]
 
 

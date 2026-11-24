@@ -1,4 +1,4 @@
-"""``/mes-donnees``: a member exports or deletes what the bot keeps about them (F10).
+"""``/mes-donnees``: a member exports or deletes what the bot keeps about them.
 
 Both act on every server at once (``Privacy.md`` §9 used to send members to
 the Operator by e-mail). The export is a JSON file attached to an ephemeral

@@ -1,4 +1,4 @@
-"""The dashboard's "Tester" buttons: a feed read now, a connection tried now (C9)."""
+"""The dashboard's "Tester" buttons: a feed read now, a connection tried now."""
 
 import asyncio
 import json

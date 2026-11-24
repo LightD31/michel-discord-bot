@@ -104,7 +104,7 @@ const strong = (text, wide = '') => html`<span class="preview-strong ${wide}">${
 const mono = (text, wide = '') => html`<span class="preview-mono ${wide}">${text}</span>`;
 const muted = (text) => html`<span class="preview-muted">${text}</span>`;
 
-// Each field of a settings section, read-only (C8: html`…`, no hand escaping, P17).
+// Each field of a settings section, read-only (html`…`, no hand escaping, P17).
 export function renderSchemaPreview(schema, values) {
     const fields = schema.fields || {};
     const rows = [];

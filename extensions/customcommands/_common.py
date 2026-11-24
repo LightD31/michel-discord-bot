@@ -27,7 +27,7 @@ class CustomCommandEntry(BaseModel):
     name: str = Field(min_length=1)
     description: str = ""
     responses: list[str] = Field(default_factory=list)
-    # "optional" / "required" add a "cible" member option (A9).
+    # "optional" / "required" add a "cible" member option.
     target: TargetMode = "none"
     cooldown: int = Field(0, ge=0, le=MAX_COOLDOWN_SECONDS)
     # Who may run it (empty: everyone); the save checks these as staff roles.

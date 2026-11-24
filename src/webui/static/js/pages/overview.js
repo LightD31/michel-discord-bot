@@ -1,4 +1,4 @@
-// The server page's overview (C2).
+// The server page's overview.
 import { actionArgs } from '../core/actions.js';
 import { api } from '../core/api.js';
 import { html } from '../core/html.js';
@@ -7,7 +7,7 @@ import { state } from '../core/state.js';
 import { auditEntryHtml } from './audit.js';
 import { refreshModuleBrowser } from './server.js';
 
-// ── Overview (C2) ─────────────────────────────────
+// ── Overview ─────────────────────────────────
 export function overviewHtml(sid) {
     const data = state.overview?.[sid];
     const health = state.healthProblems?.[sid];

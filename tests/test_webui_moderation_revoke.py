@@ -1,4 +1,4 @@
-"""Revoking a case from the dashboard is a moderation act, signed by its author (S10)."""
+"""Revoking a case from the dashboard is a moderation act, signed by its author."""
 
 import asyncio
 import json

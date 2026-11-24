@@ -1,4 +1,4 @@
-"""Succès: badges won across modules, ``/succes``, and their announcement (P18, A3).
+"""Succès: badges won across modules, ``/succes``, and their announcement (P18).
 
 Every hour the task looks at each server where the succès are on and awards
 the badges (:mod:`features.achievements`) to whoever qualifies: a message on

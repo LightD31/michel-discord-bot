@@ -1,4 +1,4 @@
-"""The Satisfactory API token only goes to the server whose certificate is pinned (S08)."""
+"""The Satisfactory API token only goes to the server whose certificate is pinned."""
 
 import datetime as dt
 import hashlib

@@ -1,4 +1,4 @@
-"""Tricount entries can't outlive their author's goodwill (S04).
+"""Tricount entries can't outlive their author's goodwill.
 
 Leaving a group stops the recurrences one pays, and the group's creator (or a
 server manager) can fix or remove anyone's expense.

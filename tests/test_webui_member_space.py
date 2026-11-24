@@ -1,4 +1,4 @@
-"""The member space (C6) without a database: the server list, the gates, the outages.
+"""The member space without a database: the server list, the gates, the outages.
 
 The routes' data, read and written for the session's member alone, is checked
 against a real MongoDB in ``tests/test_mongo_member_space.py``.

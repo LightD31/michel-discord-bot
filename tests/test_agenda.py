@@ -1,4 +1,4 @@
-"""L'agenda (P19, A5): its days, its sources, /agenda, the message kept up to date, the calendar."""
+"""L'agenda (P19): its days, its sources, /agenda, the message kept up to date, the calendar."""
 
 from datetime import date, timedelta
 from types import SimpleNamespace

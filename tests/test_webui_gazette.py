@@ -1,4 +1,4 @@
-"""The Gazette's dashboard card: a preview, and publishing now for who can post there (A1)."""
+"""The Gazette's dashboard card: a preview, and publishing now for who can post there."""
 
 from datetime import timedelta
 

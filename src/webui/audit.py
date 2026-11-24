@@ -1,4 +1,4 @@
-"""Who changed what from the dashboard, and when (F09).
+"""Who changed what from the dashboard, and when.
 
 Every action a dashboard user takes is recorded: a module saved or toggled, a
 sanction revoked, a role menu built, embeds published… Guild actions go to
@@ -92,7 +92,7 @@ class AuditRepository:
 
     @translates_db_errors
     async def last_changes(self, actions: tuple[str, ...]) -> dict[str, datetime]:
-        """Each target's newest entry among *actions*: when a module was last changed (C2)."""
+        """Each target's newest entry among *actions*: when a module was last changed."""
         pipeline: list[dict[str, Any]] = [
             {"$match": {"action": {"$in": list(actions)}, "target": {"$type": "string"}}},
             {"$group": {"_id": "$target", "at": {"$max": "$at"}}},

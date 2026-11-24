@@ -1,4 +1,4 @@
-"""What the agenda reads in the guild's database (P19, A5).
+"""What the agenda reads in the guild's database (P19).
 
 Each read goes through the collection a module keeps, bounded by the agenda's
 window, and only where the caller says the module is on: the giveaways that

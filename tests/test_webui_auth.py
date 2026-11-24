@@ -577,7 +577,7 @@ def test_logout_is_a_post_that_ends_the_session(stub_repo):
     assert "michel_session=" in resp.headers["set-cookie"]
 
 
-# ── Session footprint (S12) ─────────────────────────────────────────────
+# ── Session footprint ─────────────────────────────────────────────
 
 
 def test_a_session_keeps_only_the_shared_guilds_and_their_fields():
@@ -619,7 +619,7 @@ def test_a_sixth_login_evicts_the_oldest_session(monkeypatch):
     assert other_user.token_hash in oauth.sessions
 
 
-# ── The member tier (C6) ────────────────────────────────────────────────
+# ── The member tier ────────────────────────────────────────────────
 
 
 def test_require_guild_member_reads_membership_live():

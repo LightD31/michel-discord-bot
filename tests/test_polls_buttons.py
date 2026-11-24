@@ -86,7 +86,7 @@ def setup(monkeypatch, store_config):
 async def create(
     ext, ctx, mode="anonymous", options="Pizza\nSushi\nTacos", duration="", multi=False
 ):
-    """``/sondage mode:`` opens its form (B4); the member fills it in."""
+    """``/sondage mode:`` opens its form; the member fills it in."""
     await run(PollsExtension.poll, ext, ctx, mode=mode, multi=multi)
     form = ctx.modals.pop()
     submit = FakeCtx(ctx.author, ctx.channel, bot=ctx.bot, custom_id=form.custom_id)
@@ -207,7 +207,7 @@ async def test_the_sweep_closes_a_due_poll_and_disables_its_buttons(setup):
 
 
 async def test_a_public_poll_is_a_discord_poll_and_nothing_is_stored(setup):
-    """B4: Discord counts, shows and closes it; Michel keeps nothing."""
+    """Discord counts, shows and closes it; Michel keeps nothing."""
     ext, ctx, repo, _, _ = setup
     await create(ext, ctx, "public", options="", duration="3j", multi=True)
     (sent,) = [r for r in ctx.replies if r.get("poll")]
@@ -271,7 +271,7 @@ async def test_only_the_author_edits_a_poll(setup):
 
 
 def test_one_sondage_command_remains():
-    """/sondage-anonyme, /sondage-classement and /modifier-sondage are gone (B4)."""
+    """/sondage-anonyme, /sondage-classement and /modifier-sondage are gone."""
     names = {str(getattr(v, "name", "")) for v in vars(PollsExtension).values()}
     assert "sondage" in names
     assert not names & {"sondage-anonyme", "sondage-classement", "modifier-sondage"}

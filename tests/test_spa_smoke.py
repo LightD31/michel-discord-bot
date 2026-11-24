@@ -1,4 +1,4 @@
-"""The dashboard in a real browser: what the user sees when a save fails (F01-F03, S15).
+"""The dashboard in a real browser: what the user sees when a save fails.
 
 The real app (``create_app``, no bot, no MongoDB) is served on a local port and
 driven with Playwright's Chromium. Skipped when no browser can be launched:
@@ -130,7 +130,7 @@ def test_a_deep_link_opens_the_module_and_a_save_goes_through(page, dashboard):
 
 
 def test_a_refused_save_says_so_instead_of_confirming(page, dashboard):
-    """A 403 used to show "Configuration sauvegardée !" (F01)."""
+    """A 403 used to show "Configuration sauvegardée !"."""
     page.get_by_label("Message d'accueil").fill("Bonjour")
     demote(dashboard)
     save(page)
@@ -141,7 +141,7 @@ def test_a_refused_save_says_so_instead_of_confirming(page, dashboard):
 
 
 def test_a_validation_error_is_readable(page):
-    """FastAPI's list of errors used to show as "[object Object]" (F03)."""
+    """FastAPI's list of errors used to show as "[object Object]"."""
     page.get_by_label("Message d'accueil").fill("x" * 40)
     save(page)
     page.locator("#toasts .toast.error", has_text="Configuration invalide").wait_for()
@@ -268,7 +268,7 @@ def test_an_embed_shows_as_it_will_be_published(page, dashboard, monkeypatch):
 
 
 def test_an_expired_session_keeps_the_page_and_the_typing(page, dashboard):
-    """A 401 used to swap the page for the login screen, edits and all (F02)."""
+    """A 401 used to swap the page for the login screen, edits and all."""
     page.get_by_label("Message d'accueil").fill("Pas perdu")
     dashboard["oauth"].sessions.clear()
     save(page)
@@ -301,7 +301,7 @@ def test_leaving_an_edited_form_asks_first(page):
 
 
 def test_the_spa_logs_out_but_another_site_cannot(page, browser, dashboard, caplog):
-    """The Origin check refuses a cross-site POST, and lets the dashboard's own through (S15)."""
+    """The Origin check refuses a cross-site POST, and lets the dashboard's own through."""
     caplog.set_level(logging.WARNING, logger="webui.request_guard")
     port = dashboard["port"]
     other = browser.new_page()  # about:blank: any page that isn't the dashboard
@@ -454,7 +454,7 @@ def test_a_field_emptied_in_the_form_is_emptied_in_the_config(page, dashboard):
 
 
 def test_a_custom_command_keeps_its_target_cooldown_and_roles(page, dashboard, monkeypatch):
-    """A9: the command widget reads back what it shows, the roles as chips."""
+    """The command widget reads back what it shows, the roles as chips."""
     import extensions.customcommands._common  # noqa: F401 — registers the schema
     import src.webui.routes.config as config_routes
 
@@ -497,7 +497,7 @@ def test_a_custom_command_keeps_its_target_cooldown_and_roles(page, dashboard, m
 
 
 def test_a_streamer_keeps_its_mention_role_and_message(page, dashboard, monkeypatch):
-    """A10: the streamer widget reads back the role to ping and the message."""
+    """The streamer widget reads back the role to ping and the message."""
     import extensions.twitch._common  # noqa: F401 — registers the schema
     import src.webui.routes.config as config_routes
 

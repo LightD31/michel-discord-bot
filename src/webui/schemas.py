@@ -140,7 +140,7 @@ def ui(
 
 @dataclass(frozen=True)
 class ModuleHelp:
-    """What ``/aide`` says about a module (``__help__`` on its schema; P6, B7).
+    """What ``/aide`` says about a module (``__help__`` on its schema; P6).
 
     *what* is one sentence on what the module is for, *commands* the (at most
     three) commands to know, as typed (``"/niveau"``), and *auto* what the bot
@@ -174,7 +174,7 @@ class SchemaBase(BaseModel):
     __no_toggle__: ClassVar[bool] = False
     __direct_value__: ClassVar[bool] = False
     __help__: ClassVar[ModuleHelp | None] = None
-    # A module tied to an event that is over (D7): the dashboard lists it only
+    # A module tied to an event that is over: the dashboard lists it only
     # under "Archivés", unless a server still has it on, and no pack enables it.
     __archived__: ClassVar[bool] = False
 

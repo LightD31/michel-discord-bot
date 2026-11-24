@@ -1,4 +1,4 @@
-"""Try a message template before saving it: the bot DMs the admin the result (F11).
+"""Try a message template before saving it: the bot DMs the admin the result.
 
 A mistake in a template (an unknown ``{variable}``, an unintended
 ``@everyone``) used to show only in production, in front of the members. The
@@ -172,7 +172,7 @@ def render_test(test: TemplateTest, texts: list[str], values: dict[str, Any]) ->
 def preview_texts(
     test: TemplateTest, texts: list[str], values: dict[str, Any]
 ) -> list[dict[str, Any]]:
-    """Each text as the bot would send it, or why the save would refuse it (C4).
+    """Each text as the bot would send it, or why the save would refuse it.
 
     The live preview shows a refusal next to its message rather than failing
     the whole request, and an empty message as nothing.

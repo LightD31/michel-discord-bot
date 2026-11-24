@@ -1,4 +1,4 @@
-"""The members who wish a newcomer welcome (A8).
+"""The members who wish a newcomer welcome.
 
 Under a welcome message, "👋 Souhaiter la bienvenue": each click adds the
 member to that message's ``welcome_greetings`` document (``_id`` the message

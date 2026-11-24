@@ -1,4 +1,4 @@
-"""/rappel liste and the snooze button (F03)."""
+"""/rappel liste and the snooze button."""
 
 from datetime import datetime, timedelta
 from types import SimpleNamespace

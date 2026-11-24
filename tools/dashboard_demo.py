@@ -692,7 +692,7 @@ async def seed(bot: FakeBot, *, days: int = 60) -> None:
         ]
     )
 
-    # Hugo's own things, for his space (C6): reminders, a debt in a Tricount group.
+    # Hugo's own things, for his space: reminders, a debt in a Tricount group.
     from features.reminders import Reminder, ReminderRepository
 
     reminders = ReminderRepository(GA)
@@ -826,7 +826,7 @@ async def seed(bot: FakeBot, *, days: int = 60) -> None:
         ("infraction.revoke", "#2", None),
     ]:
         await audit.record(GA, Admin(), action, target=target, changes=changes)
-    # What the moduleXp save above replaced: the module's history (C5).
+    # What the moduleXp save above replaced: the module's history.
     from src.webui.config_history import ConfigHistoryRepository
 
     xp = copy.deepcopy(demo_config("", 0, "")["servers"][GA]["moduleXp"])

@@ -75,7 +75,7 @@ def test_birth_dates_must_be_valid_and_not_in_the_future():
     ],
 )
 def test_the_year_is_optional(text, day, with_year):
-    """B2: "12/03" is enough; the birthday is wished without an age."""
+    """ "12/03" is enough; the birthday is wished without an age."""
     parsed = parse_birth_date(text, today=date(2026, 3, 10))
     assert (parsed.day, parsed.month) == day
     assert has_year(parsed) is with_year

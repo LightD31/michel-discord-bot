@@ -1,4 +1,4 @@
-// The "Tester" buttons (C9): a feed read now, a module's connection tried now.
+// The "Tester" buttons: a feed read now, a module's connection tried now.
 import { registerActions } from '../core/actions.js';
 import { api } from '../core/api.js';
 import { html } from '../core/html.js';

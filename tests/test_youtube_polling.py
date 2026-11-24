@@ -154,7 +154,7 @@ def test_failures_stay_local_and_progress_is_saved(youtube, monkeypatch):
 
 
 def test_a_channel_with_a_mention_role_pings_it_and_offers_the_bell(youtube, monkeypatch):
-    """A10: the role leads the post, and its 🔔 button hands it out."""
+    """The role leads the post, and its 🔔 button hands it out."""
     calls: list = []
     install_fakes(monkeypatch, youtube, latest={"alpha": "a1"}, calls=calls)
     youtube.YOUTUBE.get("A")["youtubeChannelList"]["@alpha"]["mentionRoleId"] = "555"

@@ -1,4 +1,4 @@
-"""The "🔔 M'avertir" button under a live or video notification (A10)."""
+"""The "🔔 M'avertir" button under a live or video notification."""
 
 import pytest
 from discord_fakes import FakeChannel, FakeCtx, FakeGuild, FakeMember, FakeRole

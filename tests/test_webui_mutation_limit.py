@@ -62,7 +62,7 @@ def test_each_session_has_its_own_budget():
 
 
 def test_the_template_preview_has_a_budget_of_its_own():
-    """Typing in a template never uses up the budget a save needs (C4), and is limited too."""
+    """Typing in a template never uses up the budget a save needs, and is limited too."""
     client = make_client(limit=1, preview_limit=3)
     cookies = {"michel_session": "alice"}
     preview = "/api/servers/123/template-preview"

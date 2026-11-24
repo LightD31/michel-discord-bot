@@ -1,4 +1,4 @@
-"""Everything the bot stores about one member: exported, or forgotten (F10).
+"""Everything the bot stores about one member: exported, or forgotten.
 
 ``/mes-donnees`` lets a member see and delete what the bot keeps about them,
 on every server at once, instead of e-mailing the Operator (``Privacy.md`` §9);

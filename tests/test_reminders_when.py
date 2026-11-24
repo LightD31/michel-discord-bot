@@ -1,4 +1,4 @@
-"""« Quand ? » in the "⏰ Me le rappeler" form, read on the Paris clock (B1)."""
+"""« Quand ? » in the "⏰ Me le rappeler" form, read on the Paris clock."""
 
 from datetime import UTC, datetime, timedelta
 

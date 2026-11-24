@@ -1,6 +1,6 @@
 # Config and module schemas
 
-How settings are declared, stored and read. Moved verbatim from `CLAUDE.md` (P12, D5); its one-line rules point here.
+How settings are declared, stored and read. The one-line rules of `CLAUDE.md` point here.
 
 ## Web UI schema (strongly recommended for any new extension)
 

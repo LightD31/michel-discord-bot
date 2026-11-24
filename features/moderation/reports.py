@@ -1,4 +1,4 @@
-"""Messages members report to the moderators (P4, A7).
+"""Messages members report to the moderators (P4).
 
 A member right-clicks a message, "🚩 Signaler", and writes why. Every report
 of the same message lands on one card in the mod-log channel: one

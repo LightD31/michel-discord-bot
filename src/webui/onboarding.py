@@ -1,4 +1,4 @@
-"""A new server's first steps in the dashboard (C1).
+"""A new server's first steps in the dashboard.
 
 A server Michel just joined used to face a flat list of switches. The
 dashboard now offers a short wizard and keeps a "Pour bien démarrer" list on

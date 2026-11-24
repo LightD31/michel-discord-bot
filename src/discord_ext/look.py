@@ -1,4 +1,4 @@
-"""One look for everything Michel posts (P6, B8): colours, the author line, the footer.
+"""One look for everything Michel posts (P6): colours, the author line, the footer.
 
 Every embed the bot builds comes from :func:`card`: the module's accent
 colour (or a status colour for a success, a warning, an error), the module's
@@ -179,7 +179,7 @@ def recolour(embed: Embed, module: str, kind: Kind) -> Embed:
     return embed
 
 
-# Components V2 (P22, B11): Discord's limits for a message's text displays.
+# Components V2 (P22): Discord's limits for a message's text displays.
 V2_TEXT_LIMIT = 4000
 V2_MAX_TEXTS = 30  # a message holds 40 components at most, the frame included
 

@@ -243,7 +243,7 @@ async def test_members_already_in_voice_earn_after_a_restart(setup, store_config
     assert ext._voice_sessions[("1", "8")] == 123.0  # a running session keeps its clock
 
 
-# ── B10: where and when a level-up is announced ──────────────────────
+# ── Where and when a level-up is announced ──────────────────────
 
 
 def settings_of(config, store_config, **changes):

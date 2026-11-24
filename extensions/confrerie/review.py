@@ -48,7 +48,7 @@ from src.core.errors import BotError
 from src.core.logging import log_failure
 from src.discord_ext.channels import fetch_guild_channel
 from src.discord_ext.look import card, ok
-from src.discord_ext.messages import fetch_user_safe
+from src.discord_ext.messages import edit_message_if_changed, fetch_user_safe
 
 from ._base import ConfrerieBase
 from ._common import CONFRERIE
@@ -404,9 +404,11 @@ class ReviewMixin(ConfrerieBase):
             if channel is None:
                 raise LookupError(f"review channel {draft.review_channel_id} is gone")
             message = await channel.fetch_message(draft.review_message_id)
-            await message.edit(
-                embed=review_embed(draft, status_line),
+            await edit_message_if_changed(
+                message,
+                embeds=[review_embed(draft, status_line)],
                 components=review_buttons(draft, disabled=True),
+                logger=logger,
             )
         except Exception as e:  # noqa: BLE001 — cosmetic, the draft is already handled
             logger.warning("Message de validation %s non mis à jour: %s", draft.id, e)

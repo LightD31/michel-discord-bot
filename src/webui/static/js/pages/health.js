@@ -4,7 +4,7 @@ import { html } from '../core/html.js';
 import { state } from '../core/state.js';
 import { refreshOverview } from './overview.js';
 
-// ── Guild health (F08) ────────────────────────────
+// ── Guild health ────────────────────────────
 export function moduleLabel(mod) {
     return state.moduleSchemas[mod]?.label || mod;
 }

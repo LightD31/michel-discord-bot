@@ -1,4 +1,4 @@
-"""A guild's "Santé" card: channels, feeds and tasks (F08)."""
+"""A guild's "Santé" card: channels, feeds and tasks."""
 
 import ast
 import asyncio

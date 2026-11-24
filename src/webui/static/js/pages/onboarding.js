@@ -1,4 +1,4 @@
-// The "Pour bien démarrer" list (C1).
+// The "Pour bien démarrer" list.
 import { EL, actionArgs, registerActions } from '../core/actions.js';
 import { api } from '../core/api.js';
 import { render } from '../core/render.js';
@@ -7,7 +7,7 @@ import { routeHash } from '../core/router.js';
 import { state } from '../core/state.js';
 import { toast } from '../ui/toast.js';
 
-// ── First steps (C1) ──────────────────────────────
+// ── First steps ──────────────────────────────
 // The "Pour bien démarrer" list on the server page, and the wizard at
 // #/setup/<id>: a pack of modules, their channels and roles, a test of
 // the welcome message, Michel's announcement. Every step is read from

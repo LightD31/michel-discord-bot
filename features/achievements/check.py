@@ -1,4 +1,4 @@
-"""One pass over a server's badges: who qualifies, who is new (P18, A3).
+"""One pass over a server's badges: who qualifies, who is new (P18).
 
 Pure orchestration over :class:`AchievementsRepository`, so the Discord layer
 only brings what the database can't tell (who has been on the server a year)

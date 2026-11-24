@@ -8,7 +8,7 @@ import { askConfirm } from '../ui/confirm.js';
 export let formDirty = false;
 // The member space's forms too (P16): a reminder, a birthday, a wish list half typed.
 export const DIRTY_SCOPE = '.main .schema-form, #rolemenu-builder-card, .me-card .me-form';
-// The schema fields edited since the last save, by key: what the save bar counts (C5).
+// The schema fields edited since the last save, by key: what the save bar counts.
 export const changedFields = new Set();
 
 function announce() {

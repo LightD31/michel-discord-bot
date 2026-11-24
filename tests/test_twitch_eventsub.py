@@ -373,7 +373,7 @@ LIVE = SimpleNamespace(
 
 
 async def test_a_live_start_pings_the_streamers_role_with_the_admins_text():
-    """A10: the role and the message lead the embed; the title can't ping."""
+    """The role and the message lead the embed; the title can't ping."""
     streamer = make_streamer(
         notifyStreamStart=True,
         twitchMentionRoleId="555",

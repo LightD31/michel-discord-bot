@@ -1,6 +1,6 @@
 """« Quand ? » as a member types it: "dans 2h", "demain 18h30", "samedi 9h", "24/12 20h".
 
-Used by the "⏰ Me le rappeler" form (P4, B1). Wall times are read on the
+Used by the "⏰ Me le rappeler" form (P4). Wall times are read on the
 community's clock (:data:`src.core.clock.LOCAL_TZ`); the result is a UTC
 instant, always in the future. A day without an hour means 9:00, "ce soir"
 20:00. A bare hour already past today is tomorrow's, a weekday today's only

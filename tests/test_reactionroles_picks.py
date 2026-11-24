@@ -1,4 +1,4 @@
-"""What a click or a pick in a role menu changes (B3)."""
+"""What a click or a pick in a role menu changes."""
 
 from features.reactionroles.picks import button_plan, select_plan
 

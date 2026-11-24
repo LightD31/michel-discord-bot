@@ -1,4 +1,4 @@
-"""The Spotify OAuth flow: a Secure state cookie, and no free text sent back (S09, S15).
+"""The Spotify OAuth flow: a Secure state cookie, and no free text sent back.
 
 Each server connects its own account (P36): only its admins start the flow,
 and the callback checks again for the server the state names.

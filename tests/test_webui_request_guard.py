@@ -1,4 +1,4 @@
-"""Cross-site writes are refused, and an untrusted proxy is reported once (S15, S09)."""
+"""Cross-site writes are refused, and an untrusted proxy is reported once."""
 
 import logging
 

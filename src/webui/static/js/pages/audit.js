@@ -4,7 +4,7 @@ import { api } from '../core/api.js';
 import { html } from '../core/html.js';
 import { state } from '../core/state.js';
 
-// ── Audit log (F09) ───────────────────────────────
+// ── Audit log ───────────────────────────────
 // Who changed what from the dashboard: field names only, never a value.
 export const AUDIT_ACTIONS = {
     'module.save': 'a enregistré le module',

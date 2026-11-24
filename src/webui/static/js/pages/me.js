@@ -1,4 +1,4 @@
-// The member space, "Mon espace" (C6): what Michel keeps about the member, and
+// The member space, "Mon espace": what Michel keeps about the member, and
 // what they can set themselves, server by server. Every request goes to
 // /api/me/… (src/webui/routes/me.py), which acts on the session's own user:
 // nothing here names a member, only a reminder, a group or the person paid back.

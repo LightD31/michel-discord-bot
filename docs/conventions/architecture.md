@@ -1,12 +1,12 @@
 # Architecture
 
-The three layers, and where each kind of code goes. Moved verbatim from `CLAUDE.md` (P12, D5); its one-line rules point here.
+The three layers, and where each kind of code goes. The one-line rules of `CLAUDE.md` point here.
 
 ## Architecture
 
-Three-layer split (~38k lines, excluding tests). Respect the boundaries (`tests/test_layering.py` checks the imports by full module name: `features/` imports neither `interactions` nor `src.discord_ext` nor `src.webui`, `src/core` imports no other part of `src`, and `extensions/` never import `pymongo` / `bson`):
+Three-layer split. Respect the boundaries (`tests/test_layering.py` checks the imports by full module name: `features/` imports neither `interactions` nor `src.discord_ext` nor `src.webui`, `src/core` imports no other part of `src`, and `extensions/` never import `pymongo` / `bson`):
 
-- **`extensions/`** — Discord-facing layer (39 entries). Each is either `extensions/<name>.py` or a package `extensions/<name>/__init__.py` containing an `interactions.Extension` subclass plus a module-level `setup(bot)` factory. Auto-discovered by `main.py` at startup. The class lists the per-guild config modules it reads in `MODULE_KEYS` (a tuple, `()` for none) — see *Web UI schema* below.
+- **`extensions/`** — Discord-facing layer. Each is either `extensions/<name>.py` or a package `extensions/<name>/__init__.py` containing an `interactions.Extension` subclass plus a module-level `setup(bot)` factory. Auto-discovered by `main.py` at startup. The class lists the per-guild config modules it reads in `MODULE_KEYS` (a tuple, `()` for none) — see *Web UI schema* below.
 
 - **`features/`** — Pure domain logic and persistence. **Must not import `interactions`** — this is what makes features unit-testable. Domain code returns plain data (bytes, dicts, models) and lets the extension build Discord objects. Each feature owns a `repository.py` that reads/writes MongoDB and translates driver exceptions into `src.core.errors.DatabaseError` so extensions never import `pymongo`: every method carries `@translates_db_errors` from `src.core.db` (see `features/xp/repository.py`). A repository of one guild's data derives from `GuildRepository` (`src/core/db.py`, P32): it names its main collection in `COLLECTION`, reaches the others with `self._col("name")`, and lists its indexes in `indexes()`; `ensure_indexes()` makes them at startup and logs a failure rather than raise it, so an extension's `on_startup` just awaits it. `bson` counts as the driver too: a repository method taking an id a user typed accepts a `str` and parses the `ObjectId` itself, so a malformed id is an ordinary "not found" rather than an `InvalidId` escaping into a command handler.
 

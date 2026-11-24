@@ -1,4 +1,4 @@
-"""Try a message template from the dashboard: the bot DMs the result (F11).
+"""Try a message template from the dashboard: the bot DMs the result.
 
 See :mod:`src.webui.template_tests` for the rendering. The admin's DM is sent
 from the bot loop; a member whose DMs are closed gets a 409 saying so.
@@ -68,7 +68,7 @@ def create_router(ctx: WebUIContext) -> APIRouter:
 
     @router.post("/api/servers/{server_id}/template-preview")
     async def api_template_preview(request: Request, server_id: str, body: TemplateTestBody):
-        """The form's texts as the bot would send them, for the live preview (C4).
+        """The form's texts as the bot would send them, for the live preview.
 
         Rendered by the same function as the DM test and production, with the
         admin standing in for the member; nothing is sent or recorded. The SPA

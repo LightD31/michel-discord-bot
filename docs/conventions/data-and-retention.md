@@ -1,6 +1,6 @@
 # Data: storage, dates, retention
 
-How state is stored and changed, and how long it is kept. Moved verbatim from `CLAUDE.md` (P12, D5); its one-line rules point here.
+How state is stored and changed, and how long it is kept. The one-line rules of `CLAUDE.md` point here.
 
 ## Notes
 

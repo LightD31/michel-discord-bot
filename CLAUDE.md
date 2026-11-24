@@ -30,7 +30,7 @@ uv run pre-commit run mypy --hook-stage manual   # same check via the opt-in hoo
 # Tests
 uv run pytest
 uv run pytest tests/test_rss_parser.py::test_parse_rss_extracts_two_entries   # single test
-uv run pytest --cov --cov-report=term   # with coverage over src, features, extensions (CI)
+uv run pytest --cov --cov-report=term   # with coverage over src, features, extensions, scripts (CI)
 uv run coverage report --include='src/*,features/*' --fail-under=81 --format=total  # CI's second floor
 
 # Browser smoke test of the dashboard (tests/test_spa_smoke.py, test_spa_pickers.py):
@@ -104,13 +104,13 @@ Config and dashboard (`config.md`, `dashboard-security.md`, `dashboard-frontend.
 
 Async and I/O (`async-io.md`)
 - Never block the loop: blocking SDKs and CPU work go through a thread, with a timeout — `tests/test_spotify_async.py`, `async-io.md`
-- URLs someone else chose go through `fetch_untrusted()`; credentials never in a URL — `tests/test_core_http_untrusted.py`
+- URLs someone else chose go through `fetch_untrusted()`; credentials never in a URL — `async-io.md`
 - Background work goes through `spawn()`, never a bare `create_task` — `async-io.md`
 - No URL literals; config fields instead — `tests/test_no_hardcoded_urls.py`
 
 Discord messages (`discord-messages.md`)
 - Edit through `edit_message_if_changed()`; copy an embed with `copy_embed()` — `tests/test_message_edit.py`
-- Mentions: `everyone_if_written` / `mentions_written_in` / `NO_PINGS` — `tests/test_mention_policy.py`
+- Mentions: `everyone_if_written` / `mentions_written_in` / `NO_PINGS` — `discord-messages.md`
 - Every embed is `card()` / `custom()`, every V2 container `card_v2()`; replies start with `ok()` / `oops()` / `ask()` — `tests/test_look.py`
 - Michel says *tu*, in French — `tests/test_voice.py`, `docs/VOIX.md`
 - Refusals say what to do next — `tests/test_refusals_say_what_to_do.py`
@@ -138,4 +138,4 @@ Tests and tooling (`testing.md`, `tooling.md`)
 
 ## Where the details are
 
-`docs/conventions/`: `architecture.md`, `extension-lifecycle.md`, `config.md`, `dashboard-security.md`, `dashboard-frontend.md`, `async-io.md`, `discord-messages.md`, `data-and-retention.md`, `observability.md`, `features.md` (P4–P11 features: seasons, reports, packs, Secret Santa, Communauté+), `testing.md`, `tooling.md`. `docs/conventions/README.md` maps each paragraph of the former CLAUDE.md to its file. Operations: `docs/RUNBOOK.md`. Voice: `docs/VOIX.md`. Privacy: `Privacy.md`.
+`docs/conventions/`: `architecture.md`, `extension-lifecycle.md`, `config.md`, `dashboard-security.md`, `dashboard-frontend.md`, `async-io.md`, `discord-messages.md`, `data-and-retention.md`, `observability.md`, `features.md` (P4–P11 features: seasons, reports, packs, Secret Santa, Communauté+), `testing.md`, `tooling.md`. `docs/conventions/README.md` says which file to read for which area. Operations: `docs/RUNBOOK.md`. Voice: `docs/VOIX.md`. Privacy: `Privacy.md`.

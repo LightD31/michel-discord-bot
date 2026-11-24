@@ -1,4 +1,4 @@
-// The first-steps wizard (C1).
+// The first-steps wizard.
 import { EL, actionArgs, registerActions } from '../core/actions.js';
 import { api } from '../core/api.js';
 import { loadServers } from '../core/data.js';

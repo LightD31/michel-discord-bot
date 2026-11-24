@@ -241,7 +241,7 @@ def test_the_login_page_says_what_michel_is(browser, dashboard):
 
 
 def test_a_template_shows_as_discord_will_show_it(page, dashboard):
-    """The live preview (C4): rendered by the bot's function, mentions by name, escaped."""
+    """The live preview: rendered by the bot's function, mentions by name, escaped."""
     open_module(page, dashboard, "moduleXp")
     field = page.locator('.form-field[data-key="levelUpMessageList"]')
     preview = field.locator(".discord-preview")
@@ -266,7 +266,7 @@ def test_a_template_shows_as_discord_will_show_it(page, dashboard):
 
 
 def test_a_feed_is_tested_from_its_row(page, dashboard):
-    """C9: "Tester" reads the feed now and shows its entries as they'd be posted."""
+    """ "Tester" reads the feed now and shows its entries as they'd be posted."""
     asked = []
 
     def answer(route):

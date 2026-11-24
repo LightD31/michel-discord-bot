@@ -3,7 +3,7 @@
 A newcomer gets the server's welcome message (its card, buttons to the rules,
 the role menu and ``/aide``), the arrival role, and optionally a copy by DM.
 Under the message, "👋 Souhaiter la bienvenue" lets the others greet them,
-each click adding a name (A8; ``features/welcome/greetings.py``). After 7
+each click adding a name (``features/welcome/greetings.py``). After 7
 days the hourly task takes the button off (P14).
 """
 

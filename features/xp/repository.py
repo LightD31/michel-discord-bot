@@ -371,7 +371,7 @@ class XpRepository(GuildRepository):
         ]
         return await (await self._events().aggregate(pipeline)).to_list()
 
-    # --- Seasons (P5, A4) ------------------------------------------------------
+    # --- Seasons (P5) ------------------------------------------------------
 
     @translates_db_errors
     async def season_ranking(

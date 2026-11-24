@@ -72,7 +72,7 @@ async def test_a_member_who_left_is_not_retried_all_day(setup):
 
 
 async def test_a_birthday_without_its_year_is_wished_without_an_age(setup, store_config):
-    """A wish that says the age is skipped: "12/03" gave none (B2)."""
+    """A wish that says the age is skipped: "12/03" gave none."""
     ext, guild, repo = setup
     channel = guild.add_channel(FakeChannel(10))
     store_config(

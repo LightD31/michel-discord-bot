@@ -1,4 +1,4 @@
-"""Succès (P18, A3): the hourly check, its announcement, /succes and the badges shown."""
+"""Succès (P18): the hourly check, its announcement, /succes and the badges shown."""
 
 from datetime import UTC, datetime, timedelta
 

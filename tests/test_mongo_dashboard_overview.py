@@ -1,4 +1,4 @@
-"""The server page's overview and checklist against a real MongoDB (C1, C2)."""
+"""The server page's overview and checklist against a real MongoDB."""
 
 import asyncio
 import json

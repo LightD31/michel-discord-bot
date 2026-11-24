@@ -1,4 +1,4 @@
-"""Michel says *tu* (P6, B8, ``docs/VOIX.md``): no *vous* of politeness in what it writes.
+"""Michel says *tu* (P6, ``docs/VOIX.md``): no *vous* of politeness in what it writes.
 
 The scan reads every string literal of the bot (f-strings included), skipping
 docstrings and log lines, and fails on a *vous* pronoun or a *vous*

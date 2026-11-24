@@ -68,7 +68,7 @@ class ZuniversExtension(
         await self.api_client.close()
 
     async def forget_member(self, guild_id: str, user_id: str) -> int:
-        """Drop a member's reminders, Ninja settings and !request subscription (F10)."""
+        """Drop a member's reminders, Ninja settings and !request subscription."""
         state = await self._state(guild_id)
         removed = state.reminders.forget(user_id)
         if state.request_subscriptions.pop(user_id, None) is not None:

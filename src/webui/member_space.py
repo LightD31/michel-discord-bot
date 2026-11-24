@@ -1,4 +1,4 @@
-"""What the member space shows a member of one server (C6), read for them alone.
+"""What the member space shows a member of one server, read for them alone.
 
 Every function here takes the member's id from the session (the route passes
 ``session.user_id``) and reads only what is theirs: their XP line, their

@@ -164,7 +164,7 @@ async def test_nsfw_messages_reach_only_an_nsfw_starboard(source_nsfw, board_nsf
     assert bool(board.sent) is mirrored and bool(stored) is mirrored
 
 
-# ── Private sources (S06) ────────────────────────────────────────────────
+# ── Private sources ────────────────────────────────────────────────
 
 
 class _VisibleTo:

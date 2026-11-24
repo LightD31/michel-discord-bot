@@ -42,7 +42,7 @@ from src.discord_ext.look import MICHEL, card_v2, ok, oops
 async def send_error(ctx: InteractionContext, message: str, *, icon: str = "❌") -> None:
     """Send an ephemeral refusal, prefixed with *icon*.
 
-    A refusal says what to do next (B9): 🔒 for a missing right, 📅 / ⏱️ for
+    A refusal says what to do next: 🔒 for a missing right, 📅 / ⏱️ for
     a date or a duration not understood, the module's own emoji for "not
     here"; ❌ is for the rest.
     """

@@ -1,6 +1,6 @@
 # Dependencies, CI and tooling
 
-How the lockfile, the image, CI's pins and the hooks are kept. Moved verbatim from `CLAUDE.md` (P12, D5); its one-line rules point here.
+How the lockfile, the image, CI's pins and the hooks are kept. The one-line rules of `CLAUDE.md` point here.
 
 ## Dependencies
 

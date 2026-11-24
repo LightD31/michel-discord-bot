@@ -230,7 +230,7 @@ async def test_aide_still_searches(store_config):
     assert ctx.last.startswith("Aucune commande ne correspond à « introuvable ».")
 
 
-# ── Hello when Michel joins (B7) ──────────────────────────────────────────
+# ── Hello when Michel joins ──────────────────────────────────────────
 
 
 def joined_guild(minutes_ago: int, *, can_send: bool = True):
@@ -280,7 +280,7 @@ async def test_no_hello_where_michel_cannot_write(store_config):
     assert system.sent == []
 
 
-# ── Right-click menus (B1) ────────────────────────────────────────────────
+# ── Right-click menus ────────────────────────────────────────────────
 
 
 def test_right_click_menus_are_listed_with_where_to_find_them():

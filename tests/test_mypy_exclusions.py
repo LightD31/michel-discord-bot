@@ -1,4 +1,4 @@
-"""mypy checks every module (D4): no override skips one again.
+"""mypy checks every module: no override skips one again.
 
 The 64 extension modules mypy once skipped (``ignore_errors``) are all typed
 now; a new module with errors gets them fixed, not a line in pyproject.toml.

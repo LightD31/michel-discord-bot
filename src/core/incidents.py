@@ -1,4 +1,4 @@
-"""The server's incidents: its last failed interactions and tasks, for its admins (P21, C10).
+"""The server's incidents: its last failed interactions and tasks, for its admins (P21).
 
 A member who hits an error is told "donne cette référence à un admin :
 ``ab12cd``", and only developers could read the logs. :class:`IncidentHandler`

@@ -1,4 +1,4 @@
-"""The dashboard's audit log: what is recorded, and who may read it (F09)."""
+"""The dashboard's audit log: what is recorded, and who may read it."""
 
 import asyncio
 import json
