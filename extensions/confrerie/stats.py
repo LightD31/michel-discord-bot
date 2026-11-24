@@ -150,6 +150,7 @@ class StatsMixin(ConfrerieBase):
             texts_url = await shorten_keyed(
                 f"confrerie-textes-{guild_id}",
                 texts_url,
+                guild_id=guild_id,
                 title="Textes de la confrérie",
                 tags=["confrerie"],
             )

@@ -104,7 +104,7 @@ def _iter_feeds(srv_config: dict):
             yield str(feed_id), {"url": cfg}
 
 
-async def _with_short_link(entry: RssEntry, feed_id: str) -> RssEntry:
+async def _with_short_link(guild_id: str, entry: RssEntry, feed_id: str) -> RssEntry:
     """Return *entry* with its link routed through Shlink, when enabled.
 
     Shortening happens once per entry, before rendering, so the text template,
@@ -113,7 +113,9 @@ async def _with_short_link(entry: RssEntry, feed_id: str) -> RssEntry:
     """
     if not entry.link:
         return entry
-    short = await shorten_url(entry.link, title=entry.title or None, tags=["rss", feed_id])
+    short = await shorten_url(
+        entry.link, guild_id=guild_id, title=entry.title or None, tags=["rss", feed_id]
+    )
     if short == entry.link:
         return entry
     return entry.model_copy(update={"link": short})
@@ -329,7 +331,7 @@ class RssExtension(Extension):
         posted_ids: list[str] = []
         for entry in new_entries:
             try:
-                entry = await _with_short_link(entry, job.feed_id)
+                entry = await _with_short_link(job.guild_id, entry, job.feed_id)
                 components = _build_link_button(job.feed_cfg, entry)
                 send_kwargs: dict = {}
                 if components is not None:

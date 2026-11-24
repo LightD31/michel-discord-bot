@@ -39,7 +39,7 @@ if TYPE_CHECKING:  # pragma: no cover
 _INACTIVE_POLL_INTERVAL_SECONDS = 1800.0  # 30 min
 
 
-async def _event_url(event_slug: str) -> str | None:
+async def _event_url(guild_id: str, event_slug: str) -> str | None:
     """Raider.IO event page, shortened when Shlink is enabled; ``None`` without a site URL.
 
     The URL is stable for a whole event, and the shortener memoizes it, so the
@@ -50,7 +50,7 @@ async def _event_url(event_slug: str) -> str | None:
     if not site:
         return None
     return await shorten_url(
-        f"{site}/events/{event_slug}", title=f"MDI — {event_slug}", tags=["mdi"]
+        f"{site}/events/{event_slug}", guild_id=guild_id, title=f"MDI — {event_slug}", tags=["mdi"]
     )
 
 
@@ -183,7 +183,7 @@ class NotificationsMixin:
         new_hash = self._match_hash(match)
         phase = self._match_phase(match)
         doc = state.matches.get(match.id)
-        event_url = await _event_url(gc.event_slug)
+        event_url = await _event_url(state.server_id, gc.event_slug)
         embed = self._build_match_embed(match, team, event_url, gc.icon_url)
 
         if doc is None:
@@ -351,7 +351,11 @@ class NotificationsMixin:
             return
 
         embed = self._build_schedule_embed(
-            state.tracked_team, gc.team_slug, matches, await _event_url(gc.event_slug), gc.icon_url
+            state.tracked_team,
+            gc.team_slug,
+            matches,
+            await _event_url(state.server_id, gc.event_slug),
+            gc.icon_url,
         )
         try:
             await edit_message_if_changed(message, content="", embeds=[embed], logger=logger)

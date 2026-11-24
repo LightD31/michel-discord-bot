@@ -30,13 +30,20 @@ def _format_date(value: str) -> str:
         return value
 
 
-async def shorten_work_links(work: Work) -> tuple[str, list[tuple[str, str]]]:
-    """Short URLs for the work's Notion page and its external links."""
+async def shorten_work_links(guild_id: str, work: Work) -> tuple[str, list[tuple[str, str]]]:
+    """Short URLs for the work's Notion page and its external links, on the server's Shlink."""
     notion_url = (
-        await shorten_url(work.url, title=work.title, tags=["confrerie"]) if work.url else ""
+        await shorten_url(work.url, guild_id=guild_id, title=work.title, tags=["confrerie"])
+        if work.url
+        else ""
     )
     links = [
-        (label, await shorten_url(url, title=f"{work.title} — {label}", tags=["confrerie"]))
+        (
+            label,
+            await shorten_url(
+                url, guild_id=guild_id, title=f"{work.title} — {label}", tags=["confrerie"]
+            ),
+        )
         for label, url in work.links
     ]
     return notion_url, links
@@ -95,7 +102,7 @@ class UpdatesMixin(ConfrerieBase):
         if not channel or not hasattr(channel, "send"):
             raise ConfrerieError(f"Canal introuvable ou invalide: {channel_id}")
 
-        notion_url, links = await shorten_work_links(work)
+        notion_url, links = await shorten_work_links(guild_id, work)
         embed = build_work_embed(
             work,
             title,

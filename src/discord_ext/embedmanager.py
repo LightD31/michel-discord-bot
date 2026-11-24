@@ -87,6 +87,7 @@ async def shorten_links_config(embeds_config: list[Any], guild_id: str) -> list[
                 link_copy["url"] = await shorten_keyed(
                     f"{guild_id}-{embed_title}-{link_title}",
                     str(link_copy["url"]),
+                    guild_id=guild_id,
                     title=f"{embed_title} — {link_title}",
                     tags=["embedmanager"],
                 )

@@ -60,16 +60,6 @@
         "rss": {
             "lootScraperBaseUrl": ""
         },
-        "shlink": {
-            "enabled": false,
-            "shlinkBaseUrl": "",
-            "shlinkApiKey": "",
-            "shlinkDomain": "",
-            "shlinkTags": [
-                "michel-bot"
-            ],
-            "shlinkExcludedDomains": []
-        },
         "twitch": {
             "twitchClientId": "",
             "twitchClientSecret": ""
@@ -302,6 +292,16 @@
                 "enabled": false,
                 "anonymousMessages": true,
                 "reminderDaysBefore": 3
+            },
+            "moduleShlink": {
+                "enabled": false,
+                "shlinkBaseUrl": "",
+                "shlinkApiKey": "",
+                "shlinkDomain": "",
+                "shlinkTags": [
+                    "michel-bot"
+                ],
+                "shlinkExcludedDomains": []
             },
             "moduleSpeedons": {
                 "enabled": false,

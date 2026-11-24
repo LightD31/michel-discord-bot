@@ -76,7 +76,7 @@ class NotificationsMixin(VlrggBase):
             logger=logger,
         )
         if message and embeds:
-            embeds = await shorten_embeds(embeds, tags=["vlrgg"])
+            embeds = await shorten_embeds(embeds, guild_id=team_state.server_id, tags=["vlrgg"])
             try:
                 await edit_message_if_changed(
                     message, content="", embeds=embeds, ignore_timestamp=True, logger=logger

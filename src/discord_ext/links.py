@@ -22,27 +22,31 @@ from features.links import shorten_text, shorten_url, shortening_enabled
 __all__ = ["shorten_embed", "shorten_embeds"]
 
 
-async def shorten_embed(embed: Embed, *, tags: list[str] | None = None) -> Embed:
-    """Shorten the links carried by *embed*, in place, and return it."""
-    if embed is None or not shortening_enabled():
+async def shorten_embed(
+    embed: Embed, *, guild_id: str | int | None, tags: list[str] | None = None
+) -> Embed:
+    """Shorten the links carried by *embed* with the server's Shlink, in place, and return it."""
+    if embed is None or not shortening_enabled(guild_id):
         return embed
 
     if embed.url:
-        embed.url = await shorten_url(embed.url, title=embed.title, tags=tags)
+        embed.url = await shorten_url(embed.url, guild_id=guild_id, title=embed.title, tags=tags)
     if embed.description:
-        embed.description = await shorten_text(embed.description, tags=tags)
+        embed.description = await shorten_text(embed.description, guild_id=guild_id, tags=tags)
     for field in embed.fields or []:
         if field.value:
-            field.value = await shorten_text(field.value, tags=tags)
+            field.value = await shorten_text(field.value, guild_id=guild_id, tags=tags)
     author = embed.author
     if author is not None and author.url:
-        author.url = await shorten_url(author.url, title=author.name, tags=tags)
+        author.url = await shorten_url(author.url, guild_id=guild_id, title=author.name, tags=tags)
     return embed
 
 
-async def shorten_embeds(embeds: Iterable[Embed], *, tags: list[str] | None = None) -> list[Embed]:
+async def shorten_embeds(
+    embeds: Iterable[Embed], *, guild_id: str | int | None, tags: list[str] | None = None
+) -> list[Embed]:
     """Apply :func:`shorten_embed` to every embed of an iterable."""
     result = []
     for embed in embeds:
-        result.append(await shorten_embed(embed, tags=tags))
+        result.append(await shorten_embed(embed, guild_id=guild_id, tags=tags))
     return result

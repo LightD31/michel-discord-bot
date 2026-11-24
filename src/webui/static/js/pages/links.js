@@ -1,4 +1,4 @@
-// The short-link manager (Shlink).
+// The short-link manager: the server's own Shlink, on its module page (P37).
 import { html, raw } from '../core/html.js';
 import { actionArgs, registerActions } from '../core/actions.js';
 import { api } from '../core/api.js';
@@ -8,10 +8,14 @@ import { askConfirm } from '../ui/confirm.js';
 import { toast } from '../ui/toast.js';
 
 // ── Short Links (Shlink) ──────────────────────────
+function shlinkApi(path = '') {
+    return `/api/servers/${encodeURIComponent(state.shlink.serverId)}/shlink${path}`;
+}
+
 export async function loadShortLinks() {
     state.shlink.loading = true;
     try {
-        state.shlink.status = await api('/api/shlink/status');
+        state.shlink.status = await api(shlinkApi('/status'));
         if (!state.shlink.status?.configured) {
             state.shlink.items = [];
             state.shlink.pagination = {};
@@ -20,10 +24,12 @@ export async function loadShortLinks() {
         const params = new URLSearchParams();
         params.set('page', String(state.shlink.page || 1));
         if (state.shlink.search) params.set('search', state.shlink.search);
-        const data = await api(`/api/shlink/short-urls?${params}`);
+        const data = await api(shlinkApi(`/short-urls?${params}`));
         state.shlink.items = data?.short_urls || [];
         state.shlink.pagination = data?.pagination || {};
     } catch (e) {
+        // api() has said why; the card leaves its spinner for the "no instance" state.
+        state.shlink.status ||= { configured: false };
         state.shlink.items = [];
         state.shlink.pagination = {};
     } finally {
@@ -80,44 +86,34 @@ export function renderShortLinkRow(item) {
         `);
 }
 
-export function renderShortLinksPage() {
+export function renderShortLinksCards() {
     const s = state.shlink;
     const st = s.status || {};
-    if (!st.configured) {
+    if (s.status && !st.configured) {
         return `
-                <div class="page-header">
-                    <h2>Liens courts</h2>
-                    <p>Raccourcisseur Shlink — création, modification et suppression des liens publiés par le bot.</p>
-                </div>
-                <div class="empty-state">
-                    <div class="icon">🔗</div>
-                    <h3>Shlink n'est pas configuré</h3>
-                    <p>Renseigne l'URL de l'instance et la clé API dans la section « Shlink » de la
-                    <a href="#/global" data-click="navigate" data-click-args="[&quot;global&quot;]" data-prevent>config globale</a>.</p>
+                <div class="u-mt-16 card">
+                    <div class="empty-state">
+                        <div class="icon">🔗</div>
+                        <h3>Pas encore d'instance Shlink</h3>
+                        <p>Renseigne l'URL de l'instance et la clé API dans les réglages ci-dessus et enregistre :
+                        les liens courts du serveur se gèrent ensuite ici.</p>
+                    </div>
                 </div>
             `;
     }
+    if (!s.status) return '<div class="u-mt-16 card"><div class="loading"><div class="spinner"></div></div></div>';
     const pag = s.pagination || {};
     const currentPage = pag.currentPage || s.page || 1;
     const pagesCount = pag.pagesCount || 1;
     return String(html`
-            <div class="page-header">
-                <h2>Liens courts</h2>
-                <p>
-                    Instance : <a href="${st.base_url}" target="_blank" rel="noopener">${st.base_url}</a> ·
-                    Raccourcissement automatique des liens du bot :
-                    ${raw(st.enabled
-                    ? '<span class="u-c-success">activé</span>'
-                    : '<span class="u-c-text-muted">désactivé</span>')}
-                    (<a href="#/global" data-click="navigate" data-click-args="[&quot;global&quot;]" data-prevent>config globale</a>)
-                </p>
-            </div>
-
-            <div class="card">
+            <div class="u-mt-16 card">
                 <div class="card-header">
                     <div>
                         <div class="card-title">Nouveau lien court</div>
-                        <div class="card-subtitle">Le slug est généré automatiquement s'il est laissé vide.</div>
+                        <div class="card-subtitle">
+                            Instance : <a href="${st.base_url}" target="_blank" rel="noopener">${st.base_url}</a>.
+                            Le slug est généré automatiquement s'il est laissé vide.
+                        </div>
                     </div>
                 </div>
                 <div class="u-d-flex u-fd-column u-gap-12">
@@ -161,7 +157,7 @@ export function renderShortLinksPage() {
                 ${raw(s.loading
                 ? '<div class="loading"><div class="spinner"></div></div>'
                 : s.items.length === 0
-                    ? `<div class="empty-state"><h3>Aucun lien</h3><p>Créez-en un avec le formulaire ci-dessus.</p></div>`
+                    ? `<div class="empty-state"><h3>Aucun lien</h3><p>Crée-en un avec le formulaire ci-dessus.</p></div>`
                     : s.items.map(renderShortLinkRow).join(''))}
                 ${raw(pagesCount > 1 ? `
                     <div class="u-d-flex u-gap-8 u-jc-center u-mt-12">
@@ -184,7 +180,7 @@ export async function createShortLink() {
         return;
     }
     try {
-        await api('/api/shlink/short-urls', {
+        await api(shlinkApi('/short-urls'), {
             method: 'POST',
             body: JSON.stringify({
                 long_url: url,
@@ -217,7 +213,7 @@ export async function saveShortLink(shortCode) {
         return;
     }
     try {
-        await api(`/api/shlink/short-urls/${encodeURIComponent(shortCode)}`, {
+        await api(shlinkApi(`/short-urls/${encodeURIComponent(shortCode)}`), {
             method: 'PATCH',
             body: JSON.stringify({
                 long_url: url,
@@ -235,7 +231,7 @@ export async function saveShortLink(shortCode) {
 export async function deleteShortLink(shortCode) {
     if (!(await askConfirm(`Supprimer le lien court « ${shortCode} » ? Les visiteurs recevront une erreur 404.`, { title: 'Supprimer le lien', confirm: 'Supprimer', danger: true }))) return;
     try {
-        await api(`/api/shlink/short-urls/${encodeURIComponent(shortCode)}`, { method: 'DELETE' });
+        await api(shlinkApi(`/short-urls/${encodeURIComponent(shortCode)}`), { method: 'DELETE' });
         toast('Lien court supprimé', 'success');
         await loadShortLinks();
         render();

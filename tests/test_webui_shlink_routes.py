@@ -8,7 +8,7 @@ Shlink instance.
 from dataclasses import dataclass
 
 import pytest
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 
 import src.webui.routes.shlink as shlink_routes
@@ -22,9 +22,14 @@ class _Session:
 
 
 class _Ctx:
-    """Minimal stand-in for WebUIContext — the router only needs the auth hook."""
+    """Minimal stand-in for WebUIContext — the router only needs the auth hook.
 
-    def require_developer(self, request):  # noqa: ARG002 — signature parity
+    Only server 1's admins (P37: each server manages its own instance).
+    """
+
+    async def require_guild_admin(self, request, guild_id):  # noqa: ARG002 — signature parity
+        if str(guild_id) != "1":
+            raise HTTPException(status_code=403, detail="no")
         return _Session()
 
 
@@ -78,11 +83,11 @@ class _FakeClient:
 @pytest.fixture
 def client(monkeypatch):
     fake = _FakeClient()
-    monkeypatch.setattr(shlink_routes, "shlink_client", fake)
+    monkeypatch.setattr(shlink_routes, "shlink_for", lambda guild_id: fake)
     monkeypatch.setattr(
         shlink_routes,
         "get_settings",
-        lambda: ShlinkSettings(
+        lambda guild_id: ShlinkSettings(
             {
                 "enabled": True,
                 "shlinkBaseUrl": "https://exemple.link",
@@ -98,7 +103,7 @@ def client(monkeypatch):
 
 def test_status_reports_configuration(client):
     http, _ = client
-    body = http.get("/api/shlink/status").json()
+    body = http.get("/api/servers/1/shlink/status").json()
     assert body["configured"] is True
     assert body["enabled"] is True
     assert body["base_url"] == "https://exemple.link"
@@ -107,7 +112,7 @@ def test_status_reports_configuration(client):
 
 def test_list_projects_shlink_objects(client):
     http, _ = client
-    body = http.get("/api/shlink/short-urls").json()
+    body = http.get("/api/servers/1/shlink/short-urls").json()
     assert body["short_urls"] == [
         {
             "short_code": "abc",
@@ -125,7 +130,7 @@ def test_list_projects_shlink_objects(client):
 
 def test_create_rejects_non_http_url(client):
     http, fake = client
-    resp = http.post("/api/shlink/short-urls", json={"long_url": "ftp://example.com/x"})
+    resp = http.post("/api/servers/1/shlink/short-urls", json={"long_url": "ftp://example.com/x"})
     assert resp.status_code == 400
     assert fake.created is None
 
@@ -133,7 +138,7 @@ def test_create_rejects_non_http_url(client):
 def test_create_forwards_slug_and_tags(client):
     http, fake = client
     resp = http.post(
-        "/api/shlink/short-urls",
+        "/api/servers/1/shlink/short-urls",
         json={
             "long_url": " https://example.com/x ",
             "custom_slug": "mon-lien",
@@ -150,7 +155,7 @@ def test_create_forwards_slug_and_tags(client):
 def test_update_retargets_short_url(client):
     http, fake = client
     resp = http.patch(
-        "/api/shlink/short-urls/abc",
+        "/api/servers/1/shlink/short-urls/abc",
         json={"long_url": "https://example.com/nouveau", "tags": ["news"]},
     )
     assert resp.status_code == 200
@@ -162,14 +167,14 @@ def test_update_retargets_short_url(client):
 
 def test_delete_calls_api(client):
     http, fake = client
-    assert http.delete("/api/shlink/short-urls/abc").json() == {"success": True}
+    assert http.delete("/api/servers/1/shlink/short-urls/abc").json() == {"success": True}
     assert fake.deleted == "abc"
 
 
 def test_client_error_is_surfaced_as_400(client):
     http, fake = client
     fake.error = ShlinkError("Slug déjà pris", status=400)
-    resp = http.post("/api/shlink/short-urls", json={"long_url": "https://example.com/x"})
+    resp = http.post("/api/servers/1/shlink/short-urls", json={"long_url": "https://example.com/x"})
     assert resp.status_code == 400
     assert "Slug" in resp.json()["detail"]
 
@@ -177,6 +182,13 @@ def test_client_error_is_surfaced_as_400(client):
 def test_upstream_failure_is_surfaced_as_502(client):
     http, fake = client
     fake.error = ShlinkError("Shlink injoignable : Cannot connect to host shlink.internal:8080")
-    resp = http.get("/api/shlink/short-urls")
+    resp = http.get("/api/servers/1/shlink/short-urls")
     assert resp.status_code == 502
     assert "shlink.internal" not in resp.json()["detail"]
+
+
+def test_another_servers_links_are_out_of_reach(client):
+    http, fake = client
+    assert http.get("/api/servers/2/shlink/short-urls").status_code == 403
+    assert http.delete("/api/servers/2/shlink/short-urls/abc").status_code == 403
+    assert fake.deleted is None

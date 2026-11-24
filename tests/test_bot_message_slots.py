@@ -54,7 +54,7 @@ def mdi(monkeypatch):
             raise RuntimeError("Unknown Message")
         edits.append((message, kwargs))
 
-    async def fake_event_url(slug):
+    async def fake_event_url(guild_id, slug):
         return f"https://raider.io/events/{slug}"
 
     monkeypatch.setattr(mdi_notifications, "edit_message_if_changed", fake_edit)
@@ -122,7 +122,7 @@ async def test_a_vlrgg_team_schedule_goes_to_its_slot(resolver, monkeypatch):
     async def fake_edit(message, **kwargs):
         edits.append(kwargs["embeds"])
 
-    async def shorten(embeds, tags):
+    async def shorten(embeds, guild_id, tags):
         return embeds
 
     async def fetch(tc):

@@ -157,7 +157,7 @@ too, followed by a restart so every extension picks it up.
 | YouTube, Notion, Uptime Kuma | The provider's console, or the server's own Kuma | each server's `moduleYoutube`, `moduleConfrerie`, `moduleUptime` |
 | Twitch | Twitch's developer console | `twitch` section |
 | AI providers (OpenRouter, NanoGPT) | Provider dashboard | `OpenRouter.openrouterApiKey`, `NanoGPT.apiKey` |
-| Shlink | Shlink server: `shlink api-key:generate` | `shlink.shlinkApiKey` |
+| Shlink | Shlink server: `shlink api-key:generate` | each server's `moduleShlink.shlinkApiKey` |
 | Uptime Kuma | Uptime Kuma → Settings → API Keys / the push monitor | each server's `moduleUptime.uptimeKumaApiKey`; the bot's `uptimeKuma.uptimeKumaToken` |
 | Sentry / GlitchTip DSN | Project → Settings → Client Keys | `errorReporting.dsn` |
 | LLDAP admin password (per server) | LLDAP web UI → the admin user | `moduleLldap.lldapAdminPassword` |

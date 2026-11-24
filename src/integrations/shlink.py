@@ -9,8 +9,9 @@ two things:
   the CRUD calls below so short URLs can be listed, retargeted, retagged or
   deleted without leaving the Web UI.
 
-Settings live in the global ``shlink`` config section and are read on every
-call, so a dashboard edit takes effect without restarting the bot.
+Each server brings its own instance (P37): its ``moduleShlink`` settings, read
+on every call, so a dashboard edit takes effect without restarting the bot.
+A server without one posts its links as they are.
 
 The client never raises on the automatic path — callers there use
 ``features.links.shorten_url`` which swallows :class:`ShlinkError` and falls
@@ -53,7 +54,7 @@ class ShlinkError(IntegrationError):
 
 
 class ShlinkSettings:
-    """Snapshot of the global ``shlink`` config section."""
+    """Snapshot of a server's ``moduleShlink`` settings."""
 
     def __init__(self, raw: dict[str, Any]) -> None:
         self.enabled: bool = bool(raw.get("enabled", False))
@@ -91,21 +92,26 @@ class ShlinkSettings:
         return hosts
 
 
-def get_settings() -> ShlinkSettings:
-    """Read the current ``shlink`` section from the reactive config store."""
-    config = config_store.get().get("config", {})
-    raw = config.get("shlink") or {}
+def get_settings(guild_id: object) -> ShlinkSettings:
+    """The server's Shlink settings, read even while the module is off.
+
+    ``enabled`` (the module's switch) only turns automatic shortening on: the
+    dashboard's link manager works with the instance alone.
+    """
+    server = config_store.get().get("servers", {}).get(str(guild_id)) or {}
+    raw = server.get("moduleShlink") if isinstance(server, dict) else None
     return ShlinkSettings(raw if isinstance(raw, dict) else {})
 
 
 class ShlinkClient:
-    """Async wrapper around the Shlink REST API.
+    """Async wrapper around one server's Shlink instance.
 
     Stateless apart from the shortening cache: settings are re-read per call so
     the client follows dashboard edits.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, guild_id: object) -> None:
+        self.guild_id = str(guild_id)
         # long URL -> (short URL, inserted_at)
         self._cache: dict[str, tuple[str, float]] = {}
         # slug -> (long URL, short URL): what each managed slot currently targets
@@ -156,7 +162,7 @@ class ShlinkClient:
         settings: ShlinkSettings | None = None,
     ) -> Any:
         """Call the Shlink API and return the decoded JSON body (``None`` on 204)."""
-        settings = settings or get_settings()
+        settings = settings or get_settings(self.guild_id)
         if not settings.configured:
             raise ShlinkError(
                 "Shlink n'est pas configuré — renseigne l'URL de l'instance et la clé API."
@@ -203,7 +209,7 @@ class ShlinkClient:
         already targets the same long URL with the same tags — that is what
         keeps a feed poller from minting a new slug on every cycle.
         """
-        settings = get_settings()
+        settings = get_settings(self.guild_id)
         payload: dict[str, Any] = {"longUrl": long_url, "findIfExists": find_if_exists}
         merged_tags = list(settings.tags)
         for tag in tags or []:
@@ -393,7 +399,21 @@ def _error_detail(body: Any, status: int) -> str:
 
 
 # Process-wide singleton — the cache is only useful if it is shared.
-shlink_client = ShlinkClient()
+# One client per server and instance: a server that changes instance starts
+# with empty caches, so no short URL of the old one is posted again.
+_clients: dict[tuple[str, str, str, str], ShlinkClient] = {}
+
+
+def shlink_for(guild_id: object) -> ShlinkClient:
+    """The client of the server's own Shlink instance."""
+    settings = get_settings(guild_id)
+    key = (str(guild_id), settings.base_url, settings.api_key, settings.domain)
+    client = _clients.get(key)
+    if client is None:
+        for old in [k for k in _clients if k[0] == key[0]]:
+            del _clients[old]
+        client = _clients[key] = ShlinkClient(guild_id)
+    return client
 
 
 __all__ = [
@@ -402,5 +422,5 @@ __all__ = [
     "ShlinkError",
     "ShlinkSettings",
     "get_settings",
-    "shlink_client",
+    "shlink_for",
 ]

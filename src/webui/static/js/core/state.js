@@ -25,8 +25,9 @@ export const state = {
     // Set on /public/{token}/{kind}: { token, kind, meta, error }.
     // The page then renders the read-only public dashboard, no login.
     publicView: null,
-    // Short-link manager (Shlink) state
+    // Short-link manager (Shlink) state, for the server whose module page is open
     shlink: {
+        serverId: null,
         status: null,
         items: [],
         pagination: {},

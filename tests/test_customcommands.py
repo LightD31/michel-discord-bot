@@ -369,5 +369,5 @@ def test_an_image_link_becomes_the_embed_image(text, expected):
     assert split_image(text) == expected
 
 
-async def _identity(text: str) -> str:
+async def _identity(text: str, **_) -> str:
     return text

@@ -133,7 +133,7 @@ async def test_streamlabs_fetches_a_shared_team_once_per_refresh(store_config):
         fetched.append(url)
         return {"id": url}, {}
 
-    async def fake_update(message, url, campaign, members):
+    async def fake_update(guild_id, message, url, campaign, members):
         shown.append((message, url))
 
     ext = object.__new__(sl.StreamlabsCharityExtension)

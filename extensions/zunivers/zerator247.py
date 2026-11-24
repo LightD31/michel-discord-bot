@@ -84,7 +84,7 @@ class Zerator247Mixin(ZuniversBase):
         recipients = [s.user_id for s in state.request_subscriptions.values() if s.accepts(hour)]
         if not recipients:
             return
-        votes_url = await shorten_url(f"{site.rstrip('/')}/#votes")
+        votes_url = await shorten_url(f"{site.rstrip('/')}/#votes", guild_id=state.guild_id)
         message = build_request_reminder(
             cycle, twitch_url=_twitch_url(settings), votes_url=votes_url
         )
