@@ -25,7 +25,13 @@ from src.core.config import ModuleConfig, config_store, global_config, load_disc
 from src.core.errors import ConfigError
 from src.core.http import http_client
 from src.discord_ext.look import Kind, card, sign
-from src.integrations.spotify import SPOTIFY_ERRORS, spotify_api
+from src.integrations.spotify import (
+    SPOTIFY_ERRORS,
+    SpotifyClient,
+    SpotifyNotConnected,
+    is_connected,
+    spotify_for,
+)
 from src.webui.public_links import (
     PUBLIC_FLAG,
     ensure_public_token,
@@ -37,6 +43,7 @@ from src.webui.schemas import (
     SchemaBase,
     enabled_field,
     register_module,
+    secret_field,
     ui,
 )
 
@@ -59,6 +66,17 @@ class SpotifyConfig(SchemaBase):
     )
 
     enabled: bool = enabled_field()
+    spotifyClientId: str | None = ui(
+        "Client ID de l'application Spotify",
+        "string",
+        description=(
+            "L'application du serveur, créée dans le tableau de bord développeur de "
+            "Spotify. Ensuite, connecte le compte qui gère la playlist sous « Compte Spotify »."
+        ),
+    )
+    spotifyClientSecret: str | None = secret_field(
+        "Client Secret de l'application Spotify", sent_to=("spotifyClientId",)
+    )
     voteEnabled: bool = ui(
         "Vote quotidien",
         "boolean",
@@ -147,26 +165,30 @@ SPOTIFY = ModuleConfig("moduleSpotify")
 DEV_GUILD = str(global_config().get("discord", {}).get("devGuildId") or "").strip() or None
 COOLDOWN_TIME = 1
 
-# ``spotify_api`` (``src.integrations.spotify``) runs every spotipy call on a
-# worker thread — always ``await spotify_api.<method>(...)``, never the
-# synchronous client, which would block the event loop. The client is built on
-# first use so the bot still starts when the token cache is missing.
-# Re-authorize via the Web UI (``/api/spotify/auth/start``).
+# ``spotify_for(guild_id)`` (``src.integrations.spotify``) is the server's own
+# account, every spotipy call on a worker thread — always
+# ``await spotify_for(guild_id).<method>(...)``, never the synchronous client,
+# which would block the event loop. A server connects its account from the
+# module's page; until then a call raises ``SpotifyNotConnected``.
 
 
 # Discord drops an autocomplete answer after 3 s: give Spotify a little less.
 AUTOCOMPLETE_TIMEOUT_SECONDS = 2.5
 
 
-async def autocomplete_track_choices(query: str | None) -> list[dict[str, str | int | float]]:
+async def autocomplete_track_choices(
+    guild_id: str, query: str | None
+) -> list[dict[str, str | int | float]]:
     """Choices for a song picker; a slow or failing Spotify yields a message, not an error."""
     if not query:
         return track_search.placeholder(track_search.PROMPT)
     try:
         result = await asyncio.wait_for(
-            spotify_api.search(query, limit=10, type="track", market="FR"),
+            spotify_for(guild_id).search(query, limit=10, type="track", market="FR"),
             timeout=AUTOCOMPLETE_TIMEOUT_SECONDS,
         )
+    except SpotifyNotConnected:
+        return track_search.placeholder(track_search.NOT_CONNECTED)
     except SEARCH_ERRORS as e:
         logger.warning("Spotify search failed for autocomplete: %s", e)
         return track_search.placeholder(track_search.UNAVAILABLE)
@@ -280,6 +302,16 @@ class ServerData:
     @property
     def _config(self) -> dict[str, Any]:
         return SPOTIFY.get(self.guild_id)
+
+    @property
+    def spotify(self) -> SpotifyClient:
+        """The server's own Spotify account (P36)."""
+        return spotify_for(self.guild_id)
+
+    @property
+    def connected(self) -> bool:
+        """Whether the server has connected its account: a task skips it until then."""
+        return is_connected(self.guild_id)
 
     @property
     def discord2name(self) -> dict[str, Any]:

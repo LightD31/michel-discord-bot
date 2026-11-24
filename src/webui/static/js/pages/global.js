@@ -5,7 +5,6 @@ import { loadConfig, loadServers } from '../core/data.js';
 import { render } from '../core/render.js';
 import { html } from '../core/html.js';
 import { state } from '../core/state.js';
-import { renderSpotifyAuthPanel } from '../features/spotify-auth.js';
 import { renderTwitchAuthPanel } from '../features/twitch-auth.js';
 import { _memberCache, getDiscord2NameMap } from '../forms/pickers/members.js';
 import { collectFormValues, renderSchemaForm } from '../forms/schema-form.js';
@@ -78,7 +77,6 @@ export function renderGlobalConfig() {
                             </div>
                         </div>
                         ${schema ? renderSchemaPreview(schema, sectionData) : renderConfigPreview(sectionData)}
-                        ${section === 'spotify' ? renderSpotifyAuthPanel() : ''}
                         ${section === 'twitch' ? renderTwitchAuthPanel() : ''}
                     </div>
                 `;

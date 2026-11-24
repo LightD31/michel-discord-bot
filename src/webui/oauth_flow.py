@@ -1,7 +1,8 @@
 """What the dashboard's OAuth flows share (Spotify, Twitch; P29).
 
-A flow is two routes: ``…/auth/start`` redirects the developer to the service
-with a random ``state`` kept in a short-lived cookie, and ``…/auth/callback``
+A flow is two routes: ``…/auth/start`` redirects the user to the service
+with a random ``state`` kept in a short-lived cookie (prefixed with what the
+callback must know, as Spotify's names the server it connects, P36), and ``…/auth/callback``
 checks that state before exchanging the code, then answers with a small page
 that sends them back to the dashboard. The callback URL is built from
 ``webui.baseUrl``, the one source the service and both routes agree on.
@@ -37,10 +38,19 @@ def callback_url(path: str) -> str:
 
 
 def redirect_with_state(
-    ctx: WebUIContext, request: Request, url_for_state: Callable[[str], str], cookie: str
+    ctx: WebUIContext,
+    request: Request,
+    url_for_state: Callable[[str], str],
+    cookie: str,
+    *,
+    prefix: str = "",
 ) -> RedirectResponse:
-    """Redirect to ``url_for_state(state)``, the state kept 10 minutes in *cookie*."""
-    state = secrets.token_urlsafe(24)
+    """Redirect to ``url_for_state(state)``, the state kept 10 minutes in *cookie*.
+
+    The state is *prefix* + a random token: the callback reads the prefix back,
+    and the cookie's match proves the browser that started the flow sent it.
+    """
+    state = prefix + secrets.token_urlsafe(24)
     response = RedirectResponse(url=url_for_state(state))
     response.set_cookie(
         cookie,
@@ -68,8 +78,10 @@ def error_word(error: str) -> str:
 def result_page(*, service: str, ok: bool, message: str, back: str) -> HTMLResponse:
     """Tiny page that says how it went and links back to the dashboard.
 
-    *back* is a constant of the calling route (``section=spotify&spotify_auth``):
-    the link is ``/#/global?<back>=ok`` or ``=error``.
+    *back* is the dashboard route to go back to, ending with the outcome's
+    parameter (``global?section=twitch&twitch_auth``): the link is
+    ``/#/<back>=ok`` or ``=error``. The calling route builds it from constants
+    and checked ids only.
 
     Only the outcome goes back to the dashboard, never a text: a link carrying
     its own message would let anyone show any toast on the dashboard's origin.
@@ -103,7 +115,7 @@ body {{
 <body><div class="card">
 <h1>{html.escape(title)}</h1>
 <p>{html.escape(message)}</p>
-<a href="/#/global?{back}={status}">Retour au dashboard</a>
+<a href="/#/{back}={status}">Retour au dashboard</a>
 </div></body></html>"""
     return HTMLResponse(content=body, status_code=200 if ok else 400)
 

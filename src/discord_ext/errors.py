@@ -15,7 +15,7 @@ import logging
 from interactions import errors
 
 from src.core import log_context
-from src.core.errors import register_expected_failure
+from src.core.errors import NotConnected, register_expected_failure
 
 
 def new_reference() -> str:
@@ -32,7 +32,10 @@ def is_expected(error: BaseException) -> bool:
     """Errors that are part of normal use: answered, but not logged as failures."""
     return isinstance(
         error,
-        errors.CommandOnCooldown | errors.MaxConcurrencyReached | errors.CommandCheckFailure,
+        errors.CommandOnCooldown
+        | errors.MaxConcurrencyReached
+        | errors.CommandCheckFailure
+        | NotConnected,
     )
 
 
@@ -72,6 +75,17 @@ def user_message(error: BaseException, reference: str, *, french: bool = True) -
         if french:
             return "🚫 Tu n'as pas la permission d'utiliser cette commande."
         return "🚫 You are not allowed to use this command."
+    if isinstance(error, NotConnected):
+        if french:
+            return (
+                f"🔌 {error.service} n'est pas connecté sur ce serveur : un administrateur "
+                f"peut le connecter depuis la page du module {error.service} dans le "
+                "tableau de bord de Michel."
+            )
+        return (
+            f"🔌 {error.service} isn't connected on this server: an admin can connect it "
+            f"from the {error.service} module page in Michel's dashboard."
+        )
     if french:
         return (
             "❌ Une erreur inattendue est survenue. Réessaie plus tard ; si ça continue, "

@@ -52,7 +52,6 @@ from ._common import (
     autocomplete_track_choices,
     embed_message_vote,
     embed_song,
-    spotify_api,
 )
 
 logger = logutil.init_logger(__name__)
@@ -98,7 +97,7 @@ class PlaylistMixin(SpotifyBase):
         await ctx.defer()
 
         try:
-            track = await spotify_api.track(song, market="FR")
+            track = await server.spotify.track(song, market="FR")
             song_data = spotifymongoformat(
                 track, ctx.author_id, spotify2discord=server.spotify2discord
             )
@@ -110,7 +109,7 @@ class PlaylistMixin(SpotifyBase):
         existing_ids = await server.repo.playlist_track_ids()
         if song_data["_id"] not in existing_ids:
             await server.repo.add_playlist_item(song_data)
-            await spotify_api.playlist_add_items(server.playlist_id, [song_data["_id"]])
+            await server.spotify.playlist_add_items(server.playlist_id, [song_data["_id"]])
             embed, file = await embed_song(
                 song=song_data,
                 track=track,
@@ -134,12 +133,14 @@ class PlaylistMixin(SpotifyBase):
 
     @addsong.autocomplete("titre")
     async def autocomplete_from_spotify(self, ctx: AutocompleteContext):
-        await ctx.send(choices=await autocomplete_track_choices(ctx.input_text))
+        await ctx.send(choices=await autocomplete_track_choices(guild_id_of(ctx), ctx.input_text))
 
     @Task.create(IntervalTrigger(minutes=1, seconds=0))
     async def check_playlist_changes(self):
         """Reconcile MongoDB with the live Spotify playlist, sending adds/removes."""
         for server in SERVERS.values():
+            if not server.connected:
+                continue  # no Spotify account connected here yet (P36)
             with log_context.scope(guild_id=server.guild_id):
                 try:
                     await self._check_playlist_changes_for_server(server)
@@ -166,7 +167,7 @@ class PlaylistMixin(SpotifyBase):
             server.snapshot.get("length"),
         )
         try:
-            new_snap = (await spotify_api.playlist(server.playlist_id, fields="snapshot_id"))[
+            new_snap = (await server.spotify.playlist(server.playlist_id, fields="snapshot_id"))[
                 "snapshot_id"
             ]
         except SPOTIFY_ERRORS as e:
@@ -175,7 +176,7 @@ class PlaylistMixin(SpotifyBase):
 
         if new_snap != server.snapshot.get("snapshot"):
             try:
-                results = await spotify_api.playlist_tracks(
+                results = await server.spotify.playlist_tracks(
                     playlist_id=server.playlist_id, limit=100, offset=0
                 )
             except SPOTIFY_ERRORS as e:
@@ -183,7 +184,7 @@ class PlaylistMixin(SpotifyBase):
                 return
             tracks = results["items"]
             while results["next"]:
-                results = await spotify_api.next(results)
+                results = await server.spotify.next(results)
                 tracks.extend(results["items"])
 
             # Spotify keeps a second copy of a track added both from the app and
@@ -216,7 +217,7 @@ class PlaylistMixin(SpotifyBase):
                     song = spotifymongoformat(track, spotify2discord=server.spotify2discord)
                     await server.repo.add_playlist_item(song)
                     if not skip_notifications:
-                        track = await spotify_api.track(track["track"]["id"], market="FR")
+                        track = await server.spotify.track(track["track"]["id"], market="FR")
                         dt = timestamp_converter(
                             datetime.fromisoformat(song["added_at"]).astimezone(clock.LOCAL_TZ)
                         )
@@ -250,7 +251,7 @@ class PlaylistMixin(SpotifyBase):
                 for track_id in removed_track_ids:
                     song = await server.repo.pop_playlist_item(track_id)
                     if song is not None and not skip_notifications:
-                        track = await spotify_api.track(track_id, market="FR")
+                        track = await server.spotify.track(track_id, market="FR")
                         embed, file = await embed_song(
                             song=song,
                             track=track,
@@ -313,10 +314,12 @@ class PlaylistMixin(SpotifyBase):
         if not plan:
             return tracks
         for track_id, position in plan:
-            await spotify_api.playlist_remove_all_occurrences_of_items(
+            await server.spotify.playlist_remove_all_occurrences_of_items(
                 server.playlist_id, [track_id]
             )
-            await spotify_api.playlist_add_items(server.playlist_id, [track_id], position=position)
+            await server.spotify.playlist_add_items(
+                server.playlist_id, [track_id], position=position
+            )
             logger.info("Doublon %s retiré de la playlist du serveur %s", track_id, server.guild_id)
         seen: set[str | None] = set()
         unique = []
@@ -352,7 +355,7 @@ class PlaylistMixin(SpotifyBase):
         song = await server.repo.get_playlist_item(song_id)
         # A song neither in the playlist nor ever voted on has no votes document.
         votes = await server.repo.get_votes_doc(song_id) or {}
-        track = await spotify_api.track(song_id, market="FR")
+        track = await server.spotify.track(song_id, market="FR")
         if song:
             embed, file = await embed_song(
                 song=song,
@@ -458,6 +461,8 @@ class PlaylistMixin(SpotifyBase):
     async def new_titles_playlist(self):
         """Rebuild the ‘découvertes’ playlist: 100 most-recent distinct-artist tracks."""
         for server in SERVERS.values():
+            if not server.connected:
+                continue  # no Spotify account connected here yet (P36)
             with log_context.scope(guild_id=server.guild_id):
                 try:
                     await self._new_titles_playlist_for_server(server)
@@ -472,13 +477,13 @@ class PlaylistMixin(SpotifyBase):
     async def _new_titles_playlist_for_server(self, server: ServerData):
         logger.debug("new_titles_playlist lancé pour le serveur %s", server.guild_id)
 
-        results = await spotify_api.playlist_tracks(
+        results = await server.spotify.playlist_tracks(
             playlist_id=server.playlist_id, limit=100, offset=0
         )
         tracks = results["items"]
 
         while results["next"]:
-            results = await spotify_api.next(results)
+            results = await server.spotify.next(results)
             tracks.extend(results["items"])
 
         tracks.reverse()
@@ -499,4 +504,4 @@ class PlaylistMixin(SpotifyBase):
                 )
                 break
 
-        await spotify_api.playlist_replace_items(server.new_playlist_id, new_tracks)
+        await server.spotify.playlist_replace_items(server.new_playlist_id, new_tracks)

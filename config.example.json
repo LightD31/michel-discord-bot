@@ -73,11 +73,6 @@
             ],
             "shlinkExcludedDomains": []
         },
-        "spotify": {
-            "spotifyClientId": "",
-            "spotifyClientSecret": "",
-            "spotifyRedirectUri": ""
-        },
         "twitch": {
             "twitchClientId": "",
             "twitchClientSecret": ""
@@ -324,6 +319,8 @@
             },
             "moduleSpotify": {
                 "enabled": false,
+                "spotifyClientId": "",
+                "spotifyClientSecret": "",
                 "voteEnabled": false,
                 "voteReminderEveryDays": 0,
                 "voteReminderRoleId": "",

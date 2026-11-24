@@ -13,6 +13,7 @@ NO_TRACK = "error"
 PROMPT = "Tape le nom d'une chanson"
 NO_RESULT = "Aucun résultat"
 UNAVAILABLE = "Spotify ne répond pas : réessaie dans un instant"
+NOT_CONNECTED = "Spotify n'est pas connecté ici : un admin le connecte depuis le dashboard"
 
 
 def placeholder(message: str) -> list[dict[str, str | int | float]]:
@@ -35,4 +36,12 @@ def track_choices(items: list[dict[str, Any]]) -> list[dict[str, str | int | flo
     ]
 
 
-__all__ = ["NO_RESULT", "NO_TRACK", "PROMPT", "UNAVAILABLE", "placeholder", "track_choices"]
+__all__ = [
+    "NO_RESULT",
+    "NO_TRACK",
+    "NOT_CONNECTED",
+    "PROMPT",
+    "UNAVAILABLE",
+    "placeholder",
+    "track_choices",
+]

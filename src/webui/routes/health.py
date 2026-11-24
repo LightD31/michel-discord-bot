@@ -1,4 +1,5 @@
-"""A guild's "Santé" card: channels the bot can't use, failing feeds, task runs (F08)."""
+"""A guild's "Santé" card: channels the bot can't use, failing feeds, task runs (F08),
+and the accounts the server hasn't connected (P36)."""
 
 from functools import partial
 
@@ -9,6 +10,7 @@ from features.rss import RssRepository
 from src.core import logging as logutil
 from src.core.errors import DatabaseError
 from src.core.health import health
+from src.integrations.spotify import is_connected as spotify_connected
 from src.webui import schemas
 from src.webui.context import WebUIContext
 from src.webui.guild_health import (
@@ -22,6 +24,8 @@ from src.webui.guild_health import (
 logger = logutil.init_logger("webui.routes.health")
 
 RSS_MODULE = "moduleRss"
+# A module that runs on the server's own account: (service, whether it is connected).
+ACCOUNTS = {"moduleSpotify": ("Spotify", spotify_connected)}
 
 
 def _models() -> dict:
@@ -72,6 +76,13 @@ def create_router(ctx: WebUIContext) -> APIRouter:
             else:
                 feeds = rss_report(server.get(RSS_MODULE) or {}, states)
 
-        return JSONResponse({"channels": channels, "feeds": feeds, "tasks": tasks})
+        accounts = [
+            {"service": service, "module": module, "connected": connected(server_id)}
+            for module, (service, connected) in ACCOUNTS.items()
+            if module in enabled
+        ]
+        return JSONResponse(
+            {"channels": channels, "feeds": feeds, "tasks": tasks, "accounts": accounts}
+        )
 
     return router

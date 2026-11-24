@@ -47,6 +47,18 @@ class IntegrationError(BotError):
     """
 
 
+class NotConnected(IntegrationError):
+    """A server's account for *service* isn't connected (P36): its admins connect it.
+
+    Members get a refusal that says so (``src/discord_ext/errors.py``), and a
+    task skips the server rather than fail on it each run.
+    """
+
+    def __init__(self, service: str) -> None:
+        super().__init__(f"{service} n'est pas connecté sur ce serveur")
+        self.service = service
+
+
 class HttpError(IntegrationError):
     """Raised by :func:`src.core.http.fetch` when an HTTP request ultimately fails.
 
@@ -106,6 +118,7 @@ __all__ = [
     "DatabaseError",
     "HttpError",
     "IntegrationError",
+    "NotConnected",
     "ValidationError",
     "is_expected_failure",
     "register_expected_failure",

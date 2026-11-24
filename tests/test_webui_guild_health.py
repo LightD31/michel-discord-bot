@@ -275,3 +275,31 @@ def test_each_module_says_when_its_own_tasks_last_ran():
         "moduleGazette": 100.0,
         "moduleXp": 50.0,
     }
+
+
+def test_a_module_without_its_account_is_a_problem_on_the_card(monkeypatch, store_config):
+    """P36: Spotify paused for want of a connected account shows on the health card."""
+    store_config({"servers": {}})
+    monkeypatch.setitem(
+        health_routes.ACCOUNTS, "moduleSpotify", ("Spotify", lambda guild_id: guild_id == "2")
+    )
+
+    class Ctx:
+        bot = None
+
+        async def require_guild_admin(self, request, guild_id):  # noqa: ARG002
+            return SimpleNamespace(username="a", user_id="1")
+
+        def get_full_config(self):
+            on = {"moduleSpotify": {"enabled": True}}
+            return {"servers": {"1": on, "2": on, "3": {}}}
+
+    router = health_routes.create_router(Ctx())
+    (route,) = [r for r in router.routes if r.path.endswith("/health")]
+
+    def accounts(guild):
+        return json.loads(asyncio.run(route.endpoint(None, guild)).body)["accounts"]
+
+    assert accounts("1") == [{"service": "Spotify", "module": "moduleSpotify", "connected": False}]
+    assert accounts("2")[0]["connected"] is True
+    assert accounts("3") == []  # the module is off there

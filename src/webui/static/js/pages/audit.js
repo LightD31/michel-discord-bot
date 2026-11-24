@@ -31,7 +31,7 @@ export const AUDIT_ACTIONS = {
     'short_url.create': 'a créé le lien court',
     'short_url.update': 'a modifié le lien court',
     'short_url.delete': 'a supprimé le lien court',
-    'spotify.authorize': 'a reconnecté le compte Spotify',
+    'spotify.authorize': 'a connecté le compte Spotify du serveur',
     'twitch.connect': 'a connecté le compte Twitch',
     'onboarding.pack': 'a appliqué le pack',
     'onboarding.dismiss': 'a changé la liste « Pour bien démarrer »',

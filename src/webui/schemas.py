@@ -642,18 +642,6 @@ class MongodbSection(SchemaBase):
     )
 
 
-@register_section("spotify")
-class SpotifySection(SchemaBase):
-    __label__ = "Spotify"
-    __icon__ = "🎵"
-
-    spotifyClientId: str = ui("Client ID", "string", required=True)
-    spotifyClientSecret: str = secret_field("Client Secret", required=True)
-    spotifyRedirectUri: str | None = ui(
-        "Redirect URI", "url", description="URI de redirection OAuth Spotify."
-    )
-
-
 @register_section("twitch")
 class TwitchSection(SchemaBase):
     __label__ = "Twitch"

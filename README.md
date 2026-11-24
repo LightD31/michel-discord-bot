@@ -66,7 +66,7 @@ A modular, multi-guild Discord bot built with **interactions.py**. Michel ships 
 |--------|-------------|
 | **Twitch** | Live notifications, stream status embeds, Discord scheduled-event sync, and emote sync via Twitch EventSub WebSocket. |
 | **YouTube** | Polls YouTube channels every 5 min and posts new video links in a configured channel. |
-| **Spotify** | Collaborative playlist management with song proposals, community voting, and playlist change tracking. OAuth re-authentication happens through the Web UI, whose Spotify module page also charts the playlist (additions per month, top contributors and artists, track lengths) and the vote history (open poll, outcomes, per-person split, turnout). |
+| **Spotify** | Collaborative playlist management with song proposals, community voting, and playlist change tracking. Each server connects its own Spotify app and account from the Web UI, whose Spotify module page also charts the playlist (additions per month, top contributors and artists, track lengths) and the vote history (open poll, outcomes, per-person split, turnout). |
 | **RSS** | Generic feed poller (RSS / Atom / Steam / Epic / subreddit) with per-feed channel and message-template overrides. |
 | **AI Compare** | `/ask`: compare anonymous answers from several LLMs (OpenRouter and/or NanoGPT) and let everyone vote, or get a quick single-model answer; `/ask-stats` ranks the models. Optional per-server replies when Michel is @mentioned. `/ask` exists only on the servers where the module is enabled. Cost guards in the global `AI` section: a kill switch, and global and per-user daily model-call limits. |
 | **Confrérie** | Literary guild features backed by the Notion API — hourly recap stats, forum posts and `/demande` turned into drafts the owner approves, `/texte` / `/auteur` / `/outil` lookups, publisher management. |
@@ -132,7 +132,7 @@ src/                    # Shared infrastructure
 │   ├── autocomplete.py #   shared autocomplete handlers + enabled-guild check
 │   └── paginator.py    #   CustomPaginator + reaction-poll formatter
 ├── integrations/       # Pure external-API clients (no Discord imports)
-│   ├── spotify.py      #   Spotipy auth with lazy client, vote counting
+│   ├── spotify.py      #   One Spotify account per server, calls on a worker thread
 │   ├── notion.py       #   Notion API client
 │   ├── shlink.py       #   Shlink URL shortener (CRUD + shortening cache)
 │   └── lldap.py        #   LLDAP GraphQL client + LDAP password reset
@@ -226,7 +226,7 @@ CI fails if the lockfile drifts from `pyproject.toml`.
 
 All configuration lives in `config/config.json`, with two top-level keys:
 
-- **`config`** — global sections: `discord` (token, IDs), `mongodb`, `webui`, `backup`, plus API credentials for integrations (Spotify, Twitch, YouTube, Notion, AI (OpenRouter, NanoGPT), Uptime Kuma, Shlink…) and an optional `extensions` map of `"extensions.<name>": bool` to explicitly enable or disable discovered extensions.
+- **`config`** — global sections: `discord` (token, IDs), `mongodb`, `webui`, `backup`, plus API credentials for integrations (Twitch, YouTube, Notion, AI (OpenRouter, NanoGPT), Uptime Kuma, Shlink…) and an optional `extensions` map of `"extensions.<name>": bool` to explicitly enable or disable discovered extensions.
 - **`servers`** — per-guild module configs keyed by guild ID (`moduleXp`, `moduleBirthday`, …, each with an `enabled` flag), plus a `discord2name` display-name mapping.
 
 Config is read through `src.core.config`. An extension declares `MODULE = ModuleConfig("moduleName")` and reads `MODULE.get(guild_id)` (that guild's settings), `MODULE.enabled(guild_id)` or `MODULE.items()` when it needs them; `global_config()` returns the global sections. Every call reads the in-memory store the dashboard writes to, so a saved setting applies on the next read, without reloading the extension. Only command scopes are taken at import, which is why switching a module on or off in a guild reloads its extensions.
@@ -262,7 +262,7 @@ An optional FastAPI-based dashboard, enabled when `webui.enabled` is `true` in c
 - **Role menus follow Discord's rules** — Building a menu requires `MANAGE_ROLES` and a role higher than every listed role, and roles carrying moderation or administration permissions are never self-assignable.
 - **Security headers** — No framing, `nosniff`, same-origin referrers, HSTS over HTTPS.
 - **Schema-driven forms** — Module and global config forms are generated from the Pydantic schemas registered via `@register_module` / `@register_section` in `src/webui/schemas.py`.
-- **Custom views** — Reaction-role menu builder (`routes/rolemenus.py`), moderation infraction browser (`routes/moderation.py`), Spotify OAuth management and playlist/vote statistics (`routes/spotify.py`), and the short-link manager (`routes/shlink.py`) go beyond plain forms and call back into Discord or an external API.
+- **Custom views** — Reaction-role menu builder (`routes/rolemenus.py`), moderation infraction browser (`routes/moderation.py`), each server's Spotify connection and playlist/vote statistics (`routes/spotify.py`), and the short-link manager (`routes/shlink.py`) go beyond plain forms and call back into Discord or an external API.
 - **Stable short links** — Config-driven links (Spotify dashboard, Embed-manager entries…) each own a slug: changing the target in the dashboard retargets the same short URL instead of creating a new one.
 - **Short links** — The developer-only « Liens courts » page lists the Shlink instance's short URLs and creates, retargets, retags or deletes them; Shlink stays the source of truth (nothing is mirrored into MongoDB).
 - **No URLs in the code** — every user-facing link, icon and third-party endpoint is a `url` config field (per-guild module config or a global section), so dashboards, playlists, GIFs, logos and self-hosted API bases are edited from the Web UI. Unset URLs degrade gracefully: the embed field is omitted, or the task logs and skips.

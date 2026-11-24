@@ -24,12 +24,11 @@ folder with its `manifest.json`) count toward `maxBackups` or are ever deleted,
 so nothing else under `backupDir` is touched. Folders are `0700` and files
 `0600`: only the bot's user (uid 1000 in the image) can read them on the host.
 
-**Not in a backup.** The OAuth tokens the bot keeps on disk, `data/.cache`
-(Spotify) and `data/twitchcreds.json` (Twitch), are not in MongoDB. Copy them
-with the backups (the restic line below does), or re-authorize after a restore
-on a new host: Spotify from the dashboard (global config → Spotify →
-*Se connecter*), Twitch by deleting the file and following the link the bot
-logs at startup.
+**Not in a backup.** The OAuth tokens the bot keeps on disk, `data/spotify/`
+(one Spotify account per server) and `data/twitchcreds.json` (Twitch), are not
+in MongoDB. Copy them with the backups (the restic line below does), or connect
+again after a restore on a new host: Spotify from each server's Spotify module
+page (*Connecter Spotify*), Twitch from the global config (*Connecter Twitch*).
 
 **Format.** Each collection is `<database>/<collection>.jsonl.gz`: gzip-compressed
 JSON Lines in MongoDB Canonical Extended JSON, one document per line, with every
@@ -43,7 +42,7 @@ hour after the backup:
 
 ```bash
 # /etc/cron.d/michel-backup: every day at 05:00, then keep a week of snapshots
-0 5 * * * debian cd /home/debian/michel-discord-bot/data && RESTIC_REPOSITORY=sftp:backup@storage:/michel RESTIC_PASSWORD_FILE=/home/debian/.restic-pass restic backup backups .cache twitchcreds.json --quiet && RESTIC_REPOSITORY=sftp:backup@storage:/michel RESTIC_PASSWORD_FILE=/home/debian/.restic-pass restic forget --keep-daily 7 --prune --quiet
+0 5 * * * debian cd /home/debian/michel-discord-bot/data && RESTIC_REPOSITORY=sftp:backup@storage:/michel RESTIC_PASSWORD_FILE=/home/debian/.restic-pass restic backup backups spotify twitchcreds.json --quiet && RESTIC_REPOSITORY=sftp:backup@storage:/michel RESTIC_PASSWORD_FILE=/home/debian/.restic-pass restic forget --keep-daily 7 --prune --quiet
 ```
 
 The `forget --prune` matters: without it the off-site copy keeps every snapshot
@@ -154,7 +153,8 @@ too, followed by a restart so every extension picks it up.
 | Discord bot token | Discord Developer Portal → Bot → Reset Token | `discord.botToken` |
 | Dashboard OAuth secret | Developer Portal → OAuth2 → Reset Secret | `webui.clientSecret` |
 | MongoDB credentials | Your MongoDB server | `mongodb.url` |
-| Spotify, Twitch, YouTube, Notion | Each provider's developer console | `spotify`, `twitch`, `youtube`, `notion` sections |
+| Spotify | Spotify's developer console | each server's `moduleSpotify` (Client ID / Secret) |
+| Twitch, YouTube, Notion | Each provider's developer console | `twitch`, `youtube`, `notion` sections |
 | AI providers (OpenRouter, NanoGPT) | Provider dashboard | `OpenRouter.openrouterApiKey`, `NanoGPT.apiKey` |
 | Shlink | Shlink server: `shlink api-key:generate` | `shlink.shlinkApiKey` |
 | Uptime Kuma | Uptime Kuma → Settings → API Keys | `uptimeKuma.uptimeKumaApiKey`, `uptimeKuma.uptimeKumaToken` |
@@ -162,7 +162,7 @@ too, followed by a restart so every extension picks it up.
 | LLDAP admin password (per server) | LLDAP web UI → the admin user | `moduleLldap.lldapAdminPassword` |
 | Minecraft SFTP password (per server) | Your host's panel | `moduleMinecraft.minecraftSftpsPassword` |
 | Satisfactory password and API token (per server) | Server console: `server.GenerateAPIToken` | `moduleSatisfactory.satisfactoryServerPassword`, `…ServerToken` |
-| Spotify / Twitch OAuth tokens | Re-authorize (see *Not in a backup*) | `data/.cache`, `data/twitchcreds.json` |
+| Spotify / Twitch OAuth tokens | Connect again (see *Not in a backup*) | `data/spotify/<guild>.json`, `data/twitchcreds.json` |
 
 After a suspected leak, rotate the Discord bot token first: it gives full control
 of the bot. Then check the backups, which also contain the secrets (see

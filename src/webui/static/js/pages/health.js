@@ -54,12 +54,20 @@ export function healthTasksHtml(tasks) {
     })}`;
 }
 
-// What the overview's "Santé" tile counts: each channel, feed or task in trouble.
+// The accounts the server's modules run on (P36): Spotify's, to connect on its page.
+export function healthAccountsHtml(accounts) {
+    return html`${(accounts || []).map(a => a.connected
+        ? healthLine(true, html`<strong>${a.service}</strong> : compte connecté.`)
+        : healthLine(false, html`<strong>${a.service}</strong> : aucun compte connecté, le module est en pause. Connecte-le depuis la page du module.`))}`;
+}
+
+// What the overview's "Santé" tile counts: each channel, feed, task or account in trouble.
 export function healthProblemCount(data) {
     const channels = (data.channels || []).filter(c => !c.found || c.missing.length).length;
     const feeds = (data.feeds || []).filter(f => f.failures).length;
     const tasks = (data.tasks || []).filter(t => t.lastFailure && (!t.lastSuccess || t.lastFailure > t.lastSuccess)).length;
-    return channels + feeds + tasks;
+    const accounts = (data.accounts || []).filter(a => !a.connected).length;
+    return channels + feeds + tasks + accounts;
 }
 
 export async function loadHealth(serverId) {
@@ -77,7 +85,8 @@ export async function loadHealth(serverId) {
     state.healthProblems = { ...(state.healthProblems || {}), [serverId]: healthProblemCount(data) };
     refreshOverview(serverId);
     const section = (title, body) => String(body) && html`<h4 class="u-m-12-0-6">${title}</h4>${body}`;
-    container.innerHTML = html`${section('Salons', healthChannelsHtml(data.channels))}${
+    container.innerHTML = html`${section('Comptes', healthAccountsHtml(data.accounts))}${
+        section('Salons', healthChannelsHtml(data.channels))}${
         section('Flux RSS', healthFeedsHtml(data.feeds))}${
         section('Tâches (pour tous les serveurs)', healthTasksHtml(data.tasks || []))}`;
 }
