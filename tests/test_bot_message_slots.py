@@ -9,6 +9,7 @@ schema declares a message id any more is checked in tests/test_module_registry.p
 from types import SimpleNamespace
 
 import pytest
+from interactions import MessageFlags
 
 import extensions.mdi.notifications as mdi_notifications
 import extensions.twitch.schedule as twitch_schedule
@@ -19,6 +20,7 @@ from extensions.twitch import TwitchExtension
 from extensions.twitch._common import StreamerInfo
 from extensions.vlrgg import VlrggExtension
 from extensions.vlrgg._common import TeamConfig, TeamState
+from src.discord_ext.look import card
 
 
 class Resolver:
@@ -64,7 +66,7 @@ def mdi(monkeypatch):
     )
     ext = object.__new__(MdiExtension)
     ext.bot = object()
-    ext._build_schedule_embed = lambda *args: "schedule-embed"
+    ext._build_schedule_embed = lambda *args: card("moduleMDI", title="Planning")
     ext._schedule_hash = lambda matches: f"hash-{len(matches)}"
     state = GuildState(
         server_id="1",
@@ -83,12 +85,11 @@ async def test_mdi_schedule_resolves_its_slot_and_skips_an_unchanged_render(reso
     assert resolver.asked[0]["slot"] == SCHEDULE_SLOT
     assert resolver.asked[0]["channel_id"] == "10"
     assert resolver.asked[0]["pin"] is True  # pinSchedule defaults on
-    assert len(edits) == 1
-    assert edits[0][1] == {
-        "content": "",
-        "embeds": ["schedule-embed"],
-        "logger": mdi_notifications.logger,
-    }
+    assert len(edits) == 1  # a V2 card (P40), the planning as its text
+    kwargs = edits[0][1]
+    assert kwargs["flags"] == MessageFlags.IS_COMPONENTS_V2 and "embeds" not in kwargs
+    (container,) = kwargs["components"]
+    assert any("Planning" in getattr(c, "content", "") for c in container.components)
 
 
 async def test_mdi_schedule_is_resolved_again_after_a_failed_edit(resolver, mdi):
@@ -120,13 +121,13 @@ async def test_a_vlrgg_team_schedule_goes_to_its_slot(resolver, monkeypatch):
     edits: list = []
 
     async def fake_edit(message, **kwargs):
-        edits.append(kwargs["embeds"])
+        edits.append(kwargs)
 
     async def shorten(embeds, guild_id, tags):
         return embeds
 
     async def fetch(tc):
-        return ["planning"], [], None
+        return [card("moduleVlrgg", title="Planning KC")], [], None
 
     async def nothing(*args):
         return None
@@ -145,7 +146,10 @@ async def test_a_vlrgg_team_schedule_goes_to_its_slot(resolver, monkeypatch):
 
     assert resolver.asked[0]["slot"] == "vlrgg:team:KC"
     assert resolver.asked[0]["guild_id"] == "1"
-    assert edits == [["planning"]]
+    ((kwargs),) = edits  # a V2 card (P40)
+    assert kwargs["flags"] == MessageFlags.IS_COMPONENTS_V2
+    (container,) = kwargs["components"]
+    assert any("Planning KC" in getattr(c, "content", "") for c in container.components)
 
 
 # ── Twitch ───────────────────────────────────────────────────────────────

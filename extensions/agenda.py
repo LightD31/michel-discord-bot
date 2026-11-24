@@ -134,7 +134,6 @@ class AgendaExtension(Extension):
             initial_content="🗓️ L'agenda arrive…",
             pin=bool(settings.get("agendaPin", True)),
             logger=logger,
-            v2=True,
         )
         if message is None:
             return False

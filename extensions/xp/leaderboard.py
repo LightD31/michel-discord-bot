@@ -205,7 +205,6 @@ class LeaderboardMixin:
                 initial_content="Initialisation du leaderboard…",
                 pin=bool(guild_config.get("xpPinMessage", False)),
                 logger=logger,
-                v2=True,
             )
             if message is None:
                 logger.warning("Could not get or create leaderboard message for %s", guild_id)

@@ -181,7 +181,7 @@ async def test_the_message_is_kept_up_to_date_and_pinned(world, monkeypatch):
     ext = bare_extension(AgendaExtension, world.bot)
     await AgendaExtension.refresh_all.callback(ext)
     assert asked["slot"] == "agenda" and asked["channel_id"] == "40" and asked["pin"] is True
-    assert asked["v2"] is True
+    assert asked.get("v2", True) is True  # V2, the default since P40
     assert message.flags & MessageFlags.IS_COMPONENTS_V2
     (container,) = message.components
     texts = [c.content for c in container.components if hasattr(c, "content")]

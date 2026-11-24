@@ -3,7 +3,7 @@
 import os
 from datetime import datetime
 
-from interactions import Embed, OrTrigger, Task, TimeTrigger
+from interactions import Embed, MessageFlags, OrTrigger, Task, TimeTrigger
 
 from features.confrerie import notion_props as np
 from features.confrerie.stats import COL_DEFI, ConfrerieStats, aggregate
@@ -12,7 +12,7 @@ from src.core import clock, log_context
 from src.core import logging as logutil
 from src.core.logging import log_failure
 from src.core.text import take_within_budget
-from src.discord_ext.look import card, sign
+from src.discord_ext.look import card, embeds_to_v2, sign
 from src.discord_ext.messages import edit_message_if_changed
 
 from ._base import ConfrerieBase
@@ -154,15 +154,14 @@ class StatsMixin(ConfrerieBase):
                 title="Textes de la confrérie",
                 tags=["confrerie"],
             )
-            content = f"Tous les textes sont [sur Notion]({texts_url} 'Notion de la confrérie')"
-        else:
-            content = ""
+            # A V2 card carries no text beside it: the link closes the card's description.
+            link = f"Tous les textes sont [sur Notion]({texts_url} 'Notion de la confrérie')"
+            embed.description = f"{embed.description}\n\n{link}" if embed.description else link
         try:
             await edit_message_if_changed(
                 message,
-                content=content,
-                embed=embed,
-                ignore_timestamp=True,
+                components=embeds_to_v2([embed]),
+                flags=MessageFlags.IS_COMPONENTS_V2,
                 logger=logger,
             )
         except Exception:
