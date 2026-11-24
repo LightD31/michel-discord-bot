@@ -73,7 +73,6 @@ class Zevent(
             pin_key="zeventPinMessage",
             initial_content="Initialisation Zevent…",
             logger=logger,
-            v2=True,
         )
         self.guilds: dict[str, ZeventGuild] = {}
         self.last_data_cache: dict | None = None

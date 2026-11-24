@@ -5,12 +5,13 @@ from __future__ import annotations
 import time
 from typing import TYPE_CHECKING, Any
 
-from interactions import AllowedMentions, IntervalTrigger, Task
+from interactions import AllowedMentions, IntervalTrigger, MessageFlags, Task
 
 from features.links import shorten_url
 from features.mdi import MatchSnapshot
 from src.core import log_context
 from src.discord_ext.channels import fetch_guild_channel
+from src.discord_ext.look import embeds_to_v2
 from src.discord_ext.messages import (
     edit_message_if_changed,
     fetch_or_create_persistent_message,
@@ -358,7 +359,12 @@ class NotificationsMixin:
             gc.icon_url,
         )
         try:
-            await edit_message_if_changed(message, content="", embeds=[embed], logger=logger)
+            await edit_message_if_changed(
+                message,
+                components=embeds_to_v2([embed]),
+                flags=MessageFlags.IS_COMPONENTS_V2,
+                logger=logger,
+            )
         except Exception as e:
             logger.warning(
                 "MDI: schedule message edit failed in guild %s, will repost: %s",

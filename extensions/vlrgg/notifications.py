@@ -2,11 +2,12 @@
 
 from typing import Any
 
-from interactions import IntervalTrigger, Task
+from interactions import IntervalTrigger, MessageFlags, Task
 
 from features.vlrgg import fetch_live_matches, fetch_match_details, is_final, match_id_of
 from src.core import log_context
 from src.discord_ext.links import shorten_embeds
+from src.discord_ext.look import embeds_to_v2
 from src.discord_ext.messages import (
     edit_message_if_changed,
     fetch_or_create_persistent_message,
@@ -79,7 +80,10 @@ class NotificationsMixin(VlrggBase):
             embeds = await shorten_embeds(embeds, guild_id=team_state.server_id, tags=["vlrgg"])
             try:
                 await edit_message_if_changed(
-                    message, content="", embeds=embeds, ignore_timestamp=True, logger=logger
+                    message,
+                    components=embeds_to_v2(embeds),
+                    flags=MessageFlags.IS_COMPONENTS_V2,
+                    logger=logger,
                 )
             except Exception:
                 # Deleted from Discord, say: resolved again (or reposted) next cycle.

@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 from interactions import (
     Embed,
     Guild,
+    MessageFlags,
     OrTrigger,
     ScheduledEventStatus,
     ScheduledEventType,
@@ -24,7 +25,7 @@ from twitchAPI.type import TwitchResourceNotFound
 from src.core import clock
 from src.core import logging as logutil
 from src.core.logging import log_failure
-from src.discord_ext.look import card
+from src.discord_ext.look import card, embeds_to_v2
 from src.discord_ext.messages import (
     edit_message_if_changed,
     fetch_or_create_persistent_message,
@@ -236,10 +237,8 @@ class ScheduleMixin(TwitchBase):
                     )
                     await edit_message_if_changed(
                         message,
-                        content="",
-                        embed=[embed, live_embed],
-                        components=[],
-                        ignore_timestamp=True,
+                        components=embeds_to_v2([embed, live_embed]),
+                        flags=MessageFlags.IS_COMPONENTS_V2,
                         logger=logger,
                     )
                 except Exception as e:
@@ -266,9 +265,8 @@ class ScheduleMixin(TwitchBase):
                     )
                     await edit_message_if_changed(
                         message,
-                        content="",
-                        embed=[embed, offline_embed],
-                        ignore_timestamp=True,
+                        components=embeds_to_v2([embed, offline_embed]),
+                        flags=MessageFlags.IS_COMPONENTS_V2,
                         logger=logger,
                     )
                 except Exception as e:

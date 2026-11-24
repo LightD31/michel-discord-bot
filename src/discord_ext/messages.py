@@ -448,7 +448,7 @@ async def fetch_or_create_persistent_message(
     pin: bool = False,
     label: str = "",
     logger: logging.Logger | None = None,
-    v2: bool = False,
+    v2: bool = True,
 ) -> Message | None:
     """Return the guild's message for *slot* in *channel_id*, creating it if missing.
 
@@ -465,10 +465,11 @@ async def fetch_or_create_persistent_message(
     caller tries again at its next refresh. *label* names the message in the
     dashboard.
 
-    *v2*: the slot holds a Components V2 card (P22). Its placeholder is one,
-    and a stored message that isn't (posted before the module moved to V2)
-    is deleted and posted anew: Discord can't turn a message into V2 by an
-    edit.
+    *v2*: the slot holds a Components V2 card (P22), as every persistent card
+    does since P40; ``v2=False`` only for a plain text (the Spotify recap) or
+    an admin-designed embed (the Embed manager). Its placeholder is one, and
+    a stored message that isn't (posted before the module moved to V2) is
+    deleted and posted anew: Discord can't turn a message into V2 by an edit.
     """
     if not channel_id:
         return None
@@ -615,7 +616,7 @@ class GuildMessages:
         initial_content: str = "Initialisation…",
         pin_key: str | None = None,
         logger: logging.Logger | None = None,
-        v2: bool = False,
+        v2: bool = True,
     ) -> None:
         self.bot = bot
         self.slot = slot

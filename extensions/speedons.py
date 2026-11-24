@@ -6,6 +6,7 @@ from interactions import (
     Embed,
     Extension,
     IntervalTrigger,
+    MessageFlags,
     Task,
     TimestampStyles,
     listen,
@@ -18,7 +19,7 @@ from src.core.config import ModuleConfig
 from src.core.http import fetch_untrusted
 from src.core.logging import log_failure
 from src.core.urls import redact_url
-from src.discord_ext.look import card
+from src.discord_ext.look import card, embeds_to_v2
 from src.discord_ext.messages import GuildMessages, edit_message_if_changed
 from src.discord_ext.paginator import CustomPaginator
 from src.webui.schemas import (
@@ -285,18 +286,15 @@ class SpeedonsExtension(Extension):
         paginator = self.paginators.get(guild_id)
         if paginator is None:
             paginator = CustomPaginator.create_from_embeds(self.bot, *embeds, timeout=3600)
+            paginator.v2 = True
             self.paginators[guild_id] = paginator
         # Same landing page as before this paginator was reused: the live run if
         # there is one, otherwise back to the first page.
         paginator.set_pages(embeds, page_index=page_index)
-        paginator_dict = paginator.to_dict()
+        await edit_message_if_changed(schedule, **paginator.payload(), logger=logger)
         await edit_message_if_changed(
-            schedule,
-            embeds=paginator_dict["embeds"],
-            components=paginator_dict["components"],
-            ignore_timestamp=True,
+            live,
+            components=embeds_to_v2([live_embed]),
+            flags=MessageFlags.IS_COMPONENTS_V2,
             logger=logger,
-        )
-        await edit_message_if_changed(
-            live, content="", embed=live_embed, ignore_timestamp=True, logger=logger
         )

@@ -120,6 +120,7 @@ async def publish_embeds(
         initial_content="Initialisation…",
         pin=bool(guild_config.get("pinMessage", False)),
         logger=log or logger,
+        v2=False,  # embeds the admins designed
     )
     if message is None:
         return False

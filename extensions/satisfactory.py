@@ -130,7 +130,6 @@ class Satisfactory(Extension):
             pin_key="satisfactoryPinMessage",
             initial_content="Initialisation du statut Satisfactory…",
             logger=logger,
-            v2=True,
         )
         # One client per server: guilds watching the same one share it.
         self._apis: dict[tuple[str, str, str], API] = {}

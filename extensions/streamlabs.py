@@ -136,7 +136,6 @@ class StreamlabsCharityExtension(Extension):
             pin_key="streamlabsPinMessage",
             initial_content="Initialisation Streamlabs Charity…",
             logger=logger,
-            v2=True,
         )
 
     @listen()

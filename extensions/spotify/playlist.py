@@ -298,6 +298,7 @@ class PlaylistMixin(SpotifyBase):
                     initial_content=recap_content,
                     pin=server.recap_pin,
                     logger=logger,
+                    v2=False,  # plain text
                 )
                 if recap_message is not None:
                     await edit_message_if_changed(
