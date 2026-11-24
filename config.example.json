@@ -296,7 +296,7 @@
             },
             "moduleRss": {
                 "enabled": false,
-                "ChannelId": "",
+                "rssChannelId": "",
                 "rssFeeds": {},
                 "rssPollMinutes": 15
             },
@@ -333,9 +333,6 @@
                 "spotifyRecapChannelId": "",
                 "spotifyRecapPinMessage": false,
                 "publicDashboard": false,
-                "spotifyDashboardUrl": "",
-                "spotifyPlaylistUrl": "",
-                "spotifyNewPlaylistUrl": "",
                 "spotifyIconUrl": "",
                 "spotifyUsers": []
             },
@@ -442,7 +439,7 @@
             },
             "moduleYoutube": {
                 "enabled": false,
-                "ChannelId": "",
+                "youtubeChannelId": "",
                 "youtubeChannelList": {},
                 "youtubeShortMaxSeconds": 90,
                 "youtubeNotificationTemplate": "https://www.youtube.com/watch?v={video_id}"

@@ -3283,6 +3283,8 @@ body.has-save-bar .toast-container { bottom: 88px; }
 
 /* A module's history (C5). */
 .history-intro, .history-empty { color: var(--text-secondary); font-size: 13px; margin-bottom: 12px; }
+.copy-sources { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.copy-source { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius); }
 .history-version { border-top: 1px solid var(--border); padding: 10px 0; }
 .history-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
 .history-changes { margin: 6px 0 0 18px; color: var(--text-secondary); font-size: 13px; }

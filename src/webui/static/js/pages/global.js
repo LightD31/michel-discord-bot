@@ -128,7 +128,7 @@ export function renderSchemaPreview(schema, values) {
         }
         if (type === 'models' && Array.isArray(val) && val.length) {
             rows.push(previewList(label, val.length, val.map(m => previewItem(
-                strong(m.provider || '', 'w-80'), mono(m.model_id || '', 'preview-grow'), html`<span>${m.display_name || ''}</span>`))));
+                strong(m.key || '', 'w-80'), mono(m.model_id || '', 'preview-grow'), html`<span>${m.display_name || ''}</span>`))));
             continue;
         }
         if (type === 'discord2name' && isMap) {

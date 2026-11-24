@@ -116,7 +116,7 @@ def test_nested_channels_are_checked_too():
     ctx = FakeCtx()
     feeds = {"news": {"url": "https://example.com/rss", "channel_id": "21"}}
     with pytest.raises(HTTPException) as exc:
-        save(ctx, "moduleRss", {"enabled": True, "ChannelId": "11", "rssFeeds": feeds})
+        save(ctx, "moduleRss", {"enabled": True, "rssChannelId": "11", "rssFeeds": feeds})
     assert exc.value.status_code == 422 and "21" in exc.value.detail
     assert ctx.writes == 0
 
@@ -142,7 +142,7 @@ def test_only_channels_the_save_adds_are_checked():
 def test_channel_ids_reads_top_level_and_nested_fields():
     rss = schemas.module_model("moduleRss")
     config = {
-        "ChannelId": " 11 ",
+        "rssChannelId": " 11 ",
         "rssFeeds": {"a": {"channel_id": "12"}, "b": {"url": "x"}, "c": "junk"},
     }
     assert schemas.channel_ids(rss, config) == {"11", "12"}

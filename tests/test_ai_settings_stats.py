@@ -20,12 +20,12 @@ from features.ai.prompt import DEFAULT_PERSONA
 def test_parse_models_defaults_and_problems():
     models, problems = parse_models(
         [
-            {"provider": "gpt", "model_id": "openai/gpt-4.1", "display_name": "GPT"},
-            {"provider": "Nano GPT:X", "api": "nanogpt", "model_id": "x/y"},
+            {"key": "gpt", "model_id": "openai/gpt-4.1", "display_name": "GPT"},
+            {"key": "Nano GPT:X", "api": "nanogpt", "model_id": "x/y"},
             {"model_id": "deepseek/v3"},  # key derived from the id
-            {"provider": "gpt", "model_id": "dup"},
-            {"provider": "bad", "api": "ollama", "model_id": "m"},
-            {"provider": "nomodel"},
+            {"key": "gpt", "model_id": "dup"},
+            {"key": "bad", "api": "ollama", "model_id": "m"},
+            {"key": "nomodel"},
             "junk",
         ]
     )
@@ -62,9 +62,9 @@ def test_guild_settings_defaults_and_clamping():
 def _models():
     models, _ = parse_models(
         [
-            {"provider": "a", "model_id": "a/a"},
-            {"provider": "b", "api": "nanogpt", "model_id": "b/b"},
-            {"provider": "c", "model_id": "c/c"},
+            {"key": "a", "model_id": "a/a"},
+            {"key": "b", "api": "nanogpt", "model_id": "b/b"},
+            {"key": "c", "model_id": "c/c"},
         ]
     )
     return models
@@ -114,13 +114,9 @@ def test_stats_count_votes_appearances_and_ties():
     assert by_key["c"].win_rate == 0.5
 
 
-def test_stored_legacy_default_follows_the_new_default():
-    from features.ai.prompt import LEGACY_DEFAULT_PERSONAS
-
-    legacy = GuildAiSettings.from_config({"persona": LEGACY_DEFAULT_PERSONAS[0] + "\n"})
-    assert legacy.persona == DEFAULT_PERSONA
-    custom = GuildAiSettings.from_config({"persona": LEGACY_DEFAULT_PERSONAS[0] + " Et pirate."})
-    assert custom.persona.endswith("Et pirate.")
+def test_an_empty_persona_is_the_default_and_a_written_one_is_kept():
+    assert GuildAiSettings.from_config({"persona": "  "}).persona == DEFAULT_PERSONA
+    assert GuildAiSettings.from_config({"persona": "Tu es pirate."}).persona == "Tu es pirate."
 
 
 def test_server_context_is_stripped_and_capped():

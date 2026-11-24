@@ -83,6 +83,7 @@ class TwitchExtension(
     """Aggregate the four feature mixins into a single Discord extension."""
 
     MODULE_KEYS = ("moduleTwitch",)
+    GLOBAL_SECTIONS = ("twitch",)  # the app's credentials, taken at load
     # The streamer registry and the EventSub subscriptions are built from the
     # config when the extension loads.
     RELOAD_ON_SAVE = True

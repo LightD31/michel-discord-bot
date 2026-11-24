@@ -80,7 +80,7 @@ class YoutubeConfig(SchemaBase):
     )
 
     enabled: bool = enabled_field()
-    ChannelId: str = ui(
+    youtubeChannelId: str = ui(
         "Salon de notification",
         "channel",
         required=True,
@@ -183,7 +183,7 @@ class YoutubeExtension(Extension):
         their progress is saved.
         """
         srv_config = YOUTUBE.get(server)
-        channel_id = srv_config.get("ChannelId")
+        channel_id = srv_config.get("youtubeChannelId")
         if not channel_id:
             return
         found = await fetch_guild_channel(self.bot, server, channel_id, logger=logger)

@@ -123,6 +123,7 @@ class StreamlabsCharityExtension(Extension):
     """
 
     MODULE_KEYS = ("moduleStreamlabsCharity",)
+    GLOBAL_SECTIONS = ("twitch",)  # the Twitch client built at startup
 
     def __init__(self, bot: Client):
         self.bot: Client = bot

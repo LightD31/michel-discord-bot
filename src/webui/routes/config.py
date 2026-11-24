@@ -8,8 +8,10 @@ from pydantic import BaseModel
 
 from src.core import logging as logutil
 from src.core.config import global_config
+from src.core.logging import log_failure
 from src.discord_ext.messages import fetch_user_safe
 from src.webui import audit
+from src.webui.botops import reload_extensions, sync_commands
 from src.webui.context import WebUIContext
 from src.webui.schemas import (
     GLOBAL_CONFIG_SCHEMAS,
@@ -150,7 +152,17 @@ def create_router(ctx: WebUIContext) -> APIRouter:
             session.user_id,
         )
         await audit.record(None, session, "global_config.save", target=section, changes=changes)
-        return JSONResponse({"status": "ok"})
+        out: dict = {"status": "ok"}
+        readers = ctx.section_extensions(section) if ctx.bot else []
+        if readers and changes:
+            out["reload"] = await reload_extensions(ctx, readers, f"global section {section}")
+            if out["reload"]["reloaded"] and not out["reload"]["error"]:
+                # Their command scopes may follow the section (devGuildId).
+                try:
+                    await sync_commands(ctx)
+                except Exception as e:
+                    log_failure(logger, "Command sync after %s failed: %s", section, e)
+        return JSONResponse(out)
 
     def _strip_unknown_keys(data: dict, removed: list[dict], apply: bool) -> None:
         """Collect (and optionally delete) config keys absent from the schemas."""

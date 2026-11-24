@@ -14,7 +14,7 @@ export function modelEntryHtml(m, idx) {
     const apiName = m.api || 'openrouter';
     return html`
             <div class="model-entry" data-model-idx="${idx}">
-                <input type="text" data-model-field="provider" value="${m.provider || ''}" placeholder="ex: gpt-4.1" data-input="refresh-ai-models" data-input-args="${actionArgs(EL)}">
+                <input type="text" data-model-field="key" value="${m.key || ''}" placeholder="ex: gpt-4.1" data-input="refresh-ai-models" data-input-args="${actionArgs(EL)}">
                 <select data-model-field="api">${AI_APIS.map(a => html`<option value="${a.id}" ${a.id === apiName ? 'selected' : ''}>${a.label}</option>`)}</select>
                 <input type="text" data-model-field="model_id" value="${m.model_id || ''}" placeholder="ex: openai/gpt-4.1">
                 <input type="text" data-model-field="display_name" value="${m.display_name || ''}" placeholder="ex: OpenAI GPT-4.1" data-input="refresh-ai-models" data-input-args="${actionArgs(EL)}">
@@ -37,10 +37,10 @@ export const modelsField = {
         const models = [];
         for (const entry of list.querySelectorAll('.model-entry')) {
             const value = (field) => entry.querySelector(`[data-model-field="${field}"]`)?.value?.trim();
-            const provider = value('provider');
+            const key = value('key');
             const modelId = value('model_id');
-            if (provider && modelId) {
-                models.push({ provider, api: value('api') || 'openrouter', model_id: modelId, display_name: value('display_name') || provider });
+            if (key && modelId) {
+                models.push({ key, api: value('api') || 'openrouter', model_id: modelId, display_name: value('display_name') || key });
             }
         }
         return models.length ? models : undefined;
@@ -90,7 +90,7 @@ export function formatContext(tokens) {
 export function readModelEntries(list) {
     return [...list.querySelectorAll('.model-entry')].map(e => ({
         el: e,
-        key: e.querySelector('[data-model-field="provider"]')?.value?.trim() || '',
+        key: e.querySelector('[data-model-field="key"]')?.value?.trim() || '',
         api: e.querySelector('[data-model-field="api"]')?.value || 'openrouter',
         model_id: e.querySelector('[data-model-field="model_id"]')?.value?.trim() || '',
         display_name: e.querySelector('[data-model-field="display_name"]')?.value?.trim() || '',
@@ -208,7 +208,7 @@ export function renderModelCatalog(picker) {
         if (!model) return;
         const taken = new Set(readModelEntries(picker.list).map(e => e.key));
         addModelEntry(picker.list, {
-            provider: aiModelKeyFrom(model.id, taken),
+            key: aiModelKeyFrom(model.id, taken),
             api: picker.apiName,
             model_id: model.id,
             display_name: model.name,

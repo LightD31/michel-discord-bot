@@ -195,3 +195,32 @@ def test_a_refused_save_names_the_field_as_the_form_shows_it():
     assert "500 caractères" in error
     (error,) = schemas.validation_errors(starboard, {"oups": 1}, module=True)
     assert error == "oups : champ inconnu"
+
+
+def test_saving_a_global_section_reloads_what_took_it_at_load(monkeypatch):
+    """P34: Zevent took its section at load, and "reload it after a change" led nowhere."""
+    calls: list = []
+
+    async def reload(ctx, paths, why):
+        calls.append(("reload", paths))
+        return {"reloaded": ", ".join(paths), "error": None, "skipped": False}
+
+    async def sync(ctx):
+        calls.append(("sync",))
+
+    monkeypatch.setattr(config_routes, "reload_extensions", reload)
+    monkeypatch.setattr(config_routes, "sync_commands", sync)
+    ctx = FakeCtx()
+    ctx.bot = object()
+    ctx.section_extensions = lambda section: ["extensions.backup"] if section == "discord" else []
+    put = endpoint(config_routes, ctx, "PUT", "/api/global-config/{section}")
+
+    def save(section, value):
+        body = config_routes.GlobalConfigUpdate(section=section, config=value)
+        return json.loads(asyncio.run(put(None, section, body)).body)
+
+    assert save("discord", {"devGuildId": "1"})["reload"]["reloaded"] == "extensions.backup"
+    assert calls == [("reload", ["extensions.backup"]), ("sync",)]
+    calls.clear()
+    assert "reload" not in save("mongodb", {"url": "mongodb://x"})  # nothing took it
+    assert calls == []

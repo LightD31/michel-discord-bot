@@ -17,9 +17,8 @@ MAX_COMPARED_MODELS = 5
 class ModelConfig:
     """One configured model.
 
-    ``key`` is the stable identifier used in votes and stats (stored as
-    ``provider`` in config for backward compatibility); ``api`` names the
-    OpenAI-compatible API the model is reached through.
+    ``key`` is the stable identifier used in votes and stats; ``api`` names
+    the OpenAI-compatible API the model is reached through.
     """
 
     key: str
@@ -30,19 +29,19 @@ class ModelConfig:
 
 # Fallback when the config lists no valid model.
 DEFAULT_MODELS: list[dict[str, str]] = [
-    {"provider": "openai", "model_id": "openai/gpt-4.1", "display_name": "OpenAI GPT-4.1"},
+    {"key": "openai", "model_id": "openai/gpt-4.1", "display_name": "OpenAI GPT-4.1"},
     {
-        "provider": "anthropic",
+        "key": "anthropic",
         "model_id": "anthropic/claude-opus-4.5",
         "display_name": "Anthropic Claude Opus 4.5",
     },
     {
-        "provider": "deepseek",
+        "key": "deepseek",
         "model_id": "deepseek/deepseek-chat-v3-0324",
         "display_name": "DeepSeek Chat v3-0324",
     },
     {
-        "provider": "gemini",
+        "key": "gemini",
         "model_id": "google/gemini-3-pro-preview",
         "display_name": "Google Gemini 3 Pro Preview",
     },
@@ -79,7 +78,7 @@ def parse_models(raw: Any) -> tuple[dict[str, ModelConfig], list[str]]:
         if api not in SUPPORTED_APIS:
             problems.append(f"API inconnue « {api} » pour {model_id}")
             continue
-        key = slugify_key(str(entry.get("provider") or "")) or slugify_key(model_id)
+        key = slugify_key(str(entry.get("key") or "")) or slugify_key(model_id)
         if key in models:
             problems.append(f"clé en double « {key} »")
             continue

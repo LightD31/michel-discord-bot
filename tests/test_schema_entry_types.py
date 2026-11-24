@@ -87,7 +87,7 @@ def test_the_spa_shape_is_accepted_and_others_refused(model, field, valid, inval
 
 def test_ai_models_name_a_supported_api():
     entry = {
-        "provider": "gpt",
+        "key": "gpt",
         "api": "openrouter",
         "model_id": "openai/gpt",
         "display_name": "GPT",

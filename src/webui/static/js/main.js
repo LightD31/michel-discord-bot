@@ -17,6 +17,7 @@ import './features/spotify-auth.js';
 import './features/twitch-auth.js';
 import './features/spotify.js';
 import './features/xp.js';
+import './forms/module-copy.js';
 import './forms/checks.js';
 import './forms/pickers/channels.js';
 import './forms/pickers/lists.js';

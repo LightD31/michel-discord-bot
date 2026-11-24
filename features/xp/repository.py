@@ -13,9 +13,6 @@ import pymongo
 from features.xp.constants import XpSource
 from src.core.db import GuildRepository, IndexSpec, mongo_manager, translates_db_errors
 
-# Legacy events predate the ``source`` field; they were all message awards.
-_SOURCE_EXPR = {"$ifNull": ["$source", "message"]}
-
 # How long one event per XP award is kept. The dashboard reads 365 days at
 # most; older events are folded into monthly totals (``xp_monthly``, per member
 # and source) and deleted, so the log stops growing and holds no more personal
@@ -231,7 +228,7 @@ class XpRepository(GuildRepository):
                         "day": {
                             "$dateToString": {"format": "%Y-%m-%d", "date": "$ts", "timezone": tz}
                         },
-                        "source": _SOURCE_EXPR,
+                        "source": "$source",
                     },
                     "xp": {"$sum": "$xp_gained"},
                     "events": {"$sum": 1},
@@ -296,7 +293,7 @@ class XpRepository(GuildRepository):
             {"$match": {"ts": {"$gte": start, "$lt": end}}},
             {
                 "$group": {
-                    "_id": {"month": month, "user_id": "$user_id", "source": _SOURCE_EXPR},
+                    "_id": {"month": month, "user_id": "$user_id", "source": "$source"},
                     "xp": {"$sum": "$xp_gained"},
                     "events": {"$sum": 1},
                 }

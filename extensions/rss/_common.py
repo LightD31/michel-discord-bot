@@ -67,7 +67,7 @@ class RssConfig(SchemaBase):
     )
 
     enabled: bool = enabled_field()
-    ChannelId: str = ui(
+    rssChannelId: str = ui(
         "Salon par défaut",
         "channel",
         required=True,

@@ -34,7 +34,7 @@ def test_channels_of_enabled_modules_only():
         "moduleXp": {"enabled": True, "xpChannelId": "10"},
         "moduleRss": {
             "enabled": True,
-            "ChannelId": "10",
+            "rssChannelId": "10",
             "rssFeeds": {"a": {"url": "https://x", "channel_id": "11"}},
         },
         "moduleWelcome": {"enabled": False, "welcomeChannelId": "12"},

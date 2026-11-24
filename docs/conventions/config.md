@@ -20,7 +20,7 @@ Read it through the live accessors, at use time:
 
 - `MODULE = ModuleConfig("moduleXp")` next to the schema (in `_common.py`), then `MODULE.get(guild_id)` (the guild's settings, `{}` where the module is off), `MODULE.enabled(guild_id)`, `MODULE.items()` / `MODULE.guild_ids()` for the guilds where it is on. Each call reads the store, so a dashboard save is seen on the next read without reloading the extension.
 
-- `global_config()` for the global sections (they are never reloaded for: read them at use time where a change should apply without a restart, as YouTube's API key does).
+- `global_config()` for the global sections, read at use time (as YouTube's API key is). An extension that takes a section when it loads (a client built once, a command scoped to `devGuildId`) declares it in `GLOBAL_SECTIONS`: saving that section in the dashboard reloads it and syncs the commands (`WebUIContext.section_extensions()`, P34).
 
 - Command scopes are the one read taken at import, `scopes=guild_scopes(MODULE.guild_ids())`, which is why switching a module on or off reloads its extensions.
 

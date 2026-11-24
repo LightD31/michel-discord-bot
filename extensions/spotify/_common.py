@@ -119,30 +119,6 @@ class SpotifyConfig(SchemaBase):
             "accessible sans connexion, via un lien secret (bouton « Page publique »)."
         ),
     )
-    spotifyDashboardUrl: str | None = ui(
-        "Lien du dashboard des votes",
-        "url",
-        description=(
-            "Lien affiché sous les votes et dans le message de récap. Vide = lien "
-            "vers le dashboard public s'il est activé, sinon aucun lien affiché."
-        ),
-    )
-    spotifyPlaylistUrl: str | None = ui(
-        "Lien d'écoute de la playlist",
-        "url",
-        description=(
-            "Lien « Écouter la playlist » ajouté aux embeds d'ajout et de "
-            "suppression. Vide = champ masqué."
-        ),
-    )
-    spotifyNewPlaylistUrl: str | None = ui(
-        "Lien d'écoute des découvertes",
-        "url",
-        description=(
-            "Lien « Écouter les récents » ajouté aux embeds d'ajout et de "
-            "suppression. Vide = champ masqué."
-        ),
-    )
     spotifyIconUrl: str | None = ui(
         "Icône des embeds",
         "url",
@@ -245,10 +221,10 @@ class VoteManager:
 
 @dataclass(frozen=True)
 class SpotifyLinks:
-    """Per-guild links shown in the Spotify embeds.
+    """Per-guild links shown in the Spotify embeds; an empty one isn't shown.
 
-    Every one is configured from the Web UI — nothing is hardcoded here. An
-    empty value simply means "don't show this link".
+    The playlists' links are derived from their ids (P34); the dashboard link
+    is the server's public page, when it publishes one.
     """
 
     dashboard: str = ""
@@ -258,13 +234,18 @@ class SpotifyLinks:
 
     @classmethod
     def from_config(cls, server_config: dict, public_dashboard: str = "") -> "SpotifyLinks":
-        """``public_dashboard`` stands in when no dashboard link is configured."""
         return cls(
-            dashboard=str(server_config.get("spotifyDashboardUrl") or public_dashboard),
-            playlist=str(server_config.get("spotifyPlaylistUrl") or ""),
-            new_playlist=str(server_config.get("spotifyNewPlaylistUrl") or ""),
+            dashboard=public_dashboard,
+            playlist=playlist_url(server_config.get("spotifyPlaylistId")),
+            new_playlist=playlist_url(server_config.get("spotifyNewPlaylistId")),
             icon=str(server_config.get("spotifyIconUrl") or ""),
         )
+
+
+def playlist_url(playlist_id: object) -> str:
+    """The listening link of a playlist, from its id; ``""`` without one."""
+    text = str(playlist_id or "").strip()
+    return f"https://open.spotify.com/playlist/{text}" if text else ""
 
 
 def guild_links(guild_id: str | int | None) -> SpotifyLinks:
@@ -351,17 +332,17 @@ class ServerData:
 
     @property
     def links(self) -> SpotifyLinks:
-        """Configured links; the public page fills in when no dashboard link is set.
+        """The guild's links, the public page among them when it is published.
 
         Read at use time so a token rotated from the dashboard applies at once,
-        and minted on first use when the public page is switched on without a
-        dashboard link, so the first embed can already link the page.
+        and minted on first use when the public page is switched on, so the
+        first embed can already link the page.
         """
         public_dashboard = ""
         if self._config.get(PUBLIC_FLAG):
             server = config_store.get().get("servers", {}).get(self.guild_id) or {}
             token = public_token(server)
-            if not token and not self._config.get("spotifyDashboardUrl"):
+            if not token:
                 try:
                     token = ensure_public_token(self.guild_id)
                 except ConfigError as e:

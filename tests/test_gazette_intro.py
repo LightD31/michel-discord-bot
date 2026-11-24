@@ -13,7 +13,7 @@ from src.core import clock
 from src.core.errors import DatabaseError
 
 NOW = clock.now()
-MODELS = [{"api": "openrouter", "model_id": "v/a", "provider": "a", "display_name": "A"}]
+MODELS = [{"api": "openrouter", "model_id": "v/a", "key": "a", "display_name": "A"}]
 
 
 def edition():
