@@ -89,6 +89,7 @@ Layout and lifecycle (`docs/conventions/extension-lifecycle.md`, `architecture.m
 
 Config and dashboard (`config.md`, `dashboard-security.md`, `dashboard-frontend.md`)
 - Every `module…` setting has a registered schema; numbers bounded, roles with a `role_use`, no raw ids, no message-id fields — `tests/test_module_registry.py`
+- A service's account or key is a module secret, never a global section — `config.md`
 - Regenerate `config.example.json` after a schema change — CI drift check
 - Read settings live (`MODULE.get(...)`), never at import; never mutate what the store returns — `tests/test_module_registry.py`, `config.md`
 - Persistent messages live in `bot_messages` slots, not config — `config.md`

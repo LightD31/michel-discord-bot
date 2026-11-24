@@ -177,7 +177,7 @@ class ReviewMixin(ConfrerieBase):
             return {}
         try:
             return await asyncio.wait_for(
-                self.notion_client.get_properties_schema(db_id), timeout=timeout
+                self.notion(settings).get_properties_schema(db_id), timeout=timeout
             )
         except Exception as e:  # noqa: BLE001 — drafts still work without option matching
             logger.warning("Schéma Notion des œuvres indisponible: %s", e)
@@ -385,7 +385,7 @@ class ReviewMixin(ConfrerieBase):
             )
             if dropped:
                 logger.warning("Colonnes absentes de la base Œuvres, ignorées : %s", dropped)
-            page = await self.notion_client.create_page(database_id=db_id, properties=properties)
+            page = await self.notion(settings).create_page(database_id=db_id, properties=properties)
         except Exception as e:  # noqa: BLE001 — put the draft back up for review
             log_failure(logger, "Création de la fiche %s impossible: %s", draft.id, e)
             await repo.set_status(draft.id, STATUS_PENDING)

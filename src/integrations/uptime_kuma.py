@@ -141,7 +141,8 @@ def normalize_base_url(value: str) -> str:
 
 @dataclass(frozen=True)
 class UptimeKumaSettings:
-    """Snapshot of the global ``uptimeKuma`` config section."""
+    """An Uptime Kuma instance: a server's (``moduleUptime``, its alerts; P37) or the bot's
+    (the global ``uptimeKuma`` section, its own push heartbeat)."""
 
     base_url: str
     api_key: str
@@ -160,6 +161,7 @@ class UptimeKumaSettings:
 
     @classmethod
     def load(cls) -> UptimeKumaSettings:
+        """The bot's own instance, where it pushes its heartbeat."""
         section = config_store.get().get("config", {}).get("uptimeKuma")
         return cls.from_section(section if isinstance(section, Mapping) else {})
 

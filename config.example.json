@@ -49,9 +49,6 @@
         "mongodb": {
             "url": ""
         },
-        "notion": {
-            "notionSecret": ""
-        },
         "olympics": {
             "apiUrl": "",
             "refererUrl": ""
@@ -79,7 +76,6 @@
         },
         "uptimeKuma": {
             "uptimeKumaUrl": "",
-            "uptimeKumaApiKey": "",
             "uptimeKumaToken": ""
         },
         "vlrgg": {
@@ -95,10 +91,6 @@
             "clientSecret": "",
             "developerUserIds": [],
             "trustedProxies": []
-        },
-        "youtube": {
-            "youtubeApiKey": "",
-            "youtubeApiUrl": ""
         },
         "zevent": {
             "zeventApiUrl": "",
@@ -173,6 +165,7 @@
             },
             "moduleConfrerie": {
                 "enabled": false,
+                "notionSecret": "",
                 "confrerieNotionDbOeuvresId": "",
                 "confrerieNotionDbIdEditorsId": "",
                 "confrerieRecapChannelId": "",
@@ -376,7 +369,9 @@
                 "twitchStreamerList": {}
             },
             "moduleUptime": {
-                "enabled": false
+                "enabled": false,
+                "uptimeKumaUrl": "",
+                "uptimeKumaApiKey": ""
             },
             "moduleUtils": {
                 "enabled": false,
@@ -436,6 +431,8 @@
             },
             "moduleYoutube": {
                 "enabled": false,
+                "youtubeApiUrl": "",
+                "youtubeApiKey": "",
                 "youtubeChannelId": "",
                 "youtubeChannelList": {},
                 "youtubeShortMaxSeconds": 90,

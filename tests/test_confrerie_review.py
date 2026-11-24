@@ -137,6 +137,9 @@ class Harness(ReviewMixin):
         self.notion_client = notion
         self.bot = FakeBot()
 
+    def notion(self, settings):
+        return self.notion_client
+
     def _drafts(self, guild_id):
         assert str(guild_id) == "9"
         return self.repo

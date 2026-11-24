@@ -61,14 +61,17 @@ class BrowseMixin(ConfrerieBase):
 
     async def _oeuvres_pages(self, guild_id) -> list[dict]:
         """The guild's Œuvres pages, cached a little per Notion database."""
-        db_id = CONFRERIE.get(guild_id).get("confrerieNotionDbOeuvresId")
+        settings = CONFRERIE.get(guild_id)
+        db_id = settings.get("confrerieNotionDbOeuvresId")
         if not db_id:
             raise ConfrerieError("Base Notion des œuvres non configurée")
-        cached = self._works_cache.get(db_id)
+        # Per server: each reads with its own integration, which may not see another's base.
+        key = f"{guild_id}:{db_id}"
+        cached = self._works_cache.get(key)
         if cached and time.monotonic() - cached[0] < WORKS_CACHE_SECONDS:
             return cached[1]
-        pages = await self.notion_client.query_data_source(database_id=db_id)
-        self._works_cache[db_id] = (time.monotonic(), pages)
+        pages = await self.notion(settings).query_data_source(database_id=db_id)
+        self._works_cache[key] = (time.monotonic(), pages)
         return pages
 
     # ── /texte ───────────────────────────────────────────────────────────
@@ -168,7 +171,9 @@ class BrowseMixin(ConfrerieBase):
         membres_db = CONFRERIE.get(guild_id_of(ctx)).get("confrerieNotionDbMembresId")
         if membres_db:
             try:
-                rows = await self.notion_client.query_data_source(database_id=membres_db)
+                rows = await self.notion(CONFRERIE.get(guild_id_of(ctx))).query_data_source(
+                    database_id=membres_db
+                )
                 links = [
                     f"[{link.site or link.label}]"
                     f"({await shorten_url(link.url, title=link.label, tags=['confrerie'])})"
@@ -188,8 +193,9 @@ class BrowseMixin(ConfrerieBase):
     async def auteur_autocomplete(self, ctx: AutocompleteContext):
         await autocomplete_options(
             ctx,
-            self.notion_client,
-            CONFRERIE.get(guild_id_of(ctx)).get("confrerieNotionDbOeuvresId"),
+            self.notion,
+            CONFRERIE.get(guild_id_of(ctx)),
+            "confrerieNotionDbOeuvresId",
             COL_AUTHOR,
         )
 
@@ -222,7 +228,9 @@ class BrowseMixin(ConfrerieBase):
             await send_error(ctx, "La boîte à outils n'est pas configurée.")
             return
         await ctx.defer(ephemeral=prive)
-        pages = await self.notion_client.query_data_source(database_id=db_id)
+        pages = await self.notion(CONFRERIE.get(guild_id_of(ctx))).query_data_source(
+            database_id=db_id
+        )
         tools = filter_tools([parse_tool(p) for p in pages], theme, recherche)
         if not tools:
             await send_error(ctx, "Aucune ressource ne correspond.")
@@ -263,7 +271,8 @@ class BrowseMixin(ConfrerieBase):
     async def outil_autocomplete(self, ctx: AutocompleteContext):
         await autocomplete_options(
             ctx,
-            self.notion_client,
-            CONFRERIE.get(guild_id_of(ctx)).get("confrerieNotionDbOutilsId"),
+            self.notion,
+            CONFRERIE.get(guild_id_of(ctx)),
+            "confrerieNotionDbOutilsId",
             COL_TOOL_THEME,
         )

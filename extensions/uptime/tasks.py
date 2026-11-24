@@ -4,6 +4,7 @@ import math
 
 from interactions import IntervalTrigger, Task
 
+from src.core import log_context
 from src.core import logging as logutil
 from src.integrations.uptime_kuma import (
     UptimeKumaError,
@@ -12,7 +13,7 @@ from src.integrations.uptime_kuma import (
     push_heartbeat,
 )
 
-from ._common import POLL_SECONDS
+from ._common import POLL_SECONDS, UPTIME
 
 logger = logutil.init_logger(__name__)
 
@@ -29,29 +30,33 @@ class TasksMixin:
         """
         if not self._alerts_loaded:
             await self.load_alerts()
-        settings = UptimeKumaSettings.load()
-        if not settings.metrics_configured:
-            if not self._unset_logged:
-                logger.info("Uptime Kuma: URL or API key (uptimeKumaApiKey) unset, alerts off")
-                self._unset_logged = True
-            self.kuma_ok = False
-            return
-        self._unset_logged = False
-        try:
-            states = await fetch_monitor_states(settings)
-        except UptimeKumaError as e:
-            # Once per outage: an unreachable Kuma would otherwise log every poll.
-            if not self._poll_failing:
-                logger.warning("Uptime Kuma: %s; retrying quietly", e)
-            self._poll_failing = True
-            self.kuma_ok = False
-            return
-        if self._poll_failing:
-            logger.info("Uptime Kuma: /metrics readable again")
-        self._poll_failing = False
-        self.kuma_ok = True
-        self.monitors = states
-        await self.apply_states(states)
+        # Each guild reads its own Kuma (P37); guilds sharing one instance and key share a read.
+        instances: dict[UptimeKumaSettings, list[str]] = {}
+        for guild_id, raw in UPTIME.items():
+            with log_context.scope(guild_id=guild_id):
+                settings = UptimeKumaSettings.from_section(raw)
+                if settings.metrics_configured:
+                    instances.setdefault(settings, []).append(guild_id)
+                else:
+                    self.kuma_ok.discard(guild_id)  # none of its own: the health card says so
+        for settings, guild_ids in instances.items():
+            try:
+                states = await fetch_monitor_states(settings)
+            except UptimeKumaError as e:
+                # Once per outage: an unreachable Kuma would otherwise log every poll.
+                if settings.base_url not in self._poll_failing:
+                    logger.warning("Uptime Kuma %s: %s; retrying quietly", settings.base_url, e)
+                self._poll_failing.add(settings.base_url)
+                self.kuma_ok.difference_update(guild_ids)
+                continue
+            if settings.base_url in self._poll_failing:
+                logger.info("Uptime Kuma %s: /metrics readable again", settings.base_url)
+            self._poll_failing.discard(settings.base_url)
+            for guild_id in guild_ids:
+                with log_context.scope(guild_id=guild_id):
+                    self.kuma_ok.add(guild_id)
+                    self.monitors[guild_id] = states
+                    await self.apply_states(guild_id, states)
 
     @Task.create(IntervalTrigger(seconds=55))
     async def push_status(self):

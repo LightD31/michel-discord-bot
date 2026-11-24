@@ -17,7 +17,7 @@ from src.core.config import global_config
 from src.discord_ext.messages import GuildMessages
 from src.integrations.notion import NotionClient
 
-from ._common import CONFRERIE, PENDING_INPUT_TTL_SECONDS
+from ._common import CONFRERIE, PENDING_INPUT_TTL_SECONDS, NotionNotConnected, notion_secret
 from .browse import BrowseMixin
 from .editors import EditorsMixin
 from .forums import ForumsMixin
@@ -42,15 +42,11 @@ class ConfrerieExtension(
     """Discord extension combining the confrérie stats, updates, drafts and commands."""
 
     MODULE_KEYS = ("moduleConfrerie",)
-    GLOBAL_SECTIONS = ("notion",)  # the Notion client built at load
 
     def __init__(self, bot: Client):
         self.bot: Client = bot
-        # One Notion integration for the bot (global section ``notion``); each
-        # guild names its own databases in ``moduleConfrerie``.
-        self.notion_client = NotionClient(
-            auth_token=global_config().get("notion", {}).get("notionSecret", "")
-        )
+        # Each server's own Notion integration (P37), one client per secret.
+        self._notion_clients: dict[str, NotionClient] = {}
         self.recap_messages = GuildMessages(
             bot,
             slot="confrerie:recap",
@@ -72,10 +68,21 @@ class ConfrerieExtension(
         self._start_tasks()
         await self._warm_data_source_cache()
 
+    def notion(self, settings: dict) -> NotionClient:
+        """The Notion integration of the server whose *settings* these are (P37).
+
+        A server without its token raises :class:`NotionNotConnected`: members
+        are told an admin sets it on the module page, and the tasks skip it.
+        """
+        secret = notion_secret(settings)
+        if not secret:
+            raise NotionNotConnected()
+        client = self._notion_clients.get(secret)
+        if client is None:
+            client = self._notion_clients[secret] = NotionClient(auth_token=secret)
+        return client
+
     def _start_tasks(self) -> None:
-        if not global_config().get("notion", {}).get("notionSecret"):
-            logger.warning("Secret Notion absent (config.notion.notionSecret), tâches désactivées")
-            return
         for task in (self.confrerie, self.autoupdate):
             if not task.running:
                 task.start()
@@ -87,20 +94,22 @@ class ConfrerieExtension(
         ``/demande`` and ``/editeur`` read the schema before opening their
         modal, inside Discord's 3 s window: a warm cache keeps that instant.
         """
-        db_ids = {
-            settings.get(key)
-            for _, settings in CONFRERIE.items()
-            for key in (
-                "confrerieNotionDbOeuvresId",
-                "confrerieNotionDbIdEditorsId",
-                "confrerieNotionDbOutilsId",
-            )
-        } - {None, ""}
-        for db_id in db_ids:
-            try:
-                await self.notion_client.get_properties_schema(db_id)
-            except Exception as e:
-                logger.warning(f"Failed to cache data source for {db_id}: {e}")
+        for _, settings in CONFRERIE.items():
+            if not notion_secret(settings):
+                continue
+            db_ids = {
+                settings.get(key)
+                for key in (
+                    "confrerieNotionDbOeuvresId",
+                    "confrerieNotionDbIdEditorsId",
+                    "confrerieNotionDbOutilsId",
+                )
+            } - {None, ""}
+            for db_id in db_ids:
+                try:
+                    await self.notion(settings).get_properties_schema(db_id)
+                except Exception as e:
+                    logger.warning(f"Failed to cache data source for {db_id}: {e}")
 
     def _footer_icon(self, guild_id: str | int) -> str | None:
         """The server's icon, shown next to Michel's footer on stats and update embeds."""

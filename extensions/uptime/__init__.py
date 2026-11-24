@@ -35,13 +35,15 @@ class UptimeExtension(Extension, CommandsMixin, NotificationsMixin, TasksMixin):
         # {guild_id: {monitor_id: alert}}, guilds with the module enabled only.
         self.alerts: dict[str, dict[int, MonitorAlert]] = {}
         self._alerts_loaded = False
-        # The last /metrics read; kept while Kuma is unreachable so names still resolve.
-        self.monitors: dict[int, MonitorState] = {}
-        self.kuma_ok = False
+        # Each guild's last /metrics read, from its own Kuma (P37); kept while that
+        # Kuma is unreachable so names still resolve.
+        self.monitors: dict[str, dict[int, MonitorState]] = {}
+        # The guilds whose last read worked.
+        self.kuma_ok: set[str] = set()
         # Polls, commands and the startup load all await while touching the alerts.
         self._state_lock = asyncio.Lock()
-        self._poll_failing = False
-        self._unset_logged = False
+        # Instances (base URLs) whose last read failed: logged once per outage.
+        self._poll_failing: set[str] = set()
         self._push_failing = False
 
     @listen()
@@ -74,13 +76,13 @@ class UptimeExtension(Extension, CommandsMixin, NotificationsMixin, TasksMixin):
             len(alerts),
         )
 
-    def current_status(self, monitor_id: int) -> MonitorStatus | None:
-        """The monitor's status in the last /metrics read, ``None`` if it wasn't there."""
-        state = self.monitors.get(monitor_id)
+    def current_status(self, guild_id: str, monitor_id: int) -> MonitorStatus | None:
+        """The monitor's status in the guild's last /metrics read, ``None`` if it wasn't there."""
+        state = self.monitors.get(guild_id, {}).get(monitor_id)
         return state.status if state else None
 
-    def monitor_name(self, monitor_id: int) -> str:
-        state = self.monitors.get(monitor_id)
+    def monitor_name(self, guild_id: str, monitor_id: int) -> str:
+        state = self.monitors.get(guild_id, {}).get(monitor_id)
         return state.name if state else f"ID {monitor_id}"
 
 

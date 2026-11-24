@@ -149,7 +149,7 @@ class EditorsMixin(ConfrerieBase):
             return
         try:
             # The modal is the interaction response: leave room in Discord's 3 s.
-            schema = await self._editor_schema(db_id, timeout=2.0)
+            schema = await self._editor_schema(CONFRERIE.get(guild_id_of(ctx)), db_id, timeout=2.0)
             editor = validate_editor(
                 name=name,
                 genres=[genre_1, genre_2, genre_3],
@@ -207,8 +207,9 @@ class EditorsMixin(ConfrerieBase):
         column = _AUTOCOMPLETE_COLUMNS.get(str(ctx.focussed_option.name), COL_GENRES)
         await autocomplete_options(
             ctx,
-            self.notion_client,
-            CONFRERIE.get(guild_id_of(ctx)).get("confrerieNotionDbIdEditorsId"),
+            self.notion,
+            CONFRERIE.get(guild_id_of(ctx)),
+            "confrerieNotionDbIdEditorsId",
             column,
         )
 
@@ -237,11 +238,13 @@ class EditorsMixin(ConfrerieBase):
             await send_error(ctx, "La base Notion des éditeurs n'est pas configurée.")
             return
         try:
-            schema = await self._editor_schema(db_id)
+            schema = await self._editor_schema(CONFRERIE.get(guild_id_of(ctx)), db_id)
             properties, dropped = np.filter_to_schema(build_editor_properties(editor), schema)
             if dropped:
                 logger.warning("Colonnes absentes de la base Éditeurs, ignorées : %s", dropped)
-            page = await self.notion_client.create_page(database_id=db_id, properties=properties)
+            page = await self.notion(CONFRERIE.get(guild_id_of(ctx))).create_page(
+                database_id=db_id, properties=properties
+            )
         except NotionAPIError as e:
             logger.error("Erreur Notion lors de l'ajout de l'éditeur %s: %s", editor.name, e)
             await send_error(ctx, "Notion a refusé l'ajout de l'éditeur : réessaie plus tard.")
@@ -255,11 +258,13 @@ class EditorsMixin(ConfrerieBase):
         )
         logger.info("Éditeur %s ajouté par %s", editor.name, ctx.author)
 
-    async def _editor_schema(self, db_id: str, timeout: float | None = None) -> dict:
+    async def _editor_schema(
+        self, settings: dict, db_id: str, timeout: float | None = None
+    ) -> dict:
         """Live schema of the Éditeurs data source ({} when Notion is unreachable)."""
         try:
             return await asyncio.wait_for(
-                self.notion_client.get_properties_schema(db_id), timeout=timeout
+                self.notion(settings).get_properties_schema(db_id), timeout=timeout
             )
         except (NotionAPIError, TimeoutError) as e:
             logger.warning("Schéma Notion des éditeurs indisponible: %s", e)

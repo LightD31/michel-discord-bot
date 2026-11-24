@@ -46,6 +46,7 @@ from src.webui.schemas import (
     check_template,
     enabled_field,
     register_module,
+    secret_field,
     ui,
 )
 
@@ -80,6 +81,21 @@ class YoutubeConfig(SchemaBase):
     )
 
     enabled: bool = enabled_field()
+    youtubeApiUrl: str = ui(
+        "URL de l'API",
+        "url",
+        required=True,
+        description=(
+            "Base de l'API YouTube Data v3 (https://www.googleapis.com/youtube/v3). "
+            "Vide : aucune vérification des chaînes."
+        ),
+    )
+    youtubeApiKey: str = secret_field(
+        "Clé API",
+        required=True,
+        description="La clé YouTube Data v3 du serveur : les vérifications usent son quota.",
+        sent_to=("youtubeApiUrl",),
+    )
     youtubeChannelId: str = ui(
         "Salon de notification",
         "channel",
@@ -130,14 +146,6 @@ logger = logutil.init_logger(__name__)
 YOUTUBE = ModuleConfig("moduleYoutube")
 
 
-def _api_key() -> str:
-    return youtube_api_client.api_key()
-
-
-def _api_url() -> str:
-    return youtube_api_client.api_url()
-
-
 class YoutubeExtension(Extension):
     MODULE_KEYS = ("moduleYoutube",)
 
@@ -160,15 +168,11 @@ class YoutubeExtension(Extension):
 
     @Task.create(IntervalTrigger(minutes=5))
     async def check_youtube(self):
-        if not _api_key():
-            logger.warning("No YouTube API key (youtube.youtubeApiKey): skipping the check")
-            return
-        if not _api_url():
-            logger.warning("No YouTube API URL (youtube.youtubeApiUrl): skipping the check")
-            return
         # One read of every guild's last-seen videos per tick, not one per guild.
         youtube_data = await self.get_youtube_data()
         for server in YOUTUBE.guild_ids():
+            if not youtube_api_client.configured(YOUTUBE.get(server)):
+                continue  # no key of its own yet (P37): the health card says so
             with log_context.scope(guild_id=server):
                 try:
                     await self._check_server(str(server), youtube_data)
@@ -209,11 +213,13 @@ class YoutubeExtension(Extension):
         for raw_handle, channel_cfg in channels:
             handle = raw_handle.lstrip("@")
             try:
-                video_id = await self.get_video_id(await self.get_uploads(handle))
+                video_id = await self.get_video_id(
+                    srv_config, await self.get_uploads(srv_config, handle)
+                )
                 if seen.get(raw_handle) == video_id:
                     continue
                 if not is_initial_sync and await self.is_video_valid(
-                    video_id, channel_cfg, short_max
+                    srv_config, video_id, channel_cfg, short_max
                 ):
                     rendered = render_notification(
                         template,
@@ -256,21 +262,14 @@ class YoutubeExtension(Extension):
         for handle, cfg in (srv_config.get("youtubeChannelList") or {}).items():
             yield handle, (cfg if isinstance(cfg, dict) else {})
 
-    @staticmethod
-    async def _api(endpoint: str, **params: str | int) -> dict:
-        """GET a YouTube Data API endpoint (``src/integrations/youtube.py``)."""
-        return await youtube_api_client.youtube_api(endpoint, **params)
-
-    async def get_uploads(self, user):
+    async def get_uploads(self, settings: dict, user: str) -> str:
+        """The channel's uploads playlist, asked once (with the first server's key)."""
         if user not in self.playlist_cache:
-            uploads = await youtube_api_client.uploads_playlist(user)
-            self.playlist_cache[user] = uploads
-        else:
-            uploads = self.playlist_cache[user]
-        return uploads
+            self.playlist_cache[user] = await youtube_api_client.uploads_playlist(settings, user)
+        return self.playlist_cache[user]
 
-    async def get_video_id(self, uploads):
-        snippet = await youtube_api_client.latest_upload(uploads)
+    async def get_video_id(self, settings: dict, uploads: str) -> str:
+        snippet = await youtube_api_client.latest_upload(settings, uploads)
         return snippet["resourceId"]["videoId"]
 
     async def get_youtube_data(self):
@@ -281,9 +280,13 @@ class YoutubeExtension(Extension):
                 data[str(server_id)] = ids
         return data
 
-    async def is_video_valid(self, video_id: str, channel_cfg: dict, short_max: int) -> bool:
+    async def is_video_valid(
+        self, settings: dict, video_id: str, channel_cfg: dict, short_max: int
+    ) -> bool:
         """Whether the channel's Shorts / Lives / VOD toggles ask for this video."""
-        data = await self._api("videos", part="snippet,contentDetails", id=video_id)
+        data = await youtube_api_client.youtube_api(
+            settings, "videos", part="snippet,contentDetails", id=video_id
+        )
         kind = classify(data["items"][0], short_max)
         if wanted(kind, channel_cfg):
             return True

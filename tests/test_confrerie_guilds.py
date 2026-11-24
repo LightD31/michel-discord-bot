@@ -14,14 +14,21 @@ class FakeMessages:
         self.kept = list(guild_ids)
 
 
+def confrerie(db=None, token="tok"):
+    settings = {"enabled": True, "notionSecret": token}
+    return {"moduleConfrerie": {**settings, "confrerieNotionDbOeuvresId": db} if db else settings}
+
+
 async def test_statistics_are_aggregated_once_per_notion_database(store_config):
     store_config(
         {
             "servers": {
-                "1": {"moduleConfrerie": {"enabled": True, "confrerieNotionDbOeuvresId": "db1"}},
-                "2": {"moduleConfrerie": {"enabled": True, "confrerieNotionDbOeuvresId": "db1"}},
-                "3": {"moduleConfrerie": {"enabled": True, "confrerieNotionDbOeuvresId": "db2"}},
-                "4": {"moduleConfrerie": {"enabled": True}},  # no base: skipped
+                "1": confrerie("db1"),
+                "2": confrerie("db1"),
+                "3": confrerie("db2"),
+                "4": confrerie(),  # no base: skipped
+                "5": confrerie("db1", token=""),  # no Notion token of its own (P37): skipped
+                "6": confrerie("db1", token="other"),  # another integration: its own read
             }
         }
     )
@@ -31,8 +38,8 @@ async def test_statistics_are_aggregated_once_per_notion_database(store_config):
     class Harness(StatsMixin):
         recap_messages = FakeMessages()
 
-        async def _fetch_statistics(self, db_id):
-            fetched.append(db_id)
+        async def _fetch_statistics(self, settings, db_id):
+            fetched.append(f"{settings['notionSecret']}/{db_id}")
             return f"stats-{db_id}"
 
         async def _update_statistics_message(self, guild_id, settings, stats):
@@ -41,9 +48,14 @@ async def test_statistics_are_aggregated_once_per_notion_database(store_config):
     harness = Harness()
     await StatsMixin.confrerie.callback(harness)
 
-    assert fetched == ["db1", "db2"]
-    assert updated == [("1", "stats-db1"), ("2", "stats-db1"), ("3", "stats-db2")]
-    assert harness.recap_messages.kept == ["1", "2", "3", "4"]
+    assert fetched == ["tok/db1", "tok/db2", "other/db1"]
+    assert updated == [
+        ("1", "stats-db1"),
+        ("2", "stats-db1"),
+        ("3", "stats-db2"),
+        ("6", "stats-db1"),
+    ]
+    assert harness.recap_messages.kept == ["1", "2", "3", "4", "5", "6"]
 
 
 async def test_a_review_from_a_dm_finds_the_draft_in_its_guild(store_config):
@@ -68,6 +80,9 @@ async def test_a_review_from_a_dm_finds_the_draft_in_its_guild(store_config):
     class Harness(ReviewMixin):
         notion_client = FakeNotion()
 
+        def notion(self, settings):
+            return self.notion_client
+
         def __init__(self) -> None:
             from test_confrerie_review import FakeBot
 
@@ -88,3 +103,18 @@ async def test_a_review_from_a_dm_finds_the_draft_in_its_guild(store_config):
     )
     assert repos["9"].status("defi-1-2") == "approved"
     assert len(harness.notion_client.created) == 1
+
+
+def test_each_server_reads_notion_with_its_own_integration():
+    """P37: no token, no client (members are told); one client per token."""
+    import pytest
+
+    from extensions.confrerie import ConfrerieExtension, NotionNotConnected
+
+    ext = object.__new__(ConfrerieExtension)
+    ext._notion_clients = {}
+    with pytest.raises(NotionNotConnected):
+        ext.notion({"notionSecret": " "})
+    first = ext.notion({"notionSecret": "a"})
+    assert ext.notion({"notionSecret": "a"}) is first
+    assert ext.notion({"notionSecret": "b"}) is not first

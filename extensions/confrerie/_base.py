@@ -21,11 +21,11 @@ from src.integrations.notion import NotionClient
 
 class ConfrerieBase:
     bot: Client
-    notion_client: NotionClient
     recap_messages: GuildMessages
 
     if TYPE_CHECKING:
         # __init__.py
+        def notion(self, settings: dict) -> NotionClient: ...
         def _footer_icon(self, guild_id: str | int) -> str | None: ...
 
         # review.py

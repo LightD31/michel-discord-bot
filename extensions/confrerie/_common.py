@@ -1,6 +1,7 @@
 """Shared config, domain exceptions, and Notion-backed autocomplete helpers."""
 
 import os
+from collections.abc import Callable
 from typing import Any
 
 from interactions import AutocompleteContext
@@ -8,12 +9,13 @@ from interactions import AutocompleteContext
 from features.confrerie import notion_props as np
 from src.core import logging as logutil
 from src.core.config import ModuleConfig
-from src.core.errors import BotError
+from src.core.errors import BotError, NotConnected
 from src.webui.schemas import (
     ModuleHelp,
     SchemaBase,
     enabled_field,
     register_module,
+    secret_field,
     ui,
 )
 
@@ -33,6 +35,19 @@ class ConfrerieConfig(SchemaBase):
     )
 
     enabled: bool = enabled_field()
+    notionSecret: str | None = secret_field(
+        "Token de l'intégration Notion",
+        description=(
+            "Le token secret de l'intégration Notion du serveur, avec laquelle les bases "
+            "ci-dessous sont partagées. Sans lui, la Confrérie est en pause."
+        ),
+        sent_to=(
+            "confrerieNotionDbOeuvresId",
+            "confrerieNotionDbIdEditorsId",
+            "confrerieNotionDbOutilsId",
+            "confrerieNotionDbMembresId",
+        ),
+    )
     confrerieNotionDbOeuvresId: str = ui(
         "Notion DB Œuvres",
         "string",
@@ -139,18 +154,36 @@ class ConfrerieError(BotError):
     """Base exception for Confrérie extension errors (domain-level)."""
 
 
+class NotionNotConnected(NotConnected):
+    """The server hasn't entered its Notion integration's token (P37)."""
+
+    def __init__(self) -> None:
+        super().__init__("Notion")
+
+
+def notion_secret(settings: dict) -> str:
+    """The server's Notion token, or ``""``."""
+    return str(settings.get("notionSecret") or "").strip()
+
+
 async def autocomplete_options(
-    ctx: AutocompleteContext, notion_client: Any, database_id: str | None, column: str
+    ctx: AutocompleteContext,
+    notion: Callable[[dict], Any],
+    settings: dict,
+    db_key: str,
+    column: str,
 ) -> None:
     """Answer an autocomplete with the options configured on a Notion column.
 
     Options come from the live data-source schema, so a genre added or renamed
-    in Notion shows up here without a code change.
+    in Notion shows up here without a code change. *notion* gives the server's
+    client for its *settings*; the base is ``settings[db_key]``.
     """
     options: list[str] = []
+    database_id = settings.get(db_key)
     if database_id:
         try:
-            schema = await notion_client.get_properties_schema(database_id)
+            schema = await notion(settings).get_properties_schema(database_id)
             options = np.schema_options(schema, column)
         except Exception as e:  # noqa: BLE001 — an empty list beats a failed interaction
             logger.warning("Options Notion indisponibles pour %s: %s", column, e)

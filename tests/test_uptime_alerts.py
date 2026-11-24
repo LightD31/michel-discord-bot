@@ -2,6 +2,7 @@
 
 import copy
 from datetime import UTC, datetime
+from types import SimpleNamespace
 
 import pytest
 
@@ -252,3 +253,47 @@ async def test_save_into_empty_guild(monkeypatch):
     repo = UptimeRepository("1")
     await repo.save(MonitorAlert(5, 200, AlertMode.DETAILED, None))
     assert await repo.load() == {5: MonitorAlert(5, 200)}
+
+
+async def test_each_server_reads_its_own_kuma(monkeypatch, store_config):
+    """P37: one read per instance and key; a server's alerts follow its own Kuma only."""
+    import extensions.uptime.tasks as tasks_mod
+    from extensions.uptime import UptimeExtension
+    from src.integrations.uptime_kuma import UptimeKumaError
+
+    def kuma(url):
+        return {"enabled": True, "uptimeKumaUrl": url, "uptimeKumaApiKey": "k"}
+
+    store_config(
+        {
+            "servers": {
+                "1": {"moduleUptime": kuma("https://a.example")},
+                "2": {"moduleUptime": kuma("https://a.example")},
+                "3": {"moduleUptime": kuma("https://b.example")},
+                "4": {"moduleUptime": {"enabled": True}},  # no instance of its own
+            }
+        }
+    )
+    reads: list[str] = []
+
+    async def fetch(settings):
+        reads.append(settings.base_url)
+        if settings.base_url == "https://b.example":
+            raise UptimeKumaError("down")
+        return {7: SimpleNamespace(name="NAS", status=MonitorStatus.UP)}
+
+    applied: list[str] = []
+    monkeypatch.setattr(tasks_mod, "fetch_monitor_states", fetch)
+    ext = object.__new__(UptimeExtension)
+    ext._alerts_loaded, ext.monitors, ext._poll_failing = True, {}, set()
+    ext.kuma_ok = {"3", "4"}
+
+    async def apply_states(guild_id, states):
+        applied.append(guild_id)
+
+    ext.apply_states = apply_states
+    await UptimeExtension.poll_kuma.callback(ext)
+
+    assert reads == ["https://a.example", "https://b.example"]
+    assert applied == ["1", "2"] and ext.kuma_ok == {"1", "2"}
+    assert set(ext.monitors) == {"1", "2"}

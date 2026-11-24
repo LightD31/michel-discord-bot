@@ -1,4 +1,7 @@
-"""YouTube polling: one guild or channel failing must not stop the rest, and the key stays out of URLs."""
+"""YouTube polling: one guild or channel failing must not stop the rest, and the key stays out of URLs.
+
+Each server polls with its own key (P37).
+"""
 
 import asyncio
 import importlib
@@ -8,9 +11,18 @@ import pytest
 
 from src.core.errors import HttpError
 
+API = "https://yt.example/v3/"
+KEYS = {"A": "SECRET-KEY-A", "B": "SECRET-KEY-B"}  # pragma: allowlist secret
 GUILD_CONFIG = {
-    "A": {"youtubeChannelId": "100", "youtubeChannelList": {"@alpha": {"vod": True}}},
+    "A": {
+        "youtubeApiUrl": API,
+        "youtubeApiKey": KEYS["A"],
+        "youtubeChannelId": "100",
+        "youtubeChannelList": {"@alpha": {"vod": True}},
+    },
     "B": {
+        "youtubeApiUrl": API,
+        "youtubeApiKey": KEYS["B"],
         "youtubeChannelId": "200",
         "youtubeChannelList": {"@broken": {"vod": True}, "@bravo": {"vod": True}},
     },
@@ -19,12 +31,9 @@ GUILD_CONFIG = {
 
 @pytest.fixture
 def youtube(store_config):
-    fake_key = "SECRET-KEY"  # pragma: allowlist secret
     store_config(
         {
-            "config": {
-                "youtube": {"youtubeApiKey": fake_key, "youtubeApiUrl": "https://yt.example/v3/"}
-            },
+            "config": {},
             "servers": {
                 guild: {"moduleYoutube": {"enabled": True, **cfg}}
                 for guild, cfg in GUILD_CONFIG.items()
@@ -185,14 +194,24 @@ def test_api_key_never_appears_in_a_url(youtube, monkeypatch):
     for call in calls:
         assert "SECRET-KEY" not in call["url"]
         assert "key" not in call["params"]
-        assert call["headers"]["X-Goog-Api-Key"] == "SECRET-KEY"
-        assert call["url"].startswith("https://yt.example/v3/")  # the configured base
+        assert call["url"].startswith(API)  # the configured base
+    # Each server's latest videos are asked with its own key.
+    used = {
+        call["params"]["playlistId"]: call["headers"]["X-Goog-Api-Key"]
+        for call in calls
+        if call["url"].endswith("playlistItems")
+    }
+    assert used == {"alpha": KEYS["A"], "broken": KEYS["B"], "bravo": KEYS["B"]}
 
 
-def test_no_api_url_means_no_check(youtube, monkeypatch, store_config):
+def test_a_server_without_its_own_key_is_not_checked(youtube, monkeypatch, store_config):
     calls: list = []
     install_fakes(monkeypatch, youtube, latest={"alpha": "a1"}, calls=calls)
-    store_config({"config": {"youtube": {"youtubeApiKey": "k"}}, "servers": {}})
+    no_url = {"enabled": True, **GUILD_CONFIG["A"], "youtubeApiUrl": ""}
+    no_key = {"enabled": True, **GUILD_CONFIG["B"], "youtubeApiKey": ""}
+    store_config(
+        {"config": {}, "servers": {"A": {"moduleYoutube": no_url}, "B": {"moduleYoutube": no_key}}}
+    )
     ext = make_extension(youtube, Bot({"100": Channel("A"), "200": Channel("B")}))
 
     tick(youtube, ext)

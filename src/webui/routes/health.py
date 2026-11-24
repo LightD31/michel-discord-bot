@@ -8,6 +8,7 @@ from fastapi.responses import JSONResponse
 
 from features.rss import RssRepository
 from src.core import logging as logutil
+from src.core.config import ModuleConfig
 from src.core.errors import DatabaseError
 from src.core.health import health
 from src.integrations.spotify import is_connected as spotify_connected
@@ -24,8 +25,22 @@ from src.webui.guild_health import (
 logger = logutil.init_logger("webui.routes.health")
 
 RSS_MODULE = "moduleRss"
-# A module that runs on the server's own account: (service, whether it is connected).
-ACCOUNTS = {"moduleSpotify": ("Spotify", spotify_connected)}
+
+
+def _has(module: str, *fields: str):
+    """Whether the server's *module* settings fill each of *fields* (a key, a URL…)."""
+    return lambda guild_id: all(
+        str(ModuleConfig(module).get(guild_id).get(name) or "").strip() for name in fields
+    )
+
+
+# A module that runs on the server's own account (P36, P37): (service, whether it is ready).
+ACCOUNTS = {
+    "moduleSpotify": ("Spotify", spotify_connected),
+    "moduleYoutube": ("YouTube", _has("moduleYoutube", "youtubeApiKey", "youtubeApiUrl")),
+    "moduleConfrerie": ("Notion", _has("moduleConfrerie", "notionSecret")),
+    "moduleUptime": ("Uptime Kuma", _has("moduleUptime", "uptimeKumaUrl", "uptimeKumaApiKey")),
+}
 
 
 def _models() -> dict:

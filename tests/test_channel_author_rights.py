@@ -63,7 +63,7 @@ async def test_an_uptime_alert_needs_the_right_to_post_in_its_channel(store_conf
     guild, _, author, here, locked = _setup(store_config, "moduleUptime")
     ctx = FakeCtx(author, here)
     ext = bare_extension(
-        UptimeExtension, ctx.bot, kuma_ok=True, monitors={5: SimpleNamespace(name="NAS")}
+        UptimeExtension, ctx.bot, kuma_ok={"1"}, monitors={"1": {5: SimpleNamespace(name="NAS")}}
     )
     await run(UptimeExtension.setup_maintenance_alert, ext, ctx, "5", locked)
     assert "la permission « Envoyer des messages » dans" in ctx.last

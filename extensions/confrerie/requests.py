@@ -131,8 +131,9 @@ class RequestsMixin(ConfrerieBase):
         column = _AUTOCOMPLETE_COLUMNS.get(str(ctx.focussed_option.name), COL_TYPE)
         await autocomplete_options(
             ctx,
-            self.notion_client,
-            CONFRERIE.get(guild_id_of(ctx)).get("confrerieNotionDbOeuvresId"),
+            self.notion,
+            CONFRERIE.get(guild_id_of(ctx)),
+            "confrerieNotionDbOeuvresId",
             column,
         )
 
