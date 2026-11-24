@@ -72,7 +72,7 @@ async def write_intro(
         return ""
     guild_cfg = GuildAiSettings.from_config(AI_MODULE.get(guild_id))
     model = resolve_default_model(
-        usable_models(global_cfg.models, llm.configured_apis()),
+        usable_models(global_cfg.models, llm.configured_apis(guild_id)),
         guild_cfg.default_model,
         global_cfg.default_model,
     )
@@ -88,7 +88,7 @@ async def write_intro(
         logger.info("Gazette intro of %s skipped: the AI's %s limit is reached", guild_id, hit)
         return ""
     answer = await (client or AiClient()).complete(
-        model, intro_messages(edition, guild_cfg.persona), INTRO_TOKENS
+        model, intro_messages(edition, guild_cfg.persona), INTRO_TOKENS, guild_id=guild_id
     )
     if answer.error or not answer.content:
         logger.warning("Gazette intro of %s not written: %s", guild_id, answer.error)

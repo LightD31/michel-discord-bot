@@ -119,9 +119,9 @@ class MentionsMixin:
     async def _answer_mention(
         self, message: Message, question: str, guild_id: str, settings: GuildAiSettings
     ) -> None:
-        candidates = await self._usable_models()
+        candidates = await self._usable_models(guild_id)
         if not candidates:
-            logger.warning("Mention in guild %s but no AI API is configured", guild_id)
+            logger.warning("Mention in guild %s but it has no AI key of its own", guild_id)
             await self._react(message, FAILURE_EMOJI)
             return
 
@@ -153,7 +153,7 @@ class MentionsMixin:
             question=self._resolve_mentions(guild_id, question),
         )
         answer = await self._answer_once(
-            candidates, settings, messages, user_id=user_id, limits=limits
+            candidates, settings, messages, user_id=user_id, limits=limits, guild_id=guild_id
         )
         if answer is None:
             await self._react(message, FAILURE_EMOJI)

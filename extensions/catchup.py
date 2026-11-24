@@ -110,13 +110,14 @@ class CatchupExtension(Extension):
             return
         settings = guild_settings(guild_id)
         model = resolve_default_model(
-            usable_models(global_cfg.models, llm.configured_apis()),
+            usable_models(global_cfg.models, llm.configured_apis(guild_id)),
             settings.default_model,
             global_cfg.default_model,
         )
         if model is None:
             await send_error(
-                ctx, "IA non configurée : un développeur doit renseigner une API dans le dashboard."
+                ctx,
+                "IA non configurée sur ce serveur : un administrateur peut renseigner une clé OpenRouter ou NanoGPT dans le module IA du tableau de bord.",
             )
             return
         await ctx.defer(ephemeral=True)
@@ -165,6 +166,7 @@ class CatchupExtension(Extension):
                 server=str(getattr(guild_of(ctx), "name", "") or "ce serveur"),
             ),
             SUMMARY_TOKENS,
+            guild_id=guild_id,
         )
         if answer.error or not answer.content:
             logger.warning("Catch-up in guild %s failed: %s", guild_id, answer.error)
