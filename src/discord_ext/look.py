@@ -230,13 +230,31 @@ def _count(component: Any) -> int:
     return 1 + sum(_count(c) for c in inner) + (1 if accessory is not None else 0)
 
 
+def _blank(text: str | None) -> bool:
+    """Empty, or only spaces and zero-width characters (a ``SPACER_FIELD``)."""
+    return not (text or "").replace("​", "").strip()
+
+
+def _field_block(name: str | None, value: str | None) -> str:
+    """A field as a text: its name in bold above its value, the blank half left out.
+
+    A name that already carries its own bold (« **Mandatory** **2**-1 Barça »)
+    is kept as written: wrapping it again would pair the wrong ``**``.
+    """
+    name, value = (name or "").strip(), (value or "").strip()
+    if _blank(name):
+        return "" if _blank(value) else value
+    heading = name if "**" in name else f"**{name}**"
+    return heading if _blank(value) else f"{heading}\n{value}"
+
+
 def _embed_card(embed: Embed, *, compact: bool) -> ContainerComponent:
     head = []
     if embed.author and embed.author.name:
         head.append(f"-# {embed.author.name}")
     if embed.title:
         head.append(f"## [{embed.title}]({embed.url})" if embed.url else f"## {embed.title}")
-    blocks = [embed.description or ""] + [f"**{f.name}**\n{f.value}" for f in embed.fields or []]
+    blocks = [embed.description or ""] + [_field_block(f.name, f.value) for f in embed.fields or []]
     blocks = [b for b in blocks if b and b.strip()]
     footer = embed.footer.text if embed.footer and embed.footer.text else ""
     parts: list[Any] = []
