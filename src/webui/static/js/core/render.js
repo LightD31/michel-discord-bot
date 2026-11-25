@@ -12,6 +12,7 @@ import { populateChannelPickers } from '../forms/pickers/channels.js';
 import { populateMultiPickers, populateRolePickers } from '../forms/pickers/lists.js';
 import { populateMemberPickers } from '../forms/pickers/members.js';
 import { refreshAiModelSelects } from '../forms/widgets/models.js';
+import { populateUptimeMonitors } from '../forms/widgets/uptime.js';
 import { loadAudit } from '../pages/audit.js';
 import { loadBotMessages } from '../pages/bot-messages.js';
 import { renderExtensionsPage } from '../pages/extensions.js';
@@ -93,6 +94,7 @@ export function render() {
         populateRolePickers(document);
         populateMultiPickers(document);
         refreshAiModelSelects(document);
+        populateUptimeMonitors(document);
     }
     // Server page: the messages the bot keeps up to date there.
     if (state.currentPage === 'server' && state.currentServerId) {

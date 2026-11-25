@@ -1,6 +1,12 @@
-"""`/uptime configurer|remove|list` admin commands for managing monitor alerts."""
+"""`/uptime configurer|supprimer|liste` admin commands for managing monitor alerts.
+
+The alerts are the module's settings (``moduleUptime.alerts``, P42): the
+commands write them as the dashboard does, the last status seen stays in
+MongoDB.
+"""
 
 import asyncio
+from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 from interactions import (
@@ -18,7 +24,8 @@ from interactions import (
 
 from features.uptime import AlertMode, MonitorAlert, UptimeRepository
 from src.core import logging as logutil
-from src.core.errors import DatabaseError
+from src.core.config import config_store
+from src.core.errors import ConfigError, DatabaseError
 from src.discord_ext.look import card, sign
 from src.discord_ext.messages import (
     CAN_SEND,
@@ -43,6 +50,20 @@ from ._common import (
 logger = logutil.init_logger(__name__)
 
 
+def _write_alerts(guild_id: str, change: Callable[[list[dict]], list[dict]]) -> None:
+    """Rewrite the guild's ``moduleUptime.alerts`` with *change* (raises on a failed write)."""
+
+    def mutator(data: dict) -> None:
+        module = data.setdefault("servers", {}).setdefault(guild_id, {}).setdefault(UPTIME.key, {})
+        module["alerts"] = change(list(module.get("alerts") or []))
+
+    config_store.mutate(mutator)
+
+
+def _without(monitor_id: int) -> Callable[[list[dict]], list[dict]]:
+    return lambda alerts: [a for a in alerts if str(a.get("monitorId")) != str(monitor_id)]
+
+
 def _choice_name(name: str) -> str:
     return name if len(name) <= MAX_CHOICE_NAME else name[: MAX_CHOICE_NAME - 1] + "…"
 
@@ -51,12 +72,14 @@ class CommandsMixin:
     """Admin `/uptime` command group + monitor autocompletes."""
 
     # Set up by the extension (__init__.py).
-    alerts: dict[str, dict[int, MonitorAlert]]
+    statuses: dict[str, dict[int, MonitorStatus | None]]
     monitors: dict[str, dict[int, MonitorState]]
     kuma_ok: set[str]
     _state_lock: asyncio.Lock
 
     if TYPE_CHECKING:
+
+        def alerts_of(self, guild_id: str) -> dict[int, MonitorAlert]: ...
 
         def current_status(self, guild_id: str, monitor_id: int) -> MonitorStatus | None: ...
 
@@ -145,13 +168,21 @@ class CommandsMixin:
             last_status=None if monitor.status is MonitorStatus.PENDING else monitor.status,
         )
         try:
-            await UptimeRepository(guild_id).save(alert)
-        except DatabaseError as e:
+            _write_alerts(
+                guild_id, lambda alerts: [*_without(monitor.id)(alerts), alert.to_setting()]
+            )
+        except (ConfigError, OSError) as e:
             logger.error("Guild %s: could not save uptime alert %s: %s", guild_id, monitor.id, e)
             await send_error(ctx, "Je n'ai pas pu enregistrer l'alerte : réessaie plus tard.")
             return
         async with self._state_lock:
-            self.alerts.setdefault(guild_id, {})[monitor.id] = alert
+            self.statuses.setdefault(guild_id, {})[monitor.id] = alert.last_status
+        try:
+            await UptimeRepository(guild_id).set_last_status(monitor.id, alert.last_status)
+        except DatabaseError as e:  # the next beat sets the baseline instead
+            logger.warning(
+                "Guild %s: baseline of monitor %s not saved: %s", guild_id, monitor.id, e
+            )
 
         logger.info(
             "Guild %s: %s set an uptime alert for monitor %s in channel %s (%s)",
@@ -198,18 +229,26 @@ class CommandsMixin:
         if guild_id is None:
             return
         monitor_id = self._parse_monitor_id(sensor)
-        if monitor_id is None or monitor_id not in self.alerts.get(guild_id, {}):
-            await send_error(ctx, "Aucune alerte configurée pour ce capteur.")
+        if monitor_id is None or monitor_id not in self.alerts_of(guild_id):
+            await send_error(
+                ctx, "Aucune alerte configurée pour ce capteur : choisis-le dans la liste proposée."
+            )
             return
 
         try:
-            await UptimeRepository(guild_id).remove(monitor_id)
-        except DatabaseError as e:
+            _write_alerts(guild_id, _without(monitor_id))
+        except (ConfigError, OSError) as e:
             logger.error("Guild %s: could not remove uptime alert %s: %s", guild_id, monitor_id, e)
             await send_error(ctx, "Je n'ai pas pu supprimer l'alerte : réessaie plus tard.")
             return
         async with self._state_lock:
-            self.alerts.get(guild_id, {}).pop(monitor_id, None)
+            self.statuses.get(guild_id, {}).pop(monitor_id, None)
+        try:
+            await UptimeRepository(guild_id).forget(monitor_id)
+        except DatabaseError as e:  # a stale status only sets the next alert's baseline
+            logger.warning(
+                "Guild %s: status of monitor %s not dropped: %s", guild_id, monitor_id, e
+            )
 
         logger.info(
             "Guild %s: %s removed the uptime alert for monitor %s",
@@ -228,7 +267,7 @@ class CommandsMixin:
         guild_id = guild_id_of(ctx)
         names = {
             monitor_id: self.monitor_name(guild_id, monitor_id)
-            for monitor_id in self.alerts.get(guild_id, {})
+            for monitor_id in self.alerts_of(guild_id)
         }
         choices: list[dict[str, Any]] = [
             {"name": _choice_name(name), "value": str(monitor_id)}
@@ -246,7 +285,7 @@ class CommandsMixin:
         if guild_id is None:
             return
         alerts = sorted(
-            self.alerts.get(guild_id, {}).values(),
+            self.alerts_of(guild_id).values(),
             key=lambda a: self.monitor_name(guild_id, a.monitor_id).lower(),
         )
         if not alerts:

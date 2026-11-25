@@ -18,7 +18,17 @@ from src.webui.secrets import secret_field_names
 
 # Field types whose whole value names a guild's objects.
 GUILD_BOUND_TYPES = frozenset(
-    {"channel", "forum", "channellist", "role", "rolelist", "member", "spotifymap", "discord2name"}
+    {
+        "channel",
+        "forum",
+        "channellist",
+        "role",
+        "rolelist",
+        "member",
+        "spotifymap",
+        "discord2name",
+        "uptimealerts",  # the source's own Kuma monitors, each with a channel there
+    }
 )
 
 

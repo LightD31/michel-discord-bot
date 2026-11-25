@@ -1,16 +1,14 @@
-"""MongoDB I/O for the Uptime feature — one guild's monitor alerts.
+"""MongoDB I/O for the Uptime feature: the last status the bot saw of each monitor.
 
-All of a guild's alerts share one document, keyed by monitor id::
+The alerts themselves are settings (``moduleUptime.alerts``, P42); what the
+bot keeps is the last *settled* status of each monitor, so a restart neither
+posts again nor misses a change::
 
-    {"_id": "config", "12": {"channel_id": …, "mode": "detailed", "last_status": 1}}
-
-Each write touches only its own monitor's key, so removing an alert really
-removes it and a status update never resurrects a removed one.
+    {"_id": "statuses", "12": 1}
 """
 
 from __future__ import annotations
 
-from features.uptime.models import MonitorAlert
 from src.core.db import GuildRepository, translates_db_errors
 from src.core.logging import init_logger
 from src.integrations.uptime_kuma import MonitorStatus
@@ -18,42 +16,36 @@ from src.integrations.uptime_kuma import MonitorStatus
 logger = init_logger(__name__)
 
 COLLECTION = "uptime_monitors"
-DOC_ID = "config"
+DOC_ID = "statuses"
 
 
 class UptimeRepository(GuildRepository):
-    """Accessor for one guild's alerts."""
+    """Accessor for one guild's monitor statuses."""
 
     COLLECTION = COLLECTION
 
     @translates_db_errors
-    async def load(self) -> dict[int, MonitorAlert]:
+    async def load_statuses(self) -> dict[int, MonitorStatus | None]:
         doc = await self._col().find_one({"_id": DOC_ID})
-        alerts: dict[int, MonitorAlert] = {}
+        statuses: dict[int, MonitorStatus | None] = {}
         for key, value in (doc or {}).items():
             if key == "_id":
                 continue
-            alert = MonitorAlert.from_mongo(key, value)
-            if alert is None:
-                logger.warning("Guild %s: ignoring malformed uptime alert %r", self.guild_id, key)
-                continue
-            alerts[alert.monitor_id] = alert
-        return alerts
-
-    @translates_db_errors
-    async def save(self, alert: MonitorAlert) -> None:
-        await self._col().update_one(
-            {"_id": DOC_ID}, {"$set": {str(alert.monitor_id): alert.to_mongo()}}, upsert=True
-        )
-
-    @translates_db_errors
-    async def remove(self, monitor_id: int) -> None:
-        await self._col().update_one({"_id": DOC_ID}, {"$unset": {str(monitor_id): ""}})
+            try:
+                statuses[int(key)] = MonitorStatus.parse(value)
+            except ValueError:
+                logger.warning("Guild %s: ignoring malformed uptime status %r", self.guild_id, key)
+        return statuses
 
     @translates_db_errors
     async def set_last_status(self, monitor_id: int, status: MonitorStatus | None) -> None:
-        key = str(monitor_id)
         await self._col().update_one(
-            {"_id": DOC_ID, key: {"$exists": True}},
-            {"$set": {f"{key}.last_status": int(status) if status is not None else None}},
+            {"_id": DOC_ID},
+            {"$set": {str(monitor_id): int(status) if status is not None else None}},
+            upsert=True,
         )
+
+    @translates_db_errors
+    async def forget(self, monitor_id: int) -> None:
+        """Drop a monitor's status when its alert is removed (a new one starts afresh)."""
+        await self._col().update_one({"_id": DOC_ID}, {"$unset": {str(monitor_id): ""}})

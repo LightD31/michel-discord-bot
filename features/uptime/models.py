@@ -50,29 +50,39 @@ class MonitorAlert:
     mode: AlertMode = AlertMode.DETAILED
     last_status: MonitorStatus | None = None
 
-    def to_mongo(self) -> dict[str, Any]:
-        return {
-            "channel_id": self.channel_id,
-            "mode": self.mode.value,
-            "last_status": int(self.last_status) if self.last_status is not None else None,
-        }
-
     @classmethod
-    def from_mongo(cls, monitor_id: object, doc: object) -> MonitorAlert | None:
-        """Parse one stored entry; ``None`` when it can't be used."""
-        if not isinstance(doc, Mapping):
+    def from_setting(
+        cls, entry: object, last_status: MonitorStatus | None = None
+    ) -> MonitorAlert | None:
+        """One entry of ``moduleUptime.alerts`` (P42); ``None`` when it can't be used."""
+        if not isinstance(entry, Mapping):
             return None
         try:
-            parsed_id = int(str(monitor_id))
-            channel_id = int(doc["channel_id"])
+            monitor_id = int(str(entry["monitorId"]))
+            channel_id = int(str(entry["channelId"]))
         except (KeyError, TypeError, ValueError):
             return None
-        return cls(
-            monitor_id=parsed_id,
-            channel_id=channel_id,
-            mode=AlertMode.parse(doc.get("mode")),
-            last_status=MonitorStatus.parse(doc.get("last_status")),
-        )
+        return cls(monitor_id, channel_id, AlertMode.parse(entry.get("mode")), last_status)
+
+    def to_setting(self) -> dict[str, Any]:
+        return {
+            "monitorId": str(self.monitor_id),
+            "channelId": str(self.channel_id),
+            "mode": self.mode.value,
+        }
+
+
+def alerts_from_settings(
+    settings: Mapping[str, Any], statuses: Mapping[int, MonitorStatus | None]
+) -> dict[int, MonitorAlert]:
+    """The guild's alerts (its settings), each with the last status the bot saw."""
+    alerts: dict[int, MonitorAlert] = {}
+    for entry in settings.get("alerts") or []:
+        alert = MonitorAlert.from_setting(entry)
+        if alert is not None:
+            alert.last_status = statuses.get(alert.monitor_id)
+            alerts[alert.monitor_id] = alert
+    return alerts
 
 
 @dataclass(frozen=True)
