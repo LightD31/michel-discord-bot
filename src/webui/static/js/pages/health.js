@@ -1,7 +1,7 @@
 // The server health card.
-import { api } from '../core/api.js';
 import { html } from '../core/html.js';
 import { state } from '../core/state.js';
+import { loadCard } from '../ui/card.js';
 import { refreshOverview } from './overview.js';
 
 // ── Guild health ────────────────────────────
@@ -70,23 +70,17 @@ export function healthProblemCount(data) {
     return channels + feeds + tasks + accounts;
 }
 
-export async function loadHealth(serverId) {
-    const container = document.getElementById('health-report');
-    if (!container) return;
-    let data;
-    try {
-        data = await api(`/api/servers/${encodeURIComponent(serverId)}/health`);
-    } catch (e) {
-        container.innerHTML = html`<p class="u-c-text-muted">Diagnostic indisponible.</p>`;
-        state.healthProblems = { ...(state.healthProblems || {}), [serverId]: null };
-        refreshOverview(serverId);
-        return;
-    }
-    state.healthProblems = { ...(state.healthProblems || {}), [serverId]: healthProblemCount(data) };
-    refreshOverview(serverId);
+function healthReportHtml(data) {
     const section = (title, body) => String(body) && html`<h4 class="u-m-12-0-6">${title}</h4>${body}`;
-    container.innerHTML = html`${section('Comptes', healthAccountsHtml(data.accounts))}${
+    return html`${section('Comptes', healthAccountsHtml(data.accounts))}${
         section('Salons', healthChannelsHtml(data.channels))}${
         section('Flux RSS', healthFeedsHtml(data.feeds))}${
         section('Tâches (pour tous les serveurs)', healthTasksHtml(data.tasks || []))}`;
+}
+
+export async function loadHealth(serverId) {
+    const data = await loadCard('health-report', `/api/servers/${encodeURIComponent(serverId)}/health`, healthReportHtml);
+    // The overview's "Santé" tile counts the problems (null: the card couldn't tell).
+    state.healthProblems = { ...(state.healthProblems || {}), [serverId]: data && healthProblemCount(data) };
+    refreshOverview(serverId);
 }

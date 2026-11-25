@@ -3,6 +3,7 @@ import { html, raw } from '../core/html.js';
 import { registerActions } from '../core/actions.js';
 import { api } from '../core/api.js';
 import { mdInline } from '../forms/schema-form.js';
+import { SPINNER, loadCard } from '../ui/card.js';
 import { askConfirm } from '../ui/confirm.js';
 import { toast } from '../ui/toast.js';
 
@@ -30,15 +31,9 @@ export function gazetteHtml(data) {
 }
 
 export async function loadGazette(serverId) {
-    const container = document.getElementById('gazette-preview');
-    if (!container) return;
-    container.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
-    try {
-        const data = await api(`/api/servers/${encodeURIComponent(serverId)}/gazette`);
-        container.innerHTML = gazetteHtml(data || {});
-    } catch (e) {
-        container.innerHTML = String(html`<div class="empty-state"><h3>Erreur</h3><p>${String(e.message || e)}</p></div>`);
-    }
+    const el = document.getElementById('gazette-preview');
+    if (el) el.innerHTML = SPINNER;  // "↻ Actualiser" shows it is reading again
+    await loadCard('gazette-preview', `/api/servers/${encodeURIComponent(serverId)}/gazette`, data => gazetteHtml(data || {}));
 }
 
 export async function publishGazette(serverId, btn) {
