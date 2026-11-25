@@ -1,7 +1,7 @@
 // The agenda's calendar on the server page (P19).
-import { api } from '../core/api.js';
 import { html } from '../core/html.js';
 import { state } from '../core/state.js';
+import { cardHtml, loadCard } from '../ui/card.js';
 
 const WEEKDAYS = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
 const SOURCES = { event: 'événements Discord', birthday: 'anniversaires', giveaway: 'giveaways', poll: 'sondages', santa: 'Père Noël secret' };
@@ -13,16 +13,12 @@ export function agendaOn(sid) {
 // The card's frame; loadAgenda() fills it.
 export function agendaCardHtml(sid) {
     if (!agendaOn(sid)) return '';
-    return html`
-        <div class="card" id="agenda-card">
-            <div class="card-header">
-                <div>
-                    <div class="card-title">🗓️ Agenda</div>
-                    <div class="card-subtitle">Ce que montre /agenda : événements, anniversaires, fins de giveaways et de sondages, Père Noël secret.</div>
-                </div>
-            </div>
-            <div id="agenda-body"><div class="loading"><div class="spinner"></div></div></div>
-        </div>`;
+    return cardHtml({
+        id: 'agenda-card',
+        bodyId: 'agenda-body',
+        title: '🗓️ Agenda',
+        subtitle: 'Ce que montre /agenda : événements, anniversaires, fins de giveaways et de sondages, Père Noël secret.',
+    });
 }
 
 function isoDay(date) {
@@ -71,16 +67,5 @@ export function agendaGridHtml(data) {
 }
 
 export async function loadAgenda(sid) {
-    const el = document.getElementById('agenda-body');
-    if (!el) return;
-    let data;
-    try {
-        data = await api(`/api/servers/${encodeURIComponent(sid)}/agenda`);
-    } catch (e) {
-        el.innerHTML = String(html`<p class="me-empty">L'agenda est indisponible pour le moment : réessaie dans un instant.</p>`);
-        return;
-    }
-    if (state.currentServerId === sid && document.getElementById('agenda-body') === el) {
-        el.innerHTML = String(agendaGridHtml(data));
-    }
+    await loadCard('agenda-body', `/api/servers/${encodeURIComponent(sid)}/agenda`, agendaGridHtml);
 }

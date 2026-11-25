@@ -8,6 +8,7 @@ import { html, raw } from '../core/html.js';
 import { routeHash } from '../core/router.js';
 import { state } from '../core/state.js';
 import { commandSyncSuffix } from '../forms/save.js';
+import { cardHtml } from '../ui/card.js';
 import { askConfirm } from '../ui/confirm.js';
 import { toast } from '../ui/toast.js';
 import { renderAuditCard } from './audit.js';
@@ -187,12 +188,7 @@ export function renderServerPage() {
 
             <div id="onboarding-slot">${onboardingHtml(sid)}</div>
 
-            <div class="card" id="overview-card">
-                <div class="card-header">
-                    <div class="card-title">Aperçu</div>
-                </div>
-                <div id="overview-body">${overviewHtml(sid)}</div>
-            </div>
+            ${cardHtml({ id: 'overview-card', bodyId: 'overview-body', title: 'Aperçu', body: overviewHtml(sid) })}
 
             ${agendaCardHtml(sid)}
 
@@ -206,27 +202,18 @@ export function renderServerPage() {
                 <div id="module-browser">${moduleBrowserHtml(sid)}</div>
             </div>
 
-            <div class="card">
-                <div class="card-header">
-                    <div class="card-title">Messages du bot</div>
-                </div>
-                <p class="u-c-text-muted u-m-0-0-12">
-                    Messages que le bot tient à jour dans ce serveur. « Republier » supprime le
-                    message ; le module le reposte en bas de son salon à son prochain rafraîchissement.
-                </p>
-                <div id="bot-messages-list"><div class="loading"><div class="spinner"></div></div></div>
-            </div>
+            ${cardHtml({
+                bodyId: 'bot-messages-list',
+                title: 'Messages du bot',
+                subtitle: 'Messages que le bot tient à jour dans ce serveur. « Republier » supprime le message ; le module le reposte en bas de son salon à son prochain rafraîchissement.',
+            })}
 
-            <div class="card" id="health-card">
-                <div class="card-header">
-                    <div class="card-title">Santé</div>
-                </div>
-                <p class="u-c-text-muted u-m-0-0-12">
-                    Ce que le bot n'arrive pas à faire sur ce serveur : salons où il lui manque des
-                    droits, flux RSS en échec, tâches qui échouent.
-                </p>
-                <div id="health-report"><div class="loading"><div class="spinner"></div></div></div>
-            </div>
+            ${cardHtml({
+                id: 'health-card',
+                bodyId: 'health-report',
+                title: 'Santé',
+                subtitle: "Ce que le bot n'arrive pas à faire sur ce serveur : salons où il lui manque des droits, comptes à connecter, flux RSS en échec, tâches qui échouent.",
+            })}
 
             ${incidentsCardHtml(sid)}
 

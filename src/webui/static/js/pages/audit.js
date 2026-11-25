@@ -3,6 +3,7 @@ import { actionArgs, registerActions } from '../core/actions.js';
 import { api } from '../core/api.js';
 import { html } from '../core/html.js';
 import { state } from '../core/state.js';
+import { UNAVAILABLE, cardHtml, noteHtml } from '../ui/card.js';
 
 // ── Audit log ───────────────────────────────
 // Who changed what from the dashboard: field names only, never a value.
@@ -39,17 +40,12 @@ export const AUDIT_ACTIONS = {
 };
 
 export function renderAuditCard() {
-    return html`
-            <div class="card" id="audit-card">
-                <div class="card-header">
-                    <div class="card-title">Journal des modifications</div>
-                </div>
-                <p class="u-c-text-muted u-m-0-0-12">
-                    Ce qui a été fait depuis le dashboard, par qui et quand (un an d'historique).
-                    Seuls les noms des champs modifiés sont notés, jamais leurs valeurs.
-                </p>
-                <div id="audit-list"><div class="loading"><div class="spinner"></div></div></div>
-            </div>`;
+    return cardHtml({
+        id: 'audit-card',
+        bodyId: 'audit-list',
+        title: 'Journal des modifications',
+        subtitle: "Ce qui a été fait depuis le dashboard, par qui et quand (un an d'historique). Seuls les noms des champs modifiés sont notés, jamais leurs valeurs.",
+    });
 }
 
 export function auditDetails(details) {
@@ -87,16 +83,16 @@ export async function loadAudit(serverId, before) {
     const url = before ? `${base}?before=${encodeURIComponent(before)}` : base;
     let entries = [];
     try {
-        const data = await api(url);
+        const data = await api(url, { quiet: true });
         entries = data?.entries || [];
     } catch (e) {
-        container.innerHTML = html`<p class="u-c-text-muted">Journal indisponible.</p>`;
+        if (!before) container.innerHTML = String(noteHtml(UNAVAILABLE));
         return;
     }
     container.querySelector('.audit-more')?.remove();
     if (!before) container.innerHTML = '';
     if (!before && entries.length === 0) {
-        container.innerHTML = html`<p class="u-c-text-muted">Aucune modification enregistrée.</p>`;
+        container.innerHTML = String(noteHtml('Aucune modification enregistrée.'));
         return;
     }
     container.insertAdjacentHTML('beforeend', html`${entries.map(auditEntryHtml)}`);

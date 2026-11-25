@@ -57,6 +57,7 @@ import './pages/overview.js';
 import './pages/public.js';
 import './pages/server.js';
 import './pages/setup.js';
+import './ui/card.js';
 import './ui/charts.js';
 import './ui/confirm.js';
 import './ui/discord.js';
