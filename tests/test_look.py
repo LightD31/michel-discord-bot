@@ -344,6 +344,28 @@ def test_an_embed_becomes_a_v2_card_with_its_parts():
     assert parts[-1]["content"] == "-# Michel · Zevent"  # no timestamp: a refresh would differ
 
 
+def test_v2_fields_keep_their_own_bold_and_drop_spacers():
+    from interactions.models.discord.components import process_components
+
+    from src.discord_ext.look import SPACER_FIELD, embeds_to_v2
+
+    embed = card("moduleVlrgg", title="Derniers matchs de Mandatory")
+    embed.add_field(name="**Mandatory** **2**-1 Barça", value="Hav **13**-8", inline=True)
+    embed.add_field(**SPACER_FIELD)
+    embed.add_field(name="Mandatory 0-**2** **Eintracht**", value="Fra 5-**13**", inline=True)
+    embed.add_field(name="​", value="Sans titre")
+    embed.add_field(name="Seul", value="​")
+    (container,) = process_components(embeds_to_v2([embed]))
+    body = container["components"][2]["content"]
+    assert body == (
+        "**Mandatory** **2**-1 Barça\nHav **13**-8\n\n"
+        "Mandatory 0-**2** **Eintracht**\nFra 5-**13**\n\n"
+        "Sans titre\n\n"
+        "**Seul**"
+    )
+    assert "​" not in body
+
+
 def test_too_many_parts_fold_each_embed_into_one_text():
     from src.discord_ext.look import V2_MAX_COMPONENTS, _count, embeds_to_v2
 
