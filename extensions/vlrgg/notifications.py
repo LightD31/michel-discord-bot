@@ -7,7 +7,6 @@ from interactions import IntervalTrigger, MessageFlags, Task
 from features.vlrgg import fetch_live_matches, fetch_match_details, is_final, match_id_of
 from src.core import log_context
 from src.discord_ext.links import shorten_embeds
-from src.discord_ext.look import embeds_to_v2
 from src.discord_ext.messages import (
     edit_message_if_changed,
     fetch_or_create_persistent_message,
@@ -19,10 +18,13 @@ from ._common import (
     FINALIZE_MAX_ATTEMPTS,
     LIVE_UPDATE_INTERVAL_MINUTES,
     SCHEDULE_INTERVAL_MINUTES,
+    VLRGG,
     PendingFinal,
+    ScheduleDisplay,
     TeamState,
     logger,
 )
+from .embeds import fit_v2
 
 
 class NotificationsMixin(VlrggBase):
@@ -64,7 +66,8 @@ class NotificationsMixin(VlrggBase):
     async def _update_team_schedule(self, team_state: TeamState) -> None:
         """Met à jour le planning d'une équipe, ses notifications live et ses rappels."""
         tc = team_state.team_config
-        embeds, ongoing_matches, vlr_data = await self._fetch_team_schedule(tc)
+        display = ScheduleDisplay.from_config(VLRGG.get(team_state.server_id))
+        embeds, ongoing_matches, vlr_data = await self._fetch_team_schedule(tc, display)
         await self._handle_match_transitions(ongoing_matches, team_state)
         message = await fetch_or_create_persistent_message(
             self.bot,
@@ -81,7 +84,7 @@ class NotificationsMixin(VlrggBase):
             try:
                 await edit_message_if_changed(
                     message,
-                    components=embeds_to_v2(embeds),
+                    components=fit_v2(embeds),
                     flags=MessageFlags.IS_COMPONENTS_V2,
                     logger=logger,
                 )

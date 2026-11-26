@@ -15,6 +15,9 @@ Endpoints V2 utilisés:
   onglets performance/economy, inutilisés ici)
 - /v2/rankings?region=X — classement régional
 - /v2/search?q=X — recherche d'équipes
+- /v2/events?q=live|upcoming — événements en cours et à venir
+- /v2/event/{id}?stage=X — détail d'un événement (phases, classement d'une phase)
+- /v2/events/matches?event_id=X — matchs d'un événement, avec leur phase et leur tour
 
 Note: Un cache avec TTL court est utilisé (API self-hosted). L'API limite
 /team et /match/details à 20 requêtes par minute et par client, d'où des TTL
@@ -26,9 +29,21 @@ import asyncio
 import time
 from collections import OrderedDict, deque
 from collections.abc import Awaitable, Callable
+from dataclasses import replace
 from datetime import UTC, date, datetime
 from typing import Any
 
+from features.vlrgg.competition import (
+    Competition,
+    CompetitionView,
+    bracket_rounds,
+    candidate_events,
+    is_active_stage,
+    reference_urls,
+    stage_of,
+    stage_slug,
+    standings_tables,
+)
 from features.vlrgg.matching import (
     extract_match_id_from_url,
     is_final,
@@ -152,6 +167,9 @@ CACHE_TTL = {
     "team_stats": 1800,
     "rankings": 3600,
     "search": 300,
+    "events": 300,
+    "event": 120,
+    "event_matches": 60,
     "default": 30,
 }
 
@@ -174,6 +192,12 @@ def _cache_key(endpoint: str, params: dict[str, str] | None) -> str:
 def _get_ttl(endpoint: str, params: dict[str, str] | None = None) -> int:
     """Détermine le TTL de cache approprié pour un endpoint."""
     q = (params or {}).get("q", "")
+    if endpoint == "v2/events":
+        return CACHE_TTL["events"]
+    if endpoint == "v2/events/matches":
+        return CACHE_TTL["event_matches"]
+    if endpoint.startswith("v2/event/"):
+        return CACHE_TTL["event"]
     if "match/details" in endpoint:
         return CACHE_TTL["details"]
     if endpoint.endswith("team"):
@@ -397,6 +421,89 @@ async def fetch_upcoming_matches() -> list[dict[str, Any]]:
     return _segments(await vlrgg_request("v2/match", {"q": "upcoming"}))
 
 
+async def fetch_events(q: str) -> list[dict[str, Any]]:
+    """Événements VLR.gg (``q`` : live, upcoming — ce dernier inclut ceux en cours)."""
+    return _segments(await vlrgg_request("v2/events", {"q": q}))
+
+
+async def fetch_event(event_id: str, stage: str = "") -> dict[str, Any]:
+    """Détail d'un événement : ``event``, ``stages``, ``standings`` de la phase ``stage``.
+
+    Sans ``stage``, l'API sert sa phase par défaut (en général celle en cours).
+    """
+    params = {"include": "event,stages,standings"}
+    if stage:
+        params["stage"] = stage
+    data = await vlrgg_request(f"v2/event/{event_id}", params)
+    inner = data.get("data", {})
+    segments = inner.get("segments", {}) if isinstance(inner, dict) else {}
+    return segments if isinstance(segments, dict) else {}
+
+
+async def fetch_event_matches(event_id: str) -> list[dict[str, Any]]:
+    """Matchs d'un événement ({match_id, url, status, stage, event_series, team1, team2})."""
+    return _segments(await vlrgg_request("v2/events/matches", {"event_id": event_id}))
+
+
+async def fetch_team_competition(
+    vlr_data: dict[str, Any], view: CompetitionView, team: str = ""
+) -> Competition | None:
+    """La compétition en cours de l'équipe, d'après ses matchs dans ``vlr_data``.
+
+    Cherche l'événement de son match en direct, sinon du prochain, sinon du
+    dernier (voir :mod:`features.vlrgg.competition`), parmi les événements en
+    cours ou à venir. ``view`` vaut ``standings`` ou ``bracket`` ; une phase
+    sans classement (playoffs) est montrée en arbre. None si rien n'est trouvé.
+    """
+    if view == "off":
+        return None
+    refs = reference_urls(vlr_data)
+    if not refs:
+        return None
+    live, upcoming = await asyncio.gather(
+        _gathered("événements en direct", fetch_events("live"), []),
+        _gathered("événements à venir", fetch_events("upcoming"), []),
+    )
+    events = [*live, *upcoming]
+    for match_id, url in refs:
+        for event_id in candidate_events(url, events):
+            matches = await _gathered("matchs de l'événement", fetch_event_matches(event_id), [])
+            stage = stage_of(match_id, matches)
+            if stage is None:
+                continue
+            competition = await _competition(event_id, stage, matches, view, team)
+            pages = [str(e.get("url_path") or "") for e in events if e.get("event_id") == event_id]
+            return replace(competition, url=pages[0] if pages else "")
+    return None
+
+
+async def _competition(
+    event_id: str,
+    stage: str,
+    matches: list[dict[str, Any]],
+    view: CompetitionView,
+    team: str,
+) -> Competition:
+    detail = await _gathered("événement", fetch_event(event_id), {})
+    stages = detail.get("stages") or []
+    tables = []
+    if view == "standings":
+        slug = stage_slug(stage, stages)
+        if slug and not is_active_stage(stage, stages):
+            detail = await _gathered("classement", fetch_event(event_id, slug), detail)
+        tables = standings_tables(detail.get("standings") or [], team)
+    info = detail.get("event") if isinstance(detail.get("event"), dict) else {}
+    return Competition(
+        event_id=event_id,
+        name=str(info.get("name") or ""),
+        stage=stage,
+        logo=str(info.get("logo") or ""),
+        view="standings" if tables else "bracket",
+        tables=tables,
+        rounds=[] if tables else bracket_rounds(matches, stage),
+    )
+
+
 async def _gathered(label: str, coro: Any, default: Any) -> Any:
     try:
         return await coro
@@ -405,7 +512,7 @@ async def _gathered(label: str, coro: Any, default: Any) -> Any:
         return default
 
 
-async def fetch_all_team_data(team_id: str, team: str = "") -> dict[str, Any]:
+async def fetch_all_team_data(team_id: str, team: str = "", enrich: int = 6) -> dict[str, Any]:
     """Récupère toutes les données de matchs pour une équipe, par son ID.
 
     - Results: /v2/team?q=matches, enrichis par /v2/match/details
@@ -417,6 +524,8 @@ async def fetch_all_team_data(team_id: str, team: str = "") -> dict[str, Any]:
     Args:
         team_id: ID VLR.gg de l'équipe.
         team: Nom configuré, utilisé seulement si le profil est indisponible.
+        enrich: Nombre de derniers résultats complétés par /v2/match/details
+            (ceux qu'affiche le planning ; chacun coûte une requête du budget).
 
     Returns:
         Dictionnaire avec 'profile', 'results', 'upcoming', 'live'.
@@ -434,7 +543,7 @@ async def fetch_all_team_data(team_id: str, team: str = "") -> dict[str, Any]:
     logger.debug(f"VLR.gg /team?q=matches: {len(results)} résultats pour ID {team_id}")
     try:
         # Enrichir avec /match/details pour tournoi, rounds et scores par map
-        results = await _enrich_matches(results, team_id, max_count=6)
+        results = await _enrich_matches(results, team_id, max_count=enrich)
     except Exception as e:
         logger.warning(f"VLR.gg enrichissement des résultats échoué: {e}")
 

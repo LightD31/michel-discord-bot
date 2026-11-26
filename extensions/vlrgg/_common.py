@@ -2,11 +2,11 @@
 
 import os
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from features.vlrgg import _clean_vlr_text, expand_round_name
+from features.vlrgg import CompetitionView, _clean_vlr_text, competition_view, expand_round_name
 from src.core import logging as logutil
 from src.core.config import ModuleConfig
 from src.webui.schemas import ModuleHelp, SchemaBase, enabled_field, register_module, ui
@@ -25,6 +25,15 @@ class TeamEntry(BaseModel):
 
 # ── Module config ────────────────────────────────────────────────────────────
 
+MAX_SHOWN_MATCHES = 10
+DEFAULT_PAST_MATCHES = 6
+DEFAULT_UPCOMING_MATCHES = 6
+COMPETITION_CHOICES: dict[str, str] = {
+    "off": "Ne pas l'afficher",
+    "standings": "Classement",
+    "bracket": "Arbre",
+}
+
 
 @register_module("moduleVlrgg")
 class VlrggConfig(SchemaBase):
@@ -35,7 +44,8 @@ class VlrggConfig(SchemaBase):
     __help__ = ModuleHelp(
         "Les matchs Valorant des équipes suivies (VLR.gg).",
         ("/vlr equipe", "/vlr match", "/vlr classement"),
-        "Les matchs à venir, en cours et terminés sont annoncés.",
+        "Les matchs à venir, en cours et terminés sont annoncés, avec le classement "
+        "ou l'arbre de la compétition si le serveur l'affiche.",
     )
 
     enabled: bool = enabled_field()
@@ -62,6 +72,33 @@ class VlrggConfig(SchemaBase):
             "notifications (face-à-face récents, maps des deux équipes). 0 = désactivé."
         ),
     )
+    pastMatches: int = ui(
+        "Derniers matchs affichés",
+        "number",
+        ge=0,
+        le=MAX_SHOWN_MATCHES,
+        default=DEFAULT_PAST_MATCHES,
+        description="Nombre de résultats dans le planning de chaque équipe. 0 = aucun.",
+    )
+    upcomingMatches: int = ui(
+        "Prochains matchs affichés",
+        "number",
+        ge=0,
+        le=MAX_SHOWN_MATCHES,
+        default=DEFAULT_UPCOMING_MATCHES,
+        description="Nombre de matchs à venir dans le planning de chaque équipe. 0 = aucun.",
+    )
+    competitionView: Literal["off", "standings", "bracket"] = ui(
+        "Compétition en cours",
+        "choice",
+        default="off",
+        choices=COMPETITION_CHOICES,
+        description=(
+            "Ajoute au planning de chaque équipe la compétition qu'elle joue : le classement "
+            "de sa phase (groupes, phase suisse) ou l'arbre de ses matchs, tour par tour. "
+            "Une phase sans classement (playoffs) est montrée en arbre."
+        ),
+    )
 
 
 logger = logutil.init_logger(__name__)
@@ -69,8 +106,6 @@ VLRGG = ModuleConfig("moduleVlrgg")
 
 # ── Constants ────────────────────────────────────────────────────────────────
 
-MAX_PAST_MATCHES = 6
-MAX_UPCOMING_MATCHES = 6
 SCHEDULE_INTERVAL_MINUTES = 2
 LIVE_UPDATE_INTERVAL_MINUTES = 0.5
 DEFAULT_REMINDER_MINUTES = 15
@@ -106,6 +141,34 @@ class TeamConfig:
     def slot(self) -> str:
         """Le message de planning de l'équipe dans ``bot_messages``."""
         return f"vlrgg:team:{self.name}"
+
+
+def _shown(raw: Any, default: int) -> int:
+    try:
+        return min(max(int(raw), 0), MAX_SHOWN_MATCHES)
+    except (TypeError, ValueError):
+        return default
+
+
+@dataclass(frozen=True)
+class ScheduleDisplay:
+    """Ce que montre le planning d'une équipe, d'après la config du serveur."""
+
+    past: int = DEFAULT_PAST_MATCHES
+    upcoming: int = DEFAULT_UPCOMING_MATCHES
+    competition: CompetitionView = "off"
+
+    @classmethod
+    def from_config(cls, srv_config: dict[str, Any]) -> "ScheduleDisplay":
+        """Lu à chaque rafraîchissement ; borné comme le schéma (config éditable à la main)."""
+        return cls(
+            past=_shown(srv_config.get("pastMatches", DEFAULT_PAST_MATCHES), DEFAULT_PAST_MATCHES),
+            upcoming=_shown(
+                srv_config.get("upcomingMatches", DEFAULT_UPCOMING_MATCHES),
+                DEFAULT_UPCOMING_MATCHES,
+            ),
+            competition=competition_view(srv_config.get("competitionView", "off")),
+        )
 
 
 @dataclass
@@ -145,8 +208,11 @@ __all__ = [
     "VlrggConfig",
     "logger",
     "VLRGG",
-    "MAX_PAST_MATCHES",
-    "MAX_UPCOMING_MATCHES",
+    "COMPETITION_CHOICES",
+    "DEFAULT_PAST_MATCHES",
+    "DEFAULT_UPCOMING_MATCHES",
+    "MAX_SHOWN_MATCHES",
+    "ScheduleDisplay",
     "SCHEDULE_INTERVAL_MINUTES",
     "LIVE_UPDATE_INTERVAL_MINUTES",
     "DEFAULT_REMINDER_MINUTES",
