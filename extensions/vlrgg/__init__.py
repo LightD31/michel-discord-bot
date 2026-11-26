@@ -6,6 +6,9 @@ via l'API VLR.gg (source unique).
 Configuration par serveur via le dashboard web (moduleVlrgg):
 - notificationChannelId: salon pour les notifications live
 - reminderMinutes: rappel avant match, en minutes (0 = désactivé)
+- pastMatches / upcomingMatches: matchs passés / à venir du planning (0 à 10)
+- competitionView: la compétition en cours dans le planning, en classement
+  (``standings``) ou en arbre (``bracket``), ou rien (``off``)
 - teams: liste d'équipes, chacune avec:
     - name: nom de l'équipe
     - vlrTeamId: ID VLR.gg (requis)

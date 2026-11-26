@@ -13,7 +13,10 @@ from typing import TYPE_CHECKING, Any
 
 from interactions import Client, Embed
 
-from ._common import ServerState, TeamConfig, TeamState
+from ._common import ScheduleDisplay, ServerState, TeamConfig, TeamState
+
+if TYPE_CHECKING:
+    from features.vlrgg import Competition
 
 
 class VlrggBase:
@@ -25,7 +28,7 @@ class VlrggBase:
         @staticmethod
         def _make_vlr_match_id(match: dict[str, Any]) -> str: ...
         async def _fetch_team_schedule(
-            self, tc: TeamConfig
+            self, tc: TeamConfig, display: ScheduleDisplay
         ) -> tuple[list[Embed], dict[str, Any], dict[str, Any]]: ...
         async def _save_live_match(
             self,
@@ -39,7 +42,13 @@ class VlrggBase:
         async def _delete_live_match(self, server_id: str, match_id: str) -> None: ...
 
         # embeds.py
-        def _build_vlrgg_embeds(self, vlr_data: dict[str, Any], team: str) -> list[Embed]: ...
+        def _build_vlrgg_embeds(
+            self,
+            vlr_data: dict[str, Any],
+            team: str,
+            display: ScheduleDisplay,
+            competition: Competition | None = None,
+        ) -> list[Embed]: ...
         def _build_live_embed(
             self,
             match: dict[str, Any],
