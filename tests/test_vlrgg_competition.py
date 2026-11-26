@@ -353,11 +353,25 @@ def test_the_standings_card_marks_the_team() -> None:
 
     assert embed.title == "🏆 EMEA Kickoff"
     assert embed.description == "Swiss Stage · Classement"
+    assert embed.url is None
+
     (field,) = embed.fields
     assert field.value.splitlines() == [
         "` 1.` Enterprise Esports — 1-0 · maps 2/0 · Δ +16",
         "` 2.` **GIANTX** ⭐ — 1-0",
     ]
+
+
+def test_the_event_link_goes_in_the_description_not_the_title() -> None:
+    rounds = [BracketRound("Grand Final", [BracketMatch("A", "B", "", "", None, "Upcoming")])]
+    competition = Competition(
+        "1", "Masters", "Playoffs", url="https://www.vlr.gg/event/1/masters", rounds=rounds
+    )
+
+    embed = _ext()._build_competition_embed(competition, "A")
+
+    assert embed is not None and embed.url is None
+    assert embed.description == "Playoffs · Arbre · [VLR.gg](https://www.vlr.gg/event/1/masters)"
 
 
 def test_the_bracket_card_lists_each_round() -> None:
