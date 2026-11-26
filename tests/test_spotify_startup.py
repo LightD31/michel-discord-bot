@@ -114,3 +114,17 @@ async def test_a_second_startup_doesnt_restart_running_tasks(spotify):
     await spotify.SpotifyExtension.on_startup.callback(ext)
     await spotify.SpotifyExtension.on_startup.callback(ext)
     assert all(getattr(ext, name).starts == 1 for name in TASKS)
+
+
+class Untouchable:
+    def __getattr__(self, name):
+        raise AssertionError(f"Spotify called ({name}) with no découvertes playlist set")
+
+
+async def test_no_decouvertes_playlist_means_nothing_to_rebuild(spotify, monkeypatch):
+    """``spotifyNewPlaylistId`` is optional: spotipy raised on ``None`` (MICHEL-DISCORD-BOT-1/5)."""
+    ext, server = make_extension(spotify)
+    monkeypatch.setattr(type(server), "spotify", property(lambda self: Untouchable()))
+    monkeypatch.setattr(type(server), "playlist_id", property(lambda self: "main"))
+
+    await spotify.SpotifyExtension._new_titles_playlist_for_server(ext, server)
