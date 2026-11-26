@@ -169,11 +169,12 @@ class EmbedsMixin(VlrggBase):
         if not fields:
             return None
         stage = expand_round_name(competition.stage)
+        link = f"[VLR.gg]({competition.url})" if competition.url else ""
         embed = card(
             "moduleVlrgg",
             title=f"🏆 {competition.name or stage or 'Compétition'}",
-            url=competition.url or None,
-            description=" · ".join(p for p in (stage, view_label) if p),
+            # Lien dans la description : un titre lié s'affiche en markdown brut en V2
+            description=" · ".join(p for p in (stage, view_label, link) if p),
             timestamp=Timestamp.now(),
         )
         for name, value in fields:
