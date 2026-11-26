@@ -41,8 +41,8 @@ def _live_heading(team: str) -> str:
 
 def _waiting_heading(team: str) -> str:
     return (
-        f"⏳ **Match pas encore commencé — {team}** : VLR.gg l'a affiché en direct "
-        "avant l'heure. Ce message reprendra au coup d'envoi."
+        f"⏳ **Match retardé — {team}** : il n'a pas encore commencé. "
+        "Ce message reprendra au coup d'envoi."
     )
 
 
@@ -250,9 +250,9 @@ class NotificationsMixin(VlrggBase):
         """Le match réapparaît en direct avant son résumé final : on reprend son message.
 
         Évite qu'un trou ponctuel dans /v2/match?q=live_score clôture le match
-        puis le réannonce comme un nouveau, et qu'un match annoncé avant l'heure
+        puis le réannonce comme un nouveau, et qu'un match retardé après son heure
         en poste un second à son vrai coup d'envoi. Tant que la page du match
-        affiche un compte à rebours, la liste live se trompe : il reste en attente.
+        affiche un compte à rebours, il n'a pas commencé : il reste en attente.
         """
         pending = team_state.ending_matches.get(match_id)
         if pending is None:
@@ -283,10 +283,11 @@ class NotificationsMixin(VlrggBase):
         """Édite le message live avec le résumé final, dès que VLR.gg l'affiche « final ».
 
         Un match sorti de ``/v2/match?q=live_score`` n'est pas forcément fini : la
-        liste peut l'annoncer avant l'heure, ou le perdre un moment. Sa page tranche :
+        liste le montre à son heure prévue même s'il est retardé, et peut le perdre
+        un moment. Sa page tranche :
 
         - « final » : le résumé remplace le message live ;
-        - un compte à rebours : le match n'avait pas commencé, le message le dit
+        - un compte à rebours : le match est retardé, le message le dit
           et attend son vrai coup d'envoi, où :meth:`_resume_live_match` le reprend ;
         - sinon (encore « live », ou page indisponible) : on retente à chaque
           cycle live pendant ``FINALIZE_MAX_ATTEMPTS`` cycles, puis tous les
@@ -306,7 +307,7 @@ class NotificationsMixin(VlrggBase):
         tc = team_state.team_config
 
         if not_started(details):
-            # Annoncé avant l'heure : le message attend le vrai coup d'envoi, qui le reprendra
+            # Retardé : le message attend le vrai coup d'envoi, qui le reprendra
             logger.info(f"Match {match_id} ({tc.name}) pas encore commencé : message en attente")
             try:
                 await edit_message_if_changed(

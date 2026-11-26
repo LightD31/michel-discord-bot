@@ -54,8 +54,8 @@ def is_final(details: dict[str, Any]) -> bool:
 def not_started(details: dict[str, Any]) -> bool:
     """Vrai quand la page du match affiche encore un compte à rebours (« 45m », « 5d 2h »).
 
-    ``/v2/match?q=live_score`` peut lister un match « LIVE » avant son coup
-    d'envoi, ou le retirer de la liste avant sa fin : la page du match tranche.
+    ``/v2/match?q=live_score`` liste un match « LIVE » à son heure prévue, même
+    retardé, et peut le retirer de la liste avant sa fin : la page du match tranche.
     Faux sans détails (statut vide), pour ne rien conclure d'une requête ratée.
     """
     status = str(details.get("status") or "").strip().lower()

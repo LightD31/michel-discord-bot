@@ -1,8 +1,9 @@
 """The end of a live VLR.gg match: no result is published without a « final » page.
 
-``/v2/match?q=live_score`` listed Mandatory vs MIR « LIVE » an hour before its
-kick-off, then dropped it: the bot posted « TERMINÉ: ? - ? » with empty stats,
-then a second live message at the real start. The match page settles it.
+Mandatory vs MIR was delayed an hour: ``/v2/match?q=live_score`` listed it « LIVE »
+at its planned time, then dropped it. The bot posted « TERMINÉ: ? - ? » with
+empty stats, then a second live message at the real start. The match page
+settles it: a countdown there means the match hasn't started.
 """
 
 from typing import Any
@@ -83,14 +84,14 @@ def harness(monkeypatch: pytest.MonkeyPatch) -> Harness:
     return Harness(monkeypatch)
 
 
-async def test_a_match_listed_before_its_kickoff_waits_in_its_message(harness) -> None:
+async def test_a_delayed_match_waits_in_its_message(harness) -> None:
     harness.details = _details("58m")
 
     await harness.end()
 
     assert not harness.message.deleted
     ((edit),) = harness.edits  # no « TERMINÉ: ? - ? », only the heading
-    assert edit["content"].startswith("⏳ **Match pas encore commencé — Mandatory**")
+    assert edit["content"].startswith("⏳ **Match retardé — Mandatory**")
     assert "embeds" not in edit
     assert MATCH_ID in harness.team.ending_matches
     assert harness.deleted_docs == []  # a restart finds the message again
@@ -209,7 +210,7 @@ def test_a_countdown_on_the_match_page_means_not_started() -> None:
     assert not not_started({})  # a failed read concludes nothing
 
 
-async def test_a_match_listed_live_before_its_kickoff_is_not_announced(monkeypatch) -> None:
+async def test_a_delayed_match_listed_live_is_not_announced(monkeypatch) -> None:
     team_id = "7967"
 
     def segments(items: Any) -> dict:
