@@ -37,6 +37,7 @@ from features.vlrgg.matching import (
     is_final,
     live_candidates,
     match_id_of,
+    not_started,
     same_team_name,
     team_side,
 )
@@ -118,6 +119,7 @@ __all__ = [
     "map_scores",
     "match_id_of",
     "normalize_team_match",
+    "not_started",
     "parse_vlr_date",
     "parse_vlrgg_timestamp",
     "same_team_name",

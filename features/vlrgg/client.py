@@ -49,6 +49,7 @@ from features.vlrgg.matching import (
     is_final,
     live_candidates,
     match_id_of,
+    not_started,
     team_side,
 )
 from features.vlrgg.normalize import (
@@ -554,6 +555,8 @@ async def fetch_all_team_data(team_id: str, team: str = "", enrich: int = 6) -> 
         details = await fetch_match_details(mid) if mid else {}
         if details.get("teams") and team_side(details, team_id) is None:
             continue  # Même nom ou calendrier obsolète, mais pas cette équipe
+        if not_started(details):
+            continue  # Listé « LIVE » avant l'heure : sa page affiche encore un compte à rebours
         live.append(seg)
 
     exclude = {str(r.get("match_id") or "") for r in results} | {match_id_of(m) for m in live}

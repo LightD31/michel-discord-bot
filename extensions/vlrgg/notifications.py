@@ -4,7 +4,13 @@ from typing import Any
 
 from interactions import IntervalTrigger, MessageFlags, Task
 
-from features.vlrgg import fetch_live_matches, fetch_match_details, is_final, match_id_of
+from features.vlrgg import (
+    fetch_live_matches,
+    fetch_match_details,
+    is_final,
+    match_id_of,
+    not_started,
+)
 from src.core import log_context
 from src.discord_ext.links import shorten_embeds
 from src.discord_ext.messages import (
@@ -15,7 +21,9 @@ from src.discord_ext.messages import (
 
 from ._base import VlrggBase
 from ._common import (
+    FINALIZE_GIVE_UP_ATTEMPTS,
     FINALIZE_MAX_ATTEMPTS,
+    FINALIZE_SLOW_EVERY,
     LIVE_UPDATE_INTERVAL_MINUTES,
     SCHEDULE_INTERVAL_MINUTES,
     VLRGG,
@@ -212,11 +220,15 @@ class NotificationsMixin(VlrggBase):
             logger.exception(f"Erreur mise à jour VLR.gg message live: {e}")
 
     async def _handle_vlr_match_ended(self, match_id: str, team_state: TeamState) -> None:
-        """Gère la fin d'un match VLR.gg — prépare le résumé final du message live."""
+        """Gère la fin d'un match VLR.gg — prépare le résumé final du message live.
+
+        La référence persistée reste en base jusqu'au résumé : un redémarrage
+        pendant l'attente retrouve le message au lieu d'en poster un second.
+        """
         message = team_state.live_messages.pop(match_id, None)
         match_data = team_state.ongoing_matches.pop(match_id, None)
-        await self._delete_live_match(team_state.server_id, match_id)
         if not message:
+            await self._delete_live_match(team_state.server_id, match_id)
             return
         team_state.ending_matches[match_id] = PendingFinal(message, match_data or {})
         await self._try_finalize_match(match_id, team_state)
@@ -247,29 +259,71 @@ class NotificationsMixin(VlrggBase):
     async def _try_finalize_match(self, match_id: str, team_state: TeamState) -> None:
         """Édite le message live avec le résumé final, dès que VLR.gg l'affiche « final ».
 
-        Juste après la fin, la page du match peut encore être servie « LIVE » par
-        le cache de l'API : on retente au cycle live suivant, au plus
-        ``FINALIZE_MAX_ATTEMPTS`` fois, puis on publie ce qu'on a.
+        Un match sorti de ``/v2/match?q=live_score`` n'est pas forcément fini : la
+        liste peut l'annoncer avant l'heure, ou le perdre un moment. Sa page tranche :
+
+        - « final » : le résumé remplace le message live ;
+        - un compte à rebours : le match n'avait pas commencé, le message est
+          retiré (son vrai coup d'envoi en postera un nouveau) ;
+        - sinon (encore « live », ou page indisponible) : on retente à chaque
+          cycle live pendant ``FINALIZE_MAX_ATTEMPTS`` cycles, puis tous les
+          ``FINALIZE_SLOW_EVERY`` cycles, jusqu'à ``FINALIZE_GIVE_UP_ATTEMPTS`` ;
+          s'il reparaît en direct entre-temps, :meth:`_resume_live_match` reprend
+          son message. Aucun résultat n'est publié sans page « final ».
         """
         pending = team_state.ending_matches.get(match_id)
         if pending is None:
             return
         pending.attempts += 1
-        details = await self._live_details(pending.match_data)
-        if not is_final(details) and pending.attempts < FINALIZE_MAX_ATTEMPTS:
+        slow = pending.attempts > FINALIZE_MAX_ATTEMPTS
+        last = pending.attempts >= FINALIZE_GIVE_UP_ATTEMPTS
+        if slow and not last and pending.attempts % FINALIZE_SLOW_EVERY:
             return
-        team_state.ending_matches.pop(match_id, None)
-
+        details = await self._live_details(pending.match_data)
         tc = team_state.team_config
-        try:
-            embed, content = self._build_final_embed(pending.match_data, details, tc)
-            await edit_message_if_changed(
-                pending.message,
-                content=content,
-                embeds=[embed],
-                ignore_timestamp=True,
-                logger=logger,
-            )
-            logger.info(f"Match terminé ({tc.name}): {embed.title}")
-        except Exception as e:
-            logger.exception(f"Erreur gestion fin de match VLR.gg: {e}")
+
+        if not_started(details):
+            await self._close_pending(match_id, team_state)
+            logger.info(f"Match {match_id} ({tc.name}) pas encore commencé : message live retiré")
+            try:
+                await pending.message.delete()
+            except Exception as e:
+                logger.warning(f"Impossible de retirer le message live de {match_id}: {e}")
+            return
+
+        if is_final(details):
+            await self._close_pending(match_id, team_state)
+            try:
+                embed, content = self._build_final_embed(pending.match_data, details, tc)
+                await edit_message_if_changed(
+                    pending.message,
+                    content=content,
+                    embeds=[embed],
+                    ignore_timestamp=True,
+                    logger=logger,
+                )
+                logger.info(f"Match terminé ({tc.name}): {embed.title}")
+            except Exception as e:
+                logger.exception(f"Erreur gestion fin de match VLR.gg: {e}")
+            return
+
+        if last:
+            await self._close_pending(match_id, team_state)
+            logger.warning(f"Match {match_id} ({tc.name}) jamais affiché « final » : suivi arrêté")
+            try:
+                await edit_message_if_changed(
+                    pending.message,
+                    content=(
+                        f"⏸️ **Match plus suivi — {tc.name}** : VLR.gg ne le montre plus "
+                        "en direct, et sans résultat final."
+                    ),
+                    ignore_timestamp=True,
+                    logger=logger,
+                )
+            except Exception as e:
+                logger.warning(f"Impossible de clore le message live de {match_id}: {e}")
+
+    async def _close_pending(self, match_id: str, team_state: TeamState) -> None:
+        """Fin du suivi d'un match terminé : plus en attente, plus en base."""
+        team_state.ending_matches.pop(match_id, None)
+        await self._delete_live_match(team_state.server_id, match_id)
