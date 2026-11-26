@@ -35,6 +35,17 @@ from ._common import (
 from .embeds import fit_v2
 
 
+def _live_heading(team: str) -> str:
+    return f"🔴 **Match en direct — {team}!**"
+
+
+def _waiting_heading(team: str) -> str:
+    return (
+        f"⏳ **Match pas encore commencé — {team}** : VLR.gg l'a affiché en direct "
+        "avant l'heure. Ce message reprendra au coup d'envoi."
+    )
+
+
 class NotificationsMixin(VlrggBase):
     """Mixin providing match notification background tasks."""
 
@@ -180,7 +191,7 @@ class NotificationsMixin(VlrggBase):
             embed = self._build_live_embed(match, details, just_started=True)
             match_id = self._make_vlr_match_id(match)
             message = await channel.send(
-                content=f"🔴 **Match en direct — {team_state.team_config.name}!**",
+                content=_live_heading(team_state.team_config.name),
                 embeds=[embed],
             )
             team_state.live_messages[match_id] = message
@@ -239,14 +250,26 @@ class NotificationsMixin(VlrggBase):
         """Le match réapparaît en direct avant son résumé final : on reprend son message.
 
         Évite qu'un trou ponctuel dans /v2/match?q=live_score clôture le match
-        puis le réannonce comme un nouveau.
+        puis le réannonce comme un nouveau, et qu'un match annoncé avant l'heure
+        en poste un second à son vrai coup d'envoi. Tant que la page du match
+        affiche un compte à rebours, la liste live se trompe : il reste en attente.
         """
-        pending = team_state.ending_matches.pop(match_id, None)
+        pending = team_state.ending_matches.get(match_id)
         if pending is None:
             return
-        logger.info(f"Match {match_id} de nouveau en direct pour {team_state.team_config.name}")
+        if not_started(await self._live_details(match)):
+            return
+        team_state.ending_matches.pop(match_id, None)
+        name = team_state.team_config.name
+        logger.info(f"Match {match_id} de nouveau en direct pour {name}")
         team_state.live_messages[match_id] = pending.message
         team_state.ongoing_matches[match_id] = match
+        try:
+            await edit_message_if_changed(
+                pending.message, content=_live_heading(name), ignore_timestamp=True, logger=logger
+            )
+        except Exception as e:
+            logger.warning(f"Impossible de remettre en direct le message de {match_id}: {e}")
         await self._save_live_match(
             team_state.server_id,
             team_state.team_config.name,
@@ -263,8 +286,8 @@ class NotificationsMixin(VlrggBase):
         liste peut l'annoncer avant l'heure, ou le perdre un moment. Sa page tranche :
 
         - « final » : le résumé remplace le message live ;
-        - un compte à rebours : le match n'avait pas commencé, le message est
-          retiré (son vrai coup d'envoi en postera un nouveau) ;
+        - un compte à rebours : le match n'avait pas commencé, le message le dit
+          et attend son vrai coup d'envoi, où :meth:`_resume_live_match` le reprend ;
         - sinon (encore « live », ou page indisponible) : on retente à chaque
           cycle live pendant ``FINALIZE_MAX_ATTEMPTS`` cycles, puis tous les
           ``FINALIZE_SLOW_EVERY`` cycles, jusqu'à ``FINALIZE_GIVE_UP_ATTEMPTS`` ;
@@ -283,12 +306,17 @@ class NotificationsMixin(VlrggBase):
         tc = team_state.team_config
 
         if not_started(details):
-            await self._close_pending(match_id, team_state)
-            logger.info(f"Match {match_id} ({tc.name}) pas encore commencé : message live retiré")
+            # Annoncé avant l'heure : le message attend le vrai coup d'envoi, qui le reprendra
+            logger.info(f"Match {match_id} ({tc.name}) pas encore commencé : message en attente")
             try:
-                await pending.message.delete()
+                await edit_message_if_changed(
+                    pending.message,
+                    content=_waiting_heading(tc.name),
+                    ignore_timestamp=True,
+                    logger=logger,
+                )
             except Exception as e:
-                logger.warning(f"Impossible de retirer le message live de {match_id}: {e}")
+                logger.warning(f"Impossible de mettre en attente le message de {match_id}: {e}")
             return
 
         if is_final(details):

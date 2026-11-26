@@ -83,15 +83,42 @@ def harness(monkeypatch: pytest.MonkeyPatch) -> Harness:
     return Harness(monkeypatch)
 
 
-async def test_a_match_listed_before_its_kickoff_loses_its_live_message(harness) -> None:
+async def test_a_match_listed_before_its_kickoff_waits_in_its_message(harness) -> None:
     harness.details = _details("58m")
 
     await harness.end()
 
-    assert harness.message.deleted
-    assert harness.edits == []  # no « TERMINÉ: ? - ? »
+    assert not harness.message.deleted
+    ((edit),) = harness.edits  # no « TERMINÉ: ? - ? », only the heading
+    assert edit["content"].startswith("⏳ **Match pas encore commencé — Mandatory**")
+    assert "embeds" not in edit
+    assert MATCH_ID in harness.team.ending_matches
+    assert harness.deleted_docs == []  # a restart finds the message again
+
+
+async def test_the_real_kickoff_edits_the_first_message(harness) -> None:
+    harness.details = _details("58m")
+    await harness.end()
+    harness.message.channel = type("C", (), {"id": 5})()
+    saved: list[str] = []
+
+    async def save(server_id, team_name, match_id, match_data, channel_id, message_id) -> None:
+        saved.append(match_id)
+
+    harness.ext._save_live_match = save  # type: ignore[method-assign]
+
+    # Listed live again, but the page still counts down: it keeps waiting.
+    await harness.ext._resume_live_match(MATCH_ID, dict(SEGMENT), harness.team)
+    assert MATCH_ID in harness.team.ending_matches and saved == []
+
+    harness.details = _details("live")
+    await harness.ext._resume_live_match(MATCH_ID, dict(SEGMENT), harness.team)
+
     assert MATCH_ID not in harness.team.ending_matches
-    assert harness.deleted_docs == [MATCH_ID]
+    assert harness.team.live_messages[MATCH_ID] is harness.message
+    assert harness.edits[-1]["content"] == "🔴 **Match en direct — Mandatory!**"
+    assert saved == [MATCH_ID]
+    assert not harness.message.deleted
 
 
 async def test_a_match_still_live_on_its_page_is_never_closed_with_a_guess(harness) -> None:
