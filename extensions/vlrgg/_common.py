@@ -112,8 +112,12 @@ DEFAULT_REMINDER_MINUTES = 15
 # Fenêtre des bilans par map (rappels, /vlr equipe)
 MAP_POOL_DAYS = 180
 # Un match qui vient de finir peut encore s'afficher « LIVE » quelques secondes
-# côté API : on retente le résumé final au cycle live suivant (30 s), au plus N fois.
+# côté API : on retente le résumé final à chaque cycle live (30 s) pendant
+# FINALIZE_MAX_ATTEMPTS cycles, puis tous les FINALIZE_SLOW_EVERY cycles (5 min),
+# et on abandonne au bout de FINALIZE_GIVE_UP_ATTEMPTS cycles (6 h) sans page « final ».
 FINALIZE_MAX_ATTEMPTS = 10
+FINALIZE_SLOW_EVERY = 10
+FINALIZE_GIVE_UP_ATTEMPTS = 720
 
 # ── Dataclasses ───────────────────────────────────────────────────────────────
 
@@ -218,6 +222,8 @@ __all__ = [
     "DEFAULT_REMINDER_MINUTES",
     "MAP_POOL_DAYS",
     "FINALIZE_MAX_ATTEMPTS",
+    "FINALIZE_SLOW_EVERY",
+    "FINALIZE_GIVE_UP_ATTEMPTS",
     "PendingFinal",
     "TeamConfig",
     "TeamState",
