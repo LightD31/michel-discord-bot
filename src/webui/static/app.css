@@ -3446,6 +3446,8 @@ body.has-save-bar .toast-container { bottom: 88px; }
 .badge-stat:last-child { border-bottom: none; }
 .badge-stat.is-off .me-badge-emoji { filter: grayscale(1); opacity: 0.5; }
 .badge-stat-count { flex: 0 0 auto; font-weight: 600; font-variant-numeric: tabular-nums; }
+.giveaway-actions { flex: 0 0 auto; display: flex; flex-wrap: wrap; gap: 6px; }
+@media (max-width: 480px) { .giveaway-row { flex-wrap: wrap; } .giveaway-actions { width: 100%; } }
 
 .xp-badges { font-size: 13px; margin-left: 4px; letter-spacing: 1px; white-space: nowrap; }
 .me-badges { display: flex; flex-direction: column; gap: 8px; }

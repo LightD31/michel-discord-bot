@@ -2,6 +2,7 @@
 import { html, raw } from '../core/html.js';
 import { loadAchievements } from '../features/achievements.js';
 import { loadGazette } from '../features/gazette.js';
+import { loadGiveaways } from '../features/giveaways.js';
 import { loadInfractions, loadReports } from '../features/moderation.js';
 import { loadRoleMenus } from '../features/rolemenus.js';
 import { loadSecretSanta } from '../features/secretsanta.js';
@@ -125,6 +126,10 @@ export function render() {
     // Succès: each badge and how many won it (P25).
     if (state.currentPage === 'module' && state.currentModule === 'moduleAchievements' && state.currentServerId) {
         loadAchievements(state.currentServerId);
+    }
+    // Giveaways: the running ones, to draw or cancel (P42).
+    if (state.currentPage === 'module' && state.currentModule === 'moduleGiveaway' && state.currentServerId) {
+        loadGiveaways(state.currentServerId);
     }
     // The Gazette: this week's edition so far, and "Publier maintenant".
     if (state.currentPage === 'module' && state.currentModule === 'moduleGazette' && state.currentServerId) {

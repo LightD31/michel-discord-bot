@@ -10,6 +10,7 @@ import './core/router.js';
 import './core/state.js';
 import './core/util.js';
 import './features/gazette.js';
+import './features/giveaways.js';
 import './features/moderation.js';
 import './features/rolemenus.js';
 import './features/secretsanta.js';

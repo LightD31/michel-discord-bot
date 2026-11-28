@@ -14,6 +14,8 @@ export const AUDIT_ACTIONS = {
     'secretsanta.exclude': 'a exclu une paire du Père Noël Secret',
     'secretsanta.allow': 'a réautorisé une paire du Père Noël Secret',
     'gazette.publish': 'a publié la Gazette',
+    'giveaway.draw': 'a tiré un giveaway',
+    'giveaway.cancel': 'a annulé un giveaway',
     'module.toggle': 'a basculé le module',
     'module.restore': 'a restauré une version du module',
     'module.copy': 'a copié les réglages du module depuis un autre serveur',

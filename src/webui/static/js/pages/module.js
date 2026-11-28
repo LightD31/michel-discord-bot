@@ -1,5 +1,6 @@
 // A module's page.
 import { achievementsCardHtml } from '../features/achievements.js';
+import { giveawaysCardHtml } from '../features/giveaways.js';
 import { html, raw } from '../core/html.js';
 import { CHECKED, EL, VALUE, actionArgs, registerActions } from '../core/actions.js';
 import { api } from '../core/api.js';
@@ -155,6 +156,8 @@ export function renderModulePage() {
             ` : '')}
 
             ${mod === 'moduleAchievements' ? achievementsCardHtml(sid) : ''}
+
+            ${mod === 'moduleGiveaway' ? giveawaysCardHtml(sid) : ''}
 
             ${mod === 'moduleGazette' ? cardHtml({
                 className: 'u-mt-16',

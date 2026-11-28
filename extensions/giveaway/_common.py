@@ -4,13 +4,13 @@ import os
 
 from src.core import logging as logutil
 from src.core.config import ModuleConfig
+from src.discord_ext.giveaway import DEFAULT_ALLOW_HOST_WIN, guild_allow_host_win
 from src.webui.schemas import ModuleHelp, SchemaBase, enabled_field, register_module, ui
 
 logger = logutil.init_logger(__name__)
 
 MODULE_KEY = "moduleGiveaway"
 DEFAULT_EMOJI = "🎉"
-DEFAULT_ALLOW_HOST_WIN = False
 
 
 @register_module(MODULE_KEY)
@@ -59,17 +59,6 @@ def guild_emoji(guild_id: str | int | None) -> str:
     if isinstance(raw, str) and raw.strip():
         return raw.strip()
     return DEFAULT_EMOJI
-
-
-def guild_allow_host_win(guild_id: str | int | None) -> bool:
-    """Return whether the giveaway host can be part of the draw pool."""
-    if guild_id is None:
-        return DEFAULT_ALLOW_HOST_WIN
-    cfg = GIVEAWAY.get(guild_id)
-    raw = cfg.get("allowHostWin")
-    if isinstance(raw, bool):
-        return raw
-    return DEFAULT_ALLOW_HOST_WIN
 
 
 __all__ = [
