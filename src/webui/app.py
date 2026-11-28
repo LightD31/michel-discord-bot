@@ -110,6 +110,9 @@ from src.webui.routes import (
     twitch as twitch_routes,
 )
 from src.webui.routes import (
+    uptime as uptime_routes,
+)
+from src.webui.routes import (
     xp as xp_routes,
 )
 from src.webui.security_headers import SecurityHeadersMiddleware
@@ -240,6 +243,7 @@ def create_app(bot=None, bot_loop=None) -> FastAPI:
     app.include_router(twitch_routes.create_router(ctx))
     app.include_router(shlink_routes.create_router(ctx))
     app.include_router(ai_routes.create_router(ctx))
+    app.include_router(uptime_routes.create_router(ctx))
     # Unauthenticated: the per-guild public XP / Spotify dashboards.
     app.include_router(public_routes.create_router(ctx))
     app.include_router(bot_routes.create_router(ctx))

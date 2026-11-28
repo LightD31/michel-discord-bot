@@ -1,5 +1,6 @@
 """``features.uptime``: transition rules, stored-alert parsing, embed texts and the repository."""
 
+import asyncio
 import copy
 from datetime import UTC, datetime
 from types import SimpleNamespace
@@ -14,6 +15,7 @@ from features.uptime import (
     StatusChange,
     Transition,
     UptimeRepository,
+    alerts_from_settings,
     apply_statuses,
     render_alert,
     transition,
@@ -95,29 +97,42 @@ def test_apply_statuses_across_guilds():
     assert apply_statuses(alerts, {1: UP, 2: UP}) == []
 
 
-# --- Stored alerts ----------------------------------------------------------
+# --- Alerts as settings (P42) ---------------------------------------------
 
 
 def test_alert_round_trip():
-    alert = MonitorAlert(monitor_id=21, channel_id=123, mode=AlertMode.SIMPLE, last_status=DOWN)
-    assert alert.to_mongo() == {"channel_id": 123, "mode": "simple", "last_status": 0}
-    assert MonitorAlert.from_mongo("21", alert.to_mongo()) == alert
+    alert = MonitorAlert(monitor_id=21, channel_id=123, mode=AlertMode.SIMPLE)
+    assert alert.to_setting() == {"monitorId": "21", "channelId": "123", "mode": "simple"}
+    assert MonitorAlert.from_setting(alert.to_setting()) == alert
 
 
 @pytest.mark.parametrize(
-    ("doc", "expected"),
+    ("entry", "expected"),
     [
-        # Written by the previous implementation: no mode, int status.
-        ({"channel_id": 5, "last_status": 1}, MonitorAlert(7, 5, AlertMode.DETAILED, UP)),
-        ({"channel_id": "5", "last_status": None, "mode": "weird"}, MonitorAlert(7, 5)),
-        ({"channel_id": 5, "last_status": "MAINTENANCE"}, MonitorAlert(7, 5)),  # numbers only
-        ({"last_status": 1}, None),
-        ({"channel_id": "abc"}, None),
+        ({"monitorId": "7", "channelId": "5"}, MonitorAlert(7, 5, AlertMode.DETAILED)),
+        ({"monitorId": 7, "channelId": "5", "mode": "weird"}, MonitorAlert(7, 5)),
+        ({"channelId": "5"}, None),
+        ({"monitorId": "7", "channelId": "abc"}, None),
         ("not a dict", None),
     ],
 )
-def test_alert_from_mongo(doc, expected):
-    assert MonitorAlert.from_mongo("7", doc) == expected
+def test_alert_from_setting(entry, expected):
+    assert MonitorAlert.from_setting(entry) == expected
+
+
+def test_the_alerts_are_the_settings_with_the_last_status_seen():
+    settings = {
+        "alerts": [
+            {"monitorId": "21", "channelId": "100", "mode": "simple"},
+            {"monitorId": "22", "channelId": "101"},
+            {"monitorId": "oops"},
+        ]
+    }
+    assert alerts_from_settings(settings, {21: UP, 99: DOWN}) == {
+        21: MonitorAlert(21, 100, AlertMode.SIMPLE, UP),
+        22: MonitorAlert(22, 101),
+    }
+    assert alerts_from_settings({}, {21: UP}) == {}
 
 
 # --- Rendering --------------------------------------------------------------
@@ -211,48 +226,29 @@ class _FakeCollection:
 
 @pytest.fixture
 def collection(monkeypatch):
-    col = _FakeCollection(
-        {
-            "_id": "config",
-            "21": {"channel_id": 100, "last_status": 1, "mode": "simple"},
-            "22": {"channel_id": 101, "last_status": None},
-            "bad": {"oops": True},
-        }
-    )
+    col = _FakeCollection({"_id": "statuses", "21": 1, "22": None, "bad": 1, "23": "UP"})
     monkeypatch.setattr(db.mongo_manager, "get_guild_collection", lambda guild_id, name: col)
     return col
 
 
-async def test_load_skips_malformed(collection):
-    alerts = await UptimeRepository("1").load()
-    assert alerts == {
-        21: MonitorAlert(21, 100, AlertMode.SIMPLE, UP),
-        22: MonitorAlert(22, 101),
-    }
+async def test_the_statuses_skip_what_is_malformed(collection):
+    assert await UptimeRepository("1").load_statuses() == {21: UP, 22: None, 23: None}
 
 
-async def test_remove_is_persisted(collection):
+async def test_a_status_is_saved_and_forgotten(collection):
     repo = UptimeRepository("1")
-    await repo.remove(21)
-    assert set(await repo.load()) == {22}
-
-
-async def test_status_update_never_resurrects_removed_alert(collection):
-    repo = UptimeRepository("1")
-    await repo.remove(21)
-    await repo.set_last_status(21, DOWN)
     await repo.set_last_status(22, DOWN)
-    alerts = await repo.load()
-    assert set(alerts) == {22}
-    assert alerts[22].last_status is DOWN
+    await repo.forget(21)
+    statuses = await repo.load_statuses()
+    assert 21 not in statuses and statuses[22] is DOWN
 
 
-async def test_save_into_empty_guild(monkeypatch):
+async def test_a_first_status_creates_the_document(monkeypatch):
     col = _FakeCollection()
     monkeypatch.setattr(db.mongo_manager, "get_guild_collection", lambda guild_id, name: col)
     repo = UptimeRepository("1")
-    await repo.save(MonitorAlert(5, 200, AlertMode.DETAILED, None))
-    assert await repo.load() == {5: MonitorAlert(5, 200)}
+    await repo.set_last_status(5, UP)
+    assert await repo.load_statuses() == {5: UP}
 
 
 async def test_each_server_reads_its_own_kuma(monkeypatch, store_config):
@@ -297,3 +293,52 @@ async def test_each_server_reads_its_own_kuma(monkeypatch, store_config):
     assert reads == ["https://a.example", "https://b.example"]
     assert applied == ["1", "2"] and ext.kuma_ok == {"1", "2"}
     assert set(ext.monitors) == {"1", "2"}
+
+
+async def test_the_commands_write_the_alerts_in_the_modules_settings(monkeypatch, store_config):
+    """P42: /uptime configurer and supprimer change moduleUptime.alerts, as the dashboard does."""
+    from discord_fakes import FakeChannel, FakeCtx, FakeGuild, FakeMember, bare_extension, run
+    from interactions import Permissions
+
+    import extensions.uptime.commands as commands_mod
+    from extensions.uptime import UptimeExtension
+    from src.core.config import config_store
+
+    data = store_config({"servers": {"1": {"moduleUptime": {"enabled": True}}}})
+    # config.json on disk is the developer's: the writes go to the store's dict.
+    monkeypatch.setattr(config_store, "mutate", lambda mutator: mutator(data))
+    saved: list = []
+
+    class Repo:
+        def __init__(self, guild_id):
+            pass
+
+        async def set_last_status(self, monitor_id, status):
+            saved.append(("status", monitor_id, status))
+
+        async def forget(self, monitor_id):
+            saved.append(("forget", monitor_id))
+
+    monkeypatch.setattr(commands_mod, "UptimeRepository", Repo)
+    guild = FakeGuild(1)
+    author = guild.add_member(FakeMember(7, permissions=Permissions.ALL))
+    here = guild.add_channel(FakeChannel(10))
+    ctx = FakeCtx(author, here)
+    ext = bare_extension(
+        UptimeExtension,
+        ctx.bot,
+        kuma_ok={"1"},
+        monitors={"1": {5: SimpleNamespace(id=5, name="NAS", status=MonitorStatus.UP)}},
+        statuses={},
+        _state_lock=asyncio.Lock(),
+    )
+
+    await run(UptimeExtension.setup_maintenance_alert, ext, ctx, "5", here, "simple")
+    alerts = config_store.get()["servers"]["1"]["moduleUptime"]["alerts"]
+    assert alerts == [{"monitorId": "5", "channelId": "10", "mode": "simple"}]
+    assert ext.alerts_of("1") == {5: MonitorAlert(5, 10, AlertMode.SIMPLE, UP)}  # its baseline
+    assert ("status", 5, UP) in saved
+
+    await run(UptimeExtension.remove_maintenance_alert, ext, ctx, "5")
+    assert config_store.get()["servers"]["1"]["moduleUptime"]["alerts"] == []
+    assert ("forget", 5) in saved and ext.alerts_of("1") == {}

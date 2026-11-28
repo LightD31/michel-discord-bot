@@ -4,6 +4,7 @@ from features.uptime.models import (
     MonitorAlert,
     StatusChange,
     Transition,
+    alerts_from_settings,
     apply_statuses,
     transition,
 )
@@ -20,6 +21,7 @@ __all__ = [
     "StatusChange",
     "Transition",
     "UptimeRepository",
+    "alerts_from_settings",
     "apply_statuses",
     "render_alert",
     "transition",

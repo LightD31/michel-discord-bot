@@ -54,6 +54,7 @@ _TYPE_PLACEHOLDERS: dict[str, Any] = {
     "embedlist": [],
     "commandlist": [],
     "teams": [],
+    "uptimealerts": [],
     "models": [],
     "dict": {},
     "keyvaluemap": {},

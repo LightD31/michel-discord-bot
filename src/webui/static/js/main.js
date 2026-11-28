@@ -38,6 +38,7 @@ import './forms/widgets/rss.js';
 import './forms/widgets/spotify-users.js';
 import './forms/widgets/streamers.js';
 import './forms/widgets/teams.js';
+import './forms/widgets/uptime.js';
 import './forms/widgets/youtube.js';
 import './pages/audit.js';
 import './pages/bot-messages.js';

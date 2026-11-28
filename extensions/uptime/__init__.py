@@ -12,7 +12,7 @@ import asyncio
 
 from interactions import Client, Extension, listen
 
-from features.uptime import MonitorAlert, UptimeRepository
+from features.uptime import MonitorAlert, UptimeRepository, alerts_from_settings
 from src.core import logging as logutil
 from src.core.errors import DatabaseError
 from src.integrations.uptime_kuma import MonitorState, MonitorStatus
@@ -32,8 +32,9 @@ class UptimeExtension(Extension, CommandsMixin, NotificationsMixin, TasksMixin):
 
     def __init__(self, bot: Client):
         self.bot: Client = bot
-        # {guild_id: {monitor_id: alert}}, guilds with the module enabled only.
-        self.alerts: dict[str, dict[int, MonitorAlert]] = {}
+        # {guild_id: {monitor_id: the last settled status seen}}; the alerts
+        # themselves are the module's settings, read live (P42).
+        self.statuses: dict[str, dict[int, MonitorStatus | None]] = {}
         self._alerts_loaded = False
         # Each guild's last /metrics read, from its own Kuma (P37); kept while that
         # Kuma is unreachable so names still resolve.
@@ -58,23 +59,23 @@ class UptimeExtension(Extension, CommandsMixin, NotificationsMixin, TasksMixin):
         await self.push_status()
 
     async def load_alerts(self) -> None:
-        """Read every enabled guild's alerts; a guild that fails is retried by the next poll."""
-        alerts: dict[str, dict[int, MonitorAlert]] = {}
+        """Read the last statuses seen in every enabled guild; one that fails is retried."""
+        statuses: dict[str, dict[int, MonitorStatus | None]] = {}
         complete = True
         for guild_id in UPTIME.guild_ids():
             try:
-                alerts[guild_id] = await UptimeRepository(guild_id).load()
+                statuses[guild_id] = await UptimeRepository(guild_id).load_statuses()
             except DatabaseError as e:
-                logger.error("Guild %s: could not load uptime alerts: %s", guild_id, e)
+                logger.error("Guild %s: could not load uptime statuses: %s", guild_id, e)
                 complete = False
         async with self._state_lock:
-            self.alerts = alerts
+            self.statuses = statuses
             self._alerts_loaded = complete
-        logger.info(
-            "Uptime alerts loaded: %d across %d guilds",
-            sum(len(guild_alerts) for guild_alerts in alerts.values()),
-            len(alerts),
-        )
+        logger.info("Uptime statuses loaded for %d guilds", len(statuses))
+
+    def alerts_of(self, guild_id: str) -> dict[int, MonitorAlert]:
+        """The guild's alerts as its settings say now, each with its last status seen."""
+        return alerts_from_settings(UPTIME.get(guild_id), self.statuses.get(guild_id, {}))
 
     def current_status(self, guild_id: str, monitor_id: int) -> MonitorStatus | None:
         """The monitor's status in the guild's last /metrics read, ``None`` if it wasn't there."""

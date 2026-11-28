@@ -21,6 +21,7 @@ import { rssFeedMapField } from './widgets/rss.js';
 import { spotifyMapField } from './widgets/spotify-users.js';
 import { streamerMapField } from './widgets/streamers.js';
 import { teamsField } from './widgets/teams.js';
+import { uptimeAlertsField } from './widgets/uptime.js';
 import { youtubeChannelMapField } from './widgets/youtube.js';
 
 // "Entre 2 et 50", from a number field's schema bounds.
@@ -170,6 +171,7 @@ export const FIELDS = {
     string: stringField,
     models: modelsField,
     teams: teamsField,
+    uptimealerts: uptimeAlertsField,
     discord2name: nameMapField,
     keyvaluemap: keyValueMapField,
     streamermap: streamerMapField,

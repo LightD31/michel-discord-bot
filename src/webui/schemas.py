@@ -284,6 +284,7 @@ NESTED_CHANNEL_KEYS: dict[str, tuple[str, ...]] = {
     "rssfeedmap": ("channel_id",),
     "streamermap": ("twitchNotificationChannelId", "twitchPlanningChannelId"),
     "teams": ("channelId",),
+    "uptimealerts": ("channelId",),
 }
 
 

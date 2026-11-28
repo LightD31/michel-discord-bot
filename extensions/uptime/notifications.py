@@ -2,6 +2,7 @@
 
 import asyncio
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 from interactions import Client, Embed, MessageableMixin
 
@@ -19,7 +20,7 @@ from src.core.errors import DatabaseError
 from src.core.logging import log_failure
 from src.discord_ext.channels import fetch_guild_channel
 from src.discord_ext.look import Kind, card
-from src.integrations.uptime_kuma import MonitorState
+from src.integrations.uptime_kuma import MonitorState, MonitorStatus
 
 logger = logutil.init_logger(__name__)
 
@@ -48,17 +49,23 @@ class NotificationsMixin:
 
     # Set up by the extension (__init__.py).
     bot: Client
-    alerts: dict[str, dict[int, MonitorAlert]]
+    statuses: dict[str, dict[int, MonitorStatus | None]]
     _state_lock: asyncio.Lock
+
+    if TYPE_CHECKING:
+
+        def alerts_of(self, guild_id: str) -> dict[int, MonitorAlert]: ...
 
     async def apply_states(self, guild_id: str, states: dict[int, MonitorState]) -> None:
         """Advance the guild's alerts with a read of its own Kuma."""
         async with self._state_lock:
             changes = apply_statuses(
-                {guild_id: self.alerts.get(guild_id, {})},
+                {guild_id: self.alerts_of(guild_id)},
                 {i: s.status for i, s in states.items()},
             )
             for change in changes:
+                seen = self.statuses.setdefault(change.guild_id, {})
+                seen[change.alert.monitor_id] = change.alert.last_status
                 try:
                     await UptimeRepository(change.guild_id).set_last_status(
                         change.alert.monitor_id, change.alert.last_status

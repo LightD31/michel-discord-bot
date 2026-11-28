@@ -1,5 +1,9 @@
 """Shared config schema and constants for the Uptime extension."""
 
+from typing import Literal
+
+from pydantic import BaseModel, ConfigDict, Field
+
 from src.core.config import ModuleConfig
 from src.webui.schemas import (
     ModuleHelp,
@@ -11,12 +15,22 @@ from src.webui.schemas import (
 )
 
 
+class UptimeAlertEntry(BaseModel):
+    """One alert of the ``uptimealerts`` widget: a monitor, where it posts, how much (P42)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    monitorId: str = Field(pattern=r"^[0-9]{1,12}$")
+    channelId: str = Field(min_length=1)
+    mode: Literal["simple", "detailed"] = "detailed"
+
+
 @register_module("moduleUptime")
 class UptimeConfig(SchemaBase):
     __label__ = "Uptime"
     __description__ = (
         "Suivi Uptime Kuma : statut des serveurs et notifications de maintenance. "
-        "Les capteurs se configurent via /uptime, sur l'instance Kuma du serveur."
+        "Les alertes se règlent ici ou avec /uptime, sur l'instance Kuma du serveur."
     )
     __icon__ = "📡"
     __category__ = "Outils"
@@ -44,6 +58,15 @@ class UptimeConfig(SchemaBase):
             "d'où le bot tire l'état des capteurs toutes les 30 secondes."
         ),
         sent_to=("uptimeKumaUrl",),
+    )
+    alerts: list[UptimeAlertEntry] = ui(
+        "Alertes de maintenance",
+        "uptimealerts",
+        description=(
+            "Chaque capteur suivi, le salon où annoncer ses pannes, maintenances et retours, "
+            "et le détail des annonces. La liste des capteurs vient de l'instance Kuma "
+            "ci-dessus, une fois enregistrée."
+        ),
     )
 
 
