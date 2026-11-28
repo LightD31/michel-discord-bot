@@ -77,17 +77,9 @@ class BansMixin:
         context_id = get_context_id(ctx)
         if not await self._organiser_check(ctx, context_id):
             return
-        banned_pairs = await self.repository.read_banned_pairs(context_id)
-
-        for p1, p2 in banned_pairs:
-            if (user1.id == p1 and user2.id == p2) or (user1.id == p2 and user2.id == p1):
-                await send_error(
-                    ctx, "Ces utilisateurs sont déjà interdits de se tirer mutuellement."
-                )
-                return
-
-        banned_pairs.append((user1.id, user2.id))
-        await self.repository.write_banned_pairs(context_id, banned_pairs)
+        if not await self.repository.exclude_pair(context_id, int(user1.id), int(user2.id)):
+            await send_error(ctx, "Ces utilisateurs sont déjà interdits de se tirer mutuellement.")
+            return
 
         await ctx.send(
             embed=card(
@@ -125,21 +117,13 @@ class BansMixin:
         context_id = get_context_id(ctx)
         if not await self._organiser_check(ctx, context_id):
             return
-        banned_pairs = await self.repository.read_banned_pairs(context_id)
-
-        new_pairs = [
-            (p1, p2)
-            for p1, p2 in banned_pairs
-            if not ((user1.id == p1 and user2.id == p2) or (user1.id == p2 and user2.id == p1))
-        ]
-
-        if len(new_pairs) == len(banned_pairs):
+        if not await self.repository.allow_pair(context_id, int(user1.id), int(user2.id)):
             await send_error(
-                ctx, "Ces utilisateurs ne sont pas interdits de se tirer mutuellement."
+                ctx,
+                "Ces utilisateurs ne sont pas interdits de se tirer mutuellement : "
+                "`/secretsanta paires-exclues` liste les paires interdites.",
             )
             return
-
-        await self.repository.write_banned_pairs(context_id, new_pairs)
 
         await ctx.send(
             embed=card(

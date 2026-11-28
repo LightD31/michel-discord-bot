@@ -3459,6 +3459,9 @@ body.has-save-bar .toast-container { bottom: 88px; }
 .santa-reveal { margin-top: 16px; display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
 .santa-reveal-note { color: var(--text-muted); font-size: 13px; margin: 0; }
 .santa-pairs li { gap: 8px; }
+/* Excluded pairs (P42): two member pickers and the button, wrapping on a phone. */
+.santa-exclude { margin-top: 12px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.santa-exclude .member-picker { flex: 1 1 220px; min-width: 0; }
 
 /* Reported messages on the Modération page (P15). */
 .report-item { border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; margin-bottom: 8px; display: flex; flex-direction: column; gap: 6px; }
