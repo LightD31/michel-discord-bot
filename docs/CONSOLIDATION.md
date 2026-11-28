@@ -83,7 +83,7 @@ Measured on `master` at `ab9f4c3` (P42c):
 | P61 | README and command names in the docs, checked | 40 | 80 | none |
 | P62 | Global sections' schemas next to their extension *(decided: yes)* | 360 | 340 | medium |
 | | **Dashboard lots** (P46–P55) | ≈ 280 | ≈ 3150 | net ≈ +2870 |
-| | **Consolidation lots** (P43–P45, P56–P61) | **≈ 1435** | **≈ 1290** | net ≈ −145, coverage up |
+| | **Consolidation lots** (P43–P45, P56–P62) | **≈ 1795** | **≈ 1630** | net ≈ −165, coverage up |
 
 P60 adds more than it removes, on purpose: it moves code into `features/` and
 tests it. Without it, the consolidation lots remove about 1285 lines and add
@@ -277,7 +277,7 @@ dashboard can't be acted on there.
   actions, in the danger style. It opens a warning dialog that names the
   member and says what a ban does: they are removed from the server, can't
   come back until unbanned, and are told by DM when the server sends one. It
-  also offers the same option as `/bannir` to delete their recent messages.
+  also offers `/bannir`'s `jours-messages` option, to delete their recent messages.
   The confirm button reads « Bannir <name> », and the focus starts on
   « Annuler » (the app's `askConfirm(…, { danger: true })`), so Entrée doesn't
   ban.
