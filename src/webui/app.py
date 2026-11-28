@@ -62,6 +62,9 @@ from src.webui.routes import (
     gazette as gazette_routes,
 )
 from src.webui.routes import (
+    giveaways as giveaways_routes,
+)
+from src.webui.routes import (
     health as health_routes,
 )
 from src.webui.routes import (
@@ -225,6 +228,7 @@ def create_app(bot=None, bot_loop=None) -> FastAPI:
     app.include_router(moderation_routes.create_router(ctx))
     app.include_router(secretsanta_routes.create_router(ctx))
     app.include_router(gazette_routes.create_router(ctx))
+    app.include_router(giveaways_routes.create_router(ctx))
     app.include_router(agenda_routes.create_router(ctx))
     app.include_router(achievements_routes.create_router(ctx))
     app.include_router(incidents_routes.create_router(ctx))

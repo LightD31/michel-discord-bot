@@ -6,9 +6,10 @@ from types import SimpleNamespace
 import pytest
 from interactions import Embed
 
-import extensions.giveaway as giveaway_module
-from extensions.giveaway import MAX_DRAW_FAILURES, GiveawayExtension
+import src.discord_ext.giveaway as shared
+from extensions.giveaway import GiveawayExtension
 from features.giveaway import Giveaway
+from src.discord_ext.giveaway import MAX_DRAW_FAILURES
 
 
 class FakeRepo:
@@ -63,7 +64,7 @@ def ext(monkeypatch):
     async def fake_edit(message, **kwargs):
         edits.append(kwargs)
 
-    monkeypatch.setattr(giveaway_module, "edit_message_if_changed", fake_edit)
+    monkeypatch.setattr(shared, "edit_message_if_changed", fake_edit)
     extension = object.__new__(GiveawayExtension)  # skip interactions' Extension wiring
     extension.repo = FakeRepo()
     extension._repo = lambda guild_id: extension.repo
