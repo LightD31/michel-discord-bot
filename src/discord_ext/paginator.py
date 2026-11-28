@@ -82,7 +82,11 @@ class CustomPaginator(paginators.Paginator):
                 if self.callback is not None:
                     return await self.callback(ctx)
 
-        await ctx.edit_origin(**self.payload())
+        # ``edit_origin`` takes no ``flags``; the message already carries
+        # IS_COMPONENTS_V2, which Discord keeps on every later edit.
+        payload = self.payload()
+        payload.pop("flags", None)
+        await ctx.edit_origin(**payload)
         return None
 
 

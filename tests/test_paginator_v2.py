@@ -30,3 +30,27 @@ def test_a_v2_paginator_shows_its_page_as_a_card_with_its_buttons_under_it():
     assert parts[0]["type"] == 17  # the page's card
     assert "Classement (page 1)" in parts[0]["components"][0]["content"]
     assert all(part["type"] == 1 for part in parts[1:]) and parts[1:]  # rows of buttons
+
+
+async def test_a_button_on_a_v2_paginator_edits_with_what_edit_origin_takes():
+    """``edit_origin`` has no ``flags``: passing the payload whole raised (MICHEL-DISCORD-BOT-3)."""
+    import inspect
+
+    from interactions import ComponentContext
+
+    accepted = inspect.signature(ComponentContext.edit_origin)
+    edits = []
+
+    class Ctx:
+        custom_id = "uuid|next"
+
+        async def edit_origin(self, **kwargs):
+            accepted.bind(None, **kwargs)  # a TypeError, as in production, if a kwarg is unknown
+            edits.append(kwargs)
+
+    found = paginator(True)
+    await found._on_button(Ctx())
+
+    assert found.page_index == 1
+    parts = process_components(edits[0]["components"])
+    assert "Classement (page 2)" in parts[0]["components"][0]["content"]

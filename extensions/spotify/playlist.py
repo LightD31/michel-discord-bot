@@ -478,6 +478,10 @@ class PlaylistMixin(SpotifyBase):
 
     async def _new_titles_playlist_for_server(self, server: ServerData):
         logger.debug("new_titles_playlist lancé pour le serveur %s", server.guild_id)
+        if not server.playlist_id or not server.new_playlist_id:
+            # Both playlists are optional settings: no découvertes without them.
+            logger.debug("Pas de playlist découvertes configurée sur %s", server.guild_id)
+            return
 
         results = await server.spotify.playlist_tracks(
             playlist_id=server.playlist_id, limit=100, offset=0

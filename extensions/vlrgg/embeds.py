@@ -3,27 +3,33 @@
 from datetime import UTC, datetime
 from typing import Any
 
-from interactions import Embed, Timestamp
+from interactions import ContainerComponent, Embed, Timestamp
 
 from features.vlrgg import (
+    BracketMatch,
+    BracketRound,
+    Competition,
+    StandingTable,
     event_and_series,
     expand_round_name,
     live_round_score,
     map_scores,
+    round_label,
     same_team_name,
     team_side,
     top_players,
     veto_line,
 )
 from src.core.text import format_discord_timestamp
-from src.discord_ext.look import SPACER_FIELD, Kind, card, sign
+from src.discord_ext.look import SPACER_FIELD, V2_TEXT_LIMIT, Kind, card, embeds_to_v2, sign
 
 from ._base import VlrggBase
-from ._common import (
-    MAX_PAST_MATCHES,
-    MAX_UPCOMING_MATCHES,
-    TeamConfig,
-)
+from ._common import ScheduleDisplay, TeamConfig
+
+# Le planning entier tient dans un message V2 (4000 caractères de texte en tout) :
+# la compétition en prend au plus ceci, les tours les plus anciens cédant la place.
+COMPETITION_TEXT_BUDGET = 1600
+FIELD_LIMIT = 1024
 
 
 def _media_url(url: str) -> str:
@@ -37,18 +43,64 @@ def _ts(epoch: int, style: str) -> str:
     return format_discord_timestamp(datetime.fromtimestamp(epoch, UTC), style)
 
 
+def _text_size(component: Any) -> int:
+    """Caractères de texte d'un composant V2 et de ceux qu'il contient."""
+    own = len(getattr(component, "content", None) or "")
+    return own + sum(_text_size(c) for c in getattr(component, "components", None) or [])
+
+
+def fit_v2(embeds: list[Embed], limit: int = V2_TEXT_LIMIT) -> list[ContainerComponent]:
+    """Les cartes V2 du planning, dans la limite de texte d'un message Discord.
+
+    Tant que le tout dépasse *limit*, la carte la plus fournie perd son dernier
+    champ (le match le plus ancien, ou le plus lointain) ; elle en garde un.
+    """
+    cards = embeds_to_v2(embeds)
+    while sum(_text_size(c) for c in cards) > limit:
+        fullest = max(embeds, key=lambda e: len(e.fields or []), default=None)
+        if fullest is None or len(fullest.fields or []) <= 1:
+            break
+        fullest.fields.pop()
+        if fullest.fields and fullest.fields[-1].name == SPACER_FIELD["name"]:
+            fullest.fields.pop()
+        cards = embeds_to_v2(embeds)
+    return cards
+
+
+def _fit_lines(lines: list[tuple[bool, str]], limit: int) -> str:
+    """Les lignes qui tiennent dans *limit*, celle de l'équipe suivie gardée en dernier recours."""
+    kept: list[str] = []
+    total = 0
+    for _, line in lines:
+        if total + len(line) + 1 > limit - 80:  # place pour « … » et la ligne de l'équipe
+            break
+        kept.append(line)
+        total += len(line) + 1
+    if len(kept) < len(lines):
+        kept.append("…")
+        ours = [line for flag, line in lines[len(kept) - 1 :] if flag]
+        kept.extend(ours[:1])
+    return "\n".join(kept)[:limit]
+
+
 class EmbedsMixin(VlrggBase):
     """Mixin providing embed-building helpers for VLR.gg data."""
 
     # ── Top-level embed builder ───────────────────────────────────────────────
 
-    def _build_vlrgg_embeds(self, vlr_data: dict[str, Any], team: str) -> list[Embed]:
+    def _build_vlrgg_embeds(
+        self,
+        vlr_data: dict[str, Any],
+        team: str,
+        display: ScheduleDisplay,
+        competition: Competition | None = None,
+    ) -> list[Embed]:
         """Construit les embeds Discord à partir des données VLR.gg."""
         embeds = []
         profile = vlr_data.get("profile") or {}
         logo = _media_url(str(profile.get("logo") or ""))
 
-        results = vlr_data.get("results", [])
+        results = vlr_data.get("results", [])[: display.past]
         if results:
             past_embed = self._create_base_embed(
                 f"Derniers matchs de {team}",
@@ -57,7 +109,7 @@ class EmbedsMixin(VlrggBase):
             )
             if logo:
                 past_embed.set_thumbnail(url=logo)
-            for i, match in enumerate(results[:MAX_PAST_MATCHES]):
+            for i, match in enumerate(results):
                 field_data = self._format_vlrgg_result(match, team)
                 past_embed.add_field(
                     name=field_data["name"], value=field_data["value"], inline=True
@@ -78,13 +130,13 @@ class EmbedsMixin(VlrggBase):
                 )
             embeds.append(live_embed)
 
-        upcoming = vlr_data.get("upcoming", [])
+        upcoming = vlr_data.get("upcoming", [])[: display.upcoming]
         if upcoming:
             upcoming_embed = self._create_base_embed(
                 f"Prochains matchs de {team}",
                 footer_text="Source : VLR.gg",
             )
-            for i, match in enumerate(upcoming[:MAX_UPCOMING_MATCHES]):
+            for i, match in enumerate(upcoming):
                 field_data = self._format_vlrgg_upcoming(match)
                 upcoming_embed.add_field(
                     name=field_data["name"], value=field_data["value"], inline=True
@@ -93,7 +145,102 @@ class EmbedsMixin(VlrggBase):
                     upcoming_embed.add_field(**SPACER_FIELD)
             embeds.append(upcoming_embed)
 
+        if competition is not None:
+            official = str(profile.get("name") or team)
+            embed = self._build_competition_embed(competition, official)
+            if embed is not None:
+                embeds.append(embed)
+
         return embeds
+
+    # ── Compétition en cours ──────────────────────────────────────────────────
+
+    def _build_competition_embed(self, competition: Competition, team: str) -> Embed | None:
+        """Classement ou arbre de la phase que joue l'équipe, None s'il n'y a rien à montrer."""
+        if competition.view == "standings":
+            fields = [
+                self._standings_field(t, team, len(competition.tables) > 1)
+                for t in competition.tables
+            ]
+            view_label = "Classement"
+        else:
+            fields = self._bracket_fields(competition.rounds, team)
+            view_label = "Arbre"
+        if not fields:
+            return None
+        stage = expand_round_name(competition.stage)
+        link = f"[VLR.gg]({competition.url})" if competition.url else ""
+        embed = card(
+            "moduleVlrgg",
+            title=f"🏆 {competition.name or stage or 'Compétition'}",
+            # Lien dans la description : un titre lié s'affiche en markdown brut en V2
+            description=" · ".join(p for p in (stage, view_label, link) if p),
+            timestamp=Timestamp.now(),
+        )
+        for name, value in fields:
+            embed.add_field(name=name, value=value, inline=False)
+        logo = _media_url(competition.logo)
+        if logo:
+            embed.set_thumbnail(url=logo)
+        sign(embed, "moduleVlrgg", "Source : VLR.gg")
+        return embed
+
+    @staticmethod
+    def _standings_field(table: StandingTable, team: str, titled: bool) -> tuple[str, str]:
+        """Une table : rang, équipe (la suivie en gras), bilan, maps, différence de rounds."""
+        lines = []
+        for row in table.rows:
+            ours = same_team_name(team, row.team)
+            name = f"**{row.team}** ⭐" if ours else row.team
+            stats = " · ".join(
+                p
+                for p in (
+                    f"{row.wins}-{row.losses}",
+                    f"maps {row.maps}" if row.maps else "",
+                    f"Δ {row.rounds_diff}" if row.rounds_diff else "",
+                )
+                if p
+            )
+            lines.append((ours, f"`{row.rank:>2}.` {name} — {stats}"))
+        return (table.title if titled else "\u200b", _fit_lines(lines, FIELD_LIMIT))
+
+    def _bracket_fields(self, rounds: list[BracketRound], team: str) -> list[tuple[str, str]]:
+        """Un champ par tour ; au-delà du budget, les tours joués sans l'équipe partent d'abord."""
+        fields = [
+            (round_label(r.name), [self._bracket_line(m, team) for m in r.matches], r)
+            for r in rounds
+        ]
+
+        def size() -> int:
+            return sum(
+                len(name) + sum(len(line) + 1 for line in lines) for name, lines, _ in fields
+            )
+
+        def removable(rnd: BracketRound) -> bool:
+            return all(m.played for m in rnd.matches) and not any(
+                same_team_name(team, m.team1) or same_team_name(team, m.team2) for m in rnd.matches
+            )
+
+        for keep_ours in (True, False):
+            for entry in list(fields):
+                if size() <= COMPETITION_TEXT_BUDGET or len(fields) == 1:
+                    break
+                if not keep_ours or removable(entry[2]):
+                    fields.remove(entry)
+        return [(name, "\n".join(lines)[:FIELD_LIMIT]) for name, lines, _ in fields]
+
+    def _bracket_line(self, match: BracketMatch, team: str) -> str:
+        """« **GIANTX** 2-0 Pixel Lumina », « 🔴 A 1-0 B », « A vs B »."""
+        ours = same_team_name(team, match.team1) or same_team_name(team, match.team2)
+        star = " ⭐" if ours else ""
+        t1 = f"**{match.team1}**" if match.winner == 0 else match.team1
+        t2 = f"**{match.team2}**" if match.winner == 1 else match.team2
+        if match.live:
+            return f"🔴 {match.team1} {match.score1}-{match.score2} {match.team2}{star}"
+        if match.played:
+            score = self._format_score(match.score1, match.score2)
+            return f"{t1} {score} {t2}{star}"
+        return f"{match.team1} vs {match.team2}{star}"
 
     @staticmethod
     def _rank_line(profile: dict[str, Any]) -> str:

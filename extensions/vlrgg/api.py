@@ -4,7 +4,7 @@ from typing import Any
 
 from interactions import Embed
 
-from features.vlrgg import VlrggLiveRepository, match_id_of
+from features.vlrgg import Competition, VlrggLiveRepository, fetch_team_competition, match_id_of
 from features.vlrgg import (
     fetch_all_team_data as vlrgg_fetch_all,
 )
@@ -12,7 +12,7 @@ from src.core.logging import log_failure
 from src.discord_ext.channels import fetch_guild_channel
 
 from ._base import VlrggBase
-from ._common import TeamConfig, logger
+from ._common import ScheduleDisplay, TeamConfig, logger
 
 
 class ApiMixin(VlrggBase):
@@ -21,25 +21,39 @@ class ApiMixin(VlrggBase):
     # ── Fetch helpers ─────────────────────────────────────────────────────────
 
     async def _fetch_team_schedule(
-        self, tc: TeamConfig
+        self, tc: TeamConfig, display: ScheduleDisplay
     ) -> tuple[list[Embed], dict[str, Any], dict[str, Any]]:
         """Récupère le planning, les matchs en cours et les données brutes via VLR.gg."""
-        vlr_data = await self._fetch_vlrgg_data(tc)
+        vlr_data = await self._fetch_vlrgg_data(tc, enrich=display.past)
         if not vlr_data:
             logger.warning(f"{tc.name}: aucune donnée VLR.gg disponible")
             return [], {}, {}
 
-        embeds = self._build_vlrgg_embeds(vlr_data, tc.name)
+        competition = await self._fetch_competition(tc, vlr_data, display)
+        embeds = self._build_vlrgg_embeds(vlr_data, tc.name, display, competition)
         ongoing = self._extract_vlrgg_ongoing(vlr_data)
         return embeds, ongoing, vlr_data
 
-    async def _fetch_vlrgg_data(self, tc: TeamConfig) -> dict[str, Any] | None:
+    async def _fetch_competition(
+        self, tc: TeamConfig, vlr_data: dict[str, Any], display: ScheduleDisplay
+    ) -> Competition | None:
+        """La compétition en cours de l'équipe, si le serveur l'affiche (None sinon)."""
+        if display.competition == "off":
+            return None
+        official = str((vlr_data.get("profile") or {}).get("name") or tc.name)
+        try:
+            return await fetch_team_competition(vlr_data, display.competition, official)
+        except Exception as e:
+            log_failure(logger, f"Compétition VLR.gg introuvable pour {tc.name}: {e}")
+            return None
+
+    async def _fetch_vlrgg_data(self, tc: TeamConfig, enrich: int = 6) -> dict[str, Any] | None:
         """Récupère les données VLR.gg pour une équipe."""
         if not tc.vlr_team_id:
             logger.warning(f"{tc.name}: aucun vlrTeamId configuré")
             return None
         try:
-            data = await vlrgg_fetch_all(tc.vlr_team_id, tc.name)
+            data = await vlrgg_fetch_all(tc.vlr_team_id, tc.name, enrich=enrich)
             total = (
                 len(data.get("results", []))
                 + len(data.get("upcoming", []))

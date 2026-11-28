@@ -11,6 +11,7 @@ import { XP_STATS_RANGES } from '../features/xp.js';
 import { memberPickerHtml } from '../forms/pickers/members.js';
 import { commandSyncSuffix } from '../forms/save.js';
 import { renderSchemaForm } from '../forms/schema-form.js';
+import { cardHtml } from '../ui/card.js';
 import { openModal } from '../ui/modal.js';
 import { toast } from '../ui/toast.js';
 import { renderConfigPreview } from './global.js';
@@ -155,23 +156,14 @@ export function renderModulePage() {
 
             ${mod === 'moduleAchievements' ? achievementsCardHtml(sid) : ''}
 
-            ${raw(mod === 'moduleGazette' ? `
-            <div class="u-mt-16 card">
-                <div class="card-header">
-                    <div>
-                        <div class="card-title">📰 Aperçu de cette semaine</div>
-                        <div class="card-subtitle">Ce que dirait la Gazette si elle paraissait maintenant (les 7 derniers jours).</div>
-                    </div>
-                    <div class="card-actions">
-                        <button class="btn btn-ghost btn-sm" data-click="loadGazette" data-click-args="${actionArgs(sid)}">↻ Actualiser</button>
-                        <button class="btn btn-primary btn-sm" data-click="publishGazette" data-click-args="${actionArgs(sid, EL)}">📰 Publier maintenant</button>
-                    </div>
-                </div>
-                <div id="gazette-preview" data-server-id="${sid}">
-                    <div class="loading"><div class="spinner"></div></div>
-                </div>
-            </div>
-            ` : '')}
+            ${mod === 'moduleGazette' ? cardHtml({
+                className: 'u-mt-16',
+                bodyId: 'gazette-preview',
+                title: '📰 Aperçu de cette semaine',
+                subtitle: 'Ce que dirait la Gazette si elle paraissait maintenant (les 7 derniers jours).',
+                tools: html`<button class="btn btn-ghost btn-sm" data-click="loadGazette" data-click-args="${actionArgs(sid)}">↻ Actualiser</button>
+                        <button class="btn btn-primary btn-sm" data-click="publishGazette" data-click-args="${actionArgs(sid, EL)}">📰 Publier maintenant</button>`,
+            }) : ''}
 
             ${raw(mod === 'moduleModeration' ? `
             <div class="u-mt-16 card">

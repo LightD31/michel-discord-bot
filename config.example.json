@@ -383,7 +383,10 @@
                 "enabled": false,
                 "notificationChannelId": "",
                 "teams": [],
-                "reminderMinutes": 15
+                "reminderMinutes": 15,
+                "pastMatches": 6,
+                "upcomingMatches": 6,
+                "competitionView": "off"
             },
             "moduleWelcome": {
                 "enabled": false,

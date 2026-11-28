@@ -126,7 +126,7 @@ async def test_a_vlrgg_team_schedule_goes_to_its_slot(resolver, monkeypatch):
     async def shorten(embeds, guild_id, tags):
         return embeds
 
-    async def fetch(tc):
+    async def fetch(tc, display):
         return [card("moduleVlrgg", title="Planning KC")], [], None
 
     async def nothing(*args):
