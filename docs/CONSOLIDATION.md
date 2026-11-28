@@ -65,8 +65,8 @@ Measured on `master` at `ab9f4c3` (P42c):
 | P45 | The module page's cards in one registry (before the dashboard lots) | 170 | 70 | low |
 | | **The dashboard** | | | |
 | P46 | **new** Suggestions: the staff's board on the module page | 60 | 380 | low |
-| P47 | **new** Secret Santa: create, change and cancel the session from its card | 40 | 320 | medium |
-| P48 | **new** Moderation: sanction a member from the dashboard | 150 | 450 | high |
+| P47 | **new** Secret Santa: create, change and cancel the session from its card (creating: administrators only, here and in Discord) | 40 | 320 | medium (members: `/secretsanta creer` becomes admin-only) |
+| P48 | **new** Moderation: sanction a member from the dashboard, ban included behind a warning | 150 | 470 | high |
 | P49 | **new** « Mon espace »: my ZUnivers and Spotify reminders, my suggestions, my giveaways | 0 | 380 | low |
 | P50 | **new** « Mon espace »: Tricount expenses, not only balances | 30 | 380 | medium |
 | P51 | **new** Module pages that show the module: birthdays, AI ranking and usage, polls, the Zevent recap | 0 | 420 | low |
@@ -81,8 +81,8 @@ Measured on `master` at `ab9f4c3` (P42c):
 | P59 | Test fakes, round two | 620 | 120 | low |
 | P60 | The event trackers' parsing in `features/`, tested | 150 | 520 | low |
 | P61 | README and command names in the docs, checked | 40 | 80 | none |
-| P62 | *(optional)* Global sections' schemas next to their extension | 360 | 340 | medium |
-| | **Dashboard lots** (P46–P55) | ≈ 280 | ≈ 3130 | net ≈ +2850 |
+| P62 | Global sections' schemas next to their extension *(decided: yes)* | 360 | 340 | medium |
+| | **Dashboard lots** (P46–P55) | ≈ 280 | ≈ 3150 | net ≈ +2870 |
 | | **Consolidation lots** (P43–P45, P56–P61) | **≈ 1435** | **≈ 1290** | net ≈ −145, coverage up |
 
 P60 adds more than it removes, on purpose: it moves code into `features/` and
@@ -146,7 +146,8 @@ The value stays the id, so pasting one still works. A guard in
 is a user, role or channel option, or has an autocomplete.
 
 `/effacer avant|apres` (a message id, `admin/__init__.py:142,149`) stays as it
-is: no autocomplete lists messages. The guard names it as the one exception.
+is *(decided)*: no autocomplete lists messages. The guard names it as the one
+exception.
 
 **Lines** −20 / +140. **Risk** low.
 
@@ -236,13 +237,27 @@ An admin preparing December has to do it from Discord, in the right channel.
 - **Routes**: `POST /api/servers/{id}/secretsanta/session`, `PUT` and `DELETE`
   on the same path.
 
-**Rules**: creating is open to any member in Discord. Here it is the admin
-tier, and the dashboard user can write in the chosen channel (`CAN_SEND`, read
-live, as for the Gazette). Changing or cancelling is for the session's creator
-or an administrator, as in Discord and as the draw already is.
+**Rules** *(decided: administrators only, on both sides)*:
 
-**Lines** −40 (moved) / +320. **Risk** medium: the announcement is
-member-visible, and it is the same message as today's.
+- **Creating** a session takes an administrator of the server (ADMINISTRATOR
+  or the owner, read live), on the dashboard and in Discord.
+  `/secretsanta creer` gets `ADMINISTRATOR` as its default permission and
+  checks it again in the handler with `is_guild_admin()`, as `/zevent-fin`
+  does, since a server can open a command's default to everyone. On the
+  dashboard, the admin tier is not enough: `ctx.guild_access` reads the
+  permission. The dashboard user must also be able to write in the chosen
+  channel (`CAN_SEND`, read live, as for the Gazette).
+- **Changing or cancelling** stays for the session's creator or an
+  administrator, as in Discord and as the draw already is.
+
+**Lines** −40 (moved) / +320. **Risk** medium.
+
+**Member-visible**:
+
+- The announcement is the same message as today's.
+- A member who isn't an administrator can no longer start a session with
+  `/secretsanta creer`. It disappears from their command list, and the
+  refusal says to ask an administrator.
 
 ---
 
@@ -258,6 +273,14 @@ dashboard can't be acted on there.
 - **Member actions**: a « Sanctionner » menu on a member, from the infraction
   list, a report's row and a member picker. It offers « Avertir »,
   « Exclure (durée) », « Expulser » and « Bannir » with a reason.
+- **Ban, behind a warning** *(decided)*: « Bannir » sits apart from the other
+  actions, in the danger style. It opens a warning dialog that names the
+  member and says what a ban does: they are removed from the server, can't
+  come back until unbanned, and are told by DM when the server sends one. It
+  also offers the same option as `/bannir` to delete their recent messages.
+  The confirm button reads « Bannir <name> », and the focus starts on
+  « Annuler » (the app's `askConfirm(…, { danger: true })`), so Entrée doesn't
+  ban.
 - **Lift**: « Lever l'exclusion » and « Débannir » on the matching cases.
 - **Shared code**: `warn_member`, `timeout_member` and the others are already
   split from their commands (`extensions/moderation/commands.py:160,241…`,
@@ -274,8 +297,9 @@ dashboard can't be acted on there.
   No sanction on someone at or above you, or above the bot.
 - **Audit**: in the audit log, besides the case.
 
-**Lines** −150 (moved) / +450. **Risk** high: a ban is member-visible and hard
-to undo. The lot ships with a test per permission and per hierarchy refusal.
+**Lines** −150 (moved) / +470. **Risk** high: a ban is member-visible and hard
+to undo. The lot ships with a test per permission and per hierarchy refusal,
+and a browser test that the ban dialog opens with the focus on « Annuler ».
 
 ---
 
@@ -639,7 +663,7 @@ leading word.
 
 ---
 
-## P62 — *(optional)* Global sections' schemas next to their extension
+## P62 — Global sections' schemas next to their extension *(decided: yes)*
 
 **Finding.** Module schemas live with their extension (`_common.py`). Global
 sections don't: `src/webui/schemas.py` (984 lines, the largest file in `src/`)
@@ -657,11 +681,11 @@ extension:
 as modules do. `discord`, `mongodb`, `twitch`, `webui` and `errorReporting`
 stay, since the core reads them. `schemas.py` drops to about 620 lines.
 
-**Why optional.** A section then exists only once its extension is imported.
-The dashboard and `generate_config_example.py` import every extension, so
-nothing changes today. But a section must not vanish from the global page if an
-extension failed to load: the lot adds a check for that. The gain is where
-things live, not lines.
+**What to watch.** A section then exists only once its extension is
+imported. The dashboard and `generate_config_example.py` import every
+extension, so nothing changes today. But a section must not vanish from the
+global page if an extension failed to load: the lot adds a check for that. The
+gain is where things live, not lines.
 
 **Lines** −360 / +340. **Risk** medium.
 
@@ -669,21 +693,15 @@ things live, not lines.
 
 ## Decisions
 
-Made:
+All made, on #280:
 
-1. **P43**: the draw file is no longer written (your answer on #280).
-
-Still open:
-
-2. **P62**: worth doing, or leave the global sections where they are?
-3. **P44**: is `/effacer avant|apres` fine as the one option left taking an id?
-   The other way is a message context-menu command, « Effacer jusqu'ici »,
-   which is a member-visible change.
-4. **P47**: creating a Secret Santa session is open to any member in Discord.
-   On the dashboard it would be admins only (the tier). Fine, or should
-   « Mon espace » offer it too?
-5. **P48**: sanctions from the dashboard are the riskiest lot (a ban is hard to
-   undo). Do it, or keep sanctions in Discord and stop at the list and revoke?
+1. **P43**: the draw file is no longer written.
+2. **P62**: yes, the global sections move next to their extension.
+3. **P44**: `/effacer avant|apres` keeps its message ids, the one exception.
+4. **P47**: creating a Secret Santa session is for administrators only, on the
+   dashboard and in Discord (`/secretsanta creer` included; member-visible).
+5. **P48**: sanctions from the dashboard, ban included, behind a warning
+   dialog.
 
 ---
 
