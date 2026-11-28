@@ -1,20 +1,43 @@
-# Consolidation round (P43–P55)
+# Consolidation round (P43–P62)
 
 P27–P42 are merged (the plan they followed is in this file's history, up to
-`ab9f4c3`). This round looks at what they left, and at what an earlier round
-missed: a copy of the Secret Santa draw that nothing deletes, ids still typed
-into slash options, the one extension that listens to every button, and a few
-modules with almost no tests. Three new features follow, each finishing a
-dashboard page P42 started.
+`ab9f4c3`). This round has two halves:
 
-Each lot is one PR, based on `master`. The consolidation lots are ranked by
-value: the first ones fix what a rule or `Privacy.md` says and the code doesn't
-do. The new features are marked **new**; they add code and can be picked in any
-order.
+- **Putting more on the dashboard** (your review: "emphasize on putting more
+  things on the WebUI"). Ten lots, P46–P55, bring to the Web UI what only a
+  slash command does today. On the admin side: the suggestions board, the
+  whole Secret Santa session, moderation sanctions, giveaway re-draws, RSS
+  feeds, LLDAP, backups, and the modules whose page is only their settings. On
+  the members' side, « Mon espace » gains what is theirs in five more modules.
+- **Consolidation**, P43–P45 and P56–P62:
+  - what P27–P42 left, and what an earlier round missed: a copy of the
+    Secret Santa draw that nothing deletes, ids still typed into slash options,
+    and the one extension that listens to every button;
+  - a few modules with almost no tests.
+
+Each lot is one PR, based on `master`. P43–P45 come first:
+
+- **P43** is decided.
+- **P44** changes the commands the dashboard lots sit next to.
+- **P45** gives the module page the card registry every dashboard lot adds to.
+
+The dashboard lots can then be picked in any order; they are ranked by how
+much they take off Discord. The consolidation lots after them are ranked by
+value.
+
+Every dashboard lot follows the rules P2–P42 set:
+
+- **Tiers**: the route checks its tier, and a route that makes the bot act
+  applies the rule the user would face in Discord (`dashboard-security.md`).
+- **Shared code**: it calls the same code as the command, moved to
+  `src/discord_ext/` when the route needs it (as `run_draw` and the giveaway
+  draw were).
+- **Audit and tests**: it is audited, and tested with `FakeWebUI`.
+- **Screenshots**: before/after, desktop and phone, with `tools/dashboard_demo.py`.
 
 Line counts are rough: `−` is what goes, `+` what comes. "Risk" is the chance
 of breaking something a member or an admin would notice. No lot changes what
-members see, except where it says so.
+members see in Discord, except where it says so.
 
 Measured on `master` at `ab9f4c3` (P42c):
 
@@ -26,33 +49,49 @@ Measured on `master` at `ab9f4c3` (P42c):
 - The least-tested files are Discord-layer modules that parse an API's payload
   themselves: `extensions/olympics/medals.py` 9 %, `mdi/embeds.py` 11 %,
   `twitch/schedule.py` 16 %, `zevent/api.py` 18 %, `vlrgg/commands.py` 18 %,
-  `spotify/playlist.py` 18 % (see P49).
+  `spotify/playlist.py` 18 % (see P60).
+- What the dashboard covers today, against the 115 slash commands:
+  - **Admins**: settings for every module, plus action cards for role menus,
+    moderation (list and revoke), Secret Santa (draw, reveal, exclusions), the
+    Gazette, giveaways (draw, cancel), Uptime alerts, Spotify and short links.
+  - **Members** (« Mon espace »): XP, reminders, birthday, Tricount balances,
+    Secret Santa, badges and the agenda.
+  - **Command-only**: the rest, listed lot by lot below.
 
 | Lot | What | − | + | Risk |
 |---|---|---|---|---|
-| P43 | The Secret Santa draw file: gone, or kept and deleted on time | 45 | 10 | low |
+| P43 | The Secret Santa draw file: no longer written *(decided)* | 45 | 10 | low |
 | P44 | No more ids typed into slash options | 20 | 140 | low (admins: autocomplete) |
-| P45 | Spotify votes: their own button callbacks, split, tested | 150 | 260 | medium |
-| P46 | Zevent's logo: a setting, not a file uploaded every 30 s | 10 | 20 | low |
-| P47 | Helpers written twice, round two, and the last dead code | 230 | 70 | low |
-| P48 | Test fakes, round two | 620 | 120 | low |
-| P49 | The event trackers' parsing in `features/`, tested | 150 | 520 | low |
-| P50 | The module page's cards in one registry | 170 | 70 | low |
-| P51 | README and command names in the docs, checked | 40 | 80 | none |
-| P52 | *(optional)* Global sections' schemas next to their extension | 360 | 340 | medium |
-| P53 | **new** Giveaways: recent draws and a new draw from the dashboard | 0 | 150 | low |
-| P54 | **new** RSS: each feed's state, and resetting it, on the module page | 0 | 170 | low |
-| P55 | **new** LLDAP: "Synchroniser maintenant" and the linked accounts on the module page | 0 | 180 | medium |
-| | **Consolidation lots** (P43–P51) | **≈ 1435** | **≈ 1290** | net ≈ −145, coverage up |
-| | **New features** (P53–P55) | 0 | ≈ 500 | net ≈ +500 |
+| P45 | The module page's cards in one registry (before the dashboard lots) | 170 | 70 | low |
+| | **The dashboard** | | | |
+| P46 | **new** Suggestions: the staff's board on the module page | 60 | 380 | low |
+| P47 | **new** Secret Santa: create, change and cancel the session from its card | 40 | 320 | medium |
+| P48 | **new** Moderation: sanction a member from the dashboard | 150 | 450 | high |
+| P49 | **new** « Mon espace »: my ZUnivers and Spotify reminders, my suggestions, my giveaways | 0 | 380 | low |
+| P50 | **new** « Mon espace »: Tricount expenses, not only balances | 30 | 380 | medium |
+| P51 | **new** Module pages that show the module: birthdays, AI ranking and usage, polls, the Zevent recap | 0 | 420 | low |
+| P52 | **new** Giveaways: recent draws and a new draw | 0 | 150 | low |
+| P53 | **new** RSS: each feed's state, and its reset | 0 | 170 | low |
+| P54 | **new** LLDAP: sync now, the linked accounts, and « Créer mon compte » | 0 | 260 | medium |
+| P55 | **new** Backups on the global page | 0 | 220 | low |
+| | **Consolidation** | | | |
+| P56 | Spotify votes: their own button callbacks, split, tested | 150 | 260 | medium |
+| P57 | Zevent's logo: a setting, not a file uploaded every 30 s | 10 | 20 | low |
+| P58 | Helpers written twice, round two, and the last dead code | 230 | 70 | low |
+| P59 | Test fakes, round two | 620 | 120 | low |
+| P60 | The event trackers' parsing in `features/`, tested | 150 | 520 | low |
+| P61 | README and command names in the docs, checked | 40 | 80 | none |
+| P62 | *(optional)* Global sections' schemas next to their extension | 360 | 340 | medium |
+| | **Dashboard lots** (P46–P55) | ≈ 280 | ≈ 3130 | net ≈ +2850 |
+| | **Consolidation lots** (P43–P45, P56–P61) | **≈ 1435** | **≈ 1290** | net ≈ −145, coverage up |
 
-P49 is the only lot that adds more than it removes, on purpose: it moves code
-into `features/` and tests it. Without it, the consolidation lots remove about
-1285 lines and add about 770.
+P60 adds more than it removes, on purpose: it moves code into `features/` and
+tests it. Without it, the consolidation lots remove about 1285 lines and add
+about 770.
 
 ---
 
-## P43 — The Secret Santa draw file
+## P43 — The Secret Santa draw file: no longer written *(decided)*
 
 **Finding.** Every draw writes a plain-text copy of who gives to whom, with each
 member's display name and username, to
@@ -72,15 +111,12 @@ The file adds nothing an admin needs: the results are in MongoDB, and the
 server's administrators read them with `/secretsanta reveler` or the
 dashboard's « Révéler » (P15), which records who looked.
 
-**Fix (recommended).** Stop writing the file: delete `save_human_readable_draw`
-and `DATA_DIR`. The PR lists the command that removes the files already on the
-volume (`rm data/secret_santa/draw_*.txt`), for you to run once.
+**Fix (decided: drop it).** Delete `save_human_readable_draw` and `DATA_DIR`.
+A test checks that a draw writes nothing under `data/`. The PR gives the
+command that removes the files already on the volume
+(`rm data/secret_santa/draw_*.txt`), for you to run once.
 
-**Alternative.** Keep it, delete it with the session (cancel, replace, the
-purge), add it to `/mes-donnees` and to `Privacy.md` §3 and §7.
-
-**Lines** −45 / +10 (a test that a draw writes nothing under `data/`).
-**Risk** low.
+**Lines** −45 / +10. **Risk** low.
 
 ---
 
@@ -118,7 +154,302 @@ is: no autocomplete lists messages. The guard names it as the one exception.
 
 ---
 
-## P45 — Spotify votes: their own button callbacks, split, tested
+## P45 — The module page's cards in one registry
+
+**Finding.** P41 put the server page's cards on `loadCard()`, but not the
+module page's:
+
+- **Frames**: `js/pages/module.js` builds five card frames by hand inside
+  `raw(\`…\`)`: role menus, Secret Santa, moderation (two), Spotify and XP
+  (`module.js:109-280`, 186 lines). Achievements, the Gazette and the giveaways
+  use `cardHtml()`.
+- **Loaders**: `js/core/render.js` starts their loaders with 8 branches of
+  `if (state.currentPage === 'module' && state.currentModule === '…')`.
+- **Spinners**: 25 literal `<div class="loading"><div class="spinner">…` remain
+  across 11 modules, where `SPINNER` exists (`js/ui/card.js`).
+
+**Fix.** A registry, `registerModuleCard('moduleXp', { html: sid => …, load: sid => … })`,
+called by each feature module. `module.js` draws the cards registered for the
+module, and `render.js` loads them in one loop. The five hand-built frames move
+onto `cardHtml()`, and the literal spinners become `SPINNER`. Adding a card
+then touches one file, not three.
+
+**Why before the dashboard lots.** P46–P55 add about a dozen cards and
+sections. The module page's cards among them would each add one more branch to
+`module.js` and one more to `render.js`.
+
+**Lines** −170 / +70. **Risk** low; before/after screenshots of the eight
+module pages with `tools/dashboard_demo.py --shots`.
+
+---
+
+## P46 — new: Suggestions, the staff's board on the module page
+
+**Today.** A suggestion is decided in Discord only, through ✅ / ❌ / 🛠️ on its
+post or `/suggestion approuver | refuser | implementer`. The Suggestions module
+page has its settings and nothing else. Seeing what is still pending means
+scrolling the channel.
+
+**Add.**
+
+- **Card**: « Suggestions » on the module page, filtered by status (en attente,
+  approuvées, refusées, réalisées). Each row shows its number, title, author,
+  👍 / 👎 counts, age and a link to its post and its « Discussion » thread.
+- **Decision**: three buttons, each asking for an optional reason (the same form
+  as Discord's), call the same decision as the buttons. That decision moves to
+  `src/discord_ext/suggestions.py`: `SuggestionsRepository.decide` with
+  `DECISIONS_FROM` (one conditional update, so a click in Discord at the same
+  time decides once), then the post edited, the line in the thread and the DM
+  to the author.
+- **Routes**: `GET /api/servers/{id}/suggestions?status=` and
+  `POST …/suggestions/{number}/decide`.
+
+**Rules**: the staff check of Discord, `is_staff()` with the module's
+`staffRoleId`, read live, on top of the admin tier. An admin who isn't staff
+sees the board but no buttons. Votes are counts only, never who voted.
+
+**Lines** −60 (moved) / +380. **Risk** low.
+
+---
+
+## P47 — new: Secret Santa, create, change and cancel the session from its card
+
+**Today.** The card draws, reveals and (P42b) sets the exclusions. The session
+itself is command-only:
+
+- `/secretsanta creer budget date colis` posts the announcement in the channel
+  where it is typed;
+- `/secretsanta modifier` and `/secretsanta annuler`.
+
+An admin preparing December has to do it from Discord, in the right channel.
+
+**Add.**
+
+- **No session**: the card's empty state becomes a form with a channel picker,
+  the budget, the exchange date (a date field) and « Par colis ».
+  « Créer la session » posts the same announcement as the command.
+- **Before the draw**: « Modifier » (budget, date) and « Annuler la session »,
+  in a danger dialog.
+- **Shared code**: the session's creation and cancellation move from
+  `extensions/secretsanta/sessions.py` to `src/discord_ext/secretsanta.py`,
+  where the draw already is.
+- **Routes**: `POST /api/servers/{id}/secretsanta/session`, `PUT` and `DELETE`
+  on the same path.
+
+**Rules**: creating is open to any member in Discord. Here it is the admin
+tier, and the dashboard user can write in the chosen channel (`CAN_SEND`, read
+live, as for the Gazette). Changing or cancelling is for the session's creator
+or an administrator, as in Discord and as the draw already is.
+
+**Lines** −40 (moved) / +320. **Risk** medium: the announcement is
+member-visible, and it is the same message as today's.
+
+---
+
+## P48 — new: Moderation, sanction a member from the dashboard
+
+**Today.** The moderation page lists the infractions and the reports, and can
+revoke an infraction. Every sanction is Discord-only: `/avertir`, `/exclure`,
+`/lever-exclusion`, `/expulser`, `/bannir`, `/debannir`. A report seen on the
+dashboard can't be acted on there.
+
+**Add.**
+
+- **Member actions**: a « Sanctionner » menu on a member, from the infraction
+  list, a report's row and a member picker. It offers « Avertir »,
+  « Exclure (durée) », « Expulser » and « Bannir » with a reason.
+- **Lift**: « Lever l'exclusion » and « Débannir » on the matching cases.
+- **Shared code**: `warn_member`, `timeout_member` and the others are already
+  split from their commands (`extensions/moderation/commands.py:160,241…`,
+  "the caller has checked `can_moderate`"). They move to
+  `src/discord_ext/moderation.py`, so the route records the case, DMs the
+  member and logs to the modlog exactly as the command does.
+
+**Rules**:
+
+- **Permission**: Discord's own for each action, read live on the dashboard
+  user. `MODERATE_MEMBERS` to warn and time out, `KICK_MEMBERS`,
+  `BAN_MEMBERS`; MANAGE_GUILD is not enough.
+- **Hierarchy**: `can_moderate(author, target, bot)`, the same as the command.
+  No sanction on someone at or above you, or above the bot.
+- **Audit**: in the audit log, besides the case.
+
+**Lines** −150 (moved) / +450. **Risk** high: a ban is member-visible and hard
+to undo. The lot ships with a test per permission and per hierarchy refusal.
+
+---
+
+## P49 — new: « Mon espace », my ZUnivers and Spotify reminders, my suggestions, my giveaways
+
+**Today.** « Mon espace » has seven sections (`SECTIONS`,
+`src/webui/member_space.py:31`): XP, reminders, birthday, Tricount, Secret
+Santa, badges, agenda. What a member sets or does in five other modules is only
+reachable by command.
+
+**Add**, each only where its module is on, as the others:
+
+| Section | Today, by command | In « Mon espace » |
+|---|---|---|
+| ZUnivers | `/zunivers journa activer \| retirer` (with Ninja and its strategy), `/zunivers 247 activer \| retirer \| statut` | both reminders on or off, Ninja and strategy, the 24/7 hours; when the next 24/7 window opens |
+| Spotify | `/musique rappel activer \| retirer` (the daily vote reminder) | the reminder's time, on or off |
+| Suggestions | nothing: a member finds their own by scrolling | their suggestions, with status, votes (counts) and the staff's reason |
+| Giveaways | nothing | the open giveaways they entered (with « Me retirer ») and the ones they won |
+
+**Routes**: member tier (`require_guild_member`) and the session's own user id
+only, as the other sections (`require_section`). Each writes through the same
+repository call as its command; the giveaway withdrawal is
+`GiveawayRepository.remove_entrant`, one conditional update. The suggestions
+and giveaways are read-only apart from that.
+
+**Lines** +380. **Risk** low.
+
+---
+
+## P50 — new: « Mon espace », Tricount expenses, not only balances
+
+**Today.** The Tricount section shows each group's balances and « J'ai
+remboursé » (`POST …/tricount/{group}/settle`). Everything else is 14
+commands: `/tricount depense`, `depenses`, `modifier-depense`,
+`supprimer-depense`, `recurrente ajouter | liste | arreter`, `graphique`… An
+expense is typed into option fields on a phone.
+
+**Add**, in each group of the section:
+
+- **Expenses**: the latest expenses, then « Voir tout ».
+- **Add**: « Ajouter une dépense », a form with amount, description, category,
+  who paid and the members who share it. It uses the group's members as a
+  picker, not ids.
+- **Change**: « Modifier » and « Supprimer » on the member's own expenses, as
+  the commands allow.
+- **Recurring**: the group's recurring expenses, and « Arrêter » on the
+  member's own.
+
+**Routes**: member tier, and the member must be in the group, as the commands
+check. Writes go through `TricountRepository`
+(`add_expense`, `update_expense_fields`, `delete_expense`, `stop_recurring`),
+filtered on the group and the author, as the commands are.
+
+**Lines** −30 / +380. **Risk** medium: balances are money the members owe each
+other; tests per refusal (not in the group, not the author).
+
+---
+
+## P51 — new: Module pages that show the module
+
+**Today.** Several module pages show only their settings, while the module
+keeps data an admin would look at:
+
+| Module | Command-only today | On its page |
+|---|---|---|
+| Birthdays | `/anniversaire liste` | the next birthdays (name, day, age where the year is known, as P7's rule says), and how many members set one |
+| AI Compare | `/classement-ia` (the models' ranking from the votes) | the ranking, and today's calls against the global and per-member limits (`features/ai/usage.py`), counts only |
+| Polls | nothing: running polls are only in their channels | the running anonymous and ranked polls: question, author, votes cast (counts), closing time, link |
+| Zevent | `/zevent-fin` (freeze the tracker with the final recap) | « Publier le récapitulatif final », same code, `MANAGE_GUILD` read live as the command does |
+
+**Routes**: admin tier, read on the bot loop. The Zevent recap goes through
+`src/discord_ext/` like the Gazette's « Publier maintenant ». Nothing here
+shows who voted or what a member asked the AI.
+
+**Lines** +420. **Risk** low.
+
+---
+
+## P52 — new: Giveaways, recent draws and a new draw
+
+P42c's card lists the open giveaways, with « Tirer maintenant » and « Annuler ».
+`/concours nouveau-tirage` (new winners, excluding the previous ones) is still
+command-only.
+
+**Add.**
+
+- **Card**: a « Derniers tirages » list under the open ones. It shows the 10
+  most recently drawn giveaways (`GiveawayRepository.list_drawn`, already
+  there), with their winners' names and a « 🎲 Nouveau tirage » button that
+  asks how many winners.
+- **Route**: `POST /api/servers/{id}/giveaways/{message id}/reroll` calls the
+  same code as the command, moved to `src/discord_ext/giveaway.py` like the draw
+  in P42c. Guild admin and module on, as for the draw, and audited.
+
+**Lines** +150. **Risk** low.
+
+---
+
+## P53 — new: RSS, each feed's state and its reset
+
+`/rss liste` (each feed's last fetch and status) and `/rss reinitialiser`
+(forget what was posted; the next cycle re-seeds without posting) are
+command-only. The RSS widget sets the feeds and can test one (`POST …/rss/test`),
+but says nothing about how they are doing.
+
+**Add.**
+
+- **Widget**: each feed's row shows its last fetch and its last error, read from
+  the feed's state in MongoDB (`last_poll_at`, `last_error`, `failures`).
+- **Reset**: a « Réinitialiser » button calls the same reset as the command.
+  `POST /api/servers/{id}/rss/{feed id}/reset`, guild admin, audited.
+
+**Lines** +170. **Risk** low.
+
+---
+
+## P54 — new: LLDAP, sync now, the linked accounts, and « Créer mon compte »
+
+**Today.** `/lldap synchroniser` (ADMINISTRATOR) and `/inscription <email>
+[username]` (a member creates their account) are command-only. The module page
+has its settings and nothing else: an admin can't see which members have an
+account, or what the last sync changed.
+
+**Add.**
+
+- **Admin card**: the members linked to an LLDAP account (Discord name, LLDAP
+  username, groups), read from the server's own instance (P37) on the bot loop
+  (`list_users`, `list_groups`). « Synchroniser maintenant » runs `run_sync` and
+  shows its report (`describe_report`).
+- **« Mon espace »**: a section for members holding a mapped role. It shows
+  their account (username, groups), or « Créer mon compte » (email, username),
+  the same code as `/inscription`. The temporary password is shown once on the
+  page, never stored or logged.
+
+**Rules**:
+
+- **Admin card**: the command's, ADMINISTRATOR or the owner read live
+  (`ctx.guild_access`), not the dashboard's MANAGE_GUILD.
+- **« Mon espace »**: the member tier, plus the mapped role read live.
+- **Secrets**: the LLDAP admin password never reaches the browser.
+
+**Lines** +260. **Risk** medium: a live call to the server's LLDAP, with its
+timeout.
+
+---
+
+## P55 — new: Backups on the global page
+
+**Today.**
+
+- **Settings only**: the `backup` section of the global page holds the
+  schedule and the retention.
+- **Command-only**: a manual backup is `/sauvegarde`, registered on the
+  developers' guild only (`extensions/backup.py:51`).
+- **Nowhere**: nothing shows which backups exist. The health card shows
+  the backup task's state, and `/metrics` the last one's time.
+
+**Add**, in the global page's « Sauvegardes » section:
+
+- **List**: the backups on the volume (date, size, databases), newest first.
+- **Run now**: « Sauvegarder maintenant », the same run as `/sauvegarde`, on the
+  bot loop. It shows its progress until it ends, then the new line.
+
+Restoring stays a command-line step (`scripts/restore_backup.py`, RUNBOOK):
+a restore from a browser is too easy to click.
+
+**Rules**: developer tier (`require_developer`), as the global page. Nothing
+in a backup is readable from the page, and nothing can be downloaded.
+
+**Lines** +220. **Risk** low.
+
+---
+
+## P56 — Spotify votes: their own button callbacks, split, tested
 
 **Finding.** `extensions/spotify/votes.py` is the largest extension module (897
 lines, 41 % covered). It holds the daily vote, the vote on `/musique proposer`,
@@ -152,7 +483,7 @@ member-facing. Before/after screenshots of the vote message (Discord) in the PR.
 
 ---
 
-## P46 — Zevent's logo: a setting, not a file uploaded every 30 s
+## P57 — Zevent's logo: a setting, not a file uploaded every 30 s
 
 **Finding.** During a Zevent, each guild's live message is edited with
 `files=[File("data/Zevent_logo.png")]` (`extensions/zevent/tasks.py:113`):
@@ -177,7 +508,7 @@ dashboard's global page gains one field (screenshot).
 
 ---
 
-## P47 — Helpers written twice, round two, and the last dead code
+## P58 — Helpers written twice, round two, and the last dead code
 
 | Twice | Where | Into |
 |---|---|---|
@@ -213,7 +544,7 @@ repository (code, tests, the SPA) finds:
 
 ---
 
-## P48 — Test fakes, round two
+## P59 — Test fakes, round two
 
 P39 put the Discord fakes in `tests/discord_fakes.py` and the dashboard's in
 `tests/webui_fakes.py`. The test files still define 116 local fakes (2000 lines).
@@ -238,7 +569,7 @@ doesn't define a class named like one of the shared fakes.
 
 ---
 
-## P49 — The event trackers' parsing in `features/`, tested
+## P60 — The event trackers' parsing in `features/`, tested
 
 **Finding.** The six least-tested files (9–18 %, listed above) have one thing
 in common. Each parses an API payload or builds its embed inside an extension
@@ -271,32 +602,7 @@ extensions call the same code through a module path.
 
 ---
 
-## P50 — The module page's cards in one registry
-
-**Finding.** P41 put the server page's cards on `loadCard()`, but not the
-module page's:
-
-- **Frames**: `js/pages/module.js` builds five card frames by hand inside
-  `raw(\`…\`)`: role menus, Secret Santa, moderation (two), Spotify and XP
-  (`module.js:109-280`, 186 lines). Achievements, the Gazette and the giveaways
-  use `cardHtml()`.
-- **Loaders**: `js/core/render.js` starts their loaders with 8 branches of
-  `if (state.currentPage === 'module' && state.currentModule === '…')`.
-- **Spinners**: 25 literal `<div class="loading"><div class="spinner">…` remain
-  across 11 modules, where `SPINNER` exists (`js/ui/card.js`).
-
-**Fix.** A registry, `registerModuleCard('moduleXp', { html: sid => …, load: sid => … })`,
-called by each feature module. `module.js` draws the cards registered for the
-module, and `render.js` loads them in one loop. The five hand-built frames move
-onto `cardHtml()`, and the literal spinners become `SPINNER`. Adding a card
-then touches one file, not three.
-
-**Lines** −170 / +70. **Risk** low; before/after screenshots of the eight
-module pages with `tools/dashboard_demo.py --shots`.
-
----
-
-## P51 — README and command names in the docs, checked
+## P61 — README and command names in the docs, checked
 
 **Finding.** The README predates P27–P42 in places:
 
@@ -333,7 +639,7 @@ leading word.
 
 ---
 
-## P52 — *(optional)* Global sections' schemas next to their extension
+## P62 — *(optional)* Global sections' schemas next to their extension
 
 **Finding.** Module schemas live with their extension (`_common.py`). Global
 sections don't: `src/webui/schemas.py` (984 lines, the largest file in `src/`)
@@ -361,75 +667,23 @@ things live, not lines.
 
 ---
 
-## P53 — new: Giveaways, recent draws and a new draw from the dashboard
+## Decisions
 
-P42c's card lists the open giveaways, with « Tirer maintenant » and « Annuler ».
-`/concours nouveau-tirage` (new winners, excluding the previous ones) is still
-command-only.
+Made:
 
-**Add.**
+1. **P43**: the draw file is no longer written (your answer on #280).
 
-- **Card**: a « Derniers tirages » list under the open ones. It shows the 10
-  most recently drawn giveaways (`GiveawayRepository.list_drawn`, already
-  there), with their winners' names and a « 🎲 Nouveau tirage » button that
-  asks how many winners.
-- **Route**: `POST /api/servers/{id}/giveaways/{message id}/reroll` calls the
-  same code as the command, moved to `src/discord_ext/giveaway.py` like the draw
-  in P42c. Guild admin and module on, as for the draw, and audited.
+Still open:
 
-**Lines** +150. **Risk** low.
-
----
-
-## P54 — new: RSS, each feed's state and its reset on the module page
-
-`/rss liste` (each feed's last fetch and status) and `/rss reinitialiser`
-(forget what was posted; the next cycle re-seeds without posting) are
-command-only. The RSS widget sets the feeds and can test one (`POST …/rss/test`),
-but says nothing about how they are doing.
-
-**Add.**
-
-- **Widget**: each feed's row shows its last fetch and its last error, read from
-  the feed's state in MongoDB.
-- **Reset**: a « Réinitialiser » button calls the same reset as the command.
-  `POST /api/servers/{id}/rss/{feed id}/reset`, guild admin, audited.
-
-**Lines** +170. **Risk** low.
-
----
-
-## P55 — new: LLDAP, "Synchroniser maintenant" and the linked accounts
-
-`/lldap synchroniser` (ADMINISTRATOR) is command-only. The module page has its
-settings and nothing else: an admin can't see which members have an account,
-or what the last sync changed.
-
-**Add.**
-
-- **Card**: lists the members linked to an LLDAP account (Discord name, LLDAP
-  username, groups), read from LLDAP through the server's own instance (P37),
-  on the bot loop.
-- **Sync**: a « Synchroniser maintenant » button runs `run_sync` and shows its
-  report (`describe_report`).
-
-**Rules**: the command's, ADMINISTRATOR or the owner read live
-(`ctx.guild_access`), not the dashboard's MANAGE_GUILD. The LLDAP admin
-password never reaches the browser.
-
-**Lines** +180. **Risk** medium: a live call to the server's LLDAP, with its
-timeout.
-
----
-
-## Decisions to make
-
-1. **P43**: stop writing the draw file (recommended), or keep it and give it a
-   retention?
-2. **P52**: worth doing, or leave the global sections where they are?
+2. **P62**: worth doing, or leave the global sections where they are?
 3. **P44**: is `/effacer avant|apres` fine as the one option left taking an id?
    The other way is a message context-menu command, « Effacer jusqu'ici »,
    which is a member-visible change.
+4. **P47**: creating a Secret Santa session is open to any member in Discord.
+   On the dashboard it would be admins only (the tier). Fine, or should
+   « Mon espace » offer it too?
+5. **P48**: sanctions from the dashboard are the riskiest lot (a ban is hard to
+   undo). Do it, or keep sanctions in Discord and stop at the list and revoke?
 
 ---
 
@@ -446,16 +700,16 @@ timeout.
   (49, mostly in `xp.js`, `rolemenus.js`, `spotify.js`) are static markup or
   already-escaped values, not member text.
 - **HTTP**: every client goes through `src/core/http.py` (`fetch` /
-  `fetch_untrusted`). The Twitch emote cache is the exception, in P47.
+  `fetch_untrusted`). The Twitch emote cache is the exception, in P58.
 - **Blocking calls on the loop**: a scan of every `async def` for file and
-  network calls finds two, the emote cache (P47) and the draw file (P43).
+  network calls finds two, the emote cache (P58) and the draw file (P43).
 - **Persistent messages**: all 12 extensions that keep one go through
   `fetch_or_create_persistent_message` / `GuildMessages`.
 - **Docs**: every path and identifier the conventions name exists, except
-  `_build_api()` (P51). The runtime paths (`config/config.json`,
+  `_build_api()` (P61). The runtime paths (`config/config.json`,
   `data/twitchcreds.json`) are on the volume, as they should be.
 - **Zevent's global section** is still read when the extension loads, but
   `GLOBAL_SECTIONS` reloads it on a save (P34), so a change applies. That's fine.
 - **Type ignores**: 28 in all. The `arg-type` / `call-overload` ones on number
-  parsing go with P47. The rest are interactions.py annotations
+  parsing go with P58. The rest are interactions.py annotations
   (`allowed_mentions`, `cover_image`), not ours to fix.
