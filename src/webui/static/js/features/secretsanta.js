@@ -2,6 +2,7 @@
 import { EL, actionArgs, registerActions } from '../core/actions.js';
 import { api } from '../core/api.js';
 import { html, raw } from '../core/html.js';
+import { getPickerSelectedId, memberPickerHtml, populateMemberPickers } from '../forms/pickers/members.js';
 import { askConfirm } from '../ui/confirm.js';
 import { toast } from '../ui/toast.js';
 
@@ -86,15 +87,70 @@ export function hideSecretSantaPairs() {
     box.hidden = true;
 }
 
+// The pairs who mustn't draw each other (P42): only for whom may change them,
+// as /secretsanta paires-exclues (the API checks it again), until the draw.
+export function santaExclusionsHtml(serverId, data) {
+    if (!data || !Array.isArray(data.exclusions)) return '';
+    const edit = !!data.can_exclude;
+    const list = data.exclusions.length
+        ? html`<ul class="santa-people santa-pairs">${data.exclusions.map(e => html`
+                <li><span>${e.user1.name}</span><span aria-hidden="true">↔</span><span>${e.user2.name}</span>
+                    ${edit && html`<button class="btn btn-ghost btn-sm" data-click="allowSecretSantaPair" data-click-args="${actionArgs(serverId, e.user1.id, e.user2.id)}" title="Les autoriser à se tirer" aria-label="Autoriser ${e.user1.name} et ${e.user2.name} à se tirer">✕</button>`}</li>`)}</ul>`
+        : html`<p class="u-c-text-muted">Aucune paire exclue : chacun peut tirer n'importe qui.</p>`;
+    const form = edit && html`
+            <div class="santa-exclude">
+                ${raw(memberPickerHtml('', 'data-santa-pair="1"'))}
+                <span aria-hidden="true">↔</span>
+                ${raw(memberPickerHtml('', 'data-santa-pair="2"'))}
+                <button class="btn btn-secondary btn-sm" data-click="excludeSecretSantaPair" data-click-args="${actionArgs(serverId)}">🚫 Exclure la paire</button>
+            </div>`;
+    return String(html`
+            <h4 class="u-m-16-0-8">Paires exclues</h4>
+            <p class="u-c-text-muted u-fs-0_85rem">Les deux membres d'une paire ne peuvent pas se tirer l'un l'autre (un couple, des colocataires…).${edit ? '' : ' Le tirage a eu lieu : elles ne changent plus.'}</p>
+            ${list}${form}`);
+}
+
 export async function loadSecretSanta(serverId) {
     const container = document.getElementById('secretsanta-session');
     if (!container) return;
     try {
         const data = await api(`/api/servers/${encodeURIComponent(serverId)}/secretsanta`);
-        container.innerHTML = secretSantaHtml(serverId, data?.session || null);
+        container.innerHTML = secretSantaHtml(serverId, data?.session || null) + santaExclusionsHtml(serverId, data);
+        populateMemberPickers(container);
     } catch (e) {
         container.innerHTML = String(html`<div class="empty-state"><h3>Erreur</h3><p>${String(e.message || e)}</p></div>`);
     }
+}
+
+async function changePair(serverId, path, user1, user2) {
+    try {
+        await api(`/api/servers/${encodeURIComponent(serverId)}/secretsanta/${path}`, {
+            method: 'POST',
+            body: JSON.stringify({ user1, user2 }),
+        });
+        return true;
+    } catch (e) {
+        return false;  // handled by api()
+    } finally {
+        loadSecretSanta(serverId);
+    }
+}
+
+export async function excludeSecretSantaPair(serverId) {
+    const pick = (n) => {
+        const picker = document.querySelector(`.santa-exclude .member-picker:has([data-santa-pair="${n}"])`);
+        return picker ? getPickerSelectedId(picker) : '';
+    };
+    const [user1, user2] = [pick(1), pick(2)];
+    if (!user1 || !user2) {
+        toast('Choisis les deux membres de la paire.', 'warning');
+        return;
+    }
+    if (await changePair(serverId, 'exclusions', user1, user2)) toast('Paire exclue.', 'success');
+}
+
+export async function allowSecretSantaPair(serverId, user1, user2) {
+    if (await changePair(serverId, 'exclusions/remove', user1, user2)) toast('Ils peuvent à nouveau se tirer.', 'success');
 }
 
 export async function drawSecretSanta(serverId, btn) {
@@ -119,7 +175,9 @@ export async function drawSecretSanta(serverId, btn) {
 }
 
 registerActions({
+    allowSecretSantaPair,
     drawSecretSanta,
+    excludeSecretSantaPair,
     hideSecretSantaPairs,
     loadSecretSanta,
     revealSecretSanta,
