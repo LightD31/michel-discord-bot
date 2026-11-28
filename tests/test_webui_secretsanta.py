@@ -107,7 +107,9 @@ def test_a_drawn_parcel_session_shows_counts_and_never_pairs(santa):
 def test_no_session(santa):
     repo, _, call, _ = santa
     repo.session = None
-    assert call("GET") == {"session": None}
+    # Organised by nobody: only an administrator sees and sets the exclusions.
+    assert call("GET") == {"session": None, "exclusions": None, "can_exclude": False}
+    assert call("GET", permissions=ADMINISTRATOR)["can_exclude"] is True
 
 
 def test_the_creator_draws_from_the_dashboard(santa):
@@ -189,3 +191,62 @@ def test_nothing_to_reveal_before_the_draw(santa):
     with pytest.raises(HTTPException) as exc:
         call("POST", user_id="7", permissions=ADMINISTRATOR, path="reveal")
     assert exc.value.status_code == 409 and audits == []
+
+
+# ── Exclusions (P42) ────────────────────────────────────────────────────
+
+
+def exclusion(call_route, path, user1, user2, user_id="3", permissions=MANAGE_GUILD):
+    return call_route(
+        path, santa_routes.PairRequest(user1=user1, user2=user2), user_id, permissions
+    )
+
+
+@pytest.fixture
+def pairs(santa, monkeypatch):
+    repo, members, call, audits = santa
+    bot = FakeBot(next(iter(members.values())).guild)
+
+    def call_route(path, body, user_id, permissions):
+        router = santa_routes.create_router(Ctx(bot, user_id, permissions))
+        endpoint = next(r.endpoint for r in router.routes if r.path.endswith(path))
+        return json.loads(asyncio.run(endpoint(None, GUILD, body)).body)
+
+    return repo, call, call_route, audits
+
+
+def test_the_organiser_excludes_and_allows_a_pair(pairs):
+    repo, call, call_route, audits = pairs
+    out = exclusion(call_route, "/exclusions", "4", "5")  # the session's creator
+    assert [(e["user1"]["name"], e["user2"]["name"]) for e in out["exclusions"]] == [("m4", "Zoé")]
+    assert call("GET")["exclusions"] == out["exclusions"]
+    with pytest.raises(HTTPException) as twice:
+        exclusion(call_route, "/exclusions", "5", "4")
+    assert twice.value.status_code == 409
+    assert exclusion(call_route, "/exclusions/remove", "5", "4")["exclusions"] == []
+    assert [a[1] for a in audits] == ["secretsanta.exclude", "secretsanta.allow"]
+
+
+def test_a_co_admin_who_doesnt_organise_neither_sees_nor_sets_them(pairs):
+    repo, call, call_route, _ = pairs
+    repo.banned = [(4, 5)]
+    data = call("GET", user_id="7")  # MANAGE_GUILD, not the creator
+    assert data["exclusions"] is None and data["can_exclude"] is False
+    with pytest.raises(HTTPException) as refused:
+        exclusion(call_route, "/exclusions", "3", "4", user_id="7")
+    assert refused.value.status_code == 403
+    exclusion(call_route, "/exclusions", "3", "4", user_id="7", permissions=ADMINISTRATOR)
+    assert len(repo.banned) == 2
+
+
+def test_after_the_draw_the_exclusions_are_settled(pairs):
+    repo, call, call_route, _ = pairs
+    repo.session.is_drawn = True
+    assert call("GET")["can_exclude"] is False
+    with pytest.raises(HTTPException) as drawn:
+        exclusion(call_route, "/exclusions", "4", "5")
+    assert drawn.value.status_code == 409
+    with pytest.raises(HTTPException) as same:
+        repo.session.is_drawn = False
+        exclusion(call_route, "/exclusions", "4", "4")
+    assert same.value.status_code == 422

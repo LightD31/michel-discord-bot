@@ -11,6 +11,8 @@ export const AUDIT_ACTIONS = {
     'module.save': 'a enregistré le module',
     'secretsanta.draw': 'a lancé le tirage du Père Noël Secret',
     'secretsanta.reveal': 'a révélé les attributions du Père Noël Secret',
+    'secretsanta.exclude': 'a exclu une paire du Père Noël Secret',
+    'secretsanta.allow': 'a réautorisé une paire du Père Noël Secret',
     'gazette.publish': 'a publié la Gazette',
     'giveaway.draw': 'a tiré un giveaway',
     'giveaway.cancel': 'a annulé un giveaway',

@@ -81,8 +81,17 @@ class MemorySanta:
     async def read_banned_pairs(self, context_id):
         return list(self.banned)
 
-    async def write_banned_pairs(self, context_id, pairs):
-        self.banned = list(pairs)
+    async def exclude_pair(self, context_id, user1, user2):
+        if any({a, b} == {user1, user2} for a, b in self.banned):
+            return False
+        self.banned.append((user1, user2))
+        return True
+
+    async def allow_pair(self, context_id, user1, user2):
+        kept = [(a, b) for a, b in self.banned if {a, b} != {user1, user2}]
+        changed = len(kept) != len(self.banned)
+        self.banned = kept
+        return changed
 
     async def save_draw_results(self, context_id, draw_results):
         self.results = list(draw_results)

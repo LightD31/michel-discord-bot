@@ -157,3 +157,30 @@ async def test_only_a_drawn_parcel_session_has_a_reminder(mongo):
     await repo.create_session(SecretSantaSession(context_id=context_id, channel_id=1))
     await repo.claim_draw(context_id)
     assert not await repo.claim_reminder(context_id)  # an in-person exchange
+
+
+async def test_a_pair_is_excluded_once_whatever_its_order(mongo):
+    """P42: one conditional update each; a pair is never stored twice."""
+    repo = SecretSantaRepository()
+    ctx = f"guild_{mongo.guild_id}"
+    assert await repo.exclude_pair(ctx, 1, 2)  # the first one creates the document
+    assert not await repo.exclude_pair(ctx, 2, 1)
+    assert await repo.exclude_pair(ctx, 1, 3)
+    assert sorted(await repo.read_banned_pairs(ctx)) == [(1, 2), (1, 3)]
+
+
+async def test_concurrent_exclusions_are_all_kept(mongo):
+    repo = SecretSantaRepository()
+    ctx = f"guild_{mongo.guild_id}"
+    results = await asyncio.gather(*(repo.exclude_pair(ctx, 1, n) for n in range(2, 8)))
+    assert all(results)
+    assert len(await repo.read_banned_pairs(ctx)) == 6
+
+
+async def test_a_pair_is_allowed_again_whatever_its_order(mongo):
+    repo = SecretSantaRepository()
+    ctx = f"guild_{mongo.guild_id}"
+    assert not await repo.allow_pair(ctx, 1, 2)  # nothing stored yet
+    await repo.exclude_pair(ctx, 1, 2)
+    assert await repo.allow_pair(ctx, 2, 1)
+    assert await repo.read_banned_pairs(ctx) == []

@@ -15,6 +15,7 @@ from datetime import datetime
 
 import pymongo
 from pymongo import ReturnDocument
+from pymongo.errors import DuplicateKeyError
 
 from src.core import clock
 from src.core.db import mongo_manager, translates_db_errors
@@ -268,16 +269,38 @@ class SecretSantaRepository:
         return []
 
     @translates_db_errors
-    async def write_banned_pairs(
-        self, context_id: str, banned_pairs: list[tuple[int, int]]
-    ) -> None:
+    async def exclude_pair(self, context_id: str, user1: int, user2: int) -> bool:
+        """Forbid *user1* and *user2* to draw each other; ``False`` when they already are.
+
+        One conditional update: a pair is never stored twice, in either order.
+        """
         _, _, banned_pairs_col = self._collections(context_id)
-        await banned_pairs_col.update_one(
+        both = [[user1, user2], [user2, user1]]
+        for attempt in range(2):
+            try:
+                result = await banned_pairs_col.update_one(
+                    {"_id": context_id, "pairs": {"$nin": both}},
+                    {"$push": {"pairs": [user1, user2]}},
+                    upsert=True,
+                )
+            except DuplicateKeyError:
+                # The document exists: it holds the pair, or a concurrent first
+                # exclusion created it just now. Once more tells them apart.
+                if attempt:
+                    return False
+                continue
+            return bool(result.modified_count or result.upserted_id is not None)
+        return False
+
+    @translates_db_errors
+    async def allow_pair(self, context_id: str, user1: int, user2: int) -> bool:
+        """Let *user1* and *user2* draw each other again; ``False`` when they weren't excluded."""
+        _, _, banned_pairs_col = self._collections(context_id)
+        result = await banned_pairs_col.update_one(
             {"_id": context_id},
-            {"$set": {"pairs": [list(p) for p in banned_pairs]}},
-            upsert=True,
+            {"$pull": {"pairs": {"$in": [[user1, user2], [user2, user1]]}}},
         )
-        logger.info(f"Banned pairs updated for {context_id}")
+        return bool(result.modified_count)
 
     @translates_db_errors
     async def save_draw_results(self, context_id: str, draw_results: list[tuple[int, int]]) -> None:
