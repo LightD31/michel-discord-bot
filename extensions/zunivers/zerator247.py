@@ -5,10 +5,9 @@ number of times. Requests are only accepted in a short window before each vote
 (about ten minutes, near the end of the VOD airing), so members opt in with
 ``/zunivers 247 activer`` and get a DM each time that window opens, reminding them
 to type ``!request random`` (the 24/7 bot picks an archive VOD itself) or to
-propose the VOD of their choice.
+propose the VOD of their choice. Once the window closes, those DMs are edited to
+say so, so an old reminder doesn't send anyone to type a request too late.
 """
-
-from datetime import datetime
 
 from interactions import IntervalTrigger, OptionType, SlashContext, Task, slash_option
 
@@ -22,15 +21,16 @@ from features.zerator247 import (
     Zerator247Client,
     Zerator247Error,
     build_request_reminder,
+    build_requests_closed_notice,
     describe_cycle,
     should_notify,
 )
 from src.core import clock, log_context
 from src.core.errors import DatabaseError
-from src.discord_ext.messages import fetch_user_safe, guild_id_of
+from src.discord_ext.messages import edit_message_if_changed, fetch_user_safe, guild_id_of
 
 from ._base import ZuniversBase
-from ._common import ZUNIVERS, GuildState, logger, zunivers_cmd
+from ._common import ZUNIVERS, GuildState, RequestWindow, logger, zunivers_cmd
 
 _REQUEST_GROUP = "247"
 _REQUEST_GROUP_DESCRIPTION = "Rappels quand les !request s'ouvrent sur ZeratoR 24/7"
@@ -57,11 +57,15 @@ class Zerator247Mixin(ZuniversBase):
 
     @Task.create(IntervalTrigger(minutes=1))
     async def zerator247_checker(self):
-        """Announce the requests window to each guild's subscribers once per cycle."""
+        """Announce the requests window to each guild's subscribers once per cycle.
+
+        Also edits the DMs of a window that has closed since the last poll.
+        """
         # Guilds following the same 24/7 site share one fetch of its cycle.
         cycles: dict[str, Cycle | None] = {}
         for state, settings in await self._guilds():
             with log_context.scope(guild_id=state.guild_id):
+                await self._close_request_window(state)
                 site = _site_url(settings)
                 if not state.request_subscriptions or not site:
                     continue
@@ -88,6 +92,8 @@ class Zerator247Mixin(ZuniversBase):
         message = build_request_reminder(
             cycle, twitch_url=_twitch_url(settings), votes_url=votes_url
         )
+        closes_at = cycle.ballot_opens_at
+        window = RequestWindow(closes_at, votes_url) if closes_at is not None else None
         sent = 0
         for user_id in recipients:
             _, user = await fetch_user_safe(self.bot, user_id)
@@ -95,11 +101,33 @@ class Zerator247Mixin(ZuniversBase):
                 logger.warning("Could not fetch user %s for the !request reminder", user_id)
                 continue
             try:
-                await user.send(message)
+                dm = await user.send(message)
                 sent += 1
             except Exception as e:
                 logger.warning("Could not DM the !request reminder to %s: %s", user_id, e)
+                continue
+            if window is not None:
+                window.messages.append(dm)
+        if window is not None and window.messages:
+            state.request_window = window
         logger.info("Sent the ZeratoR 24/7 !request reminder to %d member(s)", sent)
+
+    async def _close_request_window(self, state: GuildState) -> None:
+        """Once the announced window is over, edit its DMs to say the requests are closed."""
+        window = state.request_window
+        if window is None or clock.now() < window.closes_at:
+            return
+        state.request_window = None
+        notice = build_requests_closed_notice(window.closes_at, votes_url=window.votes_url)
+        edited = 0
+        for dm in window.messages:
+            try:
+                if await edit_message_if_changed(dm, logger=logger, content=notice):
+                    edited += 1
+            except Exception as e:
+                # Deleted by the member, or their DMs closed since: the reminder stays as sent.
+                logger.warning("Could not edit the !request reminder %s: %s", dm.id, e)
+        logger.info("Marked the ZeratoR 24/7 !request reminder closed for %d member(s)", edited)
 
     @zunivers_cmd.subcommand(
         group_name=_REQUEST_GROUP,

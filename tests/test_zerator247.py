@@ -14,6 +14,7 @@ from features.zerator247 import (
     Zerator247Client,
     Zerator247Error,
     build_request_reminder,
+    build_requests_closed_notice,
     describe_cycle,
     should_notify,
 )
@@ -209,3 +210,12 @@ async def test_client_refuses_a_site_on_the_bots_network():
     """The site is a guild setting: the real fetch never reaches a private address."""
     with pytest.raises(Zerator247Error):
         await Zerator247Client("http://127.0.0.1:8080").get_cycle()
+
+
+def test_closed_notice_says_the_vote_started():
+    closed = AT + timedelta(seconds=300)
+    message = build_requests_closed_notice(closed, votes_url="https://247.zerator.com/#votes")
+    assert "requêtes sont fermées" in message
+    assert f"<t:{int(closed.timestamp())}:t>" in message
+    assert "https://247.zerator.com/#votes" in message
+    assert "http" not in build_requests_closed_notice(closed, votes_url=None)

@@ -7,7 +7,7 @@ Config key ``moduleZunivers`` (formerly ``moduleColoc``). Also holds the
 from dataclasses import dataclass, field
 from datetime import datetime
 
-from interactions import SlashCommand
+from interactions import Message, SlashCommand
 
 from features.coloc import EventState, ReminderCollection, StorageManager
 from features.zerator247 import RequestSubscription
@@ -140,6 +140,19 @@ def ninja_config() -> dict:
 
 
 @dataclass
+class RequestWindow:
+    """The !request reminders sent for the requests window open now, edited once it closes.
+
+    Kept in memory only: the window lasts about ten minutes, and a restart in it
+    leaves those DMs as they were sent.
+    """
+
+    closes_at: datetime
+    votes_url: str | None
+    messages: list[Message] = field(default_factory=list)
+
+
+@dataclass
 class GuildState:
     """What the extension keeps for one guild, loaded from its database on first use."""
 
@@ -150,6 +163,7 @@ class GuildState:
     request_subscriptions: dict[str, RequestSubscription] = field(default_factory=dict)
     # End time of the last 24/7 cycle announced, so one requests window is announced once.
     last_request_cycle_end: datetime | None = None
+    request_window: RequestWindow | None = None
 
 
 zunivers_cmd = SlashCommand(
@@ -161,6 +175,7 @@ zunivers_cmd = SlashCommand(
 __all__ = [
     "ZUNIVERS",
     "GuildState",
+    "RequestWindow",
     "ZuniversConfig",
     "ZuniversSection",
     "logger",

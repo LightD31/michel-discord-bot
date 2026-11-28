@@ -3,7 +3,7 @@
 The 24/7 site exposes the current VOD's vote cycle at ``GET /api/now``: the
 chat proposes VODs with ``!request`` (``!request random`` lets the 24/7 bot pick one) during the *requests* window, then
 votes on them. A ZUnivers card asks players to ``!request`` a number of times,
-so subscribed members get a DM when the requests window opens.
+so subscribed members get a DM when the requests window opens, edited once it closes.
 
 Stays free of ``interactions`` imports; the Discord side lives in
 :mod:`extensions.zunivers.zerator247`.
@@ -16,6 +16,7 @@ from .models import (
     Cycle,
     RequestSubscription,
     build_request_reminder,
+    build_requests_closed_notice,
     describe_cycle,
     should_notify,
 )
@@ -30,6 +31,7 @@ __all__ = [
     "Zerator247Client",
     "Zerator247Error",
     "build_request_reminder",
+    "build_requests_closed_notice",
     "describe_cycle",
     "should_notify",
 ]

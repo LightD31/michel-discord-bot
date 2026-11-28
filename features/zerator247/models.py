@@ -151,6 +151,17 @@ def build_request_reminder(
     return message
 
 
+def build_requests_closed_notice(closed_at: datetime, *, votes_url: str | None) -> str:
+    """What the reminder DM becomes once the requests window it announced is over."""
+    message = (
+        f"📼 Les requêtes sont fermées sur ZeratoR 24/7 depuis {_ts(closed_at, 't')}, "
+        "le vote a commencé. Les prochaines ouvriront à la fin de la VOD suivante."
+    )
+    if votes_url:
+        message += f"\nVOD et vote en cours : {votes_url}"
+    return message
+
+
 def describe_cycle(cycle: Cycle | None) -> str:
     """One-line status of the cycle, for ``/zunivers 247 statut``."""
     if cycle is None or cycle.ends_at is None:

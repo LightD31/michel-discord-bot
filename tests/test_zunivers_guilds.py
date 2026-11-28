@@ -207,3 +207,71 @@ async def test_without_an_api_url_the_events_check_is_skipped(ext, store_config)
     await ext._check_zunivers_events()
 
     assert FakeStorage.saved == []
+
+
+async def test_the_247_reminders_are_edited_once_the_requests_window_closes(
+    ext, store_config, monkeypatch
+):
+    from discord_fakes import FakeBot, FakeUser, not_found
+
+    import extensions.zunivers.zerator247 as z247
+    from features.zerator247 import Cycle, RequestSubscription
+    from src.core import clock
+
+    store_config(
+        {"servers": {"1": {"moduleZunivers": {"enabled": True, "zerator247Url": "https://247.ex"}}}}
+    )
+    opened = datetime(2026, 1, 1, 12, tzinfo=UTC)
+    cycle = Cycle(
+        phase="requests",
+        at=opened,
+        remaining_seconds=900,
+        request_opens_before=1200,
+        ballot_opens_before=600,
+        ballot_closes_before=300,
+        vote_source="poll",
+    )
+
+    class FakeClient:
+        def __init__(self, site):
+            pass
+
+        async def get_cycle(self):
+            return cycle
+
+    monkeypatch.setattr(z247, "Zerator247Client", FakeClient)
+    bot = FakeBot()
+    member, gone = FakeUser(1, "membre"), FakeUser(2, "parti")
+    bot.users = {1: member, 2: gone}
+    ext.bot = bot
+    (await ext._state("1")).request_subscriptions = {
+        uid: RequestSubscription(uid) for uid in ("1", "2")
+    }
+    now = opened
+    monkeypatch.setattr(clock, "now", lambda: now)
+
+    await zunivers.ZuniversExtension.zerator247_checker.callback(ext)
+    (dm,) = member.dm_messages
+    assert "requêtes sont ouvertes" in dm.content
+
+    async def deleted(**_):
+        raise not_found()
+
+    gone.dm_messages[0].edit = deleted  # deleted by the member: its edit fails, alone
+
+    now = opened + timedelta(minutes=4)  # still open: nothing changes
+    await zunivers.ZuniversExtension.zerator247_checker.callback(ext)
+    assert dm.edits == []
+
+    now = opened + timedelta(minutes=5)  # the ballot opens: the window is over
+    await zunivers.ZuniversExtension.zerator247_checker.callback(ext)
+    closed = int((opened + timedelta(minutes=5)).timestamp())
+    assert dm.content.startswith(
+        f"📼 Les requêtes sont fermées sur ZeratoR 24/7 depuis <t:{closed}:t>"
+    )
+    assert "https://247.ex/#votes" in dm.content
+
+    now = opened + timedelta(minutes=6)
+    await zunivers.ZuniversExtension.zerator247_checker.callback(ext)
+    assert len(dm.edits) == 1  # edited once
+    assert len(member.dm_messages) == 1  # and the same cycle is not announced again
